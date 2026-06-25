@@ -44,7 +44,7 @@ export function App() {
             phase 1 design system ·{" "}
             <Link
               to="/style-guide"
-              className="text-blue underline-offset-2 hover:underline"
+              className="text-blue underline-offset-2 hover:underline rounded-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
             >
               /style-guide →
             </Link>

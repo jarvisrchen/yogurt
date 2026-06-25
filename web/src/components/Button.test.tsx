@@ -53,4 +53,18 @@ describe("Button", () => {
     render(<Button type="submit">Submit</Button>);
     expect(screen.getByRole("button")).toHaveAttribute("type", "submit");
   });
+
+  it("declares a visible focus-visible ring (WCAG 2.4.7 / MD-03)", () => {
+    render(<Button>focusable</Button>);
+    const btn = screen.getByRole("button");
+    expect(btn.className).toMatch(/focus-visible:ring-2/);
+    expect(btn.className).toMatch(/focus-visible:ring-blue\/40/);
+    expect(btn.className).toMatch(/focus-visible:ring-offset-paper/);
+    expect(btn.className).toMatch(/focus-visible:outline-none/);
+  });
+
+  it("appends caller className after variant classes (MD-02)", () => {
+    render(<Button className="w-full">x</Button>);
+    expect(screen.getByRole("button").className).toMatch(/w-full/);
+  });
 });
