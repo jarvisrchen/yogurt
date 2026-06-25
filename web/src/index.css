@@ -59,6 +59,7 @@
   --animate-float:     float    3.5s ease-in-out infinite;
   --animate-pop-up:    pop-up   260ms cubic-bezier(0, 0, 0.2, 1);
   --animate-slide-in-right: slide-in-right 340ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  --animate-staggered-reveal: staggered-reveal 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
 /* ─── Keyframes (referenced by --animate-* above) ─────────────────────────── */
@@ -89,6 +90,10 @@
 @keyframes slide-in-right {
   0%   { transform: translateX(100%); opacity: 0; }
   100% { transform: translateX(0);    opacity: 1; }
+}
+@keyframes staggered-reveal {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0);    }
 }
 
 /* ─── Base resets ─────────────────────────────────────────────────────────── */
