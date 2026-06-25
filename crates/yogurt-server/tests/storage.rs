@@ -103,8 +103,7 @@ async fn it_exposes_both_read_and_writer_handles() {
             .unwrap();
         assert_eq!(count, 1);
 
-        let write_attempt =
-            conn.execute("DELETE FROM meetings", []);
+        let write_attempt = conn.execute("DELETE FROM meetings", []);
         assert!(
             write_attempt.is_err(),
             "read connection should reject writes (query_only=ON)"

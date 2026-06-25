@@ -38,9 +38,8 @@ impl Storage {
     /// Creates the parent directory if missing.
     pub fn init_at(db_path: &Path) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("creating storage parent dir {}", parent.display())
-            })?;
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating storage parent dir {}", parent.display()))?;
         }
 
         // Open the writer first so migrations run on a connection that owns
