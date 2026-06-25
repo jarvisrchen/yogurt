@@ -9,3 +9,6 @@ dist/
 build/
 *.log
 .cache/
+
+# Lavish review artifacts (local-only scratch surfaces)
+.lavish/
