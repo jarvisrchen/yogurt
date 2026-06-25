@@ -232,7 +232,7 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | DESIGN-04 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
 | DESIGN-05 | Phase 1 (Plan 01-02) | Complete (2026-06-25) — tab group + Button 'ink' variant deferred to Phase 4 per plan scope |
 | DESIGN-06 | Phase 1 | Pending |
-| AUDIO-01 | Phase 2 | Pending |
+| AUDIO-01 | Phase 2 (Plan 02-01) | API ready (2026-06-25) — `has_screen_recording_permission()` + `request_screen_recording_permission()` exposed by `yogurt-audio`; end-to-end "prompt fires on first record" verification deferred to Plan 02-XX once `start_capture()` exists |
 | AUDIO-02 | Phase 2 | Pending |
 | AUDIO-03 | Phase 2 | Pending |
 | AUDIO-04 | Phase 2 | Pending |
