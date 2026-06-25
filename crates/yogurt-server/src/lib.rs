@@ -1,6 +1,7 @@
 mod assets;
 mod dev_proxy;
 mod routes;
+pub mod audio;
 pub mod session;
 pub mod storage;
 pub mod ws;

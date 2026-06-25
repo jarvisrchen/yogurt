@@ -5,12 +5,17 @@ use axum::{
 use serde_json::{json, Value};
 
 use crate::assets::serve_embedded;
-use crate::{AppState, Mode};
+use crate::{audio, AppState, Mode};
 
 pub fn router(state: AppState) -> Router {
     let mode = state.mode;
     let router = Router::new()
         .route("/api/health", get(health))
+        // Audio capture surface for Phase 5 settings + Phase 7 onboarding.
+        // Both endpoints are stateless reads from the yogurt-audio crate;
+        // they do not need AppState.
+        .route("/api/audio/devices", get(audio::get_devices))
+        .route("/api/audio/permission", get(audio::get_permission))
         // MD-07: use `any()` so OPTIONS / POST / etc. against /ws ALSO go
         // through the Origin+token check rather than falling through to the
         // SPA handler (which would happily return index.html on OPTIONS /ws).

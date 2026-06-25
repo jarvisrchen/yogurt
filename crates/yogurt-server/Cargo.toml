@@ -23,6 +23,7 @@ directories = { workspace = true }
 rand = { workspace = true }
 base64 = { workspace = true }
 subtle = { workspace = true }
+yogurt-audio = { path = "../yogurt-audio" }
 
 [dev-dependencies]
 tokio = { workspace = true }
