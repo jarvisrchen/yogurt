@@ -20,6 +20,13 @@
 
 mod error;
 mod frame;
+pub mod permission;
+
+#[cfg(any(test, feature = "synthetic"))]
+pub mod synthetic;
 
 pub use error::{AudioError, Result};
 pub use frame::{Channel, Frame, FRAME_SAMPLES, SAMPLE_RATE_HZ};
+pub use permission::{
+    has_screen_recording_permission, request_screen_recording_permission, PermissionStatus,
+};
