@@ -24,6 +24,9 @@ screencapturekit = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }
+# WAV writer for the 30-second dual-channel ear-test acceptance gate
+# (Phase 2 success criterion #1 — `examples/wav_eartest.rs`).
+hound = "3.5"
 
 [features]
 default = []
