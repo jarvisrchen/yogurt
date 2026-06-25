@@ -202,7 +202,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 |-------|----------------|--------|-----------|
 | 0. Skeleton & Foundations | 3/3 | Complete   | 2026-06-25 |
 | 1. Design System | 3/3 | Complete   | 2026-06-25 |
-| 2. Audio Capture | 0/TBD | Not started | - |
+| 2. Audio Capture | 2/3 | In progress (02-03 pending) | - |
 | 3. Cloud STT + Live Transcript | 0/TBD | Not started | - |
 | 4. Augmented Notes Hero | 0/TBD | Not started | - |
 | 5. LLM Client + Settings + Keychain | 0/TBD | Not started | - |
