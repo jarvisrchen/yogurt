@@ -60,7 +60,8 @@ export function StyleGuide() {
     <main className="mx-auto max-w-5xl px-8 py-12 space-y-16">
       {/* Header */}
       <header className="flex items-center gap-4">
-        <Logo size={60} ariaLabel="Yogurt" />
+        {/* Decorative — adjacent <h1>Yogurt style guide</h1> already names it. */}
+        <Logo size={60} />
         <div>
           <h1 className="font-serif text-[52px] leading-none tracking-tight text-ink">
             Yogurt style guide
@@ -264,7 +265,8 @@ export function StyleGuide() {
           <div className="flex items-end gap-8">
             {[19, 24, 32, 44, 60].map((size) => (
               <div key={size} className="flex flex-col items-center gap-2">
-                <Logo size={size} ariaLabel={`Yogurt ${size}px`} />
+                {/* Decorative — adjacent caption ("19px", "24px"…) speaks. */}
+                <Logo size={size} />
                 <span className="font-mono text-[11px] text-mut">{size}px</span>
               </div>
             ))}
@@ -395,9 +397,10 @@ export function StyleGuide() {
                 Inline SVG — brand mark at three sizes
               </p>
               <div className="flex items-end gap-6">
-                <Logo size={19} ariaLabel="Yogurt small" />
-                <Logo size={32} ariaLabel="Yogurt medium" />
-                <Logo size={60} ariaLabel="Yogurt large" />
+                {/* Decorative — caption above ("brand mark at three sizes") names them. */}
+                <Logo size={19} />
+                <Logo size={32} />
+                <Logo size={60} />
               </div>
             </div>
             <div>

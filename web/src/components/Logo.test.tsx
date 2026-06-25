@@ -32,4 +32,26 @@ describe("Logo", () => {
     const { getByLabelText } = render(<Logo ariaLabel="Yogurt" />);
     expect(getByLabelText("Yogurt")).toBeInTheDocument();
   });
+
+  it("is decorative (aria-hidden) by default — no ariaLabel", () => {
+    const { container } = render(<Logo />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+    expect(svg.getAttribute("role")).toBeNull();
+    expect(svg.getAttribute("aria-label")).toBeNull();
+  });
+
+  it("uses role='img' when an ariaLabel is provided (drops aria-hidden)", () => {
+    const { container } = render(<Logo ariaLabel="Yogurt" />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("role")).toBe("img");
+    expect(svg.getAttribute("aria-label")).toBe("Yogurt");
+    expect(svg.getAttribute("aria-hidden")).toBeNull();
+  });
+
+  it("sets focusable='false' so IE/legacy Edge don't stop tab order on the SVG", () => {
+    const { container } = render(<Logo />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("focusable")).toBe("false");
+  });
 });
