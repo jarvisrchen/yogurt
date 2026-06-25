@@ -3,7 +3,7 @@ mod dev_proxy;
 mod routes;
 pub mod session;
 pub mod storage;
-mod ws;
+pub mod ws;
 
 use anyhow::Result;
 use std::net::SocketAddr;

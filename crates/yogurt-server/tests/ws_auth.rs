@@ -114,6 +114,83 @@ async fn it_rejects_ws_without_token() {
 }
 
 #[tokio::test]
+async fn it_rejects_ws_with_subprotocol_only_no_query_token() {
+    // BL-02: the `Sec-WebSocket-Protocol: yogurt.<token>` auth path was
+    // removed. Even with the correct token in the subprotocol header, auth
+    // must fail because only `?token=` is honored now.
+    let server = spawn_test_server().await;
+    let url = format!("ws://127.0.0.1:{}/ws", server.port);
+
+    let mut req = url.into_client_request().expect("build req");
+    req.headers_mut().insert(
+        "origin",
+        HeaderValue::from_str(&format!("http://localhost:{}", server.port)).unwrap(),
+    );
+    req.headers_mut().insert(
+        "sec-websocket-protocol",
+        HeaderValue::from_str(&format!("yogurt.{}", server.token)).unwrap(),
+    );
+
+    let err = tokio_tungstenite::connect_async(req)
+        .await
+        .expect_err("subprotocol path must not authenticate");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("403") || msg.to_lowercase().contains("forbidden"),
+        "expected 403 even with subprotocol token; got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn it_rejects_ws_with_header_injection_attempt_in_query() {
+    // Header-injection regression: a token value containing CR/LF must not
+    // allow a downstream HTTP header to be smuggled. axum's Query extractor
+    // and hyper's URL decoding both reject control chars, but assert the
+    // end-to-end behavior here so a future router change can't regress it.
+    let server = spawn_test_server().await;
+    // %0D%0A = CRLF. Tungstenite's IntoClientRequest will refuse to construct
+    // a URL with a raw newline, so we percent-encode it.
+    let url = format!(
+        "ws://127.0.0.1:{}/ws?token={}%0D%0AX-Injected:%20yes",
+        server.port, server.token
+    );
+
+    let mut req = url.into_client_request().expect("build req");
+    req.headers_mut().insert(
+        "origin",
+        HeaderValue::from_str(&format!("http://localhost:{}", server.port)).unwrap(),
+    );
+
+    // Server must reject (token mismatch — the decoded value is not the real
+    // token). The important behavior is "no 101 upgrade" — we just want to
+    // assert auth fails.
+    let err = tokio_tungstenite::connect_async(req)
+        .await
+        .expect_err("header-injection token must be rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("403") || msg.to_lowercase().contains("forbidden"),
+        "expected 403 for header-injection token; got: {msg}"
+    );
+}
+
+#[test]
+fn it_redacts_token_query_in_uri_logs() {
+    use yogurt_server::ws::redact_token_in_uri;
+    let safe = redact_token_in_uri("/ws?token=abcDEF123-_&other=keep");
+    assert_eq!(safe, "/ws?token=<REDACTED>&other=keep");
+
+    let lone = redact_token_in_uri("/ws?token=abcDEF123");
+    assert_eq!(lone, "/ws?token=<REDACTED>");
+
+    let none = redact_token_in_uri("/ws");
+    assert_eq!(none, "/ws");
+
+    let multi = redact_token_in_uri("/ws?a=1&token=secret&b=2");
+    assert_eq!(multi, "/ws?a=1&token=<REDACTED>&b=2");
+}
+
+#[tokio::test]
 async fn it_accepts_ws_with_correct_origin_and_token() {
     let server = spawn_test_server().await;
     let url = format!("ws://127.0.0.1:{}/ws?token={}", server.port, server.token);
