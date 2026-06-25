@@ -20,6 +20,8 @@
 
 mod error;
 mod frame;
+mod mic;
+mod resample;
 pub mod permission;
 
 #[cfg(any(test, feature = "synthetic"))]
@@ -27,6 +29,7 @@ pub mod synthetic;
 
 pub use error::{AudioError, Result};
 pub use frame::{Channel, Frame, FRAME_SAMPLES, SAMPLE_RATE_HZ};
+pub use mic::{list_input_devices, spawn_mic_capture, DeviceInfo, MicCapture};
 pub use permission::{
     has_screen_recording_permission, request_screen_recording_permission, PermissionStatus,
 };
