@@ -55,6 +55,9 @@ Yogurt is an open-source, local-first meeting copilot launched from the command 
 - **Storage:** `~/.yogurt/db.sqlite` is the structured/queryable mirror; `~/.yogurt/notes/<YYYY-MM-DD-HHmm>-<slug>.md` is the canonical exportable file. Markdown is source of truth for grep; SQLite is the queryable mirror.
 - **Brand & visual design:** complete design system documented in PRD §16 — paper/ink/blueberry/strawberry/matcha palette, Instrument Serif + Hanken Grotesk + JetBrains Mono, 4-base spacing, defined motion tokens (260/340/600/1.4s). Reference design board: `yogurt-app-design/project/Yogurt Design Board.dc.html`. v1 ships **Blueberry theme only**.
 - **Prior planning work:** Phase 0 plan review (earlier today) identified 5 blockers before implementation — those should be re-surfaced when planning Phase 1.
+- **Dev environment (local-only):** `.env.local` at the repo root (gitignored) holds developer-test API keys. Currently set:
+  - `MINIMAX_API_KEY` — Minimax is the default dev LLM (OpenAI-compatible chat completions). Base URL convention: `https://api.minimaxi.chat/v1`. Used for end-to-end testing of Phase 4 (augmented-notes enhance) and Phase 6 (in-meeting chat) without going through the Settings UI Keychain flow.
+  - In production, all keys live in macOS Keychain via the `keyring` crate per SET-10. `.env.local` is a dev-mode-only convenience — `cargo run -- start --dev` loads it; release builds ignore it.
 
 ## Constraints
 

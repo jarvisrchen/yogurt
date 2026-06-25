@@ -77,6 +77,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **SET-08**: Audio + General rendered side-by-side: input device dropdown; port row (`7878`); "Open browser on start" toggle
 - [ ] **SET-09**: Config persisted in `~/.yogurt/config.toml`
 - [ ] **SET-10**: API keys stored in macOS Keychain via `keyring` crate, never plaintext; eager-loaded at startup
+- [ ] **SET-11**: Dev-mode (`--dev` flag) loads keys from `.env.local` at repo root (gitignored) as a developer convenience; release builds ignore `.env.local` and only read Keychain. Default dev key is `MINIMAX_API_KEY` against base URL `https://api.minimaxi.chat/v1`.
 
 ### In-Meeting Chat
 
@@ -215,31 +216,125 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Updated during roadmap creation.
+Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 through FOUND-06 | Phase 0 | Pending |
-| DESIGN-01 through DESIGN-06 | Phase 1 | Pending |
-| AUDIO-01 through AUDIO-07 | Phase 2 | Pending |
-| TRANS-01 through TRANS-08 | Phase 3 | Pending |
-| NOTES-01 through NOTES-13 | Phase 4 | Pending |
-| LLM-01 through LLM-03 | Phase 5 | Pending |
-| SET-01 through SET-10 | Phase 5 | Pending |
-| CHAT-01 through CHAT-07 | Phase 6 | Pending |
-| STORE-01 through STORE-05 | Phase 0 / 4 | Pending |
-| LIB-01 through LIB-12 | Phase 7 | Pending |
-| ONB-01 through ONB-08 | Phase 7 | Pending |
-| STATE-01 through STATE-04 | Phase 7 | Pending |
-| LOCAL-01 through LOCAL-05 | Phase 8 | Pending |
-| PROMPT-01 through PROMPT-04 | Phase 4 | Pending |
-| DIST-01 through DIST-10 | Phase 9 | Pending |
+| FOUND-01 | Phase 0 | Pending |
+| FOUND-02 | Phase 0 | Pending |
+| FOUND-03 | Phase 0 | Pending |
+| FOUND-04 | Phase 0 | Pending |
+| FOUND-05 | Phase 0 | Pending |
+| FOUND-06 | Phase 0 | Pending |
+| DESIGN-01 | Phase 1 | Pending |
+| DESIGN-02 | Phase 1 | Pending |
+| DESIGN-03 | Phase 1 | Pending |
+| DESIGN-04 | Phase 1 | Pending |
+| DESIGN-05 | Phase 1 | Pending |
+| DESIGN-06 | Phase 1 | Pending |
+| AUDIO-01 | Phase 2 | Pending |
+| AUDIO-02 | Phase 2 | Pending |
+| AUDIO-03 | Phase 2 | Pending |
+| AUDIO-04 | Phase 2 | Pending |
+| AUDIO-05 | Phase 2 | Pending |
+| AUDIO-06 | Phase 2 | Pending |
+| AUDIO-07 | Phase 2 | Pending |
+| TRANS-01 | Phase 3 | Pending |
+| TRANS-02 | Phase 3 | Pending |
+| TRANS-03 | Phase 3 | Pending |
+| TRANS-04 | Phase 3 | Pending |
+| TRANS-05 | Phase 3 | Pending |
+| TRANS-06 | Phase 3 | Pending |
+| TRANS-07 | Phase 3 | Pending |
+| TRANS-08 | Phase 3 | Pending |
+| NOTES-01 | Phase 4 | Pending |
+| NOTES-02 | Phase 4 | Pending |
+| NOTES-03 | Phase 4 | Pending |
+| NOTES-04 | Phase 4 | Pending |
+| NOTES-05 | Phase 4 | Pending |
+| NOTES-06 | Phase 4 | Pending |
+| NOTES-07 | Phase 4 | Pending |
+| NOTES-08 | Phase 4 | Pending |
+| NOTES-09 | Phase 4 | Pending |
+| NOTES-10 | Phase 4 | Pending |
+| NOTES-11 | Phase 4 | Pending |
+| NOTES-12 | Phase 4 | Pending |
+| NOTES-13 | Phase 4 | Pending |
+| LLM-01 | Phase 5 | Pending |
+| LLM-02 | Phase 5 | Pending |
+| LLM-03 | Phase 5 | Pending |
+| SET-01 | Phase 5 | Pending |
+| SET-02 | Phase 5 | Pending |
+| SET-03 | Phase 5 | Pending |
+| SET-04 | Phase 5 | Pending |
+| SET-05 | Phase 5 | Pending |
+| SET-06 | Phase 5 | Pending |
+| SET-07 | Phase 5 | Pending |
+| SET-08 | Phase 5 | Pending |
+| SET-09 | Phase 5 | Pending |
+| SET-10 | Phase 5 | Pending |
+| CHAT-01 | Phase 6 | Pending |
+| CHAT-02 | Phase 6 | Pending |
+| CHAT-03 | Phase 6 | Pending |
+| CHAT-04 | Phase 6 | Pending |
+| CHAT-05 | Phase 6 | Pending |
+| CHAT-06 | Phase 6 | Pending |
+| CHAT-07 | Phase 6 | Pending |
+| STORE-01 | Phase 0 (schema scaffold) / Phase 4 (enriched_doc_json migration) | Pending |
+| STORE-02 | Phase 0 | Pending |
+| STORE-03 | Phase 4 | Pending |
+| STORE-04 | Phase 4 | Pending |
+| STORE-05 | Phase 0 | Pending |
+| LIB-01 | Phase 7 | Pending |
+| LIB-02 | Phase 7 | Pending |
+| LIB-03 | Phase 7 | Pending |
+| LIB-04 | Phase 7 | Pending |
+| LIB-05 | Phase 7 | Pending |
+| LIB-06 | Phase 7 | Pending |
+| LIB-07 | Phase 7 | Pending |
+| LIB-08 | Phase 7 | Pending |
+| LIB-09 | Phase 7 | Pending |
+| LIB-10 | Phase 7 | Pending |
+| LIB-11 | Phase 7 | Pending |
+| LIB-12 | Phase 7 | Pending |
+| ONB-01 | Phase 7 | Pending |
+| ONB-02 | Phase 7 | Pending |
+| ONB-03 | Phase 7 | Pending |
+| ONB-04 | Phase 7 | Pending |
+| ONB-05 | Phase 7 | Pending |
+| ONB-06 | Phase 7 | Pending |
+| ONB-07 | Phase 7 | Pending |
+| ONB-08 | Phase 7 | Pending |
+| STATE-01 | Phase 7 | Pending |
+| STATE-02 | Phase 7 | Pending |
+| STATE-03 | Phase 7 | Pending |
+| STATE-04 | Phase 7 | Pending |
+| LOCAL-01 | Phase 8 | Pending |
+| LOCAL-02 | Phase 8 | Pending |
+| LOCAL-03 | Phase 8 | Pending |
+| LOCAL-04 | Phase 8 | Pending |
+| LOCAL-05 | Phase 8 | Pending |
+| PROMPT-01 | Phase 4 | Pending |
+| PROMPT-02 | Phase 4 | Pending |
+| PROMPT-03 | Phase 4 | Pending |
+| PROMPT-04 | Phase 4 | Pending |
+| DIST-01 | Phase 9 | Pending |
+| DIST-02 | Phase 9 | Pending |
+| DIST-03 | Phase 9 | Pending |
+| DIST-04 | Phase 9 | Pending |
+| DIST-05 | Phase 9 | Pending |
+| DIST-06 | Phase 9 | Pending |
+| DIST-07 | Phase 9 | Pending |
+| DIST-08 | Phase 9 | Pending |
+| DIST-09 | Phase 9 | Pending |
+| DIST-10 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: ~95 total across 14 categories
-- Mapped to phases: confirmed in ROADMAP.md
-- Unmapped: 0 (target)
+- v1 requirements: 96 total across 14 categories
+- Mapped to phases: 96/96 (100%)
+- Orphaned: 0
+- Split mappings: STORE-01 (Phase 0 schema scaffold + Phase 4 `enriched_doc_json` column migration — single requirement, two phases of work)
 
 ---
 *Requirements defined: 2026-06-25*
-*Last updated: 2026-06-25 after initialization*
+*Traceability finalized: 2026-06-25 after roadmap creation*
