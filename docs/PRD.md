@@ -145,6 +145,19 @@ The eleven features in v1 scope, with concrete acceptance criteria. Updated 2026
 - Audio: input device dropdown ("MacBook Pro Mic ⌄"). Caption: "System audio is captured via ScreenCaptureKit — no extra setup."
 - General: Port row (`7878`), "Open browser on start" toggle (default on).
 
+**Dev convenience — env-var bootstrap.** On startup, yogurt loads `.env.local` from the repo root (via the `dotenvy` crate) and inspects the following env vars. If found AND the provider isn't already configured in the DB, the provider entry is auto-seeded and the key is stored in the Keychain. This lets contributors avoid manually re-entering keys after every `~/.yogurt/` reset.
+
+| Env var | Becomes |
+|---|---|
+| `YOGURT_MINIMAX_API_KEY` | Minimax provider (active if no other provider is) |
+| `YOGURT_OPENAI_API_KEY` | OpenAI provider |
+| `YOGURT_OPENROUTER_API_KEY` | OpenRouter provider |
+| `YOGURT_DEEPGRAM_API_KEY` | Cloud STT — Deepgram provider |
+| `YOGURT_ASSEMBLYAI_API_KEY` | Cloud STT — AssemblyAI provider |
+| `YOGURT_GROQ_API_KEY` | Cloud STT — Groq Whisper provider |
+
+`.env.local` is gitignored (`.env*.local` pattern). Env vars are read once at startup and copied into the Keychain — the file itself is never re-read at runtime. For production / `brew install yogurt`, the Settings UI is the only way to enter keys; the env-var bootstrap is a dev-only convenience.
+
 ### 5.7 Local storage (SQLite + markdown export)
 - All persistent data in `~/.yogurt/db.sqlite` (rusqlite).
 - Each meeting also written to `~/.yogurt/notes/<YYYY-MM-DD-HHmm>-<slug>.md` as the canonical exportable file (front-matter for metadata, then enriched notes, then transcript appendix).
@@ -370,12 +383,18 @@ curl -L https://github.com/<org>/yogurt/releases/latest/download/yogurt-aarch64-
 The dev experience runs the Rust backend and the Vite frontend as two processes during development so frontend changes hot-reload, but bundles to one binary for release.
 
 ```bash
-git clone https://github.com/<org>/yogurt.git
+git clone https://github.com/jarvisrchen/yogurt.git
 cd yogurt
 
 # one-time setup
 brew install rust pnpm
 pnpm --dir web install
+
+# optional: seed your API keys via .env.local (gitignored; see §5.6)
+cat > .env.local <<'EOF'
+YOGURT_MINIMAX_API_KEY=sk-...
+# YOGURT_DEEPGRAM_API_KEY=...   # optional, for cloud STT
+EOF
 
 # dev: two terminals
 cargo run -p yogurt-cli -- start --dev   # backend at :7878, no embedded assets
@@ -388,6 +407,8 @@ cargo build --release                    # rust-embed picks up web/dist
 ```
 
 `--dev` flag tells the server to proxy `/` to the Vite dev server instead of serving embedded assets. In release builds, `web/dist` is compiled into the binary.
+
+`.env.local` is read once at startup; on first run any `YOGURT_*_API_KEY` vars are copied into the macOS Keychain and a matching provider entry is seeded in the DB. After that, the file can be deleted without losing the keys. See §5.6 for the full env-var → provider mapping.
 
 ### Release pipeline (GitHub Actions)
 
@@ -439,17 +460,17 @@ V1 is "done" when:
 
 ## 15. Open questions for future rounds
 
-Deliberately not blocking v1, but worth surfacing.
+All v1-relevant questions are now resolved.
 
-Resolved:
-- **Naming.** Closed 2026-06-24 — design board commits to **"yogurt"** lowercase with the purple "spoon &amp; swirl" mark.
-- **Template picker.** Closed 2026-06-24 — deferred to v2 (see §6 item 2). v1 ships a Re-enhance button that re-runs the single bundled `enhance.md` prompt.
+Closed 2026-06-24:
+- **Naming** — committed to **"yogurt"** lowercase with the purple "spoon &amp; swirl" mark.
+- **Template picker** — deferred to v2 (see §6 item 2). v1 ships a Re-enhance button that re-runs the single bundled `enhance.md` prompt.
+- **License** — **MIT** (matches Meetily and Hyprnote).
+- **Org / repo** — `github.com/jarvisrchen/yogurt` (personal account).
+- **Telemetry** — **no phone-home of any kind** in v1. Not even opt-in Sentry. If we want crash reporting later, it gets its own design pass.
+- **Design themes** — **Blueberry only in v1**. Strawberry and Matcha-dark are documented in §16 but deferred. Single theme keeps the design-system phase tighter.
 
-Still open:
-- **License.** Default assumption: MIT, matching Meetily and Hyprnote. Confirm.
-- **Org / repo location.** Personal GitHub or a new org?
-- **Telemetry policy for the future.** Even fully opt-in, do we want any phone-home (for crash reports, e.g. Sentry self-hosted)?
-- **Design themes.** Design board offers three flavors — Blueberry (default), Strawberry (warmer coral), Matcha (dark mode for late meetings). Ship just Blueberry in v1 or all three?
+No remaining open questions for v1. Next step: writing-plans skill produces the phased implementation plan.
 
 ## 16. Brand &amp; Visual Design System
 
