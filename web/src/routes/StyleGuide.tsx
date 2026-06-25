@@ -82,9 +82,15 @@ export function StyleGuide() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {COLORS.map((c) => (
             <Card key={c.token} padding="sm">
+              {/* LO-04: swatch paints from the live CSS variable so token
+                  changes in index.css's @theme automatically reflect here
+                  without an unrelated edit to this file. The hex value
+                  displayed below is the canonical PRD spec; if it ever
+                  diverges from the rendered swatch, the @theme block
+                  has drifted from the spec. */}
               <div
                 className="h-16 w-full rounded-chip border border-line"
-                style={{ background: c.hex }}
+                style={{ background: `var(--color-${c.token})` }}
                 aria-label={`Swatch for --color-${c.token}`}
               />
               <div className="mt-3">
