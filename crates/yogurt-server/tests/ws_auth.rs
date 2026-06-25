@@ -74,10 +74,7 @@ async fn spawn_test_server() -> TestServer {
 #[tokio::test]
 async fn it_rejects_ws_with_bad_origin() {
     let server = spawn_test_server().await;
-    let url = format!(
-        "ws://127.0.0.1:{}/ws?token={}",
-        server.port, server.token
-    );
+    let url = format!("ws://127.0.0.1:{}/ws?token={}", server.port, server.token);
 
     let mut req = url.into_client_request().expect("build req");
     req.headers_mut().insert(
@@ -119,10 +116,7 @@ async fn it_rejects_ws_without_token() {
 #[tokio::test]
 async fn it_accepts_ws_with_correct_origin_and_token() {
     let server = spawn_test_server().await;
-    let url = format!(
-        "ws://127.0.0.1:{}/ws?token={}",
-        server.port, server.token
-    );
+    let url = format!("ws://127.0.0.1:{}/ws?token={}", server.port, server.token);
 
     let mut req = url.into_client_request().expect("build req");
     req.headers_mut().insert(
@@ -133,7 +127,11 @@ async fn it_accepts_ws_with_correct_origin_and_token() {
     let (mut socket, response) = tokio_tungstenite::connect_async(req)
         .await
         .expect("ws upgrade should succeed");
-    assert_eq!(response.status().as_u16(), 101, "expected 101 Switching Protocols");
+    assert_eq!(
+        response.status().as_u16(),
+        101,
+        "expected 101 Switching Protocols"
+    );
 
     // Round-trip a message to confirm the socket is usable.
     use futures_util::{SinkExt, StreamExt};

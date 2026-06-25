@@ -11,12 +11,7 @@ const VITE_BASE: &str = "http://127.0.0.1:5173";
 ///
 /// On upstream failure (Vite not running), returns 502 with actionable copy
 /// telling the user to run `pnpm --dir web dev`.
-pub async fn proxy_to_vite(
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Body,
-) -> Response {
+pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: Body) -> Response {
     let path_and_query = uri.path_and_query().map(|x| x.as_str()).unwrap_or("/");
     let target = format!("{VITE_BASE}{path_and_query}");
 
@@ -24,8 +19,7 @@ pub async fn proxy_to_vite(
         Ok(b) => b,
         Err(e) => {
             tracing::warn!(?e, "vite proxy: failed to buffer request body");
-            return (StatusCode::BAD_GATEWAY, "vite proxy: body read failed")
-                .into_response();
+            return (StatusCode::BAD_GATEWAY, "vite proxy: body read failed").into_response();
         }
     };
 
