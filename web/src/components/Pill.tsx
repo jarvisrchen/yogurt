@@ -2,10 +2,28 @@ import { type ReactNode } from "react";
 
 type Tone = "neutral" | "blue" | "matcha" | "straw";
 
+/**
+ * Live-region behavior for the Pill.
+ *
+ *   'none'   — decorative / static pill (icon-tag, inline label). Default.
+ *   'status' — polite live region: announce content changes without
+ *              interrupting. Use for RecordingBadge's ticking timer,
+ *              the "Enhancing…" banner, "Local-only · on" toggle.
+ *   'alert'  — assertive live region: interrupt. Use only for
+ *              high-stakes errors such as permission-denied
+ *              (Phase 7 STATE-02).
+ */
+export type PillStatus = "none" | "status" | "alert";
+
 interface PillProps {
   tone?: Tone;
   children: ReactNode;
   className?: string;
+  /**
+   * ARIA live-region behavior. See PillStatus above. Defaults to 'none'
+   * (no role) so decorative pills don't pollute the AT tree.
+   */
+  status?: PillStatus;
 }
 
 const BASE = [
@@ -32,9 +50,30 @@ const TONE: Record<Tone, string> = {
 /**
  * Base Pill — a 999-radius badge used for chips, status indicators, and
  * keyboard hints throughout the app. See PRD §16.6.
+ *
+ * Pass `status="status"` (polite) or `status="alert"` (assertive) when
+ * the pill represents a dynamic state that screenreaders should
+ * announce — e.g. recording ticking, "Enhancing…" banner appearing,
+ * permission-denied error surfacing. Decorative/static pills (icon
+ * tags, keyboard hints) omit `status`.
  */
-export function Pill({ tone = "neutral", children, className = "" }: PillProps) {
-  return <span className={`${BASE} ${TONE[tone]} ${className}`.trim()}>{children}</span>;
+export function Pill({
+  tone = "neutral",
+  children,
+  className = "",
+  status = "none",
+}: PillProps) {
+  const liveProps =
+    status === "status"
+      ? { role: "status" as const, "aria-live": "polite" as const }
+      : status === "alert"
+        ? { role: "alert" as const, "aria-live": "assertive" as const }
+        : {};
+  return (
+    <span className={`${BASE} ${TONE[tone]} ${className}`.trim()} {...liveProps}>
+      {children}
+    </span>
+  );
 }
 
 /**
@@ -49,6 +88,9 @@ interface RecordingBadgeProps {
 export function RecordingBadge({ elapsed }: RecordingBadgeProps) {
   return (
     <span
+      role="status"
+      aria-live="polite"
+      aria-label={`Recording, ${elapsed}`}
       className={[
         "inline-flex items-center gap-2 rounded-pill px-3 py-1.5",
         "bg-card text-ink border border-straw",
@@ -58,7 +100,7 @@ export function RecordingBadge({ elapsed }: RecordingBadgeProps) {
       <span
         data-testid="recording-dot"
         className="inline-block w-2 h-2 rounded-pill bg-straw animate-recpulse"
-        aria-hidden
+        aria-hidden="true"
       />
       <span className="font-mono text-[12px] tracking-tight">{elapsed}</span>
     </span>
@@ -84,7 +126,7 @@ export function ProviderChip({ name, active, local }: ProviderChipProps) {
   return (
     <Pill tone={tone} className="px-3 py-1.5 text-[12px]">
       <span
-        aria-hidden
+        aria-hidden="true"
         className={[
           "inline-block w-1.5 h-1.5 rounded-pill",
           active ? "bg-blue" : local ? "bg-matcha" : "bg-mut",

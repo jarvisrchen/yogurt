@@ -35,6 +35,29 @@ describe("Pill", () => {
     expect(el.className).toMatch(/bg-strsoft/);
     expect(el.className).toMatch(/text-straw/);
   });
+
+  it("has no role by default (decorative pills should not pollute AT tree)", () => {
+    const { container } = render(<Pill>neutral</Pill>);
+    const el = container.firstChild as HTMLElement;
+    expect(el.getAttribute("role")).toBeNull();
+    expect(el.getAttribute("aria-live")).toBeNull();
+  });
+
+  it("applies role='status' + aria-live='polite' when status='status' (MD-07)", () => {
+    const { container } = render(<Pill status="status">Enhancing…</Pill>);
+    const el = container.firstChild as HTMLElement;
+    expect(el.getAttribute("role")).toBe("status");
+    expect(el.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("applies role='alert' + aria-live='assertive' when status='alert' (MD-07)", () => {
+    const { container } = render(
+      <Pill status="alert">Permission denied</Pill>,
+    );
+    const el = container.firstChild as HTMLElement;
+    expect(el.getAttribute("role")).toBe("alert");
+    expect(el.getAttribute("aria-live")).toBe("assertive");
+  });
 });
 
 describe("RecordingBadge", () => {
@@ -50,6 +73,14 @@ describe("RecordingBadge", () => {
     render(<RecordingBadge elapsed="00:42" />);
     const timer = screen.getByText("00:42");
     expect(timer.className).toMatch(/font-mono/);
+  });
+
+  it("is a polite live region announcing 'Recording, MM:SS' (MD-07)", () => {
+    const { container } = render(<RecordingBadge elapsed="00:42" />);
+    const badge = container.firstChild as HTMLElement;
+    expect(badge.getAttribute("role")).toBe("status");
+    expect(badge.getAttribute("aria-live")).toBe("polite");
+    expect(badge.getAttribute("aria-label")).toBe("Recording, 00:42");
   });
 });
 
