@@ -47,12 +47,22 @@
 //! Each `Frame` carries `monotonic_ms` — milliseconds since
 //! `start_capture()` returned (D-21). Both producer chunkers are seeded
 //! synchronously inside `start_capture()`, so the two clocks share a
-//! common origin to within microseconds. We bucket samples by their
-//! frame's `monotonic_ms` and zero-pad any gaps so both channels stay
-//! time-aligned (when one stream drops a frame, the other's
-//! corresponding interleaved samples come out against silence on the
-//! lagging side — preferable to drifting the channels relative to each
-//! other, which would mask channel-swap detection by ear).
+//! common origin to within microseconds.
+//!
+//! For the WAV output we **concatenate each channel's frames in arrival
+//! order** rather than bucketing by `monotonic_ms`. Why: `monotonic_ms`
+//! is wall-clock-truncated to whole milliseconds, but each frame is
+//! exactly 320 samples = 20 ms. Wall-clock jitter combined with
+//! millisecond quantization makes a "place at sample = monotonic_ms * 16"
+//! scheme leave ±16-sample gaps (zero-filled from the init buffer) and
+//! ±16-sample overlaps between consecutive frames — audible as constant
+//! crackle/static on whichever stream has noisier inter-arrival timing
+//! (in practice SCK's audio dispatch queue). Arrival-order concatenation
+//! is sample-exact within each channel; the two channels may drift up
+//! to one frame (20 ms) relative to each other if one side drops, but
+//! that's inaudible vs. the per-millisecond clicking the timestamp-
+//! bucketed approach produced. The ear-test still detects channel-swap
+//! correctly because both channels share a common start instant.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -147,21 +157,15 @@ async fn main() -> anyhow::Result<()> {
         sys_lagged
     );
 
-    // Build a fixed-duration sample buffer per channel, indexed by
-    // monotonic_ms. The earliest received frame on either side defines
-    // t=0; we render 30 seconds of output samples = 30 * 16_000 = 480_000
-    // samples per channel.
+    // Concatenate each channel's frames in arrival order into a fixed-
+    // length 30-second buffer. Truncate the tail if we received more
+    // than 30 seconds; zero-pad the tail if we received less. Do NOT
+    // place samples by monotonic_ms — see the module docstring for the
+    // rationale (millisecond-quantization vs. 20 ms frame size produces
+    // sub-millisecond zero-wedge clicks).
     let total_samples = (CAPTURE_SECONDS as usize) * (SAMPLE_RATE_HZ as usize);
-    let baseline_ms = mic_frames
-        .first()
-        .map(|f| f.monotonic_ms)
-        .into_iter()
-        .chain(sys_frames.first().map(|f| f.monotonic_ms))
-        .min()
-        .unwrap_or(0);
-
-    let mic_pcm = frames_to_aligned_pcm(&mic_frames, baseline_ms, total_samples);
-    let sys_pcm = frames_to_aligned_pcm(&sys_frames, baseline_ms, total_samples);
+    let mic_pcm = frames_to_concat_pcm(&mic_frames, total_samples);
+    let sys_pcm = frames_to_concat_pcm(&sys_frames, total_samples);
 
     let mic_peak = mic_pcm.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
     let sys_peak = sys_pcm.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
@@ -219,26 +223,27 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Render a list of received `Frame`s into a fixed-length PCM buffer
-/// indexed by `monotonic_ms`. Each frame is placed at the sample offset
-/// corresponding to its `monotonic_ms - baseline_ms` offset; gaps are
-/// zero-padded (keeping the two channels time-aligned for accurate
-/// channel-swap detection by ear).
-fn frames_to_aligned_pcm(frames: &[Frame], baseline_ms: u64, total_samples: usize) -> Vec<i16> {
-    let mut out = vec![0i16; total_samples];
+/// Concatenate a list of received `Frame`s into a fixed-length PCM
+/// buffer by appending each frame's samples in arrival order. If the
+/// concatenated content is shorter than `total_samples`, the tail is
+/// zero-padded; if longer, the tail is truncated. This is sample-exact
+/// within each channel (no millisecond-quantization wedges) at the cost
+/// of allowing the two channels to drift by up to one frame (20 ms)
+/// relative to each other if one side drops a frame. See the module
+/// docstring for the rationale.
+fn frames_to_concat_pcm(frames: &[Frame], total_samples: usize) -> Vec<i16> {
+    let mut out = Vec::with_capacity(total_samples);
     for frame in frames {
-        let rel_ms = frame.monotonic_ms.saturating_sub(baseline_ms);
-        // 16 kHz → 16 samples per millisecond. Use saturating arithmetic
-        // to handle late-arriving frames that overflow the 30-second
-        // window: we just drop their tail.
-        let start = (rel_ms as usize).saturating_mul(SAMPLE_RATE_HZ as usize / 1000);
-        if start >= total_samples {
-            continue;
-        }
         debug_assert_eq!(frame.samples.len(), FRAME_SAMPLES);
-        let end = (start + frame.samples.len()).min(total_samples);
-        let n = end - start;
-        out[start..end].copy_from_slice(&frame.samples[..n]);
+        if out.len() >= total_samples {
+            break;
+        }
+        let room = total_samples - out.len();
+        let n = frame.samples.len().min(room);
+        out.extend_from_slice(&frame.samples[..n]);
+    }
+    if out.len() < total_samples {
+        out.resize(total_samples, 0);
     }
     out
 }
@@ -265,4 +270,98 @@ fn max_contiguous_silence(pcm: &[i16]) -> usize {
 fn fmt_silence(samples: usize) -> String {
     let ms = (samples * 1000) / (SAMPLE_RATE_HZ as usize);
     format!("{samples} samples (~{ms} ms)")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use yogurt_audio::Channel;
+
+    /// Regression test for the "static/choppy WAV" bug fixed alongside
+    /// this function. The prior `frames_to_aligned_pcm` placed frames
+    /// into the WAV buffer at sample-offset `monotonic_ms * 16`. Because
+    /// `monotonic_ms` is wall-clock-derived (truncated to whole ms) but
+    /// frames are exactly 320 samples = 20 ms each, normal wall-clock
+    /// jitter of ±1-2 ms per frame caused consecutive frames to be
+    /// placed with 16-sample-aligned gaps (zero-filled) or overlaps
+    /// across the entire output buffer. Audible as constant crackle on
+    /// the noisier-jitter channel (SCK system audio in our measurements:
+    /// 50%+ of post-warmup samples were exact zero, with the zero-run
+    /// length histogram peaking at exactly 16 samples).
+    ///
+    /// `frames_to_concat_pcm` concatenates by arrival order: 50 frames
+    /// of 320 non-zero samples each → 16_000 non-zero samples, period.
+    /// `monotonic_ms` jitter doesn't matter because we never index by it.
+    #[test]
+    fn concat_pcm_introduces_no_zero_wedges_under_jitter() {
+        // Simulate 50 frames (1 second) of "music" (all samples = 1234)
+        // with extremely jittery monotonic_ms values — exactly the case
+        // that broke the previous implementation. monotonic_ms here
+        // jumps backward, repeats, and gaps wildly to prove the new
+        // implementation no longer cares.
+        let jittery_ms_values: Vec<u64> = (0..50)
+            .map(|i| {
+                // Base = i * 20 (perfect 20ms spacing), with chaotic
+                // jitter that defeats millisecond-bucketed placement.
+                let base = i as u64 * 20;
+                match i % 5 {
+                    0 => base.saturating_sub(2), // 2 ms early
+                    1 => base + 1,               // 1 ms late
+                    2 => base.saturating_sub(1), // 1 ms early
+                    3 => base + 3,               // 3 ms late
+                    _ => base,
+                }
+            })
+            .collect();
+        let frames: Vec<Frame> = jittery_ms_values
+            .into_iter()
+            .map(|ms| Frame::new(Channel::System, ms, vec![1234i16; FRAME_SAMPLES]))
+            .collect();
+
+        // Request 1 second of output (= 50 frames worth of samples
+        // exactly). All 16_000 samples must equal 1234.
+        let total = SAMPLE_RATE_HZ as usize;
+        let pcm = frames_to_concat_pcm(&frames, total);
+        assert_eq!(pcm.len(), total, "concat must return exactly total_samples");
+
+        // The bug-witnessing assertion: zero non-1234 samples anywhere.
+        // Under the old timestamp-bucketed scheme this would fail with
+        // many 1ms (16-sample) wedges of zeros scattered throughout.
+        let zero_count = pcm.iter().filter(|&&s| s == 0).count();
+        assert_eq!(
+            zero_count, 0,
+            "concat must not introduce any zero-wedges between frames \
+             even when monotonic_ms is jittery; found {zero_count} zero samples"
+        );
+        let wrong_value = pcm.iter().filter(|&&s| s != 1234).count();
+        assert_eq!(
+            wrong_value, 0,
+            "all samples should be the source value 1234; found {wrong_value} mismatches"
+        );
+    }
+
+    /// When fewer frames arrived than fill `total_samples`, the tail
+    /// must be silence-padded (not garbage / not truncated short).
+    #[test]
+    fn concat_pcm_pads_short_input_with_silence() {
+        let frames = vec![Frame::new(Channel::Mic, 0, vec![100i16; FRAME_SAMPLES])];
+        let total = FRAME_SAMPLES * 3;
+        let pcm = frames_to_concat_pcm(&frames, total);
+        assert_eq!(pcm.len(), total);
+        assert!(pcm[..FRAME_SAMPLES].iter().all(|&s| s == 100));
+        assert!(pcm[FRAME_SAMPLES..].iter().all(|&s| s == 0));
+    }
+
+    /// When more frames arrived than fit, truncate the tail (don't
+    /// overflow the output buffer).
+    #[test]
+    fn concat_pcm_truncates_long_input() {
+        let frames: Vec<Frame> = (0..5)
+            .map(|i| Frame::new(Channel::Mic, i * 20, vec![1i16; FRAME_SAMPLES]))
+            .collect();
+        let total = FRAME_SAMPLES * 2; // room for only 2 frames
+        let pcm = frames_to_concat_pcm(&frames, total);
+        assert_eq!(pcm.len(), total);
+        assert!(pcm.iter().all(|&s| s == 1));
+    }
 }
