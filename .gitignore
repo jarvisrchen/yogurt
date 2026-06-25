@@ -12,3 +12,10 @@ build/
 
 # Lavish review artifacts (local-only scratch surfaces)
 .lavish/
+
+# Rust
+/target/
+**/*.rs.bk
+
+# pnpm + frontend (node_modules already covered above)
+.pnpm-store/

@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/yogurt-cli",
+    "crates/yogurt-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Jarvis Chen <3chenr@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/jarvisrchen/yogurt"
+rust-version = "1.83"
+
+[workspace.dependencies]
+# async runtime
+tokio = { version = "1.42", features = ["full"] }
+# HTTP server
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# embedding assets
+rust-embed = { version = "8.5", features = ["mime-guess"] }
+# helpers
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HTTP client (used by dev_proxy + tests)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# mime guessing for embedded assets
+mime_guess = "2"
+# testing
+assert_cmd = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
