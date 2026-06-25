@@ -34,7 +34,8 @@ export function App() {
   return (
     <main className="mx-auto max-w-2xl px-10 py-12 space-y-6">
       <header className="flex items-center gap-3">
-        <Logo size={44} ariaLabel="Yogurt" />
+        {/* Decorative — adjacent <h1>yogurt</h1> already names the brand. */}
+        <Logo size={44} />
         <div>
           <h1 className="font-serif text-[44px] leading-none text-ink">
             yogurt
