@@ -12,9 +12,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **FOUND-01**: Cargo workspace with all 8 crates compiles (`cargo build --release`)
 - [ ] **FOUND-02**: `yogurt start` CLI command launches axum server on `localhost:7878`
 - [x] **FOUND-03**: Server serves a "Hello yogurt" React page via `rust-embed`
-- [ ] **FOUND-04**: SQLite database initializes at `~/.yogurt/db.sqlite` with WAL + read-pool / single-writer model
-- [ ] **FOUND-05**: WebSocket endpoint validates `Origin` header and session token
-- [ ] **FOUND-06**: Port `7878` conflict surfaces a clear CLI error with `--port` override
+- [x] **FOUND-04**: SQLite database initializes at `~/.yogurt/db.sqlite` with WAL + read-pool / single-writer model
+- [x] **FOUND-05**: WebSocket endpoint validates `Origin` header and session token
+- [x] **FOUND-06**: Port `7878` conflict surfaces a clear CLI error with `--port` override
 
 ### Design System
 
@@ -91,11 +91,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Local Storage
 
-- [ ] **STORE-01**: SQLite schema includes `meetings` (with `notes_md` + `enriched_md` + `enriched_doc_json` + `transcript_json`) and `chat_messages`
-- [ ] **STORE-02**: Indexes on `meetings(started_at DESC)` and `chat_messages(meeting_id, created_at)`
+- [ ] **STORE-01**: SQLite schema includes `meetings` (with `notes_md` + `enriched_md` + `enriched_doc_json` + `transcript_json`) and `chat_messages` *(Phase 0 scaffold complete; `enriched_doc_json` column deferred to Phase 4)*
+- [x] **STORE-02**: Indexes on `meetings(started_at DESC)` and `chat_messages(meeting_id, created_at)`
 - [ ] **STORE-03**: Each meeting also written to `~/.yogurt/notes/<YYYY-MM-DD-HHmm>-<slug>.md` with YAML front-matter
 - [ ] **STORE-04**: Markdown file rewritten on every `notes_md` or `enriched_md` mutation via single `MarkdownExporter`
-- [ ] **STORE-05**: SQLite uses WAL mode; separate read pool + `Mutex<Connection>` writer
+- [x] **STORE-05**: SQLite uses WAL mode; separate read pool + `Mutex<Connection>` writer
 
 ### Library (Home View)
 
@@ -223,9 +223,9 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | FOUND-01 | Phase 0 | Pending |
 | FOUND-02 | Phase 0 | Pending |
 | FOUND-03 | Phase 0 | Complete |
-| FOUND-04 | Phase 0 | Pending |
-| FOUND-05 | Phase 0 | Pending |
-| FOUND-06 | Phase 0 | Pending |
+| FOUND-04 | Phase 0 | Complete |
+| FOUND-05 | Phase 0 | Complete |
+| FOUND-06 | Phase 0 | Complete |
 | DESIGN-01 | Phase 1 | Pending |
 | DESIGN-02 | Phase 1 | Pending |
 | DESIGN-03 | Phase 1 | Pending |
@@ -280,11 +280,11 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | CHAT-05 | Phase 6 | Pending |
 | CHAT-06 | Phase 6 | Pending |
 | CHAT-07 | Phase 6 | Pending |
-| STORE-01 | Phase 0 (schema scaffold) / Phase 4 (enriched_doc_json migration) | Pending |
-| STORE-02 | Phase 0 | Pending |
+| STORE-01 | Phase 0 (schema scaffold) / Phase 4 (enriched_doc_json migration) | Phase 0 scaffold complete; Phase 4 migration pending |
+| STORE-02 | Phase 0 | Complete |
 | STORE-03 | Phase 4 | Pending |
 | STORE-04 | Phase 4 | Pending |
-| STORE-05 | Phase 0 | Pending |
+| STORE-05 | Phase 0 | Complete |
 | LIB-01 | Phase 7 | Pending |
 | LIB-02 | Phase 7 | Pending |
 | LIB-03 | Phase 7 | Pending |

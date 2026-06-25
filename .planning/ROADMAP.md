@@ -200,7 +200,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Skeleton & Foundations | 2/3 | In Progress|  |
+| 0. Skeleton & Foundations | 3/3 | Complete | 2026-06-25 |
 | 1. Design System | 0/TBD | Not started | - |
 | 2. Audio Capture | 0/TBD | Not started | - |
 | 3. Cloud STT + Live Transcript | 0/TBD | Not started | - |
