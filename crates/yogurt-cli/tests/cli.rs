@@ -26,15 +26,23 @@ async fn it_starts_server_and_serves_health() {
         .spawn()
         .expect("spawn yogurt");
 
-    tokio::time::sleep(Duration::from_millis(400)).await;
-
-    let body = reqwest::get("http://127.0.0.1:17879/api/health")
-        .await
-        .expect("server reachable")
-        .text()
-        .await
-        .unwrap();
-    assert!(body.contains("\"status\":\"ok\""));
+    // LO-04: poll for readiness rather than a fixed sleep. CI runners can be
+    // very slow on first cargo invocation; the old 400ms sleep was a classic
+    // flake source. ws_auth.rs uses this same pattern.
+    let mut body = String::new();
+    for _ in 0..100 {
+        if let Ok(resp) = reqwest::get("http://127.0.0.1:17879/api/health").await {
+            if let Ok(t) = resp.text().await {
+                body = t;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        body.contains("\"status\":\"ok\""),
+        "server never reported healthy; got body: {body:?}"
+    );
 
     child.kill().await.ok();
 }

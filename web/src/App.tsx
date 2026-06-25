@@ -5,6 +5,7 @@ import { fetchHealth, type HealthResponse } from "./lib/api";
 
 export function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const editor = useEditor({
     extensions: [StarterKit],
     content: "<p>Type something — TipTap is working.</p>",
@@ -12,8 +13,18 @@ export function App() {
 
   useEffect(() => {
     fetchHealth()
-      .then(setHealth)
-      .catch((e) => console.error(e));
+      .then((h) => {
+        setHealth(h);
+        setHealthError(null);
+      })
+      .catch((e) => {
+        // LO-03: surface server-unreachable inline rather than
+        // silently console.error'ing and showing "loading…" forever.
+        console.error(e);
+        setHealthError(
+          e instanceof Error ? e.message : "server unreachable — check terminal",
+        );
+      });
   }, []);
 
   return (
@@ -22,8 +33,18 @@ export function App() {
         <h1 className="text-3xl font-bold tracking-tight">yogurt</h1>
         <p className="text-sm text-neutral-500">
           phase 0 scaffold · server says:{" "}
-          <code className="bg-neutral-100 px-2 py-0.5 rounded">
-            {health ? `${health.service} ${health.status}` : "loading…"}
+          <code
+            className={
+              healthError
+                ? "bg-red-100 text-red-800 px-2 py-0.5 rounded"
+                : "bg-neutral-100 px-2 py-0.5 rounded"
+            }
+          >
+            {healthError
+              ? `unreachable — ${healthError}`
+              : health
+                ? `${health.service} ${health.status}`
+                : "loading…"}
           </code>
         </p>
       </header>
