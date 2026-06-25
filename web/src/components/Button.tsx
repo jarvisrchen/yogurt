@@ -26,6 +26,14 @@ const BASE = [
   "duration-150",
   "ease-out",
   "select-none",
+  // Visible focus ring for keyboard users (WCAG 2.4.7 / MD-03).
+  // Uses the blueberry token at 40% alpha so the ring reads against
+  // primary (filled-blue) and secondary (cream) variants equally.
+  "focus-visible:outline-none",
+  "focus-visible:ring-2",
+  "focus-visible:ring-blue/40",
+  "focus-visible:ring-offset-2",
+  "focus-visible:ring-offset-paper",
   "disabled:opacity-50",
   "disabled:cursor-not-allowed",
 ].join(" ");
