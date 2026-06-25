@@ -27,10 +27,14 @@ export function BrowserChrome({ url, children, className = "" }: BrowserChromePr
         .join(" ")
         .trim()}
     >
-      {/* Header */}
+      {/* Header — purely decorative chrome (traffic dots + fake URL pill).
+         The entire header is aria-hidden so screenreaders don't announce
+         the mock URL as if it were real navigation. (MD-08) */}
       <div
+        data-testid="browser-chrome-header"
         className="h-[42px] flex items-center px-4 border-b border-line"
         style={{ background: "#F4EEE3" }}
+        aria-hidden="true"
       >
         {/* Traffic-light dots */}
         <div className="flex items-center gap-2">
