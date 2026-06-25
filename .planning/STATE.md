@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 01-01 complete — Tailwind 4 @theme tokens + @fontsource pipeline
-last_updated: "2026-06-25T16:13:00.000Z"
-last_activity: 2026-06-25 — Phase 1 Plan 01 complete: 12 color/3 font/4 radius/4 shadow/2 easing/7 motion tokens in @theme; 10 @fontsource imports; 32 woff2 emitted
+stopped_at: Plan 01-02 complete — Logo/Button/Pill+RecordingBadge+ProviderChip/Card/BrowserChrome primitives shipped with 30 Vitest cases
+last_updated: "2026-06-25T16:22:00.000Z"
+last_activity: 2026-06-25 — Phase 1 Plan 02 complete: 5 component primitives (Logo, Button, Pill family, Card, BrowserChrome) colocated with .test.tsx; 30 new Vitest cases; 32/32 total tests green; build exits 0
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 32
-  completed_plans: 4
-  percent: 12
+  completed_plans: 5
+  percent: 16
 ---
 
 # Project State
@@ -25,37 +25,38 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 1 of 9 (Design System) — In progress (Plan 01 of 3 complete)
-Plan: 01 complete; 02 (component primitives) and 03 (style-guide route) remain
-Status: Token foundation wired; ready for component primitives
-Last activity: 2026-06-25 — Plan 01-01 shipped Tailwind 4 @theme block + 10 @fontsource weight imports; pnpm web build green; 2/2 vitest pass
+Phase: 1 of 9 (Design System) — In progress (Plans 01 + 02 of 3 complete)
+Plan: 01 + 02 complete; 03 (style-guide route + React Router wiring) remains
+Status: Token foundation + 5 component primitives wired; ready for style-guide route
+Last activity: 2026-06-25 — Plan 01-02 shipped Logo, Button, Pill+RecordingBadge+ProviderChip, Card, BrowserChrome (10 files, 5 commits); 30 new Vitest cases (32 total, all green); production build exits 0
 
-Progress: [█░░░░░░░░░] 12%
+Progress: [█░░░░░░░░░] 16%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
-- Average duration: ~18 min
-- Total execution time: ~68 min
+- Total plans completed: 5
+- Average duration: ~14 min
+- Total execution time: ~72 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 0. Skeleton & Foundations | 3 | ~66 min | ~22 min |
-| 1. Design System | 1 | ~2 min | ~2 min |
+| 1. Design System | 2 | ~6 min | ~3 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 00-01 (~20m), 00-02 (~28m), 00-03 (~18m), 01-01 (~2m)
-- Trend: 01-01 was a focused token-and-fonts plan with no test churn; component plans (01-02) will be longer
+- Last 5 plans: 00-01 (~20m), 00-02 (~28m), 00-03 (~18m), 01-01 (~2m), 01-02 (~4m)
+- Trend: TDD component plans land fast when superpowers TSX snippets are verbatim-followable; 01-03 (router + style-guide route) will require modifying App.tsx + the existing App.test.tsx
 
 *Updated after each plan completion*
 | Phase 00-skeleton-foundations P02 | 28 | 3 tasks | 18 files |
 | Phase 00-skeleton-foundations P03 | 18 | 3 tasks | 15 files |
 | Phase 01-design-system P01 | 2 | 3 tasks | 4 files |
+| Phase 01-design-system P02 | 4 | 6 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Roadmap-shaping decision
 - [Phase 1]: Single Blueberry token block in @theme; Strawberry + Matcha-dark themes deferred per PRD §15 (Plan 01-01)
 - [Phase 1]: All 7 motion tokens + matching @keyframes declared centrally in Phase 1; runtime state binding happens in Phases 2 (recpulse → recording), 3 (slide-in-right → transcript dock), 4 (shimmer → enhance stream) (Plan 01-01)
 - [Phase 1]: Fonts shipped via @fontsource/* side-effect imports — no Google Fonts CDN egress, satisfies privacy posture (Plan 01-01)
+- [Phase 1]: Components colocated as `Foo.tsx` + `Foo.test.tsx` under `web/src/components/` (no shared `__tests__/` directory); RED/GREEN landed in a single atomic `feat(web): …` commit per component for cleaner `git log` (Plan 01-02)
+- [Phase 1]: RecordingBadge and ProviderChip are named exports that compose the base Pill primitive — avoids one mega-component with twelve flags (Plan 01-02)
+- [Phase 1]: Card is polymorphic via `as?: ElementType` (default div) — supports `<article>` for meeting cards downstream (Plan 01-02)
+- [Phase 1]: Button `'ink'` variant deferred to Phase 4 (live meeting top-bar end-meeting CTA); documented inline in the Button source (Plan 01-02)
 
 ### Pending Todos
 
@@ -99,6 +104,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T16:13:00.000Z
-Stopped at: Plan 01-01 complete — Tailwind 4 @theme tokens + @fontsource fonts wired; ready for Plan 01-02 (component primitives)
+Last session: 2026-06-25T16:22:00.000Z
+Stopped at: Plan 01-02 complete — 5 component primitives + 30 Vitest cases shipped; ready for Plan 01-03 (style-guide route + React Router 7 setup)
 Resume file: None
