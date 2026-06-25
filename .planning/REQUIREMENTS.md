@@ -18,10 +18,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Design System
 
-- [ ] **DESIGN-01**: Color tokens implemented (paper / ink / grey / blueberry / strawberry / matcha) per PRD §16.2
-- [ ] **DESIGN-02**: Typography tokens implemented (Instrument Serif / Hanken Grotesk / JetBrains Mono) per PRD §16.3
-- [ ] **DESIGN-03**: Spacing / radius / elevation scales applied per PRD §16.4
-- [ ] **DESIGN-04**: Motion tokens implemented (260ms popUp, 340ms slideInRight, 600ms staggered reveal, 1.4s recpulse, 1.0s blink, 1.25s shimmer, 1.0s wave, 3.5s float) per PRD §16.5
+- [x] **DESIGN-01**: Color tokens implemented (paper / ink / grey / blueberry / strawberry / matcha) per PRD §16.2
+- [x] **DESIGN-02**: Typography tokens implemented (Instrument Serif / Hanken Grotesk / JetBrains Mono) per PRD §16.3
+- [x] **DESIGN-03**: Spacing / radius / elevation scales applied per PRD §16.4
+- [x] **DESIGN-04**: Motion tokens implemented (260ms popUp, 340ms slideInRight, 600ms staggered reveal, 1.4s recpulse, 1.0s blink, 1.25s shimmer, 1.0s wave, 3.5s float) per PRD §16.5
 - [ ] **DESIGN-05**: Core component primitives shipped (Primary / Secondary / Ghost button, recording badge, tab group, provider chip, browser-chrome mockup wrapper) per PRD §16.6
 - [ ] **DESIGN-06**: Icon system selected and applied (Lucide or Phosphor)
 
@@ -226,10 +226,10 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | FOUND-04 | Phase 0 | Complete |
 | FOUND-05 | Phase 0 | Complete |
 | FOUND-06 | Phase 0 | Complete |
-| DESIGN-01 | Phase 1 | Pending |
-| DESIGN-02 | Phase 1 | Pending |
-| DESIGN-03 | Phase 1 | Pending |
-| DESIGN-04 | Phase 1 | Pending |
+| DESIGN-01 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
+| DESIGN-02 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
+| DESIGN-03 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
+| DESIGN-04 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
 | DESIGN-05 | Phase 1 | Pending |
 | DESIGN-06 | Phase 1 | Pending |
 | AUDIO-01 | Phase 2 | Pending |
