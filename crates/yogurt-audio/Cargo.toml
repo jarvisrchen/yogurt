@@ -1,0 +1,32 @@
+[package]
+name = "yogurt-audio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "macOS audio capture (mic + system loopback) for yogurt — 16 kHz mono i16."
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+cpal = { workspace = true }
+rubato = { workspace = true }
+
+# screencapturekit is gated to macOS because the crate links the Swift bridge
+# against the macOS-only ScreenCaptureKit.framework.
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+default = []
+# Enable the synthetic sine-wave generator outside of `cargo test`.
+# Phase 5 settings may surface this as a debug-input source.
+synthetic = []

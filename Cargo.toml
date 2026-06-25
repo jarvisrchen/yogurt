@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/yogurt-cli",
     "crates/yogurt-server",
+    "crates/yogurt-audio",
 ]
 
 [workspace.package]
@@ -47,6 +48,15 @@ assert_cmd = "2"
 tempfile = "3"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+# audio capture (Phase 2)
+# NOTE: plan suggested screencapturekit = "0.3" but crate has bumped to 8.x
+# with a different builder-pattern API. Pinned to 8 with macos_13_0 feature
+# (audio capture surface). See docs/superpowers/notes/2026-06-25-sck-spike-result.md.
+cpal = "0.15"
+screencapturekit = { version = "8", features = ["macos_13_0"] }
+rubato = "0.16"
+# typed errors
+thiserror = "2"
 
 [profile.release]
 lto = "thin"
