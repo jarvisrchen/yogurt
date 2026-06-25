@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 0: Skeleton & Foundations** - Cargo workspace, axum server, embedded SPA, SQLite WAL + dual pool, localhost-only binding, WS Origin check + session token, port-conflict UX (completed 2026-06-25)
 - [x] **Phase 1: Design System** - Tokens (color/typography/spacing/motion) + core component primitives applied before any screen is built (completed 2026-06-25)
-- [ ] **Phase 2: Audio Capture (HIGHEST RISK)** - ScreenCaptureKit mic + system loopback gated behind a dual-channel PCM ear-test spike, meeting-relative clock, Swift sidecar fallback documented
+- [x] **Phase 2: Audio Capture (HIGHEST RISK)** - ScreenCaptureKit mic + system loopback gated behind a dual-channel PCM ear-test spike, meeting-relative clock, Swift sidecar fallback documented (completed 2026-06-25)
 - [ ] **Phase 3: Cloud STT + Live Transcript** - SttEngine trait + Deepgram adapter, right-edge live transcript dock with Me/Them channel labels
 - [ ] **Phase 4: Augmented Notes Hero (HIGHEST PAYOFF)** - TipTap aiGrey + transcriptTs marks, server-side AST diff, enriched_doc_json schema migration, minimal hardcoded LLM client, bundled enhance.md
 - [ ] **Phase 5: LLM Client + Settings + Keychain** - LlmClient trait, settings UI (Model/Transcription/Audio/General), Keychain eager-loaded at startup
@@ -202,7 +202,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 |-------|----------------|--------|-----------|
 | 0. Skeleton & Foundations | 3/3 | Complete   | 2026-06-25 |
 | 1. Design System | 3/3 | Complete   | 2026-06-25 |
-| 2. Audio Capture | 2/3 | In progress (02-03 pending) | - |
+| 2. Audio Capture | 3/3 | Complete   | 2026-06-25 |
 | 3. Cloud STT + Live Transcript | 0/TBD | Not started | - |
 | 4. Augmented Notes Hero | 0/TBD | Not started | - |
 | 5. LLM Client + Settings + Keychain | 0/TBD | Not started | - |
