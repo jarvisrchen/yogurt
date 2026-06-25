@@ -35,3 +35,108 @@ pub use system::{spawn_system_capture, SystemCapture};
 pub use permission::{
     has_screen_recording_permission, request_screen_recording_permission, PermissionStatus,
 };
+
+use tokio::sync::broadcast;
+
+/// Per-channel broadcast capacity (AUDIO-04: ≥ 256 frames). 256 frames ×
+/// 20 ms/frame ≈ 5 seconds of buffered audio per channel before a slow
+/// consumer starts seeing `Lagged(n)` from `Receiver::recv()` and dropping
+/// late frames (correct STT semantics — wall-clock-bound, not retry-bound).
+pub const BROADCAST_CAPACITY: usize = 256;
+
+/// Live capture handle. Holds both producers as owned fields — dropping
+/// `AudioStream` stops the cpal mic stream and the SCK system stream via
+/// RAII (D-26 — no explicit `.stop()` API, no leaked SCK handles, no
+/// orphan tasks).
+///
+/// ## Subscribing
+///
+/// Phase 3 fans both receivers in via `tokio::select!` (D-20). Subscribe
+/// after `start_capture()` returns:
+///
+/// ```no_run
+/// # async fn ex() -> yogurt_audio::Result<()> {
+/// let stream = yogurt_audio::start_capture()?;
+/// let mut mic_rx = stream.subscribe_mic();
+/// let mut sys_rx = stream.subscribe_system();
+/// loop {
+///     tokio::select! {
+///         Ok(frame) = mic_rx.recv() => { /* STT route to "Me" */ }
+///         Ok(frame) = sys_rx.recv() => { /* STT route to "Them" */ }
+///     }
+/// }
+/// # }
+/// ```
+pub struct AudioStream {
+    _mic: MicCapture,
+    _system: SystemCapture,
+    /// Public so consumers can clone/subscribe and so `Channel::Mic` STT
+    /// sessions can register late (after `start_capture` returns).
+    pub mic_tx: broadcast::Sender<Frame>,
+    /// Public for the same reason — Phase 3 system-channel consumers.
+    pub system_tx: broadcast::Sender<Frame>,
+}
+
+impl std::fmt::Debug for AudioStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioStream")
+            .field("mic_receivers", &self.mic_tx.receiver_count())
+            .field("system_receivers", &self.system_tx.receiver_count())
+            .finish_non_exhaustive()
+    }
+}
+
+impl AudioStream {
+    /// Subscribe a new consumer to the mic channel. Each subscription gets
+    /// its own backpressure window; slow consumers drop frames via
+    /// `RecvError::Lagged` without affecting other subscribers (D-19).
+    pub fn subscribe_mic(&self) -> broadcast::Receiver<Frame> {
+        self.mic_tx.subscribe()
+    }
+
+    /// Subscribe a new consumer to the system audio channel.
+    pub fn subscribe_system(&self) -> broadcast::Receiver<Frame> {
+        self.system_tx.subscribe()
+    }
+}
+
+/// Open both capture streams (mic + system audio) and return an
+/// [`AudioStream`] handle. Dropping the handle stops both streams.
+///
+/// **Permission gate (D-25):** fast-fails with
+/// [`AudioError::PermissionDenied`] *before* opening the microphone if
+/// Screen Recording is denied. This prevents the user from seeing a mic
+/// recording indicator when system capture is going to fail anyway —
+/// the §5.11 recovery card should render instead.
+///
+/// **Meeting-relative clock (AUDIO-05):** each producer's `FrameChunker`
+/// captures `Instant::now()` at construction time. Both chunkers are
+/// instantiated synchronously inside this function (the spawn calls are
+/// sequential and quick — well under a millisecond), so drift between
+/// mic and system channel `monotonic_ms` baselines is bounded by spawn-
+/// order skew (microseconds). The AUDIO-05 < 50 ms drift requirement is
+/// trivially met.
+///
+/// **Broadcast capacity (AUDIO-04):** both channels are created with
+/// [`BROADCAST_CAPACITY`] = 256 frames (~5 seconds).
+pub fn start_capture() -> Result<AudioStream> {
+    if has_screen_recording_permission() == PermissionStatus::Denied {
+        return Err(AudioError::PermissionDenied);
+    }
+
+    let (mic_tx, _) = broadcast::channel::<Frame>(BROADCAST_CAPACITY);
+    let (system_tx, _) = broadcast::channel::<Frame>(BROADCAST_CAPACITY);
+
+    // Order matters: open mic first because it's faster to recover from
+    // (just close the cpal stream) than SCK. If SCK fails, we still drop
+    // the mic via RAII when MicCapture goes out of scope on early-return.
+    let _mic = spawn_mic_capture(mic_tx.clone())?;
+    let _system = spawn_system_capture(system_tx.clone())?;
+
+    Ok(AudioStream {
+        _mic,
+        _system,
+        mic_tx,
+        system_tx,
+    })
+}
