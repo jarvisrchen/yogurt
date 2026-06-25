@@ -1,14 +1,16 @@
 use axum::{routing::get, Json, Router};
 use serde_json::{json, Value};
 
-pub fn router() -> Router {
-    Router::new()
-        .route("/", get(index))
-        .route("/api/health", get(health))
-}
+use crate::assets::serve_embedded;
+use crate::Mode;
 
-async fn index() -> &'static str {
-    "hello yogurt — phase 0 scaffold (web UI coming in task 0.5)"
+pub fn router(mode: Mode) -> Router {
+    let router = Router::new().route("/api/health", get(health));
+
+    match mode {
+        Mode::Release => router.fallback(serve_embedded),
+        Mode::Dev => router.fallback(crate::dev_proxy::proxy_to_vite),
+    }
 }
 
 async fn health() -> Json<Value> {

@@ -2009,6 +2009,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "mime_guess",
  "reqwest",
  "rust-embed",
  "serde",
