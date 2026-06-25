@@ -35,8 +35,17 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 # mime guessing for embedded assets
 mime_guess = "2"
+# storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+directories = "5"
+# crypto / encoding
+rand = "0.8"
+base64 = "0.22"
+subtle = "2"
 # testing
 assert_cmd = "2"
+tempfile = "3"
+tokio-tungstenite = "0.24"
 
 [profile.release]
 lto = "thin"

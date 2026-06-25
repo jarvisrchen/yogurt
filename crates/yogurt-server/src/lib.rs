@@ -1,10 +1,14 @@
 mod assets;
 mod dev_proxy;
 mod routes;
+pub mod storage;
 
 use anyhow::Result;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
+
+pub use storage::Storage;
 
 /// Server runtime mode.
 ///
@@ -17,10 +21,55 @@ pub enum Mode {
     Release,
 }
 
+/// Shared per-request app state.
+#[derive(Clone)]
+pub struct AppState {
+    pub mode: Mode,
+    pub storage: Arc<Storage>,
+    pub bind_port: u16,
+}
+
+/// Configuration for `run` that can be overridden in tests (custom DB +
+/// session-token paths so tests do not clobber the developer's real
+/// `~/.yogurt/`).
+pub struct RunConfig {
+    pub addr: SocketAddr,
+    pub mode: Mode,
+    pub db_path: Option<std::path::PathBuf>,
+}
+
+impl RunConfig {
+    pub fn new(addr: SocketAddr, mode: Mode) -> Self {
+        Self {
+            addr,
+            mode,
+            db_path: None,
+        }
+    }
+}
+
+/// Default entry point. Uses real `~/.yogurt/` paths.
 pub async fn run(addr: SocketAddr, mode: Mode) -> Result<()> {
-    let app = routes::router(mode);
-    tracing::info!(?addr, ?mode, "yogurt-server starting");
-    let listener = TcpListener::bind(addr).await?;
+    run_with_config(RunConfig::new(addr, mode)).await
+}
+
+/// Configurable entry point — accepts overrides for DB path (used by tests).
+pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
+    let db_path = match cfg.db_path {
+        Some(p) => p,
+        None => storage::default_db_path()?,
+    };
+    let storage = Arc::new(Storage::init_at(&db_path)?);
+
+    let state = AppState {
+        mode: cfg.mode,
+        storage,
+        bind_port: cfg.addr.port(),
+    };
+
+    let app = routes::router(state);
+    tracing::info!(addr = ?cfg.addr, mode = ?cfg.mode, "yogurt-server starting");
+    let listener = TcpListener::bind(cfg.addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
