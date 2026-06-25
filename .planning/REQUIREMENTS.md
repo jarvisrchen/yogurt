@@ -28,10 +28,10 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Audio
 
 - [ ] **AUDIO-01**: macOS Screen Recording permission prompt triggers on first record via ScreenCaptureKit
-- [ ] **AUDIO-02**: Captures mic (default input device) as mono 16 kHz / 16-bit PCM stream
-- [ ] **AUDIO-03**: Captures system audio (loopback via SCK) as mono 16 kHz / 16-bit PCM stream with `excludesCurrentProcessAudio = true`
-- [ ] **AUDIO-04**: Both streams pushed to in-process Tokio broadcast channel with capacity ≥ 256 frames
-- [ ] **AUDIO-05**: Meeting-relative clock established from `Instant::now()` at start, drift between mic/system < 50ms
+- [x] **AUDIO-02**: Captures mic (default input device) as mono 16 kHz / 16-bit PCM stream
+- [x] **AUDIO-03**: Captures system audio (loopback via SCK) as mono 16 kHz / 16-bit PCM stream with `excludesCurrentProcessAudio = true`
+- [x] **AUDIO-04**: Both streams pushed to in-process Tokio broadcast channel with capacity ≥ 256 frames
+- [x] **AUDIO-05**: Meeting-relative clock established from `Instant::now()` at start, drift between mic/system < 50ms
 - [ ] **AUDIO-06**: Recording stops cleanly on "End meeting"; per-meeting task supervisor terminates cleanly
 - [ ] **AUDIO-07**: User can list and pick mic input device from `/api/audio/devices`
 
@@ -233,10 +233,10 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | DESIGN-05 | Phase 1 (Plan 01-02) | Complete (2026-06-25) — tab group + Button 'ink' variant deferred to Phase 4 per plan scope |
 | DESIGN-06 | Phase 1 | Pending |
 | AUDIO-01 | Phase 2 (Plan 02-01) | API ready (2026-06-25) — `has_screen_recording_permission()` + `request_screen_recording_permission()` exposed by `yogurt-audio`; end-to-end "prompt fires on first record" verification deferred to Plan 02-XX once `start_capture()` exists |
-| AUDIO-02 | Phase 2 | Pending |
-| AUDIO-03 | Phase 2 | Pending |
-| AUDIO-04 | Phase 2 | Pending |
-| AUDIO-05 | Phase 2 | Pending |
+| AUDIO-02 | Phase 2 (Plan 02-02) | Complete (2026-06-25) — `spawn_mic_capture()` opens cpal default input, resamples via `Downmix` to 16 kHz mono i16, chunks into 320-sample `Frame`s. Hardware-verified: 249 frames in 5s on Apple Silicon. |
+| AUDIO-03 | Phase 2 (Plan 02-02) | Complete (2026-06-25) — `spawn_system_capture()` builds an audio-only SCStream with `with_excludes_current_process_audio(true)` set from first commit. Hardware-verified: 248 frames in 5s with Glass.aiff loop, peak −5221. |
+| AUDIO-04 | Phase 2 (Plan 02-02) | Complete (2026-06-25) — `BROADCAST_CAPACITY = 256` const; both `mic_tx` and `system_tx` created with `broadcast::channel::<Frame>(BROADCAST_CAPACITY)`. |
+| AUDIO-05 | Phase 2 (Plan 02-02) | Complete (2026-06-25) — each `FrameChunker` captures `Instant::now()` at construction; both chunkers seeded synchronously inside `start_capture()` (spawn-order skew microseconds, trivially < 50ms drift budget). Long-run 60-min drift assertion deferred to Phase 3 once STT timestamps land. |
 | AUDIO-06 | Phase 2 | Pending |
 | AUDIO-07 | Phase 2 | Pending |
 | TRANS-01 | Phase 3 | Pending |
