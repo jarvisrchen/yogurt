@@ -11,7 +11,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **FOUND-01**: Cargo workspace with all 8 crates compiles (`cargo build --release`)
 - [ ] **FOUND-02**: `yogurt start` CLI command launches axum server on `localhost:7878`
-- [ ] **FOUND-03**: Server serves a "Hello yogurt" React page via `rust-embed`
+- [x] **FOUND-03**: Server serves a "Hello yogurt" React page via `rust-embed`
 - [ ] **FOUND-04**: SQLite database initializes at `~/.yogurt/db.sqlite` with WAL + read-pool / single-writer model
 - [ ] **FOUND-05**: WebSocket endpoint validates `Origin` header and session token
 - [ ] **FOUND-06**: Port `7878` conflict surfaces a clear CLI error with `--port` override
@@ -222,7 +222,7 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 |-------------|-------|--------|
 | FOUND-01 | Phase 0 | Pending |
 | FOUND-02 | Phase 0 | Pending |
-| FOUND-03 | Phase 0 | Pending |
+| FOUND-03 | Phase 0 | Complete |
 | FOUND-04 | Phase 0 | Pending |
 | FOUND-05 | Phase 0 | Pending |
 | FOUND-06 | Phase 0 | Pending |
@@ -330,6 +330,7 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | DIST-10 | Phase 9 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 96 total across 14 categories
 - Mapped to phases: 96/96 (100%)
 - Orphaned: 0
