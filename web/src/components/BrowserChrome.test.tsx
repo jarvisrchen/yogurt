@@ -40,4 +40,14 @@ describe("BrowserChrome", () => {
     const root = container.firstChild as HTMLElement;
     expect(root.className).toMatch(/shadow-/);
   });
+
+  it("marks the chrome header aria-hidden so screenreaders skip the fake URL (MD-08)", () => {
+    const { getByTestId } = render(
+      <BrowserChrome url="localhost:7878/welcome">
+        <div />
+      </BrowserChrome>
+    );
+    const header = getByTestId("browser-chrome-header");
+    expect(header.getAttribute("aria-hidden")).toBe("true");
+  });
 });
