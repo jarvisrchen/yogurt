@@ -17,6 +17,9 @@ clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+yogurt-server = { path = "../yogurt-server" }
+open = "5"
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
+reqwest = { workspace = true }

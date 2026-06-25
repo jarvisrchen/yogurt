@@ -13,7 +13,20 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Cmd {
     /// Launch the local server and open the browser.
-    Start,
+    Start(StartArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct StartArgs {
+    /// TCP port to bind.
+    #[arg(long, default_value_t = 7878)]
+    port: u16,
+    /// Do not auto-open the browser on start.
+    #[arg(long)]
+    no_open: bool,
+    /// Run in dev mode (proxies non-API routes to Vite on :5173).
+    #[arg(long)]
+    dev: bool,
 }
 
 #[tokio::main]
@@ -27,6 +40,13 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Cmd::Start => commands::start::run().await,
+        Cmd::Start(args) => {
+            commands::start::run(commands::start::StartArgs {
+                port: args.port,
+                no_open: args.no_open,
+                dev: args.dev,
+            })
+            .await
+        }
     }
 }
