@@ -18,7 +18,8 @@
     "@tiptap/react": "^2.10.0",
     "@tiptap/starter-kit": "^2.10.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router": "^7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
