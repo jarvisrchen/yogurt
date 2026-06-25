@@ -71,3 +71,36 @@ async fn it_reports_port_conflict_with_friendly_error() {
         "stderr should suggest lsof -i :17883; got: {stderr}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_does_not_suggest_port_0_at_upper_boundary() {
+    // HI-01 regression: --port 65535 must NOT suggest --port 0 (which on Unix
+    // means "ephemeral bind" -- terrible advice). Use 65535 as the held port.
+    let listener = StdTcpListener::bind("127.0.0.1:65535");
+    if listener.is_err() {
+        // 65535 may be unavailable in CI sandbox; skip rather than fail.
+        eprintln!("skipping: cannot bind 127.0.0.1:65535 in this environment");
+        return;
+    }
+    let _listener = listener.unwrap();
+
+    let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+        .args(["start", "--port", "65535", "--no-open"])
+        .output()
+        .await
+        .expect("spawn yogurt");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already in use"),
+        "stderr should contain 'already in use'; got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("--port 0"),
+        "stderr must NOT suggest --port 0 (kernel ephemeral); got: {stderr}"
+    );
+    assert!(
+        stderr.contains("lsof -i :65535"),
+        "stderr should suggest lsof at boundary; got: {stderr}"
+    );
+}

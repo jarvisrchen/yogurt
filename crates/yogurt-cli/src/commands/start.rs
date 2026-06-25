@@ -33,10 +33,21 @@ pub async fn run(args: StartArgs) -> Result<()> {
             // anyhow chain looking for an `io::Error` with `AddrInUse`.
             if is_addr_in_use(&err) {
                 let port = args.port;
-                let next_port = port.wrapping_add(1);
-                eprintln!(
-                    "Port {port} is already in use. Try --port {next_port} or run lsof -i :{port}"
-                );
+                // HI-01: clamp suggestion to valid port range.
+                // `port.wrapping_add(1)` on 65535 → 0, which on Unix means
+                // "ask for an ephemeral port" -- terrible suggestion. Suggest
+                // port-1 at the upper boundary, otherwise port+1.
+                let next_port_suggestion = port
+                    .checked_add(1)
+                    .filter(|p| *p > 0)
+                    .map(|p| format!("Try --port {p} or run lsof -i :{port}"))
+                    .unwrap_or_else(|| {
+                        format!(
+                            "No nearby port free -- kill the process holding {port} \
+                             with `lsof -i :{port}` and `kill <pid>`"
+                        )
+                    });
+                eprintln!("Port {port} is already in use. {next_port_suggestion}");
                 std::process::exit(1);
             }
             Err(err)
