@@ -31,6 +31,12 @@ struct StartArgs {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // LO-02: parse args BEFORE installing the tracing subscriber so
+    // --help / --version paths never have a chance to emit a startup log
+    // line. Any future `tracing::info!` added before `Cli::parse()` would
+    // otherwise leak into help output.
+    let cli = Cli::parse();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -38,7 +44,6 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let cli = Cli::parse();
     match cli.command {
         Cmd::Start(args) => {
             commands::start::run(commands::start::StartArgs {

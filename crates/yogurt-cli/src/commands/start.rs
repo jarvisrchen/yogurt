@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::net::SocketAddr;
+use std::time::Duration;
 use yogurt_server::Mode;
 
 pub struct StartArgs {
@@ -15,10 +16,18 @@ pub async fn run(args: StartArgs) -> Result<()> {
     let url = format!("http://127.0.0.1:{}", args.port);
 
     if !args.no_open {
-        // Open in a background task so a failure to spawn the browser doesn't
-        // block the server from starting.
+        // LO-01: poll for the server to be listening before opening the
+        // browser, so a slow cold-cache boot doesn't show
+        // "connection refused" first. 2s budget with 50ms steps = 40 tries.
         let url_for_open = url.clone();
+        let probe_addr = addr;
         tokio::spawn(async move {
+            for _ in 0..40 {
+                if tokio::net::TcpStream::connect(probe_addr).await.is_ok() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
             if let Err(e) = open::that(&url_for_open) {
                 tracing::warn!(?e, "failed to open browser");
             }
