@@ -22,7 +22,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DESIGN-02**: Typography tokens implemented (Instrument Serif / Hanken Grotesk / JetBrains Mono) per PRD §16.3
 - [x] **DESIGN-03**: Spacing / radius / elevation scales applied per PRD §16.4
 - [x] **DESIGN-04**: Motion tokens implemented (260ms popUp, 340ms slideInRight, 600ms staggered reveal, 1.4s recpulse, 1.0s blink, 1.25s shimmer, 1.0s wave, 3.5s float) per PRD §16.5
-- [ ] **DESIGN-05**: Core component primitives shipped (Primary / Secondary / Ghost button, recording badge, tab group, provider chip, browser-chrome mockup wrapper) per PRD §16.6
+- [x] **DESIGN-05**: Core component primitives shipped (Primary / Secondary / Ghost button, recording badge, tab group, provider chip, browser-chrome mockup wrapper) per PRD §16.6 — Logo + Button (primary/secondary/ghost) + Pill family (RecordingBadge + ProviderChip) + Card + BrowserChrome landed in Plan 01-02; tab group + Button 'ink' variant explicitly deferred to Phase 4 per plan scope
 - [ ] **DESIGN-06**: Icon system selected and applied (Lucide or Phosphor)
 
 ### Audio
@@ -230,7 +230,7 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | DESIGN-02 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
 | DESIGN-03 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
 | DESIGN-04 | Phase 1 (Plan 01-01) | Complete (2026-06-25) |
-| DESIGN-05 | Phase 1 | Pending |
+| DESIGN-05 | Phase 1 (Plan 01-02) | Complete (2026-06-25) — tab group + Button 'ink' variant deferred to Phase 4 per plan scope |
 | DESIGN-06 | Phase 1 | Pending |
 | AUDIO-01 | Phase 2 | Pending |
 | AUDIO-02 | Phase 2 | Pending |
