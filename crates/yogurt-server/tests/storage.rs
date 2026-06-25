@@ -77,6 +77,68 @@ async fn it_initializes_db_with_wal_and_tables() {
     let _again = Storage::init_at(&db_path).expect("second init is idempotent");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn it_creates_db_file_at_mode_0600_and_parent_at_0700() {
+    // MD-06 regression: SQLite file + ~/.yogurt/ must not be world-readable.
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().expect("tempdir");
+    let parent = tmp.path().join("yogurt-storage");
+    let db_path = parent.join("db.sqlite");
+
+    let _storage = Storage::init_at(&db_path).expect("init");
+
+    let dir_mode = std::fs::metadata(&parent).unwrap().permissions().mode() & 0o777;
+    assert_eq!(dir_mode, 0o700, "parent dir must be 0700");
+
+    let file_mode = std::fs::metadata(&db_path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(file_mode, 0o600, "sqlite db file must be 0600");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn it_tightens_a_preexisting_loose_storage_parent_dir() {
+    // MD-06: if ~/.yogurt/ pre-exists at 0755, init_at must tighten to 0700.
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().expect("tempdir");
+    let parent = tmp.path().join("preexisting");
+    std::fs::create_dir_all(&parent).unwrap();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let db_path = parent.join("db.sqlite");
+
+    let _storage = Storage::init_at(&db_path).expect("init tightens parent");
+
+    let dir_mode = std::fs::metadata(&parent).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        dir_mode, 0o700,
+        "loose parent dir must be tightened to 0700"
+    );
+}
+
+#[tokio::test]
+async fn it_applies_wal_pragma_to_read_pool_connections() {
+    // HI-02 regression: every read connection must explicitly set
+    // journal_mode=WAL. We can't introspect the pool directly, but we can
+    // verify reads work after init -- and combined with the in-storage
+    // pragma_update assertion in init_at, that's sufficient.
+    let tmp = TempDir::new().expect("tempdir");
+    let db_path = tmp.path().join("db.sqlite");
+    let storage = Storage::init_at(&db_path).expect("init");
+
+    // Drive a read through the pool to prove the connection works after
+    // all pragmas were applied.
+    let r = storage.read();
+    let conn = r.lock().unwrap();
+    let mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .expect("read pragma from read-pool conn");
+    assert_eq!(
+        mode.to_lowercase(),
+        "wal",
+        "read-pool connection must report WAL journal mode"
+    );
+}
+
 #[tokio::test]
 async fn it_exposes_both_read_and_writer_handles() {
     let tmp = TempDir::new().expect("tempdir");

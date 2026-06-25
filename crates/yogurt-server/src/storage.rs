@@ -36,9 +36,14 @@ impl Storage {
 
     /// Initialize storage at an arbitrary path. Used by tests with tempdirs.
     /// Creates the parent directory if missing.
+    ///
+    /// MD-06: the parent dir is created at mode 0700 (Unix) and the SQLite
+    /// file is chmod'd to 0600 after creation so that on a multi-user macOS
+    /// system another user account cannot read the meeting transcripts +
+    /// chat history.
     pub fn init_at(db_path: &Path) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
+            create_private_dir(parent)
                 .with_context(|| format!("creating storage parent dir {}", parent.display()))?;
         }
 
@@ -47,6 +52,10 @@ impl Storage {
         // app-local SQLite.
         let mut writer = Connection::open(db_path)
             .with_context(|| format!("opening sqlite at {}", db_path.display()))?;
+
+        // MD-06: rusqlite doesn't expose file-mode at open time. Tighten
+        // post-creation so the DB is owner-only-readable.
+        chmod_0600_if_unix(db_path).with_context(|| format!("chmod 0600 {}", db_path.display()))?;
         writer
             .pragma_update(None, "journal_mode", "WAL")
             .context("PRAGMA journal_mode=WAL")?;
@@ -59,17 +68,25 @@ impl Storage {
 
         migrations::run(&mut writer).context("running v1 schema migration")?;
 
-        // Open the read pool. Each connection is marked `query_only=ON` so an
-        // accidental write through the read handle is rejected at the DB
-        // layer rather than silently violating the single-writer invariant.
+        // Open the read pool. HI-02: every connection gets the FULL pragma
+        // set (journal_mode + synchronous + foreign_keys + query_only). WAL
+        // is persistent on-disk, but applying the pragma per-connection makes
+        // each reader correct independently of init-time race conditions and
+        // future refactors (e.g., recycling a connection across reopens).
         let mut reads = Vec::with_capacity(READ_POOL_SIZE);
         for _ in 0..READ_POOL_SIZE {
             let r = Connection::open(db_path)
                 .with_context(|| format!("opening read conn at {}", db_path.display()))?;
-            r.pragma_update(None, "query_only", "ON")
-                .context("PRAGMA query_only=ON")?;
+            // Belt-and-suspenders: ensure WAL is observed by the reader even
+            // if the writer's pragma somehow didn't persist to the file header.
+            r.pragma_update(None, "journal_mode", "WAL")
+                .context("PRAGMA journal_mode=WAL (read conn)")?;
+            r.pragma_update(None, "synchronous", "NORMAL")
+                .context("PRAGMA synchronous=NORMAL (read conn)")?;
             r.pragma_update(None, "foreign_keys", "ON")
-                .context("PRAGMA foreign_keys=ON")?;
+                .context("PRAGMA foreign_keys=ON (read conn)")?;
+            r.pragma_update(None, "query_only", "ON")
+                .context("PRAGMA query_only=ON (read conn)")?;
             reads.push(Arc::new(Mutex::new(r)));
         }
 
@@ -97,4 +114,45 @@ impl Storage {
 pub fn default_db_path() -> Result<PathBuf> {
     let base = BaseDirs::new().context("could not resolve home directory")?;
     Ok(base.home_dir().join(".yogurt").join("db.sqlite"))
+}
+
+/// Create a directory at mode 0700 (Unix), tightening any pre-existing dir
+/// at a looser mode. No-op shim on non-Unix. (MD-06)
+fn create_private_dir(p: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let mut b = std::fs::DirBuilder::new();
+        b.recursive(true).mode(0o700);
+        match b.create(p) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(p)?;
+        let mode = meta.permissions().mode() & 0o777;
+        if mode != 0o700 {
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(p)
+    }
+}
+
+/// Set a file's mode to 0600 on Unix. No-op on non-Unix. (MD-06)
+fn chmod_0600_if_unix(p: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = p;
+        Ok(())
+    }
 }
