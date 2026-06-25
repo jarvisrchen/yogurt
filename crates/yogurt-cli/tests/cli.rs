@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use std::net::TcpListener as StdTcpListener;
 use std::time::Duration;
 
 #[test]
@@ -33,4 +34,37 @@ async fn it_starts_server_and_serves_health() {
     assert!(body.contains("\"status\":\"ok\""));
 
     child.kill().await.ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_reports_port_conflict_with_friendly_error() {
+    // Occupy the port from the test process.
+    let listener = StdTcpListener::bind("127.0.0.1:17883").expect("can bind 17883 in test");
+
+    let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+        .args(["start", "--port", "17883", "--no-open"])
+        .output()
+        .await
+        .expect("spawn yogurt");
+
+    drop(listener); // release port for other tests
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit; got {:?}",
+        output.status
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already in use"),
+        "stderr should contain 'already in use'; got: {stderr}"
+    );
+    assert!(
+        stderr.contains("--port 17884"),
+        "stderr should suggest --port 17884; got: {stderr}"
+    );
+    assert!(
+        stderr.contains("lsof -i :17883"),
+        "stderr should suggest lsof -i :17883; got: {stderr}"
+    );
 }

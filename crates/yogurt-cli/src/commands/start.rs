@@ -26,5 +26,31 @@ pub async fn run(args: StartArgs) -> Result<()> {
     }
 
     tracing::info!(%url, "yogurt is starting");
-    yogurt_server::run(addr, mode).await
+    match yogurt_server::run(addr, mode).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            // CONTEXT D-19 / FOUND-06: friendly port-conflict UX. Walk the
+            // anyhow chain looking for an `io::Error` with `AddrInUse`.
+            if is_addr_in_use(&err) {
+                let port = args.port;
+                let next_port = port.wrapping_add(1);
+                eprintln!(
+                    "Port {port} is already in use. Try --port {next_port} or run lsof -i :{port}"
+                );
+                std::process::exit(1);
+            }
+            Err(err)
+        }
+    }
+}
+
+fn is_addr_in_use(err: &anyhow::Error) -> bool {
+    for cause in err.chain() {
+        if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+            if io_err.kind() == std::io::ErrorKind::AddrInUse {
+                return true;
+            }
+        }
+    }
+    false
 }
