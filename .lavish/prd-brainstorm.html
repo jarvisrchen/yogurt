@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yogurt — PRD Brainstorm · Complete</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .grain { background-image: radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 4px 4px; }
+  </style>
+</head>
+
+<body class="min-h-screen bg-base-200 grain text-base-content">
+
+<!-- ============================== HEADER ============================== -->
+<div class="navbar bg-base-100/70 backdrop-blur border-b border-base-content/10 sticky top-0 z-30">
+  <div class="navbar-start gap-3 pl-6">
+    <span class="text-2xl">🥣</span>
+    <div>
+      <div class="text-lg font-bold tracking-tight">Yogurt</div>
+      <div class="text-[11px] uppercase tracking-widest text-base-content/50 -mt-1">Open-source local Granola</div>
+    </div>
+  </div>
+  <div class="navbar-end pr-6 gap-2">
+    <span class="badge badge-success">8 decisions locked</span>
+    <span class="badge badge-primary">PRD ready</span>
+  </div>
+</div>
+
+<main class="mx-auto max-w-6xl px-6 lg:px-10 py-10 space-y-12">
+
+  <!-- ============================== HERO ============================== -->
+  <section>
+    <p class="text-[11px] uppercase tracking-[0.25em] text-base-content/50 mb-3">PRD brainstorm — complete</p>
+    <h1 class="text-4xl lg:text-5xl font-bold tracking-tight leading-tight">
+      All 8 decisions locked.<br/>
+      <span class="text-primary">PRD written to <span class="mono text-3xl lg:text-4xl">docs/PRD.md</span>.</span>
+    </h1>
+    <p class="mt-5 text-lg text-base-content/70 max-w-3xl">
+      Review the file directly — it's the source of truth from here on. This page is now an index.
+      Hand-back questions and the answer to "would <span class="mono">brew install</span> install everything?" below.
+    </p>
+
+    <div class="mt-8 flex flex-wrap gap-3">
+      <a href="../docs/PRD.md" class="btn btn-primary" target="_blank">Open docs/PRD.md ↗</a>
+      <button class="btn btn-soft" data-lavish-action onclick="window.lavish.queuePrompt('Approved — let\\'s move to writing the implementation plan now (writing-plans skill).', { tag: 'approve', text: 'Approve PRD → plan' });">
+        Approve &amp; advance to implementation plan
+      </button>
+      <button class="btn btn-ghost" data-lavish-action onclick="window.lavish.queuePrompt('I want changes to the PRD — see the textarea below for what to change.', { tag: 'revise', text: 'Request PRD revisions' });">
+        Request changes
+      </button>
+    </div>
+  </section>
+
+  <!-- ============================== ANSWER TO BREW QUESTION ============================== -->
+  <section>
+    <div class="rounded-box border border-primary/30 bg-primary/5 p-6">
+      <div class="flex items-start gap-3">
+        <span class="text-2xl">💬</span>
+        <div class="flex-1">
+          <p class="text-xs uppercase tracking-widest text-base-content/50 mb-2">your question</p>
+          <p class="text-base font-medium italic mb-4">
+            "For Q8 option A, would <span class="mono not-italic bg-base-200 px-1.5 py-0.5 rounded">brew install yogurt</span> just do install for everything? I also want an option to be able to clone the repo and run locally."
+          </p>
+          <p class="text-xs uppercase tracking-widest text-base-content/50 mb-2">answer (also documented in PRD §11)</p>
+          <p class="text-sm text-base-content/85 mb-3">
+            <strong>Yes — one command.</strong> Because we picked Rust + embedded web assets + statically linked <span class="mono">whisper.cpp</span>, the entire app is a single static binary. The Homebrew formula
+            downloads the pre-built binary from the matching GitHub Release for the user's architecture and drops it in <span class="mono">/opt/homebrew/bin/yogurt</span>. No Node, no Python, no separate audio helper.
+          </p>
+          <div class="mockup-code bg-base-300 text-base-content text-xs mb-4">
+            <pre data-prefix="$"><code>brew install yogurt</code></pre>
+            <pre data-prefix="$"><code>yogurt start</code></pre>
+            <pre data-prefix=">" class="opacity-60"><code>→ http://localhost:7878 opens in your browser</code></pre>
+          </div>
+          <p class="text-sm text-base-content/85 mb-3">
+            <strong>Clone + run locally is fully supported and documented as a first-class path.</strong>
+            Two terminals during dev (Vite hot-reloads the frontend, Cargo runs the backend); one binary for release.
+          </p>
+          <div class="mockup-code bg-base-300 text-base-content text-xs">
+            <pre data-prefix="$"><code>git clone https://github.com/&lt;org&gt;/yogurt.git &amp;&amp; cd yogurt</code></pre>
+            <pre data-prefix="$"><code>brew install rust pnpm</code></pre>
+            <pre data-prefix="$"><code>pnpm --dir web install</code></pre>
+            <pre data-prefix=" " class="opacity-30"><code> </code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> terminal 1 — backend, auto-rebuilds on save:</code></pre>
+            <pre data-prefix="$"><code>cargo run -p yogurt-cli -- start --dev</code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> terminal 2 — frontend, HMR:</code></pre>
+            <pre data-prefix="$"><code>pnpm --dir web dev</code></pre>
+            <pre data-prefix=" " class="opacity-30"><code> </code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> release build (single binary):</code></pre>
+            <pre data-prefix="$"><code>pnpm --dir web build &amp;&amp; cargo build --release</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== ALL DECISIONS RECAP ============================== -->
+  <section>
+    <div class="flex items-center gap-3 mb-5">
+      <span class="text-success">●</span>
+      <h2 class="text-xl font-semibold tracking-tight">All 8 decisions</h2>
+      <div class="flex-1 border-t border-base-content/10"></div>
+    </div>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra text-sm">
+        <thead>
+          <tr>
+            <th class="w-12">#</th>
+            <th>Question</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-bold">Q1</td>
+            <td>Core UX</td>
+            <td>Granola-style augmented notes + visible live transcript + in-meeting AI chat</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q2</td>
+            <td>Runtime architecture</td>
+            <td>Hybrid: localhost backend + browser UI + in-process audio capture</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q3</td>
+            <td>Transcription strategy</td>
+            <td>Pluggable. Cloud (Deepgram) default. Local (<span class="mono">whisper.cpp</span> on Metal) opt-in</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q4</td>
+            <td>v1 scope</td>
+            <td>9 features in (recording, transcript, augmented notes, in-meeting chat, summary, 4 templates, settings, SQLite+md, macOS-only); 9 deferred</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q5</td>
+            <td>Backend stack</td>
+            <td>Rust (axum + tokio), single static binary with embedded web assets</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q6</td>
+            <td>LLM provider</td>
+            <td>OpenAI-compatible only. Ships with presets for Minimax, OpenAI, Ollama, LM Studio, OpenRouter</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q7</td>
+            <td>Audio retention</td>
+            <td>Delete audio after transcription (Granola model). Per-meeting keep-toggle deferred to v1.1</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Q8</td>
+            <td>Distribution</td>
+            <td>Homebrew + Cargo + GitHub Release binaries. Source build (clone + cargo run) first-class</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================== PRD STRUCTURE ============================== -->
+  <section>
+    <div class="flex items-center gap-3 mb-5">
+      <span class="text-info">●</span>
+      <h2 class="text-xl font-semibold tracking-tight">What's in <span class="mono">docs/PRD.md</span></h2>
+      <div class="flex-1 border-t border-base-content/10"></div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="rounded-box border border-base-content/10 bg-base-100 p-4">
+        <ol class="list-decimal list-inside text-sm space-y-1.5 text-base-content/80">
+          <li>Vision (1 paragraph)</li>
+          <li>Goals, non-goals, anti-goals</li>
+          <li>Users &amp; use cases (4 personas)</li>
+          <li>The 8 locked decisions (table)</li>
+          <li>v1 feature list (9 features, each w/ acceptance criteria)</li>
+          <li>v2+ deferred features (priority-ordered)</li>
+          <li>Architecture (ASCII diagram + key properties)</li>
+          <li>Component breakdown (Cargo workspace layout)</li>
+        </ol>
+      </div>
+      <div class="rounded-box border border-base-content/10 bg-base-100 p-4">
+        <ol start="9" class="list-decimal list-inside text-sm space-y-1.5 text-base-content/80">
+          <li>Data model (SQLite schema sketch)</li>
+          <li>API surface (REST endpoints + WS messages)</li>
+          <li>Distribution &amp; dev workflow (incl. brew answer)</li>
+          <li>Implementation roadmap (8 phases, ~15 days)</li>
+          <li>Open risks (6 named, each with mitigation)</li>
+          <li>Success criteria (4 conditions)</li>
+          <li>Open questions (naming, license, telemetry)</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== NEXT STEPS ============================== -->
+  <section>
+    <div class="flex items-center gap-3 mb-5">
+      <span class="text-base-content/40">●</span>
+      <h2 class="text-xl font-semibold tracking-tight">Next</h2>
+      <div class="flex-1 border-t border-base-content/10"></div>
+    </div>
+
+    <ul class="steps steps-vertical w-full">
+      <li class="step step-success">
+        <div class="text-left ml-3">
+          <div class="font-medium">Read <span class="mono">docs/PRD.md</span></div>
+          <div class="text-xs text-base-content/60">Open the file in your editor. Annotate anything that needs revision.</div>
+        </div>
+      </li>
+      <li class="step step-warning">
+        <div class="text-left ml-3">
+          <div class="font-medium">Approve or request changes</div>
+          <div class="text-xs text-base-content/60">Buttons at the top of this page. Or type freeform feedback in the textarea below.</div>
+        </div>
+      </li>
+      <li class="step">
+        <div class="text-left ml-3">
+          <div class="font-medium">Writing-plans phase</div>
+          <div class="text-xs text-base-content/60">On approval, I invoke the writing-plans skill to break the PRD into a phased implementation plan with concrete tasks.</div>
+        </div>
+      </li>
+      <li class="step">
+        <div class="text-left ml-3">
+          <div class="font-medium">Build phase 0 (skeleton)</div>
+          <div class="text-xs text-base-content/60">Cargo workspace + axum hello-world + Vite app. ~1 day. First commit.</div>
+        </div>
+      </li>
+    </ul>
+
+    <form class="mt-8" onsubmit="return submitFreeform(event)" data-lavish-question="prd-feedback">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Freeform feedback on the PRD (or naming, licensing, anything else)</legend>
+        <textarea id="freeform" class="textarea w-full" rows="4" placeholder="e.g. 'rename it to X', 'phase 3 estimate is too low', 'add a section on telemetry'"></textarea>
+      </fieldset>
+      <div class="flex justify-end mt-3">
+        <button type="submit" class="btn btn-soft" data-lavish-action>Send feedback</button>
+      </div>
+    </form>
+  </section>
+
+  <footer class="text-center text-xs text-base-content/40 pt-6 pb-12">
+    Yogurt PRD brainstorm complete · review surface · <span class="mono">.lavish/prd-brainstorm.html</span>
+  </footer>
+
+</main>
+
+<script>
+  function submitFreeform(event) {
+    event.preventDefault();
+    const v = document.getElementById('freeform').value.trim();
+    if (!v) return false;
+    window.lavish.queuePrompt(`Feedback on PRD:\n\n${v}`, { tag: 'feedback', text: 'PRD feedback' });
+    document.getElementById('freeform').value = '';
+    return false;
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yogurt PRD — Review</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .grain { background-image: radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 4px 4px; }
+    .toc-link { display: block; padding: 6px 12px; border-radius: 6px; color: var(--color-base-content); opacity: 0.55; font-size: 13px; line-height: 1.3; }
+    .toc-link:hover { opacity: 1; background: var(--color-base-200); }
+    .toc-link.active { opacity: 1; background: var(--color-primary); color: var(--color-primary-content); }
+    .toc-link .num { display: inline-block; width: 22px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+    section[id] { scroll-margin-top: 20px; }
+    .sec-h { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--color-base-content); border-color: color-mix(in oklab, var(--color-base-content) 10%, transparent); }
+    .sec-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--color-primary); letter-spacing: 0.04em; }
+    .sec-title { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+    .arch-box { border: 1px solid var(--color-base-content); border-color: color-mix(in oklab, var(--color-base-content) 18%, transparent); border-radius: 8px; padding: 10px 14px; background: var(--color-base-100); text-align: center; }
+    .arch-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.55; margin-bottom: 4px; }
+    .arch-box .name { font-weight: 600; font-size: 13px; }
+    .arch-arrow { display: flex; align-items: center; justify-content: center; font-size: 18px; opacity: 0.45; }
+    .schema-table { border: 1px solid color-mix(in oklab, var(--color-primary) 30%, transparent); border-radius: 8px; background: var(--color-base-100); overflow: hidden; }
+    .schema-table .name { background: color-mix(in oklab, var(--color-primary) 12%, var(--color-base-100)); padding: 8px 14px; font-weight: 700; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+    .schema-table .col { padding: 6px 14px; display: flex; gap: 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; border-top: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent); }
+    .schema-table .col .ck { color: var(--color-warning); width: 28px; }
+    .schema-table .col .nm { width: 130px; }
+    .schema-table .col .ty { opacity: 0.65; }
+  </style>
+</head>
+
+<body class="min-h-screen bg-base-200 grain text-base-content">
+
+<!-- ============================== HEADER ============================== -->
+<div class="navbar bg-base-100/80 backdrop-blur border-b border-base-content/10 sticky top-0 z-40">
+  <div class="navbar-start gap-3 pl-6">
+    <span class="text-2xl">🥣</span>
+    <div>
+      <div class="text-lg font-bold tracking-tight">Yogurt PRD</div>
+      <div class="text-[11px] uppercase tracking-widest text-base-content/50 -mt-1">Open-source local Granola · Review draft</div>
+    </div>
+  </div>
+  <div class="navbar-end pr-6 gap-2">
+    <span class="badge badge-soft">v1 draft · rev 2</span>
+    <span class="badge badge-success">8 decisions locked · templates cut</span>
+    <button class="btn btn-sm btn-primary" data-lavish-action onclick="window.lavish.queuePrompt('PRD approved — proceed to writing-plans skill.', { tag: 'approve', text: 'Approve PRD' });">Approve</button>
+  </div>
+</div>
+
+<div class="flex max-w-[1400px] mx-auto">
+
+  <!-- ============================== SIDEBAR TOC ============================== -->
+  <aside class="hidden lg:block w-64 shrink-0 sticky top-[64px] self-start h-[calc(100vh-64px)] overflow-y-auto p-4 border-r border-base-content/10">
+    <p class="text-[10px] uppercase tracking-widest text-base-content/40 mb-2 px-3">Contents</p>
+    <nav class="space-y-0.5">
+      <a class="toc-link" href="#s1"><span class="num">1</span>Vision</a>
+      <a class="toc-link" href="#s2"><span class="num">2</span>Goals &amp; non-goals</a>
+      <a class="toc-link" href="#s3"><span class="num">3</span>Users &amp; use cases</a>
+      <a class="toc-link" href="#s4"><span class="num">4</span>8 locked decisions</a>
+      <a class="toc-link" href="#s5"><span class="num">5</span>v1 features</a>
+      <a class="toc-link" href="#s6"><span class="num">6</span>v2+ deferred</a>
+      <a class="toc-link" href="#s7"><span class="num">7</span>Architecture</a>
+      <a class="toc-link" href="#s8"><span class="num">8</span>Component breakdown</a>
+      <a class="toc-link" href="#s9"><span class="num">9</span>Data model</a>
+      <a class="toc-link" href="#s10"><span class="num">10</span>API surface</a>
+      <a class="toc-link" href="#s11"><span class="num">11</span>Distribution &amp; dev</a>
+      <a class="toc-link" href="#s12"><span class="num">12</span>Roadmap</a>
+      <a class="toc-link" href="#s13"><span class="num">13</span>Open risks</a>
+      <a class="toc-link" href="#s14"><span class="num">14</span>Success criteria</a>
+      <a class="toc-link" href="#s15"><span class="num">15</span>Open questions</a>
+    </nav>
+    <div class="divider my-3"></div>
+    <a href="../docs/PRD.md" class="toc-link" target="_blank">↗ Open raw PRD.md</a>
+  </aside>
+
+  <!-- ============================== MAIN ============================== -->
+  <main class="flex-1 min-w-0 px-6 lg:px-10 py-10 space-y-16">
+
+    <!-- HERO -->
+    <section>
+      <p class="text-[11px] uppercase tracking-[0.25em] text-base-content/50 mb-3">Product requirements · v1 · 2026-06-24</p>
+      <h1 class="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+        Yogurt is the<br/>
+        <span class="text-primary">local-first Granola</span><br/>
+        you launch from the CLI.
+      </h1>
+      <p class="mt-6 text-lg text-base-content/70 max-w-3xl">
+        Single Rust binary. Browser UI at <span class="mono">localhost:7878</span>. Captures both your mic and your
+        Mac's system audio without joining the call as a bot. Pluggable LLM via any OpenAI-compatible endpoint —
+        Minimax, OpenAI, Ollama, OpenRouter, anything. Audio deleted after transcription. Notes stay on your
+        machine.
+      </p>
+
+      <div class="stats stats-vertical lg:stats-horizontal shadow-sm bg-base-100 mt-8 w-full">
+        <div class="stat">
+          <div class="stat-title">Decisions locked</div>
+          <div class="stat-value text-primary">8</div>
+          <div class="stat-desc">UX · arch · STT · scope · stack · LLM · audio · distribution</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">v1 features</div>
+          <div class="stat-value">8</div>
+          <div class="stat-desc">+ 10 features deferred to v2</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Build estimate</div>
+          <div class="stat-value">~14d</div>
+          <div class="stat-desc">7 phases, one focused engineer</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────────── 1. VISION ──────────────── -->
+    <section id="s1">
+      <div class="sec-h"><span class="sec-num">§ 01</span><h2 class="sec-title">Vision</h2></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-4 text-base-content/80">
+          <p>Granola is the best meeting-notes UX shipped in years. Two ideas make it work:</p>
+          <ol class="list-decimal list-inside space-y-2">
+            <li><strong>System-audio capture instead of a meeting bot.</strong> No "Granola AI has joined the call." Just turn it on and it hears everything.</li>
+            <li><strong>Augmented notes instead of summaries.</strong> Your bullets stay black; the LLM expands them in-place with grey additions. Edit a grey line and it promotes to black. Every grey bullet links to the transcript moment it came from.</li>
+          </ol>
+        </div>
+        <div class="space-y-4 text-base-content/80">
+          <p>Granola is a commercial SaaS that streams your audio to Deepgram and your transcripts to OpenAI/Anthropic. Anyone under NDA, in compliance-bound roles, or who simply prefers local-first software has no comparable tool — the closest OSS projects (Meetily, Hyprnote) ship summaries, not augmented notes.</p>
+          <p class="text-primary font-medium">Yogurt is that tool.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────────── 2. GOALS / NON-GOALS / ANTI ──────────────── -->
+    <section id="s2">
+      <div class="sec-h"><span class="sec-num">§ 02</span><h2 class="sec-title">Goals, non-goals, anti-goals</h2></div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        <div class="card card-border bg-base-100">
+          <div class="card-body">
+            <div class="flex items-center gap-2 mb-2"><span class="badge badge-success badge-soft">Goals</span><span class="text-xs text-base-content/50">v1</span></div>
+            <ul class="text-sm space-y-2 text-base-content/80">
+              <li>✓ Faithfully reproduce Granola's augmented-notes UX</li>
+              <li>✓ Capture mic + system audio on macOS without a bot</li>
+              <li>✓ Pluggable transcription (cloud default, local fallback)</li>
+              <li>✓ Any OpenAI-compatible LLM via Settings</li>
+              <li>✓ Privacy-first defaults — audio deleted after STT</li>
+              <li>✓ <span class="mono">brew install yogurt</span> for non-devs</li>
+              <li>✓ <span class="mono">git clone &amp;&amp; cargo run</span> for devs</li>
+              <li>✓ Run entirely from CLI; no app bundle in v1</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-border bg-base-100">
+          <div class="card-body">
+            <div class="flex items-center gap-2 mb-2"><span class="badge badge-warning badge-soft">Non-goals</span><span class="text-xs text-base-content/50">defer to v2+</span></div>
+            <ul class="text-sm space-y-2 text-base-content/80">
+              <li>✗ Calendar integration (Google / Outlook OAuth)</li>
+              <li>✗ Cross-meeting chat or semantic search</li>
+              <li>✗ Slack / Notion / CRM exports</li>
+              <li>✗ Mobile / web-hosted version</li>
+              <li>✗ Multi-user, auth, sync</li>
+              <li>✗ Per-speaker diarization (beyond Me/Them)</li>
+              <li>✗ MCP server / external API</li>
+              <li>✗ Windows / Linux support</li>
+              <li>✗ Custom-template authoring UI</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-border bg-base-100">
+          <div class="card-body">
+            <div class="flex items-center gap-2 mb-2"><span class="badge badge-error badge-soft">Anti-goals</span><span class="text-xs text-base-content/50">never</span></div>
+            <ul class="text-sm space-y-2 text-base-content/80">
+              <li>⊘ Joining meetings as a participant bot</li>
+              <li>⊘ Sending audio to a Yogurt cloud (there is none)</li>
+              <li>⊘ Subscription billing or telemetry by default</li>
+            </ul>
+            <div class="mt-3 text-xs text-base-content/50">Anti-goals are the things we commit to <em>never</em> doing, even if pressured.</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ──────────────── 3. USERS ──────────────── -->
+    <section id="s3">
+      <div class="sec-h"><span class="sec-num">§ 03</span><h2 class="sec-title">Users &amp; use cases</h2></div>
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table">
+          <thead>
+            <tr><th>Persona</th><th>Use case</th><th>Why Yogurt over Granola SaaS</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Solo IC, back-to-back meetings</strong></td><td>Wants notes without cognitive load.</td><td>Same UX, but doesn't trust SaaS with sensitive meeting content.</td></tr>
+            <tr><td><strong>Compliance-bound team</strong> (legal, security, finance, regulated)</td><td>Cannot transmit meeting audio to third parties.</td><td>Local STT + local notes is contractually viable.</td></tr>
+            <tr><td><strong>Self-hosted-LLM team</strong> (Ollama, vLLM)</td><td>Notes that flow through their internal LLM.</td><td>OpenAI-compat config covers it with zero extra plumbing.</td></tr>
+            <tr><td><strong>OSS contributor</strong></td><td>Wants to hack on the editor / add an STT backend.</td><td>Single Rust binary + small React app, no Electron.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ──────────────── 4. LOCKED DECISIONS ──────────────── -->
+    <section id="s4">
+      <div class="sec-h"><span class="sec-num">§ 04</span><h2 class="sec-title">The 8 locked decisions</h2></div>
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table table-zebra text-sm">
+          <thead>
+            <tr><th class="w-12">#</th><th>Question</th><th>Decision</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="font-bold">Q1</td><td>Core UX</td><td>Granola-style augmented notes + visible live transcript + in-meeting AI chat</td></tr>
+            <tr><td class="font-bold">Q2</td><td>Runtime architecture</td><td>Hybrid: localhost backend + browser UI + in-process audio capture</td></tr>
+            <tr><td class="font-bold">Q3</td><td>Transcription</td><td>Pluggable. Cloud (Deepgram) default. Local (<span class="mono">whisper.cpp</span>) opt-in.</td></tr>
+            <tr><td class="font-bold">Q4</td><td>v1 scope</td><td>8 IN, 10 deferred. macOS-only. (Template picker / summary tab cut 2026-06-24.)</td></tr>
+            <tr><td class="font-bold">Q5</td><td>Backend stack</td><td>Rust (axum + tokio), single static binary, embedded web assets</td></tr>
+            <tr><td class="font-bold">Q6</td><td>LLM provider</td><td>OpenAI-compat only. Presets: Minimax, OpenAI, Ollama, LM Studio, OpenRouter</td></tr>
+            <tr><td class="font-bold">Q7</td><td>Audio retention</td><td>Delete after transcription (Granola model)</td></tr>
+            <tr><td class="font-bold">Q8</td><td>Distribution</td><td>Homebrew + Cargo + GH Release binaries. Source build first-class</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ──────────────── 5. V1 FEATURES ──────────────── -->
+    <section id="s5">
+      <div class="sec-h"><span class="sec-num">§ 05</span><h2 class="sec-title">v1 feature list (8 features)</h2></div>
+      <p class="text-sm text-base-content/60 mb-5">Each with concrete acceptance criteria. Click any card to expand. <span class="badge badge-success badge-soft badge-xs ml-2">cut: template picker / summary tab — 2026-06-24</span></p>
+
+      <div class="space-y-3">
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.1</span>Record meeting (mic + system audio)</summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-2">
+            <p>Click "New meeting" → macOS Screen Recording prompt → captures two 16kHz mono PCM streams (mic + system loopback) pushed to STT via Tokio broadcast.</p>
+            <p><strong>Done when:</strong> 30-min recording on macOS 13+ captures both channels cleanly; clean stop on "End meeting."</p>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.2</span>Live transcript panel</summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-2">
+            <p>Right panel, scrolling, channel-labeled (Me = black, Them = grey), millisecond timestamps, auto-scroll with sticky behavior.</p>
+            <p><strong>Done when:</strong> &lt;2s lag with Deepgram, &lt;3s lag with local <span class="mono">whisper.cpp small.en</span>.</p>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10" open>
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.3</span>Augmented markdown notes editor <span class="badge badge-primary badge-soft badge-xs ml-2">signature feature</span></summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-3">
+            <p>TipTap-based markdown editor on the left of the meeting view. Pure markdown during the meeting; on "End meeting" the LLM gets (notes + transcript + template) and returns enriched markdown.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 my-3">
+              <div class="rounded border border-base-content/10 bg-base-200 p-3">
+                <div class="text-xs uppercase tracking-widest text-base-content/40 mb-2">Display contract</div>
+                <ul class="text-sm space-y-1">
+                  <li>· User content → <span class="text-base-content font-semibold">black</span></li>
+                  <li>· AI-added content → <span class="text-base-content/45">muted grey</span></li>
+                  <li>· Diff is computed structurally (markdown AST), not char-by-char</li>
+                </ul>
+              </div>
+              <div class="rounded border border-base-content/10 bg-base-200 p-3">
+                <div class="text-xs uppercase tracking-widest text-base-content/40 mb-2">Edit contract</div>
+                <ul class="text-sm space-y-1">
+                  <li>· Editing a grey range → promotes to black</li>
+                  <li>· Black ranges → never overwritten on re-enhance</li>
+                  <li>· Grey bullets carry <span class="mono text-xs">data-transcript-ts</span>; click jumps transcript</li>
+                </ul>
+              </div>
+            </div>
+            <p><strong>Done when:</strong> user types 5 sparse bullets in 30min meeting, hits End, sees enriched doc within 30s with black/grey contract intact and grey-bullet clicks jumping the transcript.</p>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.4</span>In-meeting AI chat</summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-2">
+            <p>Collapsible right panel. System prompt: "You are watching this meeting live. Answer using only the transcript so far." Streams response inline.</p>
+            <p><strong>Tuned for:</strong> "What's the current topic?", "Summarize the last 5 minutes.", "What did X say about Y?"</p>
+            <p><strong>Done when:</strong> first chunk &lt;2s after send, references transcript content accurately.</p>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-success/30">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-success mr-3">5.5</span>Bundled prompts <span class="badge badge-success badge-soft badge-xs ml-2">internal · 2 files</span></summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-3">
+            <p><span class="mono">crates/yogurt-prompts/</span> ships exactly two prompts in v1:</p>
+            <ul class="text-sm space-y-1.5">
+              <li>· <span class="mono">enhance.md</span> — produces the black/grey merged notes (5.3 depends on it)</li>
+              <li>· <span class="mono">chat-system.md</span> — system prompt for in-meeting chat (5.4)</li>
+            </ul>
+            <p>Not "templates" in the user-facing sense — no picker, no summary tab, no per-meeting switching. Power users edit either file in the repo; binary reload picks up changes.</p>
+            <div class="rounded-box bg-base-200 border border-base-content/10 p-3 text-xs">
+              <strong>Why no picker?</strong> Brainstorm decision (2026-06-24). Based on user's own experience that they never used the Granola template picker. Cutting it removes UI surface, a DB table (<span class="mono">summaries</span>), an API endpoint (<span class="mono">/summarize</span>), and an entire roadmap phase. Template picker defers to v2 — see §06.
+            </div>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.6</span>Settings UI</summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-2">
+            <p>Page at <span class="mono">/settings</span>, config in <span class="mono">~/.yogurt/config.toml</span>.</p>
+            <ul class="text-sm list-disc list-inside space-y-1">
+              <li><strong>LLM:</strong> list of providers (name + base URL + key + default model). Presets for Minimax / OpenAI / Ollama / LM Studio / OpenRouter.</li>
+              <li><strong>STT:</strong> Cloud (Deepgram | AssemblyAI | Groq Whisper) or Local (<span class="mono">whisper.cpp</span> with model picker).</li>
+              <li><strong>Audio:</strong> input device picker.</li>
+              <li><strong>General:</strong> port, data dir, auto-open browser.</li>
+            </ul>
+            <p>API keys → macOS Keychain via <span class="mono">keyring</span> crate, never in plaintext.</p>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.7</span>Local storage (SQLite + markdown export)</summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-2">
+            <p>SQLite at <span class="mono">~/.yogurt/db.sqlite</span> + one markdown file per meeting at <span class="mono">~/.yogurt/notes/&lt;ts&gt;-&lt;slug&gt;.md</span>.</p>
+            <p>Markdown is the source of truth for "I want to grep my meetings"; SQLite is the structured mirror.</p>
+          </div>
+        </details>
+
+        <details class="collapse collapse-arrow bg-base-100 border border-base-content/10">
+          <summary class="collapse-title font-medium"><span class="mono text-xs text-primary mr-3">5.8</span>macOS only (Apple Silicon primary)</summary>
+          <div class="collapse-content text-sm text-base-content/75 space-y-2">
+            <p>Universal binary (arm64 + x86_64). macOS 13+ required (ScreenCaptureKit). Intel is best-effort. Architecture isolates platform code in <span class="mono">crates/yogurt-audio</span> so future Win/Linux is additive.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- ──────────────── 6. DEFERRED ──────────────── -->
+    <section id="s6">
+      <div class="sec-h"><span class="sec-num">§ 06</span><h2 class="sec-title">v2+ deferred (priority order)</h2></div>
+      <ol class="steps steps-vertical">
+        <li class="step">Calendar integration (Google + Outlook OAuth)</li>
+        <li class="step step-warning">Summary tab + template picker (1:1 / standup / interview / custom) <span class="badge badge-warning badge-soft badge-xs ml-2">cut from v1 2026-06-24</span></li>
+        <li class="step">Cross-meeting chat / semantic search (embeddings + sqlite-vss / LanceDB)</li>
+        <li class="step">Integrations: Slack / Notion / Linear exports</li>
+        <li class="step">Custom-template authoring UI</li>
+        <li class="step">Per-speaker diarization (pyannote sidecar, opt-in)</li>
+        <li class="step">Menu-bar / global-hotkey UI (Tauri wrap of same backend)</li>
+        <li class="step">Windows + Linux support</li>
+        <li class="step">MCP server</li>
+        <li class="step">Optional encrypted sync (user-hosted only — never a Yogurt cloud)</li>
+      </ol>
+    </section>
+
+    <!-- ──────────────── 7. ARCHITECTURE ──────────────── -->
+    <section id="s7">
+      <div class="sec-h"><span class="sec-num">§ 07</span><h2 class="sec-title">Architecture</h2></div>
+      <p class="text-sm text-base-content/60 mb-6">One process. No subprocesses, no IPC, no sidecar binaries. Audio, STT, LLM, web serving, and SQLite all in one Rust binary.</p>
+
+      <div class="rounded-box border border-base-content/15 bg-base-100 p-6 lg:p-10">
+        <div class="grid grid-cols-1 lg:grid-cols-[180px,1fr,180px] gap-6 items-center">
+
+          <!-- Left: browser -->
+          <div class="arch-box border-primary">
+            <div class="label">Client</div>
+            <div class="name">Browser</div>
+            <div class="text-[10px] mt-1 opacity-50">Chrome · Safari · any</div>
+          </div>
+
+          <!-- Center: yogurt binary -->
+          <div class="rounded-xl border-2 border-dashed border-primary/40 p-5">
+            <div class="text-[10px] uppercase tracking-widest text-primary/70 mb-3 text-center">single Rust binary · <span class="mono">yogurt</span></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="arch-box"><div class="label">HTTP + WS</div><div class="name">axum</div></div>
+              <div class="arch-box"><div class="label">Capture</div><div class="name">screencapturekit</div></div>
+              <div class="arch-box"><div class="label">STT engine</div><div class="name">trait: cloud | local</div></div>
+              <div class="arch-box"><div class="label">LLM client</div><div class="name">OpenAI-compat</div></div>
+              <div class="arch-box col-span-2"><div class="label">Persistence</div><div class="name">SQLite · markdown files</div></div>
+            </div>
+          </div>
+
+          <!-- Right: cloud (optional) -->
+          <div class="arch-box border-base-content/20">
+            <div class="label">Cloud · opt-in</div>
+            <div class="name">STT · LLM</div>
+            <div class="text-[10px] mt-1 opacity-50">Deepgram · Minimax · Ollama-host · …</div>
+          </div>
+
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[180px,1fr,180px] gap-6 mt-4 text-[11px] text-base-content/60">
+          <div class="text-right">HTTP + WS<br/><span class="mono opacity-50">:7878</span></div>
+          <div class="text-center"><span class="opacity-50">↑↓ in-process function calls only</span></div>
+          <div>HTTPS<br/><span class="opacity-50">(only if cloud STT or LLM selected)</span></div>
+        </div>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-3"><strong class="text-sm">One process</strong><p class="text-xs text-base-content/60 mt-1">No subprocesses, no IPC, no sidecar binaries.</p></div>
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-3"><strong class="text-sm">In-process audio</strong><p class="text-xs text-base-content/60 mt-1">ScreenCaptureKit called from Rust directly. OS permission dialog triggered by binary.</p></div>
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-3"><strong class="text-sm">Cloud is opt-in</strong><p class="text-xs text-base-content/60 mt-1">Fully-local config (whisper.cpp + Ollama) supported and documented.</p></div>
+      </div>
+    </section>
+
+    <!-- ──────────────── 8. COMPONENT BREAKDOWN ──────────────── -->
+    <section id="s8">
+      <div class="sec-h"><span class="sec-num">§ 08</span><h2 class="sec-title">Component breakdown (Cargo workspace)</h2></div>
+
+      <div class="mockup-code bg-base-300 text-sm">
+        <pre><code>yogurt/</code></pre>
+        <pre><code>├── Cargo.toml                      <span class="opacity-50"># workspace root</span></code></pre>
+        <pre><code>├── crates/</code></pre>
+        <pre><code>│   ├── yogurt-cli/                 <span class="opacity-50"># binary entrypoint: `yogurt start`, `yogurt config`</span></code></pre>
+        <pre><code>│   ├── yogurt-server/              <span class="opacity-50"># axum HTTP + WS · embeds web/dist</span></code></pre>
+        <pre><code>│   ├── yogurt-audio/               <span class="opacity-50"># ScreenCaptureKit + CoreAudio wrapper</span></code></pre>
+        <pre><code>│   ├── yogurt-stt/                 <span class="opacity-50"># STT trait + Deepgram + AssemblyAI + whisper.cpp</span></code></pre>
+        <pre><code>│   ├── yogurt-llm/                 <span class="opacity-50"># OpenAI-compat client</span></code></pre>
+        <pre><code>│   ├── yogurt-db/                  <span class="opacity-50"># SQLite (rusqlite) · migrations</span></code></pre>
+        <pre><code>│   ├── yogurt-notes/               <span class="opacity-50"># markdown ↔ AST ↔ augmented-merge logic</span></code></pre>
+        <pre><code>│   └── yogurt-prompts/             <span class="opacity-50"># bundled templates + system prompts</span></code></pre>
+        <pre><code>├── web/                            <span class="opacity-50"># React + Vite + TS + TipTap + Tailwind</span></code></pre>
+        <pre><code>├── docs/PRD.md                     <span class="opacity-50"># this document</span></code></pre>
+        <pre><code>└── .github/workflows/release.yml   <span class="opacity-50"># cross-compile · brew tap · GH Release</span></code></pre>
+      </div>
+
+      <p class="text-xs text-base-content/60 mt-4">Each crate is independently testable, each has one clear purpose. Platform code lives behind a trait so future Windows/Linux ports are additive, not invasive.</p>
+    </section>
+
+    <!-- ──────────────── 9. DATA MODEL ──────────────── -->
+    <section id="s9">
+      <div class="sec-h"><span class="sec-num">§ 09</span><h2 class="sec-title">Data model (SQLite)</h2></div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <div class="schema-table">
+          <div class="name">meetings</div>
+          <div class="col"><span class="ck">PK</span><span class="nm">id</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">title</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">started_at</span><span class="ty">INTEGER</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">ended_at</span><span class="ty">INTEGER?</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">notes_md</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">enriched_md</span><span class="ty">TEXT?</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">transcript_json</span><span class="ty">TEXT</span></div>
+        </div>
+
+        <div class="schema-table">
+          <div class="name">chat_messages</div>
+          <div class="col"><span class="ck">PK</span><span class="nm">id</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck">FK</span><span class="nm">meeting_id</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">role</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">content</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">created_at</span><span class="ty">INTEGER</span></div>
+        </div>
+
+      </div>
+
+      <p class="text-xs text-base-content/60 mt-4">IDs are ULIDs. <span class="mono">transcript_json</span> stores <span class="mono">[{ts_ms, channel, text}]</span>. Markdown files on disk mirror <span class="mono">meetings</span> rows on every mutation — markdown is canonical for export.</p>
+    </section>
+
+    <!-- ──────────────── 10. API ──────────────── -->
+    <section id="s10">
+      <div class="sec-h"><span class="sec-num">§ 10</span><h2 class="sec-title">API surface</h2></div>
+
+      <h3 class="text-sm uppercase tracking-widest text-base-content/50 mb-3">REST (axum)</h3>
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100 mb-8">
+        <table class="table table-zebra table-sm">
+          <thead><tr><th class="w-20">Method</th><th>Path</th><th>Purpose</th></tr></thead>
+          <tbody class="mono text-xs">
+            <tr><td><span class="badge badge-soft badge-info badge-xs">GET</span></td><td>/api/meetings</td><td>List meetings, newest first</td></tr>
+            <tr><td><span class="badge badge-soft badge-success badge-xs">POST</span></td><td>/api/meetings</td><td>Create new meeting</td></tr>
+            <tr><td><span class="badge badge-soft badge-info badge-xs">GET</span></td><td>/api/meetings/:id</td><td>Full meeting</td></tr>
+            <tr><td><span class="badge badge-soft badge-warning badge-xs">PATCH</span></td><td>/api/meetings/:id</td><td>Update title or notes_md</td></tr>
+            <tr><td><span class="badge badge-soft badge-success badge-xs">POST</span></td><td>/api/meetings/:id/start</td><td>Begin recording + STT</td></tr>
+            <tr><td><span class="badge badge-soft badge-success badge-xs">POST</span></td><td>/api/meetings/:id/stop</td><td>End recording, kick off enhance</td></tr>
+            <tr><td><span class="badge badge-soft badge-success badge-xs">POST</span></td><td>/api/meetings/:id/enhance</td><td>Re-run augmented-notes enhance</td></tr>
+            <tr><td><span class="badge badge-soft badge-success badge-xs">POST</span></td><td>/api/meetings/:id/chat</td><td>Chat (streaming)</td></tr>
+            <tr><td><span class="badge badge-soft badge-error badge-xs">DEL</span></td><td>/api/meetings/:id</td><td>Delete meeting + .md file</td></tr>
+            <tr><td><span class="badge badge-soft badge-info badge-xs">GET</span></td><td>/api/settings</td><td>Current config (no keys exposed)</td></tr>
+            <tr><td><span class="badge badge-soft badge-warning badge-xs">PATCH</span></td><td>/api/settings</td><td>Update config</td></tr>
+            <tr><td><span class="badge badge-soft badge-success badge-xs">POST</span></td><td>/api/settings/providers</td><td>Add/update LLM or STT provider</td></tr>
+            <tr><td><span class="badge badge-soft badge-info badge-xs">GET</span></td><td>/api/audio/devices</td><td>List input devices</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-sm uppercase tracking-widest text-base-content/50 mb-3">WebSocket — <span class="mono">/ws/meetings/:id</span></h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs uppercase tracking-widest text-base-content/40 mb-2">Server → Client</div>
+          <ul class="space-y-2 text-sm">
+            <li class="bg-base-100 border border-base-content/10 rounded p-3"><span class="mono text-xs text-primary">transcript</span><br/><span class="text-xs text-base-content/60">{ts_ms, channel, text, is_final}</span></li>
+            <li class="bg-base-100 border border-base-content/10 rounded p-3"><span class="mono text-xs text-primary">notes_synced</span><br/><span class="text-xs text-base-content/60">{rev, md}</span></li>
+            <li class="bg-base-100 border border-base-content/10 rounded p-3"><span class="mono text-xs text-primary">enhance_progress</span><br/><span class="text-xs text-base-content/60">{phase, chars?}</span></li>
+            <li class="bg-base-100 border border-base-content/10 rounded p-3"><span class="mono text-xs text-primary">chat_chunk</span><br/><span class="text-xs text-base-content/60">{message_id, delta}</span></li>
+          </ul>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-widest text-base-content/40 mb-2">Client → Server</div>
+          <ul class="space-y-2 text-sm">
+            <li class="bg-base-100 border border-base-content/10 rounded p-3"><span class="mono text-xs text-success">notes_edit</span><br/><span class="text-xs text-base-content/60">{rev, md} (debounced)</span></li>
+            <li class="bg-base-100 border border-base-content/10 rounded p-3"><span class="mono text-xs text-success">chat_send</span><br/><span class="text-xs text-base-content/60">{content}</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────────── 11. DISTRIBUTION ──────────────── -->
+    <section id="s11">
+      <div class="sec-h"><span class="sec-num">§ 11</span><h2 class="sec-title">Distribution &amp; dev workflow</h2></div>
+
+      <div role="alert" class="alert alert-success alert-soft mb-6 items-start">
+        <div>
+          <div class="font-bold">Yes — <span class="mono">brew install yogurt</span> installs everything as one command.</div>
+          <p class="text-sm mt-1 opacity-90">Single static Rust binary. Web assets embedded via <span class="mono">rust-embed</span>, <span class="mono">whisper.cpp</span> linked statically, ScreenCaptureKit bindings against the system framework. The Homebrew formula downloads the prebuilt binary for the user's arch from the matching GitHub Release and drops it in <span class="mono">/opt/homebrew/bin/yogurt</span>. No Node, no Python, no separate audio helper.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        <div>
+          <div class="text-xs uppercase tracking-widest text-base-content/50 mb-2">End user install</div>
+          <div class="mockup-code bg-base-300 text-xs">
+            <pre data-prefix="$"><code>brew install yogurt</code></pre>
+            <pre data-prefix="$"><code>yogurt start</code></pre>
+            <pre data-prefix=">" class="opacity-50"><code>→ opens http://localhost:7878</code></pre>
+            <pre data-prefix=">" class="opacity-50"><code>→ macOS prompts for Screen Recording permission</code></pre>
+          </div>
+
+          <div class="text-xs uppercase tracking-widest text-base-content/50 mb-2 mt-6">Alternative installs</div>
+          <div class="mockup-code bg-base-300 text-xs">
+            <pre data-prefix="#" class="opacity-60"><code> Rust developers:</code></pre>
+            <pre data-prefix="$"><code>cargo install yogurt</code></pre>
+            <pre data-prefix=" " class="opacity-30"><code> </code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> Direct binary download:</code></pre>
+            <pre data-prefix="$"><code>curl -L github.com/&lt;org&gt;/yogurt/releases/latest/...</code></pre>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-xs uppercase tracking-widest text-base-content/50 mb-2">Source / contributor workflow</div>
+          <div class="mockup-code bg-base-300 text-xs">
+            <pre data-prefix="$"><code>git clone https://github.com/&lt;org&gt;/yogurt.git</code></pre>
+            <pre data-prefix="$"><code>cd yogurt</code></pre>
+            <pre data-prefix="$"><code>brew install rust pnpm</code></pre>
+            <pre data-prefix="$"><code>pnpm --dir web install</code></pre>
+            <pre data-prefix=" " class="opacity-30"><code> </code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> terminal 1 — backend with auto-rebuild:</code></pre>
+            <pre data-prefix="$"><code>cargo run -p yogurt-cli -- start --dev</code></pre>
+            <pre data-prefix=" " class="opacity-30"><code> </code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> terminal 2 — frontend HMR:</code></pre>
+            <pre data-prefix="$"><code>pnpm --dir web dev</code></pre>
+            <pre data-prefix=" " class="opacity-30"><code> </code></pre>
+            <pre data-prefix="#" class="opacity-60"><code> release build (single binary):</code></pre>
+            <pre data-prefix="$"><code>pnpm --dir web build &amp;&amp; cargo build --release</code></pre>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mt-6 rounded-box border border-base-content/10 bg-base-100 p-4">
+        <h4 class="text-sm font-semibold mb-2">Release pipeline (GitHub Actions, on tag <span class="mono">v*</span>)</h4>
+        <ol class="text-sm text-base-content/75 list-decimal list-inside space-y-1">
+          <li>Matrix build: <span class="mono">aarch64-apple-darwin</span> + <span class="mono">x86_64-apple-darwin</span></li>
+          <li>Each builds frontend → <span class="mono">cargo build --release</span></li>
+          <li>Tarballs uploaded to GitHub Release</li>
+          <li>Workflow opens PR against <span class="mono">homebrew-yogurt</span> tap w/ updated SHA256</li>
+          <li><span class="mono">cargo publish</span> for the binary crate</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ──────────────── 12. ROADMAP ──────────────── -->
+    <section id="s12">
+      <div class="sec-h"><span class="sec-num">§ 12</span><h2 class="sec-title">Implementation roadmap</h2></div>
+      <p class="text-sm text-base-content/60 mb-6">Working-day estimates. Phases 0-2 are highest-risk because they validate the audio + transcription path.</p>
+
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table table-zebra">
+          <thead><tr><th class="w-20">Phase</th><th>Deliverable</th><th class="w-20 text-right">Days</th></tr></thead>
+          <tbody class="text-sm">
+            <tr><td><span class="badge badge-primary badge-soft">0</span></td><td><strong>Skeleton</strong> — Cargo workspace, axum hello-world, CLI <span class="mono">start</span>, web scaffold</td><td class="text-right mono">1</td></tr>
+            <tr><td><span class="badge badge-primary badge-soft">1</span></td><td><strong>Audio capture</strong> — ScreenCaptureKit init, mic, 2-channel broadcast, permission UX</td><td class="text-right mono">2</td></tr>
+            <tr><td><span class="badge badge-primary badge-soft">2</span></td><td><strong>Cloud STT</strong> — Deepgram streaming, live transcript via WS</td><td class="text-right mono">2</td></tr>
+            <tr><td><span class="badge badge-warning badge-soft">3</span></td><td><strong>Augmented notes</strong> — TipTap marks, markdown round-trip, enhance endpoint <span class="badge badge-error badge-xs ml-2">highest risk</span></td><td class="text-right mono">3-4</td></tr>
+            <tr><td><span class="badge badge-primary badge-soft">4</span></td><td><strong>LLM client</strong> — OpenAI-compat client, settings UI, Keychain</td><td class="text-right mono">1-2</td></tr>
+            <tr><td><span class="badge badge-primary badge-soft">5</span></td><td><strong>In-meeting chat</strong> — streaming chat endpoint, transcript-aware prompt</td><td class="text-right mono">1</td></tr>
+            <tr><td><span class="badge badge-primary badge-soft">6</span></td><td><strong>Local STT</strong> — whisper-rs adapter, model download UX, VAD streaming</td><td class="text-right mono">2</td></tr>
+            <tr><td><span class="badge badge-primary badge-soft">7</span></td><td><strong>Polish + distribution</strong> — markdown export, README, Homebrew tap, GH Actions</td><td class="text-right mono">2-3</td></tr>
+            <tr class="font-bold"><td></td><td class="text-right">Total <span class="text-xs font-normal text-base-content/50">(was ~15d before templates cut)</span></td><td class="text-right mono">~14d</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ──────────────── 13. RISKS ──────────────── -->
+    <section id="s13">
+      <div class="sec-h"><span class="sec-num">§ 13</span><h2 class="sec-title">Open risks</h2></div>
+
+      <div class="space-y-3">
+
+        <div role="alert" class="alert alert-warning alert-soft items-start">
+          <div>
+            <div class="font-bold"><span class="mono">screencapturekit</span> crate gaps for audio-only loopback</div>
+            <p class="text-sm mt-1 opacity-90"><strong>Mitigation:</strong> Phase 1 spike. If crate falls short, ship a thin Swift binary (~150 lines) as a subprocess. Pure additive change, no architectural reshape.</p>
+          </div>
+        </div>
+
+        <div role="alert" class="alert alert-error alert-soft items-start">
+          <div>
+            <div class="font-bold">TipTap struggling with structural diff of LLM-rewritten markdown</div>
+            <p class="text-sm mt-1 opacity-90"><strong>Mitigation:</strong> Phase 3 prototype against 3 real meeting transcripts before committing. Fallback: ProseMirror directly. <em>This is the single highest-risk item.</em></p>
+          </div>
+        </div>
+
+        <div role="alert" class="alert alert-soft items-start">
+          <div>
+            <div class="font-bold">whisper.cpp streaming partials worse than Deepgram</div>
+            <p class="text-sm mt-1 opacity-90"><strong>Mitigation:</strong> Acceptable — local is the privacy escape hatch, not daily-driver. Document expected lag.</p>
+          </div>
+        </div>
+
+        <div role="alert" class="alert alert-info alert-soft items-start">
+          <div>
+            <div class="font-bold">Browser <span class="mono">getUserMedia</span> permission collision</div>
+            <p class="text-sm mt-1 opacity-90"><strong>Mitigation:</strong> Non-issue — we don't use <span class="mono">getUserMedia</span>. All audio captured by the Rust binary; browser only renders UI.</p>
+          </div>
+        </div>
+
+        <div role="alert" class="alert alert-warning alert-soft items-start">
+          <div>
+            <div class="font-bold">First-meeting macOS Screen Recording permission friction</div>
+            <p class="text-sm mt-1 opacity-90"><strong>Mitigation:</strong> Onboarding screen with screenshot explaining the prompt. After grant, user must restart Yogurt once (macOS limitation, not ours).</p>
+          </div>
+        </div>
+
+        <div role="alert" class="alert alert-soft items-start">
+          <div>
+            <div class="font-bold">whisper.cpp model download size (500MB-3GB)</div>
+            <p class="text-sm mt-1 opacity-90"><strong>Mitigation:</strong> Settings shows download progress. Default cloud STT means most users never trigger it.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ──────────────── 14. SUCCESS CRITERIA ──────────────── -->
+    <section id="s14">
+      <div class="sec-h"><span class="sec-num">§ 14</span><h2 class="sec-title">Success criteria for v1</h2></div>
+      <p class="text-sm text-base-content/60 mb-5">All four must be true for v1 to ship.</p>
+
+      <div class="space-y-3">
+        <div class="flex gap-4 p-4 rounded-box bg-base-100 border border-base-content/10">
+          <div class="text-2xl">①</div>
+          <div><strong>End-to-end install on M-series.</strong><br/><span class="text-sm text-base-content/65">New user runs <span class="mono">brew install yogurt &amp;&amp; yogurt start</span>, grants Screen Recording, pastes Minimax key, records + transcribes + gets augmented notes for a real meeting.</span></div>
+        </div>
+        <div class="flex gap-4 p-4 rounded-box bg-base-100 border border-base-content/10">
+          <div class="text-2xl">②</div>
+          <div><strong>Black/grey notes feel indistinguishable from Granola.</strong><br/><span class="text-sm text-base-content/65">Visual quality of the augmented-notes merge is the headline feature; if this isn't right, nothing else matters.</span></div>
+        </div>
+        <div class="flex gap-4 p-4 rounded-box bg-base-100 border border-base-content/10">
+          <div class="text-2xl">③</div>
+          <div><strong>Fully-local mode works end-to-end.</strong><br/><span class="text-sm text-base-content/65">Privacy-focused user can switch to <span class="mono">whisper.cpp</span> + a local Ollama endpoint and the pipeline runs with no internet.</span></div>
+        </div>
+        <div class="flex gap-4 p-4 rounded-box bg-base-100 border border-base-content/10">
+          <div class="text-2xl">④</div>
+          <div><strong>Dev environment in 5 minutes.</strong><br/><span class="text-sm text-base-content/65">Developer can <span class="mono">git clone &amp;&amp; cargo run</span> and have a working dev environment within 5 minutes from cold.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────────── 15. OPEN QUESTIONS ──────────────── -->
+    <section id="s15">
+      <div class="sec-h"><span class="sec-num">§ 15</span><h2 class="sec-title">Open questions for future rounds</h2></div>
+      <p class="text-sm text-base-content/60 mb-5">Not blocking v1 design. Worth surfacing.</p>
+
+      <form onsubmit="return submitOpen(event)" class="space-y-4">
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-soft mt-1">Naming</span>
+            <div class="flex-1">
+              <div class="font-medium">Is "Yogurt" the keeper, or a working name?</div>
+              <input type="text" name="naming" class="input input-sm input-ghost w-full mt-2" placeholder="leave blank to keep Yogurt; otherwise propose a new name" />
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-soft mt-1">License</span>
+            <div class="flex-1">
+              <div class="font-medium">Default assumption: MIT (matches Meetily / Hyprnote). Confirm?</div>
+              <fieldset class="fieldset mt-2">
+                <label class="label gap-2"><input type="radio" name="license" value="mit" class="radio radio-sm radio-primary" checked /> MIT (recommended)</label>
+                <label class="label gap-2"><input type="radio" name="license" value="apache" class="radio radio-sm radio-primary" /> Apache 2.0</label>
+                <label class="label gap-2"><input type="radio" name="license" value="agpl" class="radio radio-sm radio-primary" /> AGPL-3.0 (strongly copyleft)</label>
+              </fieldset>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-soft mt-1">Org / Repo</span>
+            <div class="flex-1">
+              <div class="font-medium">Personal GitHub or new org?</div>
+              <input type="text" name="org" class="input input-sm input-ghost w-full mt-2" placeholder="e.g. 'personal: 3chenr', 'create new org: yogurt-meet'" />
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-box bg-base-100 border border-base-content/10 p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-soft mt-1">Telemetry</span>
+            <div class="flex-1">
+              <div class="font-medium">Even fully opt-in, any phone-home (e.g. self-hosted Sentry for crashes)?</div>
+              <fieldset class="fieldset mt-2">
+                <label class="label gap-2"><input type="radio" name="telemetry" value="none" class="radio radio-sm radio-primary" checked /> No phone-home of any kind</label>
+                <label class="label gap-2"><input type="radio" name="telemetry" value="opt-in" class="radio radio-sm radio-primary" /> Opt-in only (Sentry self-hosted for crashes)</label>
+              </fieldset>
+            </div>
+          </div>
+        </div>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Anything else?</legend>
+          <textarea id="open-extra" class="textarea w-full" rows="2" placeholder="other feedback on the PRD overall"></textarea>
+        </fieldset>
+
+        <div class="flex justify-end gap-3">
+          <button type="submit" class="btn btn-primary" data-lavish-action>Answer open questions &amp; approve</button>
+        </div>
+      </form>
+    </section>
+
+    <footer class="text-center text-xs text-base-content/40 pt-10 pb-16 border-t border-base-content/5">
+      Yogurt PRD · v1 draft · 2026-06-24 · <span class="mono">.lavish/prd-review.html</span> · source of truth: <span class="mono">docs/PRD.md</span>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+  // TOC active-section tracking
+  const sections = [...document.querySelectorAll('section[id]')];
+  const links = [...document.querySelectorAll('.toc-link')];
+  const map = new Map(sections.map(s => [s.id, links.find(l => l.getAttribute('href') === '#' + s.id)]));
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      const link = map.get(e.target.id);
+      if (!link) return;
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+
+  function submitOpen(event) {
+    event.preventDefault();
+    const fd = new FormData(event.currentTarget);
+    const naming = (fd.get('naming') || '').toString().trim();
+    const license = fd.get('license');
+    const org = (fd.get('org') || '').toString().trim();
+    const telemetry = fd.get('telemetry');
+    const extra = document.getElementById('open-extra').value.trim();
+
+    const lines = ['PRD review feedback:', ''];
+    lines.push(`Naming: ${naming || 'keep "Yogurt"'}`);
+    lines.push(`License: ${license}`);
+    lines.push(`Org/repo: ${org || 'unspecified'}`);
+    lines.push(`Telemetry: ${telemetry === 'none' ? 'No phone-home' : 'Opt-in only (Sentry self-hosted)'}`);
+    if (extra) { lines.push(''); lines.push(`Extra:`); lines.push(`  ${extra}`); }
+    lines.push('');
+    lines.push('PRD approved — proceed to writing-plans skill.');
+
+    window.lavish.queuePrompt(lines.join('\n'), { tag: 'review', text: 'PRD review + approval', data: { naming, license, org, telemetry, extra } });
+    return false;
+  }
+</script>
+
+</body>
+</html>

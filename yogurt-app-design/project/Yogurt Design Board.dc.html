@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --paper:#FBF7EF; --card:#FFFFFF; --ink:#211D18; --grey:#A89F90; --line:#EBE3D5; --blue:#5B4FC7; --blsoft:#ECE9FB; --straw:#E07A66; --matcha:#5E9E73; --mtsoft:#E7F0E8; --mut:#8A8174; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Hanken Grotesk',system-ui,sans-serif; }
+  @keyframes recpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.82)} }
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  @keyframes wave { 0%,100%{transform:scaleY(.35)} 50%{transform:scaleY(1)} }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+  @keyframes slideInRight { from{transform:translateX(34px);opacity:0} to{transform:translateX(0);opacity:1} }
+  @keyframes popUp { from{transform:translate(-50%,16px) scale(.95);opacity:0} to{transform:translate(-50%,0) scale(1);opacity:1} }
+  @keyframes shimmer { 0%{background-position:-140px 0} 100%{background-position:260px 0} }
+</style>
+</helmet>
+
+<!-- ===================== TITLE / INTRO ===================== -->
+<div style="position:absolute;left:80px;top:48px;width:760px">
+  <div style="display:flex;align-items:center;gap:16px">
+    <svg viewBox="0 0 44 44" width="46" height="46" style="flex:none"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>
+    <div>
+      <div style="font-family:'Instrument Serif',serif;font-size:52px;line-height:.9;color:#211D18;letter-spacing:-.01em">yogurt</div>
+    </div>
+  </div>
+  <div style="margin-top:14px;font-size:16px;line-height:1.55;color:#6B6256;max-width:620px">A local-first, open-source meeting copilot. Granola's augmented-notes UX, the privacy posture inverted — your audio never leaves the machine. This board is the visual system and the four core screens.</div>
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B4FC7;background:#ECE9FB;padding:5px 10px;border-radius:6px">$ yogurt start</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:5px 10px;border-radius:6px">localhost:7878</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5E9E73;background:#E7F0E8;padding:5px 10px;border-radius:6px">100% on-device</span>
+  </div>
+</div>
+<div style="position:absolute;left:980px;top:60px;width:230px;background:#FEF4A8;padding:14px 16px;font-size:13px;line-height:1.45;color:#5a5238;box-shadow:0 2px 10px rgba(40,30,15,.12);transform:rotate(-1.4deg)">The hero is the <b>black-you / grey-AI</b> note merge. Hit <b>Replay merge</b> on the post-meeting screen to watch your bullets bloom. ↘</div>
+
+<!-- ===================== SECTION: FOUNDATION ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:236px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">01 — DESIGN SYSTEM</div>
+
+<div style="position:absolute;left:80px;top:268px;width:1240px;background:#FFFFFF;border:1px solid #EBE3D5;border-radius:18px;box-shadow:0 24px 60px -28px rgba(40,30,15,.22);overflow:hidden">
+  <!-- header band -->
+  <div style="display:flex;align-items:stretch;border-bottom:1px solid #EBE3D5">
+    <div style="flex:1;padding:32px 36px;background:#FBF7EF">
+      <div style="font-family:'Instrument Serif',serif;font-size:30px;color:#211D18">The Yogurt system</div>
+      <div style="margin-top:6px;font-size:14px;color:#6B6256;max-width:520px;line-height:1.5">Creamy paper, ink-black thinking, and a blueberry swirl. Warm and editorial enough to live in all day; technical enough to feel like a local dev tool.</div>
+    </div>
+    <div style="width:300px;border-left:1px solid #EBE3D5;display:flex;align-items:center;justify-content:center;gap:22px;background:#fff">
+      <svg viewBox="0 0 44 44" width="58" height="58"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>
+      <div>
+        <div style="font-family:'Instrument Serif',serif;font-size:30px;color:#211D18;line-height:.9">yogurt</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90;margin-top:5px;letter-spacing:.05em">spoon &amp; swirl mark</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+    <!-- COLOR -->
+    <div style="padding:30px 36px;border-right:1px solid #EBE3D5;border-bottom:1px solid #EBE3D5">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.12em;color:#A89F90;margin-bottom:18px">PALETTE</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+        <div style="border:1px solid #EBE3D5;border-radius:12px;overflow:hidden"><div style="height:54px;background:#FBF7EF"></div><div style="padding:8px 11px"><div style="font-size:13px;font-weight:600;color:#211D18">Paper</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">#FBF7EF</div></div></div>
+        <div style="border:1px solid #EBE3D5;border-radius:12px;overflow:hidden"><div style="height:54px;background:#211D18"></div><div style="padding:8px 11px"><div style="font-size:13px;font-weight:600;color:#211D18">Ink — you</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">#211D18</div></div></div>
+        <div style="border:1px solid #EBE3D5;border-radius:12px;overflow:hidden"><div style="height:54px;background:#A89F90"></div><div style="padding:8px 11px"><div style="font-size:13px;font-weight:600;color:#211D18">Grey — AI</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">#A89F90</div></div></div>
+        <div style="border:1px solid #EBE3D5;border-radius:12px;overflow:hidden"><div style="height:54px;background:#5B4FC7"></div><div style="padding:8px 11px"><div style="font-size:13px;font-weight:600;color:#211D18">Blueberry</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">#5B4FC7</div></div></div>
+        <div style="border:1px solid #EBE3D5;border-radius:12px;overflow:hidden"><div style="height:54px;background:#E07A66"></div><div style="padding:8px 11px"><div style="font-size:13px;font-weight:600;color:#211D18">Strawberry</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">#E07A66</div></div></div>
+        <div style="border:1px solid #EBE3D5;border-radius:12px;overflow:hidden"><div style="height:54px;background:#5E9E73"></div><div style="padding:8px 11px"><div style="font-size:13px;font-weight:600;color:#211D18">Matcha — local</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">#5E9E73</div></div></div>
+      </div>
+    </div>
+    <!-- TYPE -->
+    <div style="padding:30px 36px;border-bottom:1px solid #EBE3D5">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.12em;color:#A89F90;margin-bottom:18px">TYPE</div>
+      <div style="border-bottom:1px solid #F2EBDD;padding-bottom:16px;margin-bottom:16px">
+        <div style="font-family:'Instrument Serif',serif;font-size:40px;color:#211D18;line-height:1">Augmented notes</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90;margin-top:6px">Instrument Serif · display &amp; wordmark</div>
+      </div>
+      <div style="border-bottom:1px solid #F2EBDD;padding-bottom:16px;margin-bottom:16px">
+        <div style="font-size:21px;font-weight:700;color:#211D18">Weekly sync, captured cleanly</div>
+        <div style="font-size:15px;color:#6B6256;margin-top:4px">Hanken Grotesk carries every label, button, and note body — warm, legible, neutral.</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90;margin-top:8px">Hanken Grotesk · 400 / 500 / 600 / 700</div>
+      </div>
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#5B4FC7">00:14:02 · Them → action item</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90;margin-top:6px">JetBrains Mono · timestamps, CLI, technical</div>
+      </div>
+    </div>
+    <!-- SIGNATURE NOTE TREATMENT -->
+    <div style="padding:30px 36px;border-right:1px solid #EBE3D5">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.12em;color:#A89F90;margin-bottom:18px">THE SIGNATURE — BLACK YOU / GREY AI</div>
+      <div style="background:#FBF7EF;border:1px solid #EBE3D5;border-radius:12px;padding:20px 22px">
+        <ul style="margin:0;padding-left:18px;list-style:none">
+          <li style="position:relative;font-size:15.5px;line-height:1.6;color:#211D18;font-weight:600;margin-bottom:4px"><span style="position:absolute;left:-16px;color:#211D18">•</span>Q3 launch — risks?</li>
+          <li style="position:relative;font-size:14.5px;line-height:1.55;color:#A89F90;margin:3px 0 3px 14px"><span style="position:absolute;left:-14px">◦</span>Intel Macs limited to <span style="border-bottom:1.5px dotted #C9B8F0;cursor:pointer">small.en real-time</span> — main risk.</li>
+          <li style="position:relative;font-size:14.5px;line-height:1.55;color:#A89F90;margin:3px 0 8px 14px"><span style="position:absolute;left:-14px">◦</span>Ship arm64 first; Intel best-effort.</li>
+          <li style="position:relative;font-size:15.5px;line-height:1.6;color:#211D18;font-weight:600"><span style="position:absolute;left:-16px;color:#211D18">•</span>Pricing</li>
+        </ul>
+      </div>
+      <div style="display:flex;gap:18px;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#211D18"></span><span style="font-size:12.5px;color:#6B6256">You typed it</span></div>
+        <div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#A89F90"></span><span style="font-size:12.5px;color:#6B6256">AI added it · edit to keep</span></div>
+      </div>
+    </div>
+    <!-- COMPONENTS -->
+    <div style="padding:30px 36px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.12em;color:#A89F90;margin-bottom:18px">COMPONENTS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <button style="border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer;box-shadow:0 2px 8px rgba(91,79,199,.3)">New meeting</button>
+        <button style="border:1px solid #D9D0C0;background:#fff;color:#211D18;font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer">Enhance</button>
+        <button style="border:none;background:transparent;color:#6B6256;font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 10px;cursor:pointer">Cancel</button>
+        <span style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #E07A66;color:#211D18;font-size:13px;font-weight:600;padding:7px 13px;border-radius:999px"><span style="width:9px;height:9px;border-radius:50%;background:#E07A66;animation:recpulse 1.4s ease-in-out infinite"></span><span style="font-family:'JetBrains Mono',monospace">12:04</span></span>
+      </div>
+      <div style="display:flex;gap:2px;margin-top:14px;background:#F2EBDD;padding:4px;border-radius:11px;width:fit-content">
+        <span style="font-size:13px;font-weight:600;color:#211D18;background:#fff;padding:7px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(40,30,15,.1)">Notes</span>
+        <span style="font-size:13px;font-weight:600;color:#8A8174;padding:7px 16px">Summary</span>
+        <span style="font-size:13px;font-weight:600;color:#8A8174;padding:7px 16px">Transcript</span>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <span style="display:inline-flex;align-items:center;gap:7px;background:#ECE9FB;color:#5B4FC7;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px"><span style="width:7px;height:7px;border-radius:50%;background:#5B4FC7"></span>Minimax · active</span>
+        <span style="display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #EBE3D5;color:#8A8174;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px">Ollama</span>
+        <span style="display:inline-flex;align-items:center;gap:7px;background:#E7F0E8;color:#5E9E73;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px"><span style="width:7px;height:7px;border-radius:50%;background:#5E9E73"></span>whisper.cpp · local</span>
+      </div>
+      <div style="margin-top:14px;background:#FBF7EF;border:1px solid #EBE3D5;border-radius:11px;padding:12px 14px">
+        <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90;flex:none">00:11:48</span><span style="font-size:11px;font-weight:700;color:#211D18;flex:none">Me</span><span style="font-size:13.5px;color:#211D18;line-height:1.4">Let's keep v1 free and open source.</span></div>
+        <div style="display:flex;gap:10px;align-items:baseline;margin-top:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90;flex:none">00:11:55</span><span style="font-size:11px;font-weight:700;color:#A89F90;flex:none">Them</span><span style="font-size:13.5px;color:#8A8174;line-height:1.4">Agreed — revisit hosted STT credits later.</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== THEMES (variations) ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1400px;top:236px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">VARIATION — FLAVORS</div>
+<div style="position:absolute;left:1400px;top:268px;width:560px;display:flex;flex-direction:column;gap:16px">
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:16px;padding:20px 22px;box-shadow:0 14px 40px -26px rgba(40,30,15,.3)">
+    <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:16px;font-weight:700;color:#211D18">Blueberry</div><span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:#5B4FC7;background:#ECE9FB;padding:4px 9px;border-radius:6px">default</span></div>
+    <div style="font-size:13px;color:#6B6256;margin-top:4px;line-height:1.45">Cream paper, ink notes, violet accent. The recommended identity.</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <span style="width:38px;height:38px;border-radius:9px;background:#FBF7EF;border:1px solid #EBE3D5"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#211D18"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#A89F90"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#5B4FC7"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#E07A66"></span>
+    </div>
+  </div>
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:16px;padding:20px 22px;box-shadow:0 14px 40px -26px rgba(40,30,15,.3)">
+    <div style="font-size:16px;font-weight:700;color:#211D18">Strawberry</div>
+    <div style="font-size:13px;color:#6B6256;margin-top:4px;line-height:1.45">Warmer, friendlier. Coral accent for consumer-leaning marketing.</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <span style="width:38px;height:38px;border-radius:9px;background:#FCF4F1;border:1px solid #F1DDD6"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#2A1C18"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#B59C95"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#E0564B"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#E8A36F"></span>
+    </div>
+  </div>
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:16px;padding:20px 22px;box-shadow:0 14px 40px -26px rgba(40,30,15,.3)">
+    <div style="font-size:16px;font-weight:700;color:#211D18">Matcha (dark)</div>
+    <div style="font-size:13px;color:#6B6256;margin-top:4px;line-height:1.45">Low-light mode for late meetings. Green = local-only is on.</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <span style="width:38px;height:38px;border-radius:9px;background:#1B1F1A;border:1px solid #2E342B"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#EDEAE2"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#6E7468"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#7FBE8C"></span>
+      <span style="width:38px;height:38px;border-radius:9px;background:#C9D98E"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 02 ONBOARDING ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:1340px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">02 — FIRST RUN &amp; PERMISSIONS</div>
+<div style="position:absolute;left:80px;top:1372px;width:1080px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/welcome</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.05fr .95fr">
+    <!-- left: welcome + terminal -->
+    <div style="padding:46px 48px;background:#FBF7EF;border-right:1px solid #EBE3D5">
+      <svg viewBox="0 0 44 44" width="40" height="40"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>
+      <div style="font-family:'Instrument Serif',serif;font-size:38px;color:#211D18;line-height:1.05;margin-top:22px">Welcome to yogurt.</div>
+      <div style="font-size:15px;color:#6B6256;line-height:1.55;margin-top:12px;max-width:380px">Two streams, one set of notes, zero bots in the call. Everything below happens on this Mac.</div>
+      <div style="margin-top:26px;background:#211D18;border-radius:12px;padding:16px 18px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.7">
+        <div style="color:#8A8174">$ <span style="color:#EDEAE2">yogurt start</span></div>
+        <div style="color:#7FBE8C">✓ server live on :7878</div>
+        <div style="color:#7FBE8C">✓ opening your browser…</div>
+        <div style="color:#C9B8F0">→ waiting for screen-recording grant <span style="display:inline-block;width:8px;height:15px;background:#C9B8F0;vertical-align:-2px;animation:blink 1s step-end infinite"></span></div>
+      </div>
+    </div>
+    <!-- right: permission steps -->
+    <div style="padding:42px 44px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.12em;color:#A89F90">ONE-TIME SETUP</div>
+      <div style="margin-top:20px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:14px;align-items:flex-start;background:#E7F0E8;border:1px solid #CFE3D4;border-radius:12px;padding:15px 16px">
+          <span style="width:26px;height:26px;border-radius:50%;background:#5E9E73;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none">✓</span>
+          <div><div style="font-size:14.5px;font-weight:700;color:#211D18">Screen Recording</div><div style="font-size:13px;color:#5d6b5f;line-height:1.45;margin-top:2px">Granted. This is how yogurt hears the <i>other</i> side of the call — no meeting bot required.</div></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;background:#fff;border:1.5px solid #5B4FC7;border-radius:12px;padding:15px 16px">
+          <span style="width:26px;height:26px;border-radius:50%;background:#5B4FC7;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:none">2</span>
+          <div style="flex:1"><div style="font-size:14.5px;font-weight:700;color:#211D18">Connect your model</div><div style="font-size:13px;color:#6B6256;line-height:1.45;margin-top:2px;margin-bottom:10px">Bring your own key — OpenAI-compatible. Nothing is built in.</div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap"><span style="font-size:12px;font-weight:600;color:#5B4FC7;background:#ECE9FB;padding:5px 10px;border-radius:7px">Minimax</span><span style="font-size:12px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;padding:5px 10px;border-radius:7px">Ollama</span><span style="font-size:12px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;padding:5px 10px;border-radius:7px">OpenAI</span><span style="font-size:12px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;padding:5px 10px;border-radius:7px">OpenRouter</span></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid #EBE3D5;border-radius:12px;padding:15px 16px;opacity:.72">
+          <span style="width:26px;height:26px;border-radius:50%;background:#F2EBDD;color:#A89F90;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:none">3</span>
+          <div><div style="font-size:14.5px;font-weight:700;color:#211D18">Pick transcription</div><div style="font-size:13px;color:#6B6256;line-height:1.45;margin-top:2px">Cloud Deepgram for speed, or fully-local whisper.cpp.</div></div>
+        </div>
+      </div>
+      <button style="margin-top:22px;width:100%;border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:14.5px;font-weight:600;padding:13px;border-radius:11px;cursor:pointer;box-shadow:0 3px 12px rgba(91,79,199,.32)">Take me to my meetings →</button>
+      <div style="text-align:center;margin-top:12px;font-size:12px;color:#A89F90">Restart once after granting — a macOS quirk, not us.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 03 LIBRARY ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1240px;top:1340px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">03 — MEETING LIBRARY</div>
+<div style="position:absolute;left:1240px;top:1372px;width:1080px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:212px 1fr;min-height:560px">
+    <!-- sidebar -->
+    <div style="background:#FBF7EF;border-right:1px solid #EBE3D5;padding:20px 16px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:9px;padding:0 6px"><svg viewBox="0 0 44 44" width="26" height="26"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg><span style="font-family:'Instrument Serif',serif;font-size:21px;color:#211D18">yogurt</span></div>
+      <button style="margin-top:20px;border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:13.5px;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 2px 8px rgba(91,79,199,.3)"><span style="font-size:16px;line-height:0">+</span> New meeting</button>
+      <div style="margin-top:22px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#ECE9FB;color:#5B4FC7;font-size:13.5px;font-weight:600">All meetings</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#6B6256;font-size:13.5px">Starred</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 10px 8px"><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;color:#A89F90">FOLDERS</span><span style="font-size:15px;color:#A89F90;line-height:0;cursor:pointer">+</span></div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:#6B6256;font-size:13px"><span style="width:9px;height:9px;border-radius:3px;background:#5B4FC7;flex:none"></span>Work<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">8</span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:#6B6256;font-size:13px"><span style="width:9px;height:9px;border-radius:3px;background:#E07A66;flex:none"></span>Hiring<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">3</span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:#6B6256;font-size:13px"><span style="width:9px;height:9px;border-radius:3px;background:#5E9E73;flex:none"></span>1:1s<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">5</span></div>
+      </div>
+      <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;background:#E7F0E8"><span style="width:8px;height:8px;border-radius:50%;background:#5E9E73"></span><span style="font-size:12px;color:#5d6b5f;font-weight:600">Local-only · on</span></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;color:#8A8174;font-size:13px;margin-top:2px">⚙ Settings</div>
+    </div>
+    <!-- list -->
+    <div style="padding:26px 30px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between">
+        <div><div style="font-family:'Instrument Serif',serif;font-size:30px;color:#211D18">Good afternoon, Dana</div><div style="font-size:13.5px;color:#8A8174;margin-top:2px">14 meetings · all on this Mac</div></div>
+        <div style="display:flex;align-items:center;gap:8px;background:#FBF7EF;border:1px solid #EBE3D5;border-radius:9px;padding:8px 12px;color:#A89F90;font-size:13px">⌕ Search notes &amp; transcripts</div>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;color:#A89F90;margin:24px 0 10px">TODAY</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="background:#fff;border:1px solid #EBE3D5;border-radius:13px;padding:16px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 6px rgba(40,30,15,.04)">
+          <div style="width:42px;height:42px;border-radius:10px;background:#ECE9FB;display:flex;align-items:center;justify-content:center;font-family:'Instrument Serif',serif;font-size:18px;color:#5B4FC7;flex:none">WS</div>
+          <div style="flex:1"><div style="font-size:15.5px;font-weight:700;color:#211D18">Weekly sync — Q3 launch</div><div style="font-size:13px;color:#8A8174;margin-top:2px">2:00 PM · 38 min · enhanced</div></div>
+          <div style="display:flex;gap:6px"><span style="font-size:11px;font-weight:600;color:#5B4FC7;background:#ECE9FB;padding:4px 9px;border-radius:6px">Standup</span><span style="font-size:11px;font-weight:600;color:#5E9E73;background:#E7F0E8;padding:4px 9px;border-radius:6px">local</span></div>
+        </div>
+        <div style="background:#fff;border:1px solid #EBE3D5;border-radius:13px;padding:16px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 6px rgba(40,30,15,.04)">
+          <div style="width:42px;height:42px;border-radius:10px;background:#FBEDE9;display:flex;align-items:center;justify-content:center;font-family:'Instrument Serif',serif;font-size:18px;color:#E07A66;flex:none">JR</div>
+          <div style="flex:1"><div style="font-size:15.5px;font-weight:700;color:#211D18">Interview — backend candidate</div><div style="font-size:13px;color:#8A8174;margin-top:2px">11:15 AM · 51 min · enhanced</div></div>
+          <div style="display:flex;gap:6px"><span style="font-size:11px;font-weight:600;color:#E07A66;background:#FBEDE9;padding:4px 9px;border-radius:6px">Interview</span></div>
+        </div>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;color:#A89F90;margin:22px 0 10px">YESTERDAY</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="background:#fff;border:1px solid #EBE3D5;border-radius:13px;padding:16px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 6px rgba(40,30,15,.04)">
+          <div style="width:42px;height:42px;border-radius:10px;background:#E7F0E8;display:flex;align-items:center;justify-content:center;font-family:'Instrument Serif',serif;font-size:18px;color:#5E9E73;flex:none">D1</div>
+          <div style="flex:1"><div style="font-size:15.5px;font-weight:700;color:#211D18">Design crit — onboarding</div><div style="font-size:13px;color:#8A8174;margin-top:2px">4:30 PM · 27 min · enhanced</div></div>
+          <div style="display:flex;gap:6px"><span style="font-size:11px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;padding:4px 9px;border-radius:6px">Generic</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 04 LIVE MEETING ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:2270px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">04 — LIVE MEETING · notes-first · ▸ interactive</div>
+<div style="position:absolute;left:80px;top:2302px;width:920px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/m/weekly-sync</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <!-- meeting topbar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid #EBE3D5;background:#FBF7EF">
+    <div><div style="font-size:17px;font-weight:700;color:#211D18">Weekly sync — Q3 launch</div><div style="font-size:12.5px;color:#8A8174;font-family:'JetBrains Mono',monospace;margin-top:1px">started 2:00 PM · whisper.cpp small.en</div></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #E07A66;color:#211D18;font-size:13px;font-weight:600;padding:7px 14px;border-radius:999px"><span style="width:9px;height:9px;border-radius:50%;background:#E07A66;animation:recpulse 1.4s ease-in-out infinite"></span><span style="font-family:'JetBrains Mono',monospace">12:04</span></span>
+      <button style="border:none;background:#211D18;color:#fff;font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;border-radius:9px;cursor:pointer">End meeting</button>
+    </div>
+  </div>
+  <div style="position:relative;min-height:580px;display:flex;background:#fff">
+    <!-- notes column · stays the focus -->
+    <div style="flex:1;min-width:0;position:relative">
+      <!-- transcript tab · shown when the panel is closed -->
+      <sc-if value="{{ showTranscriptTab }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ toggleTranscript }}" style="position:absolute;top:22px;right:0;z-index:3;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #EBE3D5;border-right:none;border-radius:11px 0 0 11px;padding:10px 16px;box-shadow:-8px 8px 22px rgba(40,30,15,.08);cursor:pointer">
+          <div style="display:flex;gap:2px;align-items:flex-end;height:13px"><span style="width:3px;height:13px;background:#5B4FC7;border-radius:2px;animation:wave 1s ease-in-out infinite;transform-origin:bottom"></span><span style="width:3px;height:13px;background:#5B4FC7;border-radius:2px;animation:wave 1s ease-in-out .15s infinite;transform-origin:bottom"></span><span style="width:3px;height:13px;background:#C9B8F0;border-radius:2px;animation:wave 1s ease-in-out .3s infinite;transform-origin:bottom"></span></div>
+          <span style="font-size:13px;font-weight:600;color:#211D18">Live transcript</span>
+          <span style="font-size:14px;color:#A89F90;line-height:0">‹</span>
+        </div>
+      </sc-if>
+      <!-- notes · still fully editable while panels are open -->
+      <div style="max-width:660px;margin:0 auto;padding:42px 24px 130px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A89F90;margin-bottom:14px">YOUR NOTES · markdown</div>
+        <div style="font-family:'Instrument Serif',serif;font-size:30px;color:#211D18;margin-bottom:20px">Weekly sync — Q3 launch</div>
+        <ul style="margin:0;padding-left:22px;color:#211D18">
+          <li style="font-size:17px;line-height:1.75;margin-bottom:7px">Q3 launch — risks?</li>
+          <li style="font-size:17px;line-height:1.75;margin-bottom:7px">Pricing — stay free?</li>
+          <li style="font-size:17px;line-height:1.75;margin-bottom:7px">Action items<span style="display:inline-block;width:2px;height:19px;background:#5B4FC7;vertical-align:-3px;margin-left:2px;animation:blink 1s step-end infinite"></span></li>
+        </ul>
+        <div style="margin-top:28px;display:inline-flex;align-items:center;gap:8px;background:#ECE9FB;color:#5B4FC7;font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:9px">✨ AI enhances these when you hit End</div>
+      </div>
+      <!-- ask pill · shown when chat is closed -->
+      <sc-if value="{{ showAskPill }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ openChat }}" style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);width:480px;display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #E3DBCB;border-radius:15px;padding:11px 12px 11px 16px;box-shadow:0 12px 34px -10px rgba(40,30,15,.22);cursor:pointer">
+          <svg viewBox="0 0 44 44" width="23" height="23" style="flex:none"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg>
+          <span style="flex:1;font-size:14px;color:#A89F90">Ask this meeting…</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#C2B9A8;border:1px solid #EBE3D5;border-radius:5px;padding:2px 6px">⌘K</span>
+          <span style="width:30px;height:30px;border-radius:9px;background:#5B4FC7;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">↑</span>
+        </div>
+      </sc-if>
+      <!-- chat window · expands from the pill, notes stay live behind it -->
+      <sc-if value="{{ showChat }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);width:480px;background:#fff;border:1px solid #E3DBCB;border-radius:16px;box-shadow:0 18px 44px -12px rgba(40,30,15,.28);overflow:hidden;animation:popUp .26s cubic-bezier(.2,.8,.2,1)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #F2EBDD">
+            <div style="display:flex;align-items:center;gap:9px"><svg viewBox="0 0 44 44" width="19" height="19"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg><span style="font-size:13px;font-weight:700;color:#211D18">Ask the meeting</span></div>
+            <span onClick="{{ closeChat }}" style="width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#A89F90;font-size:17px;line-height:0;cursor:pointer">⌄</span>
+          </div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+            <div style="align-self:flex-end;max-width:84%;background:#5B4FC7;color:#fff;font-size:13px;line-height:1.45;padding:9px 12px;border-radius:13px 13px 4px 13px">What did we decide on Intel support?</div>
+            <div style="align-self:flex-start;max-width:90%;background:#FBF7EF;border:1px solid #EBE3D5;color:#211D18;font-size:13px;line-height:1.5;padding:10px 12px;border-radius:13px 13px 13px 4px">Ship <b>arm64 first</b>; Intel stays best-effort because small.en is the only model that keeps up there.</div>
+          </div>
+          <div style="padding:10px 12px;border-top:1px solid #F2EBDD;display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:13px;color:#A89F90">Ask a follow-up…</span><span style="width:28px;height:28px;border-radius:8px;background:#5B4FC7;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px">↑</span></div>
+        </div>
+      </sc-if>
+    </div>
+    <!-- transcript docked panel · opens beside the notes, nothing dimmed -->
+    <sc-if value="{{ showTranscript }}" hint-placeholder-val="{{ false }}">
+      <div style="width:330px;flex:none;border-left:1px solid #EBE3D5;background:#FCFAF5;padding:22px 20px;display:flex;flex-direction:column;animation:slideInRight .34s cubic-bezier(.2,.7,.2,1)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:9px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A89F90">LIVE TRANSCRIPT</span><div style="display:flex;gap:2px;align-items:flex-end;height:12px"><span style="width:2.5px;height:12px;background:#5B4FC7;border-radius:2px;animation:wave 1s ease-in-out infinite;transform-origin:bottom"></span><span style="width:2.5px;height:12px;background:#5B4FC7;border-radius:2px;animation:wave 1s ease-in-out .2s infinite;transform-origin:bottom"></span><span style="width:2.5px;height:12px;background:#C9B8F0;border-radius:2px;animation:wave 1s ease-in-out .4s infinite;transform-origin:bottom"></span></div></div>
+          <span onClick="{{ toggleTranscript }}" style="width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#A89F90;font-size:15px;cursor:pointer">›</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:13px;overflow:hidden">
+          <div><div style="display:flex;gap:8px;align-items:baseline;margin-bottom:2px"><span style="font-size:11px;font-weight:700;color:#211D18">Me</span><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">00:10:48</span></div><div style="font-size:13.5px;line-height:1.45;color:#211D18">Biggest risk for Q3 is the audio path on Intel Macs, right?</div></div>
+          <div><div style="display:flex;gap:8px;align-items:baseline;margin-bottom:2px"><span style="font-size:11px;font-weight:700;color:#A89F90">Them</span><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">00:11:02</span></div><div style="font-size:13.5px;line-height:1.45;color:#8A8174">Yeah — small.en only just keeps up there. I'd ship arm64 first.</div></div>
+          <div><div style="display:flex;gap:8px;align-items:baseline;margin-bottom:2px"><span style="font-size:11px;font-weight:700;color:#211D18">Me</span><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">00:11:30</span></div><div style="font-size:13.5px;line-height:1.45;color:#211D18">Works. And pricing — I want to keep v1 free.</div></div>
+          <div><div style="display:flex;gap:8px;align-items:baseline;margin-bottom:2px"><span style="font-size:11px;font-weight:700;color:#A89F90">Them</span><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">00:11:55</span></div><div style="font-size:13.5px;line-height:1.45;color:#8A8174">Agreed. Revisit hosted STT credits later<span style="display:inline-block;width:7px;height:13px;background:#A89F90;vertical-align:-2px;margin-left:2px;animation:blink 1s step-end infinite"></span></div></div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+
+<!-- ===================== 04b TRY-IT NOTE ===================== -->
+<div style="position:absolute;left:1050px;top:2300px;width:252px;background:#FEF4A8;padding:16px 18px;font-size:13.5px;line-height:1.55;color:#5a5238;box-shadow:0 2px 12px rgba(40,30,15,.14);transform:rotate(1.4deg)">
+  <b>This screen is live →</b> click the <b>Live transcript</b> tab on the right edge and the <b>Ask</b> pill at the bottom. Both open beside your notes — and the notes stay fully editable the whole time.
+</div>
+<div data-drags-parent="1" style="position:absolute;left:1050px;top:2470px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.12em;white-space:nowrap;color:#A89F90">↙ TRANSCRIPT DOCKS · ASK FLOATS</div>
+
+<!-- ===================== 05 POST-MEETING — HERO ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1400px;top:2270px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#5B4FC7">05 — AUGMENTED NOTES · the hero ✦</div>
+<div style="position:absolute;left:1400px;top:2302px;width:1000px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 30px 70px -28px rgba(91,79,199,.32);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/m/weekly-sync</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <!-- meeting topbar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid #EBE3D5;background:#FBF7EF">
+    <div><div style="font-size:17px;font-weight:700;color:#211D18">Weekly sync — Q3 launch</div><div style="font-size:12.5px;color:#8A8174;font-family:'JetBrains Mono',monospace;margin-top:1px">notes + summary, woven · enhanced with Minimax</div></div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="display:flex;align-items:center;gap:14px;font-size:12px;color:#6B6256">
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#211D18"></span>your notes</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#A89F90"></span>AI</span>
+      </div>
+      <button onClick="{{ replay }}" style="border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 2px 8px rgba(91,79,199,.3)">Re-enhance ⌄</button>
+    </div>
+  </div>
+  <!-- one combined doc · your notes woven into the AI summary -->
+  <div style="position:relative;min-height:560px;background:#fff">
+    <div style="position:absolute;top:22px;right:0;z-index:3;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #EBE3D5;border-right:none;border-radius:11px 0 0 11px;padding:10px 16px;box-shadow:-8px 8px 22px rgba(40,30,15,.08);cursor:pointer">
+      <span style="width:14px;height:11px;display:flex;flex-direction:column;justify-content:space-between"><span style="height:2px;background:#5B4FC7;border-radius:2px"></span><span style="height:2px;width:70%;background:#A89F90;border-radius:2px"></span><span style="height:2px;background:#5B4FC7;border-radius:2px"></span></span>
+      <span style="font-size:13px;font-weight:600;color:#211D18">Transcript</span>
+      <span style="font-size:14px;color:#A89F90;line-height:0">‹</span>
+    </div>
+    <div style="max-width:660px;margin:0 auto;padding:42px 24px 130px">
+      <div style="font-family:'Instrument Serif',serif;font-size:32px;color:#211D18;margin-bottom:6px">Weekly sync — Q3 launch</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#A89F90;margin-bottom:26px">Jun 24, 2026 · 38 min · enhanced with Minimax</div>
+
+      <div style="font-size:18px;font-weight:700;color:#211D18;margin-bottom:8px">Q3 launch — risks?</div>
+      <ul style="margin:0 0 22px;padding-left:20px;list-style:none">
+        <li style="position:relative;font-size:16px;line-height:1.6;color:#211D18;margin-bottom:6px"><span style="position:absolute;left:-18px">•</span>Audio path on Intel Macs is the main risk.</li>
+        <li style="{{ g0 }}"><div style="position:relative;font-size:15.5px;line-height:1.6;color:#A89F90;padding-left:2px"><span style="position:absolute;left:-18px">◦</span>small.en is the only model that keeps up real-time on Intel <span style="border-bottom:1.5px dotted #C9B8F0;color:#8A8174;cursor:pointer">↳ 11:02</span></div></li>
+        <li style="{{ g1 }}"><div style="position:relative;font-size:15.5px;line-height:1.6;color:#A89F90;padding-left:2px"><span style="position:absolute;left:-18px">◦</span>Decision: ship arm64 first, Intel best-effort <span style="border-bottom:1.5px dotted #C9B8F0;color:#8A8174;cursor:pointer">↳ 11:02</span></div></li>
+      </ul>
+
+      <div style="font-size:18px;font-weight:700;color:#211D18;margin-bottom:8px">Pricing</div>
+      <ul style="margin:0 0 22px;padding-left:20px;list-style:none">
+        <li style="position:relative;font-size:16px;line-height:1.6;color:#211D18;margin-bottom:6px"><span style="position:absolute;left:-18px">•</span>Stay free?</li>
+        <li style="{{ g2 }}"><div style="position:relative;font-size:15.5px;line-height:1.6;color:#A89F90;padding-left:2px"><span style="position:absolute;left:-18px">◦</span>v1 stays free &amp; open-source; revisit hosted STT credits later <span style="border-bottom:1.5px dotted #C9B8F0;color:#8A8174;cursor:pointer">↳ 11:55</span></div></li>
+      </ul>
+
+      <div style="font-size:18px;font-weight:700;color:#211D18;margin-bottom:8px">Action items</div>
+      <ul style="margin:0;padding-left:20px;list-style:none">
+        <li style="{{ g3 }}"><div style="position:relative;font-size:15.5px;line-height:1.6;color:#A89F90;padding-left:2px"><span style="position:absolute;left:-18px">◦</span><b style="color:#8A8174">Dana</b> — spike ScreenCaptureKit loopback by Fri <span style="border-bottom:1.5px dotted #C9B8F0;color:#8A8174;cursor:pointer">↳ 14:02</span></div></li>
+        <li style="{{ g3 }}"><div style="position:relative;font-size:15.5px;line-height:1.6;color:#A89F90;padding-left:2px;margin-top:4px"><span style="position:absolute;left:-18px">◦</span><b style="color:#8A8174">Sam</b> — draft the Homebrew formula <span style="border-bottom:1.5px dotted #C9B8F0;color:#8A8174;cursor:pointer">↳ 15:20</span></div></li>
+      </ul>
+      <div style="margin-top:26px;padding-top:16px;border-top:1px solid #F2EBDD;font-size:12.5px;color:#A89F90;line-height:1.5">Each ↳ opens the transcript at that moment. <b style="color:#8A8174">Edit any grey line</b> and it turns black — now it's yours.</div>
+    </div>
+    <!-- floating ask · same control as the live meeting -->
+    <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);width:480px;display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #E3DBCB;border-radius:15px;padding:11px 12px 11px 16px;box-shadow:0 12px 34px -10px rgba(40,30,15,.22)">
+      <svg viewBox="0 0 44 44" width="23" height="23" style="flex:none"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg>
+      <span style="flex:1;font-size:14px;color:#A89F90">Ask about this meeting…</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#C2B9A8;border:1px solid #EBE3D5;border-radius:5px;padding:2px 6px">⌘K</span>
+      <span style="width:30px;height:30px;border-radius:9px;background:#5B4FC7;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">↑</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 06 VARIATIONS: AUGMENTED TREATMENT ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:3120px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">VARIATION — HOW AI TEXT READS AS &ldquo;NOT YOURS YET&rdquo;</div>
+<div style="position:absolute;left:80px;top:3156px;width:1000px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:14px;padding:20px 22px;box-shadow:0 14px 40px -28px rgba(40,30,15,.3)">
+    <div style="font-size:14px;font-weight:700;color:#211D18">A · Grey text <span style="font-weight:500;color:#5B4FC7;font-size:11px;background:#ECE9FB;padding:2px 7px;border-radius:5px;margin-left:4px">picked</span></div>
+    <div style="font-size:12.5px;color:#8A8174;margin:4px 0 14px;line-height:1.4">Faithful to Granola. Quietest, reads as one document.</div>
+    <ul style="margin:0;padding-left:16px;list-style:none">
+      <li style="position:relative;font-size:14px;color:#211D18;line-height:1.55;margin-bottom:4px"><span style="position:absolute;left:-14px">•</span>Q3 risks?</li>
+      <li style="position:relative;font-size:13.5px;color:#A89F90;line-height:1.5;margin-left:12px"><span style="position:absolute;left:-12px">◦</span>Intel ships best-effort, arm64 first.</li>
+    </ul>
+  </div>
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:14px;padding:20px 22px;box-shadow:0 14px 40px -28px rgba(40,30,15,.3)">
+    <div style="font-size:14px;font-weight:700;color:#211D18">B · Violet rail</div>
+    <div style="font-size:12.5px;color:#8A8174;margin:4px 0 14px;line-height:1.4">A left edge marks AI runs. More scannable, more &ldquo;feature&rdquo;.</div>
+    <ul style="margin:0;padding-left:16px;list-style:none">
+      <li style="position:relative;font-size:14px;color:#211D18;line-height:1.55;margin-bottom:4px"><span style="position:absolute;left:-14px">•</span>Q3 risks?</li>
+      <li style="position:relative;font-size:13.5px;color:#8A8174;line-height:1.5;margin-left:6px;border-left:2px solid #C9B8F0;padding-left:10px">Intel ships best-effort, arm64 first.</li>
+    </ul>
+  </div>
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:14px;padding:20px 22px;box-shadow:0 14px 40px -28px rgba(40,30,15,.3)">
+    <div style="font-size:14px;font-weight:700;color:#211D18">C · Soft highlight</div>
+    <div style="font-size:12.5px;color:#8A8174;margin:4px 0 14px;line-height:1.4">AI runs get a cream wash. Most obvious; risks feeling busy.</div>
+    <ul style="margin:0;padding-left:16px;list-style:none">
+      <li style="position:relative;font-size:14px;color:#211D18;line-height:1.55;margin-bottom:4px"><span style="position:absolute;left:-14px">•</span>Q3 risks?</li>
+      <li style="position:relative;font-size:13.5px;color:#8A8174;line-height:1.5;margin-left:12px;background:#F6F1FE;border-radius:6px;padding:3px 8px"><span style="position:absolute;left:-12px;top:3px">◦</span>Intel ships best-effort, arm64 first.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===================== 07 VARIATIONS: NAV ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1160px;top:3120px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">VARIATION — LIBRARY / NAVIGATION</div>
+<div style="position:absolute;left:1160px;top:3156px;width:1080px;display:grid;grid-template-columns:1fr 1fr;gap:18px">
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:14px;padding:18px;box-shadow:0 14px 40px -28px rgba(40,30,15,.3)">
+    <div style="font-size:14px;font-weight:700;color:#211D18;margin-bottom:2px">A · Left sidebar <span style="font-weight:500;color:#5B4FC7;font-size:11px;background:#ECE9FB;padding:2px 7px;border-radius:5px;margin-left:4px">picked</span></div>
+    <div style="font-size:12.5px;color:#8A8174;margin-bottom:12px;line-height:1.4">Persistent rail, templates always reachable. Best for power users.</div>
+    <div style="display:grid;grid-template-columns:64px 1fr;gap:8px;height:140px">
+      <div style="background:#FBF7EF;border:1px solid #EBE3D5;border-radius:8px;display:flex;flex-direction:column;gap:5px;padding:8px 6px"><span style="height:8px;border-radius:3px;background:#5B4FC7"></span><span style="height:6px;border-radius:3px;background:#E3DBCB"></span><span style="height:6px;border-radius:3px;background:#E3DBCB"></span></div>
+      <div style="background:#FCFAF5;border:1px solid #EBE3D5;border-radius:8px;display:flex;flex-direction:column;gap:6px;padding:10px"><span style="height:14px;width:60%;border-radius:4px;background:#E3DBCB"></span><span style="height:22px;border-radius:6px;background:#fff;border:1px solid #EBE3D5"></span><span style="height:22px;border-radius:6px;background:#fff;border:1px solid #EBE3D5"></span></div>
+    </div>
+  </div>
+  <div style="background:#fff;border:1px solid #EBE3D5;border-radius:14px;padding:18px;box-shadow:0 14px 40px -28px rgba(40,30,15,.3)">
+    <div style="font-size:14px;font-weight:700;color:#211D18;margin-bottom:2px">B · Top bar + grid</div>
+    <div style="font-size:12.5px;color:#8A8174;margin-bottom:12px;line-height:1.4">Calmer, more &ldquo;notes app&rdquo;. Cards in a gallery, search front-and-center.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;height:140px">
+      <div style="background:#FBF7EF;border:1px solid #EBE3D5;border-radius:8px;height:26px;display:flex;align-items:center;gap:6px;padding:0 8px"><span style="width:14px;height:8px;border-radius:3px;background:#5B4FC7"></span><span style="flex:1"></span><span style="width:50px;height:9px;border-radius:4px;background:#E3DBCB"></span></div>
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><span style="background:#FCFAF5;border:1px solid #EBE3D5;border-radius:8px"></span><span style="background:#FCFAF5;border:1px solid #EBE3D5;border-radius:8px"></span><span style="background:#FCFAF5;border:1px solid #EBE3D5;border-radius:8px"></span></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================== 06 SETTINGS ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:3400px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">06 — SETTINGS · bring your own everything</div>
+<div style="position:absolute;left:80px;top:3436px;width:1160px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/settings</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:212px 1fr;min-height:640px">
+    <!-- settings nav -->
+    <div style="background:#FBF7EF;border-right:1px solid #EBE3D5;padding:22px 16px;display:flex;flex-direction:column">
+      <div style="font-family:'Instrument Serif',serif;font-size:22px;color:#211D18;padding:0 6px;margin-bottom:18px">Settings</div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;background:#ECE9FB;color:#5B4FC7;font-size:13.5px;font-weight:600">Model</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;color:#6B6256;font-size:13.5px">Transcription</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;color:#6B6256;font-size:13.5px">Audio</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;color:#6B6256;font-size:13.5px">General</div>
+      </div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;background:#E7F0E8"><span style="width:8px;height:8px;border-radius:50%;background:#5E9E73"></span><span style="font-size:12px;color:#5d6b5f;font-weight:600">Local-only · on</span></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90;padding:0 6px;line-height:1.5">keys → macOS Keychain<br>data → ~/.yogurt/</div>
+      </div>
+    </div>
+    <!-- content -->
+    <div style="padding:28px 34px;display:flex;flex-direction:column;gap:26px">
+      <!-- MODEL -->
+      <div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font-size:18px;font-weight:700;color:#211D18">Model · LLM provider</div><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">OpenAI-compatible</span></div>
+        <div style="font-size:13px;color:#8A8174;margin-top:3px;margin-bottom:14px">Paste a base URL and key. Anthropic &amp; Gemini reachable via OpenRouter.</div>
+        <div style="background:#fff;border:1.5px solid #5B4FC7;border-radius:12px;padding:15px 17px;box-shadow:0 4px 14px -6px rgba(91,79,199,.35)">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:15px;font-weight:700;color:#211D18">Minimax</span><span style="font-size:11px;font-weight:600;color:#5B4FC7;background:#ECE9FB;padding:3px 9px;border-radius:6px">Active</span></div><span style="font-size:12.5px;font-weight:600;color:#6B6256;cursor:pointer">Edit</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:13px">
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#A89F90;margin-bottom:4px">BASE URL</div><div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#211D18;background:#FBF7EF;border:1px solid #EBE3D5;border-radius:8px;padding:8px 10px">api.minimax.io/v1</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#A89F90;margin-bottom:4px">MODEL</div><div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#211D18;background:#FBF7EF;border:1px solid #EBE3D5;border-radius:8px;padding:8px 10px">MiniMax-Text-01</div></div>
+            <div style="grid-column:1 / -1"><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#A89F90;margin-bottom:4px">API KEY · in Keychain</div><div style="display:flex;align-items:center;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;border-radius:8px;padding:8px 10px">•••••••••••••••••••••• 4f2a<span style="color:#5E9E73;font-weight:600">✓ stored</span></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #EBE3D5;border-radius:11px;padding:12px 16px;margin-top:9px"><div><span style="font-size:14px;font-weight:600;color:#211D18">OpenAI</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#A89F90;margin-left:10px">gpt-4o-mini</span></div><span style="font-size:12.5px;font-weight:600;color:#5B4FC7;cursor:pointer">Set active</span></div>
+        <div style="display:flex;align-items:center;gap:9px;margin-top:13px;flex-wrap:wrap">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">CLONE A PRESET →</span>
+          <span style="font-size:12.5px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px dashed #D9D0C0;padding:6px 11px;border-radius:8px">Ollama</span>
+          <span style="font-size:12.5px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px dashed #D9D0C0;padding:6px 11px;border-radius:8px">LM Studio</span>
+          <span style="font-size:12.5px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px dashed #D9D0C0;padding:6px 11px;border-radius:8px">OpenRouter</span>
+          <span style="font-size:12.5px;font-weight:600;color:#5B4FC7;cursor:pointer;margin-left:2px">+ Add</span>
+        </div>
+      </div>
+      <div style="height:1px;background:#F2EBDD"></div>
+      <!-- TRANSCRIPTION -->
+      <div>
+        <div style="font-size:18px;font-weight:700;color:#211D18;margin-bottom:14px">Transcription</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="background:#fff;border:1.5px solid #5B4FC7;border-radius:12px;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span style="width:16px;height:16px;border-radius:50%;border:5px solid #5B4FC7;background:#fff"></span><span style="font-size:14px;font-weight:700;color:#211D18">Cloud</span><span style="font-size:11px;color:#8A8174">fastest · audio leaves the Mac</span></div>
+            <div style="display:flex;gap:6px;margin-bottom:10px"><span style="font-size:11.5px;font-weight:600;color:#5B4FC7;background:#ECE9FB;padding:5px 10px;border-radius:7px">Deepgram</span><span style="font-size:11.5px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;padding:5px 10px;border-radius:7px">AssemblyAI</span><span style="font-size:11.5px;font-weight:600;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;padding:5px 10px;border-radius:7px">Groq</span></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#FBF7EF;border:1px solid #EBE3D5;border-radius:8px;padding:8px 10px">•••••••••• key ✓</div>
+          </div>
+          <div style="background:#FCFAF5;border:1px solid #EBE3D5;border-radius:12px;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span style="width:16px;height:16px;border-radius:50%;border:2px solid #C2B9A8;background:#fff"></span><span style="font-size:14px;font-weight:700;color:#211D18">Local · whisper.cpp</span><span style="font-size:11px;color:#5E9E73;font-weight:600">100% private</span></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11.5px;font-weight:600;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:5px 9px;border-radius:7px">tiny.en</span><span style="font-size:11.5px;font-weight:600;color:#211D18;background:#fff;border:1.5px solid #5E9E73;padding:5px 9px;border-radius:7px">small.en ✓</span><span style="font-size:11.5px;font-weight:600;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:5px 9px;border-radius:7px">medium.en</span><span style="font-size:11.5px;font-weight:600;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:5px 9px;border-radius:7px">large-v3 ↓</span></div>
+            <div style="font-size:11.5px;color:#A89F90;margin-top:9px;line-height:1.4">Models download on first use · stored in ~/.yogurt/models</div>
+          </div>
+        </div>
+      </div>
+      <div style="height:1px;background:#F2EBDD"></div>
+      <!-- AUDIO + GENERAL compact -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:#211D18;margin-bottom:12px">Audio</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #EBE3D5;border-radius:10px;padding:11px 14px"><span style="font-size:13px;color:#6B6256">Input device</span><span style="font-size:13px;font-weight:600;color:#211D18">MacBook Pro Mic ⌄</span></div>
+          <div style="font-size:12px;color:#A89F90;margin-top:8px;line-height:1.45">System audio is captured via ScreenCaptureKit — no extra setup.</div>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:#211D18;margin-bottom:12px">General</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #EBE3D5;border-radius:10px;padding:10px 14px"><span style="font-size:13px;color:#6B6256">Port</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#211D18">7878</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #EBE3D5;border-radius:10px;padding:10px 14px"><span style="font-size:13px;color:#6B6256">Open browser on start</span><span style="width:38px;height:22px;border-radius:999px;background:#5B4FC7;position:relative;flex:none"><span style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#fff"></span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== FOUNDATIONS · SCALE ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1300px;top:3400px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">FOUNDATIONS · SCALE</div>
+<div style="position:absolute;left:1300px;top:3436px;width:600px;background:#fff;border:1px solid #EBE3D5;border-radius:16px;padding:26px 28px;box-shadow:0 14px 40px -28px rgba(40,30,15,.3)">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A89F90;margin-bottom:14px">SPACING · 4-BASE</div>
+  <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:24px">
+    <div style="text-align:center"><div style="width:4px;height:4px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">4</div></div>
+    <div style="text-align:center"><div style="width:8px;height:8px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">8</div></div>
+    <div style="text-align:center"><div style="width:12px;height:12px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">12</div></div>
+    <div style="text-align:center"><div style="width:16px;height:16px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">16</div></div>
+    <div style="text-align:center"><div style="width:24px;height:24px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">24</div></div>
+    <div style="text-align:center"><div style="width:32px;height:32px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">32</div></div>
+    <div style="text-align:center"><div style="width:48px;height:48px;background:#5B4FC7;border-radius:2px;margin:0 auto"></div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A89F90;margin-top:6px">48</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+    <div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A89F90;margin-bottom:12px">RADIUS</div>
+      <div style="display:flex;align-items:flex-end;gap:10px">
+        <div style="text-align:center"><div style="width:34px;height:34px;background:#FBF7EF;border:1.5px solid #5B4FC7;border-radius:6px"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:5px">6</div></div>
+        <div style="text-align:center"><div style="width:34px;height:34px;background:#FBF7EF;border:1.5px solid #5B4FC7;border-radius:9px"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:5px">9</div></div>
+        <div style="text-align:center"><div style="width:34px;height:34px;background:#FBF7EF;border:1.5px solid #5B4FC7;border-radius:14px"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:5px">14</div></div>
+        <div style="text-align:center"><div style="width:34px;height:34px;background:#FBF7EF;border:1.5px solid #5B4FC7;border-radius:999px"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:5px">pill</div></div>
+      </div>
+    </div>
+    <div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A89F90;margin-bottom:12px">ELEVATION</div>
+      <div style="display:flex;gap:14px">
+        <div style="text-align:center"><div style="width:42px;height:42px;background:#fff;border-radius:10px;box-shadow:0 2px 6px rgba(40,30,15,.08)"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:7px">card</div></div>
+        <div style="text-align:center"><div style="width:42px;height:42px;background:#fff;border-radius:10px;box-shadow:0 12px 30px -10px rgba(40,30,15,.22)"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:7px">pop</div></div>
+        <div style="text-align:center"><div style="width:42px;height:42px;background:#fff;border-radius:10px;box-shadow:0 26px 60px -28px rgba(40,30,15,.4)"></div><div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#A89F90;margin-top:7px">window</div></div>
+      </div>
+    </div>
+  </div>
+  <div style="height:1px;background:#F2EBDD;margin:22px 0"></div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A89F90;margin-bottom:12px">MOTION</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B4FC7;width:54px">260ms</span><span style="font-size:12.5px;color:#6B6256">chat window pop · ease-out</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B4FC7;width:54px">340ms</span><span style="font-size:12.5px;color:#6B6256">transcript slide-in</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B4FC7;width:54px">600ms</span><span style="font-size:12.5px;color:#6B6256">augmented-notes merge · staggered</span></div>
+  </div>
+</div>
+
+<!-- ===================== 07a ENHANCING STATE ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:4320px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">07 — ENHANCING · right after &ldquo;End meeting&rdquo;</div>
+<div style="position:absolute;left:80px;top:4356px;width:780px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/m/weekly-sync</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 24px;background:#ECE9FB;border-bottom:1px solid #DDD6F4">
+    <span style="width:9px;height:9px;border-radius:50%;background:#5B4FC7;animation:recpulse 1.1s ease-in-out infinite;flex:none"></span>
+    <div style="flex:1"><div style="font-size:13.5px;font-weight:700;color:#5B4FC7">Weaving your notes into the transcript…</div><div style="height:5px;background:#D7CEF2;border-radius:3px;margin-top:7px;overflow:hidden"><div style="width:62%;height:100%;background:#5B4FC7;border-radius:3px"></div></div></div>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#5B4FC7;flex:none">streaming · 1,240 chars</span>
+  </div>
+  <div style="padding:30px 40px">
+    <div style="font-family:'Instrument Serif',serif;font-size:26px;color:#211D18;margin-bottom:18px">Weekly sync — Q3 launch</div>
+    <div style="font-size:16px;font-weight:700;color:#211D18;margin-bottom:8px">Q3 launch — risks?</div>
+    <ul style="margin:0 0 18px;padding-left:20px;list-style:none">
+      <li style="position:relative;font-size:15.5px;line-height:1.6;color:#211D18;margin-bottom:8px"><span style="position:absolute;left:-18px">•</span>Audio path on Intel Macs is the main risk.</li>
+      <li style="margin-bottom:8px"><div style="height:13px;width:88%;border-radius:4px;background:linear-gradient(90deg,#ECE6D9,#F7F2E8,#ECE6D9);background-size:160px 100%;animation:shimmer 1.25s linear infinite"></div></li>
+      <li><div style="height:13px;width:72%;border-radius:4px;background:linear-gradient(90deg,#ECE6D9,#F7F2E8,#ECE6D9);background-size:160px 100%;animation:shimmer 1.25s linear .2s infinite"></div></li>
+    </ul>
+    <div style="font-size:16px;font-weight:700;color:#211D18;margin-bottom:8px">Pricing</div>
+    <ul style="margin:0;padding-left:20px;list-style:none">
+      <li style="position:relative;font-size:15.5px;line-height:1.6;color:#211D18;margin-bottom:8px"><span style="position:absolute;left:-18px">•</span>Stay free?</li>
+      <li><div style="height:13px;width:80%;border-radius:4px;background:linear-gradient(90deg,#ECE6D9,#F7F2E8,#ECE6D9);background-size:160px 100%;animation:shimmer 1.25s linear .35s infinite"></div></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===================== 07b MODEL DOWNLOAD ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:900px;top:4320px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">FIRST LOCAL RUN</div>
+<div style="position:absolute;left:900px;top:4356px;width:440px;background:#fff;border:1px solid #EBE3D5;border-radius:16px;padding:24px 26px;box-shadow:0 26px 60px -28px rgba(40,30,15,.34)">
+  <div style="display:flex;align-items:center;gap:11px"><span style="width:38px;height:38px;border-radius:10px;background:#E7F0E8;display:flex;align-items:center;justify-content:center;flex:none"><span style="font-size:18px;color:#5E9E73">↓</span></span><div><div style="font-size:16px;font-weight:700;color:#211D18">Downloading small.en</div><div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#A89F90">whisper.cpp · 487 MB</div></div></div>
+  <div style="height:8px;background:#EFEAE0;border-radius:5px;margin:18px 0 8px;overflow:hidden"><div style="width:62%;height:100%;background:#5E9E73;border-radius:5px"></div></div>
+  <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8A8174"><span>302 / 487 MB</span><span>18 MB/s · ~10s left</span></div>
+  <div style="font-size:12.5px;color:#A89F90;line-height:1.5;margin-top:14px">One-time download, stored in <span style="font-family:'JetBrains Mono',monospace">~/.yogurt/models</span>. Most users stay on cloud STT and never see this.</div>
+  <div style="display:flex;gap:9px;margin-top:18px"><button style="flex:1;border:1px solid #D9D0C0;background:#fff;color:#6B6256;font-family:inherit;font-size:13px;font-weight:600;padding:10px;border-radius:9px;cursor:pointer">Cancel</button><button style="flex:1;border:none;background:#FBF7EF;color:#A89F90;font-family:inherit;font-size:13px;font-weight:600;padding:10px;border-radius:9px">Run in background</button></div>
+</div>
+
+<!-- ===================== 07c SUMMARY / REGENERATE ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1380px;top:4320px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">RE-ENHANCE · templates &amp; versions</div>
+<div style="position:absolute;left:1380px;top:4356px;width:700px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/m/weekly-sync</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid #EBE3D5;background:#FBF7EF;position:relative">
+    <div style="font-size:15px;font-weight:700;color:#211D18">Weekly sync — Q3 launch</div>
+    <div style="display:flex;align-items:center;gap:9px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#A89F90">v3 · 2:41 PM</span><button style="border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;box-shadow:0 2px 8px rgba(91,79,199,.3)">Re-enhance ⌄</button></div>
+    <!-- popover -->
+    <div style="position:absolute;top:52px;right:22px;width:240px;background:#fff;border:1px solid #E3DBCB;border-radius:13px;box-shadow:0 18px 40px -12px rgba(40,30,15,.3);padding:8px;z-index:4">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:#A89F90;padding:6px 10px 4px">TEMPLATE</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:8px;background:#ECE9FB"><span style="font-size:13.5px;font-weight:600;color:#5B4FC7">Standup</span><span style="color:#5B4FC7">✓</span></div>
+      <div style="padding:9px 10px;border-radius:8px;font-size:13.5px;color:#6B6256">Generic</div>
+      <div style="padding:9px 10px;border-radius:8px;font-size:13.5px;color:#6B6256">1:1</div>
+      <div style="padding:9px 10px;border-radius:8px;font-size:13.5px;color:#6B6256">Interview debrief</div>
+      <div style="height:1px;background:#F2EBDD;margin:6px 4px"></div>
+      <button style="width:100%;border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:13px;font-weight:600;padding:9px;border-radius:8px;cursor:pointer">↻ Regenerate</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 188px;min-height:300px">
+    <div style="padding:24px 28px">
+      <div style="font-size:15px;font-weight:700;color:#211D18;margin-bottom:8px">In progress</div>
+      <ul style="margin:0 0 16px;padding-left:18px;list-style:none">
+        <li style="position:relative;font-size:14.5px;line-height:1.55;color:#211D18;margin-bottom:5px"><span style="position:absolute;left:-16px">•</span>Q3 launch — risks?</li>
+        <li style="position:relative;font-size:14px;line-height:1.55;color:#A89F90;margin-left:12px"><span style="position:absolute;left:-12px">◦</span>Dana: arm64-first, Intel best-effort.</li>
+      </ul>
+      <div style="font-size:15px;font-weight:700;color:#211D18;margin-bottom:8px">Blocked</div>
+      <ul style="margin:0;padding-left:18px;list-style:none">
+        <li style="position:relative;font-size:14px;line-height:1.55;color:#A89F90;margin-left:12px"><span style="position:absolute;left:-12px">◦</span>ScreenCaptureKit loopback spike — pending.</li>
+      </ul>
+    </div>
+    <!-- versions rail -->
+    <div style="border-left:1px solid #EBE3D5;background:#FCFAF5;padding:20px 16px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;color:#A89F90;margin-bottom:13px">VERSIONS</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="background:#fff;border:1.5px solid #5B4FC7;border-radius:9px;padding:9px 11px"><div style="font-size:12.5px;font-weight:700;color:#211D18">v3 · Standup</div><div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#5B4FC7">2:41 PM · current</div></div>
+        <div style="background:#fff;border:1px solid #EBE3D5;border-radius:9px;padding:9px 11px"><div style="font-size:12.5px;font-weight:600;color:#6B6256">v2 · Generic</div><div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">2:38 PM</div></div>
+        <div style="background:#fff;border:1px solid #EBE3D5;border-radius:9px;padding:9px 11px"><div style="font-size:12.5px;font-weight:600;color:#6B6256">v1 · 1:1</div><div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#A89F90">2:35 PM</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 08a EMPTY LIBRARY ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:80px;top:4880px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">08 — EMPTY &amp; ERROR STATES</div>
+<div style="position:absolute;left:80px;top:4916px;width:900px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:212px 1fr;min-height:470px">
+    <div style="background:#FBF7EF;border-right:1px solid #EBE3D5;padding:20px 16px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:9px;padding:0 6px"><svg viewBox="0 0 44 44" width="26" height="26"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg><span style="font-family:'Instrument Serif',serif;font-size:21px;color:#211D18">yogurt</span></div>
+      <button style="margin-top:20px;border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:13.5px;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 2px 8px rgba(91,79,199,.3)"><span style="font-size:16px;line-height:0">+</span> New meeting</button>
+      <div style="margin-top:22px;display:flex;flex-direction:column;gap:2px"><div style="padding:8px 10px;border-radius:8px;background:#ECE9FB;color:#5B4FC7;font-size:13.5px;font-weight:600">All meetings</div><div style="padding:8px 10px;color:#6B6256;font-size:13.5px">Starred</div></div>
+      <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;background:#E7F0E8"><span style="width:8px;height:8px;border-radius:50%;background:#5E9E73"></span><span style="font-size:12px;color:#5d6b5f;font-weight:600">Local-only · on</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px">
+      <svg viewBox="0 0 44 44" width="56" height="56" style="animation:float 3.5s ease-in-out infinite"><circle cx="22" cy="22" r="22" fill="#ECE9FB"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#5B4FC7" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>
+      <div style="font-family:'Instrument Serif',serif;font-size:28px;color:#211D18;margin-top:20px">No meetings yet</div>
+      <div style="font-size:14.5px;color:#8A8174;line-height:1.55;max-width:340px;margin-top:8px">Start one and Yogurt listens to both sides of the call — no bot joins. Your notes and audio stay on this Mac.</div>
+      <button style="margin-top:20px;border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:14px;font-weight:600;padding:11px 20px;border-radius:11px;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 3px 12px rgba(91,79,199,.32)">Start your first meeting <span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:rgba(255,255,255,.22);padding:2px 6px;border-radius:5px">⌘N</span></button>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#A89F90;margin-top:24px">notes saved to ~/.yogurt/notes/*.md</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 08b PERMISSION DENIED ===================== -->
+<div data-drags-parent="1" style="position:absolute;left:1040px;top:4880px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;letter-spacing:.14em;white-space:nowrap;color:#A89F90">PERMISSION NOT GRANTED</div>
+<div style="position:absolute;left:1040px;top:4916px;width:760px;background:#fff;border:1px solid #EBE3D5;border-radius:14px;box-shadow:0 26px 64px -30px rgba(40,30,15,.28);overflow:hidden">
+  <div style="height:42px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#F4EEE3;border-bottom:1px solid #EBE3D5">
+    <div style="display:flex;gap:7px"><span style="width:11px;height:11px;border-radius:50%;background:#E57A6E"></span><span style="width:11px;height:11px;border-radius:50%;background:#E8B96A"></span><span style="width:11px;height:11px;border-radius:50%;background:#73B97E"></span></div>
+    <div style="flex:1;display:flex;justify-content:center"><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A8174;background:#fff;border:1px solid #EBE3D5;padding:4px 16px;border-radius:7px">localhost:7878/welcome</div></div>
+    <div style="width:54px"></div>
+  </div>
+  <div style="padding:44px 48px;min-height:420px;display:flex;flex-direction:column;align-items:flex-start">
+    <span style="width:46px;height:46px;border-radius:12px;background:#FBEDE9;display:flex;align-items:center;justify-content:center;font-size:24px;color:#E07A66">⚠</span>
+    <div style="font-family:'Instrument Serif',serif;font-size:32px;color:#211D18;margin-top:18px">Yogurt can't hear the call yet</div>
+    <div style="font-size:15px;color:#6B6256;line-height:1.55;max-width:520px;margin-top:8px">Screen Recording is off, so the other side of your meeting is silent. Turn it on — this is the permission that lets Yogurt capture system audio without a bot.</div>
+    <div style="display:flex;flex-direction:column;gap:11px;margin-top:24px;width:100%;max-width:540px">
+      <div style="display:flex;gap:13px;align-items:flex-start"><span style="width:24px;height:24px;border-radius:50%;background:#211D18;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none">1</span><div style="font-size:14px;color:#211D18;line-height:1.5"><b>System Settings → Privacy &amp; Security → Screen Recording</b></div></div>
+      <div style="display:flex;gap:13px;align-items:flex-start"><span style="width:24px;height:24px;border-radius:50%;background:#211D18;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none">2</span><div style="font-size:14px;color:#211D18;line-height:1.5">Toggle <b>Yogurt</b> on</div></div>
+      <div style="display:flex;gap:13px;align-items:flex-start"><span style="width:24px;height:24px;border-radius:50%;background:#211D18;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none">3</span><div style="font-size:14px;color:#211D18;line-height:1.5">Restart Yogurt once <span style="color:#8A8174">— a macOS requirement, not us</span></div></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:26px">
+      <button style="border:none;background:#5B4FC7;color:#fff;font-family:inherit;font-size:14px;font-weight:600;padding:12px 18px;border-radius:11px;cursor:pointer;box-shadow:0 3px 12px rgba(91,79,199,.3)">Open System Settings</button>
+      <button style="border:1px solid #D9D0C0;background:#fff;color:#211D18;font-family:inherit;font-size:14px;font-weight:600;padding:12px 18px;border-radius:11px;cursor:pointer">Restart Yogurt</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { merged: false, showTranscript: false, showChat: false };
+  componentDidMount() {
+    this._t = setTimeout(() => this.setState({ merged: true }), 800);
+  }
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._r); }
+  replay = () => {
+    this.setState({ merged: false });
+    clearTimeout(this._r);
+    this._r = setTimeout(() => this.setState({ merged: true }), 90);
+  };
+  toggleTranscript = () => this.setState(s => ({ showTranscript: !s.showTranscript }));
+  openChat = () => this.setState({ showChat: true });
+  closeChat = () => this.setState({ showChat: false });
+  renderVals() {
+    const on = this.state.merged;
+    const mk = (d) => ({
+      display: 'block',
+      opacity: on ? 1 : 0,
+      maxHeight: on ? '90px' : '0px',
+      transform: on ? 'none' : 'translateY(-5px)',
+      filter: on ? 'none' : 'blur(2.5px)',
+      overflow: 'hidden',
+      transition: `opacity .55s ease ${d}ms, max-height .6s cubic-bezier(.2,.7,.2,1) ${d}ms, transform .55s ease ${d}ms, filter .55s ease ${d}ms`,
+      marginBottom: '6px',
+    });
+    return {
+      replay: this.replay,
+      g0: mk(140), g1: mk(340), g2: mk(560), g3: mk(760),
+      showTranscript: this.state.showTranscript,
+      showTranscriptTab: !this.state.showTranscript,
+      showChat: this.state.showChat,
+      showAskPill: !this.state.showChat,
+      toggleTranscript: this.toggleTranscript,
+      openChat: this.openChat,
+      closeChat: this.closeChat,
+    };
+  }
+}
+</script>
+</body>
+</html>
