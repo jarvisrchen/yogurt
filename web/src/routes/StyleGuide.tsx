@@ -52,6 +52,7 @@ const MOTION: Array<{ name: string; duration: string; use: string; className: st
   { name: "float",          duration: "3.5s",  use: "Empty-state logo gentle float",          className: "animate-float inline-block" },
   { name: "pop-up",         duration: "260ms", use: "Chat window expanding from Ask pill",    className: "" },
   { name: "slide-in-right", duration: "340ms", use: "Live transcript dock opening",           className: "" },
+  { name: "staggered-reveal", duration: "600ms", use: "Staggered list reveal (welcome, library)", className: "animate-staggered-reveal inline-block w-32 h-3 rounded-chip bg-blsoft" },
 ];
 
 export function StyleGuide() {
