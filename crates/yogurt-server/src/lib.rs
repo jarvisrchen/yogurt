@@ -1,13 +1,17 @@
 mod assets;
 mod dev_proxy;
 mod routes;
+pub mod session;
 pub mod storage;
+mod ws;
 
 use anyhow::Result;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
+pub use session::SessionToken;
 pub use storage::Storage;
 
 /// Server runtime mode.
@@ -26,6 +30,7 @@ pub enum Mode {
 pub struct AppState {
     pub mode: Mode,
     pub storage: Arc<Storage>,
+    pub session: Arc<SessionToken>,
     pub bind_port: u16,
 }
 
@@ -35,7 +40,8 @@ pub struct AppState {
 pub struct RunConfig {
     pub addr: SocketAddr,
     pub mode: Mode,
-    pub db_path: Option<std::path::PathBuf>,
+    pub db_path: Option<PathBuf>,
+    pub session_token_path: Option<PathBuf>,
 }
 
 impl RunConfig {
@@ -44,6 +50,7 @@ impl RunConfig {
             addr,
             mode,
             db_path: None,
+            session_token_path: None,
         }
     }
 }
@@ -53,7 +60,8 @@ pub async fn run(addr: SocketAddr, mode: Mode) -> Result<()> {
     run_with_config(RunConfig::new(addr, mode)).await
 }
 
-/// Configurable entry point — accepts overrides for DB path (used by tests).
+/// Configurable entry point — accepts overrides for DB path and session
+/// token path (used by tests).
 pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     let db_path = match cfg.db_path {
         Some(p) => p,
@@ -61,9 +69,16 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     };
     let storage = Arc::new(Storage::init_at(&db_path)?);
 
+    let token_path = match cfg.session_token_path {
+        Some(p) => p,
+        None => session::default_token_path()?,
+    };
+    let session = Arc::new(session::load_or_create(&token_path)?);
+
     let state = AppState {
         mode: cfg.mode,
         storage,
+        session,
         bind_port: cfg.addr.port(),
     };
 

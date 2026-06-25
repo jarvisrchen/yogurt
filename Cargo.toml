@@ -46,6 +46,7 @@ subtle = "2"
 assert_cmd = "2"
 tempfile = "3"
 tokio-tungstenite = "0.24"
+futures-util = "0.3"
 
 [profile.release]
 lto = "thin"

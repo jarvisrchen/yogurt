@@ -2381,6 +2381,7 @@ dependencies = [
  "axum",
  "base64",
  "directories",
+ "futures-util",
  "mime_guess",
  "rand 0.8.6",
  "reqwest",

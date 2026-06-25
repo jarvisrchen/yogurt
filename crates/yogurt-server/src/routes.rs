@@ -8,14 +8,13 @@ pub fn router(state: AppState) -> Router {
     let mode = state.mode;
     let router = Router::new()
         .route("/api/health", get(health))
-        .with_state(state.clone());
+        .route("/ws", get(crate::ws::ws_handler))
+        .with_state(state);
 
-    let router = match mode {
+    match mode {
         Mode::Release => router.fallback(serve_embedded),
         Mode::Dev => router.fallback(crate::dev_proxy::proxy_to_vite),
-    };
-
-    router
+    }
 }
 
 async fn health() -> Json<Value> {
