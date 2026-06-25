@@ -132,6 +132,32 @@ Source: PRD §16.2 (Blueberry theme — the only v1 theme).
 - **Lilac (`#ECE9FB` soft blueberry):** background for the "✨ AI enhances these when you hit End" enhancing banner (Phase 4).
 - **Secondary button border:** `#D9D0C0` — slightly warmer than `--color-line` per PRD §16.6 (kept inline, not promoted to its own token).
 
+**Token usage rules (a11y / contrast — Phase 1 review MD-05, MD-06):**
+
+The PRD-spec hex values are fixed. To stay WCAG AA-readable inside our
+contrast envelope, *how* each token is used matters as much as the
+value:
+
+- `--color-mut` (`#8A8174`) on `--color-paper` (`#FBF7EF`) is ~4.0:1 —
+  just under AA's 4.5:1 floor for body text. **Use `text-mut` for
+  small captions only** (>=11px metadata, mono token labels, helper
+  hints, keyboard shortcuts). **Never** for body copy or paragraphs.
+  For body copy on `bg-paper`, use `text-ink` (#211D18, ~13:1) or
+  `text-grey` (#A89F90, ~3.5:1 — also captions/secondary only).
+- `--color-straw` (`#E07A66`) on `--color-strsoft` (`#FBE6E0`) is
+  ~2.9:1 — **fails AA at every size**. The strawberry color is
+  reserved for **borders, icons, and the recording dot** on soft-
+  strawberry surfaces. **Body text on `bg-strsoft` uses `text-ink`**
+  (passes AAA). This includes the Phase 7 STATE-02 permission-denied
+  card, the Pill straw tone, and any error-state surface.
+- `--color-blue` on `--color-blsoft` is ~7.0:1 — passes AA at all sizes.
+  Safe for body text.
+- `--color-matcha` on `--color-mtsoft` is ~4.6:1 — passes AA for body
+  text (just barely). Acceptable for the "Local-only · on" pill.
+
+When a Phase 4+ surface needs body copy on a soft-tinted background,
+follow these rules rather than inferring from the tone name.
+
 **Elevation (PRD §16.4):**
 
 | Token | Value | Usage |

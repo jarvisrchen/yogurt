@@ -29,11 +29,16 @@ describe("Pill", () => {
     expect(el.className).toMatch(/text-blue/);
   });
 
-  it("straw tone uses strawberry-soft bg and strawberry text", () => {
+  it("straw tone uses strawberry-soft bg with ink body text + strawberry border (MD-06)", () => {
+    // text-straw on bg-strsoft is ~2.9:1 (fails AA). The straw tone uses
+    // text-ink for body copy; the strawberry color is reserved for the
+    // border (and decorative icons).
     const { container } = render(<Pill tone="straw">Recording</Pill>);
     const el = container.firstChild as HTMLElement;
     expect(el.className).toMatch(/bg-strsoft/);
-    expect(el.className).toMatch(/text-straw/);
+    expect(el.className).toMatch(/text-ink/);
+    expect(el.className).toMatch(/border-straw/);
+    expect(el.className).not.toMatch(/text-straw/);
   });
 
   it("has no role by default (decorative pills should not pollute AT tree)", () => {
