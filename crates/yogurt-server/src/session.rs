@@ -2,9 +2,10 @@
 //!
 //! On first boot we generate a 32-byte URL-safe random token and write it to
 //! disk. Subsequent boots read the existing token so it survives restarts
-//! (CONTEXT D-21). The WS handler requires this token as either:
-//!   - `?token=<token>` query param, OR
-//!   - `Sec-WebSocket-Protocol: yogurt.<token>` subprotocol header.
+//! (CONTEXT D-21). The WS handler requires this token as a `?token=<token>`
+//! query param. (The `Sec-WebSocket-Protocol`-based path was removed in BL-02
+//! because the browser `WebSocket` API cannot set arbitrary headers — see
+//! `ws.rs` module docs.)
 //!
 //! Comparison is constant-time via the `subtle` crate.
 
