@@ -208,5 +208,5 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 | 5. LLM Client + Settings + Keychain | 4/4 | Complete   | 2026-06-26 |
 | 6. In-Meeting Chat | 2/2 | Complete   | 2026-06-26 |
 | 7. Library + Onboarding + States | 4/4 | Complete   | 2026-06-26 |
-| 8. Local STT (whisper.cpp) | 0/TBD | Not started | - |
+| 8. Local STT (whisper.cpp) | 1/3 | In Progress|  |
 | 9. Distribution Polish | 0/TBD | Not started | - |
