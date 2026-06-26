@@ -157,16 +157,28 @@ fn allowed_origins_for_port(port: u16) -> std::collections::HashSet<String> {
     set
 }
 
-/// `POST /api/meetings/:id/start` — open audio capture + spawn the Deepgram
-/// STT session (D-12). 200 `{"status":"started"}` on success; 400 with
-/// `{"error":<reason>}` on any failure (notably missing
-/// `YOGURT_DEEPGRAM_API_KEY` per D-07).
+/// `POST /api/meetings/:id/start` — open audio capture + spawn the
+/// configured STT session.  Phase 8 (Plan 08-03) reads
+/// `settings.stt_provider` + `stt.model` from the DB and routes to
+/// either `DeepgramStt` (cloud) or `WhisperLocal` (local).
 async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
-    match state.meetings.start(&id).await {
+    // Load the user's stored STT preference.  Defaults to cloud/small.en
+    // via V005 seed rows + load_general fallbacks.
+    let stt_settings = match yogurt_db::settings::load_general(&state.db) {
+        Ok(g) => crate::meetings::SttSettings::from(&g),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("load settings: {e}") })),
+            )
+                .into_response();
+        }
+    };
+    match state.meetings.start(&id, stt_settings).await {
         Ok(_) => (StatusCode::OK, Json(json!({ "status": "started" }))).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e.to_string() })),
+            Json(json!({ "error": format!("{e:#}") })),
         )
             .into_response(),
     }
@@ -180,7 +192,7 @@ async fn stop_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> im
         Ok(_) => (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e.to_string() })),
+            Json(json!({ "error": format!("{e:#}") })),
         )
             .into_response(),
     }

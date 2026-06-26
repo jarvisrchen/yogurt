@@ -61,6 +61,9 @@ async fn spawn() -> TestSetup {
         llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
+        // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
+        // here but required by the AppState struct.
+        app_events_tx: tokio::sync::broadcast::channel(64).0,
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

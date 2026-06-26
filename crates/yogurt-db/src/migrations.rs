@@ -44,6 +44,11 @@ fn migrations() -> Migrations<'static> {
         // mirror the base columns and would otherwise leave the
         // searchable transcript blank.
         M::up(include_str!("../migrations/V004__meetings_fts.sql")),
+        // Phase 8 (Plan 08-03): seed `stt.provider` + `stt.model` KV rows
+        // so `meetings/start.rs` can branch between the Deepgram cloud
+        // adapter and the WhisperLocal adapter without a settings null
+        // check.  Defaults: provider=cloud, model=small.en (D-02).
+        M::up(include_str!("../migrations/V005__stt_provider_model.sql")),
     ])
 }
 
