@@ -17,6 +17,70 @@ export interface HealthResponse {
   service: string;
 }
 
+// ─── Phase 6 (Plan 06-02): chat REST surface ───────────────────────────────
+
+/**
+ * Wire shape for one persisted chat row, matches `yogurt_db::chat::ChatMessage`
+ * from `crates/yogurt-db/src/chat.rs`. `created_at` is unix milliseconds.
+ */
+export type ChatRole = "user" | "assistant";
+
+export interface ChatMessage {
+  id: string;
+  meeting_id: string;
+  role: ChatRole;
+  content: string;
+  created_at: number;
+}
+
+/**
+ * POST /api/meetings/{meetingId}/chat — insert a user turn + spawn the
+ * LLM stream. Returns the assistant message_id (ULID) which subsequent
+ * `chat_chunk` WS events carry. Throws on non-2xx.
+ */
+export async function postChatMessage(
+  meetingId: string,
+  content: string,
+  token: string,
+): Promise<{ message_id: string }> {
+  const res = await fetch(
+    `/api/meetings/${meetingId}/chat?token=${encodeURIComponent(token)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `chat send failed: ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as { message_id: string };
+}
+
+/**
+ * GET /api/meetings/{meetingId}/chat — hydrate chat history in
+ * chronological order. Used on meeting view remount.
+ */
+export async function fetchChatHistory(
+  meetingId: string,
+  token: string,
+): Promise<ChatMessage[]> {
+  const res = await fetch(
+    `/api/meetings/${meetingId}/chat?token=${encodeURIComponent(token)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `chat history failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { messages: ChatMessage[] };
+  return body.messages;
+}
+
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch("/api/health");
   if (!res.ok) throw new Error(`health check failed: ${res.status}`);
