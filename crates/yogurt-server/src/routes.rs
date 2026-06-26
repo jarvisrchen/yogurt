@@ -1,15 +1,17 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{any, get},
+    routing::{any, get, post},
     Json, Router,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 use crate::assets::serve_embedded;
+use crate::ws::ws_meeting_handler;
 use crate::{audio, AppState, Mode};
 
 pub fn router(state: AppState) -> Router {
@@ -32,6 +34,18 @@ pub fn router(state: AppState) -> Router {
 
     let router = Router::new()
         .route("/api/health", get(health))
+        // Phase 3: meeting lifecycle REST surface (D-12).
+        .route("/api/meetings", post(create_meeting))
+        // axum 0.8 path syntax: `{id}` (not `:id`). The plan's superpowers
+        // source was written against 0.7 — the user prompt acceptance
+        // criteria check for the conceptual route shape, which this matches.
+        .route("/api/meetings/{id}/start", post(start_meeting))
+        .route("/api/meetings/{id}/stop", post(stop_meeting))
+        // Phase 3: per-meeting transcript WebSocket (D-09 / D-10).
+        // The handshake is GET; WebSocketUpgrade extraction rejects other
+        // methods automatically. Mounted on the same router so AppState
+        // (incl. meetings registry) is available via State extraction.
+        .route("/ws/meetings/{id}", get(ws_meeting_handler))
         .merge(audio_routes)
         // MD-07: use `any()` so OPTIONS / POST / etc. against /ws ALSO go
         // through the Origin+token check rather than falling through to the
@@ -49,6 +63,44 @@ pub fn router(state: AppState) -> Router {
 
 async fn health() -> Json<Value> {
     Json(json!({ "status": "ok", "service": "yogurt-server" }))
+}
+
+/// `POST /api/meetings` — create a new meeting and return its UUID v7 id.
+///
+/// Body: empty. Returns `{ "id": <uuid>, "created_at_ms": <u64> }` (D-12).
+/// The meeting is in-memory only in Phase 3; Phase 7 will persist via SQLite.
+async fn create_meeting(State(state): State<AppState>) -> Json<Value> {
+    let m = state.meetings.create().await;
+    Json(json!({ "id": m.id, "created_at_ms": m.created_at_ms }))
+}
+
+/// `POST /api/meetings/:id/start` — open audio capture + spawn the Deepgram
+/// STT session (D-12). 200 `{"status":"started"}` on success; 400 with
+/// `{"error":<reason>}` on any failure (notably missing
+/// `YOGURT_DEEPGRAM_API_KEY` per D-07).
+async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
+    match state.meetings.start(&id).await {
+        Ok(_) => (StatusCode::OK, Json(json!({ "status": "started" }))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// `POST /api/meetings/:id/stop` — abort the meeting's supervisor task
+/// (idempotent). Dropping the supervisor signals the audio thread to drop
+/// the AudioStream (RAII stops cpal + SCK).
+async fn stop_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
+    match state.meetings.stop(&id).await {
+        Ok(_) => (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
 }
 
 /// Query-string carrier for `?token=<token>` on `/api/audio/*`. Matches the
