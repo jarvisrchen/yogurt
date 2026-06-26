@@ -37,8 +37,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Transcript (Cloud STT)
 
-- [ ] **TRANS-01**: `SttEngine` trait defined with `open_session(channel) → SttSession` shape
-- [ ] **TRANS-02**: Deepgram streaming adapter implements `SttEngine`
+- [x] **TRANS-01**: `SttEngine` trait defined with `open_session(channel) → SttSession` shape
+- [x] **TRANS-02**: Deepgram streaming adapter implements `SttEngine`
 - [ ] **TRANS-03**: Live transcript dock panel collapsed by default as right-edge tab with 3-bar animated wave icon
 - [ ] **TRANS-04**: Click expands panel — slides in from right at 340ms `cubic-bezier(.2,.7,.2,1)`, 330px wide, notes column stays editable (not dimmed)
 - [ ] **TRANS-05**: Each transcript line shows channel label ("Me" ink / "Them" grey) + JetBrains-Mono timestamp from meeting start (e.g. `00:11:02`)
@@ -239,8 +239,8 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | AUDIO-05 | Phase 2 (Plan 02-02) | Complete (2026-06-25) — each `FrameChunker` captures `Instant::now()` at construction; both chunkers seeded synchronously inside `start_capture()` (spawn-order skew microseconds, trivially < 50ms drift budget). Long-run 60-min drift assertion deferred to Phase 3 once STT timestamps land. |
 | AUDIO-06 | Phase 2 | Pending |
 | AUDIO-07 | Phase 2 | Pending |
-| TRANS-01 | Phase 3 | Pending |
-| TRANS-02 | Phase 3 | Pending |
+| TRANS-01 | Phase 3 (Plan 03-01) | Complete |
+| TRANS-02 | Phase 3 (Plan 03-01) | Complete |
 | TRANS-03 | Phase 3 | Pending |
 | TRANS-04 | Phase 3 | Pending |
 | TRANS-05 | Phase 3 | Pending |

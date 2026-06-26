@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 02-02 complete — real mic + system audio capture on Path A (in-process SCK 8.x); start_capture() orchestrator returns AudioStream with subscribe_mic/subscribe_system; dual_smoke verified 500 mic + 498 system frames over 10s with both peaks > 1000
-last_updated: "2026-06-25T19:25:32.000Z"
-last_activity: 2026-06-25 — Phase 2 Plan 02 complete: yogurt-audio gains mic capture (cpal + Downmix), system audio capture (SCK 8.x in-process, AUDIO-03 excludes_current_process_audio set), start_capture() orchestrator with 256-cap broadcast channels per AUDIO-04, Instant::now() per-FrameChunker baseline per AUDIO-05; 4 commits (build.rs rpath fix, mic, system, orchestrator); 8 new tests (yogurt-audio total 16+1 ignored, workspace total 44+1 ignored); dual_smoke hardware-verified on Apple Silicon macOS 15.6
+stopped_at: Plan 03-01 complete — yogurt-stt crate scaffolded with Stt trait + Channel/AudioChunk/TranscriptEvent types (PRD §10 shape); DeepgramStt hand-rolled tokio-tungstenite 0.24 adapter (nova-2, linear16, dual-channel mic+system WS); mock-WS integration test proves end-to-end audio→transcript mapping in ~160ms
+last_updated: "2026-06-26T00:55:00.000Z"
+last_activity: 2026-06-25 — Phase 3 Plan 01 complete: new yogurt-stt crate added to workspace, Stt trait + TranscriptEvent matches PRD §10 verbatim, DeepgramStt opens two parallel WS sessions per meeting (preserves Me/Them without diarization), CloseStream-on-mpsc-drop clean shutdown, 4 unit tests + 1 mock integration test (6 total passing, clippy clean, fmt clean); 4 commits (165c251, 521b91b, c052c75, 9a712d6); 2 Rule-1 auto-fixes (clippy useless_conversion + mock determinism); TRANS-01 + TRANS-02 complete
 progress:
   total_phases: 10
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 32
-  completed_plans: 7
-  percent: 22
+  completed_plans: 8
+  percent: 25
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 2 of 10 (Audio Capture — HIGHEST RISK) — In progress (Plan 02 of 3 complete)
-Plan: 02-02 complete; 02-03 (REST endpoints + WAV ear-test checkpoint) next
-Status: yogurt-audio has real mic + system capture wired end-to-end on Apple Silicon (cpal default input → Downmix → broadcast; SCK 8.x audio-only stream → Downmix → broadcast). start_capture() returns AudioStream with subscribe_mic/subscribe_system; AUDIO-02/03/04/05 satisfied; AUDIO-06 plumbing in place via RAII Drop on owned MicCapture + SystemCapture fields. dual_smoke hardware-verified.
-Last activity: 2026-06-25 — Plan 02-02 shipped (4 commits: build.rs rpath fix + mic capture + system capture + start_capture orchestrator); 8 new Rust tests; 44 workspace tests green; mic_smoke 249 frames/5s, system_smoke 248 frames/5s peak −5221 with Glass.aiff loop, dual_smoke 500 mic + 498 system over 10s
+Phase: 3 of 10 (Cloud STT + Live Transcript) — In progress (Plan 01 of 3 complete)
+Plan: 03-01 complete; 03-02 (meetings registry + REST endpoints + WS route) next
+Status: yogurt-stt crate ships Stt trait + DeepgramStt adapter. yogurt-stt has ZERO dep on yogurt-audio (verified) — server crate will be the wirer in 03-02. Two parallel WS sessions per meeting (one per Channel) preserves Me/Them label without diarization (PRD §2 v1 anti-goal). TranscriptEvent matches PRD §10 wire shape verbatim. Mock-WS pattern (TcpListener:0 + accept_async) proven and reusable for 03-02 WS handler tests.
+Last activity: 2026-06-25 — Plan 03-01 shipped (4 commits: bootstrap crate + types, Deepgram adapter, fmt fixup, mock integration test); 6 tests passing in yogurt-stt; 2 Rule-1 auto-fixes; tokio-tungstenite 0.24 + async-trait + url + uuid added as workspace deps with rustls-tls-webpki-roots feature (no OpenSSL link, preserves single-binary distribution).
 
-Progress: [██░░░░░░░░] 22%
+Progress: [██▌░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 7
-- Average duration: ~29 min
-- Total execution time: ~204 min
+- Total plans completed: 8
+- Average duration: ~28 min
+- Total execution time: ~224 min
 
 **By Phase:**
 
@@ -47,6 +47,7 @@ Progress: [██░░░░░░░░] 22%
 | 0. Skeleton & Foundations | 3 | ~66 min | ~22 min |
 | 1. Design System | 2 | ~6 min | ~3 min |
 | 2. Audio Capture (HIGHEST RISK) | 2 | ~132 min | ~66 min |
+| 3. Cloud STT + Live Transcript | 1 | ~20 min | ~20 min |
 
 **Recent Trend:**
 
@@ -60,6 +61,7 @@ Progress: [██░░░░░░░░] 22%
 | Phase 01-design-system P02 | 4 | 6 tasks | 10 files |
 | Phase 02-audio-capture-highest-risk P01 | 72 | 3 tasks | 13 files |
 | Phase 02-audio-capture-highest-risk P02 | 60 | 3 tasks |  8 files |
+| Phase 03-cloud-stt-live-transcript P01  | 20 | 3 tasks |  6 files |
 
 ## Accumulated Context
 
@@ -98,6 +100,13 @@ Decisions are logged in PROJECT.md Key Decisions table. Roadmap-shaping decision
 - [Phase 2]: Both broadcast channels are created with `BROADCAST_CAPACITY = 256` const — exactly the AUDIO-04 minimum, ~5 seconds of buffered audio per channel (Plan 02-02)
 - [Phase 2]: cpal F32 callback path is the production case on this MacBook Pro (mono 48 kHz F32); I16 path supported for hardware variance but not exercised in dev-machine smokes (Plan 02-02)
 - [Phase 2]: rubato SincFixedIn has a warm-up delay (148 output samples on first call for 480 input; ~160 thereafter) — test asserts ≥290 across two chunks rather than tight per-call bound (Plan 02-02)
+- [Phase 3]: yogurt-stt is a dedicated crate with ZERO dep on yogurt-audio — defines its own AudioChunk type and accepts broadcast::Receiver. Server crate is the wirer in 03-02. Decouples Phase 8 whisper.cpp adapter from audio crate (Plan 03-01, CONTEXT D-02)
+- [Phase 3]: Hand-rolled tokio-tungstenite 0.24 client over the community `deepgram` crate — pre-1.0 churn risk; ~200 LOC behind the Stt trait keeps swap-out clean (Plan 03-01, CONTEXT D-04)
+- [Phase 3]: Two parallel Deepgram WS sessions per meeting (one per Channel mic+system) — preserves Me/Them label without speaker diarization (PRD §2 explicit v1 anti-goal). Costs 2× Deepgram seconds but is the only correct option (Plan 03-01, CONTEXT D-05)
+- [Phase 3]: tokio-tungstenite uses `rustls-tls-webpki-roots` feature (NOT native-tls) — preserves single-binary distribution by avoiding OpenSSL link (Plan 03-01)
+- [Phase 3]: TranscriptEvent serde shape matches PRD §10 verbatim — snake_case field names, lowercase Channel via rename_all. The wire format is locked here so 03-02 WS handler can `serde_json::to_string` directly (Plan 03-01)
+- [Phase 3]: Mock-WS test pattern (TcpListener on 127.0.0.1:0 + tokio_tungstenite::accept_async) is reusable for 03-02 WS handler tests; asymmetric per-channel response avoids broadcast recv ordering nondeterminism (Plan 03-01)
+- [Phase 3]: `uuid 1` (v7 + serde) added as workspace dep — yogurt-stt doesn't use it directly, but ready for 03-02 MeetingId type (Plan 03-01)
 
 ### Pending Todos
 
@@ -107,7 +116,7 @@ None yet.
 
 - ~~Phase 2 has the highest project-killer risk concentration (audio loopback maturity, timestamp drift). Plan-phase 2 must treat the spike as a gate.~~ **RESOLVED (Plan 02-01)** — SCK 8.x spike PASSED; Path A confirmed. Drift verification deferred to Phase 3 per CONTEXT D-22.
 - ~~Phase 2 (forward note): Plan 02-XX MUST add a `build.rs` emitting `cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift`...~~ **RESOLVED (Plan 02-02)** — `crates/yogurt-audio/build.rs` now emits the Swift Concurrency rpath link arg on macOS; only `/usr/lib/swift` is added (not Xcode's toolchain path) per spike note.
-- Phase 2 (forward note): Plan 02-03 must NOT introduce `--features synthetic` regressions. `yogurt-audio/tests/synthetic.rs` references `yogurt_audio::synthetic::*` which is `#[cfg(feature = "synthetic")]`-gated; workspace test invocations need `--features yogurt-audio/synthetic`. Could be fixed by gating the integration test file with `#![cfg(feature = "synthetic")]` but out of 02-02 scope.
+- Phase 2 (forward note): Plan 02-03 must NOT introduce `--features synthetic` regressions. `yogurt-audio/tests/synthetic.rs` references `yogurt_audio::synthetic::*` which is `#[cfg(feature = "synthetic")]`-gated; workspace test invocations need `--features yogurt-audio/synthetic`. Could be fixed by gating the integration test file with `#![cfg(feature = "synthetic")]` but out of 02-02 scope. **Re-confirmed pre-existing during Plan 03-01 verification** — `cargo test --workspace` fails on this; tracked at `.planning/phases/03-cloud-stt-live-transcript/deferred-items.md` D-INT-01. Scoped `cargo test -p yogurt-stt` is green.
 - Phase 4 is highest payoff but also highest UX risk (TipTap mark + AST diff round-trip). Plan-phase 4 must design `enriched_doc_json` schema before writing the mark.
 
 ## Deferred Items
@@ -120,6 +129,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T19:25:32.000Z
-Stopped at: Plan 02-02 complete — real mic + system audio capture wired end-to-end via in-process SCK 8.x (Path A); start_capture() returns AudioStream with subscribe_mic/subscribe_system; AUDIO-02/03/04/05 satisfied; AUDIO-06 plumbing in place. dual_smoke hardware-verified on Apple Silicon (500 mic + 498 system frames over 10s, both peaks > 1000). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) is still pending from Phase 1.
+Last session: 2026-06-26T00:55:00.000Z
+Stopped at: Plan 03-01 complete — yogurt-stt crate ships Stt trait + DeepgramStt adapter (hand-rolled tokio-tungstenite 0.24, nova-2, linear16, dual-channel mic+system WS). TranscriptEvent matches PRD §10 verbatim. 6 tests passing (1 lib serialize + 4 deepgram unit + 1 mock integration). Clippy clean, fmt clean. TRANS-01 + TRANS-02 complete. Ready for Plan 03-02 (meetings::Registry + REST endpoints + WS route). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) is still pending from Phase 1; Plan 02-03 (REST endpoints + WAV ear-test) also still pending from Phase 2.
 Resume file: None
