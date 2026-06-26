@@ -3285,6 +3285,8 @@ dependencies = [
  "tracing",
  "uuid",
  "yogurt-audio",
+ "yogurt-notes",
+ "yogurt-prompts",
  "yogurt-stt",
 ]
 

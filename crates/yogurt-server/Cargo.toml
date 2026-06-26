@@ -29,6 +29,9 @@ uuid = { workspace = true }
 async-trait = { workspace = true }
 # Phase 4 (Plan 04-02): date formatting for MarkdownExporter filenames.
 time = { workspace = true }
+# Phase 4 (Plan 04-03): the enhance handler consumes both Phase 4 crates.
+yogurt-prompts = { path = "../yogurt-prompts" }
+yogurt-notes = { path = "../yogurt-notes" }
 
 [dev-dependencies]
 tokio = { workspace = true }

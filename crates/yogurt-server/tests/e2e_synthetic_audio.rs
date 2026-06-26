@@ -30,12 +30,16 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
     let session_token = load_or_create(&token_path).unwrap();
     let token_str = session_token.as_str().to_string();
     let session: Arc<SessionToken> = Arc::new(session_token);
+    let (markdown_exporter, prompts) =
+        yogurt_server::__test_only_aux_state(tmp.path().join("notes")).expect("build aux state");
     let state = AppState {
         mode: Mode::Release,
         storage,
         session,
         bind_port,
         meetings: meetings::Registry::new(),
+        markdown_exporter,
+        prompts,
     };
     (state, token_str, tmp)
 }

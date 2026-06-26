@@ -44,6 +44,10 @@ pub fn router(state: AppState) -> Router {
         // criteria check for the conceptual route shape, which this matches.
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
+        // Phase 4 (Plan 04-03): hero augmented-notes endpoint. Same auth
+        // model as the other meeting routes (session token via
+        // Authorization header OR `?token=` query string).
+        .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session_token,

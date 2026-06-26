@@ -41,12 +41,16 @@ async fn spawn() -> TestSetup {
     let addr = probe.local_addr().unwrap();
     drop(probe);
 
+    let (markdown_exporter, prompts) =
+        yogurt_server::__test_only_aux_state(tmp.path().join("notes")).expect("build aux state");
     let state = AppState {
         mode: Mode::Release,
         storage,
         session,
         bind_port: addr.port(),
         meetings: meetings::Registry::new(),
+        markdown_exporter,
+        prompts,
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

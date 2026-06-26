@@ -48,6 +48,8 @@ async fn spawn_server() -> (
         mode: Mode::Release,
         db_path: Some(db_path),
         session_token_path: Some(token_path),
+        // Phase 4 (Plan 04-03): sandbox the per-meeting notes dir.
+        notes_dir: Some(tmp.path().join("notes")),
     };
     let handle = tokio::spawn(async move {
         let _ = run_with_config(cfg).await;

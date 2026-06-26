@@ -52,6 +52,8 @@ async fn spawn_test_server() -> TestServer {
         mode: Mode::Release,
         db_path: Some(db_path),
         session_token_path: Some(token_path),
+        // Phase 4 (Plan 04-03): sandbox the per-meeting notes dir.
+        notes_dir: Some(tmp.path().join("notes")),
     };
     let join = tokio::spawn(yogurt_server::run_with_config(cfg));
 
