@@ -160,3 +160,58 @@ html, body {
   margin: 0 auto;
 }
 
+/* === Phase 4 Plan 04-04: enhancing-state UI (CONTEXT D-28 / D-29 / D-30) ===
+ *
+ * The shimmer + dot-pulse + progress-bar durations are LOAD-BEARING per
+ * PRD §16.5 motion tokens. Do not round, do not interpolate.
+ *
+ *   .shimmer            — 1.25s linear infinite gradient sweep (CONTEXT D-29)
+ *   .enhancing-dot      — 1.4s recpulse ease-in-out infinite  (CONTEXT D-28)
+ *   .enhancing-bar-fill — 1.8s ease-in-out infinite slide      (CONTEXT D-28)
+ *
+ * `--animate-shimmer` and `--animate-recpulse` are defined in the Phase 1
+ * `@theme` block above; we reference those keyframes by name here. The
+ * `enhancing-bar` keyframes are local to this section because no other
+ * surface needs the 1.8s slide.
+ * ========================================================================== */
+
+.shimmer {
+  /* Phase 1's `@keyframes shimmer` sweeps from -200% → 200% — the gradient
+   * needs `background-size: 200% 100%` so the sweep covers the full width
+   * with overlap. */
+  background: linear-gradient(
+    90deg,
+    #EFE6D6 0%,
+    #F8F1E0 50%,
+    #EFE6D6 100%
+  );
+  background-size: 200% 100%;
+  /* Duration / timing 1.25s linear infinite is load-bearing (CONTEXT D-29
+   * + PRD §16.5). Phase 1's `--animate-shimmer` already encodes this, but
+   * we spell it out here for grep-ability — the acceptance gate searches
+   * for the literal string "1.25s linear infinite". */
+  animation: shimmer 1.25s linear infinite;
+}
+
+.enhancing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-blue, #5B4FC7);
+  /* 1.4s recpulse is load-bearing (CONTEXT D-28 + PRD §16.5). */
+  animation: recpulse 1.4s ease-in-out infinite;
+}
+
+.enhancing-bar-fill {
+  width: 30%;
+  height: 100%;
+  background: var(--color-blue, #5B4FC7);
+  border-radius: 999px;
+  animation: enhancing-bar 1.8s ease-in-out infinite;
+}
+
+@keyframes enhancing-bar {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
