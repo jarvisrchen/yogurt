@@ -67,6 +67,12 @@ pub struct ProductionConfig {
     pub storage: Arc<Storage>,
     pub session: Arc<SessionToken>,
     pub notes_dir: PathBuf,
+    /// Phase 5 collateral fix (SET-12): optional override for the
+    /// `yogurt-db` SQLite path. Defaults to `~/.yogurt/db.sqlite` via
+    /// `Db::open_default()`. Tests pass a tempdir-scoped path so parallel
+    /// suites do not collide on the real user DB's WAL lock — matching how
+    /// `RunConfig::db_path` already isolates the Phase 0 storage handle.
+    pub app_db_path: Option<PathBuf>,
 }
 
 impl AppState {
@@ -84,6 +90,12 @@ impl AppState {
             Mode::Release => yogurt_prompts::Mode::Release,
         };
         let prompts = Arc::new(yogurt_prompts::Prompts::load(prompt_mode)?);
+        // SET-12: honor optional db-path override so test suites can
+        // tempdir-isolate the Phase 5 db just like Phase 0 storage.
+        let db = match cfg.app_db_path {
+            Some(p) => Db::open(&p)?,
+            None => Db::open_default()?,
+        };
         Ok(Self {
             mode: cfg.mode,
             storage: cfg.storage,
@@ -92,7 +104,7 @@ impl AppState {
             meetings: meetings::Registry::new(),
             markdown_exporter: exporter,
             prompts,
-            db: Db::open_default()?,
+            db,
             // Phase 5 BLOCKER fix: KeychainStore::new() registers the
             // apple-native-keyring-store backend with keyring-core. The
             // unit-struct form silently no-op'd set_password() under

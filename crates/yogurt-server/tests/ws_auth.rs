@@ -54,6 +54,9 @@ async fn spawn_test_server() -> TestServer {
         session_token_path: Some(token_path),
         // Phase 4 (Plan 04-03): sandbox the per-meeting notes dir.
         notes_dir: Some(tmp.path().join("notes")),
+        // Phase 5 (SET-12): tempdir-isolate the new yogurt-db so parallel
+        // tests do not deadlock on the real user DB's WAL lock.
+        app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
     };
     let join = tokio::spawn(yogurt_server::run_with_config(cfg));
 

@@ -98,6 +98,13 @@ pub struct RunConfig {
     /// Phase 4 (Plan 04-03): override the per-meeting markdown notes
     /// directory. Defaults to `~/.yogurt/notes/`. Tests pass a tempdir.
     pub notes_dir: Option<PathBuf>,
+    /// Phase 5 collateral fix (SET-12): override path for the new
+    /// `yogurt-db` SQLite file (providers + settings). Threaded through to
+    /// `ProductionConfig::app_db_path`. Defaults to
+    /// `~/.yogurt/db.sqlite` via `Db::open_default()`. Tests pass a
+    /// tempdir-scoped path so parallel suites do not collide on the WAL
+    /// lock on the developer's real user DB.
+    pub app_db_path: Option<PathBuf>,
 }
 
 impl RunConfig {
@@ -108,6 +115,7 @@ impl RunConfig {
             db_path: None,
             session_token_path: None,
             notes_dir: None,
+            app_db_path: None,
         }
     }
 }
@@ -148,6 +156,7 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         storage,
         session,
         notes_dir,
+        app_db_path: cfg.app_db_path,
     })
     .await?;
 
