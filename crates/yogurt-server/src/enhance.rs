@@ -111,15 +111,51 @@ pub async fn enhance(
         .send(serde_json::json!({"type": "enhance_progress", "phase": "sending"}));
 
     // 4) Call the LLM. OpenAiCompat from env when configured, else MockLlm.
-    let llm_output = match OpenAiCompatClient::from_env() {
-        Some(client) => client
-            .complete("", &user_prompt)
-            .await
-            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("llm complete failed: {e}")))?,
-        None => MockLlm
-            .complete("", &user_prompt)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("mock llm: {e}")))?,
+    // BL-5: wrap with a hard timeout. If reqwest's own timeout fires we
+    // catch it via Err(...). If the future just stalls (e.g. an in-process
+    // mock that .await's forever), tokio::time::timeout brings us back.
+    // On either failure path emit `enhance_progress { phase: "error" }`
+    // so the browser banner transitions to an error state instead of
+    // spinning forever.
+    let llm_call = async {
+        match OpenAiCompatClient::from_env() {
+            Some(client) => client
+                .complete("", &user_prompt)
+                .await
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("llm complete failed: {e}"))),
+            None => MockLlm
+                .complete("", &user_prompt)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("mock llm: {e}"))),
+        }
+    };
+    let llm_output = match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, llm_call).await
+    {
+        Ok(Ok(out)) => out,
+        Ok(Err((code, msg))) => {
+            // LLM returned an error (HTTP non-2xx, parse failure, etc.).
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": format!("Enhance failed: {msg}")
+            }));
+            return Err((code, msg));
+        }
+        Err(_elapsed) => {
+            // tokio::time::timeout fired.
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": "LLM timed out — try Re-enhance"
+            }));
+            return Err((
+                StatusCode::GATEWAY_TIMEOUT,
+                format!(
+                    "llm call exceeded {}s timeout",
+                    crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs()
+                ),
+            ));
+        }
     };
 
     // 5) Emit `enhance_progress` — streaming. Phase 4 reports the final
@@ -132,12 +168,22 @@ pub async fn enhance(
 
     // 6) Server-side structural diff (Plan 04-02). Returns a MergedDoc
     // tagging each block User vs. AiGrey + timestamp.
-    let merged = merge_notes(&req.notes_md, &llm_output, &req.transcript_json).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("merge_notes: {e}"),
-        )
-    })?;
+    // BL-5: on merge failure (malformed user_md / enriched_md from a buggy
+    // LLM) also emit `error` so the banner exits the spinner state.
+    let merged = match merge_notes(&req.notes_md, &llm_output, &req.transcript_json) {
+        Ok(m) => m,
+        Err(e) => {
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": format!("Merge failed: {e}")
+            }));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("merge_notes: {e}"),
+            ));
+        }
+    };
     let rendered_md = yogurt_notes::render::to_markdown(&merged);
     // BL-2 (XSS hardening): run the rendered markdown through ammonia with a
     // tight allowlist so anything the LLM hallucinated (script/img/iframe/
@@ -177,7 +223,7 @@ pub async fn enhance(
     let title_for_blocking = title.clone();
     let meeting_id_for_blocking = meeting_id_str.clone();
 
-    let notes_path: PathBuf =
+    let notes_path =
         tokio::task::spawn_blocking(move || -> Result<PathBuf, (StatusCode, String)> {
             // SQLite UPSERT inside its own lock scope so the lock is released
             // BEFORE the filesystem write begins. Other writers can proceed
@@ -232,13 +278,32 @@ pub async fn enhance(
                     )
                 })
         })
-        .await
-        .map_err(|e| {
-            (
+        .await;
+
+    // BL-5: surface persistence failures to the browser as an error event
+    // so the EnhancingBanner exits its spinning state.
+    let notes_path: PathBuf = match notes_path {
+        Ok(Ok(p)) => p,
+        Ok(Err((code, msg))) => {
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": format!("Persistence failed: {msg}")
+            }));
+            return Err((code, msg));
+        }
+        Err(join_err) => {
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": "Persistence task failed"
+            }));
+            return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("spawn_blocking join: {e}"),
-            )
-        })??;
+                format!("spawn_blocking join: {join_err}"),
+            ));
+        }
+    };
 
     // 8) Emit `enhance_progress` — done.
     let _ = meeting
