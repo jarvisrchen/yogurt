@@ -17,6 +17,7 @@
 
 mod migrations;
 
+pub mod chat;
 pub mod keychain;
 pub mod paths;
 pub mod providers;
