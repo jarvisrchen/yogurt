@@ -93,10 +93,8 @@ async fn spawn_session(
     tracing::info!(?channel, %url, "deepgram: connecting");
 
     let mut req = url.into_client_request()?;
-    req.headers_mut().insert(
-        "Authorization",
-        format!("Token {}", cfg.api_key).parse()?,
-    );
+    req.headers_mut()
+        .insert("Authorization", format!("Token {}", cfg.api_key).parse()?);
 
     let (ws, _resp) = tokio_tungstenite::connect_async(req).await?;
     let (mut write, mut read) = ws.split();
