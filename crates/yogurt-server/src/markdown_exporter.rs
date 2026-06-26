@@ -14,6 +14,7 @@
 //! single-writer surface.
 
 use anyhow::{Context, Result};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use time::macros::format_description;
 use time::OffsetDateTime;
@@ -42,19 +43,60 @@ impl MarkdownExporter {
         &self.notes_dir
     }
 
-    /// Atomic write: serialize body to `<final>.tmp`, then rename to the final
-    /// path. Filename: `<YYYY-MM-DD-HHmm>-<slug>.md` where the date is derived
-    /// from `started_at_unix_ms` (UTC) and `<slug>` is a lowercased-dasherized
-    /// form of `title` (falls back to `untitled`).
+    /// Atomic write: serialize body to `<final>.tmp`, fsync, then rename
+    /// to the final path. Filename: `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md`
+    /// where the date is derived from `started_at_unix_ms` (UTC), `<slug>`
+    /// is a lowercased-dasherized form of `title` (falls back to
+    /// `untitled`), and `<id6>` is the first 6 chars of the meeting id
+    /// (HI-6 — prevents same-minute same-slug collisions).
+    ///
+    /// HI-5: previous implementation called std::fs::write + std::fs::rename
+    /// without ever fsync'ing the file contents or the directory entry. POSIX
+    /// rename atomicity guarantees the user sees either old or new at the
+    /// directory level, but the *contents* of the renamed file can be empty
+    /// or torn if a power loss happens before the data blocks are flushed
+    /// to disk. We now:
+    ///   1. Open the tmp file with create_new (atomic existence check —
+    ///      blocks a concurrent same-path write).
+    ///   2. Write the body, then `sync_all()` to flush data + metadata.
+    ///   3. Drop the file handle so the rename is on a closed fd.
+    ///   4. Rename to the final path (POSIX-atomic visibility).
+    ///   5. fsync the parent directory so the rename itself is durable.
     pub fn write(&self, m: &Meeting<'_>) -> Result<PathBuf> {
         let fname = filename_for(m)?;
         let final_path = self.notes_dir.join(&fname);
         let tmp_path = self.notes_dir.join(format!("{fname}.tmp"));
 
         let content = render_yaml_frontmatter(m) + m.body_md;
-        std::fs::write(&tmp_path, &content).with_context(|| format!("write tmp {tmp_path:?}"))?;
+
+        // If a prior crash left a stale `.tmp` around, remove it so
+        // create_new can succeed. Best-effort — if it doesn't exist, fine.
+        let _ = std::fs::remove_file(&tmp_path);
+
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .with_context(|| format!("open tmp {tmp_path:?}"))?;
+        f.write_all(content.as_bytes())
+            .with_context(|| format!("write tmp {tmp_path:?}"))?;
+        // HI-5: fsync the tmp file BEFORE renaming so the data blocks are
+        // durable on disk. Without this, POSIX rename only guarantees
+        // visibility-atomicity, not content-atomicity.
+        f.sync_all()
+            .with_context(|| format!("fsync tmp {tmp_path:?}"))?;
+        drop(f);
+
         std::fs::rename(&tmp_path, &final_path)
             .with_context(|| format!("rename {tmp_path:?} -> {final_path:?}"))?;
+
+        // HI-5: fsync the parent directory so the rename's directory-entry
+        // change is durable. On macOS APFS + ext4 this is a real win;
+        // best-effort on platforms where dir-fsync is a no-op or errors.
+        if let Ok(dir) = std::fs::File::open(&self.notes_dir) {
+            let _ = dir.sync_all();
+        }
+
         Ok(final_path)
     }
 }
@@ -67,7 +109,21 @@ fn filename_for(m: &Meeting<'_>) -> Result<String> {
     let fmt = format_description!("[year]-[month]-[day]-[hour][minute]");
     let stamp = dt.format(&fmt).context("format dt")?;
     let slug = slugify(m.title);
-    Ok(format!("{stamp}-{slug}.md"))
+    // HI-6: append a 6-char id prefix so two meetings in the same minute
+    // with the same slug ("Sync"-titled standups) don't silently
+    // overwrite each other on rename. The id is a UUID (hex or
+    // hex+hyphen); strip non-alphanumeric and take the first 6 chars.
+    // Falls back to "noid" if the id is too short to slice (shouldn't
+    // happen for real UUIDs but defensive).
+    let id_safe: String = m.id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let id_prefix = if id_safe.len() >= 6 {
+        &id_safe[..6]
+    } else if id_safe.is_empty() {
+        "noid"
+    } else {
+        id_safe.as_str()
+    };
+    Ok(format!("{stamp}-{slug}-{id_prefix}.md"))
 }
 
 fn slugify(s: &str) -> String {
