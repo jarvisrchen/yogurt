@@ -51,6 +51,11 @@ async fn spawn_server() -> (SocketAddr, String, tempfile::TempDir) {
         // Phase 4 (Plan 04-03): sandbox the per-meeting notes dir inside
         // the same tempdir so this test does not touch `~/.yogurt/notes/`.
         notes_dir: Some(tmp.path().join("notes")),
+        // Phase 5 (SET-12): sandbox the new yogurt-db SQLite file inside
+        // the same tempdir. Without this override, parallel test runs
+        // collide on the WAL lock of the real ~/.yogurt/db.sqlite and
+        // the server hangs past the 1s reachability poll.
+        app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
     };
     tokio::spawn(async move {
         let _ = yogurt_server::run_with_config(cfg).await;

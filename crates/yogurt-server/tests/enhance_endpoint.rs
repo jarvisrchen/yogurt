@@ -54,6 +54,8 @@ async fn spawn_server() -> (
         db_path: Some(db_path.clone()),
         session_token_path: Some(token_path),
         notes_dir: Some(notes_dir.clone()),
+        // Phase 5 (SET-12): tempdir-isolate the new yogurt-db.
+        app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
     };
     let handle = tokio::spawn(async move {
         let _ = run_with_config(cfg).await;
