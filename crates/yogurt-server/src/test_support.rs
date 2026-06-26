@@ -83,7 +83,9 @@ pub struct TestServer {
 /// Boot a server wired with [`MockChunksLlm`] and a fresh tempdir-scoped
 /// storage handle. The caller is responsible for creating meetings,
 /// seeding rows, and aborting the returned task.
-pub async fn run_with_mock_llm(chunks: &[&str]) -> Result<(TestServer, tokio::task::JoinHandle<()>)> {
+pub async fn run_with_mock_llm(
+    chunks: &[&str],
+) -> Result<(TestServer, tokio::task::JoinHandle<()>)> {
     let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = probe.local_addr()?;
     drop(probe);

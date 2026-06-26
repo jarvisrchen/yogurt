@@ -64,7 +64,10 @@ fn it_inserts_and_lists_messages_in_chronological_order() {
         .expect("list chat messages");
     assert_eq!(listed.len(), 2, "expected 2 messages");
     assert_eq!(listed[0].id, m1.id, "first message is the user message");
-    assert_eq!(listed[1].id, m2.id, "second message is the assistant message");
+    assert_eq!(
+        listed[1].id, m2.id,
+        "second message is the assistant message"
+    );
     assert_eq!(listed[0].role, Role::User);
     assert_eq!(listed[1].role, Role::Assistant);
     assert_eq!(listed[0].content, "hello");
