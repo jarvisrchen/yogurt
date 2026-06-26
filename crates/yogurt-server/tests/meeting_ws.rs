@@ -1,10 +1,17 @@
 //! End-to-end WS test that doesn't depend on Deepgram: directly publish into
 //! the meeting's transcript broadcast and assert the frame lands on a
 //! connected WS client in the expected JSON envelope (PRD §10 / CONTEXT D-10).
+//!
+//! BL-01: the meeting WS endpoint now requires Origin + session-token, so the
+//! happy-path test threads both through the upgrade request. The auth
+//! rejection matrix (missing/wrong origin, missing/wrong token) lives in
+//! `meeting_ws_auth.rs`.
 
 use futures_util::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 use yogurt_server::{
     meetings,
@@ -16,13 +23,17 @@ use yogurt_server::{
 /// Construct a full `AppState` rooted in a tempdir so the test never touches
 /// the developer's real `~/.yogurt/`. Mirrors what `run_with_config` does
 /// internally, but the test holds the registry handle so it can `send`
-/// transcript events directly.
-fn build_test_state(bind_port: u16) -> (AppState, tempfile::TempDir) {
+/// transcript events directly. Returns the bound port + the session token so
+/// the test can present matching `Origin: http://127.0.0.1:<port>` and
+/// `?token=<token>` on the upgrade request (BL-01).
+fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let db_path = tmp.path().join("yogurt-test.db");
     let token_path = tmp.path().join("session-token");
     let storage = Arc::new(Storage::init_at(&db_path).unwrap());
-    let session: Arc<SessionToken> = Arc::new(load_or_create(&token_path).unwrap());
+    let session_token = load_or_create(&token_path).unwrap();
+    let token_str = session_token.as_str().to_string();
+    let session: Arc<SessionToken> = Arc::new(session_token);
     let state = AppState {
         mode: Mode::Release,
         storage,
@@ -30,13 +41,18 @@ fn build_test_state(bind_port: u16) -> (AppState, tempfile::TempDir) {
         bind_port,
         meetings: meetings::Registry::new(),
     };
-    (state, tmp)
+    (state, token_str, tmp)
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_fans_transcript_events_to_ws_clients() {
-    let addr: std::net::SocketAddr = "127.0.0.1:17892".parse().unwrap();
-    let (state, _tmp) = build_test_state(addr.port());
+    // Bind on an ephemeral port (IN-06) — fixed ports race under `cargo
+    // nextest`. We bind once with the kernel-assigned port, learn the port,
+    // drop the listener, then pass the same addr to the server.
+    let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = probe.local_addr().unwrap();
+    drop(probe);
+    let (state, token, _tmp) = build_test_state(addr.port());
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let server = tokio::spawn(async move {
@@ -46,9 +62,19 @@ async fn it_fans_transcript_events_to_ws_clients() {
     // Create a meeting via the registry directly (skip REST for this test).
     let m = state.meetings.create().await;
 
-    // Connect a WS client.
-    let url = format!("ws://127.0.0.1:17892/ws/meetings/{}", m.id);
-    let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    // Connect a WS client with the correct Origin + session-token (BL-01).
+    let url = format!(
+        "ws://127.0.0.1:{}/ws/meetings/{}?token={}",
+        addr.port(),
+        m.id,
+        token
+    );
+    let mut req = url.into_client_request().expect("build req");
+    req.headers_mut().insert(
+        "origin",
+        HeaderValue::from_str(&format!("http://127.0.0.1:{}", addr.port())).unwrap(),
+    );
+    let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
 
     // Wait briefly for the handler to subscribe before publishing.
     tokio::time::sleep(Duration::from_millis(100)).await;
