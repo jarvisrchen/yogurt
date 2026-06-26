@@ -49,6 +49,14 @@ pub struct Meeting {
     /// Transcript broadcast — populated by the STT engine, consumed by WS
     /// clients. Capacity 256 is plenty (transcripts arrive < 10 Hz).
     pub transcript_tx: broadcast::Sender<TranscriptEvent>,
+    /// Phase 4: per-meeting JSON event broadcast for non-transcript meeting
+    /// events that ride on the same WS as transcripts (currently:
+    /// `enhance_progress`). The `ws_meeting_handler` forwards every value
+    /// sent here as a `Message::Text(json)` so the browser can observe
+    /// enhance phase transitions (`sending` → `streaming` → `done`) in
+    /// real time. Capacity 64 — enhance emits ~3 events per meeting; the
+    /// cushion absorbs slow consumers without blocking the writer.
+    pub events_tx: broadcast::Sender<serde_json::Value>,
     /// `Some` while recording, `None` before start / after stop.
     pub task: Mutex<Option<JoinHandle<()>>>,
     /// BL-05: handle to the std::thread that owns the !Send `AudioStream`.
@@ -64,11 +72,13 @@ impl Meeting {
     fn new() -> Self {
         let (audio_tx, _) = broadcast::channel(256);
         let (transcript_tx, _) = broadcast::channel(256);
+        let (events_tx, _) = broadcast::channel(64);
         Self {
             id: Uuid::now_v7(),
             created_at_ms: now_ms(),
             audio_tx,
             transcript_tx,
+            events_tx,
             task: Mutex::new(None),
             capture_thread: Mutex::new(None),
         }

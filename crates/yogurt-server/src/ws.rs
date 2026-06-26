@@ -199,8 +199,13 @@ pub async fn ws_meeting_handler(
 }
 
 async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState) {
-    let mut rx = match state.meetings.subscribe(&id).await {
-        Some(r) => r,
+    // Two broadcast subscriptions per WS connection:
+    //   - transcript events (Phase 3, owned by the STT pump);
+    //   - JSON meeting events (Phase 4: `enhance_progress`).
+    // Both are fanned into the same socket, just wrapped in different
+    // top-level `type` discriminators on the JSON frame.
+    let m = match state.meetings.get(&id).await {
+        Some(m) => m,
         None => {
             let _ = socket
                 .send(Message::Close(Some(CloseFrame {
@@ -211,6 +216,8 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
             return;
         }
     };
+    let mut rx = m.transcript_tx.subscribe();
+    let mut events_rx = m.events_tx.subscribe();
 
     loop {
         tokio::select! {
@@ -239,6 +246,33 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     tracing::info!(meeting=%id, "ws/meetings: transcript stream ended");
                     return;
+                }
+            },
+            // Server → Client: Phase 4 enhance_progress (and future meeting
+            // events). The value is already a fully-formed JSON object
+            // (`{type, phase, …}`) so we serialize it directly.
+            ev = events_rx.recv() => match ev {
+                Ok(value) => {
+                    let frame = match serde_json::to_string(&value) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!(?e, "ws/meetings: events serialize failed");
+                            continue;
+                        }
+                    };
+                    if socket.send(Message::Text(frame.into())).await.is_err() {
+                        tracing::info!(meeting=%id, "ws/meetings: client disconnected (events)");
+                        return;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(meeting=%id, n, "ws/meetings: events lagged");
+                    continue;
+                }
+                // Events channel closing is non-fatal — keep the WS alive
+                // for the transcript stream.
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::debug!(meeting=%id, "ws/meetings: events stream ended");
                 }
             },
             // Client → Server: drained so the WS stays healthy.

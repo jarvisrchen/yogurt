@@ -1,6 +1,9 @@
 mod assets;
 pub mod audio;
 mod dev_proxy;
+// Phase 4 (Plan 04-03) augmented-notes enhance endpoint handler. Wires
+// prompts → LLM → merge → persistence → WS progress events end-to-end.
+pub(crate) mod enhance;
 // Phase 4 (Plan 04-01) tactical LLM client + mock fallback. Crate-private
 // modules — Plan 04-03's enhance handler consumes them directly. NO
 // `LlmClient` trait yet — Phase 5 introduces it (CONTEXT D-19 / D-21).
@@ -21,6 +24,22 @@ pub mod ws;
 #[doc(hidden)]
 pub mod __test_only_markdown_exporter {
     pub use crate::markdown_exporter::{MarkdownExporter, Meeting};
+}
+
+/// Phase 4 (Plan 04-03) test-only helper to build the auxiliary `AppState`
+/// fields that the integration tests (`tests/meeting_ws*.rs`,
+/// `tests/e2e_synthetic_audio.rs`) need. Hidden from docs — production
+/// code constructs them inline inside `run_with_config`.
+#[doc(hidden)]
+pub fn __test_only_aux_state(
+    notes_dir: std::path::PathBuf,
+) -> anyhow::Result<(
+    std::sync::Arc<markdown_exporter::MarkdownExporter>,
+    std::sync::Arc<yogurt_prompts::Prompts>,
+)> {
+    let me = std::sync::Arc::new(markdown_exporter::MarkdownExporter::new(notes_dir)?);
+    let prompts = std::sync::Arc::new(yogurt_prompts::Prompts::load(yogurt_prompts::Mode::Dev)?);
+    Ok((me, prompts))
 }
 
 use anyhow::Result;
@@ -53,6 +72,13 @@ pub struct AppState {
     /// Phase 3: in-memory meeting registry. Phase 7 will swap the internal
     /// `HashMap` for SQLite-backed persistence behind the same API.
     pub meetings: Arc<meetings::Registry>,
+    /// Phase 4 (Plan 04-03): single-writer markdown file emitter for
+    /// `~/.yogurt/notes/<...>.md`. Every successful enhance funnels a
+    /// `MarkdownExporter::write` call through this handle.
+    pub markdown_exporter: Arc<markdown_exporter::MarkdownExporter>,
+    /// Phase 4 (Plan 04-03): bundled prompt templates. Hot-reloads in Dev
+    /// mode (re-reads from disk per call), embedded in Release.
+    pub prompts: Arc<yogurt_prompts::Prompts>,
 }
 
 /// Configuration for `run` that can be overridden in tests (custom DB +
@@ -63,6 +89,9 @@ pub struct RunConfig {
     pub mode: Mode,
     pub db_path: Option<PathBuf>,
     pub session_token_path: Option<PathBuf>,
+    /// Phase 4 (Plan 04-03): override the per-meeting markdown notes
+    /// directory. Defaults to `~/.yogurt/notes/`. Tests pass a tempdir.
+    pub notes_dir: Option<PathBuf>,
 }
 
 impl RunConfig {
@@ -72,6 +101,7 @@ impl RunConfig {
             mode,
             db_path: None,
             session_token_path: None,
+            notes_dir: None,
         }
     }
 }
@@ -96,12 +126,29 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     };
     let session = Arc::new(session::load_or_create(&token_path)?);
 
+    // Phase 4 (Plan 04-03): per-meeting markdown exporter (STORE-03/04).
+    let notes_dir = match cfg.notes_dir {
+        Some(p) => p,
+        None => default_notes_dir()?,
+    };
+    let markdown_exporter = Arc::new(markdown_exporter::MarkdownExporter::new(notes_dir)?);
+
+    // Phase 4 (Plan 04-03): bundled prompts. Map our local Mode enum onto
+    // the prompts crate's identically-shaped Mode.
+    let prompt_mode = match cfg.mode {
+        Mode::Dev => yogurt_prompts::Mode::Dev,
+        Mode::Release => yogurt_prompts::Mode::Release,
+    };
+    let prompts = Arc::new(yogurt_prompts::Prompts::load(prompt_mode)?);
+
     let state = AppState {
         mode: cfg.mode,
         storage,
         session,
         bind_port: cfg.addr.port(),
         meetings: meetings::Registry::new(),
+        markdown_exporter,
+        prompts,
     };
 
     let app = routes::router(state);
@@ -109,6 +156,15 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     let listener = TcpListener::bind(cfg.addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// Default per-meeting markdown notes directory: `~/.yogurt/notes/`.
+/// Tests override via `RunConfig::notes_dir`.
+fn default_notes_dir() -> Result<PathBuf> {
+    use directories::BaseDirs;
+    let base =
+        BaseDirs::new().ok_or_else(|| anyhow::anyhow!("could not resolve home directory"))?;
+    Ok(base.home_dir().join(".yogurt").join("notes"))
 }
 
 /// Construct a router with a custom AppState, for tests that want to reach

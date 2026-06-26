@@ -48,6 +48,9 @@ async fn spawn_server() -> (SocketAddr, String, tempfile::TempDir) {
         mode: Mode::Release,
         db_path: Some(db_path),
         session_token_path: Some(token_path),
+        // Phase 4 (Plan 04-03): sandbox the per-meeting notes dir inside
+        // the same tempdir so this test does not touch `~/.yogurt/notes/`.
+        notes_dir: Some(tmp.path().join("notes")),
     };
     tokio::spawn(async move {
         let _ = yogurt_server::run_with_config(cfg).await;
