@@ -10,7 +10,7 @@ dependency_graph:
   provides:
     - GET /api/audio/devices — input device enumeration (AUDIO-07)
     - GET /api/audio/permission — TCC Screen Recording status
-    - POST /api/meeting/{start,stop} — start_meeting_recording shim with RAII supervisor (AUDIO-06)
+    - start_meeting_recording() in-process shim with RAII supervisor (AUDIO-06) — awaiting Phase 3 to wire `POST /api/meetings/:id/start`/`/stop` per the canonical Phase 3 route shape
     - yogurt-audio::examples::wav_eartest — dual-channel WAV writer (LEFT=mic, RIGHT=system)
   affects:
     - Phase 3 STT (subscribes to broadcast receivers exposed via start_meeting)
@@ -63,7 +63,7 @@ Plan 02-03 delivered the REST surface for the audio subsystem and validated the 
 
 - **`/api/audio/devices`** — enumerates input devices via `yogurt-audio::list_input_devices()`
 - **`/api/audio/permission`** — surfaces TCC Screen Recording status via `has_screen_recording_permission()`
-- **`POST /api/meeting/start` + `POST /api/meeting/stop`** — RAII supervisor pattern; Drop on the supervisor handle cleanly terminates broadcast senders and the SCK stream
+- **`start_meeting_recording()` in-process shim** — RAII supervisor pattern; Drop on the supervisor handle cleanly terminates broadcast senders and the SCK stream. `routes.rs` only mounts the two GET endpoints today; the canonical `POST /api/meetings/:id/start` / `/stop` routes are Phase 3 work that wire this shim into the HTTP surface (see Followups).
 - **`yogurt-audio` example `wav_eartest`** — captures 30s of dual-channel audio (LEFT=mic, RIGHT=system) and writes a 16kHz 16-bit stereo WAV
 
 ## The ear-test gate
@@ -86,3 +86,7 @@ The diagnosis is preserved in `02-03-DIAGNOSIS.md` for future reference. The cru
 
 - The core capture pipeline has solid hardware smoke tests (mic_smoke, system_smoke, dual_smoke from Plan 02-02) but no automated regression coverage for "production frame producer never leaves gaps." Acceptable for Phase 2 — Phase 3 STT integration will exercise this surface continuously in practice.
 - The `target/yogurt-audio-eartest.wav` artifact is gitignored (under `target/`); the diagnosis note + this summary are the durable record.
+
+## Followups
+
+- **Mount `POST /api/meetings/:id/start` and `POST /api/meetings/:id/stop`** — `routes.rs` currently only mounts the two GET endpoints (`/api/audio/devices`, `/api/audio/permission`). The `start_meeting_recording()` function in `crates/yogurt-server/src/audio.rs` is an in-process shim only; wiring it into the canonical Phase 3 route shape (`/api/meetings/:id/start`, plural and `:id`-bearing — distinct from this summary's earlier `/api/meeting/{start,stop}` shorthand) is Phase 3's responsibility per the docstring on `start_meeting_recording`.
