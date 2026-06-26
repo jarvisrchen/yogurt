@@ -1,0 +1,3 @@
+- pricing
+  - tiered plan options
+  - annual discount 20 percent

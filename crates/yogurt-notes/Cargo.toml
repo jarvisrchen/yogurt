@@ -13,11 +13,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-regex-lite = { workspace = true }
 # BL-2 (Phase 4 review): escape user-controlled text before interpolation
 # into wire-format spans inside render::wrap_ai. Defense in depth pairs with
 # ammonia sanitization in yogurt-server.
 html-escape = { workspace = true }
+# HI-4 (Phase 4 review): regex-lite previously used for span stripping was
+# replaced by a hand-rolled HTML walker (depth-aware, no regex compilation
+# per call). Crate removed from this manifest.
 
 [dev-dependencies]
 insta = { workspace = true }
