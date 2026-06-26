@@ -81,16 +81,22 @@ impl FrameChunker {
     }
 
     /// Feed an arbitrary slice of i16 PCM. Drains the internal buffer in
-    /// `FRAME_SAMPLES`-sized chunks, computes `monotonic_ms` per frame from
-    /// the recorded `start` instant, and sends each frame on the broadcast
-    /// channel. Send errors (no live subscribers) are dropped silently per
-    /// D-19's "consumers fall behind → drop late frames" semantics.
+    /// `FRAME_SAMPLES`-sized chunks, computes `monotonic_micros` per frame
+    /// from the recorded `start` instant, and sends each frame on the
+    /// broadcast channel. Send errors (no live subscribers) are dropped
+    /// silently per D-19's "consumers fall behind → drop late frames"
+    /// semantics.
+    ///
+    /// **CR-01:** microsecond resolution (not millisecond) so the 20 ms
+    /// frame cadence remains distinguishable from wall-clock jitter under
+    /// any downstream cross-channel alignment use. See
+    /// [`Frame::monotonic_micros`].
     pub(crate) fn feed(&mut self, samples: &[i16]) {
         self.buf.extend_from_slice(samples);
         while self.buf.len() >= FRAME_SAMPLES {
             let chunk: Vec<i16> = self.buf.drain(..FRAME_SAMPLES).collect();
-            let monotonic_ms = self.start.elapsed().as_millis() as u64;
-            let frame = Frame::new(self.channel, monotonic_ms, chunk);
+            let monotonic_micros = self.start.elapsed().as_micros() as u64;
+            let frame = Frame::new(self.channel, monotonic_micros, chunk);
             // Drop silently if no live subscribers.
             let _ = self.tx.send(frame);
         }
@@ -249,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn chunker_monotonic_ms_is_non_decreasing() {
+    fn chunker_monotonic_micros_is_non_decreasing() {
         let (tx, mut rx) = broadcast::channel::<Frame>(8);
         let mut chunker = FrameChunker::new(Channel::System, tx);
         // Feed two frames worth so we get two events.
@@ -258,10 +264,10 @@ mod tests {
         let f1 = rx.try_recv().expect("first frame");
         let f2 = rx.try_recv().expect("second frame");
         assert!(
-            f2.monotonic_ms >= f1.monotonic_ms,
-            "monotonic_ms should be non-decreasing: f1={}, f2={}",
-            f1.monotonic_ms,
-            f2.monotonic_ms
+            f2.monotonic_micros >= f1.monotonic_micros,
+            "monotonic_micros should be non-decreasing: f1={}, f2={}",
+            f1.monotonic_micros,
+            f2.monotonic_micros
         );
     }
 

@@ -28,10 +28,26 @@ pub enum Channel {
 pub struct Frame {
     /// Source of this frame's audio.
     pub channel: Channel,
-    /// Milliseconds since `start_capture()` returned. Used by Phase 3 to
-    /// align partial transcripts with notes via `↳ HH:MM` deep-links
-    /// (PRD §5.3).
-    pub monotonic_ms: u64,
+    /// **Microseconds** since `start_capture()` returned. Used by Phase 3
+    /// to align partial transcripts with notes (PRD §5.3) AND by any
+    /// future offline-alignment work (e.g. Phase 8 whisper.cpp
+    /// re-transcription, transcript-to-audio "play this clip" UI) that
+    /// needs sub-millisecond precision for cross-channel sample-exact
+    /// alignment.
+    ///
+    /// **CR-01:** the field was previously `monotonic_ms: u64`. Wall-clock
+    /// truncation to whole milliseconds combined with the 20 ms frame
+    /// size (320 samples @ 16 kHz) produced the static/crackle bug the
+    /// `wav_eartest` diagnosis identified — any consumer that placed
+    /// samples at `monotonic_ms * 16` left 16-sample zero-wedges between
+    /// consecutive frames whenever wall-clock jitter pushed adjacent
+    /// frames into the same millisecond bucket. Microsecond resolution
+    /// removes the quantization trap entirely.
+    ///
+    /// Helper [`Frame::monotonic_ms`] returns the truncated-millisecond
+    /// view for the PRD §5.3 `↳ HH:MM` deep-link case which only needs
+    /// minute resolution.
+    pub monotonic_micros: u64,
     /// Always [`FRAME_SAMPLES`] samples of mono 16 kHz i16 PCM.
     pub samples: Vec<i16>,
 }
@@ -41,7 +57,7 @@ impl Frame {
     /// is a programmer error, not a runtime condition the user can recover
     /// from. Producers (`mic.rs`, `system.rs`, `synthetic.rs`) own the
     /// chunking; a wrong length means a bug in the chunker.
-    pub fn new(channel: Channel, monotonic_ms: u64, samples: Vec<i16>) -> Self {
+    pub fn new(channel: Channel, monotonic_micros: u64, samples: Vec<i16>) -> Self {
         assert_eq!(
             samples.len(),
             FRAME_SAMPLES,
@@ -51,8 +67,17 @@ impl Frame {
         );
         Self {
             channel,
-            monotonic_ms,
+            monotonic_micros,
             samples,
         }
+    }
+
+    /// Truncated-millisecond view of [`Self::monotonic_micros`] — useful
+    /// for the PRD §5.3 `↳ HH:MM` deep-link case which only needs minute
+    /// resolution. **Do not use this for cross-channel sample alignment**;
+    /// see the field-level docstring for why microsecond precision is the
+    /// only safe choice there (CR-01).
+    pub fn monotonic_ms(&self) -> u64 {
+        self.monotonic_micros / 1_000
     }
 }
