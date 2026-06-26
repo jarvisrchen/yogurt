@@ -11,7 +11,9 @@
 //!    `INPUT_CHUNK` (480 samples @ 48 kHz = 10 ms).
 //! 3. Run `rubato::SincFixedIn` on each 480-sample chunk; produces ~160
 //!    samples per chunk at 16 kHz target.
-//! 4. Convert f32 → i16 by `(clamp(-1, 1) * i16::MAX as f32) as i16`.
+//! 4. Convert f32 → i16 using the symmetric 2^15 = 32768.0 divisor (BL-02).
+//!    See [`f32_to_i16`] for the rationale — `i16::MAX` (32767) is
+//!    asymmetric with `i16::MIN` (-32768) and is the wrong constant.
 //!
 //! Returned `Vec<i16>` is then fed into [`crate::mic::FrameChunker`] (or the
 //! system-side equivalent) which collects 320-sample (20 ms) `Frame`s.
@@ -119,8 +121,7 @@ impl Downmix {
             {
                 Ok((_consumed, out_len)) => {
                     for &s in &self.scratch_out[0][..out_len] {
-                        let clamped = s.clamp(-1.0, 1.0);
-                        out_i16.push((clamped * i16::MAX as f32) as i16);
+                        out_i16.push(f32_to_i16(s));
                     }
                 }
                 Err(e) => {
@@ -130,6 +131,27 @@ impl Downmix {
         }
         out_i16
     }
+}
+
+/// BL-02: symmetric f32 → i16 quantizer. Uses **2^15 = 32768.0** as the
+/// multiplier, matching the **1.0 / 32768.0** divisor used by the i16 → f32
+/// path in `mic.rs::push_mono_i16`. Together they round-trip identity
+/// within the i16 saturation range.
+///
+/// The previous code used `i16::MAX` (= 32767) as both divisor and
+/// multiplier. The asymmetry is real: `i16::MIN / 32767 = -1.00003` which
+/// only the downstream clamp here saved from wrapping. The 32768.0
+/// convention matches every reference codec (libsndfile, LAME, ffmpeg).
+///
+/// The clamp on the high side uses `1.0 - 1.0 / 32768.0` so a sample of
+/// exactly 1.0 maps to 32767 (i16::MAX) — anything higher would saturate
+/// to 32767 too, but expressing it via the symmetric divisor makes the
+/// intent obvious.
+#[inline]
+pub(crate) fn f32_to_i16(s: f32) -> i16 {
+    const MAX_F32: f32 = 1.0 - 1.0 / 32768.0; // map highest representable f32 to i16::MAX
+    let clamped = s.clamp(-1.0, MAX_F32);
+    (clamped * 32768.0) as i16
 }
 
 #[cfg(test)]
@@ -188,6 +210,31 @@ mod tests {
             out1.len(),
             out2.len()
         );
+    }
+
+    #[test]
+    fn f32_to_i16_round_trip_is_identity_within_i16_range() {
+        // BL-02: symmetric i16 ⇄ f32 conversion. For every i16, going
+        // i16 → f32 (via 1.0/32768.0) → i16 (via 32768.0) must produce the
+        // original value — except i16::MAX which maps to 0.99997 → 32767.
+        const I16_TO_F32: f32 = 1.0 / 32768.0;
+        for &s in &[i16::MIN, -32767, -1, 0, 1, 32766, i16::MAX] {
+            let as_f32 = (s as f32) * I16_TO_F32;
+            let back = f32_to_i16(as_f32);
+            assert_eq!(
+                back, s,
+                "round-trip failed: i16={s} → f32={as_f32} → i16={back}"
+            );
+        }
+    }
+
+    #[test]
+    fn f32_to_i16_clamps_out_of_range() {
+        // Values past +1.0 / -1.0 saturate cleanly without wraparound.
+        assert_eq!(f32_to_i16(2.0), i16::MAX);
+        assert_eq!(f32_to_i16(-2.0), i16::MIN);
+        assert_eq!(f32_to_i16(f32::INFINITY), i16::MAX);
+        assert_eq!(f32_to_i16(f32::NEG_INFINITY), i16::MIN);
     }
 
     #[test]
