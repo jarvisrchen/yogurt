@@ -253,7 +253,14 @@ export function useTranscriptWs(
       cleanupCurrentWs();
       setConnectionStatus("idle");
     };
-  }, [meetingId]);
+    // BL-4: `token` is read inside the effect (it's interpolated into the WS
+    // URL above) but was missing from the dep array. When `meetingId` arrived
+    // BEFORE `token` resolved (the common bootstrap order in MeetingPost),
+    // the effect short-circuited at the `!token` guard and never re-ran when
+    // `token` flipped from null to a real value — dock stayed offline
+    // forever. useEnhanceProgress (below) had this right with [meetingId,
+    // token]; this brings the two hooks into agreement.
+  }, [meetingId, token]);
 
   return {
     events,
