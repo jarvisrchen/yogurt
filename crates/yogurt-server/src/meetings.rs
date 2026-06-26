@@ -169,7 +169,7 @@ impl Registry {
         });
 
         // Await capture readiness — propagates audio open failure as Result.
-        let (mut mic_rx, mut sys_rx) = ready_rx
+        let (mic_rx, sys_rx) = ready_rx
             .await
             .context("audio capture thread exited before reporting readiness")?
             .context("audio capture failed to open")?;
@@ -195,57 +195,7 @@ impl Registry {
                 }
             });
 
-            // Adapter loop: drain both Frame receivers, convert each into
-            // an AudioChunk tagged with the source channel, and publish on
-            // the meeting's audio broadcast for the STT engine. Lagged
-            // receivers warn + continue; closed = stream ended (RAII drop).
-            loop {
-                tokio::select! {
-                    res = mic_rx.recv() => match res {
-                        Ok(frame) => {
-                            let chunk = AudioChunk {
-                                channel: Channel::Mic,
-                                samples: frame.samples,
-                                ts_ms: frame.monotonic_micros / 1_000,
-                            };
-                            // send returns Err when there are no receivers
-                            // (STT session ended); that's a clean termination.
-                            if audio_tx.send(chunk).is_err() {
-                                tracing::info!("audio adapter: no receivers, terminating");
-                                break;
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!(n, "audio adapter: mic lagged");
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {
-                            tracing::info!("audio adapter: mic stream closed");
-                            break;
-                        }
-                    },
-                    res = sys_rx.recv() => match res {
-                        Ok(frame) => {
-                            let chunk = AudioChunk {
-                                channel: Channel::System,
-                                samples: frame.samples,
-                                ts_ms: frame.monotonic_micros / 1_000,
-                            };
-                            if audio_tx.send(chunk).is_err() {
-                                tracing::info!("audio adapter: no receivers, terminating");
-                                break;
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!(n, "audio adapter: system lagged");
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {
-                            tracing::info!("audio adapter: system stream closed");
-                            break;
-                        }
-                    },
-                }
-            }
-
+            pump_audio_adapter(mic_rx, sys_rx, audio_tx).await;
             stt_handle.abort();
         });
 
@@ -273,6 +223,72 @@ impl Registry {
     pub async fn subscribe(&self, id: &MeetingId) -> Option<broadcast::Receiver<TranscriptEvent>> {
         Some(self.get(id).await?.transcript_tx.subscribe())
     }
+}
+
+/// Drain Frame receivers from `yogurt-audio` → publish `AudioChunk`s onto the
+/// meeting's audio broadcast for the STT engine. Lagged receivers warn +
+/// continue.
+///
+/// BL-04: when ONE channel closes (e.g. SCK system stream drops because no
+/// app is producing audio), keep draining the OTHER channel. We only exit
+/// when BOTH channels are closed, OR when the audio broadcast has no
+/// receivers (STT session ended). The `if` guards on each select arm
+/// disable a closed channel so we don't busy-poll it once it's done.
+///
+/// Extracted from the inline supervisor loop so the BL-04 behavior is unit-
+/// testable without spinning up real SCK + cpal streams.
+pub(crate) async fn pump_audio_adapter(
+    mut mic_rx: broadcast::Receiver<yogurt_audio::Frame>,
+    mut sys_rx: broadcast::Receiver<yogurt_audio::Frame>,
+    audio_tx: broadcast::Sender<AudioChunk>,
+) {
+    let mut mic_open = true;
+    let mut sys_open = true;
+    while mic_open || sys_open {
+        tokio::select! {
+            res = mic_rx.recv(), if mic_open => match res {
+                Ok(frame) => {
+                    let chunk = AudioChunk {
+                        channel: Channel::Mic,
+                        samples: frame.samples,
+                        ts_ms: frame.monotonic_micros / 1_000,
+                    };
+                    if audio_tx.send(chunk).is_err() {
+                        tracing::info!("audio adapter: no receivers, terminating");
+                        return;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(n, "audio adapter: mic lagged");
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    tracing::info!("audio adapter: mic stream closed — continuing with system only");
+                    mic_open = false;
+                }
+            },
+            res = sys_rx.recv(), if sys_open => match res {
+                Ok(frame) => {
+                    let chunk = AudioChunk {
+                        channel: Channel::System,
+                        samples: frame.samples,
+                        ts_ms: frame.monotonic_micros / 1_000,
+                    };
+                    if audio_tx.send(chunk).is_err() {
+                        tracing::info!("audio adapter: no receivers, terminating");
+                        return;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(n, "audio adapter: system lagged");
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    tracing::info!("audio adapter: system stream closed — continuing with mic only");
+                    sys_open = false;
+                }
+            },
+        }
+    }
+    tracing::info!("audio adapter: both channels closed, terminating");
 }
 
 fn now_ms() -> u64 {
@@ -315,5 +331,104 @@ mod tests {
         let b = rx2.recv().await.unwrap();
         assert_eq!(a.text, "hi");
         assert_eq!(b.text, "hi");
+    }
+
+    /// BL-04: when the system channel closes, the adapter must KEEP draining
+    /// mic frames — not exit. The old behavior `break`'d out of the loop on
+    /// the first `Closed`, which silently dropped mic audio for the rest of
+    /// the meeting whenever no app was producing system audio.
+    #[tokio::test]
+    async fn it_continues_mic_when_system_channel_closes() {
+        let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (audio_tx, mut audio_rx) = broadcast::channel::<AudioChunk>(16);
+
+        // Drop the system sender immediately → sys_rx will see Closed on
+        // its first recv.
+        drop(sys_tx);
+
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx));
+
+        // Give the adapter a beat to observe sys closed.
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+        // Now push 3 mic frames; they MUST survive even though sys is gone.
+        for i in 0..3 {
+            mic_tx
+                .send(yogurt_audio::Frame {
+                    channel: yogurt_audio::Channel::Mic,
+                    samples: vec![0i16; 320],
+                    monotonic_micros: (i as u64) * 20_000,
+                })
+                .unwrap();
+        }
+
+        for expected_ts in [0u64, 20, 40] {
+            let chunk =
+                tokio::time::timeout(std::time::Duration::from_millis(500), audio_rx.recv())
+                    .await
+                    .expect("chunk within 500ms")
+                    .expect("recv ok");
+            assert_eq!(chunk.channel, Channel::Mic);
+            assert_eq!(chunk.ts_ms, expected_ts);
+        }
+
+        // Closing mic too must terminate the pump cleanly.
+        drop(mic_tx);
+        tokio::time::timeout(std::time::Duration::from_secs(1), pump)
+            .await
+            .expect("pump should exit when both channels closed")
+            .expect("pump task joined");
+    }
+
+    /// Symmetric BL-04 case: mic closes first, system survives.
+    #[tokio::test]
+    async fn it_continues_system_when_mic_channel_closes() {
+        let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (audio_tx, mut audio_rx) = broadcast::channel::<AudioChunk>(16);
+
+        drop(mic_tx);
+
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx));
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+        sys_tx
+            .send(yogurt_audio::Frame {
+                channel: yogurt_audio::Channel::System,
+                samples: vec![0i16; 320],
+                monotonic_micros: 5_000,
+            })
+            .unwrap();
+
+        let chunk = tokio::time::timeout(std::time::Duration::from_millis(500), audio_rx.recv())
+            .await
+            .expect("chunk within 500ms")
+            .expect("recv ok");
+        assert_eq!(chunk.channel, Channel::System);
+        assert_eq!(chunk.ts_ms, 5);
+
+        drop(sys_tx);
+        tokio::time::timeout(std::time::Duration::from_secs(1), pump)
+            .await
+            .expect("pump should exit when both channels closed")
+            .expect("pump task joined");
+    }
+
+    /// Sanity: pump exits cleanly when BOTH channels close from the start.
+    #[tokio::test]
+    async fn it_exits_when_both_channels_closed() {
+        let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (audio_tx, _audio_rx) = broadcast::channel::<AudioChunk>(16);
+
+        drop(mic_tx);
+        drop(sys_tx);
+
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx));
+        tokio::time::timeout(std::time::Duration::from_secs(1), pump)
+            .await
+            .expect("pump must exit promptly when both channels closed")
+            .expect("pump task joined");
     }
 }
