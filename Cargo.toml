@@ -59,6 +59,12 @@ rubato = "0.16"
 # real-time audio callbacks (cpal IOProc, SCK delegate) from the tokio
 # drainer task that owns rubato + broadcast::Sender. See BL-01 fix.
 rtrb = "0.3"
+# Fast, non-poisoning mutex — wrapped around the SPSC producer in the SCK
+# audio handler, whose trait bound demands `Fn + Send + Sync` and so
+# forbids holding a !Sync producer directly. The critical section is
+# 1-2 instructions (a ring push) so contention is effectively zero;
+# we use parking_lot for the lower constant overhead vs std::sync::Mutex.
+parking_lot = "0.12"
 # typed errors
 thiserror = "2"
 

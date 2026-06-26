@@ -3056,6 +3056,7 @@ dependencies = [
  "anyhow",
  "cpal",
  "hound",
+ "parking_lot",
  "rtrb",
  "rubato",
  "screencapturekit",
