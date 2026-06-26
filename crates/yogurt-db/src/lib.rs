@@ -19,9 +19,15 @@ mod migrations;
 
 pub mod chat;
 pub mod keychain;
+pub mod meetings;
 pub mod paths;
 pub mod providers;
 pub mod settings;
+
+// Phase 7 (Plan 07-01): crate-root re-exports for the new MeetingRepo so
+// server-side handlers can `use yogurt_db::{Meeting, MeetingRepo, ...}`
+// without reaching into the submodule path.
+pub use meetings::{Meeting, MeetingPatch, MeetingRepo, NewMeeting};
 
 use anyhow::Result;
 use rusqlite::Connection;

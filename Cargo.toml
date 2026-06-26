@@ -121,6 +121,11 @@ insta = { version = "1.41", features = ["json"] }
 # `<YYYY-MM-DD-HHmm>-<slug>.md` filenames derived from meetings.started_at).
 # Per PRD stack: `time` 0.3 is the safe stable pick.
 time = { version = "0.3", features = ["formatting", "macros"] }
+# Phase 7 (Plan 07-01): MeetingRepo + REST handlers carry timestamps as
+# ISO 8601 strings. `chrono` with `serde` is the conventional wire-format
+# adapter; `time`'s serde integration is awkward for `DateTime<Utc>` round
+# trips so we pin chrono alongside it (workspaces tolerate both crates).
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 # Phase 5 (Plan 05-01): SSE event-stream parser for OpenAI-compat streaming
 # chat completions. Composes with reqwest's bytes_stream() via .eventsource().
 eventsource-stream = "0.2"
