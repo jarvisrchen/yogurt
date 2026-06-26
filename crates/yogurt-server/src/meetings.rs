@@ -81,10 +81,9 @@ impl From<&yogurt_db::settings::General> for SttSettings {
 pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
     match s.stt_provider.as_str() {
         "cloud" => {
-            let api_key = s
-                .deepgram_api_key
-                .clone()
-                .ok_or_else(|| anyhow!("YOGURT_DEEPGRAM_API_KEY not set — required for cloud STT"))?;
+            let api_key = s.deepgram_api_key.clone().ok_or_else(|| {
+                anyhow!("YOGURT_DEEPGRAM_API_KEY not set — required for cloud STT")
+            })?;
             Ok(SttSpec::Cloud { api_key })
         }
         "local" => {
@@ -334,7 +333,10 @@ impl Registry {
                             return;
                         }
                         Err(e) => {
-                            tracing::error!(?e, "spawn_blocking join failed for WhisperLocal::load");
+                            tracing::error!(
+                                ?e,
+                                "spawn_blocking join failed for WhisperLocal::load"
+                            );
                             return;
                         }
                     };
