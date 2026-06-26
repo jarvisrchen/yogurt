@@ -106,7 +106,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Enhancing state: lilac progress banner with active dot pulse renders "Weaving your notes into the transcript…" with animated progress bar + character-streaming count; AI bullets appear as 1.25s shimmer skeletons, resolve into grey markdown, staggered at 140/340/560/760ms
   5. Each meeting writes both a SQLite row (with `notes_md`, `enriched_md`, `enriched_doc_json`, `transcript_json`) and a `~/.yogurt/notes/<YYYY-MM-DD-HHmm>-<slug>.md` file via the single `MarkdownExporter`; bundled `enhance.md` + `chat-system.md` ship in `yogurt-prompts` and reload picks up edits
 
-**Plans**: TBD
+**Plans**: 04-01 (yogurt-prompts + V0004 enriched_doc_json + OpenAiCompatClient/MockLlm) ✅ complete · 04-02 (yogurt-notes structural diff + MarkdownExporter) ✅ complete · 04-03 (YogurtEditor + POST /api/meetings/:id/enhance end-to-end) ✅ complete · 04-04 (post-meeting MeetingPost.tsx + EnhancingBanner + ShimmerSkeleton + ReEnhanceButton + Legend) pending
 **UI hint**: yes
 
 ### Phase 5: LLM Client + Settings + Keychain
