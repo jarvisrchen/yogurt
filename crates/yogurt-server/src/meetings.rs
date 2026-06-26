@@ -30,6 +30,81 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 use yogurt_stt::{deepgram::DeepgramStt, AudioChunk, Channel, Stt, TranscriptEvent};
 
+// Phase 8 (Plan 08-03): `select_stt` returns a description of which
+// adapter to construct.  The async caller turns the spec into an actual
+// `Arc<dyn Stt>` — the local branch wraps `WhisperLocal::load` in
+// `spawn_blocking` (LOCAL-05) and the cloud branch instantiates
+// `DeepgramStt` directly.  Splitting the decision into a sync helper
+// keeps the branch unit-testable without mocking broadcast channels.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SttSpec {
+    /// Cloud STT via Deepgram — needs a `YOGURT_DEEPGRAM_API_KEY`.
+    Cloud { api_key: String },
+    /// Local STT via whisper.cpp — needs a verified model file on disk.
+    Local { model_path: std::path::PathBuf },
+}
+
+/// Lightweight projection of the fields `select_stt` cares about, so
+/// tests can construct a minimal value without depending on the full
+/// `yogurt_db::settings::General`.
+#[derive(Debug, Clone, Default)]
+pub struct SttSettings {
+    pub stt_provider: String,
+    pub stt_model: String,
+    /// `Some(key)` when an explicit key was supplied (e.g. for cloud).
+    /// Tests pass `None` to assert the cloud branch falls back to
+    /// `YOGURT_DEEPGRAM_API_KEY`.
+    pub deepgram_api_key: Option<String>,
+}
+
+impl From<&yogurt_db::settings::General> for SttSettings {
+    fn from(g: &yogurt_db::settings::General) -> Self {
+        Self {
+            stt_provider: g.stt_provider.clone(),
+            stt_model: g.stt_model.clone(),
+            deepgram_api_key: std::env::var("YOGURT_DEEPGRAM_API_KEY").ok(),
+        }
+    }
+}
+
+/// Phase 8 (Plan 08-03): sync branch helper.  Returns the description
+/// of which STT adapter `start()` should construct without doing any
+/// IO — the caller is responsible for `WhisperLocal::load` on
+/// `spawn_blocking` or `DeepgramStt::new` on the tokio task.
+///
+/// Errors:
+/// - unknown `stt_provider` (anything other than `"cloud"` / `"local"`)
+/// - `stt_model` not found in `yogurt_stt::models::REGISTRY`
+/// - local model not downloaded (checked via `models::is_downloaded`,
+///   which verifies SHA256 — a corrupt file counts as not downloaded)
+/// - cloud branch + no `YOGURT_DEEPGRAM_API_KEY`
+pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
+    match s.stt_provider.as_str() {
+        "cloud" => {
+            let api_key = s
+                .deepgram_api_key
+                .clone()
+                .ok_or_else(|| anyhow!("YOGURT_DEEPGRAM_API_KEY not set — required for cloud STT"))?;
+            Ok(SttSpec::Cloud { api_key })
+        }
+        "local" => {
+            let spec = yogurt_stt::models::lookup(&s.stt_model)
+                .ok_or_else(|| anyhow!("unknown local stt model: {}", s.stt_model))?;
+            if !yogurt_stt::models::is_downloaded(spec) {
+                return Err(anyhow!(
+                    "local stt model {} is not downloaded; \
+                     download it from Settings → Transcription → Local",
+                    s.stt_model
+                ));
+            }
+            let model_path = yogurt_stt::models::model_path(spec)
+                .map_err(|e| anyhow!("resolve model path: {e}"))?;
+            Ok(SttSpec::Local { model_path })
+        }
+        other => Err(anyhow!("unknown stt_provider: {other}")),
+    }
+}
+
 pub type MeetingId = Uuid;
 
 /// One in-progress or just-ended meeting.
@@ -143,15 +218,22 @@ impl Registry {
         m
     }
 
-    /// Start recording: spin up `yogurt-audio` capture + a Deepgram session.
+    /// Start recording: spin up `yogurt-audio` capture + the configured
+    /// STT engine (cloud Deepgram or local WhisperLocal).
+    ///
+    /// Phase 8 (Plan 08-03) refactor: the adapter selection now branches
+    /// on `settings.stt_provider` via the `select_stt` helper.  Cloud is
+    /// the seed default (V005), so existing user DBs keep using
+    /// Deepgram with no behavior change.
     ///
     /// Errors:
     ///   - meeting not found
     ///   - meeting already started
-    ///   - `YOGURT_DEEPGRAM_API_KEY` missing (D-07)
-    ///   - `yogurt_audio::start_capture()` failed (caller will surface as
-    ///     a 400 to the user — typically a permission gate)
-    pub async fn start(&self, id: &MeetingId) -> Result<()> {
+    ///   - `select_stt` rejected the settings (unknown provider,
+    ///     missing API key, model not downloaded, …)
+    ///   - `yogurt_audio::start_capture()` failed (caller surfaces as
+    ///     a 400 — typically a permission gate)
+    pub async fn start(&self, id: &MeetingId, stt_settings: SttSettings) -> Result<()> {
         let m = self
             .get(id)
             .await
@@ -162,8 +244,7 @@ impl Registry {
             return Err(anyhow!("meeting already started"));
         }
 
-        let api_key = std::env::var("YOGURT_DEEPGRAM_API_KEY")
-            .context("YOGURT_DEEPGRAM_API_KEY not set — required for cloud STT in Phase 3")?;
+        let stt_spec = select_stt(&stt_settings).context("select STT adapter")?;
 
         // Open audio capture on a dedicated std::thread.
         //
@@ -232,8 +313,36 @@ impl Registry {
             // AudioStream (RAII stops cpal + SCK).
             let _shutdown_tx = shutdown_tx;
 
+            // Phase 8 (Plan 08-03): construct the adapter from the spec
+            // `select_stt` chose.  WhisperLocal::load is synchronous and
+            // CPU-heavy — wrap in `spawn_blocking` so the tokio scheduler
+            // stays responsive (LOCAL-05).
+            let stt: Arc<dyn Stt> = match stt_spec {
+                SttSpec::Cloud { api_key } => Arc::new(DeepgramStt::new(api_key)),
+                SttSpec::Local { model_path } => {
+                    // LOCAL-05: WhisperLocal::load reads ~500 MB from disk
+                    // and runs ggml init; it is intentionally synchronous.
+                    // spawn_blocking keeps the scheduler healthy.
+                    let loaded = match tokio::task::spawn_blocking(move || {
+                        yogurt_stt::WhisperLocal::load(model_path)
+                    })
+                    .await
+                    {
+                        Ok(Ok(local)) => local,
+                        Ok(Err(e)) => {
+                            tracing::error!(?e, "WhisperLocal::load failed");
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::error!(?e, "spawn_blocking join failed for WhisperLocal::load");
+                            return;
+                        }
+                    };
+                    Arc::new(loaded)
+                }
+            };
+
             // Spawn the STT engine first (so it subscribes before audio flows).
-            let stt = Arc::new(DeepgramStt::new(api_key));
             let stt2 = stt.clone();
             let stt_handle = tokio::spawn(async move {
                 if let Err(e) = stt2.start(audio_rx_for_stt, transcript_tx).await {
@@ -525,5 +634,76 @@ mod tests {
             .await
             .expect("pump must exit promptly when both channels closed")
             .expect("pump task joined");
+    }
+
+    // ─── Phase 8 (Plan 08-03) select_stt branch coverage ────────────────────
+
+    /// Anything other than "cloud" / "local" is a hard error.  Catches
+    /// typos in the Settings page (e.g. "Local" with a capital L) before
+    /// they reach the audio pipeline.
+    #[test]
+    fn rejects_unknown_provider() {
+        let s = SttSettings {
+            stt_provider: "satellite".into(),
+            stt_model: "small.en".into(),
+            deepgram_api_key: Some("dummy".into()),
+        };
+        let err = select_stt(&s).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("unknown stt_provider"),
+            "got: {err:#}"
+        );
+    }
+
+    /// Local branch with a model name that isn't in REGISTRY is a hard
+    /// error — better than spawning a download for a typo.
+    #[test]
+    fn rejects_local_when_model_missing() {
+        let s = SttSettings {
+            stt_provider: "local".into(),
+            stt_model: "ghost.en".into(),
+            deepgram_api_key: None,
+        };
+        let err = select_stt(&s).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("unknown") || msg.contains("not downloaded"),
+            "got: {msg}"
+        );
+    }
+
+    /// Cloud branch requires an API key.  The legacy callers used to
+    /// surface `YOGURT_DEEPGRAM_API_KEY not set` directly; the new
+    /// helper carries the same intent through `SttSettings`.
+    #[test]
+    fn rejects_cloud_without_key() {
+        let s = SttSettings {
+            stt_provider: "cloud".into(),
+            stt_model: "small.en".into(),
+            deepgram_api_key: None,
+        };
+        let err = select_stt(&s).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("YOGURT_DEEPGRAM_API_KEY") || msg.contains("api key"),
+            "got: {msg}"
+        );
+    }
+
+    /// Cloud branch with a key succeeds.
+    #[test]
+    fn accepts_cloud_with_key() {
+        let s = SttSettings {
+            stt_provider: "cloud".into(),
+            stt_model: "small.en".into(),
+            deepgram_api_key: Some("dg_xxx".into()),
+        };
+        let spec = select_stt(&s).expect("cloud + key should succeed");
+        assert_eq!(
+            spec,
+            SttSpec::Cloud {
+                api_key: "dg_xxx".into()
+            }
+        );
     }
 }

@@ -50,6 +50,16 @@ pub struct General {
     /// flow at least once. `useFirstRunRedirect` reads this to decide whether
     /// to land the SPA on `/welcome` or `/`.
     pub first_run_completed: bool,
+    /// Phase 8 (Plan 08-03): which STT engine `meetings/start.rs` should
+    /// construct. `"cloud"` → `DeepgramStt`; `"local"` → `WhisperLocal`.
+    /// Seeded to `"cloud"` by V005.
+    pub stt_provider: String,
+    /// Phase 8 (Plan 08-03): which whisper.cpp model to load when
+    /// `stt_provider == "local"`.  Must match a `name` in
+    /// `yogurt_stt::models::REGISTRY` (`tiny.en` / `small.en` /
+    /// `medium.en` / `large-v3`).  Seeded to `"small.en"` by V005 per
+    /// D-02 baseline.
+    pub stt_model: String,
 }
 
 /// Load the `General` struct from the KV table, falling back to defaults
@@ -69,11 +79,17 @@ pub fn load_general(db: &Db) -> Result<General> {
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(false),
+        // Phase 8 (Plan 08-03): defaults match the V005 seed rows.  The
+        // unwrap_or fallbacks make the projection robust to legacy
+        // user DBs where the V005 migration hasn't run yet (which
+        // shouldn't happen, but defense-in-depth).
+        stt_provider: get(db, "stt.provider")?.unwrap_or_else(|| "cloud".to_string()),
+        stt_model: get(db, "stt.model")?.unwrap_or_else(|| "small.en".to_string()),
     })
 }
 
 /// All-optional patch type — `None` fields are left untouched.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct GeneralPatch {
     pub port: Option<u16>,
     pub open_browser_on_start: Option<bool>,
@@ -81,6 +97,14 @@ pub struct GeneralPatch {
     /// Phase 7 — the Welcome route flips this to `true` when the user
     /// clicks "Take me to my meetings →".
     pub first_run_completed: Option<bool>,
+    /// Phase 8 (Plan 08-03): `"cloud"` (Deepgram) or `"local"`
+    /// (WhisperLocal).  Settings page flips this when the user clicks
+    /// "Use Local" on the LocalSTTCard.
+    pub stt_provider: Option<String>,
+    /// Phase 8 (Plan 08-03): one of the names in
+    /// `yogurt_stt::models::REGISTRY`.  Settings page flips this when
+    /// the user clicks a downloaded model pill.
+    pub stt_model: Option<String>,
 }
 
 /// Apply `patch` to the KV table and return the resulting `General`. The
@@ -102,6 +126,12 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
     }
     if let Some(f) = patch.first_run_completed {
         set(db, "first_run_completed", if f { "true" } else { "false" })?;
+    }
+    if let Some(p) = patch.stt_provider {
+        set(db, "stt.provider", &p)?;
+    }
+    if let Some(m) = patch.stt_model {
+        set(db, "stt.model", &m)?;
     }
     load_general(db)
 }

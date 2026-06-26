@@ -47,10 +47,8 @@ fn it_flips_first_run_completed_via_patch() {
     let patched = settings::save_general_patch(
         &db,
         settings::GeneralPatch {
-            port: None,
-            open_browser_on_start: None,
-            audio_input_device: None,
             first_run_completed: Some(true),
+            ..Default::default()
         },
     )
     .unwrap();
@@ -68,11 +66,42 @@ fn it_saves_a_general_patch_and_returns_updated() {
             port: Some(8080),
             open_browser_on_start: Some(false),
             audio_input_device: Some("MacBook Pro Microphone".into()),
-            first_run_completed: None,
+            ..Default::default()
         },
     )
     .unwrap();
     assert_eq!(patched.port, 8080);
     assert!(!patched.open_browser_on_start);
     assert_eq!(patched.audio_input_device, "MacBook Pro Microphone");
+}
+
+/// Phase 8 (Plan 08-03): V005 seeds defaults; load_general returns them
+/// on a fresh DB.
+#[test]
+fn it_loads_v005_seeded_stt_defaults() {
+    let db = Db::open_in_memory().unwrap();
+    let g = settings::load_general(&db).unwrap();
+    assert_eq!(g.stt_provider, "cloud");
+    assert_eq!(g.stt_model, "small.en");
+}
+
+/// Phase 8 (Plan 08-03): patch updates both keys.
+#[test]
+fn it_patches_stt_provider_and_model() {
+    let db = Db::open_in_memory().unwrap();
+    let patched = settings::save_general_patch(
+        &db,
+        settings::GeneralPatch {
+            stt_provider: Some("local".into()),
+            stt_model: Some("medium.en".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(patched.stt_provider, "local");
+    assert_eq!(patched.stt_model, "medium.en");
+    // Survives reload.
+    let g = settings::load_general(&db).unwrap();
+    assert_eq!(g.stt_provider, "local");
+    assert_eq!(g.stt_model, "medium.en");
 }
