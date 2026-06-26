@@ -27,9 +27,7 @@ async fn boot(port: u16) -> AppState {
     // and the OS will reclaim on process exit.
     let path = tmp.keep();
     let storage = Arc::new(storage::Storage::init_at(&path.join("db.sqlite")).expect("storage"));
-    let session = Arc::new(
-        session::load_or_create(&path.join("session-token")).expect("session"),
-    );
+    let session = Arc::new(session::load_or_create(&path.join("session-token")).expect("session"));
     let notes_dir: PathBuf = path.join("notes");
     let state =
         AppState::in_memory(Mode::Release, storage, session, port, notes_dir).expect("state");
@@ -128,12 +126,6 @@ async fn api_responses_never_include_the_raw_api_key() {
         .await
         .unwrap();
     let s = serde_json::to_string(&listed).unwrap();
-    assert!(
-        !s.contains("sk-supersecret-XYZA"),
-        "raw key leaked in: {s}"
-    );
-    assert!(
-        s.contains("••••XYZA"),
-        "masked key should be present: {s}"
-    );
+    assert!(!s.contains("sk-supersecret-XYZA"), "raw key leaked in: {s}");
+    assert!(s.contains("••••XYZA"), "masked key should be present: {s}");
 }

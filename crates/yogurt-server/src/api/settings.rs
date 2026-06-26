@@ -196,7 +196,7 @@ async fn update_provider(
     let p = providers::list(&s.db)?
         .into_iter()
         .find(|p| p.id == id)
-        .ok_or_else(|| Error::NotFound)?;
+        .ok_or(Error::NotFound)?;
     Ok(Json(to_view(&s, p)))
 }
 

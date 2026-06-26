@@ -52,7 +52,15 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Phase 5 (Plan 05-02): managed migrations for the new yogurt-db crate.
 rusqlite_migration = "1"
 # Phase 5 (Plan 05-02): macOS Keychain for API-key storage (SET-10).
-keyring = "3"
+# Bumped 3.x → 4.x to fix a silent set_password() no-op on macOS in
+# 2026 (empirically: set returned Ok but nothing landed in Keychain).
+# v4 splits into keyring-core + per-platform backend crates; we wire
+# the apple-native-keyring-store backend explicitly in
+# crates/yogurt-db/src/keychain.rs::KeychainStore::new(). The default
+# `v1` feature in keyring 4 also registers it (once) on first
+# Entry::new, but the explicit init is more reliable.
+keyring = "4"
+keyring-core = "1"
 # Phase 5 (Plan 05-02): ULIDs for provider IDs (sortable, lexicographic).
 ulid = { version = "1", features = ["serde"] }
 # Phase 5 (Plan 05-02): .env.local dev-mode loader, gated behind `--dev` in

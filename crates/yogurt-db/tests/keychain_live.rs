@@ -10,7 +10,7 @@ use yogurt_db::keychain::{ApiKeyStore, KeychainStore};
 #[test]
 #[ignore]
 fn it_roundtrips_against_real_keychain() {
-    let store = KeychainStore;
+    let store = KeychainStore::new().expect("KeychainStore backend init");
     let account = "yogurt-test-acct";
     store.set(account, "real-secret-XYZA").unwrap();
     assert_eq!(

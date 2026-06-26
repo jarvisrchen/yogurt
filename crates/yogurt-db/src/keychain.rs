@@ -78,7 +78,72 @@ impl ApiKeyStore for MemoryKeyStore {
 
 /// Real macOS Keychain implementation. All calls go through the `keyring`
 /// crate, which synchronously prompts the user on first access.
-pub struct KeychainStore;
+///
+/// # Backend init (Phase 5 BLOCKER fix)
+///
+/// `keyring` 3.6.x silently no-op'd `set_password()` on macOS in 2026
+/// toolchains — set returned `Ok` but nothing landed in Keychain. The
+/// `keyring` crate refactored in 2026: high-level surface stayed in
+/// `keyring`/`keyring-core`, but the actual platform backends moved
+/// into separate crates (`apple-native-keyring-store` for macOS).
+///
+/// We bump to `keyring = "4"` AND explicitly register
+/// `apple_native_keyring_store::keychain::Store` as the default
+/// credential store via `keyring_core::set_default_store`. The keyring
+/// 4 `v1` default feature would also init this on first `Entry::new`
+/// via an internal `Once`, but doing it explicitly in our constructor
+/// (idempotent under `OnceLock`) is strictly more reliable and surfaces
+/// any backend-init error eagerly.
+pub struct KeychainStore {
+    // Marker — the real work is the one-shot init in `new()`. Field is
+    // private and zero-sized so future evolution (e.g., holding a
+    // per-instance store handle) doesn't break the API surface.
+    _priv: (),
+}
+
+#[cfg(target_os = "macos")]
+fn init_macos_backend() -> Result<()> {
+    use std::sync::OnceLock;
+    static INIT: OnceLock<Result<(), String>> = OnceLock::new();
+    let outcome = INIT.get_or_init(|| {
+        // `Store::new()` returns a boxed credential store ready to
+        // register with keyring-core. Errors here are catastrophic
+        // (Keychain API unavailable) — bail loudly so we don't silently
+        // fall through to a broken backend.
+        match apple_native_keyring_store::keychain::Store::new() {
+            Ok(store) => {
+                keyring_core::set_default_store(store);
+                tracing::info!(
+                    "Registered apple-native-keyring-store as default credential backend"
+                );
+                Ok(())
+            }
+            Err(e) => Err(format!("apple-native-keyring-store init failed: {e}")),
+        }
+    });
+    match outcome {
+        Ok(()) => Ok(()),
+        Err(msg) => Err(anyhow::anyhow!("{msg}")),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn init_macos_backend() -> Result<()> {
+    // Non-macOS (CI Linux): keyring 4's `v1` default feature handles
+    // backend selection (Secret Service / linux-keyutils) on first
+    // Entry::new. Nothing to do here.
+    Ok(())
+}
+
+impl KeychainStore {
+    /// Construct a KeychainStore. On macOS, performs a one-shot
+    /// registration of the apple-native-keyring-store backend with
+    /// keyring-core (idempotent across all calls process-wide).
+    pub fn new() -> Result<Self> {
+        init_macos_backend()?;
+        Ok(Self { _priv: () })
+    }
+}
 
 impl ApiKeyStore for KeychainStore {
     fn get(&self, account: &str) -> Result<Option<String>> {
