@@ -37,10 +37,7 @@ impl SineWaveConfig {
 /// **Send semantics:** if there are no live receivers, `Sender::send`
 /// returns `Err` and we drop the frame silently — matches real producer
 /// behaviour when consumers fall behind (D-19).
-pub fn spawn_sine_wave(
-    cfg: SineWaveConfig,
-    tx: broadcast::Sender<Frame>,
-) -> JoinHandle<()> {
+pub fn spawn_sine_wave(cfg: SineWaveConfig, tx: broadcast::Sender<Frame>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let start = Instant::now();
         let mut frame_idx: u64 = 0;

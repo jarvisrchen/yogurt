@@ -127,10 +127,7 @@ mod tests {
         // it doesn't panic and returns one of the two valid macOS variants.
         let status = has_screen_recording_permission();
         assert!(
-            matches!(
-                status,
-                PermissionStatus::Granted | PermissionStatus::Denied
-            ),
+            matches!(status, PermissionStatus::Granted | PermissionStatus::Denied),
             "macOS should never return NotRequired, got {status:?}"
         );
     }

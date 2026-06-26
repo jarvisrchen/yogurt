@@ -110,9 +110,7 @@ impl std::fmt::Debug for FrameChunker {
 /// for the `GET /api/audio/devices` REST endpoint (Plan 02-03).
 pub fn list_input_devices() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
-    let default_name = host
-        .default_input_device()
-        .and_then(|d| d.name().ok());
+    let default_name = host.default_input_device().and_then(|d| d.name().ok());
     let mut out = Vec::new();
     let devices = host
         .input_devices()
@@ -197,10 +195,8 @@ pub fn spawn_mic_capture(tx: broadcast::Sender<Frame>) -> Result<MicCapture> {
                         // Convert i16 → f32 in [-1, 1] for the downmix path.
                         // Allocate per-callback; mic callbacks are 10–20 ms,
                         // not a hot inner loop.
-                        let as_f32: Vec<f32> = data
-                            .iter()
-                            .map(|&s| s as f32 / i16::MAX as f32)
-                            .collect();
+                        let as_f32: Vec<f32> =
+                            data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
                         if let Ok(mut guard) = state.lock() {
                             let (dx, chunker) = &mut *guard;
                             let out = dx.push(&as_f32);
