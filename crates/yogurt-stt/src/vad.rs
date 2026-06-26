@@ -150,8 +150,7 @@ impl Segmenter {
         // Concatenate leftover + new samples, then slice into 480-sample
         // frames.  Avoiding the explicit `Vec::extend` here would save
         // an allocation on the hot path, but for now correctness > μs.
-        let mut combined =
-            Vec::with_capacity(self.leftover.len() + pcm.len());
+        let mut combined = Vec::with_capacity(self.leftover.len() + pcm.len());
         combined.extend_from_slice(&self.leftover);
         combined.extend_from_slice(pcm);
         self.leftover.clear();
@@ -167,8 +166,7 @@ impl Segmenter {
         // Stash the partial tail.
         let tail_start = full_frames * FRAME_SAMPLES;
         if tail_start < combined.len() {
-            self.leftover
-                .extend_from_slice(&combined[tail_start..]);
+            self.leftover.extend_from_slice(&combined[tail_start..]);
         }
     }
 
