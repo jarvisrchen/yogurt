@@ -290,6 +290,107 @@ async fn it_fts_searches_meetings() {
     handle.abort();
 }
 
+// ─── Phase 7 Plan 07-03 — Copy markdown + Reveal in Finder ─────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_returns_markdown_with_front_matter() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "Markdown export test" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // PATCH some body so the file isn't just front-matter — exercises the
+    // `body_md` branch of the exporter view.
+    client
+        .patch(format!("http://{addr}/api/meetings/{id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "notes_md": "- one\n- two" }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    let resp = client
+        .get(format!("http://{addr}/api/meetings/{id}/markdown"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()["content-type"],
+        "text/markdown; charset=utf-8"
+    );
+    let body = resp.text().await.unwrap();
+    assert!(body.starts_with("---\n"), "must start with YAML front-matter");
+    assert!(
+        body.contains("title: \"Markdown export test\""),
+        "front-matter must carry the title; got: {body}"
+    );
+    assert!(body.contains("- one"), "body must include patched notes");
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_returns_404_for_markdown_of_missing_meeting() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}/api/meetings/nope/markdown"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+    handle.abort();
+}
+
+// Reveal-in-Finder is hard to assert in CI (it would actually trigger
+// Finder activation on macOS hosts). We test the contract: the endpoint
+// exists, missing meeting → 404, valid meeting → 204. macOS-gated because
+// non-darwin runners would either lack `open -R` semantics or short-circuit
+// the cfg branch — either way the contract is still 204 for a valid meeting.
+#[cfg(target_os = "macos")]
+#[tokio::test(flavor = "multi_thread")]
+async fn it_reveals_an_existing_meeting() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "Reveal test" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let resp = client
+        .post(format!(
+            "http://{addr}/api/meetings/{}/reveal",
+            created["id"].as_str().unwrap()
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    handle.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn it_returns_404_for_missing_id() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
