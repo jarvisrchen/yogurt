@@ -35,7 +35,7 @@
 // inline AND we wrap the inner column in a `max-w-[660px]` div so the
 // Legend can be absolutely positioned relative to a known container.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { YogurtEditor } from "../editor";
 import { EnhancingBanner } from "../components/EnhancingBanner";
@@ -130,34 +130,43 @@ export function MeetingPost() {
     };
   }, []);
 
+  // HI-2: track a monotonically-increasing "generation" so that a stale
+  // in-flight GET (or future Re-enhance trigger) does not overwrite state
+  // that a more-recent operation already updated. Each operation captures
+  // generationRef.current AT SCHEDULE TIME and bumps the ref; results are
+  // applied only when the captured value still matches the current ref.
+  // This closes the documented race where the initial GET resolves AFTER
+  // a Re-enhance completes — without this guard, the GET's notes_md (the
+  // pre-enhance state) stomps the just-updated notesMd.
+  const generationRef = useRef(0);
+
   // Fallback fetch: if location.state didn't pre-load the enriched markdown,
   // GET /api/meetings/:id and pull enriched_md (falling back to notes_md).
   useEffect(() => {
     if (!meetingId || !token) return;
-    if (preloadedEnrichedMd !== undefined && preloadedEnrichedMd !== "") {
-      // Even if we have the enriched_md from location.state, fetch the row
-      // so the Re-enhance button has notes_md + transcript_json to POST.
-    }
+    // Capture the generation at schedule time.
+    const myGen = ++generationRef.current;
+    const abortCtrl = new AbortController();
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch(`/api/meetings/${meetingId}`, {
           headers: { Authorization: `Bearer ${token}` },
+          signal: abortCtrl.signal,
         });
+        // HI-2: discard if a newer operation has bumped the generation
+        // counter (we're now stale).
+        if (cancelled || generationRef.current !== myGen) return;
         if (!res.ok) {
           if (res.status === 404) {
-            if (!cancelled) {
-              setError(`Meeting ${meetingId.slice(0, 8)} not found.`);
-            }
+            setError(`Meeting ${meetingId.slice(0, 8)} not found.`);
             return;
           }
-          if (!cancelled) {
-            setError(`Failed to load meeting (${res.status})`);
-          }
+          setError(`Failed to load meeting (${res.status})`);
           return;
         }
         const json = (await res.json()) as MeetingFetchResponse;
-        if (cancelled) return;
+        if (cancelled || generationRef.current !== myGen) return;
         // Only overwrite preloaded enrichedMd if we don't already have it.
         if (enrichedMd === undefined) {
           setEnrichedMd(json.enriched_md ?? json.notes_md ?? "");
@@ -168,15 +177,17 @@ export function MeetingPost() {
         setStartedAtUnixMs(json.started_at_unix_ms ?? undefined);
         setEndedAtUnixMs(json.ended_at_unix_ms ?? undefined);
       } catch (e) {
-        if (!cancelled) {
-          setError(
-            e instanceof Error ? e.message : "Failed to load meeting",
-          );
-        }
+        // AbortError from cleanup is expected — ignore.
+        if (cancelled || generationRef.current !== myGen) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setError(e instanceof Error ? e.message : "Failed to load meeting");
       }
     })();
     return () => {
       cancelled = true;
+      // HI-2: abort in-flight fetch on unmount so dangling responses don't
+      // touch unmounted state and don't waste browser HTTP slots.
+      abortCtrl.abort();
     };
     // We intentionally don't depend on `enrichedMd` here — refetching every
     // time the editor content updates would create a loop. The fetch
@@ -269,6 +280,10 @@ export function MeetingPost() {
 
   // Re-enhance callbacks.
   const handleEnhanced = useCallback((response: EnhanceResponse) => {
+    // HI-2: bump the generation so any in-flight GET fetch's eventual
+    // result is recognized as stale and DROPPED rather than overwriting
+    // the just-enhanced state.
+    generationRef.current += 1;
     setEnrichedMd(response.enriched_md);
   }, []);
   // BL-3: capture every editor mutation so Re-enhance has the live content.
