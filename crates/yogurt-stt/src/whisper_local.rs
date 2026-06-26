@@ -340,9 +340,10 @@ impl Stt for WhisperLocal {
                             }
                             let tx_seg = mic_seg_tx.clone();
                             mic_seg.push(&samples, |e| {
-                                // Single-variant enum today (Plan 08-02
-                                // may add Silence/VoiceStarted). Using
-                                // `match` so adding variants is a
+                                // Plan 08-02 added SpeechStart for UI
+                                // indicators; the decoder pump only
+                                // cares about Segment.  Using `match`
+                                // so adding further variants is a
                                 // compile error rather than a silent
                                 // drop.
                                 match e {
@@ -353,6 +354,7 @@ impl Stt for WhisperLocal {
                                     } => {
                                         let _ = tx_seg.try_send((pcm, start_ms, end_ms));
                                     }
+                                    SegmenterEvent::SpeechStart { .. } => {}
                                 }
                             });
                         }
@@ -366,6 +368,7 @@ impl Stt for WhisperLocal {
                                 } => {
                                     let _ = tx_seg.try_send((pcm, start_ms, end_ms));
                                 }
+                                SegmenterEvent::SpeechStart { .. } => {}
                             });
                         }
                     }
