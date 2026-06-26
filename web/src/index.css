@@ -109,3 +109,23 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* === Phase 3: live transcript dock motion (PRD §16.5) ===================== */
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
+.dock-open {
+  animation: slideInRight 340ms cubic-bezier(.2, .7, .2, 1) both;
+}
+
+.dock-closed {
+  animation: slideOutRight 340ms cubic-bezier(.2, .7, .2, 1) both;
+}
