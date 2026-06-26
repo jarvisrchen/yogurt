@@ -40,6 +40,16 @@ fn it_preserves_promoted_grey_on_reenhance_long() {
     run("05_reenhance_preserves_promoted");
 }
 
+/// HI-3: LLMs reliably flatten nested user bullets (depth-1 sub-bullets
+/// re-emitted as depth-0 top-level items). The diff must recognize the
+/// LLM's flattened bullets as the SAME content as the user's nested
+/// bullets and preserve the user's original depth — otherwise outline-
+/// style notes silently lose their structure on enhance.
+#[test]
+fn it_preserves_user_depth_when_llm_flattens_nested_list() {
+    run("06_nested_list_flattened");
+}
+
 fn run(name: &str) {
     let dir = Path::new("tests/fixtures").join(name);
     let notes = std::fs::read_to_string(dir.join("notes.md")).unwrap();
