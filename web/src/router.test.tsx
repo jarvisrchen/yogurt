@@ -14,6 +14,7 @@ vi.mock("./lib/api/meetings", async () => {
   return {
     ...actual,
     useMeetings: () => ({ data: [], isLoading: false, error: null }),
+    useMeetingsSearch: () => ({ data: [], isLoading: false, error: null }),
     useCreateMeeting: () => ({
       mutateAsync: vi.fn(),
       isPending: false,
@@ -21,20 +22,54 @@ vi.mock("./lib/api/meetings", async () => {
   };
 });
 
-// The Sidebar fetches /api/settings via useQuery. Stub the typed client.
-vi.mock("./lib/api/settings", () => ({
-  settingsApi: {
-    get: vi.fn().mockResolvedValue({
-      general: {
-        port: 7878,
-        open_browser_on_start: true,
-        audio_input_device: "",
-        first_run_completed: true,
+// The Sidebar fetches /api/settings via useQuery (raw settingsApi) and
+// Plan 07-04 added `useSettings` / `useSetFirstRunCompleted` for the
+// Welcome flow. Stub everything so the Shell's `useFirstRunRedirect`
+// sees a fully-set-up user (no redirect away from `/`).
+vi.mock("./lib/api/settings", () => {
+  const fixture = {
+    general: {
+      port: 7878,
+      open_browser_on_start: true,
+      audio_input_device: "",
+      first_run_completed: true,
+    },
+    providers: [
+      {
+        id: "01HXXXXXXXXXXXXXXXXXXXXXXX",
+        name: "OpenAI",
+        base_url: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+        is_active: true,
+        created_at: 0,
+        api_key_masked: "••••ABCD",
       },
-      providers: [],
-      presets: [],
+    ],
+    presets: [],
+  };
+  return {
+    settingsApi: { get: vi.fn().mockResolvedValue(fixture) },
+    settingsKey: ["settings"],
+    useSettings: () => ({
+      data: fixture,
+      isLoading: false,
+      error: null,
     }),
-  },
+    useSetFirstRunCompleted: () => ({
+      mutateAsync: vi.fn().mockResolvedValue(fixture.general),
+      isPending: false,
+    }),
+  };
+});
+
+// Plan 07-04 hook — `granted=true` means the Shell never redirects.
+vi.mock("./hooks/useScreenRecordingStatus", () => ({
+  useScreenRecordingStatus: () => ({
+    granted: true,
+    status: "granted",
+    isLoading: false,
+    error: null,
+  }),
 }));
 
 function makeQc(): QueryClient {
@@ -71,6 +106,21 @@ describe("router", () => {
     );
     expect(
       await screen.findByRole("heading", { name: /style guide/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the Welcome route at /welcome", async () => {
+    const qc = makeQc();
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/welcome"],
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: /welcome to yogurt/i }),
     ).toBeInTheDocument();
   });
 });

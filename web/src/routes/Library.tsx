@@ -1,5 +1,5 @@
 /**
- * Phase 7 (Plan 07-01 + 07-02) — Library home route (`/`).
+ * Phase 7 (Plan 07-01 + 07-02 + 07-04) — Library home route (`/`).
  *
  * Layout per PRD §5.9 + D-01..D-06:
  *   ┌────────────────┬──────────────────────────────────────────┐
@@ -8,12 +8,16 @@
  *   └────────────────┴──────────────────────────────────────────┘
  *
  * Plan 07-02 wires the search pill to `useMeetingsSearch` (FTS5).
- * When the user types, the pill debounces and lifts the query up here;
- * we then choose between the chronological `useMeetings()` cache and
- * the `useMeetingsSearch(query)` cache for the rendered list. The
- * `<DateGroup>` component handles empty buckets gracefully — when
- * search yields zero results we render a small "No matches" line so
- * the user gets an explicit confirmation that the query ran.
+ * Plan 07-04 replaces the inline empty stub with the floating-logo
+ * `<EmptyLibrary />` and gates the entire main pane on Screen Recording
+ * via `useScreenRecordingStatus` → `<PermissionDenied />`. The Sidebar
+ * remains visible in the denied state so the user can still reach
+ * `/settings` to e.g. paste an API key while the macOS prompt is open.
+ *
+ * Search-active empty (`isSearching && meetings.length === 0`) renders
+ * the inline "No matches" line — we do NOT swap in `<EmptyLibrary />`
+ * there, because the user has clearly typed something and a giant
+ * "Start your first meeting" CTA would be confusing.
  */
 
 import { useState } from "react";
@@ -22,11 +26,16 @@ import { DateGroup } from "../components/library/DateGroup";
 import { Greeting } from "../components/library/Greeting";
 import { SearchPill } from "../components/library/SearchPill";
 import { Sidebar } from "../components/library/Sidebar";
+import { EmptyLibrary } from "../components/states/EmptyLibrary";
+import { PermissionDenied } from "../components/states/PermissionDenied";
+import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
 
 export function Library() {
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
+
+  const { granted, isLoading: permissionLoading } = useScreenRecordingStatus();
 
   const all = useMeetings();
   const found = useMeetingsSearch(query);
@@ -34,6 +43,20 @@ export function Library() {
   const meetings = isSearching ? (found.data ?? []) : (all.data ?? []);
   const isLoading = isSearching ? found.isLoading : all.isLoading;
   const error = isSearching ? found.error : all.error;
+
+  // Permission gate (STATE-02). While the permission probe is still
+  // loading we render the chrome but no empty/list content — avoids a
+  // one-frame flash of PermissionDenied before the granted poll returns.
+  if (!permissionLoading && !granted) {
+    return (
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1">
+          <PermissionDenied />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex">
@@ -53,7 +76,7 @@ export function Library() {
           </div>
         )}
         {!isLoading && !error && meetings.length === 0 && (
-          isSearching ? <NoMatches /> : <EmptyStub />
+          isSearching ? <NoMatches /> : <EmptyLibrary />
         )}
         {!isLoading && !error && meetings.length > 0 && (
           <DateGroup meetings={meetings} />
@@ -64,28 +87,12 @@ export function Library() {
 }
 
 /**
- * Inline "no matches" line for the search-active branch. Plan 07-04
- * may upgrade this to a richer empty-state when the full Library
- * polish lands; the present styling matches the loading/error rows.
+ * Inline "no matches" line for the search-active branch. We intentionally
+ * keep this small and inline — a full-page empty-state would obscure the
+ * search input that produced the empty result.
  */
 function NoMatches() {
   return (
     <div className="text-[13px] font-mono text-mut">No matches</div>
-  );
-}
-
-/**
- * Minimal empty-state placeholder. Plan 07-04 ships the full
- * `<EmptyLibrary />` with the 64px floating logo + `Start your first
- * meeting` CTA + `⌘N` kbd badge.
- */
-function EmptyStub() {
-  return (
-    <div className="py-12 text-center">
-      <p className="font-serif text-[28px] text-ink">No meetings yet</p>
-      <p className="mt-2 text-[13px] font-mono text-mut">
-        Start one from the "+ New meeting" button on the left.
-      </p>
-    </div>
   );
 }
