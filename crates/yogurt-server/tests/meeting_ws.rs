@@ -44,6 +44,10 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         meetings: meetings::Registry::new(),
         markdown_exporter,
         prompts,
+        // Phase 5 (Plan 05-02): test wiring uses in-memory yogurt-db +
+        // MemoryKeyStore so this test doesn't touch the real Keychain.
+        db: yogurt_db::Db::open_in_memory().unwrap(),
+        keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
     };
     (state, token_str, tmp)
 }

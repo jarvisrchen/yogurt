@@ -17,8 +17,17 @@ mod routes;
 // `__test_only_sanitize` for test access.
 pub(crate) mod sanitize;
 pub mod session;
+// Phase 5 (Plan 05-02): `AppState` lives here so it can carry the new
+// `yogurt-db::Db` + `Arc<dyn ApiKeyStore>` fields alongside the Phase 4
+// fields. Re-exported below as `pub use state::AppState`.
+pub mod state;
 pub mod storage;
 pub mod ws;
+
+// Phase 5 (Plan 05-02): bootstrap providers from `YOGURT_*_API_KEY` env
+// vars on first run. Idempotent; release builds never read `.env.local`
+// (the loader is gated on `--dev` in `yogurt-cli/src/main.rs`).
+pub mod bootstrap;
 
 #[doc(hidden)]
 pub mod __test_only_sanitize {
@@ -58,6 +67,9 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 pub use session::SessionToken;
+// Phase 5 (Plan 05-02): canonical `AppState` lives in `state.rs`. Re-exported
+// here so existing call sites (`use crate::AppState`) keep compiling.
+pub use state::AppState;
 pub use storage::Storage;
 
 /// Server runtime mode.
@@ -69,25 +81,6 @@ pub use storage::Storage;
 pub enum Mode {
     Dev,
     Release,
-}
-
-/// Shared per-request app state.
-#[derive(Clone)]
-pub struct AppState {
-    pub mode: Mode,
-    pub storage: Arc<Storage>,
-    pub session: Arc<SessionToken>,
-    pub bind_port: u16,
-    /// Phase 3: in-memory meeting registry. Phase 7 will swap the internal
-    /// `HashMap` for SQLite-backed persistence behind the same API.
-    pub meetings: Arc<meetings::Registry>,
-    /// Phase 4 (Plan 04-03): single-writer markdown file emitter for
-    /// `~/.yogurt/notes/<...>.md`. Every successful enhance funnels a
-    /// `MarkdownExporter::write` call through this handle.
-    pub markdown_exporter: Arc<markdown_exporter::MarkdownExporter>,
-    /// Phase 4 (Plan 04-03): bundled prompt templates. Hot-reloads in Dev
-    /// mode (re-reads from disk per call), embedded in Release.
-    pub prompts: Arc<yogurt_prompts::Prompts>,
 }
 
 /// Configuration for `run` that can be overridden in tests (custom DB +
@@ -140,25 +133,36 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         Some(p) => p,
         None => default_notes_dir()?,
     };
-    let markdown_exporter = Arc::new(markdown_exporter::MarkdownExporter::new(notes_dir)?);
 
-    // Phase 4 (Plan 04-03): bundled prompts. Map our local Mode enum onto
-    // the prompts crate's identically-shaped Mode.
-    let prompt_mode = match cfg.mode {
-        Mode::Dev => yogurt_prompts::Mode::Dev,
-        Mode::Release => yogurt_prompts::Mode::Release,
-    };
-    let prompts = Arc::new(yogurt_prompts::Prompts::load(prompt_mode)?);
-
-    let state = AppState {
+    // Phase 5 (Plan 05-02): construct AppState via the new
+    // `state::AppState::production_warmed()` constructor. The `_warmed`
+    // variant eager-loads Keychain entries with a 5s timeout (SET-10) so
+    // request handlers never block on `keyring` during a request.
+    let state = AppState::production_warmed(state::ProductionConfig {
         mode: cfg.mode,
+        bind_port: cfg.addr.port(),
         storage,
         session,
-        bind_port: cfg.addr.port(),
-        meetings: meetings::Registry::new(),
-        markdown_exporter,
-        prompts,
-    };
+        notes_dir,
+    })
+    .await?;
+
+    // Phase 5 (Plan 05-02): seed providers from `YOGURT_*_API_KEY` env vars
+    // (loaded from .env.local in dev mode by yogurt-cli). Idempotent —
+    // existing providers are skipped, never overridden.
+    match bootstrap::seed_from_env(&state).await {
+        Ok(report) => {
+            if !report.seeded.is_empty() {
+                tracing::info!(seeded = ?report.seeded, "seeded providers from env vars");
+            }
+            if !report.skipped.is_empty() {
+                tracing::debug!(skipped = ?report.skipped, "skipped already-configured providers");
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "bootstrap failed; continuing without env-var seeding")
+        }
+    }
 
     let app = routes::router(state);
     tracing::info!(addr = ?cfg.addr, mode = ?cfg.mode, "yogurt-server starting");
