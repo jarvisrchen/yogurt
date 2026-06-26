@@ -4,6 +4,16 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
+use std::time::Duration;
+
+/// BL-5: hard ceiling on a single LLM HTTP round-trip. A wedged provider
+/// (OpenAI 500-loop, Deepgram outage, Minimax cold-start) would otherwise
+/// hang the enhance handler indefinitely — the in-flight POST never returns,
+/// the WS `done` event never fires, the EnhancingBanner spins forever, and
+/// Re-enhance is permanently disabled. 60s is generous for chat completion
+/// at o(1k-2k) tokens and aggressive enough that the user notices a real
+/// stall before they lose patience and refresh the tab.
+pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Non-streaming chat-completion client for any `/chat/completions`-shaped
 /// HTTP endpoint (OpenAI, MiniMax, Ollama, vLLM, llama.cpp server, Groq,
@@ -31,11 +41,21 @@ impl OpenAiCompatClient {
 
     /// Direct construction (test helper + Phase 5 transition target).
     pub fn new(base_url: String, api_key: String, model: String) -> Self {
+        // BL-5: configure both connect and total-request timeouts. `timeout`
+        // is the upper bound on a single request (DNS + connect + TLS +
+        // send + receive). If reqwest fails to build the client (which can
+        // only happen for invalid pinned cert config — never our case), fall
+        // back to the default client rather than panic.
+        let http = reqwest::Client::builder()
+            .timeout(LLM_HTTP_TIMEOUT)
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             base_url,
             api_key,
             model,
-            http: reqwest::Client::new(),
+            http,
         }
     }
 

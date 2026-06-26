@@ -51,34 +51,71 @@ export interface EnhanceResponse {
 }
 
 /**
+ * Browser-side hard ceiling on a single enhance HTTP round-trip. Slightly
+ * longer than the server-side 60s timeout (BL-5) so the server's clean
+ * `phase: "error"` event arrives BEFORE the browser gives up — the
+ * EnhancingBanner can then show a proper error message instead of a generic
+ * client-side AbortError.
+ */
+const ENHANCE_FETCH_TIMEOUT_MS = 75_000;
+
+/**
  * POST /api/meetings/{meetingId}/enhance.
  *
- * Throws on non-2xx. The thrown Error's message is the server's plaintext
- * body — useful in DevTools without making the caller drill into a typed
- * error shape.
+ * Throws on non-2xx OR on client-side timeout. The thrown Error's message
+ * is the server's plaintext body — useful in DevTools without making the
+ * caller drill into a typed error shape.
+ *
+ * BL-5: hard timeout via AbortController so a wedged TCP connection or a
+ * never-resolving fetch (rare but documented in fetch-polyfill bugs) can't
+ * leave the Re-enhance button permanently in `busy=true`. The button's
+ * `finally` will fire, clear `busy`, and the user can retry.
  *
  * @param meetingId The meeting's UUID (returned by POST /api/meetings).
  * @param body      The enhance payload (see `EnhanceRequestBody`).
  * @param token     The session token (from `ensureSessionToken()`).
+ * @param signal    Optional external AbortSignal — used by future cancel UI.
  */
 export async function postEnhance(
   meetingId: string,
   body: EnhanceRequestBody,
   token: string,
+  signal?: AbortSignal,
 ): Promise<EnhanceResponse> {
-  const res = await fetch(`/api/meetings/${meetingId}/enhance`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      text || `enhance failed: ${res.status} ${res.statusText}`,
-    );
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ENHANCE_FETCH_TIMEOUT_MS);
+  // Forward external aborts.
+  const externalAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener("abort", externalAbort);
   }
-  return (await res.json()) as EnhanceResponse;
+  try {
+    const res = await fetch(`/api/meetings/${meetingId}/enhance`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        text || `enhance failed: ${res.status} ${res.statusText}`,
+      );
+    }
+    return (await res.json()) as EnhanceResponse;
+  } catch (e) {
+    if (ctrl.signal.aborted && !signal?.aborted) {
+      throw new Error(
+        `enhance timed out after ${ENHANCE_FETCH_TIMEOUT_MS / 1000}s — try Re-enhance`,
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", externalAbort);
+  }
 }

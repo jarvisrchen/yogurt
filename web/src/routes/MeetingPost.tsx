@@ -289,6 +289,26 @@ export function MeetingPost() {
   // Char count: prefer the WS-reported value (it's authoritative once any
   // streaming event has fired). If WS hasn't reported, leave it undefined.
   const bannerChars = ws.chars ?? undefined;
+  // BL-5: surface ws-reported error state so the banner transitions to the
+  // strawberry pill instead of spinning forever.
+  const bannerError = ws.errorMessage;
+  // BL-5: dismiss banner error after a successful retry. The retry handler
+  // sets a local "trigger" flag; the Re-enhance button picks it up via a
+  // ref and fires. Since ReEnhanceButton owns its own click handler, we
+  // expose a simple "clear the error message" affordance for now —
+  // re-enabling the user to click Re-enhance again clears the banner.
+  const dismissBannerError = useCallback(() => {
+    // We can't reset ws.errorMessage from outside the hook directly, but
+    // any subsequent non-error enhance_progress frame will null it. Until
+    // then we drop the error state by tracking a local dismiss flag.
+    setBannerDismissed(true);
+  }, []);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  // Reset dismiss flag whenever a new error arrives (so a fresh failure
+  // resurfaces the banner).
+  useEffect(() => {
+    if (bannerError) setBannerDismissed(false);
+  }, [bannerError]);
 
   // Bounce back to library if no meeting id (shouldn't happen via the
   // router, but guard anyway).
@@ -306,7 +326,12 @@ export function MeetingPost() {
       style={{ backgroundColor: PAPER }}
       data-testid="meeting-post-route"
     >
-      <EnhancingBanner visible={bannerVisible} chars={bannerChars} />
+      <EnhancingBanner
+        visible={bannerVisible}
+        chars={bannerChars}
+        errorMessage={bannerDismissed ? null : bannerError}
+        onRetry={bannerError ? dismissBannerError : undefined}
+      />
 
       {/* Sticky top-right toolbar carrying the Re-enhance button. Lives
         BELOW the EnhancingBanner (z-index 10 vs banner's 20). */}

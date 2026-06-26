@@ -24,6 +24,8 @@ const LILAC = "#ECE9FB"; // --color-blsoft
 const TRACK = "#D9D4F4"; // soft lilac track for the animated bar (CONTEXT D-28)
 const INK = "#211D18"; // --color-ink
 const MUT = "#8A8174"; // --color-mut
+const STRAW = "#E07A66"; // --color-straw (error accent — PRD §16)
+const STRAW_SOFT = "#FBE6E0"; // --color-strsoft
 
 export interface EnhancingBannerProps {
   /** When false, the banner is unmounted (no empty container in the DOM). */
@@ -36,6 +38,14 @@ export interface EnhancingBannerProps {
    * as the load-bearing string).
    */
   copy?: string;
+  /**
+   * BL-5: if non-null, the banner switches from the spinning lilac state to
+   * a static strawberry error state with the supplied message + a Retry
+   * button (only rendered when `onRetry` is provided).
+   */
+  errorMessage?: string | null;
+  /** Click handler for the Retry button in the error state. */
+  onRetry?: () => void;
 }
 
 const DEFAULT_COPY = "Weaving your notes into the transcript…";
@@ -44,7 +54,58 @@ export function EnhancingBanner({
   visible,
   chars,
   copy = DEFAULT_COPY,
+  errorMessage,
+  onRetry,
 }: EnhancingBannerProps) {
+  // BL-5: the error state takes precedence over the spinning state. Even if
+  // the parent passes `visible={false}` once it sees the error, this lets
+  // the parent leave `visible={true}` and let the banner render the error
+  // pill until the user retries or navigates away.
+  if (errorMessage) {
+    return (
+      <div
+        role="alert"
+        data-testid="enhancing-banner-error"
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          padding: "10px 18px",
+          backgroundColor: STRAW_SOFT,
+          borderBottom: `1px solid ${STRAW}`,
+          color: STRAW,
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        <span aria-hidden="true">⚠</span>
+        <span style={{ flex: "1 1 auto" }}>{errorMessage}</span>
+        {onRetry && (
+          <button
+            type="button"
+            data-testid="enhancing-banner-retry"
+            onClick={onRetry}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              backgroundColor: STRAW,
+              color: "#FFFFFF",
+              fontSize: 12,
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (!visible) {
     // Render an empty fragment so tests asserting "no children" pass and
     // so the layout doesn't reserve any vertical space.

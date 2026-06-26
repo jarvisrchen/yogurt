@@ -25,13 +25,20 @@ export interface TranscriptEvent {
  * flat (no `payload` wrapper) because that channel forwards arbitrary
  * `serde_json::Value`s with a top-level `type` key.
  *
- * Lifecycle: `sending` → `streaming` (one or more, with `chars`) → `done`.
+ * Lifecycle: `sending` → `streaming` (one or more, with `chars`) → `done`,
+ * OR `sending` → `error` (terminal). BL-5: `error` is emitted on LLM
+ * timeout, LLM HTTP failure, merge_notes failure, or persistence failure.
+ * The browser banner transitions to a recoverable error state with a
+ * Retry affordance; Re-enhance is re-enabled.
+ *
  * Phase 4 emits `chars` once at completion; Phase 5 will stream per-chunk.
  */
 export interface EnhanceProgressEvent {
   type: "enhance_progress";
-  phase: "sending" | "streaming" | "done";
+  phase: "sending" | "streaming" | "done" | "error";
   chars?: number;
+  /** Human-readable message accompanying `phase: "error"`. */
+  message?: string;
 }
 
 /**
@@ -284,6 +291,8 @@ export interface UseEnhanceProgressResult {
   phase: EnhanceProgressEvent["phase"] | null;
   chars: number | null;
   enhancing: boolean;
+  /** BL-5: last error message from a `phase: "error"` event, or null. */
+  errorMessage: string | null;
 }
 
 /**
@@ -307,11 +316,13 @@ export function useEnhanceProgress(
   const [phase, setPhase] =
     useState<EnhanceProgressEvent["phase"] | null>(null);
   const [chars, setChars] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!meetingId || !token) {
       setPhase(null);
       setChars(null);
+      setErrorMessage(null);
       return;
     }
 
@@ -353,6 +364,15 @@ export function useEnhanceProgress(
             if (typeof frame.chars === "number") {
               setChars(frame.chars);
             }
+            // BL-5: surface the server-supplied error message so the
+            // EnhancingBanner can render a recoverable error pill with
+            // human-readable copy. Clear the message on a successful
+            // re-attempt (any non-error phase).
+            if (frame.phase === "error") {
+              setErrorMessage(frame.message ?? "Enhance failed");
+            } else {
+              setErrorMessage(null);
+            }
           }
         } catch {
           // Ignore non-JSON / malformed frames.
@@ -393,5 +413,5 @@ export function useEnhanceProgress(
 
   const enhancing = phase === "sending" || phase === "streaming";
 
-  return { phase, chars, enhancing };
+  return { phase, chars, enhancing, errorMessage };
 }
