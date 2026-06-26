@@ -14,6 +14,8 @@
 
 import { Link } from "react-router";
 import type { Meeting } from "../../lib/api/meetings";
+import { InlineTitle } from "./InlineTitle";
+import { MeetingCardActions } from "./MeetingCardActions";
 
 const PALETTE = [
   "var(--color-blsoft)", // blueberry-soft
@@ -73,14 +75,17 @@ export function MeetingCard({ meeting }: Props) {
         {initials(meeting.title || "Untitled meeting")}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[15px] font-bold text-ink truncate">
-          {meeting.title || "Untitled meeting"}
-        </div>
+        <InlineTitle
+          id={meeting.id}
+          title={meeting.title}
+          className="block text-[15px] font-bold text-ink truncate"
+        />
         <div className="text-[12px] font-mono text-mut">{formatMeta(meeting)}</div>
       </div>
       <span className="text-[11px] font-mono text-mut border border-line rounded-pill px-2 py-0.5">
         Local
       </span>
+      <MeetingCardActions id={meeting.id} />
     </Link>
   );
 }
