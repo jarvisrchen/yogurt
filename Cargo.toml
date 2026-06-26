@@ -4,6 +4,7 @@ members = [
     "crates/yogurt-cli",
     "crates/yogurt-server",
     "crates/yogurt-audio",
+    "crates/yogurt-stt",
 ]
 
 [workspace.package]
@@ -46,8 +47,19 @@ subtle = "2"
 # testing
 assert_cmd = "2"
 tempfile = "3"
-tokio-tungstenite = "0.24"
-futures-util = "0.3"
+# WebSocket transport for STT adapters. rustls-tls-webpki-roots avoids OpenSSL link
+# (single-binary distribution requires no system OpenSSL dep). Phase 3 STT crate
+# uses this for Deepgram WS; do NOT enable default native-tls feature.
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+# `sink` for SinkExt (write half of split WS), `std` for tokio compatibility.
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# Async trait for the STT trait surface (Phase 3) and any other dyn-compat traits.
+async-trait = "0.1"
+# URL parsing for WS connect requests.
+url = "2"
+# UUID v7 used by Phase 3 meeting registry; defined as a workspace dep here so
+# yogurt-stt-adjacent crates can share the pin.
+uuid = { version = "1", features = ["v7", "serde"] }
 # audio capture (Phase 2)
 # NOTE: plan suggested screencapturekit = "0.3" but crate has bumped to 8.x
 # with a different builder-pattern API. Pinned to 8 with macos_13_0 feature
