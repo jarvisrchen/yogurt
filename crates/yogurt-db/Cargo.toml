@@ -1,0 +1,25 @@
+[package]
+name = "yogurt-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Yogurt SQLite (providers + settings) + macOS Keychain wrapper"
+
+[dependencies]
+rusqlite = { workspace = true }
+rusqlite_migration = { workspace = true }
+keyring = { workspace = true }
+directories = { workspace = true }
+ulid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# Gated because real Keychain reads prompt the user on macOS.
+# Manual: `cargo test -p yogurt-db --features keychain-live -- --ignored`.
+keychain-live = []
