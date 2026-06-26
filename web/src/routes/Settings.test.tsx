@@ -24,6 +24,8 @@ vi.mock("../lib/api/settings", () => {
       open_browser_on_start: true,
       audio_input_device: "",
       first_run_completed: true,
+      stt_provider: "cloud",
+      stt_model: "small.en",
     },
     providers: [
       {
