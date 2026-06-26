@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "Phase 4 Wave 2 complete: YogurtEditor (TipTap aiGrey mark + transcriptLink inline atom + markdown bridge + 660px hero column) renders the swatch contract; POST /api/meetings/:id/enhance ties yogurt-prompts → OpenAiCompatClient/MockLlm → yogurt-notes::merge_notes → SQLite UPSERT (notes_md + transcript_json + enriched_md + enriched_doc_json) → MarkdownExporter → WS enhance_progress events end-to-end. Per-meeting events_tx broadcast added to Meeting struct so non-transcript JSON events ride on the same WS as transcripts. Integration test asserts wire-format spans round-trip across HTTP response + on-disk .md file + SQLite column. Promote-on-edit appendTransaction plugin ships; jsdom render tests pin parseHTML/renderHTML shapes; ProseMirror-level smoke deferred to 04-04."
-stopped_at: "Plan 04-03 complete (3 commits: da6fab5 web editor stack, 3483d90 enhance endpoint + meetings/ws/lib refactor, cbbf86b summary docs). 89 web tests pass; 57 yogurt-server tests pass (105 workspace). Ready for Plan 04-04 (post-meeting MeetingPost.tsx host page: EnhancingBanner with 1.4s recpulse + 1.8s enhancing-bar + JetBrains-Mono char count; ShimmerSkeleton at 140/340/560/760ms stagger; ReEnhanceButton; Legend swatch contract top-right; click-to-jump transcript dock integration via window.dispatchEvent('yogurt:transcript:scrollTo'); end-meeting → /meeting/:id/post navigation)."
-last_updated: "2026-06-26T02:30:00.000Z"
-last_activity: "2026-06-26 — Plan 04-03 shipped (3 commits da6fab5/3483d90/cbbf86b): web TipTap aiGrey + transcriptLink + YogurtEditor + markdown bridge + 660px column + 6 web tests; server POST /api/meetings/:id/enhance handler + Meeting.events_tx + ws fan-out + AppState (markdown_exporter + prompts) + RunConfig.notes_dir + 2 enhance integration tests; __test_only_aux_state helper to keep test crates' AppState construction DRY; 5 deviations (Rule 3 @tiptap/pm direct dep + tiptap@2 pin; Rule 3 AppState/RunConfig migration across 6 test files; Rule 1 clippy doc_lazy_continuation rewrite; Rule 2 events_tx broadcast for enhance_progress; Rule 2 endpoint body carries notes_md+transcript_json since Meeting struct lacks them); NOTES-01/03/04/06/09/10/12 satisfied (NOTES-02 legend deferred to 04-04 host page)."
+status: "meetings::Registry is the canonical in-memory fan-out point (Phase 7 swaps for SQLite behind the same `create/get/start/stop/subscribe` API). Cross-thread !Send bridge owns AudioStream on a dedicated std::thread; supervisor tokio task holds the shutdown oneshot. WS handler serializes `{type:"transcript", payload:{ts_ms,channel,text,is_final}}` exactly matching PRD §10. The server-side half of TRANS-08 < 2s lag is pinned at < 200ms by `e2e_synthetic_audio.rs` (actual is single-digit ms); the remaining budget is the browser side (Plan 03-03) + Deepgram network/processing (manual smoke)."
+stopped_at: "Plan 03-02 complete — meetings::Registry wires yogurt-audio (Frame broadcast) → yogurt-stt (AudioChunk → TranscriptEvent broadcast) per meeting; 3 REST + 1 WS route mounted; cross-thread !Send bridge (std::thread + oneshot pair) cleanly owns AudioStream and shuts down via RAII on supervisor abort; < 200ms server-side fan-out lag pinned by e2e_synthetic_audio.rs (actual ≈ 5-10ms). 35 yogurt-server tests pass (11 suites). 3 commits (69ed51f, ca0d4d0, 2dbb398). TRANS-01 + TRANS-02 + TRANS-08 complete. Ready for Plan 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion at 340ms cubic-bezier(.2,.7,.2,1) per PRD §16.5 + library/meeting App.tsx switch). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) still pending from Phase 1; Plan 02-03 (REST endpoints + WAV ear-test) still pending from Phase 2 (audio.rs's `start_meeting_recording()` shim is now wired by Plan 03-02 via Registry::start, so the original 02-03 wire-up requirement is partially absorbed — only the WAV ear-test remains)."
+last_updated: "2026-06-26T03:51:50.712Z"
+last_activity: "2026-06-26 — Plan 03-02 shipped (3 commits: Registry + AppState + lib wiring; REST + WS routes; E2E < 200ms test + fmt fixup); 4 new tests pass on ports 17890/17891/17892/17893; 35 total yogurt-server tests pass across 11 suites; 3 deviations auto-fixed (AudioStream !Send via std::thread+oneshot bridge; axum 0.8 `{id}` path syntax; build_test_state helper for tempfile AppState); 1 scope deferral (D-INT-02 per-meeting WS auth → Phase 5)."
 progress:
   total_phases: 10
-  completed_phases: 3
+  completed_phases: 5
   total_plans: 32
-  completed_plans: 14
-  percent: 44
+  completed_plans: 18
+  percent: 50
 ---
 
 # Project State
