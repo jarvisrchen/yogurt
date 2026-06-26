@@ -34,7 +34,9 @@ async fn main() -> anyhow::Result<()> {
             eprintln!();
             eprintln!("Recovery:");
             eprintln!("  1. Open System Settings → Privacy & Security → Screen Recording");
-            eprintln!("  2. Enable for the terminal running this command (Terminal.app, iTerm, etc.)");
+            eprintln!(
+                "  2. Enable for the terminal running this command (Terminal.app, iTerm, etc.)"
+            );
             eprintln!("  3. Restart the terminal (TCC requires a process restart)");
             eprintln!("  4. Re-run: cargo run -p yogurt-audio --example system_smoke");
             std::process::exit(2);

@@ -196,7 +196,11 @@ mod tests {
         // Feed less than one chunk (200 stereo frames = 400 interleaved < 960).
         let interleaved: Vec<f32> = vec![0.1_f32; 400];
         let out = dx.push(&interleaved);
-        assert!(out.is_empty(), "should buffer under-chunk input, got {} samples", out.len());
+        assert!(
+            out.is_empty(),
+            "should buffer under-chunk input, got {} samples",
+            out.len()
+        );
 
         // Top up with enough to make it past INPUT_CHUNK total.
         let more: Vec<f32> = vec![0.1_f32; 960];

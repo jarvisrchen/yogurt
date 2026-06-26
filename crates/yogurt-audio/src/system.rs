@@ -46,8 +46,7 @@ pub struct SystemCapture {
 
 impl std::fmt::Debug for SystemCapture {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SystemCapture")
-            .finish_non_exhaustive()
+        f.debug_struct("SystemCapture").finish_non_exhaustive()
     }
 }
 
@@ -144,70 +143,66 @@ mod macos {
         let mut stream = SCStream::new(&filter, &config);
 
         let state_for_handler = Arc::clone(&state);
-        let handler =
-            move |sample_buffer: CMSampleBuffer, of_type: SCStreamOutputType| {
-                if of_type != SCStreamOutputType::Audio {
-                    return;
-                }
-                // Pull the audio buffer list (parallel L/R buffers).
-                let Some(abl) = sample_buffer.audio_buffer_list() else {
-                    return;
-                };
-
-                // Collect each channel's f32 samples. SCK gives us 4-byte f32
-                // samples per buffer; each buffer is ONE channel (parallel,
-                // not interleaved — API quirk #2 from spike note).
-                let mut per_channel: Vec<Vec<f32>> =
-                    Vec::with_capacity(abl.num_buffers());
-                for buf in abl.iter() {
-                    let bytes = buf.data();
-                    // Each f32 sample is 4 bytes, little-endian on Apple Silicon.
-                    let sample_count = bytes.len() / 4;
-                    let mut samples = Vec::with_capacity(sample_count);
-                    for chunk in bytes.chunks_exact(4) {
-                        let mut a = [0_u8; 4];
-                        a.copy_from_slice(chunk);
-                        samples.push(f32::from_le_bytes(a));
-                    }
-                    per_channel.push(samples);
-                }
-                if per_channel.is_empty() {
-                    return;
-                }
-
-                // Interleave parallel channels into a single [L0, R0, L1, R1, …]
-                // slice that Downmix::push can consume (it expects interleaved
-                // input with `input_channels` items per frame).
-                let frames = per_channel.iter().map(|c| c.len()).min().unwrap_or(0);
-                let ch_count = per_channel.len();
-                let mut interleaved = Vec::with_capacity(frames * ch_count);
-                for i in 0..frames {
-                    for ch in &per_channel {
-                        interleaved.push(ch[i]);
-                    }
-                }
-
-                if let Ok(mut guard) = state_for_handler.lock() {
-                    let (dx, chunker) = &mut *guard;
-                    let out = dx.push(&interleaved);
-                    if !out.is_empty() {
-                        chunker.feed(&out);
-                    }
-                }
+        let handler = move |sample_buffer: CMSampleBuffer, of_type: SCStreamOutputType| {
+            if of_type != SCStreamOutputType::Audio {
+                return;
+            }
+            // Pull the audio buffer list (parallel L/R buffers).
+            let Some(abl) = sample_buffer.audio_buffer_list() else {
+                return;
             };
+
+            // Collect each channel's f32 samples. SCK gives us 4-byte f32
+            // samples per buffer; each buffer is ONE channel (parallel,
+            // not interleaved — API quirk #2 from spike note).
+            let mut per_channel: Vec<Vec<f32>> = Vec::with_capacity(abl.num_buffers());
+            for buf in abl.iter() {
+                let bytes = buf.data();
+                // Each f32 sample is 4 bytes, little-endian on Apple Silicon.
+                let sample_count = bytes.len() / 4;
+                let mut samples = Vec::with_capacity(sample_count);
+                for chunk in bytes.chunks_exact(4) {
+                    let mut a = [0_u8; 4];
+                    a.copy_from_slice(chunk);
+                    samples.push(f32::from_le_bytes(a));
+                }
+                per_channel.push(samples);
+            }
+            if per_channel.is_empty() {
+                return;
+            }
+
+            // Interleave parallel channels into a single [L0, R0, L1, R1, …]
+            // slice that Downmix::push can consume (it expects interleaved
+            // input with `input_channels` items per frame).
+            let frames = per_channel.iter().map(|c| c.len()).min().unwrap_or(0);
+            let ch_count = per_channel.len();
+            let mut interleaved = Vec::with_capacity(frames * ch_count);
+            for i in 0..frames {
+                for ch in &per_channel {
+                    interleaved.push(ch[i]);
+                }
+            }
+
+            if let Ok(mut guard) = state_for_handler.lock() {
+                let (dx, chunker) = &mut *guard;
+                let out = dx.push(&interleaved);
+                if !out.is_empty() {
+                    chunker.feed(&out);
+                }
+            }
+        };
 
         let _handler_id = stream
             .add_output_handler(handler, SCStreamOutputType::Audio)
             .ok_or_else(|| {
-                AudioError::SystemCaptureFailed(
-                    "SCStream::add_output_handler returned None".into(),
-                )
+                AudioError::SystemCaptureFailed("SCStream::add_output_handler returned None".into())
             })?;
 
         // 7. Start capture.
-        stream
-            .start_capture()
-            .map_err(|e| AudioError::SystemCaptureFailed(format!("SCStream::start_capture: {e}")))?;
+        stream.start_capture().map_err(|e| {
+            AudioError::SystemCaptureFailed(format!("SCStream::start_capture: {e}"))
+        })?;
 
         tracing::info!(
             sample_rate = SCK_INPUT_RATE,

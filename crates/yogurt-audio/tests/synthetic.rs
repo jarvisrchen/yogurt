@@ -50,7 +50,10 @@ async fn it_emits_correct_length_frames_at_the_expected_cadence() {
 
     // Sine wave should produce non-zero, non-constant samples.
     let s = &frames[0].samples;
-    assert!(s.iter().any(|&x| x != 0), "sine wave should not be all-zero");
+    assert!(
+        s.iter().any(|&x| x != 0),
+        "sine wave should not be all-zero"
+    );
     assert!(
         s.iter().any(|&x| x != s[0]),
         "sine wave should vary across samples"
