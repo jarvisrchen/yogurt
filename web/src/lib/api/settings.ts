@@ -17,6 +17,9 @@ export interface General {
   port: number;
   open_browser_on_start: boolean;
   audio_input_device: string;
+  /** Phase 7 — `true` once the user finishes `/welcome`. Drives the
+   *  first-run redirect (`useFirstRunRedirect`). */
+  first_run_completed: boolean;
 }
 
 export interface ProviderView {
@@ -126,3 +129,54 @@ export const settingsApi = {
 export const audioApi = {
   devices: () => http<AudioDevice[]>("/api/audio/devices"),
 };
+
+// ─── React-Query hooks (Phase 7 onboarding + permission gating) ─────────────
+//
+// `useSettings` is a thin shared cache so the Sidebar's `Local-only` pill,
+// the Welcome route's CTA gate, and `useFirstRunRedirect` all share one
+// network round-trip. `useSetFirstRunCompleted` flips the onboarding flag
+// when the user clicks "Take me to my meetings →" — it `PATCH`es and
+// invalidates the cache so the redirect hook re-resolves to `/`.
+
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+
+/** Shared cache key — Sidebar, Welcome, and useFirstRunRedirect all read it. */
+export const settingsKey = ["settings"] as const;
+
+/** Cached `GET /api/settings`. 30s staleTime matches the Sidebar usage. */
+export function useSettings(): UseQueryResult<SettingsView, Error> {
+  return useQuery({
+    queryKey: settingsKey,
+    queryFn: () => settingsApi.get(),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * `PATCH /api/settings` with `{ first_run_completed: value }`.
+ *
+ * Returns the updated `General` (the backend re-loads after the upsert so
+ * the response always reflects the persisted state). Invalidates the
+ * shared `settings` cache so any consumer of `useSettings()` — including
+ * `useFirstRunRedirect` — picks up the new value immediately.
+ */
+export function useSetFirstRunCompleted(): UseMutationResult<
+  General,
+  Error,
+  boolean
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (value: boolean) =>
+      settingsApi.patch({ first_run_completed: value } as Partial<General>),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: settingsKey });
+    },
+  });
+}

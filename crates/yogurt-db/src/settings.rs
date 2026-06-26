@@ -36,11 +36,20 @@ pub fn set(db: &Db, key: &str, value: &str) -> Result<()> {
 }
 
 /// Typed projection of the well-known `general.*` + `audio.*` keys.
+///
+/// `first_run_completed` is read/written here (rather than via a dedicated
+/// onboarding module) so the Phase 7 Welcome flow can flip it in a single
+/// `PATCH /api/settings` round-trip alongside any general-section state.
+/// The migration seeds it to `"false"` (V003__meetings.sql).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct General {
     pub port: u16,
     pub open_browser_on_start: bool,
     pub audio_input_device: String,
+    /// Phase 7 onboarding: `true` once the user has completed the `/welcome`
+    /// flow at least once. `useFirstRunRedirect` reads this to decide whether
+    /// to land the SPA on `/welcome` or `/`.
+    pub first_run_completed: bool,
 }
 
 /// Load the `General` struct from the KV table, falling back to defaults
@@ -56,6 +65,10 @@ pub fn load_general(db: &Db) -> Result<General> {
             .map(|s| s == "true")
             .unwrap_or(true),
         audio_input_device: get(db, "audio.input_device")?.unwrap_or_default(),
+        first_run_completed: get(db, "first_run_completed")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(false),
     })
 }
 
@@ -65,6 +78,9 @@ pub struct GeneralPatch {
     pub port: Option<u16>,
     pub open_browser_on_start: Option<bool>,
     pub audio_input_device: Option<String>,
+    /// Phase 7 — the Welcome route flips this to `true` when the user
+    /// clicks "Take me to my meetings →".
+    pub first_run_completed: Option<bool>,
 }
 
 /// Apply `patch` to the KV table and return the resulting `General`. The
@@ -83,6 +99,9 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
     }
     if let Some(d) = patch.audio_input_device {
         set(db, "audio.input_device", &d)?;
+    }
+    if let Some(f) = patch.first_run_completed {
+        set(db, "first_run_completed", if f { "true" } else { "false" })?;
     }
     load_general(db)
 }
