@@ -48,6 +48,13 @@ pub fn router(state: AppState) -> Router {
         // model as the other meeting routes (session token via
         // Authorization header OR `?token=` query string).
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
+        // Phase 4 (Plan 04-04): GET the persisted meeting row — used by the
+        // MeetingPost route to hydrate on direct-link / refresh (NOTES-13
+        // step 10 persistence gate). Returns enriched_md + notes_md +
+        // transcript_json + title + started_at_unix_ms + ended_at_unix_ms.
+        // 404 if the meeting hasn't been enhanced yet (row only exists
+        // after first enhance per Plan 04-03's UPSERT contract).
+        .route("/api/meetings/{id}", get(get_meeting))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session_token,
@@ -145,6 +152,88 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// `GET /api/meetings/:id` — read the persisted meeting row from SQLite.
+///
+/// Used by the Plan 04-04 `MeetingPost` route to hydrate on direct-link
+/// or refresh — `location.state.enrichedMd` lives for one navigation,
+/// after which the post page falls back to this endpoint. Returns:
+///
+/// ```json
+/// {
+///   "id": "<uuid>",
+///   "title": "string|null",
+///   "notes_md": "string|null",
+///   "transcript_json": "string|null",
+///   "enriched_md": "string|null",
+///   "started_at_unix_ms": 1234567890,
+///   "ended_at_unix_ms": null
+/// }
+/// ```
+///
+/// 404 if the meeting hasn't been enhanced yet (the row only exists after
+/// the first `/enhance` per Plan 04-03's UPSERT contract — pre-enhance
+/// meetings live only in `AppState.meetings`).
+///
+/// `enriched_doc_json` is intentionally NOT returned — the browser uses
+/// `enriched_md` (the wire-format markdown) to reconstruct the editor via
+/// `markdownToHtml` + `setContent`. The JSON column exists for future
+/// surfaces (Phase 7 library scroll-restoration).
+async fn get_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
+    let id_str = id.to_string();
+    let writer = state.storage.writer();
+    let row = {
+        let conn = match writer.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("db lock: {e}") })),
+                )
+                    .into_response();
+            }
+        };
+        conn.query_row(
+            r#"SELECT id, title, notes_md, transcript_json, enriched_md,
+                       started_at, ended_at
+                 FROM meetings WHERE id = ?1"#,
+            rusqlite::params![id_str],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, Option<i64>>(5)?,
+                    r.get::<_, Option<i64>>(6)?,
+                ))
+            },
+        )
+    };
+    match row {
+        Ok((id, title, notes_md, transcript_json, enriched_md, started, ended)) => Json(json!({
+            "id": id,
+            "title": title,
+            "notes_md": notes_md,
+            "transcript_json": transcript_json,
+            "enriched_md": enriched_md,
+            "started_at_unix_ms": started,
+            "ended_at_unix_ms": ended,
+        }))
+        .into_response(),
+        Err(rusqlite::Error::QueryReturnedNoRows) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("meeting {id_str} not found") })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("db query: {e}") })),
         )
             .into_response(),
     }
