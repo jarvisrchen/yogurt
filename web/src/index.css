@@ -129,3 +129,34 @@ html, body {
 .dock-closed {
   animation: slideOutRight 340ms cubic-bezier(.2, .7, .2, 1) both;
 }
+
+/* === Phase 4: hero augmented-notes swatch contract (PRD §16.7 / CONTEXT D-31)
+ *
+ * `.ai-grey` is the LLM-added run color (computed `rgb(168, 159, 144)` =
+ *   `#A89F90`, the `--color-grey` Tailwind 4 token).
+ * `.transcript-link` is the `↳ HH:MM` deep-link affordance: blueberry text
+ *   (`--color-blue` = `#5B4FC7`) with a 1.5px dotted lilac underline.
+ * `.yogurt-editor` enforces the 660px hero column width (NOTES-01).
+ * ========================================================================== */
+
+.ai-grey {
+  color: var(--color-grey);
+}
+
+.transcript-link {
+  color: var(--color-blue);
+  border-bottom: 1.5px dotted #C9B8F0;
+  margin-left: 0.35em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.transcript-link:hover {
+  border-bottom-color: var(--color-blue);
+}
+
+.yogurt-editor {
+  max-width: 660px;
+  margin: 0 auto;
+}
+
