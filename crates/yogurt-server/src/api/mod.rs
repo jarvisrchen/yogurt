@@ -5,4 +5,10 @@
 //! after Phase 4.
 
 pub mod chat;
+// Phase 7 (Plan 07-01): Library REST surface — CRUD over the SQLite-backed
+// `MeetingRepo`. Coexists with the Phase 3 `POST /api/meetings`
+// (`routes::create_meeting`) which still creates the in-memory streaming
+// `Registry` entry; Phase 7's handlers operate on the persisted directory
+// instead.
+pub mod meetings;
 pub mod settings;

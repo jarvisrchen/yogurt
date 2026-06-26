@@ -60,7 +60,7 @@ pub struct Meeting {
 /// Constructor payload for [`MeetingRepo::create`]. Only the fields a fresh
 /// meeting genuinely needs — the rest are filled in by the repo (defaults +
 /// auto-minted id + timestamps).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct NewMeeting {
     pub title: String,
     /// Optional started-at override. Defaults to "now" when absent —
@@ -68,6 +68,15 @@ pub struct NewMeeting {
     /// `created_at_ms = SystemTime::now()`.
     #[serde(default)]
     pub started_at_unix_ms: Option<i64>,
+    /// Optional caller-supplied id. Defaults to a freshly minted ULID
+    /// when absent. The Phase-7 Library REST handler passes
+    /// `Uuid::now_v7().to_string()` here so the existing UUID-typed
+    /// streaming routes (`/api/meetings/:id/start` etc.) keep working
+    /// against the same id — without this escape hatch the directory
+    /// (ULID strings) and the streaming registry (UUID v7) would have
+    /// mutually-incompatible identifier spaces.
+    #[serde(default)]
+    pub id: Option<String>,
 }
 
 /// Patch payload for [`MeetingRepo::patch`]. Every field is `Option`
@@ -79,6 +88,11 @@ pub struct NewMeeting {
 pub struct MeetingPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Updates the recording-start clock. Use for back-dated imports or
+    /// for the Phase 4 enhance handler which sets `started_at` to the
+    /// known recording start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes_md: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -122,7 +136,7 @@ impl MeetingRepo {
             bail!("title must not be empty or whitespace");
         }
         let now_ms = chrono::Utc::now().timestamp_millis();
-        let id = Ulid::new().to_string();
+        let id = m.id.unwrap_or_else(|| Ulid::new().to_string());
         let started_at = m.started_at_unix_ms.unwrap_or(now_ms);
         let title_owned = title.to_string();
         self.db.with_conn(|conn| {
@@ -190,6 +204,10 @@ impl MeetingRepo {
             if let Some(t) = patch.title.as_ref() {
                 sets.push("title = ?");
                 args.push(t.trim().to_string().into());
+            }
+            if let Some(s) = patch.started_at {
+                sets.push("started_at = ?");
+                args.push(s.into());
             }
             if let Some(n) = patch.notes_md.as_ref() {
                 sets.push("notes_md = ?");
@@ -323,6 +341,7 @@ mod tests {
             .create(NewMeeting {
                 title: "Standup".into(),
                 started_at_unix_ms: None,
+                ..Default::default()
             })
             .expect("create");
         // ULID strings are exactly 26 chars (Crockford base32).
@@ -342,6 +361,7 @@ mod tests {
             .create(NewMeeting {
                 title: "   ".into(),
                 started_at_unix_ms: None,
+                ..Default::default()
             })
             .unwrap_err();
         assert!(err.to_string().contains("empty"));
@@ -354,12 +374,14 @@ mod tests {
             .create(NewMeeting {
                 title: "Older".into(),
                 started_at_unix_ms: Some(1_000_000),
+                ..Default::default()
             })
             .unwrap();
         let b = repo
             .create(NewMeeting {
                 title: "Newer".into(),
                 started_at_unix_ms: Some(2_000_000),
+                ..Default::default()
             })
             .unwrap();
         let xs = repo.list().unwrap();
@@ -375,6 +397,7 @@ mod tests {
             .create(NewMeeting {
                 title: "T1".into(),
                 started_at_unix_ms: Some(1_000),
+                ..Default::default()
             })
             .unwrap();
         let before = m.updated_at;
@@ -402,6 +425,7 @@ mod tests {
             .create(NewMeeting {
                 title: "T".into(),
                 started_at_unix_ms: None,
+                ..Default::default()
             })
             .unwrap();
         // Set
@@ -457,6 +481,7 @@ mod tests {
             .create(NewMeeting {
                 title: "T".into(),
                 started_at_unix_ms: None,
+                ..Default::default()
             })
             .unwrap();
         assert!(repo.delete(&m.id).unwrap());
@@ -471,6 +496,7 @@ mod tests {
             .create(NewMeeting {
                 title: "Standup".into(),
                 started_at_unix_ms: None,
+                ..Default::default()
             })
             .unwrap();
         // Seed two chat rows on that meeting.

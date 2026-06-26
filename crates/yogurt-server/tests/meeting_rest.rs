@@ -87,7 +87,15 @@ async fn it_creates_a_meeting_and_returns_an_id() {
 
     let id = body["id"].as_str().expect("id is a string");
     assert!(uuid::Uuid::parse_str(id).is_ok(), "id parses as uuid");
-    assert!(body["created_at_ms"].as_u64().unwrap() > 0);
+    // Phase 7 (Plan 07-01): the wire shape moved from
+    // `{id, created_at_ms}` (Phase 3 in-memory) to the full
+    // `yogurt_db::Meeting` projection. `created_at` is now an ISO 8601
+    // UTC string; existence + non-empty is the smoke check.
+    assert!(
+        body["created_at"].as_str().map(|s| !s.is_empty()).unwrap_or(false),
+        "created_at is a non-empty ISO 8601 string"
+    );
+    assert_eq!(body["title"].as_str().unwrap(), "Untitled meeting");
 
     handle.abort();
 }

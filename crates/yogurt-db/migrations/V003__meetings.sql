@@ -63,12 +63,16 @@ CREATE TABLE IF NOT EXISTS meetings (
 -- executes the ALTERs that ship next to this SQL file.
 
 -- ─── Indexes ──────────────────────────────────────────────────────────────
+--
+-- Only indexes whose columns exist in BOTH the fresh-DB CREATE TABLE
+-- above AND the legacy Phase 0 schema can live here. `idx_meetings_starred`
+-- references the Phase 7 `starred` column, which is back-filled by the
+-- Rust-side `backfill_phase7_meeting_columns` helper AFTER this migration
+-- runs — so the partial-index creation also lives in Rust (see
+-- `migrations.rs::backfill_phase7_meeting_columns`).
 
 CREATE INDEX IF NOT EXISTS idx_meetings_started
     ON meetings(started_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_meetings_starred
-    ON meetings(starred) WHERE starred = 1;
 
 -- ─── Seed onboarding flag (Phase 7 settings KV) ───────────────────────────
 

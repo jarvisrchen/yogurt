@@ -76,6 +76,13 @@ fn backfill_phase7_meeting_columns(conn: &Connection) -> Result<()> {
             "ALTER TABLE meetings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
         )?;
     }
+    // Index on the now-present `starred` column. The CREATE INDEX is
+    // idempotent thanks to IF NOT EXISTS — runs on every boot but never
+    // duplicates the index.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_meetings_starred \
+         ON meetings(starred) WHERE starred = 1",
+    )?;
     // notes_md / transcript_json default-tightening: the Phase 0 schema
     // declared these as nullable; the Phase 7 repo treats them as
     // non-null. New writes go through MeetingRepo which always supplies
