@@ -28,6 +28,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::llm_mock::MockLlm;
@@ -153,65 +154,91 @@ pub async fn enhance(
         )
     })?;
 
-    // 7a) Persist to SQLite. UPSERT pattern — the meeting row may not yet
-    // exist (Phase 3 keeps meetings in-memory; SQLite only sees them when
-    // enhance runs). The `INSERT … ON CONFLICT(id) DO UPDATE` keeps both
-    // paths (fresh meeting / re-enhance) on a single SQL statement.
+    // 7a/7b) Persist to SQLite + per-meeting markdown file inside a single
+    // spawn_blocking. BL-1: rusqlite is synchronous (std::sync::Mutex +
+    // libsqlite3 calls) and the markdown exporter does std::fs::write +
+    // std::fs::rename (and now fsync, per HI-5). All of those block the
+    // executor thread for the duration of the disk write. Putting them on
+    // a blocking pool keeps the tokio worker free to drive other meetings'
+    // WS frames + /api/health probes while a slow disk pauses one enhance.
     let title = req.title.as_deref().unwrap_or("untitled").to_string();
     let started_at_unix_ms = req
         .started_at_unix_ms
         .unwrap_or(meeting.created_at_ms as i64);
     let ended_at_unix_ms = req.ended_at_unix_ms;
     let meeting_id_str = meeting_id.to_string();
-    {
-        let writer = state.storage.writer();
-        let conn = writer
-            .lock()
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db lock: {e}")))?;
-        conn.execute(
-            r#"
-            INSERT INTO meetings
-                (id, title, started_at, ended_at, notes_md, transcript_json,
-                 enriched_md, enriched_doc_json)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-            ON CONFLICT(id) DO UPDATE SET
-                title             = excluded.title,
-                ended_at          = COALESCE(excluded.ended_at, meetings.ended_at),
-                notes_md          = excluded.notes_md,
-                transcript_json   = excluded.transcript_json,
-                enriched_md       = excluded.enriched_md,
-                enriched_doc_json = excluded.enriched_doc_json
-            "#,
-            rusqlite::params![
-                meeting_id_str,
-                title,
-                started_at_unix_ms,
-                ended_at_unix_ms,
-                req.notes_md,
-                req.transcript_json,
-                enriched_md,
-                enriched_doc_json,
-            ],
-        )
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db upsert: {e}")))?;
-    }
 
-    // 7b) Persist to the per-meeting markdown file (atomic tmp+rename).
-    let notes_path = state
-        .markdown_exporter
-        .write(&ExpMeeting {
-            id: &meeting_id_str,
-            title: &title,
-            started_at_unix_ms,
-            ended_at_unix_ms,
-            body_md: &enriched_md,
+    let storage = state.storage.clone();
+    let exporter = state.markdown_exporter.clone();
+    let notes_md_for_blocking = req.notes_md.clone();
+    let transcript_json_for_blocking = req.transcript_json.clone();
+    let enriched_md_for_blocking = enriched_md.clone();
+    let enriched_doc_json_for_blocking = enriched_doc_json.clone();
+    let title_for_blocking = title.clone();
+    let meeting_id_for_blocking = meeting_id_str.clone();
+
+    let notes_path: PathBuf =
+        tokio::task::spawn_blocking(move || -> Result<PathBuf, (StatusCode, String)> {
+            // SQLite UPSERT inside its own lock scope so the lock is released
+            // BEFORE the filesystem write begins. Other writers can proceed
+            // while this task is in std::fs::rename.
+            {
+                let writer = storage.writer();
+                let conn = writer
+                    .lock()
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db lock: {e}")))?;
+                conn.execute(
+                    r#"
+                    INSERT INTO meetings
+                        (id, title, started_at, ended_at, notes_md, transcript_json,
+                         enriched_md, enriched_doc_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title             = excluded.title,
+                        ended_at          = COALESCE(excluded.ended_at, meetings.ended_at),
+                        notes_md          = excluded.notes_md,
+                        transcript_json   = excluded.transcript_json,
+                        enriched_md       = excluded.enriched_md,
+                        enriched_doc_json = excluded.enriched_doc_json
+                    "#,
+                    rusqlite::params![
+                        meeting_id_for_blocking,
+                        title_for_blocking,
+                        started_at_unix_ms,
+                        ended_at_unix_ms,
+                        notes_md_for_blocking,
+                        transcript_json_for_blocking,
+                        enriched_md_for_blocking,
+                        enriched_doc_json_for_blocking,
+                    ],
+                )
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db upsert: {e}")))?;
+                // lock released on scope exit
+            }
+
+            // Filesystem write (atomic tmp+rename+fsync) — see markdown_exporter.
+            exporter
+                .write(&ExpMeeting {
+                    id: &meeting_id_for_blocking,
+                    title: &title_for_blocking,
+                    started_at_unix_ms,
+                    ended_at_unix_ms,
+                    body_md: &enriched_md_for_blocking,
+                })
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("markdown exporter: {e}"),
+                    )
+                })
         })
+        .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("markdown exporter: {e}"),
+                format!("spawn_blocking join: {e}"),
             )
-        })?;
+        })??;
 
     // 8) Emit `enhance_progress` — done.
     let _ = meeting
