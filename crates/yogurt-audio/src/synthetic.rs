@@ -37,10 +37,20 @@ impl SineWaveConfig {
 /// **Send semantics:** if there are no live receivers, `Sender::send`
 /// returns `Err` and we drop the frame silently — matches real producer
 /// behaviour when consumers fall behind (D-19).
+///
+/// **WR-06 (synthetic desync):** `frame_idx` is computed from elapsed
+/// wall-clock time rather than `frame_idx += 1` on each tick. With
+/// `MissedTickBehavior::Delay`, the previous code emitted the *next*
+/// `frame_idx` regardless of how long the tokio scheduler stalled — so a
+/// 100 ms scheduler delay produced a frame whose sine phase corresponded
+/// to `N+1 * 20 ms` but whose `monotonic_micros` was already `N + 100 ms`.
+/// Deriving `frame_idx` from elapsed time keeps the sine wave's phase
+/// locked to wall-clock time even across missed ticks (the phase will
+/// jump rather than smear — but it will not lie about which point in
+/// time the samples correspond to).
 pub fn spawn_sine_wave(cfg: SineWaveConfig, tx: broadcast::Sender<Frame>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let start = Instant::now();
-        let mut frame_idx: u64 = 0;
         let mut interval = tokio::time::interval(Duration::from_millis(20));
         // Avoid catching up after a slow consumer — drop late ticks instead
         // of firing back-to-back to make up lost time. Matches D-19's
@@ -49,12 +59,16 @@ pub fn spawn_sine_wave(cfg: SineWaveConfig, tx: broadcast::Sender<Frame>) -> Joi
 
         loop {
             interval.tick().await;
+            let elapsed = start.elapsed();
+            let monotonic_micros = elapsed.as_micros() as u64;
+            // WR-06: derive frame_idx from elapsed time so the sine wave's
+            // phase stays consistent with monotonic_micros even after a
+            // missed tick. 20 ms = 20_000 µs.
+            let frame_idx = monotonic_micros / 20_000;
             let samples = generate_chunk(&cfg, frame_idx);
-            let monotonic_ms = start.elapsed().as_millis() as u64;
-            let frame = Frame::new(cfg.channel, monotonic_ms, samples);
+            let frame = Frame::new(cfg.channel, monotonic_micros, samples);
             // No live receivers → `send` returns Err → drop silently.
             let _ = tx.send(frame);
-            frame_idx += 1;
         }
     })
 }

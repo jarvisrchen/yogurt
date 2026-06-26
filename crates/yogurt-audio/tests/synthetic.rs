@@ -38,13 +38,13 @@ async fn it_emits_correct_length_frames_at_the_expected_cadence() {
         assert_eq!(f.samples.len(), FRAME_SAMPLES);
     }
 
-    // Monotonic time should increase by roughly 20 ms per frame.
+    // Monotonic time should increase by roughly 20 ms per frame. CR-01:
+    // field is now `monotonic_micros`; expect ~20_000 µs between frames.
     for w in frames.windows(2) {
-        let dt = w[1].monotonic_ms.saturating_sub(w[0].monotonic_ms);
+        let dt_us = w[1].monotonic_micros.saturating_sub(w[0].monotonic_micros);
         assert!(
-            (15..=40).contains(&dt),
-            "expected ~20ms between frames, got {}ms",
-            dt
+            (15_000..=40_000).contains(&dt_us),
+            "expected ~20_000µs between frames, got {dt_us}µs",
         );
     }
 
@@ -76,7 +76,7 @@ async fn multiple_subscribers_each_receive_the_same_frames() {
         .unwrap();
     handle.abort();
 
-    assert_eq!(f1.monotonic_ms, f2.monotonic_ms);
+    assert_eq!(f1.monotonic_micros, f2.monotonic_micros);
     assert_eq!(f1.samples, f2.samples);
     assert_eq!(f1.channel, Channel::System);
 }

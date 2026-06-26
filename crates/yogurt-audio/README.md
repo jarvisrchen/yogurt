@@ -16,7 +16,7 @@ mono `i16` PCM streams:
 | Sample fmt | `i16` (signed 16-bit LE) |
 | Frame size | 320 samples / 20 ms (`FRAME_SAMPLES`) |
 | Frame tag  | `Channel::{Mic, System}` |
-| Clock      | `monotonic_ms` since `start_capture()` returned |
+| Clock      | `monotonic_micros` since `start_capture()` returned (CR-01 — was `monotonic_ms`; `Frame::monotonic_ms()` helper is the truncated-ms view for PRD §5.3 deep-links) |
 
 Phase 3 STT engines (Deepgram, whisper.cpp) consume this format directly —
 no resampling at the STT boundary.
