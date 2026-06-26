@@ -33,7 +33,15 @@ findings:
   warning: 9
   info: 5
   total: 18
-status: issues_found
+status: findings-fixed
+fix_log:
+  fixed_at: 2026-06-25T17:25:00Z
+  blocker_fixed: [BL-01, BL-02, BL-03, BL-04]
+  critical_fixed: [CR-01, CR-02, CR-03, CR-04]
+  warning_fixed: [WR-01, WR-06, WR-08, WR-09]
+  warning_deferred: [WR-02, WR-03, WR-04, WR-05, WR-07]
+  info_deferred: [IN-01, IN-02, IN-03, IN-04, IN-05]
+  verification_fixed: [VER-1, VER-3]
 ---
 
 # Phase 2: Code Review Report — Audio Capture (HIGHEST RISK)
@@ -633,3 +641,70 @@ These are the kinds of bugs that ship to users undetected and produce "I trust G
 _Reviewed: 2026-06-25T16:55Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
+
+---
+
+## Fix Log
+
+**Fixed at:** 2026-06-25T17:25Z
+**Fixer:** Claude (gsd-code-fixer, autonomous + continuation)
+**Branch:** `gsd/autonomous`
+
+### Resolved (12 of 18 findings + 2 verification gaps)
+
+| ID | Severity | Commit | Notes |
+|----|----------|--------|-------|
+| VER-1 | verifier | `9a12008` | `cargo fmt --all` |
+| VER-3 | verifier | `7bc1d67` | SUMMARY narrative scope correction |
+| WR-08 | warning  | `6b89fec` | Session-token auth on `/api/audio/*` |
+| WR-09 | warning  | `6b89fec` | tempdir-backed tests, port poll |
+| CR-01 | critical | `d03567d` | `Frame::monotonic_ms` → `monotonic_micros` (u64 µs) |
+| BL-01 | blocker  | `4f13a1d` | Lock-free SPSC ring (`rtrb`) + tokio drainer between audio thread and broadcast |
+| BL-02 | blocker  | `a8c8b89` | Symmetric `i16`⇄`f32` conversion via 32768.0 divisor + roundtrip test |
+| BL-03 | blocker  | `e7dacf3` | SCK callback critical section shrunk: only decode + mono-mean + ring push under (`parking_lot::Mutex`-wrapped) producer; rubato + chunker + broadcast moved to drainer |
+| BL-04 | blocker  | `e7dacf3` | `Inner::Drop` calls `SCStream::stop_capture()` + 50 ms drain wait + drainer abort |
+| CR-02 | critical | `e7dacf3` | SCK `start_capture()` errors matching `declined`/`TCC`/`permission` reclassified to `PermissionDenied` |
+| CR-03 | critical | `0f57430` | Reorder `start_capture`: SCK first, then mic — no orange-dot flash on perm deny |
+| CR-04 | critical | `e7dacf3` | Validate each ABL buffer is a non-zero multiple of 4 bytes; log + drop otherwise. Weaker than ASBD flag inspection — upgrade when screencapturekit exposes it. |
+| WR-01 | warning  | `e7dacf3` | Incidentally resolved: the `std::sync::Mutex::lock().ok()` call sites in mic.rs and system.rs are gone — the BL-01/BL-03 refactor replaced them with lock-free ring pushes (mic) and parking_lot lock + push (system); parking_lot doesn't poison. |
+| WR-06 | warning  | `8623`   | Synthetic `frame_idx` derived from `monotonic_micros` |
+
+### Deferred (out of this fixer's scope)
+
+| ID | Severity | Reason |
+|----|----------|--------|
+| WR-02 | warning | `Frame::new` pub field vs. constructor inconsistency — design tweak, low risk, defer to next pass when Phase 3 tests start constructing stub frames |
+| WR-03 | warning | Cosmetic `Cargo.toml` dev-dep tokio re-pin; pre-existing nit, defer |
+| WR-04 | warning | Pre-allocate `chunk_in` scratch in `resample.rs` — partially obsolete: after BL-01 the resampler now runs on the drainer task (not the audio thread), so the per-callback allocation is no longer real-time-critical. The optimization is still nice-to-have but not urgent |
+| WR-05 | n/a | Explicit non-finding ("false alarm") in the review — nothing to fix |
+| WR-07 | warning | Permission API docstring rename (`Denied` → `NotGranted` or add `Pending`) — UI semantics change, defer to Phase 7 settings work |
+| IN-01 | info | Documentation note re: `POST /api/meeting/start`; resolved earlier via VER-3 |
+| IN-02 | info | Cosmetic rename `_mic` → `mic` (RAII-load-bearing); cosmetic — defer |
+| IN-03 | info | `#[allow(dead_code)] input_rate` in `Downmix` — cosmetic |
+| IN-04 | info | Express `BROADCAST_CAPACITY` as derived constant — cosmetic |
+| IN-05 | info | CI matrix on macOS 13.0 — Phase 9 distribution work |
+
+### Verification gates after final commit
+
+```
+cargo build --workspace --features yogurt-audio/synthetic   # 0 errors
+cargo test  --workspace --features yogurt-audio/synthetic   # 58 passed, 1 ignored
+cargo clippy --workspace --all-targets --features yogurt-audio/synthetic -- -D warnings   # clean
+cargo fmt --all -- --check                                  # clean
+```
+
+### Architecture notes for Phase 3
+
+- **Real-time-safety:** the audio thread (cpal IOProc + SCK delegate) no longer touches any blocking primitive. Both producers push pre-downmixed mono f32 samples into a 64,000-sample lock-free SPSC ring; tokio drainer tasks (20 ms tick) own rubato + the broadcast sender. Phase 3 may add as many `broadcast::Sender::subscribe()` consumers as it wants without back-pressuring the audio thread.
+- **Frame timing:** `Frame.monotonic_micros` is `u64` microseconds; `Frame::monotonic_ms()` is a truncating helper for the §5.3 `↳ HH:MM` deep-link case only. Cross-channel sample alignment must use microseconds.
+- **Sample format:** the i16 ⇄ f32 conversion is now symmetric (2^15 = 32768.0) on both ends. `resample::f32_to_i16()` is the single quantizer.
+- **Drop semantics:** dropping `AudioStream` now blocks ~50 ms (SCK `stop_capture()` + drain wait) before returning. Phase 3 teardown tests can assert receiver emptiness immediately after drop without flakes.
+
+### Follow-up needed (not blocking Phase 3)
+
+1. **WR-04 still nice-to-have:** the drainer's resample chunk allocation in `resample.rs::push` could be pre-allocated — but it's no longer real-time-critical since the drainer runs on tokio.
+2. **CR-04 stronger check:** when `screencapturekit` exposes ASBD inspection (or when we drop to core-foundation FFI), replace the byte-multiple check with explicit `kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked` assertion.
+3. **WR-02:** consider making `Frame` fields private once Phase 3 stub-construction needs settle.
+
+_Fixed: 2026-06-25T17:25Z_
+_Fixer: Claude (gsd-code-fixer)_
