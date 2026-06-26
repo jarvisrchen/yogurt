@@ -16,8 +16,9 @@ use yogurt_server::{run_with_config, Mode, RunConfig};
 
 /// Spawn a fresh server bound to `addr` with temp DB + temp session token
 /// (so the test never touches the developer's real `~/.yogurt/`).
-async fn spawn_server(addr: std::net::SocketAddr) -> (tokio::task::JoinHandle<()>, tempfile::TempDir)
-{
+async fn spawn_server(
+    addr: std::net::SocketAddr,
+) -> (tokio::task::JoinHandle<()>, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let db_path = tmp.path().join("yogurt-test.db");
     let token_path = tmp.path().join("session-token");
