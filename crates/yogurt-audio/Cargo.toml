@@ -15,6 +15,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 cpal = { workspace = true }
 rubato = { workspace = true }
+rtrb = { workspace = true }
 
 # screencapturekit is gated to macOS because the crate links the Swift bridge
 # against the macOS-only ScreenCaptureKit.framework.

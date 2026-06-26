@@ -23,6 +23,7 @@ mod frame;
 mod mic;
 pub mod permission;
 mod resample;
+mod ring;
 mod system;
 
 #[cfg(any(test, feature = "synthetic"))]
