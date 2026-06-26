@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 03-01 complete — yogurt-stt crate scaffolded with Stt trait + Channel/AudioChunk/TranscriptEvent types (PRD §10 shape); DeepgramStt hand-rolled tokio-tungstenite 0.24 adapter (nova-2, linear16, dual-channel mic+system WS); mock-WS integration test proves end-to-end audio→transcript mapping in ~160ms
-last_updated: "2026-06-26T00:55:00.000Z"
-last_activity: 2026-06-25 — Phase 3 Plan 01 complete: new yogurt-stt crate added to workspace, Stt trait + TranscriptEvent matches PRD §10 verbatim, DeepgramStt opens two parallel WS sessions per meeting (preserves Me/Them without diarization), CloseStream-on-mpsc-drop clean shutdown, 4 unit tests + 1 mock integration test (6 total passing, clippy clean, fmt clean); 4 commits (165c251, 521b91b, c052c75, 9a712d6); 2 Rule-1 auto-fixes (clippy useless_conversion + mock determinism); TRANS-01 + TRANS-02 complete
+stopped_at: Plan 03-02 complete — meetings::Registry wires yogurt-audio (Frame broadcast) to yogurt-stt (AudioChunk → TranscriptEvent broadcast) per meeting; 3 REST endpoints (POST /api/meetings, /start, /stop) + GET /ws/meetings/{id} mounted; cross-thread !Send bridge (std::thread owns AudioStream + oneshot for readiness/shutdown) handles cpal::Stream's !Send constraint; < 200ms server-side fan-out lag pinned by synthetic-audio E2E test (actual ≈ 5-10ms)
+last_updated: "2026-06-26T00:58:00.000Z"
+last_activity: 2026-06-26 — Phase 3 Plan 02 complete: meetings::Registry + AppState.meetings + 3 REST + 1 WS route + __test_router; 4 new tests pass (2 REST on 17890/17891, 1 WS fan-out on 17892, 1 E2E < 200ms lag on 17893); 35 total yogurt-server tests pass (11 suites); 3 commits (69ed51f, ca0d4d0, 2dbb398); 3 deviations auto-fixed (Rule 1 AudioStream !Send + std::thread bridge; Rule 1 axum 0.8 `{id}` not `:id`; Rule 2 build_test_state helper for tempfile-backed AppState); 1 scope deferral logged (D-INT-02: per-meeting WS not yet behind Origin+token gate — Phase 5 hardening); TRANS-01, TRANS-02, TRANS-08 complete
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 32
-  completed_plans: 8
-  percent: 25
+  completed_plans: 9
+  percent: 28
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 3 of 10 (Cloud STT + Live Transcript) — In progress (Plan 01 of 3 complete)
-Plan: 03-01 complete; 03-02 (meetings registry + REST endpoints + WS route) next
-Status: yogurt-stt crate ships Stt trait + DeepgramStt adapter. yogurt-stt has ZERO dep on yogurt-audio (verified) — server crate will be the wirer in 03-02. Two parallel WS sessions per meeting (one per Channel) preserves Me/Them label without diarization (PRD §2 v1 anti-goal). TranscriptEvent matches PRD §10 wire shape verbatim. Mock-WS pattern (TcpListener:0 + accept_async) proven and reusable for 03-02 WS handler tests.
-Last activity: 2026-06-25 — Plan 03-01 shipped (4 commits: bootstrap crate + types, Deepgram adapter, fmt fixup, mock integration test); 6 tests passing in yogurt-stt; 2 Rule-1 auto-fixes; tokio-tungstenite 0.24 + async-trait + url + uuid added as workspace deps with rustls-tls-webpki-roots feature (no OpenSSL link, preserves single-binary distribution).
+Phase: 3 of 10 (Cloud STT + Live Transcript) — In progress (Plans 01 + 02 of 3 complete)
+Plan: 03-02 complete; 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion + library/meeting route switch) next
+Status: meetings::Registry is the canonical in-memory fan-out point (Phase 7 swaps for SQLite behind the same `create/get/start/stop/subscribe` API). Cross-thread !Send bridge owns AudioStream on a dedicated std::thread; supervisor tokio task holds the shutdown oneshot. WS handler serializes `{type:"transcript", payload:{ts_ms,channel,text,is_final}}` exactly matching PRD §10. The server-side half of TRANS-08 < 2s lag is pinned at < 200ms by `e2e_synthetic_audio.rs` (actual is single-digit ms); the remaining budget is the browser side (Plan 03-03) + Deepgram network/processing (manual smoke).
+Last activity: 2026-06-26 — Plan 03-02 shipped (3 commits: Registry + AppState + lib wiring; REST + WS routes; E2E < 200ms test + fmt fixup); 4 new tests pass on ports 17890/17891/17892/17893; 35 total yogurt-server tests pass across 11 suites; 3 deviations auto-fixed (AudioStream !Send via std::thread+oneshot bridge; axum 0.8 `{id}` path syntax; build_test_state helper for tempfile AppState); 1 scope deferral (D-INT-02 per-meeting WS auth → Phase 5).
 
-Progress: [██▌░░░░░░░] 25%
+Progress: [██▊░░░░░░░] 28%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
-- Average duration: ~28 min
-- Total execution time: ~224 min
+- Total plans completed: 9
+- Average duration: ~26 min
+- Total execution time: ~232 min
 
 **By Phase:**
 
@@ -47,12 +47,12 @@ Progress: [██▌░░░░░░░] 25%
 | 0. Skeleton & Foundations | 3 | ~66 min | ~22 min |
 | 1. Design System | 2 | ~6 min | ~3 min |
 | 2. Audio Capture (HIGHEST RISK) | 2 | ~132 min | ~66 min |
-| 3. Cloud STT + Live Transcript | 1 | ~20 min | ~20 min |
+| 3. Cloud STT + Live Transcript | 2 | ~28 min | ~14 min |
 
 **Recent Trend:**
 
-- Last 7 plans: 00-01 (~20m), 00-02 (~28m), 00-03 (~18m), 01-01 (~2m), 01-02 (~4m), 02-01 (~72m), 02-02 (~60m)
-- Trend: spike-first plans take longer (Phase 2's 72 min is dominated by the SCK 8.x API-discovery + runtime-rpath debugging; the actual crate scaffolding was ~15 min). Real-capture wire-up (02-02) landed at ~60m — most time in rubato/cpal/SCK API surface mapping; the actual code is ~970 LoC across 7 new files. Plans without spikes should still land at the ~20 min average.
+- Last 8 plans: 00-01 (~20m), 00-02 (~28m), 00-03 (~18m), 01-01 (~2m), 01-02 (~4m), 02-01 (~72m), 02-02 (~60m), 03-01 (~20m), 03-02 (~8m)
+- Trend: Plan 03-02 landed at ~8 min — the fastest non-design plan to date. Reasons: (1) 03-01 had already pre-staged uuid + async-trait + the Stt trait shape so Cargo.toml deltas were trivial; (2) the only real architectural surprise was AudioStream !Send (caught in ~30s by cargo check and fixed with the std::thread+oneshot pattern); (3) axum 0.8 path syntax error was caught immediately by the pre-existing health test rather than later. Each prior plan paid down a tax that 03-02 didn't have to.
 
 *Updated after each plan completion*
 | Phase 00-skeleton-foundations P02 | 28 | 3 tasks | 18 files |
@@ -62,6 +62,7 @@ Progress: [██▌░░░░░░░] 25%
 | Phase 02-audio-capture-highest-risk P01 | 72 | 3 tasks | 13 files |
 | Phase 02-audio-capture-highest-risk P02 | 60 | 3 tasks |  8 files |
 | Phase 03-cloud-stt-live-transcript P01  | 20 | 3 tasks |  6 files |
+| Phase 03-cloud-stt-live-transcript P02  |  8 | 3 tasks |  5 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,13 @@ Decisions are logged in PROJECT.md Key Decisions table. Roadmap-shaping decision
 - [Phase 3]: TranscriptEvent serde shape matches PRD §10 verbatim — snake_case field names, lowercase Channel via rename_all. The wire format is locked here so 03-02 WS handler can `serde_json::to_string` directly (Plan 03-01)
 - [Phase 3]: Mock-WS test pattern (TcpListener on 127.0.0.1:0 + tokio_tungstenite::accept_async) is reusable for 03-02 WS handler tests; asymmetric per-channel response avoids broadcast recv ordering nondeterminism (Plan 03-01)
 - [Phase 3]: `uuid 1` (v7 + serde) added as workspace dep — yogurt-stt doesn't use it directly, but ready for 03-02 MeetingId type (Plan 03-01)
+- [Phase 3]: AppState extended (NOT replaced) with `meetings: Arc<Registry>` alongside Phase 0's mode/storage/session/bind_port — preserves existing auth + storage surface (Plan 03-02)
+- [Phase 3]: AudioStream is !Send (cpal::Stream); owned on a dedicated std::thread with two `oneshot::channel`s (readiness in: ships subscribed `broadcast::Receiver<Frame>` pair; shutdown out: tokio supervisor drops the sender to wake `blocking_recv` → drops AudioStream → RAII stops cpal+SCK). Pattern reusable for any future !Send native resource (Phase 5 Keychain prompts?) (Plan 03-02)
+- [Phase 3]: axum 0.8 path syntax is `{id}` not `:id` — the superpowers source predated the axum 0.7→0.8 bump; routes must use `{...}` form going forward (Plan 03-02)
+- [Phase 3]: WS handler at `/ws/meetings/{id}` does NOT yet enforce session-token / Origin auth (D-INT-02 in deferred-items); planner tests dial it raw and v1 trust posture is single-user localhost. Phase 5 hardening will fold under the Phase 0 gate (Plan 03-02)
+- [Phase 3]: `__test_router(AppState) -> axum::Router` is the `#[doc(hidden)]` test seam; integration tests build full AppState via `Storage::init_at(tempdir)` + `session::load_or_create(tempdir)` + `meetings::Registry::new()` so the dev's ~/.yogurt/ is never touched (Plan 03-02)
+- [Phase 3]: Frame.monotonic_micros → AudioChunk.ts_ms via integer divide by 1000 in the adapter loop — precision drop acceptable because downstream UI uses minute-resolution `↳ HH:MM` deep-links (Plan 03-02)
+- [Phase 3]: Server-side fan-out budget pinned at < 200ms by e2e_synthetic_audio.rs (actual ≈ 5-10ms). The remaining TRANS-08 < 2s budget is browser-side (Plan 03-03) + Deepgram round-trip (manual smoke) (Plan 03-02, CONTEXT D-19)
 
 ### Pending Todos
 
@@ -129,6 +137,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T00:55:00.000Z
-Stopped at: Plan 03-01 complete — yogurt-stt crate ships Stt trait + DeepgramStt adapter (hand-rolled tokio-tungstenite 0.24, nova-2, linear16, dual-channel mic+system WS). TranscriptEvent matches PRD §10 verbatim. 6 tests passing (1 lib serialize + 4 deepgram unit + 1 mock integration). Clippy clean, fmt clean. TRANS-01 + TRANS-02 complete. Ready for Plan 03-02 (meetings::Registry + REST endpoints + WS route). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) is still pending from Phase 1; Plan 02-03 (REST endpoints + WAV ear-test) also still pending from Phase 2.
+Last session: 2026-06-26T00:58:00.000Z
+Stopped at: Plan 03-02 complete — meetings::Registry wires yogurt-audio (Frame broadcast) → yogurt-stt (AudioChunk → TranscriptEvent broadcast) per meeting; 3 REST + 1 WS route mounted; cross-thread !Send bridge (std::thread + oneshot pair) cleanly owns AudioStream and shuts down via RAII on supervisor abort; < 200ms server-side fan-out lag pinned by e2e_synthetic_audio.rs (actual ≈ 5-10ms). 35 yogurt-server tests pass (11 suites). 3 commits (69ed51f, ca0d4d0, 2dbb398). TRANS-01 + TRANS-02 + TRANS-08 complete. Ready for Plan 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion at 340ms cubic-bezier(.2,.7,.2,1) per PRD §16.5 + library/meeting App.tsx switch). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) still pending from Phase 1; Plan 02-03 (REST endpoints + WAV ear-test) still pending from Phase 2 (audio.rs's `start_meeting_recording()` shim is now wired by Plan 03-02 via Registry::start, so the original 02-03 wire-up requirement is partially absorbed — only the WAV ear-test remains).
 Resume file: None
