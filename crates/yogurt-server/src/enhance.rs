@@ -83,11 +83,48 @@ pub async fn enhance(
     Path(meeting_id): Path<Uuid>,
     Json(req): Json<EnhanceRequest>,
 ) -> Result<Json<EnhanceResponse>, (StatusCode, String)> {
-    // 1) Look up the meeting (404 if unknown).
-    let meeting = state.meetings.get(&meeting_id).await.ok_or((
-        StatusCode::NOT_FOUND,
-        format!("meeting {meeting_id} not found"),
-    ))?;
+    // 1) Look up the meeting.
+    //
+    // HI-9: in-memory Registry is wiped on server restart, but Phase 4-03's
+    // UPSERT persists the meeting row to SQLite on first enhance. After a
+    // restart, a previously-enhanced meeting that the user reaches via
+    // direct link / refresh would 404 on Re-enhance because the in-memory
+    // lookup misses. Fall back to re-hydrating from SQLite: if the row
+    // exists there, materialize a fresh in-memory Meeting (with empty
+    // broadcasts — the user can't get live transcript on a stopped meeting
+    // anyway, but Re-enhance still works because it only needs events_tx).
+    let meeting = match state.meetings.get(&meeting_id).await {
+        Some(m) => m,
+        None => {
+            // Probe SQLite via the read pool. If the row exists, register a
+            // transient Meeting so the rest of the handler (including the
+            // events_tx broadcast) operates normally.
+            let id_str = meeting_id.to_string();
+            let reader = state.storage.read();
+            let exists = {
+                let conn = reader
+                    .lock()
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db lock: {e}")))?;
+                conn.query_row(
+                    "SELECT 1 FROM meetings WHERE id = ?1",
+                    rusqlite::params![id_str],
+                    |_| Ok(()),
+                )
+                .is_ok()
+            };
+            if !exists {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    format!("meeting {meeting_id} not found"),
+                ));
+            }
+            // Hydrate a fresh Meeting and insert it into the registry so
+            // subsequent calls (including the WS broadcast subscribers) see
+            // the same one. No audio/transcript broadcasts will ever fire —
+            // recording is over — but events_tx works for enhance_progress.
+            state.meetings.hydrate(meeting_id).await
+        }
+    };
 
     // 2) Render the user prompt.
     let user_prompt = state
