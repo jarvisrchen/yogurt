@@ -32,6 +32,12 @@ pub mod sha256;
 #[cfg(feature = "local-stt")]
 pub mod vad;
 
+// Phase 8 (Plan 08-02): static model registry + download manager
+// (SHA256 verify + Range-header resume). Gated behind `local-stt`
+// alongside the other local-STT pieces.
+#[cfg(feature = "local-stt")]
+pub mod models;
+
 // Phase 8 (Plan 08-01): WhisperLocal adapter — drop-in `Stt` impl backed
 // by whisper.cpp via whisper-rs 0.16 (Metal feature). Gated behind
 // `local-stt` so default builds don't pull whisper.cpp's CMake toolchain.

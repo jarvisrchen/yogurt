@@ -20,7 +20,19 @@ description = "Pluggable speech-to-text trait + adapters for yogurt."
 # success criterion #5). Anyone who wants the local adapter passes
 # `--features local-stt` explicitly.
 default = []
-local-stt = ["dep:whisper-rs", "dep:webrtc-vad", "dep:sha2", "dep:hex"]
+local-stt = [
+    "dep:whisper-rs",
+    "dep:webrtc-vad",
+    "dep:sha2",
+    "dep:hex",
+    # Plan 08-02: model registry (directories) + download manager
+    # (reqwest streaming, thiserror) live behind `local-stt` too —
+    # the default build must NOT pull in reqwest + rustls just to
+    # use the Deepgram cloud adapter.
+    "dep:directories",
+    "dep:reqwest",
+    "dep:thiserror",
+]
 
 [dependencies]
 tokio = { workspace = true }
@@ -39,6 +51,13 @@ whisper-rs = { workspace = true, features = ["metal"], optional = true }
 webrtc-vad = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+
+# Phase 8 (Plan 08-02) — model registry + download manager.  All
+# gated behind `local-stt` so the default Deepgram-cloud build
+# doesn't pull in rustls or the directories crate.
+directories = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
