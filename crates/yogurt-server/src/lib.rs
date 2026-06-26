@@ -1,6 +1,7 @@
 mod assets;
 pub mod audio;
 mod dev_proxy;
+pub mod meetings;
 mod routes;
 pub mod session;
 pub mod storage;
@@ -33,6 +34,9 @@ pub struct AppState {
     pub storage: Arc<Storage>,
     pub session: Arc<SessionToken>,
     pub bind_port: u16,
+    /// Phase 3: in-memory meeting registry. Phase 7 will swap the internal
+    /// `HashMap` for SQLite-backed persistence behind the same API.
+    pub meetings: Arc<meetings::Registry>,
 }
 
 /// Configuration for `run` that can be overridden in tests (custom DB +
@@ -81,6 +85,7 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         storage,
         session,
         bind_port: cfg.addr.port(),
+        meetings: meetings::Registry::new(),
     };
 
     let app = routes::router(state);
@@ -88,4 +93,13 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     let listener = TcpListener::bind(cfg.addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// Construct a router with a custom AppState, for tests that want to reach
+/// into the registry directly instead of going through the REST surface.
+///
+/// Not part of the stable public API — leading underscore communicates that.
+#[doc(hidden)]
+pub fn __test_router(state: AppState) -> axum::Router {
+    routes::router(state)
 }
