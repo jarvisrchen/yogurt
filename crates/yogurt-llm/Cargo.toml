@@ -1,0 +1,39 @@
+[package]
+name = "yogurt-llm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# HTTP transport for OpenAI-compatible /chat/completions calls.
+reqwest = { workspace = true }
+# Wire-type (de)serialization + opaque-JSON forwarding.
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Async runtime — pulled in for `tokio::time::timeout` in BL-5-compat callers
+# and to compose nicely with the workspace tokio pin.
+tokio = { workspace = true }
+# `StreamExt::map`/`.boxed()` on the SSE byte stream + BoxStream type alias.
+futures-util = { workspace = true }
+# SSE chunk parser composed onto reqwest's bytes_stream().
+eventsource-stream = { workspace = true }
+# Dyn-compatible async trait for `LlmClient` (Phase 8 will impl this trait a
+# second time for whisper-rs-shaped local providers — keep it object-safe).
+async-trait = { workspace = true }
+# Error surface — anyhow on the public boundary, thiserror reserved for
+# crate-internal typed errors if/when we grow beyond the single happy path.
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+# Light instrumentation so the rewired enhance handler can correlate
+# upstream-LLM latency with its own span.
+tracing = { workspace = true }
+
+[dev-dependencies]
+# Stand-in OpenAI-compatible HTTP server for adapter tests
+# (non-streaming + SSE). Workspace-pinned so all crates share one wiremock.
+wiremock = { workspace = true }
+# `#[tokio::test]` + multi-thread runtime for the async wiremock tests.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
