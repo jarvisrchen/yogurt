@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TranscriptDock } from "../components/TranscriptDock";
+import { AskExperience } from "../components/AskExperience";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
 
@@ -311,6 +312,12 @@ export function Meeting() {
       </main>
 
       <TranscriptDock meetingId={meetingId} token={token} />
+
+      {/* Phase 6 (Plan 06-02): floating Ask-pill / chat window. Mounted at
+          the route root (sibling to TranscriptDock) so the fixed-position
+          pill never reflows under the notes column and persists across
+          editor remounts. */}
+      <AskExperience meetingId={meetingId} token={token} />
     </div>
   );
 }

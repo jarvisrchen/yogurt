@@ -42,6 +42,7 @@ import { EnhancingBanner } from "../components/EnhancingBanner";
 import { Legend } from "../components/Legend";
 import { ReEnhanceButton } from "../components/ReEnhanceButton";
 import { TranscriptDock } from "../components/TranscriptDock";
+import { AskExperience } from "../components/AskExperience";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress } from "../lib/ws";
 import type { EnhanceResponse } from "../lib/api";
@@ -424,6 +425,11 @@ export function MeetingPost() {
         forceOpen={transcriptOpen}
         onOpenChange={setTranscriptOpen}
       />
+
+      {/* Phase 6 (Plan 06-02): CHAT-02 persistence — the Ask experience
+          renders identically on the post-meeting view. Prior chat history
+          hydrates via GET /api/meetings/:id/chat on mount of useChat. */}
+      <AskExperience meetingId={meetingId} token={token} />
     </div>
   );
 }
