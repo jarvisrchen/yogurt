@@ -24,7 +24,11 @@ rand = { workspace = true }
 base64 = { workspace = true }
 subtle = { workspace = true }
 yogurt-audio = { path = "../yogurt-audio" }
-yogurt-stt = { path = "../yogurt-stt" }
+# Phase 8 (Plan 08-03): server gains the local-stt feature on `yogurt-stt`
+# so REST handlers can call `yogurt_stt::models::*` and `meetings/start.rs`
+# can construct `WhisperLocal`. Default-on for the server crate; release
+# builds always want the local path available.
+yogurt-stt = { path = "../yogurt-stt", features = ["local-stt"] }
 # Phase 5 (Plan 05-01): LlmClient trait + OpenAI-compat adapter. The
 # enhance handler talks to providers through `LlmClient`; Phase 6 chat
 # will share the same crate without going through axum.
