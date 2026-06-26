@@ -69,3 +69,8 @@ tempfile = { workspace = true }
 # resolve ~/.yogurt/models/ggml-small.en.bin. Dev-dep only because
 # the production whisper_local module takes the path as input.
 directories = { workspace = true }
+# Phase 8 (Plan 08-02 Task 3): in-test mock HTTP server for the model
+# download flow — serves a 600 KB deterministic payload with proper
+# Range: header semantics so we can test full / resume / bad-hash
+# paths against real reqwest, not a mocked HTTP client.
+axum = { workspace = true }
