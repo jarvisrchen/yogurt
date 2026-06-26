@@ -1,0 +1,19 @@
+[package]
+name = "yogurt-notes"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Markdown AST diff + merge for yogurt's augmented-notes feature."
+
+[dependencies]
+pulldown-cmark = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+regex-lite = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
