@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Augmented Notes Hero (HIGHEST PAYOFF)** - TipTap aiGrey + transcriptTs marks, server-side AST diff, enriched_doc_json schema migration, minimal hardcoded LLM client, bundled enhance.md (completed 2026-06-26)
 - [x] **Phase 5: LLM Client + Settings + Keychain** - LlmClient trait, settings UI (Model/Transcription/Audio/General), Keychain eager-loaded at startup (completed 2026-06-26)
 - [x] **Phase 6: In-Meeting Chat** - Floating Ask-this-meeting pill + chat window streaming against transcript context (completed 2026-06-26)
-- [ ] **Phase 7: Library + Onboarding + States** - Library home view, /welcome flow, empty/error states, FTS5 keyword search, copy/reveal-in-finder, inline-editable title, delete-card UI
+- [x] **Phase 7: Library + Onboarding + States** - Library home view, /welcome flow, empty/error states, FTS5 keyword search, copy/reveal-in-finder, inline-editable title, delete-card UI (completed 2026-06-26)
 - [ ] **Phase 8: Local STT (whisper.cpp)** - whisper-rs adapter gated behind local-stt Cargo feature, VAD + dual whisper_state, M1 Air benchmark
 - [ ] **Phase 9: Distribution Polish** - Per-arch tarballs, notarized release, Homebrew tap, cargo publish, `yogurt doctor` subcommand, README
 
@@ -207,6 +207,6 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 | 4. Augmented Notes Hero | 4/4 | Complete   | 2026-06-26 |
 | 5. LLM Client + Settings + Keychain | 4/4 | Complete   | 2026-06-26 |
 | 6. In-Meeting Chat | 2/2 | Complete   | 2026-06-26 |
-| 7. Library + Onboarding + States | 3/4 | In Progress|  |
+| 7. Library + Onboarding + States | 4/4 | Complete   | 2026-06-26 |
 | 8. Local STT (whisper.cpp) | 0/TBD | Not started | - |
 | 9. Distribution Polish | 0/TBD | Not started | - |
