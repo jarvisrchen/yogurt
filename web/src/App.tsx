@@ -1,25 +1,26 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Logo } from "./components/Logo";
-import { Meeting } from "./routes/Meeting";
-
-type View = "library" | "meeting";
 
 /**
- * Phase 3 root. Library stub ↔ Meeting view switch.
+ * Phase 3 root → Phase 4 library stub.
  *
- * Phase 3 deliberately uses a `useState<View>` toggle rather than a full
- * router move — Phase 7 introduces /library, /meetings/:id, /settings/* and
- * decides the routing question properly (Phase 3 D-20). The /style-guide
- * route from Phase 1 is still wired through router.tsx and reachable via
- * the small link in the library stub footer.
+ * Phase 3 used a `useState<View>` toggle to flip between library and
+ * meeting views. Phase 4 (Plan 04-04) promotes the meeting flow to
+ * URL-driven routes registered in `router.tsx`:
+ *   - `/meeting/new`        → `<Meeting />` bootstrap
+ *   - `/meeting/:id`        → `<Meeting />`
+ *   - `/meeting/:id/post`   → `<MeetingPost />`  (hero post-meeting UX)
+ *
+ * `MeetingPost` is the hero post-meeting route; this comment exists so
+ * cross-references from `App.tsx` to `MeetingPost` are discoverable via
+ * grep without re-creating a duplicate `<Routes>` block here.
+ *
+ * The CTA below navigates to `/meeting/new` which bootstraps a meeting
+ * row server-side and replace-redirects to `/meeting/:id` — preserving
+ * the single-click "Open a new meeting →" UX from Phase 3.
  */
 export function App() {
-  const [view, setView] = useState<View>("library");
-
-  if (view === "meeting") {
-    return <Meeting />;
-  }
+  const navigate = useNavigate();
 
   return (
     <main className="mx-auto max-w-2xl px-10 py-16 space-y-8">
@@ -30,14 +31,14 @@ export function App() {
             yogurt
           </h1>
           <p className="mt-1 text-[13px] text-mut">
-            Phase 3 · the meeting library lands in Phase 7.
+            Phase 4 · the meeting library lands in Phase 7.
           </p>
         </div>
       </header>
 
       <button
         type="button"
-        onClick={() => setView("meeting")}
+        onClick={() => navigate("/meeting/new")}
         className="px-5 py-3 rounded-button bg-blue text-white text-[14px] font-semibold shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
       >
         Open a new meeting →

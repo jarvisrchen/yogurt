@@ -26,17 +26,38 @@ const MATCHA = "#5E9E73";
  *     returning to within 24px flips it back. New events arriving while
  *     paused preserve the user's read position.
  */
-export function TranscriptDock({
-  meetingId,
-  token,
-}: {
+export interface TranscriptDockProps {
   meetingId: string | null;
   // WR-06: session token threaded from Meeting.tsx (fetched via ensureSessionToken).
   // The WS hook waits until token is non-null before connecting; passing null is
   // valid during the brief bootstrap window before /api/session-token resolves.
   token: string | null;
-}) {
-  const [open, setOpen] = useState(false);
+  /**
+   * Phase 4 NOTES-11: when the editor's `↳ HH:MM` link is clicked, the
+   * post-meeting route flips this prop to `true` to force-open the dock
+   * even if the user had collapsed it. `onOpenChange` keeps the caller's
+   * mirror in sync when the user clicks the tab themselves.
+   */
+  forceOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function TranscriptDock({
+  meetingId,
+  token,
+  forceOpen,
+  onOpenChange,
+}: TranscriptDockProps) {
+  const [openLocal, setOpenLocal] = useState(false);
+  // `open` is controlled by `forceOpen` if provided, else local state.
+  const open = forceOpen ?? openLocal;
+  const setOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+    setOpenLocal((prev) => {
+      const value = typeof next === "function" ? next(prev) : next;
+      onOpenChange?.(value);
+      return value;
+    });
+  };
   const { events, connected } = useTranscriptWs(meetingId, token);
 
   // Sticky auto-scroll ref. `true` = follow new events, `false` = user
@@ -57,6 +78,52 @@ export function TranscriptDock({
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
     stickyRef.current = atBottom;
   }
+
+  // NOTES-11: listen for `yogurt:transcript:scrollTo` and scroll the list
+  // to the line whose `ts_ms / 1000` matches the requested `ts` (in
+  // seconds — that's the unit AI bullets carry via the merge step).
+  // Finds the closest transcript line by absolute distance — exact matches
+  // are common but the AI's word-overlap heuristic (D-09) can land on any
+  // segment, and the user's expectation is "scroll to roughly that moment".
+  useEffect(() => {
+    function onScrollTo(ev: Event) {
+      const detail = (ev as CustomEvent<{ ts?: number }>).detail;
+      if (!detail || typeof detail.ts !== "number") return;
+      // Disable sticky so the new programmatic scroll position survives the
+      // next render.
+      stickyRef.current = false;
+
+      const root = listRef.current;
+      if (!root) return;
+      const lines = Array.from(
+        root.querySelectorAll<HTMLElement>("[data-transcript-ts-sec]"),
+      );
+      if (lines.length === 0) return;
+      let bestEl: HTMLElement | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const line of lines) {
+        const raw = line.getAttribute("data-transcript-ts-sec");
+        const sec = Number(raw);
+        if (!Number.isFinite(sec)) continue;
+        const dist = Math.abs(sec - detail.ts);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestEl = line;
+        }
+      }
+      bestEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    window.addEventListener(
+      "yogurt:transcript:scrollTo",
+      onScrollTo as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "yogurt:transcript:scrollTo",
+        onScrollTo as EventListener,
+      );
+    };
+  }, []);
 
   return (
     <div

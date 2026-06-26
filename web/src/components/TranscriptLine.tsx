@@ -46,6 +46,10 @@ export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
       className="py-2 text-[14px] leading-snug"
       data-channel={ev.channel}
       data-final={ev.is_final}
+      // NOTES-11: enables `yogurt:transcript:scrollTo` lookup (TranscriptDock
+      // queries `[data-transcript-ts-sec]` and picks the closest match by
+      // absolute distance).
+      data-transcript-ts-sec={Math.floor(ev.ts_ms / 1000)}
     >
       <span
         className="inline-block w-10 font-semibold"
