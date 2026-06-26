@@ -1,0 +1,82 @@
+{
+  "_comment": "Sample Deepgram Streaming v1 'Results' frames hand-constructed from the API docs at https://developers.deepgram.com/reference/listen-live (live transcription wire format). Each entry models one frame the server sends over the WS. The shape — including the `is_final` (interim-final flag within an utterance) vs `speech_final` (end-of-utterance) distinction — matches Deepgram's published schema. Used by parse_deepgram_event tests so the parser is verified against real-world frame shapes, not the parser's own hand-rolled mock.",
+  "frames": [
+    {
+      "_case": "partial: interim transcript, can still change",
+      "type": "Results",
+      "channel_index": [0, 1],
+      "duration": 1.04,
+      "start": 0.0,
+      "is_final": false,
+      "speech_final": false,
+      "channel": {
+        "alternatives": [
+          {
+            "transcript": "hello wor",
+            "confidence": 0.83,
+            "words": []
+          }
+        ]
+      }
+    },
+    {
+      "_case": "interim final: Deepgram won't revise this segment, but the utterance continues",
+      "type": "Results",
+      "channel_index": [0, 1],
+      "duration": 2.1,
+      "start": 0.0,
+      "is_final": true,
+      "speech_final": false,
+      "channel": {
+        "alternatives": [
+          {
+            "transcript": "hello world how are",
+            "confidence": 0.94,
+            "words": []
+          }
+        ]
+      }
+    },
+    {
+      "_case": "speech final: end-of-utterance — the dock should LOCK this line",
+      "type": "Results",
+      "channel_index": [0, 1],
+      "duration": 3.7,
+      "start": 0.0,
+      "is_final": true,
+      "speech_final": true,
+      "channel": {
+        "alternatives": [
+          {
+            "transcript": "hello world how are you doing today",
+            "confidence": 0.96,
+            "words": []
+          }
+        ]
+      }
+    },
+    {
+      "_case": "metadata: non-results frame the parser must ignore",
+      "type": "Metadata",
+      "request_id": "abcd-1234"
+    },
+    {
+      "_case": "empty transcript: should be ignored (silent gap)",
+      "type": "Results",
+      "channel_index": [0, 1],
+      "duration": 0.5,
+      "start": 12.5,
+      "is_final": false,
+      "speech_final": false,
+      "channel": {
+        "alternatives": [
+          {
+            "transcript": "",
+            "confidence": 0.0,
+            "words": []
+          }
+        ]
+      }
+    }
+  ]
+}
