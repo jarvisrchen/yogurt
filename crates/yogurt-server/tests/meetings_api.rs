@@ -333,7 +333,10 @@ async fn it_returns_markdown_with_front_matter() {
         "text/markdown; charset=utf-8"
     );
     let body = resp.text().await.unwrap();
-    assert!(body.starts_with("---\n"), "must start with YAML front-matter");
+    assert!(
+        body.starts_with("---\n"),
+        "must start with YAML front-matter"
+    );
     assert!(
         body.contains("title: \"Markdown export test\""),
         "front-matter must carry the title; got: {body}"
