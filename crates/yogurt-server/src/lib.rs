@@ -1,6 +1,11 @@
 mod assets;
 pub mod audio;
 mod dev_proxy;
+// Phase 4 (Plan 04-01) tactical LLM client + mock fallback. Crate-private
+// modules — Plan 04-03's enhance handler consumes them directly. NO
+// `LlmClient` trait yet — Phase 5 introduces it (CONTEXT D-19 / D-21).
+pub(crate) mod llm_mock;
+pub(crate) mod llm_openai;
 pub(crate) mod markdown_exporter;
 pub mod meetings;
 mod routes;
