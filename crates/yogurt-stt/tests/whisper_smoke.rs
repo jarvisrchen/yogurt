@@ -70,9 +70,7 @@ async fn it_transcribes_a_sine_wave_run_without_crashing() {
     // rolling-buffer drain logic too.
     let silence = vec![0i16; 16_000 * 3];
     let tone: Vec<i16> = (0..16_000 * 2)
-        .map(|i| {
-            ((i as f32 / 16_000.0 * 440.0 * 2.0 * std::f32::consts::PI).sin() * 8000.0) as i16
-        })
+        .map(|i| ((i as f32 / 16_000.0 * 440.0 * 2.0 * std::f32::consts::PI).sin() * 8000.0) as i16)
         .collect();
 
     audio_tx

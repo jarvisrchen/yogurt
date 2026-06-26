@@ -199,10 +199,8 @@ impl Stt for WhisperLocal {
         // Per-channel segment queue. Sized small (8) — under sustained
         // overload `try_send` drops; that's deliberate vs blocking the
         // audio pump (matches the deepgram adapter's backpressure stance).
-        let (mic_seg_tx, mut mic_seg_rx) =
-            mpsc::channel::<(Vec<i16>, u64, u64)>(8);
-        let (sys_seg_tx, mut sys_seg_rx) =
-            mpsc::channel::<(Vec<i16>, u64, u64)>(8);
+        let (mic_seg_tx, mut mic_seg_rx) = mpsc::channel::<(Vec<i16>, u64, u64)>(8);
+        let (sys_seg_tx, mut sys_seg_rx) = mpsc::channel::<(Vec<i16>, u64, u64)>(8);
 
         // ------------------------------------------------------------------
         // Worker 1: mic-channel FINAL decoder (beam search, is_final = true)
@@ -360,15 +358,13 @@ impl Stt for WhisperLocal {
                         }
                         Channel::System => {
                             let tx_seg = sys_seg_tx.clone();
-                            sys_seg.push(&samples, |e| {
-                                match e {
-                                    SegmenterEvent::Segment {
-                                        pcm,
-                                        start_ms,
-                                        end_ms,
-                                    } => {
-                                        let _ = tx_seg.try_send((pcm, start_ms, end_ms));
-                                    }
+                            sys_seg.push(&samples, |e| match e {
+                                SegmenterEvent::Segment {
+                                    pcm,
+                                    start_ms,
+                                    end_ms,
+                                } => {
+                                    let _ = tx_seg.try_send((pcm, start_ms, end_ms));
                                 }
                             });
                         }
