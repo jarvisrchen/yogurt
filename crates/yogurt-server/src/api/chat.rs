@@ -147,8 +147,13 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, "chat: failed to load chat-system.md");
-            broadcast_error(&state, meeting_id, &message_id, &format!("prompt load failed: {e}"))
-                .await;
+            broadcast_error(
+                &state,
+                meeting_id,
+                &message_id,
+                &format!("prompt load failed: {e}"),
+            )
+            .await;
             return;
         }
     };
@@ -157,7 +162,9 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
     // surface does NOT expose a `get_meeting_transcript` accessor — Phase 7
     // (library) will introduce one. Until then we read directly via the
     // Phase 0 storage read-pool and fall back to empty on any error.
-    let transcript = read_transcript(&state, &meeting_str).await.unwrap_or_default();
+    let transcript = read_transcript(&state, &meeting_str)
+        .await
+        .unwrap_or_default();
 
     // History: filter out the empty placeholder we just inserted (no point
     // feeding the model its own empty turn).
@@ -165,8 +172,13 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
         Ok(h) => h,
         Err(e) => {
             tracing::error!(error = %e, "chat: failed to load history");
-            broadcast_error(&state, meeting_id, &message_id, &format!("history load failed: {e}"))
-                .await;
+            broadcast_error(
+                &state,
+                meeting_id,
+                &message_id,
+                &format!("history load failed: {e}"),
+            )
+            .await;
             return;
         }
     };
@@ -199,8 +211,13 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!(error = %e, "chat: stream open failed");
-            broadcast_error(&state, meeting_id, &message_id, &format!("[stream error: {e}]"))
-                .await;
+            broadcast_error(
+                &state,
+                meeting_id,
+                &message_id,
+                &format!("[stream error: {e}]"),
+            )
+            .await;
             return;
         }
     };
