@@ -152,6 +152,97 @@ describe("useTranscriptWs", () => {
       "wss://yogurt.example/ws/meetings/meeting-secure",
     );
   });
+
+  it("attempts up to 3 reconnects with exponential backoff before failing (WR-01)", async () => {
+    // Always-fail mock: skips the parent's onopen path entirely so the
+    // close fires as the first lifecycle event (mirroring a server that
+    // refuses every connection — TCP RST or 5xx during upgrade).
+    const constructed: { url: string; onclose: ((ev: CloseEvent) => void) | null }[] = [];
+    class FailingWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+
+      url: string;
+      readyState: number = FailingWebSocket.CONNECTING;
+      onopen: ((this: WebSocket, ev: Event) => void) | null = null;
+      onclose: ((this: WebSocket, ev: CloseEvent) => void) | null = null;
+      onmessage: ((this: WebSocket, ev: MessageEvent) => void) | null = null;
+      onerror: ((this: WebSocket, ev: Event) => void) | null = null;
+
+      constructor(url: string) {
+        this.url = url;
+        const entry = { url, onclose: null as ((ev: CloseEvent) => void) | null };
+        constructed.push(entry);
+        queueMicrotask(() => {
+          this.readyState = FailingWebSocket.CLOSED;
+          entry.onclose = this.onclose as ((ev: CloseEvent) => void) | null;
+          this.onclose?.call(
+            this as unknown as WebSocket,
+            new CloseEvent("close"),
+          );
+        });
+      }
+
+      close(): void {
+        this.readyState = FailingWebSocket.CLOSED;
+      }
+    }
+    vi.stubGlobal("WebSocket", FailingWebSocket);
+
+    const { result } = renderHook(() => useTranscriptWs("meeting-flaky"));
+
+    // Initial connect attempt happens synchronously inside useEffect; the
+    // close fires on the next microtask. After 500ms + 1000ms + 2000ms of
+    // real time, we should have seen four total WebSocket constructions
+    // (1 initial + 3 reconnect attempts).
+    // Wait for the failure terminal state. By the time the 4th WS is
+    // constructed and immediately closes, `attempt` is 3 and the next
+    // `scheduleReconnect` flips status to "failed". `waitFor` keeps
+    // polling so any pending microtasks finish first.
+    await waitFor(
+      () => {
+        expect(constructed.length).toBe(4);
+        expect(result.current.connectionStatus).toBe("failed");
+      },
+      { timeout: 8000 },
+    );
+  }, 15_000);
+
+  it("resets the reconnect counter after a successful open", async () => {
+    // First connection fails immediately; subsequent ones stay open.
+    let n = 0;
+    const constructed: MockWebSocket[] = [];
+    class FlakyThenStableMockWebSocket extends MockWebSocket {
+      constructor(url: string) {
+        super(url);
+        constructed.push(this);
+        n += 1;
+        if (n === 1) {
+          queueMicrotask(() => {
+            this.readyState = MockWebSocket.CLOSED;
+            this.onclose?.call(
+              this as unknown as WebSocket,
+              new CloseEvent("close"),
+            );
+          });
+        }
+      }
+    }
+    vi.stubGlobal("WebSocket", FlakyThenStableMockWebSocket);
+
+    const { result } = renderHook(() => useTranscriptWs("meeting-stable"));
+
+    // After the initial-fail + 500ms reconnect, a second WS opens and stays.
+    await waitFor(
+      () => {
+        expect(result.current.connectionStatus).toBe("connected");
+      },
+      { timeout: 2000 },
+    );
+    expect(constructed.length).toBe(2);
+  });
 });
 
 // mergeEvent is exercised through the hook in the merge test above; this is
