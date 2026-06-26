@@ -9,6 +9,12 @@ members = [
     "crates/yogurt-prompts",
     # Phase 4: augmented-notes structural AST diff + merge (Plan 04-02).
     "crates/yogurt-notes",
+    # Phase 5 (Plan 05-01): LlmClient trait + OpenAI-compat adapter (no axum).
+    "crates/yogurt-llm",
+    # Phase 5 (Plan 05-02): SQLite (providers + settings) + Keychain wrapper.
+    # Coexists with `yogurt-server::storage` (Phase 0) by owning a disjoint set
+    # of tables in the same `~/.yogurt/db.sqlite` file.
+    "crates/yogurt-db",
 ]
 
 [workspace.package]
@@ -43,6 +49,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 mime_guess = "2"
 # storage
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Phase 5 (Plan 05-02): managed migrations for the new yogurt-db crate.
+rusqlite_migration = "1"
+# Phase 5 (Plan 05-02): macOS Keychain for API-key storage (SET-10).
+keyring = "3"
+# Phase 5 (Plan 05-02): ULIDs for provider IDs (sortable, lexicographic).
+ulid = { version = "1", features = ["serde"] }
+# Phase 5 (Plan 05-02): .env.local dev-mode loader, gated behind `--dev` in
+# yogurt-cli main(). Release builds never read .env.local (SET-11).
+dotenvy = "0.15"
 directories = "5"
 # crypto / encoding
 rand = "0.8"
@@ -98,6 +113,12 @@ insta = { version = "1.41", features = ["json"] }
 # `<YYYY-MM-DD-HHmm>-<slug>.md` filenames derived from meetings.started_at).
 # Per PRD stack: `time` 0.3 is the safe stable pick.
 time = { version = "0.3", features = ["formatting", "macros"] }
+# Phase 5 (Plan 05-01): SSE event-stream parser for OpenAI-compat streaming
+# chat completions. Composes with reqwest's bytes_stream() via .eventsource().
+eventsource-stream = "0.2"
+# Phase 5 (Plan 05-01): HTTP mock server for yogurt-llm wiremock tests
+# (non-streaming + SSE round-trips). Dev-dep only.
+wiremock = "0.6"
 # Phase 4 (BL-2 hardening): HTML escape and allowlist sanitization for the
 # enrich pipeline. `html-escape` escapes user-controlled text BEFORE we
 # interpolate it into wire-format spans (MockLlm + render::wrap_ai). `ammonia`
