@@ -2,7 +2,7 @@
 //! dev proxies to Vite at `:5173`.
 //!
 //! Phase 5 (SET-12) refactor: tests now use `run_with_config` with tempdir
-//! + ephemeral-port isolation (matching the audio_api / meeting_rest
+//! and ephemeral-port isolation (matching the audio_api / meeting_rest
 //! pattern) so they no longer collide on hardcoded ports 17880..17885 and
 //! no longer touch the real `~/.yogurt/db.sqlite`.
 

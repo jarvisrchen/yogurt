@@ -4094,6 +4094,7 @@ dependencies = [
  "dotenvy",
  "open",
  "reqwest",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
