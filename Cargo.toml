@@ -94,6 +94,10 @@ pulldown-cmark = { version = "0.12", default-features = false }
 regex-lite = "0.1"
 # Phase 4 (Plan 04-02): snapshot/fixture testing surface for diff tests.
 insta = { version = "1.41", features = ["json"] }
+# Phase 4 (Plan 04-02): date formatting for MarkdownExporter (per-meeting
+# `<YYYY-MM-DD-HHmm>-<slug>.md` filenames derived from meetings.started_at).
+# Per PRD stack: `time` 0.3 is the safe stable pick.
+time = { version = "0.3", features = ["formatting", "macros"] }
 
 [profile.release]
 lto = "thin"

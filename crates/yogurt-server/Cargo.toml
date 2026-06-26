@@ -27,6 +27,8 @@ yogurt-audio = { path = "../yogurt-audio" }
 yogurt-stt = { path = "../yogurt-stt" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
+# Phase 4 (Plan 04-02): date formatting for MarkdownExporter filenames.
+time = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

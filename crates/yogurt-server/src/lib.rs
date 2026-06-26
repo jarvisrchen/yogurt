@@ -1,11 +1,22 @@
 mod assets;
 pub mod audio;
 mod dev_proxy;
+pub(crate) mod markdown_exporter;
 pub mod meetings;
 mod routes;
 pub mod session;
 pub mod storage;
 pub mod ws;
+
+/// Phase 4 (Plan 04-02) test-only re-export of the otherwise crate-private
+/// `markdown_exporter` module. Wiring (call from the enhance handler) lands
+/// in Plan 04-03; until then the module surface is exercised only by
+/// `tests/markdown_exporter.rs`. `#[doc(hidden)]` keeps it out of the
+/// public docs.
+#[doc(hidden)]
+pub mod __test_only_markdown_exporter {
+    pub use crate::markdown_exporter::{MarkdownExporter, Meeting};
+}
 
 use anyhow::Result;
 use std::net::SocketAddr;
