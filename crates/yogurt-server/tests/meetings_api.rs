@@ -236,7 +236,10 @@ async fn it_fts_searches_meetings() {
         .unwrap();
 
     client
-        .patch(format!("http://{addr}/api/meetings/{}", a["id"].as_str().unwrap()))
+        .patch(format!(
+            "http://{addr}/api/meetings/{}",
+            a["id"].as_str().unwrap()
+        ))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "notes_md": "- discuss the palette refresh\n- pick Friday"

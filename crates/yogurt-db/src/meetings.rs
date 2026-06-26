@@ -269,9 +269,7 @@ impl MeetingRepo {
                 "SELECT title, notes_md, transcript_json FROM meetings WHERE id = ?1",
             )?;
             let (title, notes_md, transcript_json): (String, String, String) = stmt
-                .query_row(params![id_owned], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-                })
+                .query_row(params![id_owned], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                 .with_context(|| format!("re-read meeting for FTS sync id={id_owned}"))?;
             let transcript_text = extract_transcript_text(&transcript_json);
             conn.execute(
@@ -671,9 +669,7 @@ mod tests {
         repo.patch(
             &m.id,
             MeetingPatch {
-                transcript_json: Some(
-                    r#"[{"text":"shipping the homebrew formula"}]"#.into(),
-                ),
+                transcript_json: Some(r#"[{"text":"shipping the homebrew formula"}]"#.into()),
                 ..Default::default()
             },
         )
