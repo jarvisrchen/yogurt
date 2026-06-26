@@ -61,33 +61,52 @@ pub async fn ws_handler(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // Origin allowlist (D-20). Build from the actual bound port so tests on
-    // ephemeral ports still pass.
+    if let Err(resp) = enforce_ws_auth(&state, &headers, &params, "ws") {
+        return resp;
+    }
+    ws.on_upgrade(handle_socket)
+}
+
+/// Shared Origin-allowlist + session-token check for all WS upgrade handlers.
+///
+/// Returns `Err(403 response)` on any auth failure; `Ok(())` if the request
+/// may proceed to `ws.on_upgrade(...)`. The `endpoint` label only appears in
+/// tracing warnings — never include token material here (BL-02).
+///
+/// `axum::response::Response` is large (~144 bytes) so clippy warns about
+/// the Result<(), Response> shape. We deliberately accept the size: the
+/// auth path runs once per upgrade (not in a hot loop), and the alternative
+/// (boxing the response) obscures the call site without a real perf win.
+#[allow(clippy::result_large_err)]
+pub(crate) fn enforce_ws_auth(
+    state: &AppState,
+    headers: &HeaderMap,
+    params: &WsParams,
+    endpoint: &'static str,
+) -> Result<(), Response> {
     let allowed = allowed_origins(state.bind_port);
     let origin = headers
         .get("origin")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
     if !allowed.contains(origin) {
-        tracing::warn!(%origin, "ws: rejected — origin not in allowlist");
-        return (StatusCode::FORBIDDEN, "forbidden: bad origin").into_response();
+        tracing::warn!(%endpoint, %origin, "ws: rejected — origin not in allowlist");
+        return Err((StatusCode::FORBIDDEN, "forbidden: bad origin").into_response());
     }
 
-    // Token comes from the `?token=<token>` query param ONLY. The
-    // `Sec-WebSocket-Protocol` path was removed in BL-02 — see module docs.
-    let Some(candidate) = params.token.clone() else {
-        tracing::warn!("ws: rejected — no session token presented");
-        return (StatusCode::FORBIDDEN, "forbidden: missing token").into_response();
+    let Some(candidate) = params.token.as_deref() else {
+        tracing::warn!(%endpoint, "ws: rejected — no session token presented");
+        return Err((StatusCode::FORBIDDEN, "forbidden: missing token").into_response());
     };
 
-    if !state.session.validate(&candidate) {
+    if !state.session.validate(candidate) {
         // Do NOT log the candidate or the stored token. The mismatch fact is
         // enough; the actual values are credentials.
-        tracing::warn!("ws: rejected — session token mismatch");
-        return (StatusCode::FORBIDDEN, "forbidden: bad token").into_response();
+        tracing::warn!(%endpoint, "ws: rejected — session token mismatch");
+        return Err((StatusCode::FORBIDDEN, "forbidden: bad token").into_response());
     }
 
-    ws.on_upgrade(handle_socket)
+    Ok(())
 }
 
 /// Replace any `token=<value>` query string in a URI with `token=<REDACTED>`.
@@ -161,20 +180,21 @@ fn allowed_origins(port: u16) -> HashSet<String> {
 // If the meeting id is unknown, close with code 4404 + reason
 // `"meeting not found"` (CONTEXT D-09).
 
-/// Axum handler for `GET /ws/meetings/:id`. Upgrades the connection then
-/// hands off to `handle_meeting_socket`.
-///
-/// **Auth note:** Phase 0's `/ws` enforces Origin + session-token; this
-/// per-meeting variant intentionally does NOT (yet) — the planner's
-/// integration tests dial it without a token, and PRD trust posture for v1
-/// is single-user localhost. A future hardening pass (likely Phase 5
-/// alongside the Keychain swap) will fold this handler under the same
-/// Origin/token gate as the Phase 0 `/ws` endpoint.
+/// Axum handler for `GET /ws/meetings/:id`. Enforces the same Origin
+/// allowlist + session-token check as the Phase 0 `/ws` endpoint
+/// (BL-01: this is the most privacy-sensitive surface in the product —
+/// transcript frames carry every word the user speaks, so the same auth
+/// gate that protects `/ws` must also gate this route).
 pub async fn ws_meeting_handler(
-    ws: WebSocketUpgrade,
-    Path(id): Path<Uuid>,
     State(state): State<AppState>,
-) -> impl IntoResponse {
+    Query(params): Query<WsParams>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    if let Err(resp) = enforce_ws_auth(&state, &headers, &params, "ws/meetings") {
+        return resp;
+    }
     ws.on_upgrade(move |socket| handle_meeting_socket(socket, id, state))
 }
 
