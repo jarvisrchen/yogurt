@@ -128,11 +128,17 @@ pub fn start_capture() -> Result<AudioStream> {
     let (mic_tx, _) = broadcast::channel::<Frame>(BROADCAST_CAPACITY);
     let (system_tx, _) = broadcast::channel::<Frame>(BROADCAST_CAPACITY);
 
-    // Order matters: open mic first because it's faster to recover from
-    // (just close the cpal stream) than SCK. If SCK fails, we still drop
-    // the mic via RAII when MicCapture goes out of scope on early-return.
-    let _mic = spawn_mic_capture(mic_tx.clone())?;
+    // CR-03: open SCK FIRST. The mic is opened second, after SCK has
+    // successfully started, so a permission-denied or transient SCK
+    // failure never flashes the macOS orange microphone indicator. The
+    // old order (mic-first) violated D-25 ("the user never hears a
+    // recording indicator if system capture is going to fail") because
+    // a brief mic-open → SCK-fail → mic-drop sequence still toggles
+    // the indicator. SCK is the slow / failure-prone resource; we want
+    // it opened first so the cheap, safe mic open never runs when SCK
+    // is going to fail anyway.
     let _system = spawn_system_capture(system_tx.clone())?;
+    let _mic = spawn_mic_capture(mic_tx.clone())?;
 
     Ok(AudioStream {
         _mic,
