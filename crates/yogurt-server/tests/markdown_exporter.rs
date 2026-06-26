@@ -1,5 +1,6 @@
 //! Integration tests for `MarkdownExporter` — STORE-03 + STORE-04 contract:
-//!   1. Filename format `<YYYY-MM-DD-HHmm>-<slug>.md`
+//!   1. Filename format `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md`
+//!      (HI-6: id6 suffix prevents same-minute same-slug collisions)
 //!   2. YAML front-matter (id / title / started_at / ended_at) + body
 //!   3. Atomic write (no stray `.tmp` left behind)
 //!   4. Repeat writes overwrite in place (same path for same meeting)
@@ -24,13 +25,15 @@ fn it_writes_atomic_yaml_markdown_with_dated_slug_filename() {
 
     assert!(path.exists(), "final file written");
     let fname = path.file_name().unwrap().to_str().unwrap();
+    // HI-6: filename now `<stamp>-<slug>-<id6>.md` — id6 is first 6
+    // alnum chars of meeting id ("01J2AB" for "01J2ABCD").
     assert!(
-        fname.ends_with("-q3-pricing-sync.md"),
-        "filename ends with dasherized slug, got {fname}"
+        fname.contains("-q3-pricing-sync-") && fname.ends_with("-01J2AB.md"),
+        "filename ends with slug + id6, got {fname}"
     );
-    // Filename pattern: YYYY-MM-DD-HHmm- prefix (15 chars before the slug).
+    // Filename pattern: YYYY-MM-DD-HHmm- prefix (15 chars) before the slug.
     assert!(
-        fname.len() > "-q3-pricing-sync.md".len(),
+        fname.len() > "-q3-pricing-sync-01J2AB.md".len(),
         "filename has dated prefix, got {fname}"
     );
 
@@ -87,12 +90,14 @@ fn it_falls_back_to_untitled_for_empty_title() {
         body_md: "",
     };
     let path = exporter.write(&m).unwrap();
+    // HI-6: id "X" is shorter than 6 chars → fallback to the id as-is.
+    // Filename ends with -untitled-X.md.
     assert!(
         path.file_name()
             .unwrap()
             .to_str()
             .unwrap()
-            .ends_with("-untitled.md"),
-        "blank title falls back to -untitled.md, got {path:?}"
+            .ends_with("-untitled-X.md"),
+        "blank title + short id falls back to -untitled-X.md, got {path:?}"
     );
 }
