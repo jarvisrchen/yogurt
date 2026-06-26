@@ -26,6 +26,20 @@ pub mod deepgram;
 #[cfg(feature = "local-stt")]
 pub mod sha256;
 
+// Phase 8 (Plan 08-01): VAD segmenter type signatures used by
+// `whisper_local`. Plan 08-02 replaces this placeholder with the real
+// webrtc-vad-backed segmenter; the API surface here is the contract.
+#[cfg(feature = "local-stt")]
+pub mod vad;
+
+// Phase 8 (Plan 08-01): WhisperLocal adapter — drop-in `Stt` impl backed
+// by whisper.cpp via whisper-rs 0.16 (Metal feature). Gated behind
+// `local-stt` so default builds don't pull whisper.cpp's CMake toolchain.
+#[cfg(feature = "local-stt")]
+pub mod whisper_local;
+#[cfg(feature = "local-stt")]
+pub use whisper_local::WhisperLocal;
+
 /// Which channel a transcript line came from.
 ///
 /// Granola itself only does "Me"/"Them" (PRD §5.2 explicitly limits diarization to this).
