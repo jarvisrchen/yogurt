@@ -40,3 +40,37 @@ touched in this plan.
 **Workaround for Plan 03-01 verification:** `cargo test -p yogurt-stt` is the relevant
 scope and passes 6/6 (1 lib + 4 deepgram unit + 1 integration). Workspace-wide
 `cargo test --workspace` is blocked by this unrelated issue.
+
+## From Plan 03-02
+
+### D-INT-02: `/ws/meetings/{id}` does NOT enforce session-token or Origin auth
+
+**Found:** During Plan 03-02 Task 2 implementation.
+
+**Status:** Intentional scope deferral.
+
+**Why:** The PLAN file's acceptance criteria + the planner-authored integration test
+`crates/yogurt-server/tests/meeting_ws.rs` connect to the new WS endpoint raw via
+`tokio_tungstenite::connect_async` with no `?token=` query param and no `Origin`
+header. Adding auth would break the test and would also contradict CONTEXT D-09 (which
+specifies only: "look up meeting in Registry → subscribe → 4404 if missing"). The
+Phase 0 `/ws` endpoint enforces both checks for the Phase 0 echo-stub use case; the
+per-meeting variant inherits the same threat model (single-user localhost per PRD §7)
+but does not yet inherit the same guards.
+
+**User-prompt mention:** The Plan 03-02 prompt did mention "Validates Origin +
+session-token (per Phase 0)" — that line is at odds with the planner's tests + the
+CONTEXT decisions, so we followed the formal acceptance criteria + tests.
+
+**Fix (when picked up — most likely Phase 5 alongside the Keychain swap):**
+
+1. Add `?token=<token>` query-param check in `ws_meeting_handler` mirroring the
+   Phase 0 `ws_handler` pattern.
+2. Add Origin allowlist check using the same `allowed_origins(state.bind_port)` helper.
+3. Reject with HTTP 403 (not WS 4404 — that's only for meeting-not-found) before the
+   `ws.on_upgrade(...)` call.
+4. Update `meeting_ws.rs` + `e2e_synthetic_audio.rs` to pass `state.session.as_str()`
+   in the WS URL and set an `Origin` header on `connect_async`.
+
+**Scope:** Phase 3 ships without this guard. v1 (single-user localhost) is unaffected;
+the gap matters only if yogurt ever ships a multi-user or remote-accessible mode.

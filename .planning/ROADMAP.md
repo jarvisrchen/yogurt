@@ -89,7 +89,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Panel auto-scrolls to bottom; scrolling up pauses auto-scroll; cursor blink appears on the most-recent partial transcript to signal "still listening"
   4. Two STT sessions run per meeting (one per channel); per-meeting supervisor closes both sessions cleanly on "End meeting"
 
-**Plans**: TBD
+**Plans**: 03-01 (Stt trait + Deepgram adapter) ✅ complete · 03-02 (meetings::Registry + REST + WS) ✅ complete · 03-03 (dock UI + slide-in-right motion + library/meeting App.tsx switch) pending
 **UI hint**: yes
 
 ### Phase 4: Augmented Notes Hero (HIGHEST PAYOFF)
