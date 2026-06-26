@@ -57,6 +57,79 @@ pub enum WsEvent {
         #[serde(default)]
         done: bool,
     },
+    /// Phase 8 (Plan 08-03): live model download progress for a
+    /// whisper.cpp model.  Fanned out on the app-wide
+    /// `AppState::app_events_tx` broadcast so the Settings page can show
+    /// a matcha progress bar without a meeting being open.  Emitted every
+    /// ~500 ms during a download by `api::stt_models::download_task`.
+    SttModelDownloadProgress {
+        model: String,
+        bytes_downloaded: u64,
+        total_bytes: u64,
+        bytes_per_sec: u64,
+        eta_seconds: Option<u64>,
+    },
+    /// Phase 8 (Plan 08-03): a model download finished successfully —
+    /// SHA256 verified, file persisted at `~/.yogurt/models/<filename>`.
+    /// The download dialog auto-closes ~600 ms after seeing this event.
+    SttModelDownloadComplete { model: String },
+    /// Phase 8 (Plan 08-03): a model download failed (HTTP error,
+    /// hash mismatch, IO error).  The download dialog stays open with
+    /// the error message so the user can retry.
+    SttModelDownloadError { model: String, error: String },
+}
+
+/// Phase 8 (Plan 08-03): app-wide event broadcaster.  The chat path
+/// already uses per-meeting `events_tx` channels; this is the
+/// **meeting-independent** sibling that surfaces things like model
+/// downloads on the global `/ws` endpoint.
+///
+/// Capacity 64 — STT model downloads emit ~2 events/sec; the cushion
+/// absorbs slow consumers without blocking the writer.
+pub type AppEventTx = tokio::sync::broadcast::Sender<serde_json::Value>;
+
+/// Phase 8 (Plan 08-03): broadcast a `SttModelDownloadProgress` frame on
+/// the app-wide event channel.  Errors are swallowed — a quiet WS (no
+/// subscriber) is fine; downloads keep working regardless.
+pub fn send_stt_model_download_progress(
+    tx: &AppEventTx,
+    model: &str,
+    bytes_downloaded: u64,
+    total_bytes: u64,
+    bytes_per_sec: u64,
+    eta_seconds: Option<u64>,
+) {
+    let ev = WsEvent::SttModelDownloadProgress {
+        model: model.to_string(),
+        bytes_downloaded,
+        total_bytes,
+        bytes_per_sec,
+        eta_seconds,
+    };
+    if let Ok(value) = serde_json::to_value(&ev) {
+        let _ = tx.send(value);
+    }
+}
+
+/// Phase 8 (Plan 08-03): broadcast a `SttModelDownloadComplete` frame.
+pub fn send_stt_model_download_complete(tx: &AppEventTx, model: &str) {
+    let ev = WsEvent::SttModelDownloadComplete {
+        model: model.to_string(),
+    };
+    if let Ok(value) = serde_json::to_value(&ev) {
+        let _ = tx.send(value);
+    }
+}
+
+/// Phase 8 (Plan 08-03): broadcast a `SttModelDownloadError` frame.
+pub fn send_stt_model_download_error(tx: &AppEventTx, model: &str, error: &str) {
+    let ev = WsEvent::SttModelDownloadError {
+        model: model.to_string(),
+        error: error.to_string(),
+    };
+    if let Ok(value) = serde_json::to_value(&ev) {
+        let _ = tx.send(value);
+    }
 }
 
 #[derive(Deserialize)]
@@ -88,7 +161,12 @@ pub async fn ws_handler(
     if let Err(resp) = enforce_ws_auth(&state, &headers, &params, "ws") {
         return resp;
     }
-    ws.on_upgrade(handle_socket)
+    // Phase 8 (Plan 08-03): subscribe to the app-wide event broadcaster
+    // so the Settings page can receive STT model download progress
+    // without a meeting being open.  Pre-upgrade subscription is
+    // important — the receiver must exist before the first frame.
+    let app_rx = state.app_events_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_socket(socket, app_rx))
 }
 
 /// Shared Origin-allowlist + session-token check for all WS upgrade handlers.
@@ -156,26 +234,62 @@ pub fn redact_token_in_uri(uri: &str) -> String {
     out
 }
 
-/// Phase 0 stub: echo text messages back; close on binary/ping anomalies.
-async fn handle_socket(mut socket: WebSocket) {
-    while let Some(msg) = socket.recv().await {
-        let Ok(msg) = msg else {
-            return;
-        };
-        match msg {
-            Message::Text(t) => {
-                if socket.send(Message::Text(t)).await.is_err() {
+/// Phase 0 stub → Phase 8 (Plan 08-03) extension:
+///
+/// Inbound text messages are still echoed (smoke-test surface preserved),
+/// but the handler now ALSO forwards `AppState::app_events_tx`
+/// broadcasts as Text frames so the Settings page can listen for
+/// STT model download progress on the single global `/ws` socket.
+async fn handle_socket(
+    mut socket: WebSocket,
+    mut app_rx: tokio::sync::broadcast::Receiver<serde_json::Value>,
+) {
+    loop {
+        tokio::select! {
+            // Server → Client: app-wide events (STT model downloads, etc.).
+            ev = app_rx.recv() => match ev {
+                Ok(value) => {
+                    let frame = match serde_json::to_string(&value) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!(?e, "ws: app_events serialize failed");
+                            continue;
+                        }
+                    };
+                    if socket.send(Message::Text(frame.into())).await.is_err() {
+                        return;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(n, "ws: app_events lagged");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    // App-events channel closed (shutdown). The WS itself
+                    // can stay open as long as inbound traffic continues;
+                    // just stop polling this branch.
+                    tracing::debug!("ws: app_events stream ended");
                     return;
                 }
-            }
-            Message::Ping(p) => {
-                if socket.send(Message::Pong(p)).await.is_err() {
-                    return;
+            },
+            // Client → Server: Phase 0 echo + control frames.
+            msg = socket.recv() => match msg {
+                None => return,
+                Some(Err(_)) => return,
+                Some(Ok(Message::Text(t))) => {
+                    if socket.send(Message::Text(t)).await.is_err() {
+                        return;
+                    }
                 }
-            }
-            Message::Close(_) => return,
-            // Binary / Pong: Phase 0 has nothing to do with these.
-            _ => {}
+                Some(Ok(Message::Ping(p))) => {
+                    if socket.send(Message::Pong(p)).await.is_err() {
+                        return;
+                    }
+                }
+                Some(Ok(Message::Close(_))) => return,
+                // Binary / Pong: nothing to do.
+                Some(Ok(_)) => {}
+            },
         }
     }
 }
@@ -321,6 +435,52 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Phase 8 (Plan 08-03) wire-shape gate: the browser-side
+    /// `useModelDownloadProgress` hook switches on
+    /// `ev.type === "stt_model_download_progress"` (and the two terminal
+    /// variants) and reads `model`, `bytes_downloaded`, `total_bytes`,
+    /// `bytes_per_sec`, `eta_seconds`. Any rename here breaks the
+    /// Settings download dialog silently.
+    #[test]
+    fn dl_progress_serializes_with_tag() {
+        let ev = WsEvent::SttModelDownloadProgress {
+            model: "small.en".into(),
+            bytes_downloaded: 1_000_000,
+            total_bytes: 487_000_000,
+            bytes_per_sec: 12_345_678,
+            eta_seconds: Some(39),
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "stt_model_download_progress");
+        assert_eq!(json["model"], "small.en");
+        assert_eq!(json["bytes_downloaded"], 1_000_000);
+        assert_eq!(json["total_bytes"], 487_000_000);
+        assert_eq!(json["bytes_per_sec"], 12_345_678);
+        assert_eq!(json["eta_seconds"], 39);
+    }
+
+    #[test]
+    fn dl_complete_serializes_with_tag() {
+        let ev = WsEvent::SttModelDownloadComplete {
+            model: "small.en".into(),
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "stt_model_download_complete");
+        assert_eq!(json["model"], "small.en");
+    }
+
+    #[test]
+    fn dl_error_serializes_with_tag() {
+        let ev = WsEvent::SttModelDownloadError {
+            model: "small.en".into(),
+            error: "hash mismatch".into(),
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "stt_model_download_error");
+        assert_eq!(json["model"], "small.en");
+        assert_eq!(json["error"], "hash mismatch");
+    }
 
     /// Phase 6 (Plan 06-01) wire-shape gate: the browser-side `useChat`
     /// hook switches on `ev.type === "chat_chunk"` and reads `message_id`,

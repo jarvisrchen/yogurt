@@ -12,3 +12,7 @@ pub mod chat;
 // instead.
 pub mod meetings;
 pub mod settings;
+// Phase 8 (Plan 08-03): whisper.cpp model management REST surface.
+// Routes mount under `/api/stt/*` and spawn background download tasks
+// that emit `stt_model_download_*` events on the app-wide `/ws` channel.
+pub mod stt_models;

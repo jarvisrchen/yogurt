@@ -77,9 +77,15 @@ pub fn router(state: AppState) -> Router {
     // fixtures must be updated in lockstep.
     let settings_routes = crate::api::settings::router();
 
+    // Phase 8 (Plan 08-03): whisper.cpp model management REST surface.
+    // Follows the same auth convention as `settings_routes` — bound to
+    // 127.0.0.1 only, no secrets handled.
+    let stt_models_routes = crate::api::stt_models::router();
+
     let router = Router::new()
         .route("/api/health", get(health))
         .merge(settings_routes)
+        .merge(stt_models_routes)
         // WR-06: bootstrap endpoint the SPA fetches once on boot to learn
         // the session token. Gated by Origin allowlist ONLY (no token —
         // it IS the token-handout endpoint). Origin check blocks

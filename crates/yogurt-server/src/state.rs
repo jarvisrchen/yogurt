@@ -75,6 +75,12 @@ pub struct AppState {
     /// through `meeting_repo`; the WebSocket and recording pipeline
     /// still uses `meetings`.
     pub meeting_repo: Arc<MeetingRepo>,
+    /// Phase 8 (Plan 08-03): app-wide event broadcaster.  Carries JSON
+    /// frames that aren't tied to a specific meeting — currently
+    /// `stt_model_download_*` from `api::stt_models`.  The `/ws`
+    /// handler subscribes once per upgrade and fans frames to its
+    /// browser client.  Capacity 64 absorbs the ~2 Hz progress tick.
+    pub app_events_tx: crate::ws::AppEventTx,
 }
 
 impl AppState {
@@ -143,6 +149,7 @@ impl AppState {
             None => Db::open_default()?,
         };
         let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
+        let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
         Ok(Self {
             mode: cfg.mode,
             storage: cfg.storage,
@@ -163,6 +170,8 @@ impl AppState {
             llm: Arc::new(MockLlm),
             // Phase 7 (Plan 07-01): the new SQLite-backed Library directory.
             meeting_repo,
+            // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
+            app_events_tx,
         })
     }
 
@@ -196,6 +205,7 @@ impl AppState {
         let prompts = Arc::new(yogurt_prompts::Prompts::load(prompt_mode)?);
         let db = Db::open_in_memory()?;
         let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
+        let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
         Ok(Self {
             mode,
             storage,
@@ -208,6 +218,8 @@ impl AppState {
             keys: Arc::new(MemoryKeyStore::default()),
             llm: Arc::new(MockLlm),
             meeting_repo,
+            // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
+            app_events_tx,
         })
     }
 }
