@@ -180,3 +180,65 @@ export function useDeleteMeeting(): UseMutationResult<void, Error, string> {
     },
   });
 }
+
+// ─── Phase 7 Plan 07-03 — inline-edit title + Copy markdown + Reveal ───────
+
+/**
+ * `PATCH /api/meetings/:id` specialized for inline title rename.
+ *
+ * Empty / whitespace-only input is normalized to "Untitled meeting" on the
+ * client so the optimistic cache write reflects the same fallback the
+ * server applies (LIB-08). Invalidates the list and primes the individual
+ * cache so a follow-up `useMeeting(id)` doesn't refetch.
+ */
+export function useUpdateMeetingTitle(): UseMutationResult<
+  Meeting,
+  Error,
+  { id: string; title: string }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }) => {
+      const t = title.trim().length === 0 ? "Untitled meeting" : title.trim();
+      return meetingsApi.patch(id, { title: t });
+    },
+    onSuccess: (m) => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.setQueryData(meetingKey(m.id), m);
+    },
+  });
+}
+
+/**
+ * `GET /api/meetings/:id/markdown` → `navigator.clipboard.writeText`.
+ *
+ * Returns the on-disk Phase-4 MarkdownExporter file contents (YAML
+ * front-matter + body). Uses the bearer-token-attached `fetch` path
+ * directly rather than `json<T>()` because the response is `text/markdown`,
+ * not JSON.
+ *
+ * Throws on non-2xx so callers can surface a toast. Clipboard write may
+ * throw on browsers without `navigator.clipboard` (HTTP/non-localhost) —
+ * yogurt runs on localhost so the secure-context requirement is satisfied.
+ */
+export async function copyMeetingMarkdown(id: string): Promise<void> {
+  const token = await ensureSessionToken();
+  const res = await fetch(`/api/meetings/${id}/markdown`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+  }
+  const md = await res.text();
+  await navigator.clipboard.writeText(md);
+}
+
+/**
+ * `POST /api/meetings/:id/reveal` — server shells out to `open -R` on
+ * macOS to reveal the on-disk markdown file in Finder. Returns 204; no
+ * body to parse.
+ */
+export async function revealMeetingInFinder(id: string): Promise<void> {
+  await json<void>(`/api/meetings/${id}/reveal`, { method: "POST" });
+}
