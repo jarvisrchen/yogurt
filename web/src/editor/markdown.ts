@@ -24,6 +24,7 @@
 // the round-trip test pins.
 
 import MarkdownIt from "markdown-it";
+import DOMPurify from "dompurify";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 /**
@@ -32,10 +33,64 @@ import type { Node as PMNode } from "@tiptap/pm/model";
  * `html: true` is mandatory — our wire-format spans
  * (`<span data-ai-grey…>`, `<span data-transcript-link…>`) must survive
  * verbatim so the TipTap parseHTML rules pick them up.
+ *
+ * BL-2 (Phase 4 review): even though the server runs ammonia + html-escape
+ * on the enriched_md before sending, we DOMPurify on the client as
+ * defense-in-depth. Three reasons:
+ *   1. Tests + dev tools that bypass the server (mock data, snapshot
+ *      fixtures, future copy-paste of saved markdown) skip the server
+ *      sanitizer.
+ *   2. A bug in the server allowlist (broken ammonia config, missed
+ *      handler path) should not pop alerts in the user's browser.
+ *   3. If the user pastes attacker-supplied markdown directly into the
+ *      editor, the round-trip through markdown-it still has to be safe.
+ *
+ * The allowlist matches the server's: <span> + data-ai-grey,
+ * data-transcript-link, data-ts.
  */
 export function markdownToHtml(md: string): string {
   const renderer = new MarkdownIt({ html: true, linkify: false, breaks: false });
-  return renderer.render(md);
+  const dirty = renderer.render(md);
+  return sanitizeHtml(dirty);
+}
+
+/**
+ * Allowlist sanitizer for the editor input pipeline.
+ *
+ * - ALLOWED tags: all markdown structural tags (p, h1-h6, ul, ol, li,
+ *   blockquote, code, pre, em, strong, br, hr) plus our wire-format
+ *   <span>. NO <script>, <iframe>, <object>, <embed>, <style>, <link>,
+ *   <form>, <input>, <img>.
+ * - ALLOWED attributes on <span>: data-ai-grey, data-transcript-link,
+ *   data-ts only.
+ * - ALL event handlers (on*) stripped.
+ * - javascript: / data: / vbscript: URLs stripped (DOMPurify default).
+ */
+export function sanitizeHtml(input: string): string {
+  return DOMPurify.sanitize(input, {
+    ALLOWED_TAGS: [
+      "p",
+      "br",
+      "hr",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "ul",
+      "ol",
+      "li",
+      "blockquote",
+      "code",
+      "pre",
+      "em",
+      "strong",
+      "span",
+    ],
+    ALLOWED_ATTR: ["data-ai-grey", "data-transcript-link", "data-ts"],
+    KEEP_CONTENT: true,
+  });
 }
 
 /**

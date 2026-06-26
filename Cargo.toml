@@ -98,6 +98,13 @@ insta = { version = "1.41", features = ["json"] }
 # `<YYYY-MM-DD-HHmm>-<slug>.md` filenames derived from meetings.started_at).
 # Per PRD stack: `time` 0.3 is the safe stable pick.
 time = { version = "0.3", features = ["formatting", "macros"] }
+# Phase 4 (BL-2 hardening): HTML escape and allowlist sanitization for the
+# enrich pipeline. `html-escape` escapes user-controlled text BEFORE we
+# interpolate it into wire-format spans (MockLlm + render::wrap_ai). `ammonia`
+# allowlist-sanitizes the FINAL enriched_md so an LLM hallucinated <script>
+# / <img onerror=...> can never reach the browser DOM.
+html-escape = "0.2"
+ammonia = "4"
 
 [profile.release]
 lto = "thin"

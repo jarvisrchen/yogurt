@@ -137,7 +137,15 @@ pub async fn enhance(
             format!("merge_notes: {e}"),
         )
     })?;
-    let enriched_md = yogurt_notes::render::to_markdown(&merged);
+    let rendered_md = yogurt_notes::render::to_markdown(&merged);
+    // BL-2 (XSS hardening): run the rendered markdown through ammonia with a
+    // tight allowlist so anything the LLM hallucinated (script/img/iframe/
+    // on* handlers/javascript: URLs) is stripped BEFORE we persist to SQLite
+    // or write to disk. The wire-format spans (<span data-ai-grey>, <span
+    // data-transcript-link>) survive. Layered with render::wrap_ai's
+    // html-escape of inner text, this neutralizes the stored-XSS path
+    // documented in 04-REVIEW.md BL-2.
+    let enriched_md = crate::sanitize::sanitize_enriched_md(&rendered_md);
     let enriched_doc_json = serde_json::to_string(&merged).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
