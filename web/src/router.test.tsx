@@ -29,6 +29,7 @@ vi.mock("./lib/api/settings", () => ({
         port: 7878,
         open_browser_on_start: true,
         audio_input_device: "",
+        first_run_completed: true,
       },
       providers: [],
       presets: [],
