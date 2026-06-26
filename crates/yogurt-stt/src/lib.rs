@@ -20,6 +20,12 @@ use serde::{Deserialize, Serialize};
 
 pub mod deepgram;
 
+// Phase 8 (Plan 08-01): streaming SHA256 helper used by the model download
+// flow (Plan 08-02). Gated behind `local-stt` so the default build does NOT
+// pull in `sha2` / `hex` — keeping the no-default-features check fast.
+#[cfg(feature = "local-stt")]
+pub mod sha256;
+
 /// Which channel a transcript line came from.
 ///
 /// Granola itself only does "Me"/"Them" (PRD §5.2 explicitly limits diarization to this).
