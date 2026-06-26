@@ -1,0 +1,89 @@
+use yogurt_db::{providers, Db};
+
+#[test]
+fn it_inserts_and_lists_a_provider() {
+    let db = Db::open_in_memory().unwrap();
+    let id = providers::insert(
+        &db,
+        providers::NewProvider {
+            name: "Minimax".into(),
+            base_url: "https://api.minimax.io/v1".into(),
+            model: "MiniMax-Text-01".into(),
+        },
+    )
+    .unwrap();
+    let rows = providers::list(&db).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, id);
+    assert_eq!(rows[0].name, "Minimax");
+    assert!(!rows[0].is_active);
+}
+
+#[test]
+fn it_sets_only_one_active_provider() {
+    let db = Db::open_in_memory().unwrap();
+    let a = providers::insert(
+        &db,
+        providers::NewProvider {
+            name: "A".into(),
+            base_url: "https://a/v1".into(),
+            model: "m".into(),
+        },
+    )
+    .unwrap();
+    let b = providers::insert(
+        &db,
+        providers::NewProvider {
+            name: "B".into(),
+            base_url: "https://b/v1".into(),
+            model: "m".into(),
+        },
+    )
+    .unwrap();
+
+    providers::set_active(&db, &a).unwrap();
+    assert_eq!(providers::active(&db).unwrap().unwrap().id, a);
+
+    providers::set_active(&db, &b).unwrap();
+    let active = providers::active(&db).unwrap().unwrap();
+    assert_eq!(active.id, b);
+
+    let all = providers::list(&db).unwrap();
+    let active_count = all.iter().filter(|p| p.is_active).count();
+    assert_eq!(active_count, 1, "exactly one provider should be active");
+}
+
+#[test]
+fn it_exposes_presets_as_a_const_slice() {
+    let names: Vec<&str> = providers::PRESETS.iter().map(|p| p.name).collect();
+    assert!(names.contains(&"Minimax"));
+    assert!(names.contains(&"OpenAI"));
+    assert!(names.contains(&"Ollama (local)"));
+    assert!(names.contains(&"LM Studio (local)"));
+    assert!(names.contains(&"OpenRouter"));
+}
+
+#[test]
+fn list_names_returns_creation_order() {
+    let db = Db::open_in_memory().unwrap();
+    providers::insert(
+        &db,
+        providers::NewProvider {
+            name: "First".into(),
+            base_url: "https://x/v1".into(),
+            model: "m".into(),
+        },
+    )
+    .unwrap();
+    providers::insert(
+        &db,
+        providers::NewProvider {
+            name: "Second".into(),
+            base_url: "https://y/v1".into(),
+            model: "m".into(),
+        },
+    )
+    .unwrap();
+    let names = providers::list_names(&db).unwrap();
+    assert_eq!(names, vec!["First".to_string(), "Second".to_string()]);
+}
