@@ -244,10 +244,7 @@ impl MeetingRepo {
             }
             sets.push("updated_at = ?");
             args.push(now_ms.into());
-            let sql = format!(
-                "UPDATE meetings SET {} WHERE id = ?",
-                sets.join(", ")
-            );
+            let sql = format!("UPDATE meetings SET {} WHERE id = ?", sets.join(", "));
             args.push(id_owned.clone().into());
             let n = conn
                 .execute(&sql, rusqlite::params_from_iter(args.iter()))
@@ -469,7 +466,13 @@ mod tests {
         assert!(repo.get("nonesuch").unwrap().is_none());
         assert!(!repo.delete("nonesuch").unwrap());
         let err = repo
-            .patch("nonesuch", MeetingPatch { title: Some("x".into()), ..Default::default() })
+            .patch(
+                "nonesuch",
+                MeetingPatch {
+                    title: Some("x".into()),
+                    ..Default::default()
+                },
+            )
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
     }

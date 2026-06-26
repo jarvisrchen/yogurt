@@ -92,7 +92,10 @@ async fn it_creates_a_meeting_and_returns_an_id() {
     // `yogurt_db::Meeting` projection. `created_at` is now an ISO 8601
     // UTC string; existence + non-empty is the smoke check.
     assert!(
-        body["created_at"].as_str().map(|s| !s.is_empty()).unwrap_or(false),
+        body["created_at"]
+            .as_str()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false),
         "created_at is a non-empty ISO 8601 string"
     );
     assert_eq!(body["title"].as_str().unwrap(), "Untitled meeting");
