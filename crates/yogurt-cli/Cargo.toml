@@ -19,6 +19,10 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 yogurt-server = { path = "../yogurt-server" }
 open = "5"
+# Phase 5 (Plan 05-02): .env.local dev-mode loader. Gated on the `--dev`
+# flag at the top of main() — release builds NEVER read .env.local
+# (SET-11). See main.rs and tests/dev_env_local.rs.
+dotenvy = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
