@@ -20,9 +20,14 @@ fn it_prints_help() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_starts_server_and_serves_health() {
+    // SET-12 follow-up: see it_reports_port_conflict_with_friendly_error
+    // for HOME-tempdir rationale.
+    let tmp = tempfile::tempdir().expect("create tempdir for HOME");
+
     // Spawn `yogurt start` in the background.
     let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
         .args(["start", "--port", "17879", "--no-open"])
+        .env("HOME", tmp.path())
         .spawn()
         .expect("spawn yogurt");
 
@@ -52,8 +57,16 @@ async fn it_reports_port_conflict_with_friendly_error() {
     // Occupy the port from the test process.
     let listener = StdTcpListener::bind("127.0.0.1:17883").expect("can bind 17883 in test");
 
+    // SET-12 follow-up: redirect HOME to a tempdir so the spawned `yogurt`
+    // subprocess doesn't touch the developer's real ~/.yogurt/db.sqlite
+    // (which may be at a higher migration version than the test binary
+    // knows about, causing DatabaseTooFarAhead errors that mask the actual
+    // port-conflict assertion).
+    let tmp = tempfile::tempdir().expect("create tempdir for HOME");
+
     let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
         .args(["start", "--port", "17883", "--no-open"])
+        .env("HOME", tmp.path())
         .output()
         .await
         .expect("spawn yogurt");
@@ -92,8 +105,13 @@ async fn it_does_not_suggest_port_0_at_upper_boundary() {
     }
     let _listener = listener.unwrap();
 
+    // SET-12 follow-up: see it_reports_port_conflict_with_friendly_error
+    // for rationale on the HOME tempdir.
+    let tmp = tempfile::tempdir().expect("create tempdir for HOME");
+
     let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
         .args(["start", "--port", "65535", "--no-open"])
+        .env("HOME", tmp.path())
         .output()
         .await
         .expect("spawn yogurt");

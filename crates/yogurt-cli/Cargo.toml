@@ -27,3 +27,6 @@ dotenvy = { workspace = true }
 [dev-dependencies]
 assert_cmd = { workspace = true }
 reqwest = { workspace = true }
+# SET-12 follow-up: cli tests redirect HOME to a tempdir so spawned
+# subprocesses don't touch the developer's real ~/.yogurt/db.sqlite.
+tempfile = { workspace = true }
