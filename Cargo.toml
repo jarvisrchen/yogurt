@@ -139,6 +139,22 @@ wiremock = "0.6"
 # / <img onerror=...> can never reach the browser DOM.
 html-escape = "0.2"
 ammonia = "4"
+# Phase 8 (Plan 08-01): local whisper.cpp STT. 0.16 is the pin from the
+# project tech stack; CONTEXT D-01 documents the resolution against the
+# source plan's 0.13. `metal` feature is enabled at the crate level
+# (yogurt-stt) so consumers without `local-stt` never pull in the
+# whisper.cpp CMake build. `default-features = false` here lets the
+# leaf crate opt into Metal explicitly.
+whisper-rs = { version = "0.16", default-features = false }
+# Phase 8 (Plan 08-01): WebRTC VAD used by `vad.rs` (Plan 02 lands the
+# actual segmenter). Declared in workspace so the dep version is one
+# place to bump.
+webrtc-vad = "0.4"
+# Phase 8 (Plan 08-01): streaming SHA256 for model verification (Plan 02
+# download flow). Workspace pin so future crates share the digest impl.
+sha2 = "0.10"
+# Phase 8 (Plan 08-01): hex encoding for the SHA256 helper's output.
+hex = "0.4"
 
 [profile.release]
 lto = "thin"

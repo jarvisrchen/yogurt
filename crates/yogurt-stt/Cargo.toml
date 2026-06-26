@@ -7,6 +7,21 @@ license.workspace = true
 repository.workspace = true
 description = "Pluggable speech-to-text trait + adapters for yogurt."
 
+[features]
+# Phase 8 (Plan 08-01): gate the whisper.cpp / VAD / hashing toolchain
+# behind an opt-in flag so the default build stays fast (~30 s) and
+# CI doesn't pay the ~2 min whisper.cpp CMake price on every job that
+# doesn't actually need the local STT path.
+#
+# `default = []` is deliberate — `cargo check -p yogurt-stt` with no
+# extra flags must NOT trigger the whisper.cpp build. The source-plan
+# task description suggested `default = ["local-stt"]`, but that
+# defeats the whole point of the feature flag (LOCAL-05 / Phase 8
+# success criterion #5). Anyone who wants the local adapter passes
+# `--features local-stt` explicitly.
+default = []
+local-stt = ["dep:whisper-rs", "dep:webrtc-vad", "dep:sha2", "dep:hex"]
+
 [dependencies]
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
@@ -18,6 +33,20 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# Phase 8 (Plan 08-01) — gated behind `local-stt`. All four are
+# `optional = true` so the default build genuinely skips them.
+whisper-rs = { workspace = true, features = ["metal"], optional = true }
+webrtc-vad = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+
 [dev-dependencies]
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
+# Phase 8 (Plan 08-01): sha256 file-roundtrip test writes a 200 KB
+# payload to a NamedTempFile to assert hash_file == hash_bytes.
+tempfile = { workspace = true }
+# Phase 8 (Plan 08-01): smoke test uses directories::ProjectDirs to
+# resolve ~/.yogurt/models/ggml-small.en.bin. Dev-dep only because
+# the production whisper_local module takes the path as input.
+directories = { workspace = true }
