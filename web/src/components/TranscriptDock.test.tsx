@@ -68,7 +68,7 @@ describe("TranscriptDock", () => {
   });
 
   it("renders the collapsed tab by default (panel hidden)", async () => {
-    render(<TranscriptDock meetingId="meeting-1" />);
+    render(<TranscriptDock meetingId="meeting-1" token="test-token" />);
     expect(
       screen.getByRole("button", { name: /show live transcript/i }),
     ).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe("TranscriptDock", () => {
   });
 
   it("expands the panel on click and applies dock-open animation class", async () => {
-    render(<TranscriptDock meetingId="meeting-2" />);
+    render(<TranscriptDock meetingId="meeting-2" token="test-token" />);
     const btn = screen.getByRole("button", { name: /show live transcript/i });
 
     act(() => {
@@ -102,7 +102,7 @@ describe("TranscriptDock", () => {
   });
 
   it("renders Me/Them labels with the right colors when events arrive", async () => {
-    render(<TranscriptDock meetingId="meeting-3" />);
+    render(<TranscriptDock meetingId="meeting-3" token="test-token" />);
     act(() => {
       screen.getByRole("button", { name: /show live transcript/i }).click();
     });
@@ -145,7 +145,7 @@ describe("TranscriptDock", () => {
   });
 
   it("re-collapses when the tab is clicked again", async () => {
-    render(<TranscriptDock meetingId="meeting-4" />);
+    render(<TranscriptDock meetingId="meeting-4" token="test-token" />);
     const btn = screen.getByRole("button", { name: /show live transcript/i });
 
     act(() => {

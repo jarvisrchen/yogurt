@@ -115,20 +115,27 @@ const MAX_RECONNECT_ATTEMPTS = 3;
  */
 export function useTranscriptWs(
   meetingId: string | null,
+  token: string | null,
 ): UseTranscriptWsResult {
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
 
   useEffect(() => {
-    if (!meetingId) {
+    // WR-06 + BL-01: the per-meeting WS handler now requires the session
+    // token (Origin alone is insufficient). Wait until both meetingId AND
+    // token are available before attempting to connect — otherwise the
+    // first connect would 403 and burn a reconnect attempt.
+    if (!meetingId || !token) {
       setEvents([]);
       setConnectionStatus("idle");
       return;
     }
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}`;
+    // Encode the token as a URL param (Phase 0's URL-param auth contract).
+    // The server's redact_token_in_uri masks this in logs.
+    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
 
     // WR-01: reconnect state lives in refs so the lifecycle is owned by the
     // effect's cleanup, not by React reconciliation. The `cancelled` flag

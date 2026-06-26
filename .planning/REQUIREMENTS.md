@@ -39,11 +39,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **TRANS-01**: `SttEngine` trait defined with `open_session(channel) → SttSession` shape
 - [x] **TRANS-02**: Deepgram streaming adapter implements `SttEngine`
-- [ ] **TRANS-03**: Live transcript dock panel collapsed by default as right-edge tab with 3-bar animated wave icon
+- [~] **TRANS-03**: Live transcript dock panel collapsed by default as right-edge tab with 3-bar animated wave icon — *partial*: dock + right-edge tab shipped in Plan 03-03; 3-bar animated wave glyph deferred per CONTEXT D-deferred ("the 3-bar animated wave glyph from PRD §5.2 lands in Phase 1 / Phase 7"). `--animate-wave` keyframe is declared in Phase 1's @theme; Phase 7 onboarding swaps the current static arrow for the 3-bar element using that animation token.
 - [ ] **TRANS-04**: Click expands panel — slides in from right at 340ms `cubic-bezier(.2,.7,.2,1)`, 330px wide, notes column stays editable (not dimmed)
 - [ ] **TRANS-05**: Each transcript line shows channel label ("Me" ink / "Them" grey) + JetBrains-Mono timestamp from meeting start (e.g. `00:11:02`)
 - [ ] **TRANS-06**: Auto-scrolls to bottom; pauses auto-scroll if user scrolls up
-- [ ] **TRANS-07**: Cursor blink on most-recent partial transcript indicates "still listening"
+- [~] **TRANS-07**: Cursor blink on most-recent partial transcript indicates "still listening" — *partial*: partial lines render at opacity 0.7 (dim signal); the explicit `animate-blink` cursor element is declared in Phase 1 @theme but not yet applied to TranscriptLine.tsx. To be wired during Phase 3 code-review fix cycle.
 - [x] **TRANS-08**: Transcript appears with < 2s lag using Deepgram (server-side pinned < 200ms by Plan 03-02 e2e_synthetic_audio.rs; full < 2s budget includes browser-side render — Plan 03-03 — and Deepgram round-trip — manual smoke)
 
 ### Augmented Notes (Hero Feature)
@@ -241,11 +241,11 @@ Finalized 2026-06-25 during roadmap creation. Every v1 requirement maps to exact
 | AUDIO-07 | Phase 2 | Pending |
 | TRANS-01 | Phase 3 (Plan 03-01) | Complete |
 | TRANS-02 | Phase 3 (Plan 03-01) | Complete |
-| TRANS-03 | Phase 3 | Pending |
+| TRANS-03 | Phase 3 (dock+tab) / Phase 7 (3-bar wave glyph) | Partial — dock + tab shipped 03-03; wave glyph deferred per CONTEXT |
 | TRANS-04 | Phase 3 | Pending |
 | TRANS-05 | Phase 3 | Pending |
 | TRANS-06 | Phase 3 | Pending |
-| TRANS-07 | Phase 3 | Pending |
+| TRANS-07 | Phase 3 | Partial — opacity 0.7 dim shipped; explicit blink cursor element to be wired in Phase 3 code-review fix cycle |
 | TRANS-08 | Phase 3 (Plan 03-02) | Complete (server-side ≤ 200ms; browser+network in 03-03 + manual smoke) |
 | NOTES-01 | Phase 4 | Pending |
 | NOTES-02 | Phase 4 | Pending |

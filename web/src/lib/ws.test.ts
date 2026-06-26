@@ -71,7 +71,7 @@ describe("useTranscriptWs", () => {
   });
 
   it("merges a partial then a final into the events list", async () => {
-    const { result } = renderHook(() => useTranscriptWs("meeting-abc"));
+    const { result } = renderHook(() => useTranscriptWs("meeting-abc", "test-token"));
 
     // Wait for socket to open.
     await waitFor(() => expect(result.current.connected).toBe(true));
@@ -115,7 +115,7 @@ describe("useTranscriptWs", () => {
   });
 
   it("keeps mic and system partials independent", async () => {
-    const { result } = renderHook(() => useTranscriptWs("meeting-xyz"));
+    const { result } = renderHook(() => useTranscriptWs("meeting-xyz", "test-token"));
     await waitFor(() => expect(result.current.connected).toBe(true));
     const ws = MockWebSocket.lastInstance!;
 
@@ -145,11 +145,11 @@ describe("useTranscriptWs", () => {
       value: { protocol: "https:", host: "yogurt.example" },
     });
 
-    renderHook(() => useTranscriptWs("meeting-secure"));
+    renderHook(() => useTranscriptWs("meeting-secure", "test-token"));
     await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
 
     expect(MockWebSocket.lastInstance!.url).toBe(
-      "wss://yogurt.example/ws/meetings/meeting-secure",
+      "wss://yogurt.example/ws/meetings/meeting-secure?token=test-token",
     );
   });
 
@@ -191,7 +191,7 @@ describe("useTranscriptWs", () => {
     }
     vi.stubGlobal("WebSocket", FailingWebSocket);
 
-    const { result } = renderHook(() => useTranscriptWs("meeting-flaky"));
+    const { result } = renderHook(() => useTranscriptWs("meeting-flaky", "test-token"));
 
     // Initial connect attempt happens synchronously inside useEffect; the
     // close fires on the next microtask. After 500ms + 1000ms + 2000ms of
@@ -232,7 +232,7 @@ describe("useTranscriptWs", () => {
     }
     vi.stubGlobal("WebSocket", FlakyThenStableMockWebSocket);
 
-    const { result } = renderHook(() => useTranscriptWs("meeting-stable"));
+    const { result } = renderHook(() => useTranscriptWs("meeting-stable", "test-token"));
 
     // After the initial-fail + 500ms reconnect, a second WS opens and stays.
     await waitFor(
