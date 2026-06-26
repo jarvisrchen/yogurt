@@ -36,6 +36,14 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../migrations/V003b__chat_messages_cascade.sql"
         )),
+        // Phase 7 (Plan 07-02): FTS5 keyword search across title +
+        // notes_md + transcript_text (LIB-07). The triggers in the SQL
+        // keep the index in sync on INSERT/UPDATE/DELETE; the
+        // `transcript_text` column is explicitly maintained by
+        // MeetingRepo::patch because the trigger only knows how to
+        // mirror the base columns and would otherwise leave the
+        // searchable transcript blank.
+        M::up(include_str!("../migrations/V004__meetings_fts.sql")),
     ])
 }
 

@@ -252,10 +252,93 @@ impl MeetingRepo {
             if n == 0 {
                 bail!("meeting not found: {id_owned}");
             }
+
+            // Phase 7 Plan 07-02: keep the FTS5 index's `transcript_text`
+            // column in sync. The V004 AFTER UPDATE trigger has already
+            // re-indexed `title` and `notes_md` from the new row, but the
+            // trigger writes '' for `transcript_text` (it has no JSON
+            // parser). This explicit UPDATE on `meetings_fts` fills the
+            // flattened transcript so search can match transcript words.
+            //
+            // We always run this UPDATE — even when only `title` /
+            // `notes_md` changed — because the trigger zeroed transcript_text
+            // and we need to restore the prior flattened transcript from
+            // the current `transcript_json`. The cost is one extra UPDATE
+            // per patch, which is amortized into the meeting-edit hot path.
+            let mut stmt = conn.prepare_cached(
+                "SELECT title, notes_md, transcript_json FROM meetings WHERE id = ?1",
+            )?;
+            let (title, notes_md, transcript_json): (String, String, String) = stmt
+                .query_row(params![id_owned], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })
+                .with_context(|| format!("re-read meeting for FTS sync id={id_owned}"))?;
+            let transcript_text = extract_transcript_text(&transcript_json);
+            conn.execute(
+                "UPDATE meetings_fts \
+                 SET title = ?1, notes_md = ?2, transcript_text = ?3 \
+                 WHERE rowid = (SELECT rowid FROM meetings WHERE id = ?4)",
+                params![title, notes_md, transcript_text, id_owned],
+            )
+            .with_context(|| format!("update meetings_fts id={id_owned}"))?;
             Ok(())
         })?;
         self.get(id)?
             .ok_or_else(|| anyhow::anyhow!("patch: row vanished after update"))
+    }
+
+    /// FTS5 keyword search across title + notes_md + transcript_text.
+    ///
+    /// `query`: free-text user input. Empty or whitespace-only input
+    /// short-circuits to `self.list()` (capped at `limit`) — the Library
+    /// UI relies on this to render the chronological feed when the
+    /// search pill is cleared.
+    ///
+    /// Quoting strategy: the user query is wrapped as
+    /// `"<sanitized>"*` so the FTS5 parser treats it as a single
+    /// prefix-matched phrase. Embedded `"` characters are escaped by
+    /// doubling them (the FTS5 string-quoting convention). This avoids
+    /// the FTS5 query-syntax operators (`OR`, `NEAR`, column filters)
+    /// leaking into the user input — typing `notes:foo` should search
+    /// for the literal string "notes:foo", not a column-restricted
+    /// query.
+    ///
+    /// Ranking: `bm25(meetings_fts)` puts the most-relevant row first;
+    /// ties break by `started_at DESC` so the newest of two equally-
+    /// scoring meetings wins.
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<Meeting>> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            // Truncate the chronological list to `limit` for parity with
+            // the matched-query branch — the REST handler caps `limit`
+            // at 200, so this never returns more than the caller asked.
+            let mut all = self.list()?;
+            all.truncate(limit);
+            return Ok(all);
+        }
+        // Escape `"` by doubling (FTS5 quoting), then wrap in quotes and
+        // suffix `*` for prefix matching. Empty after escaping is
+        // impossible because we trimmed above.
+        let escaped = trimmed.replace('"', "\"\"");
+        let match_expr = format!("\"{escaped}\"*");
+        self.db.with_conn(|conn| {
+            let mut stmt = conn.prepare_cached(
+                "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
+                        m.enriched_md, m.transcript_json, m.starred, \
+                        m.created_at, m.updated_at \
+                 FROM meetings m \
+                 JOIN meetings_fts f ON f.rowid = m.rowid \
+                 WHERE meetings_fts MATCH ?1 \
+                 ORDER BY bm25(meetings_fts), m.started_at DESC \
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![match_expr, limit as i64], row_to_meeting)?;
+            let mut out = Vec::new();
+            for r in rows {
+                out.push(r?);
+            }
+            Ok(out)
+        })
     }
 
     /// Delete the meeting row. Returns `Ok(true)` if a row was removed,
@@ -309,6 +392,50 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
         created_at: ms_to_dt(created_at_ms),
         updated_at: ms_to_dt(updated_at_ms),
     })
+}
+
+/// Phase 7 Plan 07-02: flatten the `transcript_json` blob into a single
+/// searchable string the FTS5 index can tokenize.
+///
+/// `transcript_json` is the wire shape produced by the Phase-3 transcript
+/// pipeline — an array of `{ "text": "...", ... }` (or `{ "transcript": "..." }`
+/// for older Deepgram payloads) objects. We concatenate every `.text` or
+/// `.transcript` string field separated by " ".
+///
+/// Invariants:
+/// - Returns `""` for empty / malformed / non-array JSON. Callers (FTS sync
+///   in `MeetingRepo::patch`) treat the empty string as "no transcript text"
+///   — that's correct: an unparseable transcript shouldn't match anything.
+/// - Does NOT walk arbitrarily-nested objects; only `arr[].text` or
+///   `arr[].transcript` at depth 1. Deeper Deepgram fields like `words[]`
+///   are skipped intentionally — the segment-level `text` already
+///   concatenates all the word strings.
+fn extract_transcript_text(transcript_json: &str) -> String {
+    let trimmed = transcript_json.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return String::new();
+    };
+    let Some(arr) = value.as_array() else {
+        return String::new();
+    };
+    let mut parts: Vec<&str> = Vec::with_capacity(arr.len());
+    for entry in arr {
+        // Prefer `.text` (current Phase-3 shape); fall back to `.transcript`
+        // for older payloads that may still be sitting in user DBs.
+        if let Some(t) = entry.get("text").and_then(|v| v.as_str()) {
+            if !t.is_empty() {
+                parts.push(t);
+            }
+        } else if let Some(t) = entry.get("transcript").and_then(|v| v.as_str()) {
+            if !t.is_empty() {
+                parts.push(t);
+            }
+        }
+    }
+    parts.join(" ")
 }
 
 fn ms_to_dt(ms: i64) -> DateTime<Utc> {
@@ -489,6 +616,153 @@ mod tests {
             .unwrap();
         assert!(repo.delete(&m.id).unwrap());
         assert!(repo.get(&m.id).unwrap().is_none());
+    }
+
+    // ─── Phase 7 Plan 07-02: FTS5 search ───────────────────────────────
+
+    #[test]
+    fn it_indexes_a_meeting_on_create_and_finds_by_title() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "Standup roadmap".into(),
+                started_at_unix_ms: None,
+                ..Default::default()
+            })
+            .unwrap();
+        let hits = repo.search("standup", 50).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, m.id);
+    }
+
+    #[test]
+    fn it_finds_by_notes_md_after_patch() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "T".into(),
+                started_at_unix_ms: None,
+                ..Default::default()
+            })
+            .unwrap();
+        repo.patch(
+            &m.id,
+            MeetingPatch {
+                notes_md: Some("- discuss palette".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let hits = repo.search("palette", 50).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, m.id);
+    }
+
+    #[test]
+    fn it_finds_by_transcript_text_after_patch() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "T".into(),
+                started_at_unix_ms: None,
+                ..Default::default()
+            })
+            .unwrap();
+        repo.patch(
+            &m.id,
+            MeetingPatch {
+                transcript_json: Some(
+                    r#"[{"text":"shipping the homebrew formula"}]"#.into(),
+                ),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let hits = repo.search("homebrew", 50).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, m.id);
+    }
+
+    #[test]
+    fn it_removes_from_index_on_delete() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "Findable".into(),
+                started_at_unix_ms: None,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(repo.delete(&m.id).unwrap());
+        let hits = repo.search("findable", 50).unwrap();
+        assert!(hits.is_empty(), "delete must drop the FTS index row");
+    }
+
+    #[test]
+    fn it_returns_full_list_on_empty_query() {
+        let repo = fresh_repo();
+        repo.create(NewMeeting {
+            title: "A".into(),
+            started_at_unix_ms: Some(1_000),
+            ..Default::default()
+        })
+        .unwrap();
+        repo.create(NewMeeting {
+            title: "B".into(),
+            started_at_unix_ms: Some(2_000),
+            ..Default::default()
+        })
+        .unwrap();
+        let hits = repo.search("", 50).unwrap();
+        let list = repo.list().unwrap();
+        assert_eq!(hits.len(), list.len());
+        assert_eq!(
+            hits.iter().map(|m| &m.id).collect::<Vec<_>>(),
+            list.iter().map(|m| &m.id).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn it_ranks_by_bm25() {
+        let repo = fresh_repo();
+        // Both meetings contain "palette"; meeting B contains it more
+        // times in notes_md, so bm25 should rank it ahead of A.
+        let a = repo
+            .create(NewMeeting {
+                title: "A".into(),
+                started_at_unix_ms: Some(1_000),
+                ..Default::default()
+            })
+            .unwrap();
+        let b = repo
+            .create(NewMeeting {
+                title: "B".into(),
+                started_at_unix_ms: Some(2_000),
+                ..Default::default()
+            })
+            .unwrap();
+        repo.patch(
+            &a.id,
+            MeetingPatch {
+                notes_md: Some("- palette discussion".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        repo.patch(
+            &b.id,
+            MeetingPatch {
+                notes_md: Some("- palette refresh\n- palette tokens".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let hits = repo.search("palette", 50).unwrap();
+        assert_eq!(hits.len(), 2, "both meetings should match");
+        assert_eq!(
+            hits[0].id, b.id,
+            "bm25 should rank the more-frequent match first",
+        );
     }
 
     #[test]
