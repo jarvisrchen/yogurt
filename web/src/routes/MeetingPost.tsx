@@ -82,6 +82,14 @@ export function MeetingPost() {
     preloadedEnrichedMd,
   );
   const [notesMd, setNotesMd] = useState<string>("");
+  // BL-3: track the LIVE markdown serialization of the editor so Re-enhance
+  // posts the user's current edits, not the stale GET-fetched DB row. Seeded
+  // from `enrichedMd` on mount/swap; updated by YogurtEditor's onChange every
+  // time the user types. Without this, a user who edits a grey bullet
+  // (promotes to black per NOTES-10) then clicks Re-enhance LOSES the edit.
+  const [liveMarkdown, setLiveMarkdown] = useState<string>(
+    preloadedEnrichedMd ?? "",
+  );
   const [transcriptJson, setTranscriptJson] = useState<string>("[]");
   const [title, setTitle] = useState<string | undefined>(undefined);
   const [startedAtUnixMs, setStartedAtUnixMs] = useState<number | undefined>(
@@ -249,9 +257,23 @@ export function MeetingPost() {
     return () => clearTimeout(handle);
   }, [enrichedMd, transcriptJson]);
 
+  // BL-3: whenever the editor swaps to new enriched content (initial load
+  // from GET, or after a Re-enhance completes), seed `liveMarkdown` so a
+  // subsequent Re-enhance click that fires BEFORE any user keystroke still
+  // posts the server's latest version (not an empty string).
+  useEffect(() => {
+    if (enrichedMd !== undefined) {
+      setLiveMarkdown(enrichedMd);
+    }
+  }, [enrichedMd]);
+
   // Re-enhance callbacks.
   const handleEnhanced = useCallback((response: EnhanceResponse) => {
     setEnrichedMd(response.enriched_md);
+  }, []);
+  // BL-3: capture every editor mutation so Re-enhance has the live content.
+  const handleEditorChange = useCallback((markdown: string) => {
+    setLiveMarkdown(markdown);
   }, []);
   const handleEnhancing = useCallback((busy: boolean) => {
     setEnhancing(busy);
@@ -302,7 +324,11 @@ export function MeetingPost() {
         {token && (
           <ReEnhanceButton
             meetingId={meetingId}
-            notesMd={notesMd}
+            // BL-3: post the LIVE editor markdown (user edits + any
+            // promoted-grey-to-black content), NOT the stale notes_md row
+            // from the DB. Falling back to notesMd keeps the very first
+            // Re-enhance (no edits yet, no enriched_md hydrated) sensible.
+            notesMd={liveMarkdown || notesMd}
             transcriptJson={transcriptJson}
             title={title}
             startedAtUnixMs={startedAtUnixMs}
@@ -347,6 +373,7 @@ export function MeetingPost() {
           initialMarkdown={enrichedMd ?? ""}
           enrichedMarkdown={enrichedMd}
           editable={true}
+          onChange={handleEditorChange}
           onTranscriptLinkClick={handleTranscriptLinkClick}
         />
       </main>
