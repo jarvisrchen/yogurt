@@ -32,6 +32,12 @@ time = { workspace = true }
 # Phase 4 (Plan 04-03): the enhance handler consumes both Phase 4 crates.
 yogurt-prompts = { path = "../yogurt-prompts" }
 yogurt-notes = { path = "../yogurt-notes" }
+# BL-2 (Phase 4 review): server-side HTML sanitization for enriched_md before
+# it's persisted + sent to the browser. The LLM can hallucinate <script>
+# tags + onerror handlers; ammonia's allowlist keeps only the wire-format
+# spans (data-ai-grey, data-transcript-link).
+ammonia = { workspace = true }
+html-escape = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

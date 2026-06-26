@@ -307,3 +307,105 @@ async fn it_gets_a_meeting_after_enhance() {
         .unwrap();
     assert_eq!(resp_403.status(), 403, "missing token must be 403");
 }
+
+/// BL-2 regression: malicious notes + transcript MUST be neutralized before
+/// the enriched_md leaves the server. Any of `<script>`, `<img onerror=...>`,
+/// `<iframe>`, or `javascript:` URLs in notes/transcript would otherwise
+/// reach the browser DOM via markdown-it's `html: true` parser.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
+    // SAFETY: mirrors `it_enhances_a_meeting_end_to_end` — clear LLM env so
+    // MockLlm is the deterministic path.
+    unsafe {
+        std::env::remove_var("YOGURT_LLM_BASE_URL");
+        std::env::remove_var("YOGURT_LLM_API_KEY");
+        std::env::remove_var("YOGURT_LLM_MODEL");
+    }
+
+    let (addr, token, _handle, _tmp, _db_path) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let create: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let meeting_id = create["id"].as_str().unwrap().to_string();
+
+    // Adversarial notes: each line carries a different XSS vector.
+    let notes_md = "- pricing\n- <script>alert('xss-notes')</script>\n- <img src=x onerror=\"alert('xss-img')\">\n- [click](javascript:alert('xss-link'))\n";
+    let transcript_json = serde_json::json!([
+        {
+            "ts_ms": 60000,
+            "channel": "mic",
+            "text": "<script>alert('xss-transcript')</script> debate"
+        },
+        {
+            "ts_ms": 120000,
+            "channel": "system",
+            "text": "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe> pricing"
+        }
+    ])
+    .to_string();
+
+    let body = serde_json::json!({
+        "notes_md": notes_md,
+        "transcript_json": transcript_json,
+        "title": "xss-regression",
+        "started_at_unix_ms": 1_700_000_000_000_i64,
+    });
+
+    let resp = client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "enhance should succeed");
+    let json: serde_json::Value = resp.json().await.unwrap();
+    let enriched = json["enriched_md"].as_str().unwrap();
+
+    // The sanitizer + html-escape layer must neutralize every dangerous
+    // construct. Escaped forms like `&lt;script&gt;` are SAFE — they render
+    // as text, not as a tag. We therefore assert that NO raw `<script>`,
+    // `<img`, `<iframe` survives — only escaped (`&lt;script&gt;`) or
+    // stripped variants. Live attributes (` onerror=`, ` srcdoc=`) only
+    // matter if attached to a live tag; since the tags are all stripped or
+    // escaped, attribute substrings appearing inside escaped tag bodies
+    // (like `&lt;iframe srcdoc="..."&gt;`) are inert text.
+    assert!(
+        !enriched.contains("<script"),
+        "<script tags must be stripped from enriched_md. got: {enriched}"
+    );
+    assert!(
+        !enriched.contains("<img"),
+        "<img tags must be stripped from enriched_md. got: {enriched}"
+    );
+    assert!(
+        !enriched.contains("<iframe"),
+        "<iframe tags must be stripped from enriched_md. got: {enriched}"
+    );
+    // Allowlisted live tags are <span> with data-* attrs only. Confirm no
+    // live <a>, <link>, <object>, <embed>, <form>, <input>, <style> made it
+    // through.
+    for forbidden in [
+        "<a ", "<a>", "<link", "<object", "<embed", "<form", "<input", "<style",
+    ] {
+        assert!(
+            !enriched.contains(forbidden),
+            "{forbidden} must not survive sanitization. got: {enriched}"
+        );
+    }
+
+    // The wire-format spans MUST survive (otherwise the editor can't render
+    // the augmented notes).
+    assert!(
+        enriched.contains("data-ai-grey"),
+        "data-ai-grey spans must survive sanitization. got: {enriched}"
+    );
+}

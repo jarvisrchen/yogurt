@@ -12,9 +12,18 @@ pub(crate) mod llm_openai;
 pub(crate) mod markdown_exporter;
 pub mod meetings;
 mod routes;
+// Phase 4 BL-2 (XSS hardening): HTML allowlist sanitizer applied to the
+// final enriched_md before it leaves the enhance handler. Re-exported as
+// `__test_only_sanitize` for test access.
+pub(crate) mod sanitize;
 pub mod session;
 pub mod storage;
 pub mod ws;
+
+#[doc(hidden)]
+pub mod __test_only_sanitize {
+    pub use crate::sanitize::sanitize_enriched_md;
+}
 
 /// Phase 4 (Plan 04-02) test-only re-export of the otherwise crate-private
 /// `markdown_exporter` module. Wiring (call from the enhance handler) lands

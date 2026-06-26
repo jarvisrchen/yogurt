@@ -38,6 +38,13 @@ impl MockLlm {
         let transcript: Vec<Seg> = serde_json::from_str(transcript_json).unwrap_or_default();
 
         let mut out = String::new();
+        // User notes are preserved verbatim (the merge layer treats them as
+        // user-source markdown and pulldown-cmark will escape any HTML on
+        // parse). Notes pass through unmodified here; the BL-2 sanitization
+        // happens at the enrich-handler layer via `ammonia::clean` on the
+        // final enriched_md, AND `render::wrap_ai` HTML-escapes its inner
+        // text. Together those two layers neutralize XSS regardless of
+        // whether the input came from notes, transcript, or LLM.
         out.push_str(notes.trim_start());
         if !out.ends_with('\n') {
             out.push('\n');
@@ -50,7 +57,12 @@ impl MockLlm {
             let stamp = format!("{:02}:{:02}", ts / 60, ts % 60);
             // Mock "summary" = first 8 words of the segment.
             let words: Vec<&str> = seg.text.split_whitespace().take(8).collect();
-            let summary = words.join(" ");
+            let summary_raw = words.join(" ");
+            // BL-2: ESCAPE transcript-derived text before interpolating into
+            // the wire-format span. Transcript text is network-fed (Deepgram)
+            // and untrusted — `<script>` in transcript captions WILL fire as
+            // <script> in the browser DOM without this escape.
+            let summary = html_escape::encode_safe(&summary_raw);
             out.push_str(&format!(
                 "- <span data-ai-grey data-ts=\"{ts}\">{summary} <span data-transcript-link data-ts=\"{ts}\">↳ {stamp}</span></span>\n"
             ));
