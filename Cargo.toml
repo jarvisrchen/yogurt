@@ -5,6 +5,10 @@ members = [
     "crates/yogurt-server",
     "crates/yogurt-audio",
     "crates/yogurt-stt",
+    # Phase 4: bundled prompts.
+    "crates/yogurt-prompts",
+    # Phase 4: augmented-notes structural AST diff + merge (Plan 04-02).
+    "crates/yogurt-notes",
 ]
 
 [workspace.package]
@@ -79,6 +83,17 @@ rtrb = "0.3"
 parking_lot = "0.12"
 # typed errors
 thiserror = "2"
+# Phase 4: prompt templating engine (yogurt-prompts crate). Native placeholder
+# syntax is `{name}` (single braces); the user-facing requirement names them
+# `{{NOTES}}` / `{{TRANSCRIPT}}` — CONTEXT D-16 documents the resolution.
+tinytemplate = "1.2"
+# Phase 4 (Plan 04-02): markdown AST for the augmented-notes structural diff.
+pulldown-cmark = { version = "0.12", default-features = false }
+# Phase 4 (Plan 04-02): lightweight regex used to strip wire-format marker
+# spans inside block_key() without pulling in all of `regex`.
+regex-lite = "0.1"
+# Phase 4 (Plan 04-02): snapshot/fixture testing surface for diff tests.
+insta = { version = "1.41", features = ["json"] }
 
 [profile.release]
 lto = "thin"
