@@ -60,7 +60,8 @@ async fn it_initializes_db_with_wal_and_tables() {
         "expected idx_chat_messages_meeting_id, got {indexes:?}"
     );
 
-    // (d) Phase 0 must NOT contain enriched_doc_json — that's Phase 4.
+    // (d) Phase 4 (STORE-01 / CONTEXT D-11): meetings table MUST contain
+    //     enriched_doc_json after V0004 runs.
     let meetings_cols: Vec<String> = conn
         .prepare("PRAGMA table_info(meetings)")
         .unwrap()
@@ -69,12 +70,45 @@ async fn it_initializes_db_with_wal_and_tables() {
         .filter_map(Result::ok)
         .collect();
     assert!(
-        !meetings_cols.contains(&"enriched_doc_json".to_string()),
-        "enriched_doc_json must be deferred to Phase 4; current cols: {meetings_cols:?}"
+        meetings_cols.contains(&"enriched_doc_json".to_string()),
+        "Phase 4 V0004 must add enriched_doc_json; current cols: {meetings_cols:?}"
     );
+    // Phase 0 schema columns must still be present (no regression).
+    for required in ["id", "notes_md", "enriched_md", "transcript_json"] {
+        assert!(
+            meetings_cols.contains(&required.to_string()),
+            "Phase 0 column {required} regressed; current cols: {meetings_cols:?}"
+        );
+    }
 
     // (e) Idempotency: a second init on the same path must succeed.
+    //     This also exercises the V0004 guard (column already present →
+    //     migration must skip the ALTER without erroring).
     let _again = Storage::init_at(&db_path).expect("second init is idempotent");
+}
+
+#[tokio::test]
+async fn it_adds_enriched_doc_json_only_once_across_multiple_inits() {
+    // STORE-01 / Phase 4: the V0004 migration must be idempotent — calling
+    // `Storage::init_at` repeatedly must NOT raise "duplicate column" from
+    // SQLite (which it would if the runner blindly re-ALTERed).
+    let tmp = TempDir::new().expect("tempdir");
+    let db_path = tmp.path().join("db.sqlite");
+
+    for _ in 0..3 {
+        let _s = Storage::init_at(&db_path).expect("idempotent init");
+    }
+
+    let conn = Connection::open(&db_path).expect("reopen");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('meetings') \
+             WHERE name = 'enriched_doc_json'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "enriched_doc_json must appear exactly once");
 }
 
 #[cfg(unix)]
