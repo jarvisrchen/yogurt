@@ -49,6 +49,16 @@ yogurt-notes = { path = "../yogurt-notes" }
 # spans (data-ai-grey, data-transcript-link).
 ammonia = { workspace = true }
 html-escape = { workspace = true }
+# Phase 6 (Plan 06-01): optional tempdir for the test_support module.
+# Activated by the `test-support` feature; release builds never link it.
+tempfile = { workspace = true, optional = true }
+
+[features]
+# Phase 6 (Plan 06-01): expose `test_support::{MockChunksLlm,
+# run_with_mock_llm, seed_meeting}` to integration tests. Activated by
+# `[dev-dependencies] yogurt-server = { path = ".", features = ["test-support"] }`
+# so release builds NEVER compile the helpers.
+test-support = ["dep:tempfile"]
 
 [dev-dependencies]
 tokio = { workspace = true }
@@ -56,3 +66,4 @@ reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
+yogurt-server = { path = ".", features = ["test-support"] }

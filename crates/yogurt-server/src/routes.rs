@@ -55,6 +55,13 @@ pub fn router(state: AppState) -> Router {
         // 404 if the meeting hasn't been enhanced yet (row only exists
         // after first enhance per Plan 04-03's UPSERT contract).
         .route("/api/meetings/{id}", get(get_meeting))
+        // Phase 6 (Plan 06-01): in-meeting chat REST surface.
+        // POST inserts a user + placeholder assistant row and spawns the
+        // LLM streaming task; GET hydrates the chat window on remount.
+        .route(
+            "/api/meetings/{id}/chat",
+            post(crate::api::chat::post_chat).get(crate::api::chat::get_chat_history),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session_token,

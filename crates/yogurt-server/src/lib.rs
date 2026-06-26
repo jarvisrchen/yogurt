@@ -47,6 +47,12 @@ pub mod __test_only_llm_mock {
     pub use crate::llm_mock::MockLlm;
 }
 
+/// Phase 6 (Plan 06-01) chat integration-test support. Compiled only when
+/// `cargo test`-driven dev-dependencies activate the `test-support` feature
+/// — release builds never see this code.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 /// Phase 4 (Plan 04-02) test-only re-export of the otherwise crate-private
 /// `markdown_exporter` module. Wiring (call from the enhance handler) lands
 /// in Plan 04-03; until then the module surface is exercised only by
