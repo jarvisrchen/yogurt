@@ -210,3 +210,100 @@ async fn it_rejects_enhance_without_session_token() {
         .unwrap();
     assert_eq!(resp.status(), 403, "missing token must be 403");
 }
+
+/// Plan 04-04: persistence acceptance gate (NOTES-13 step 10).
+///
+/// After enhance writes the row, `GET /api/meetings/{id}` must return the
+/// persisted columns so the post-meeting route can hydrate on direct-link
+/// or refresh. 404 on unknown ids; 403 without token.
+#[tokio::test(flavor = "multi_thread")]
+async fn it_gets_a_meeting_after_enhance() {
+    unsafe {
+        std::env::remove_var("YOGURT_LLM_BASE_URL");
+        std::env::remove_var("YOGURT_LLM_API_KEY");
+        std::env::remove_var("YOGURT_LLM_MODEL");
+    }
+
+    let (addr, token, _handle, _tmp, _db_path) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // 1) Create a meeting + run enhance so the row exists.
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let meeting_id = created["id"].as_str().expect("id").to_string();
+
+    let _enhance_resp = client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- launch checklist\n",
+            "transcript_json": "[{\"ts_ms\":60000,\"channel\":\"mic\",\"text\":\"We need to finalize the launch checklist before Friday\"}]",
+            "title": "Launch sync",
+            "started_at_unix_ms": 1_700_000_000_000_i64,
+            "ended_at_unix_ms": 1_700_000_300_000_i64,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // 2) GET the meeting — must return all persisted columns.
+    let get_resp = client
+        .get(format!("http://{addr}/api/meetings/{meeting_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), 200, "GET must return 200 after enhance");
+    let body: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(body["id"].as_str().unwrap(), meeting_id);
+    assert_eq!(body["title"].as_str().unwrap(), "Launch sync");
+    assert_eq!(
+        body["notes_md"].as_str().unwrap(),
+        "- launch checklist\n",
+        "GET returns notes_md verbatim",
+    );
+    let enriched = body["enriched_md"].as_str().expect("enriched_md");
+    assert!(
+        enriched.contains("- launch checklist"),
+        "GET enriched_md preserves user notes. got: {enriched}",
+    );
+    assert!(
+        enriched.contains("data-ai-grey"),
+        "GET enriched_md contains AI spans. got: {enriched}",
+    );
+    assert_eq!(
+        body["started_at_unix_ms"].as_i64().unwrap(),
+        1_700_000_000_000,
+        "GET preserves started_at_unix_ms",
+    );
+    assert_eq!(
+        body["ended_at_unix_ms"].as_i64().unwrap(),
+        1_700_000_300_000,
+        "GET preserves ended_at_unix_ms",
+    );
+
+    // 3) Unknown meeting id → 404.
+    let unknown_id = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    let resp_404 = client
+        .get(format!("http://{addr}/api/meetings/{unknown_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_404.status(), 404, "unknown meeting must be 404");
+
+    // 4) No token → 403 (WR-06).
+    let resp_403 = client
+        .get(format!("http://{addr}/api/meetings/{meeting_id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_403.status(), 403, "missing token must be 403");
+}
