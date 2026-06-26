@@ -44,6 +44,8 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         // MemoryKeyStore so this test doesn't touch the real Keychain.
         db: yogurt_db::Db::open_in_memory().unwrap(),
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
+        // Phase 6 (Plan 06-01): test wiring uses MockLlm.
+        llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
     };
     (state, token_str, tmp)
 }

@@ -55,6 +55,8 @@ async fn spawn() -> TestSetup {
         // MemoryKeyStore so this test doesn't touch the real Keychain.
         db: yogurt_db::Db::open_in_memory().unwrap(),
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
+        // Phase 6 (Plan 06-01): test wiring uses MockLlm.
+        llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

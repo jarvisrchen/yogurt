@@ -28,7 +28,9 @@ use std::time::Duration;
 
 use yogurt_db::keychain::{ApiKeyStore, KeychainStore, MemoryKeyStore};
 use yogurt_db::Db;
+use yogurt_llm::LlmClient;
 
+use crate::llm_mock::MockLlm;
 use crate::markdown_exporter::MarkdownExporter;
 use crate::meetings;
 use crate::session::SessionToken;
@@ -56,6 +58,13 @@ pub struct AppState {
     /// Phase 5 (Plan 05-02): API-key storage abstraction. `KeychainStore`
     /// in production, `MemoryKeyStore` in tests.
     pub keys: Arc<dyn ApiKeyStore>,
+    /// Phase 6 (Plan 06-01): LLM client used by the chat handler's
+    /// `spawn_stream` task. Production defaults to `MockLlm` here; the
+    /// hot-swap to a Keychain-backed `OpenAiCompatClient` will land with the
+    /// Phase 6 settings-driven provider lookup. Held as `Arc<dyn LlmClient>`
+    /// so tests can inject a deterministic mock without touching the rest
+    /// of the state surface.
+    pub llm: Arc<dyn LlmClient>,
 }
 
 /// Configuration for production constructors. Mirrors the field set of
@@ -110,6 +119,10 @@ impl AppState {
             // unit-struct form silently no-op'd set_password() under
             // keyring 3.6.x on macOS in 2026.
             keys: Arc::new(KeychainStore::new()?),
+            // Phase 6 default: MockLlm. The Phase 6 follow-up (settings UI)
+            // will swap to a Keychain-backed OpenAiCompatClient inside
+            // run_with_config based on the active provider row.
+            llm: Arc::new(MockLlm),
         })
     }
 
@@ -151,6 +164,7 @@ impl AppState {
             prompts,
             db: Db::open_in_memory()?,
             keys: Arc::new(MemoryKeyStore::default()),
+            llm: Arc::new(MockLlm),
         })
     }
 }
