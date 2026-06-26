@@ -35,3 +35,10 @@ default = []
 # Enable the synthetic sine-wave generator outside of `cargo test`.
 # Phase 5 settings may surface this as a debug-input source.
 synthetic = []
+
+# tests/synthetic.rs reaches into the synthetic module via the public API; the
+# integration-test crate does not inherit the lib's `cfg(test)` gate, so it
+# needs the feature explicitly. (Phase 3 deferred D-INT-01.)
+[[test]]
+name = "synthetic"
+required-features = ["synthetic"]
