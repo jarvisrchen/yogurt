@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Plan 03-02 complete — meetings::Registry wires yogurt-audio (Frame broadcast) to yogurt-stt (AudioChunk → TranscriptEvent broadcast) per meeting; 3 REST endpoints (POST /api/meetings, /start, /stop) + GET /ws/meetings/{id} mounted; cross-thread !Send bridge (std::thread owns AudioStream + oneshot for readiness/shutdown) handles cpal::Stream's !Send constraint; < 200ms server-side fan-out lag pinned by synthetic-audio E2E test (actual ≈ 5-10ms)
-last_updated: "2026-06-26T00:58:00.000Z"
-last_activity: 2026-06-26 — Phase 3 Plan 02 complete: meetings::Registry + AppState.meetings + 3 REST + 1 WS route + __test_router; 4 new tests pass (2 REST on 17890/17891, 1 WS fan-out on 17892, 1 E2E < 200ms lag on 17893); 35 total yogurt-server tests pass (11 suites); 3 commits (69ed51f, ca0d4d0, 2dbb398); 3 deviations auto-fixed (Rule 1 AudioStream !Send + std::thread bridge; Rule 1 axum 0.8 `{id}` not `:id`; Rule 2 build_test_state helper for tempfile-backed AppState); 1 scope deferral logged (D-INT-02: per-meeting WS not yet behind Origin+token gate — Phase 5 hardening); TRANS-01, TRANS-02, TRANS-08 complete
+status: "Phase 4 Wave 2 complete: YogurtEditor (TipTap aiGrey mark + transcriptLink inline atom + markdown bridge + 660px hero column) renders the swatch contract; POST /api/meetings/:id/enhance ties yogurt-prompts → OpenAiCompatClient/MockLlm → yogurt-notes::merge_notes → SQLite UPSERT (notes_md + transcript_json + enriched_md + enriched_doc_json) → MarkdownExporter → WS enhance_progress events end-to-end. Per-meeting events_tx broadcast added to Meeting struct so non-transcript JSON events ride on the same WS as transcripts. Integration test asserts wire-format spans round-trip across HTTP response + on-disk .md file + SQLite column. Promote-on-edit appendTransaction plugin ships; jsdom render tests pin parseHTML/renderHTML shapes; ProseMirror-level smoke deferred to 04-04."
+stopped_at: "Plan 04-03 complete (3 commits: da6fab5 web editor stack, 3483d90 enhance endpoint + meetings/ws/lib refactor, cbbf86b summary docs). 89 web tests pass; 57 yogurt-server tests pass (105 workspace). Ready for Plan 04-04 (post-meeting MeetingPost.tsx host page: EnhancingBanner with 1.4s recpulse + 1.8s enhancing-bar + JetBrains-Mono char count; ShimmerSkeleton at 140/340/560/760ms stagger; ReEnhanceButton; Legend swatch contract top-right; click-to-jump transcript dock integration via window.dispatchEvent('yogurt:transcript:scrollTo'); end-meeting → /meeting/:id/post navigation)."
+last_updated: "2026-06-26T02:30:00.000Z"
+last_activity: "2026-06-26 — Plan 04-03 shipped (3 commits da6fab5/3483d90/cbbf86b): web TipTap aiGrey + transcriptLink + YogurtEditor + markdown bridge + 660px column + 6 web tests; server POST /api/meetings/:id/enhance handler + Meeting.events_tx + ws fan-out + AppState (markdown_exporter + prompts) + RunConfig.notes_dir + 2 enhance integration tests; __test_only_aux_state helper to keep test crates' AppState construction DRY; 5 deviations (Rule 3 @tiptap/pm direct dep + tiptap@2 pin; Rule 3 AppState/RunConfig migration across 6 test files; Rule 1 clippy doc_lazy_continuation rewrite; Rule 2 events_tx broadcast for enhance_progress; Rule 2 endpoint body carries notes_md+transcript_json since Meeting struct lacks them); NOTES-01/03/04/06/09/10/12 satisfied (NOTES-02 legend deferred to 04-04 host page)."
 progress:
   total_phases: 10
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 32
-  completed_plans: 9
-  percent: 28
+  completed_plans: 14
+  percent: 44
 ---
 
 # Project State
