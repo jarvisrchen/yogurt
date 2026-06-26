@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Audio Capture (HIGHEST RISK)** - ScreenCaptureKit mic + system loopback gated behind a dual-channel PCM ear-test spike, meeting-relative clock, Swift sidecar fallback documented (completed 2026-06-25)
 - [x] **Phase 3: Cloud STT + Live Transcript** - SttEngine trait + Deepgram adapter, right-edge live transcript dock with Me/Them channel labels (completed 2026-06-26)
 - [x] **Phase 4: Augmented Notes Hero (HIGHEST PAYOFF)** - TipTap aiGrey + transcriptTs marks, server-side AST diff, enriched_doc_json schema migration, minimal hardcoded LLM client, bundled enhance.md (completed 2026-06-26)
-- [ ] **Phase 5: LLM Client + Settings + Keychain** - LlmClient trait, settings UI (Model/Transcription/Audio/General), Keychain eager-loaded at startup
+- [x] **Phase 5: LLM Client + Settings + Keychain** - LlmClient trait, settings UI (Model/Transcription/Audio/General), Keychain eager-loaded at startup (completed 2026-06-26)
 - [ ] **Phase 6: In-Meeting Chat** - Floating Ask-this-meeting pill + chat window streaming against transcript context
 - [ ] **Phase 7: Library + Onboarding + States** - Library home view, /welcome flow, empty/error states, FTS5 keyword search, copy/reveal-in-finder, inline-editable title, delete-card UI
 - [ ] **Phase 8: Local STT (whisper.cpp)** - whisper-rs adapter gated behind local-stt Cargo feature, VAD + dual whisper_state, M1 Air benchmark
@@ -205,7 +205,7 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 | 2. Audio Capture | 3/3 | Complete   | 2026-06-25 |
 | 3. Cloud STT + Live Transcript | 3/3 | Complete   | 2026-06-26 |
 | 4. Augmented Notes Hero | 4/4 | Complete   | 2026-06-26 |
-| 5. LLM Client + Settings + Keychain | 0/TBD | Not started | - |
+| 5. LLM Client + Settings + Keychain | 4/4 | Complete   | 2026-06-26 |
 | 6. In-Meeting Chat | 0/TBD | Not started | - |
 | 7. Library + Onboarding + States | 0/TBD | Not started | - |
 | 8. Local STT (whisper.cpp) | 0/TBD | Not started | - |
