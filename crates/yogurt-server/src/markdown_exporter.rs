@@ -43,6 +43,20 @@ impl MarkdownExporter {
         &self.notes_dir
     }
 
+    /// Phase 7 (Plan 07-03) — resolve the expected on-disk path for a
+    /// meeting WITHOUT writing the file. Used by `GET /:id/markdown` and
+    /// `POST /:id/reveal` so we can locate (and if missing, lazily re-emit)
+    /// the markdown file for any meeting in the SQLite directory.
+    ///
+    /// Returns the same filename `write()` would produce for the same
+    /// inputs — same `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md` derivation —
+    /// so it's safe to use as a pure lookup. Returns an error only if
+    /// `started_at_unix_ms` is outside the legal `OffsetDateTime` range.
+    pub fn path_for(&self, m: &Meeting<'_>) -> Result<PathBuf> {
+        let fname = filename_for(m)?;
+        Ok(self.notes_dir.join(fname))
+    }
+
     /// Atomic write: serialize body to `<final>.tmp`, fsync, then rename
     /// to the final path. Filename: `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md`
     /// where the date is derived from `started_at_unix_ms` (UTC), `<slug>`

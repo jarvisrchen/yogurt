@@ -23,7 +23,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -50,6 +50,15 @@ pub fn router() -> Router<AppState> {
             "/api/meetings/{id}",
             get(get_one).patch(patch_one).delete(delete_one),
         )
+        // Phase 7 Plan 07-03 — per-meeting markdown affordances.
+        // `GET /:id/markdown` returns the on-disk Phase-4 MarkdownExporter
+        // file (front-matter + body) so the kebab-menu "Copy markdown"
+        // copies the exact bytes the user would see if they opened the
+        // file in Finder. `POST /:id/reveal` shells out to `open -R` on
+        // macOS — registered as POST (not GET) because it has an
+        // observable side-effect (Finder activation).
+        .route("/api/meetings/{id}/markdown", get(get_markdown))
+        .route("/api/meetings/{id}/reveal", post(reveal_in_finder))
 }
 
 /// Body for `POST /api/meetings`. Both fields are optional — the Library
@@ -256,6 +265,114 @@ async fn patch_one(
     .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
     .map_err(ApiError::from)?;
     Ok(Json(m))
+}
+
+/// Build the borrowed `ExpMeeting` view the `MarkdownExporter` accepts.
+/// Mirrors `AppState::patch_and_export` — prefer the enriched body over
+/// raw notes when both exist, so the on-disk file represents the latest
+/// LLM-augmented output (matches Phase 4 §5.7 invariant).
+fn exporter_view(m: &Meeting) -> ExpMeeting<'_> {
+    ExpMeeting {
+        id: &m.id,
+        title: &m.title,
+        started_at_unix_ms: m.started_at,
+        ended_at_unix_ms: m.ended_at,
+        body_md: m.enriched_md.as_deref().unwrap_or(&m.notes_md),
+    }
+}
+
+/// `GET /api/meetings/{id}/markdown` — return the on-disk Phase-4
+/// MarkdownExporter file for this meeting as `text/markdown`. If the
+/// file is missing (hand-deleted, fresh meeting that never funneled
+/// through the exporter), we lazily re-emit it via `MarkdownExporter::write`
+/// so the kebab-menu Copy never silently returns stale content.
+async fn get_markdown(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<(axum::http::HeaderMap, String), ApiError> {
+    let repo = s.meeting_repo.clone();
+    let exporter = s.markdown_exporter.clone();
+    let id_for_blocking = id.clone();
+    let body = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+        let m = repo
+            .get(&id_for_blocking)?
+            .ok_or_else(|| anyhow::anyhow!("meeting not found"))?;
+        let path = exporter.path_for(&exporter_view(&m))?;
+        // Idempotent: write if missing (covers the rare case where the
+        // user hand-deleted the file from ~/.yogurt/notes/ but the
+        // SQLite row survived).
+        if !path.exists() {
+            exporter.write(&exporter_view(&m))?;
+        }
+        Ok(std::fs::read_to_string(&path)?)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
+
+    let mut h = axum::http::HeaderMap::new();
+    h.insert(
+        axum::http::header::CONTENT_TYPE,
+        "text/markdown; charset=utf-8"
+            .parse()
+            .expect("static content-type header value"),
+    );
+    Ok((h, body))
+}
+
+/// `POST /api/meetings/{id}/reveal` — open Finder with the on-disk
+/// markdown file selected (`open -R <path>`). 204 on success. macOS-only
+/// per project constraints; on non-macOS the endpoint still returns
+/// 204 after locating/writing the file (no-op shell out is cleaner than
+/// a 501 for cross-platform devs running the test suite).
+async fn reveal_in_finder(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let repo = s.meeting_repo.clone();
+    let exporter = s.markdown_exporter.clone();
+    let id_for_blocking = id.clone();
+    let path = tokio::task::spawn_blocking(move || -> anyhow::Result<std::path::PathBuf> {
+        let m = repo
+            .get(&id_for_blocking)?
+            .ok_or_else(|| anyhow::anyhow!("meeting not found"))?;
+        let path = exporter.path_for(&exporter_view(&m))?;
+        if !path.exists() {
+            exporter.write(&exporter_view(&m))?;
+        }
+        Ok(path)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        // `open -R <path>` reveals (and selects) the file in Finder.
+        // We deliberately don't pipe through `open -a Finder <path>` —
+        // that would *open* the file in the default editor, not reveal
+        // it in Finder. Shell out off the tokio reactor via
+        // spawn_blocking; `open` returns quickly but the syscall is
+        // technically blocking.
+        let status = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("open").arg("-R").arg(&path).status()
+        })
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?;
+        if !status.success() {
+            return Err(ApiError::Internal(anyhow::anyhow!(
+                "open -R failed: {status}"
+            )));
+        }
+    }
+    // On non-macOS we intentionally swallow the reveal — the path
+    // exists, the SQLite row exists, and there's no Finder to talk to.
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete_one(
