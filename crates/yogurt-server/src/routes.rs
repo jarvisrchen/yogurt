@@ -185,9 +185,14 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
 /// surfaces (Phase 7 library scroll-restoration).
 async fn get_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     let id_str = id.to_string();
-    let writer = state.storage.writer();
+    // HI-1: use the read pool for SELECT queries. The writer Mutex was
+    // serializing every GET behind every concurrent enhance UPSERT — a
+    // 200ms LLM-bound write would stall every page refresh on the post
+    // route. The read pool is sized to 4 connections with `query_only=ON`
+    // so SELECTs go in parallel.
+    let reader = state.storage.read();
     let row = {
-        let conn = match writer.lock() {
+        let conn = match reader.lock() {
             Ok(c) => c,
             Err(e) => {
                 return (

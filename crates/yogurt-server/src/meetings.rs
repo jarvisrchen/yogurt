@@ -119,6 +119,30 @@ impl Registry {
         self.meetings.read().await.get(id).cloned()
     }
 
+    /// HI-9: Re-hydrate a known-to-exist meeting (caller has verified the
+    /// SQLite row) into a fresh in-memory Meeting. The audio/transcript
+    /// broadcasts are empty (recording is over by definition — the meeting
+    /// only got persisted to SQLite if `enhance` ran), but `events_tx` is
+    /// live so subsequent Re-enhance calls can still broadcast progress to
+    /// any WS subscribers.
+    ///
+    /// Uses `id` (the caller-provided UUID) rather than minting a new one
+    /// so the in-memory copy matches the SQLite row's id.
+    pub async fn hydrate(&self, id: MeetingId) -> Arc<Meeting> {
+        let mut guard = self.meetings.write().await;
+        // Double-check inside the lock — another concurrent enhance handler
+        // may have hydrated the same meeting between our SELECT and our
+        // write-lock acquisition.
+        if let Some(existing) = guard.get(&id) {
+            return existing.clone();
+        }
+        let mut m = Meeting::new();
+        m.id = id;
+        let m = Arc::new(m);
+        guard.insert(id, m.clone());
+        m
+    }
+
     /// Start recording: spin up `yogurt-audio` capture + a Deepgram session.
     ///
     /// Errors:
