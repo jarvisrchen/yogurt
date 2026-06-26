@@ -135,8 +135,12 @@ impl Registry {
         // (which are `Send`) over a oneshot, plus the readiness signal that
         // capture opened successfully (so we can surface a permission/SCK
         // failure as a clean 400 instead of a silent task-panic).
-        let (ready_tx, ready_rx) =
-            oneshot::channel::<Result<(broadcast::Receiver<yogurt_audio::Frame>, broadcast::Receiver<yogurt_audio::Frame>)>>();
+        let (ready_tx, ready_rx) = oneshot::channel::<
+            Result<(
+                broadcast::Receiver<yogurt_audio::Frame>,
+                broadcast::Receiver<yogurt_audio::Frame>,
+            )>,
+        >();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
         std::thread::spawn(move || {
