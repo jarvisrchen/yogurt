@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TranscriptDock } from "../components/TranscriptDock";
+import { ensureSessionToken } from "../lib/session";
 
 const INK = "#211D18";
 const LINE = "#EBE3D5";
@@ -42,6 +43,7 @@ export function Meeting() {
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   const editor = useEditor({
     extensions: [StarterKit],
@@ -49,10 +51,44 @@ export function Meeting() {
       "<p>Take sparse notes during the meeting — AI enhances on End (Phase 4).</p>",
   });
 
+  // WR-06: fetch the session token once on mount so every subsequent
+  // /api/meetings* call (and the per-meeting WS) carries it.
+  useEffect(() => {
+    let cancelled = false;
+    ensureSessionToken().then(
+      (t) => {
+        if (!cancelled) setToken(t);
+      },
+      (e: unknown) => {
+        if (!cancelled) {
+          setError(
+            e instanceof Error
+              ? `Failed to load session token: ${e.message}`
+              : "Failed to load session token",
+          );
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function authedHeaders(): Record<string, string> {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   async function createMeeting() {
     setError(null);
+    if (!token) {
+      setError("Session token not loaded yet — try again in a moment.");
+      return;
+    }
     try {
-      const res = await fetch("/api/meetings", { method: "POST" });
+      const res = await fetch("/api/meetings", {
+        method: "POST",
+        headers: authedHeaders(),
+      });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as ServerError;
         setError(body.error ?? `Failed to create meeting (${res.status})`);
@@ -71,6 +107,7 @@ export function Meeting() {
     try {
       const res = await fetch(`/api/meetings/${meetingId}/start`, {
         method: "POST",
+        headers: authedHeaders(),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as ServerError;
@@ -89,6 +126,7 @@ export function Meeting() {
     try {
       const res = await fetch(`/api/meetings/${meetingId}/stop`, {
         method: "POST",
+        headers: authedHeaders(),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as ServerError;
@@ -172,7 +210,7 @@ export function Meeting() {
         </section>
       </main>
 
-      <TranscriptDock meetingId={meetingId} />
+      <TranscriptDock meetingId={meetingId} token={token} />
     </div>
   );
 }

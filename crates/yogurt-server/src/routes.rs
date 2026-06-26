@@ -32,20 +32,37 @@ pub fn router(state: AppState) -> Router {
             require_session_token,
         ));
 
-    let router = Router::new()
-        .route("/api/health", get(health))
-        // Phase 3: meeting lifecycle REST surface (D-12).
+    // WR-06: meeting lifecycle REST routes now require the same session
+    // token as `/api/audio/*`. Without auth, any localhost-reachable page
+    // (image preload, third-party tab, SSRF-via-link-preview) could
+    // create / start / stop meetings and exhaust Deepgram quota or seed
+    // bogus history.
+    let meeting_routes = Router::new()
         .route("/api/meetings", post(create_meeting))
         // axum 0.8 path syntax: `{id}` (not `:id`). The plan's superpowers
         // source was written against 0.7 — the user prompt acceptance
         // criteria check for the conceptual route shape, which this matches.
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_session_token,
+        ));
+
+    let router = Router::new()
+        .route("/api/health", get(health))
+        // WR-06: bootstrap endpoint the SPA fetches once on boot to learn
+        // the session token. Gated by Origin allowlist ONLY (no token —
+        // it IS the token-handout endpoint). Origin check blocks
+        // third-party-tab and image-preload exploits (those cannot
+        // forge an Origin header from a browser context).
+        .route("/api/session-token", get(get_session_token))
         // Phase 3: per-meeting transcript WebSocket (D-09 / D-10).
         // The handshake is GET; WebSocketUpgrade extraction rejects other
         // methods automatically. Mounted on the same router so AppState
         // (incl. meetings registry) is available via State extraction.
         .route("/ws/meetings/{id}", get(ws_meeting_handler))
+        .merge(meeting_routes)
         .merge(audio_routes)
         // MD-07: use `any()` so OPTIONS / POST / etc. against /ws ALSO go
         // through the Origin+token check rather than falling through to the
@@ -63,6 +80,46 @@ pub fn router(state: AppState) -> Router {
 
 async fn health() -> Json<Value> {
     Json(json!({ "status": "ok", "service": "yogurt-server" }))
+}
+
+/// `GET /api/session-token` — bootstrap endpoint the SPA fetches once on
+/// boot to learn the session token, which it then attaches to subsequent
+/// REST + WS calls.
+///
+/// **Auth model (WR-06):** This is the token-handout endpoint, so it
+/// CANNOT itself require the token. Instead it is gated by the same
+/// Origin allowlist that protects the WS endpoint. Concretely:
+///
+/// - A real browser page on `http://localhost:<bind_port>` (or 127.0.0.1)
+///   will attach the matching `Origin` header automatically — request
+///   succeeds.
+/// - A third-party tab / image preload / `<form>` POST from a different
+///   origin will have its `Origin` header set by the browser to the
+///   attacker's origin — request gets 403. Browsers will not let
+///   attacker JS forge the Origin header.
+/// - A non-browser caller (`curl`, malicious local process) CAN forge any
+///   Origin header it likes, but that caller is already inside the trust
+///   boundary (it has filesystem access to read `~/.yogurt/session-token`
+///   directly). The PRD §7 trust model puts local-process attackers out
+///   of scope for v1.
+async fn get_session_token(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let allowed = allowed_origins_for_port(state.bind_port);
+    let origin = headers
+        .get("origin")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    if !allowed.contains(origin) {
+        tracing::warn!(%origin, "session-token: rejected — origin not in allowlist");
+        return (StatusCode::FORBIDDEN, "forbidden: bad origin").into_response();
+    }
+    Json(json!({ "token": state.session.as_str() })).into_response()
+}
+
+fn allowed_origins_for_port(port: u16) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    set.insert(format!("http://localhost:{port}"));
+    set.insert(format!("http://127.0.0.1:{port}"));
+    set
 }
 
 /// `POST /api/meetings` — create a new meeting and return its UUID v7 id.

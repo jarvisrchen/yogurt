@@ -26,9 +26,18 @@ const MATCHA = "#5E9E73";
  *     returning to within 24px flips it back. New events arriving while
  *     paused preserve the user's read position.
  */
-export function TranscriptDock({ meetingId }: { meetingId: string | null }) {
+export function TranscriptDock({
+  meetingId,
+  token,
+}: {
+  meetingId: string | null;
+  // WR-06: session token threaded from Meeting.tsx (fetched via ensureSessionToken).
+  // The WS hook waits until token is non-null before connecting; passing null is
+  // valid during the brief bootstrap window before /api/session-token resolves.
+  token: string | null;
+}) {
   const [open, setOpen] = useState(false);
-  const { events, connected } = useTranscriptWs(meetingId);
+  const { events, connected } = useTranscriptWs(meetingId, token);
 
   // Sticky auto-scroll ref. `true` = follow new events, `false` = user
   // has scrolled up and is reading history.
