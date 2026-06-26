@@ -62,10 +62,44 @@ export function mergeEvent(
   return [...prev, next];
 }
 
+/**
+ * Connection lifecycle state surfaced to consumers.
+ *
+ *   - `idle`         — no `meetingId` yet, hook is dormant.
+ *   - `connecting`   — initial WebSocket opening, or backoff between
+ *                      reconnect attempts.
+ *   - `connected`    — WS is open and receiving frames.
+ *   - `reconnecting` — WS dropped; backoff timer is running before the
+ *                      next attempt (WR-01).
+ *   - `failed`       — exhausted MAX_RECONNECT_ATTEMPTS with no success.
+ */
+export type ConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "failed";
+
 export interface UseTranscriptWsResult {
   events: TranscriptEvent[];
+  /**
+   * Kept for backwards compatibility with the TranscriptDock dot
+   * indicator. Equivalent to `connectionStatus === "connected"`.
+   */
   connected: boolean;
+  /**
+   * Granular connection lifecycle. WR-01: the dock can render
+   * "reconnecting…" or "offline" distinct from "connected".
+   */
+  connectionStatus: ConnectionStatus;
 }
+
+/**
+ * Maximum reconnect attempts after the first drop. The 03-03 plan
+ * specifies "3 attempts with exponential backoff" so we honor that
+ * verbatim. Backoff schedule: 500ms, 1000ms, 2000ms.
+ */
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 /**
  * Open a WebSocket against the meetings fan-out endpoint and accumulate
@@ -83,50 +117,110 @@ export function useTranscriptWs(
   meetingId: string | null,
 ): UseTranscriptWsResult {
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
-  const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus>("idle");
 
   useEffect(() => {
     if (!meetingId) {
       setEvents([]);
-      setConnected(false);
+      setConnectionStatus("idle");
       return;
     }
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}`;
-    const ws = new WebSocket(url);
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
-    ws.onmessage = (event) => {
-      try {
-        const frame = JSON.parse(event.data as string) as ServerFrame;
-        if (frame.type === "transcript") {
-          setEvents((prev) => mergeEvent(prev, frame.payload));
+    // WR-01: reconnect state lives in refs so the lifecycle is owned by the
+    // effect's cleanup, not by React reconciliation. The `cancelled` flag
+    // is set in cleanup so any in-flight backoff timer or pending WS knows
+    // to stand down (we DO NOT want a stale reconnect to fire after the
+    // user navigates away or changes meetingId).
+    let attempt = 0;
+    let cancelled = false;
+    let currentWs: WebSocket | null = null;
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanupCurrentWs = () => {
+      if (currentWs) {
+        currentWs.onopen = null;
+        currentWs.onclose = null;
+        currentWs.onerror = null;
+        currentWs.onmessage = null;
+        if (
+          currentWs.readyState === WebSocket.CONNECTING ||
+          currentWs.readyState === WebSocket.OPEN
+        ) {
+          currentWs.close();
         }
-      } catch {
-        // Ignore non-JSON / malformed frames; future phases may add typed
-        // error frames that we'll log here.
+        currentWs = null;
       }
     };
 
+    const connect = () => {
+      if (cancelled) return;
+      setConnectionStatus(attempt === 0 ? "connecting" : "reconnecting");
+
+      const ws = new WebSocket(url);
+      currentWs = ws;
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        attempt = 0; // success — reset for any future drop
+        setConnectionStatus("connected");
+      };
+
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const frame = JSON.parse(event.data as string) as ServerFrame;
+          if (frame.type === "transcript") {
+            setEvents((prev) => mergeEvent(prev, frame.payload));
+          }
+        } catch {
+          // Ignore non-JSON / malformed frames; future phases may add typed
+          // error frames that we'll log here.
+        }
+      };
+
+      const scheduleReconnect = () => {
+        if (cancelled) return;
+        // Detach listeners on the dead socket so its eventual onclose
+        // doesn't re-enter this branch after we've already scheduled.
+        cleanupCurrentWs();
+        if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+          setConnectionStatus("failed");
+          return;
+        }
+        // Backoff: 500ms, 1000ms, 2000ms (1<<attempt * 500).
+        const delay = 500 * (1 << attempt);
+        attempt += 1;
+        setConnectionStatus("reconnecting");
+        backoffTimer = setTimeout(() => {
+          backoffTimer = null;
+          connect();
+        }, delay);
+      };
+
+      ws.onclose = scheduleReconnect;
+      ws.onerror = scheduleReconnect;
+    };
+
+    connect();
+
     return () => {
-      ws.onopen = null;
-      ws.onclose = null;
-      ws.onerror = null;
-      ws.onmessage = null;
-      // readyState may be CONNECTING (0) or OPEN (1) at this point; either way
-      // calling close() is safe and triggers a clean teardown.
-      if (
-        ws.readyState === WebSocket.CONNECTING ||
-        ws.readyState === WebSocket.OPEN
-      ) {
-        ws.close();
+      cancelled = true;
+      if (backoffTimer) {
+        clearTimeout(backoffTimer);
+        backoffTimer = null;
       }
-      setConnected(false);
+      cleanupCurrentWs();
+      setConnectionStatus("idle");
     };
   }, [meetingId]);
 
-  return { events, connected };
+  return {
+    events,
+    connected: connectionStatus === "connected",
+    connectionStatus,
+  };
 }
