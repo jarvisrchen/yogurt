@@ -1,0 +1,8 @@
+{
+  "blocks": [
+    {"block": {"ListItem": {"md": "pricing", "depth": 0}}, "source": "User"},
+    {"block": {"ListItem": {"md": "$14/mo agreed for v1", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 0}}},
+    {"block": {"ListItem": {"md": "Annual plan: 20% off", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 0}}},
+    {"block": {"ListItem": {"md": "$14/mo agreed for v1 — also will offer student discount", "depth": 0}}, "source": "User"}
+  ]
+}

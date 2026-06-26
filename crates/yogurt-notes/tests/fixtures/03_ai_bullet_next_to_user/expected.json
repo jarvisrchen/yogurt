@@ -1,0 +1,7 @@
+{
+  "blocks": [
+    {"block": {"ListItem": {"md": "pricing", "depth": 0}}, "source": "User"},
+    {"block": {"ListItem": {"md": "$14/mo agreed for v1", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 0}}},
+    {"block": {"ListItem": {"md": "timeline", "depth": 0}}, "source": "User"}
+  ]
+}

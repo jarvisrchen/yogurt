@@ -1,0 +1,2 @@
+- pricing
+- $14/mo agreed for v1 — also will offer student discount
