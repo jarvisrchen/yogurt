@@ -355,7 +355,10 @@ async fn reveal_in_finder(
         // spawn_blocking; `open` returns quickly but the syscall is
         // technically blocking.
         let status = tokio::task::spawn_blocking(move || {
-            std::process::Command::new("open").arg("-R").arg(&path).status()
+            std::process::Command::new("open")
+                .arg("-R")
+                .arg(&path)
+                .status()
         })
         .await
         .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
