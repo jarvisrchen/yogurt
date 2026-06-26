@@ -55,6 +55,10 @@ futures-util = "0.3"
 cpal = "0.15"
 screencapturekit = { version = "8", features = ["macos_13_0"] }
 rubato = "0.16"
+# Lock-free single-producer/single-consumer ring buffer. Used to decouple
+# real-time audio callbacks (cpal IOProc, SCK delegate) from the tokio
+# drainer task that owns rubato + broadcast::Sender. See BL-01 fix.
+rtrb = "0.3"
 # typed errors
 thiserror = "2"
 
