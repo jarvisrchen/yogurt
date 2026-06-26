@@ -20,6 +20,13 @@ export interface General {
   /** Phase 7 — `true` once the user finishes `/welcome`. Drives the
    *  first-run redirect (`useFirstRunRedirect`). */
   first_run_completed: boolean;
+  /** Phase 8 (Plan 08-03) — `"cloud"` (Deepgram) or `"local"` (WhisperLocal).
+   *  Mirrors `crates/yogurt-db::settings::General::stt_provider`. */
+  stt_provider: string;
+  /** Phase 8 (Plan 08-03) — one of the names in `yogurt_stt::models::REGISTRY`
+   *  (e.g. `"tiny.en"`, `"small.en"`, `"medium.en"`, `"large-v3"`).
+   *  Mirrors `crates/yogurt-db::settings::General::stt_model`. */
+  stt_model: string;
 }
 
 export interface ProviderView {
