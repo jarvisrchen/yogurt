@@ -217,10 +217,12 @@ async fn patch_one(
     };
     let state_for_blocking = s.clone();
     let id_for_blocking = id.clone();
-    let m = tokio::task::spawn_blocking(move || state_for_blocking.patch_and_export(&id_for_blocking, patch))
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
-        .map_err(ApiError::from)?;
+    let m = tokio::task::spawn_blocking(move || {
+        state_for_blocking.patch_and_export(&id_for_blocking, patch)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
     Ok(Json(m))
 }
 
