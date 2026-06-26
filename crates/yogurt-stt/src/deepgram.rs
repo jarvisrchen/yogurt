@@ -395,7 +395,26 @@ fn i16_slice_to_le_bytes(samples: &[i16]) -> Vec<u8> {
 /// Parse one Deepgram JSON frame into a [`TranscriptEvent`].
 /// Returns `None` for non-`Results` frames (Metadata, SpeechStarted, etc.) or
 /// when the transcript field is empty.
-pub(crate) fn parse_deepgram_event(text: &str, channel: Channel) -> Option<TranscriptEvent> {
+///
+/// BL-03: Deepgram emits TWO finality flags on each Results frame:
+/// - `is_final` — true on every interim-final (Deepgram won't revise THIS
+///   transcript window, but the utterance continues). Fires at ~6s windows
+///   even mid-sentence.
+/// - `speech_final` — true at end-of-utterance (the speaker paused enough
+///   that Deepgram's endpointing heuristic fired). This is the moment the
+///   dock should LOCK a transcript line so a new partial starts on a new
+///   row.
+///
+/// The `TranscriptEvent.is_final` field is documented as "the engine
+/// considers this segment locked in" (lib.rs:58). That maps to
+/// `speech_final`, NOT `is_final`. Reading the wrong field caused every
+/// interim-final to render as a brand-new locked line in the dock instead
+/// of replacing the in-progress partial.
+///
+/// We read both fields and surface true only when EITHER is true — but
+/// `speech_final` is the primary signal. The fallback to `is_final` keeps
+/// us safe if Deepgram ever omits `speech_final` on a frame.
+pub fn parse_deepgram_event(text: &str, channel: Channel) -> Option<TranscriptEvent> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
     if v.get("type")?.as_str()? != "Results" {
         return None;
@@ -405,8 +424,16 @@ pub(crate) fn parse_deepgram_event(text: &str, channel: Channel) -> Option<Trans
     if transcript.is_empty() {
         return None;
     }
-    let start_s = v.get("start")?.as_f64().unwrap_or(0.0);
-    let is_final = v.get("is_final").and_then(|x| x.as_bool()).unwrap_or(false);
+    let start_s = v.get("start").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    // Primary: speech_final (end-of-utterance). Fallback to is_final only
+    // when speech_final is absent — defensive against Deepgram schema
+    // changes. Use of fallback is deliberate: a `speech_final: false`
+    // frame must NOT be marked final even if `is_final: true` is present
+    // (that's the BL-03 bug we're fixing).
+    let is_final = match v.get("speech_final").and_then(|x| x.as_bool()) {
+        Some(b) => b,
+        None => v.get("is_final").and_then(|x| x.as_bool()).unwrap_or(false),
+    };
     Some(TranscriptEvent {
         ts_ms: (start_s * 1000.0) as u64,
         channel,
@@ -420,11 +447,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_parses_a_final_results_frame() {
+    fn it_parses_a_speech_final_results_frame() {
+        // BL-03: end-of-utterance → speech_final: true → ev.is_final must be true.
         let frame = r#"{
           "type": "Results",
           "channel": {"alternatives": [{"transcript": "hello world", "confidence": 0.99}]},
           "is_final": true,
+          "speech_final": true,
           "start": 1.42,
           "duration": 0.7
         }"#;
@@ -433,6 +462,44 @@ mod tests {
         assert_eq!(ev.text, "hello world");
         assert!(ev.is_final);
         assert_eq!(ev.channel, Channel::Mic);
+    }
+
+    #[test]
+    fn it_treats_interim_final_as_partial() {
+        // BL-03: Deepgram's `is_final: true, speech_final: false` means
+        // "I won't revise this transcript window" but the utterance
+        // continues. The dock must treat this as a partial (NOT locked)
+        // so the next partial replaces it in place rather than appending
+        // a new line.
+        let frame = r#"{
+          "type": "Results",
+          "channel": {"alternatives": [{"transcript": "hello world how are", "confidence": 0.94}]},
+          "is_final": true,
+          "speech_final": false,
+          "start": 0.0,
+          "duration": 2.1
+        }"#;
+        let ev = parse_deepgram_event(frame, Channel::Mic).expect("should parse");
+        assert_eq!(ev.text, "hello world how are");
+        assert!(
+            !ev.is_final,
+            "interim final (is_final=true, speech_final=false) must NOT lock the line"
+        );
+    }
+
+    #[test]
+    fn it_falls_back_to_is_final_when_speech_final_absent() {
+        // Defensive: if Deepgram ever drops `speech_final` (schema change),
+        // we still honor `is_final` so we degrade to old behavior rather
+        // than treating everything as partial.
+        let frame = r#"{
+          "type": "Results",
+          "channel": {"alternatives": [{"transcript": "fallback", "confidence": 0.9}]},
+          "is_final": true,
+          "start": 0.0
+        }"#;
+        let ev = parse_deepgram_event(frame, Channel::Mic).expect("should parse");
+        assert!(ev.is_final);
     }
 
     #[test]
