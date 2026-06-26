@@ -1,74 +1,106 @@
 //! Deterministic mock LLM (CONTEXT D-20).
 //!
+//! Phase 5 update (Plan 05-01): now implements `yogurt_llm::LlmClient` so
+//! the enhance handler can hold an `Arc<dyn LlmClient>` and swap mock vs.
+//! real adapter without branching at call-sites. The mock still produces
+//! the same wire-format output (USER notes verbatim + one AI bullet per
+//! transcript segment) so Phase 4 fixture tests keep passing.
+//!
 //! Used by:
-//! - The enhance handler (Plan 04-03) when `YOGURT_LLM_*` env vars are not
-//!   set — so first-time developers get a working hero experience without
-//!   provisioning a real provider.
+//! - The enhance handler when `YOGURT_LLM_*` env vars are not set (and
+//!   Plan 05-02's `AppState.keys` lookup also misses) — so first-time
+//!   developers get a working hero experience without a real provider.
 //! - Tests that need a reproducible enriched-markdown output.
 //!
-//! The mock builds enriched markdown by:
-//! 1. Parsing the `## USER NOTES` / `## TRANSCRIPT` sections out of the
-//!    prompt (we know the format because we own `enhance.md`).
-//! 2. Echoing the user notes verbatim (preserving the "black ranges are
-//!    never overwritten" contract).
-//! 3. Appending one AI bullet per transcript segment, wrapped in the
-//!    wire-format spans `<span data-ai-grey data-ts="N">…</span>` with a
-//!    trailing `<span data-transcript-link data-ts="N">↳ HH:MM</span>`.
-//!
-//! Phase 5 deletes this file — the real LLM replaces it.
+//! `streaming` is intentionally minimal here — Phase 6 will exercise the
+//! real `OpenAiCompatClient::stream` directly; the mock returning a
+//! single chunk is enough to satisfy the trait bound.
 
 use anyhow::Result;
+use async_trait::async_trait;
+use futures_util::stream::{self, BoxStream, StreamExt};
 use serde::Deserialize;
+use yogurt_llm::{ChatChunk, ChatRequest, ChatResponse, LlmClient};
 
-/// Inherent method only (no `LlmClient` trait yet — see CONTEXT D-21).
-/// Phase 5 introduces the trait and re-shapes `MockLlm` into a trait impl
-/// — or deletes it entirely.
-///
-/// `#[allow(dead_code)]` because the consumer (the enhance handler) lands
-/// in Plan 04-03 — for the few hours between this commit and that wiring
-/// the struct is reachable only from its own tests.
-#[derive(Default)]
-#[allow(dead_code)]
+/// Trait impl of the Phase 4 mock — re-shaped per CONTEXT D-21.
+#[derive(Default, Clone)]
 pub struct MockLlm;
 
-#[allow(dead_code)]
-impl MockLlm {
-    pub async fn complete(&self, _system: &str, user: &str) -> Result<String> {
-        let (notes, transcript_json) = split_prompt(user);
-        let transcript: Vec<Seg> = serde_json::from_str(transcript_json).unwrap_or_default();
-
-        let mut out = String::new();
-        // User notes are preserved verbatim (the merge layer treats them as
-        // user-source markdown and pulldown-cmark will escape any HTML on
-        // parse). Notes pass through unmodified here; the BL-2 sanitization
-        // happens at the enrich-handler layer via `ammonia::clean` on the
-        // final enriched_md, AND `render::wrap_ai` HTML-escapes its inner
-        // text. Together those two layers neutralize XSS regardless of
-        // whether the input came from notes, transcript, or LLM.
-        out.push_str(notes.trim_start());
-        if !out.ends_with('\n') {
-            out.push('\n');
-        }
-        if !notes.trim().is_empty() && !transcript.is_empty() {
-            out.push('\n');
-        }
-        for seg in &transcript {
-            let ts = seg.ts_ms / 1000;
-            let stamp = format!("{:02}:{:02}", ts / 60, ts % 60);
-            // Mock "summary" = first 8 words of the segment.
-            let words: Vec<&str> = seg.text.split_whitespace().take(8).collect();
-            let summary_raw = words.join(" ");
-            // BL-2: ESCAPE transcript-derived text before interpolating into
-            // the wire-format span. Transcript text is network-fed (Deepgram)
-            // and untrusted — `<script>` in transcript captions WILL fire as
-            // <script> in the browser DOM without this escape.
-            let summary = html_escape::encode_safe(&summary_raw);
-            out.push_str(&format!(
-                "- <span data-ai-grey data-ts=\"{ts}\">{summary} <span data-transcript-link data-ts=\"{ts}\">↳ {stamp}</span></span>\n"
-            ));
-        }
-        Ok(out)
+#[async_trait]
+impl LlmClient for MockLlm {
+    async fn complete(&self, req: ChatRequest) -> Result<ChatResponse> {
+        // Phase 4 wraps the user-facing payload as a single `user`-role
+        // message containing the rendered enhance.md prompt. We rebuild
+        // the legacy prompt string by concatenating user-role contents
+        // (system messages are advisory only for the mock).
+        let user_text = req
+            .messages
+            .iter()
+            .filter(|m| m.role == "user")
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let content = build_mock_output(&user_text);
+        Ok(ChatResponse {
+            content,
+            model: "mock-llm".to_string(),
+        })
     }
+
+    async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
+        // Single-shot stream: emit the full mock content as one delta then
+        // terminate with `done=true`. Sufficient for Phase 4-compatible
+        // tests that just want to round-trip through the trait surface.
+        let full = self.complete(req).await?.content;
+        let s = stream::iter(vec![
+            Ok(ChatChunk {
+                delta: full,
+                done: false,
+            }),
+            Ok(ChatChunk {
+                delta: String::new(),
+                done: true,
+            }),
+        ]);
+        Ok(s.boxed())
+    }
+}
+
+/// Phase 4-shape mock output: echo user notes verbatim, then emit one
+/// `<span data-ai-grey>` bullet per transcript segment with a trailing
+/// `<span data-transcript-link>↳ HH:MM</span>`. Public-in-module so the
+/// trait impl can reuse it; not exported from the crate.
+fn build_mock_output(user: &str) -> String {
+    let (notes, transcript_json) = split_prompt(user);
+    let transcript: Vec<Seg> = serde_json::from_str(transcript_json).unwrap_or_default();
+
+    let mut out = String::new();
+    // User notes preserved verbatim — the merge layer treats them as
+    // user-source markdown and pulldown-cmark escapes any HTML on parse.
+    // BL-2 sanitization happens at the enrich-handler layer via
+    // `ammonia::clean` on the final enriched_md.
+    out.push_str(notes.trim_start());
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    if !notes.trim().is_empty() && !transcript.is_empty() {
+        out.push('\n');
+    }
+    for seg in &transcript {
+        let ts = seg.ts_ms / 1000;
+        let stamp = format!("{:02}:{:02}", ts / 60, ts % 60);
+        // Mock "summary" = first 8 words of the segment.
+        let words: Vec<&str> = seg.text.split_whitespace().take(8).collect();
+        let summary_raw = words.join(" ");
+        // BL-2: escape transcript-derived text BEFORE interpolating into
+        // the wire-format span. Transcript text is network-fed (Deepgram)
+        // and untrusted.
+        let summary = html_escape::encode_safe(&summary_raw);
+        out.push_str(&format!(
+            "- <span data-ai-grey data-ts=\"{ts}\">{summary} <span data-transcript-link data-ts=\"{ts}\">↳ {stamp}</span></span>\n"
+        ));
+    }
+    out
 }
 
 fn split_prompt(user: &str) -> (&str, &str) {
@@ -80,11 +112,9 @@ fn split_prompt(user: &str) -> (&str, &str) {
         return ("", "[]");
     };
     let notes = &user[n_start + notes_marker.len()..t_start];
-    // Skip the heading line of TRANSCRIPT and any blank lines before the JSON.
     let after = &user[t_start..];
     let json_start = after.find('[').unwrap_or(after.len());
-    // Trim outer whitespace but PRESERVE leading `-` bullets in user notes —
-    // those are part of the markdown the user wrote.
+    // Trim outer whitespace but PRESERVE leading `-` bullets in user notes.
     (notes.trim(), after[json_start..].trim())
 }
 
@@ -99,9 +129,10 @@ struct Seg {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use yogurt_llm::ChatMessage;
 
     #[tokio::test]
-    async fn it_echoes_notes_and_adds_one_bullet_per_segment() {
+    async fn it_echoes_notes_and_adds_one_bullet_per_segment_via_trait() {
         let mock = MockLlm;
         let prompt = r#"
 ## USER NOTES (preserve verbatim, do not wrap)
@@ -113,7 +144,14 @@ mod tests {
 
 [{"ts_ms":120000,"channel":"mic","text":"We debated the pricing model in detail today"}]
 "#;
-        let out = mock.complete("", prompt).await.unwrap();
+        let resp = mock
+            .complete(ChatRequest {
+                messages: vec![ChatMessage::user(prompt)],
+                stream: false,
+            })
+            .await
+            .unwrap();
+        let out = &resp.content;
         assert!(out.contains("- pricing"), "user notes preserved: {out}");
         assert!(
             out.contains("data-ai-grey data-ts=\"120\""),
@@ -126,21 +164,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_returns_empty_friendly_doc_when_prompt_lacks_markers() {
-        let mock = MockLlm;
-        let out = mock
-            .complete("", "garbage prompt with no markers")
-            .await
-            .unwrap();
-        // No notes, no transcript JSON → trailing newline only.
-        assert!(
-            out.trim().is_empty(),
-            "expected empty body on malformed prompt, got: {out:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn it_produces_no_ai_bullets_when_transcript_is_empty() {
+    async fn produces_no_ai_bullets_when_transcript_is_empty_via_trait() {
         let mock = MockLlm;
         let prompt = r#"
 ## USER NOTES (preserve verbatim, do not wrap)
@@ -151,11 +175,56 @@ mod tests {
 
 []
 "#;
-        let out = mock.complete("", prompt).await.unwrap();
-        assert!(out.contains("- pricing"), "notes preserved");
+        let resp = mock
+            .complete(ChatRequest {
+                messages: vec![ChatMessage::user(prompt)],
+                stream: false,
+            })
+            .await
+            .unwrap();
+        assert!(resp.content.contains("- pricing"), "notes preserved");
         assert!(
-            !out.contains("data-ai-grey"),
-            "no AI bullets when transcript empty: {out}"
+            !resp.content.contains("data-ai-grey"),
+            "no AI bullets when transcript empty: {}",
+            resp.content
         );
+    }
+
+    #[tokio::test]
+    async fn returns_empty_friendly_doc_when_prompt_lacks_markers() {
+        let mock = MockLlm;
+        let resp = mock
+            .complete(ChatRequest {
+                messages: vec![ChatMessage::user("garbage prompt with no markers")],
+                stream: false,
+            })
+            .await
+            .unwrap();
+        assert!(
+            resp.content.trim().is_empty(),
+            "expected empty body on malformed prompt, got: {:?}",
+            resp.content
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_terminates_with_done_chunk() {
+        use futures_util::StreamExt;
+        let mock = MockLlm;
+        let mut s = mock
+            .stream(ChatRequest {
+                messages: vec![ChatMessage::user("test")],
+                stream: true,
+            })
+            .await
+            .unwrap();
+        let mut saw_done = false;
+        while let Some(chunk) = s.next().await {
+            let chunk = chunk.unwrap();
+            if chunk.done {
+                saw_done = true;
+            }
+        }
+        assert!(saw_done, "mock stream must emit a terminal done=true chunk");
     }
 }
