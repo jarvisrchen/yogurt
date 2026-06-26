@@ -208,6 +208,86 @@ async fn it_deletes_and_returns_404() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn it_fts_searches_meetings() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // Two meetings; `a` will gain notes containing "palette" so the
+    // FTS index can find it.
+    let a: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "Roadmap planning" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let _b: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "Hiring loop" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    client
+        .patch(format!("http://{addr}/api/meetings/{}", a["id"].as_str().unwrap()))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- discuss the palette refresh\n- pick Friday"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    // Search for "palette" — only meeting `a` should hit.
+    let hits: Vec<serde_json::Value> = client
+        .get(format!("http://{addr}/api/meetings/search?q=palette"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0]["id"], a["id"]);
+
+    // Search for a non-matching token — empty result.
+    let none: Vec<serde_json::Value> = client
+        .get(format!("http://{addr}/api/meetings/search?q=zzzzz"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(none.is_empty());
+
+    // Empty q falls through to the full list (both meetings).
+    let all: Vec<serde_json::Value> = client
+        .get(format!("http://{addr}/api/meetings/search?q="))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 2, "empty q must return the full list");
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn it_returns_404_for_missing_id() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();

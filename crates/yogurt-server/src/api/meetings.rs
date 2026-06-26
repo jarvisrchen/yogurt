@@ -38,6 +38,13 @@ use yogurt_db::{Meeting, MeetingPatch, NewMeeting};
 /// so the caller can compose auth + tracing layers around it.
 pub fn router() -> Router<AppState> {
     Router::new()
+        // Phase 7 Plan 07-02: register `/api/meetings/search` BEFORE the
+        // `/api/meetings/{id}` route so the axum 0.8 matcher dispatches
+        // literal-path matches ahead of the path-param fallback. Axum 0.8
+        // does the right thing here regardless of registration order
+        // (literals beat params), but the explicit ordering keeps the
+        // intent legible at the route table.
+        .route("/api/meetings/search", get(search))
         .route("/api/meetings", get(list).post(create))
         .route(
             "/api/meetings/{id}",
@@ -116,6 +123,31 @@ impl From<anyhow::Error> for ApiError {
 }
 
 // ─── Handlers ──────────────────────────────────────────────────────────────
+
+/// Query string for `GET /api/meetings/search`. `q` is the user's
+/// free-text query (empty falls through to the chronological list);
+/// `limit` caps the result count at the server side (defaults to 50,
+/// hard-capped at 200 to keep payloads bounded even if a script asks
+/// for more).
+#[derive(Debug, Deserialize)]
+struct SearchQuery {
+    q: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn search(
+    State(s): State<AppState>,
+    axum::extract::Query(qs): axum::extract::Query<SearchQuery>,
+) -> Result<Json<Vec<Meeting>>, ApiError> {
+    let limit = qs.limit.unwrap_or(50).min(200);
+    let repo = s.meeting_repo.clone();
+    let xs = tokio::task::spawn_blocking(move || repo.search(&qs.q, limit))
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+        .map_err(ApiError::from)?;
+    Ok(Json(xs))
+}
 
 async fn list(State(s): State<AppState>) -> Result<Json<Vec<Meeting>>, ApiError> {
     let repo = s.meeting_repo.clone();
