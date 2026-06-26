@@ -93,7 +93,11 @@ impl AppState {
             markdown_exporter: exporter,
             prompts,
             db: Db::open_default()?,
-            keys: Arc::new(KeychainStore),
+            // Phase 5 BLOCKER fix: KeychainStore::new() registers the
+            // apple-native-keyring-store backend with keyring-core. The
+            // unit-struct form silently no-op'd set_password() under
+            // keyring 3.6.x on macOS in 2026.
+            keys: Arc::new(KeychainStore::new()?),
         })
     }
 
