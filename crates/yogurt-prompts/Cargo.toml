@@ -1,0 +1,18 @@
+[package]
+name = "yogurt-prompts"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bundled LLM prompt templates for yogurt."
+
+[dependencies]
+tinytemplate = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+rust-embed = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

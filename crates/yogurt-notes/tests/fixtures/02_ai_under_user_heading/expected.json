@@ -1,0 +1,7 @@
+{
+  "blocks": [
+    {"block": {"Heading": {"level": 2, "text": "Pricing"}}, "source": "User"},
+    {"block": {"ListItem": {"md": "Three tiers proposed: Free, $14, $35", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 0}}},
+    {"block": {"ListItem": {"md": "Discussed annual discount", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 0}}}
+  ]
+}

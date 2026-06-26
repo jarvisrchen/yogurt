@@ -1,0 +1,3 @@
+- pricing
+- $14/mo agreed for v1
+- Annual plan: 20% off

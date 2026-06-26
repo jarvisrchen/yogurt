@@ -1,0 +1,4 @@
+[
+  {"ts_ms": 120000, "channel": "mic", "text": "We debated the pricing model"},
+  {"ts_ms": 240000, "channel": "system", "text": "Q3 roadmap was deferred"}
+]

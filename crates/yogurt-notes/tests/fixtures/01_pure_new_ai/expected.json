@@ -1,0 +1,7 @@
+{
+  "blocks": [
+    {"block": {"Heading": {"level": 2, "text": "Discussion"}}, "source": {"AiGrey": {"transcript_ts_sec": 120}}},
+    {"block": {"ListItem": {"md": "Pricing model debated", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 120}}},
+    {"block": {"ListItem": {"md": "Q3 roadmap deferred", "depth": 0}}, "source": {"AiGrey": {"transcript_ts_sec": 240}}}
+  ]
+}

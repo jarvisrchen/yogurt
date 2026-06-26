@@ -41,10 +41,8 @@ pub fn block_key(b: &Block) -> String {
 fn strip_markers(s: &str) -> String {
     // Remove our wire-format spans before computing identity.
     let re1 = regex_lite::Regex::new(r#"<span data-ai-grey[^>]*>"#).unwrap();
-    let re2 = regex_lite::Regex::new(
-        r#"<span data-transcript-link[^>]*>↳ \d{2}:\d{2}</span>"#,
-    )
-    .unwrap();
+    let re2 =
+        regex_lite::Regex::new(r#"<span data-transcript-link[^>]*>↳ \d{2}:\d{2}</span>"#).unwrap();
     let re3 = regex_lite::Regex::new(r#"</span>"#).unwrap();
     let a = re1.replace_all(s, "");
     let b = re2.replace_all(&a, "");

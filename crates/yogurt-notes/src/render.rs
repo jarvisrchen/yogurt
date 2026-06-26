@@ -1,9 +1,54 @@
-//! `MergedDoc` -> wire-format markdown with `data-ai-grey` / `data-transcript-link`
-//! marker spans. Filled in by Task 2.
+//! `MergedDoc` -> wire-format markdown with `data-ai-grey` /
+//! `data-transcript-link` marker spans.
+//!
+//! Headings deliberately do NOT get marker spans on the wire — the editor
+//! color-tints them via the parent block's source. List items, paragraphs,
+//! blockquotes, and code blocks tagged AiGrey are wrapped in
+//! `<span data-ai-grey data-ts="N">…</span>` with a trailing
+//! `<span data-transcript-link data-ts="N">↳ HH:MM</span>` deep-link.
 
-use crate::MergedDoc;
+use crate::ast::Block;
+use crate::{MergedDoc, Source};
 
-pub fn to_markdown(_doc: &MergedDoc) -> String {
-    // Filled in Task 2.
-    String::new()
+pub fn to_markdown(doc: &MergedDoc) -> String {
+    let mut out = String::new();
+    for mb in &doc.blocks {
+        let rendered = match &mb.block {
+            Block::Heading { level, text } => {
+                format!("{} {}\n\n", "#".repeat(*level as usize), text)
+            }
+            Block::Paragraph { md } => format!("{md}\n\n"),
+            Block::ListItem { md, depth } => {
+                format!("{}- {md}\n", "  ".repeat(*depth as usize))
+            }
+            Block::CodeBlock { lang, body } => {
+                format!("```{}\n{body}\n```\n\n", lang.as_deref().unwrap_or(""))
+            }
+            Block::BlockQuote { md } => format!("> {md}\n\n"),
+            Block::Hr => "---\n\n".into(),
+        };
+        let with_marks = match mb.source {
+            Source::User => rendered,
+            Source::AiGrey { transcript_ts_sec } => wrap_ai(&rendered, transcript_ts_sec),
+        };
+        out.push_str(&with_marks);
+    }
+    out
+}
+
+fn wrap_ai(rendered: &str, ts: u64) -> String {
+    let mins = ts / 60;
+    let secs = ts % 60;
+    let stamp = format!("{:02}:{:02}", mins, secs);
+    let trim = rendered.trim_end_matches('\n');
+    let suffix_node = format!(r#"<span data-transcript-link data-ts="{ts}">↳ {stamp}</span>"#);
+    if let Some(inner) = trim.strip_prefix("- ") {
+        format!("- <span data-ai-grey data-ts=\"{ts}\">{inner} {suffix_node}</span>\n")
+    } else if let Some(rest) = trim.strip_prefix("## ") {
+        // Headings don't get marker spans on the wire — the editor color-tints
+        // them via the parent block's source. Emit normally.
+        format!("## {rest}\n\n")
+    } else {
+        format!("<span data-ai-grey data-ts=\"{ts}\">{trim} {suffix_node}</span>\n\n")
+    }
 }
