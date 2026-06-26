@@ -6,6 +6,9 @@ import type { SettingsSection } from "../components/settings/SidebarNav";
 import { ProviderCard } from "../components/settings/ProviderCard";
 import { ProviderRow } from "../components/settings/ProviderRow";
 import { PresetChip } from "../components/settings/PresetChip";
+import { STTPicker } from "../components/settings/STTPicker";
+import { AudioSection } from "../components/settings/AudioSection";
+import { GeneralSection } from "../components/settings/GeneralSection";
 
 /**
  * `/settings` page — Phase 5 (Plan 05-03), satisfies SET-01..SET-06.
@@ -115,33 +118,17 @@ export function Settings() {
         )}
 
         {section === "transcription" && (
-          <section className="space-y-3">
+          <section className="space-y-4">
             <h2 className="font-serif text-[28px] leading-none">
               Transcription
             </h2>
-            <p className="text-[13px] text-mut">
-              Coming up in plan 05-04.
-            </p>
+            <STTPicker />
           </section>
         )}
 
-        {section === "audio" && (
-          <section className="space-y-3">
-            <h2 className="font-serif text-[28px] leading-none">Audio</h2>
-            <p className="text-[13px] text-mut">
-              Coming up in plan 05-04.
-            </p>
-          </section>
-        )}
+        {section === "audio" && <AudioSection general={data.general} />}
 
-        {section === "general" && (
-          <section className="space-y-3">
-            <h2 className="font-serif text-[28px] leading-none">General</h2>
-            <p className="text-[13px] text-mut">
-              Coming up in plan 05-04.
-            </p>
-          </section>
-        )}
+        {section === "general" && <GeneralSection general={data.general} />}
       </main>
     </div>
   );
