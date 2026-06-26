@@ -140,6 +140,35 @@ export function useCreateMeeting(): UseMutationResult<
   });
 }
 
+// ─── Phase 7 Plan 07-02 — FTS5 search ──────────────────────────────────────
+
+/** Cache key for `useMeetingsSearch`. Includes the trimmed query so each
+ *  distinct search has its own cache slot (and clearing the input falls
+ *  through to the chronological `useMeetings` cache). */
+export const meetingsSearchKey = (q: string) =>
+  ["meetings", "search", q] as const;
+
+/**
+ * `GET /api/meetings/search?q=…`. Empty / whitespace-only `q` disables the
+ * query — the Library route then renders the `useMeetings()` chronological
+ * feed instead. 5s staleTime matches `useMeetings`.
+ *
+ * The hook uses the same `json<T>()` wrapper as the other meeting hooks
+ * so the bootstrap session token is attached automatically.
+ */
+export function useMeetingsSearch(
+  q: string,
+): UseQueryResult<Meeting[], Error> {
+  const trimmed = q.trim();
+  return useQuery({
+    queryKey: meetingsSearchKey(trimmed),
+    queryFn: () =>
+      json<Meeting[]>(`/api/meetings/search?q=${encodeURIComponent(trimmed)}`),
+    staleTime: 5_000,
+    enabled: trimmed.length > 0,
+  });
+}
+
 /** `DELETE /api/meetings/:id`. Invalidates list + the specific row. */
 export function useDeleteMeeting(): UseMutationResult<void, Error, string> {
   const qc = useQueryClient();

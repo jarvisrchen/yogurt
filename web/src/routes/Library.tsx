@@ -1,34 +1,48 @@
 /**
- * Phase 7 (Plan 07-01) — Library home route (`/`).
+ * Phase 7 (Plan 07-01 + 07-02) — Library home route (`/`).
  *
  * Layout per PRD §5.9 + D-01..D-06:
  *   ┌────────────────┬──────────────────────────────────────────┐
- *   │  <Sidebar />   │  <Greeting />                            │
+ *   │  <Sidebar />   │  <Greeting />   <SearchPill />           │
  *   │   (212px)      │  <DateGroup meetings=... />              │
  *   └────────────────┴──────────────────────────────────────────┘
  *
- * The Phase 7 plan-02 will fill in the search slot + EmptyLibrary +
- * PermissionDenied surfaces; this plan ships a minimal placeholder so
- * the route is reachable end-to-end.
+ * Plan 07-02 wires the search pill to `useMeetingsSearch` (FTS5).
+ * When the user types, the pill debounces and lifts the query up here;
+ * we then choose between the chronological `useMeetings()` cache and
+ * the `useMeetingsSearch(query)` cache for the rendered list. The
+ * `<DateGroup>` component handles empty buckets gracefully — when
+ * search yields zero results we render a small "No matches" line so
+ * the user gets an explicit confirmation that the query ran.
  */
 
-import { useMeetings } from "../lib/api/meetings";
+import { useState } from "react";
+import { useMeetings, useMeetingsSearch } from "../lib/api/meetings";
 import { DateGroup } from "../components/library/DateGroup";
 import { Greeting } from "../components/library/Greeting";
+import { SearchPill } from "../components/library/SearchPill";
 import { Sidebar } from "../components/library/Sidebar";
 
 export function Library() {
-  const { data, isLoading, error } = useMeetings();
-  const meetings = data ?? [];
+  const [query, setQuery] = useState("");
+  const trimmedQuery = query.trim();
+  const isSearching = trimmedQuery.length > 0;
+
+  const all = useMeetings();
+  const found = useMeetingsSearch(query);
+
+  const meetings = isSearching ? (found.data ?? []) : (all.data ?? []);
+  const isLoading = isSearching ? found.isLoading : all.isLoading;
+  const error = isSearching ? found.error : all.error;
 
   return (
     <div className="flex">
       <Sidebar />
       <main className="flex-1 px-12 py-10 max-w-[860px]">
-        <Greeting count={meetings.length} />
-
-        {/* Plan 07-02 fills this with the real <SearchPill /> wired to FTS5. */}
-        <div data-search-slot className="mb-8" />
+        <div className="flex items-start justify-between mb-8">
+          <Greeting count={isSearching ? meetings.length : (all.data ?? []).length} />
+          <SearchPill value={query} onChange={setQuery} />
+        </div>
 
         {isLoading && (
           <div className="text-[13px] font-mono text-mut">Loading…</div>
@@ -38,12 +52,25 @@ export function Library() {
             Couldn't load meetings: {error.message}
           </div>
         )}
-        {!isLoading && !error && meetings.length === 0 && <EmptyStub />}
+        {!isLoading && !error && meetings.length === 0 && (
+          isSearching ? <NoMatches /> : <EmptyStub />
+        )}
         {!isLoading && !error && meetings.length > 0 && (
           <DateGroup meetings={meetings} />
         )}
       </main>
     </div>
+  );
+}
+
+/**
+ * Inline "no matches" line for the search-active branch. Plan 07-04
+ * may upgrade this to a richer empty-state when the full Library
+ * polish lands; the present styling matches the loading/error rows.
+ */
+function NoMatches() {
+  return (
+    <div className="text-[13px] font-mono text-mut">No matches</div>
   );
 }
 
