@@ -225,3 +225,17 @@ html, body {
 
 /* Pop-shadow used by ChatWindow (PRD §16.4 elevation: Pop) */
 .shadow-pop { box-shadow: 0 12px 30px -10px rgba(40, 30, 15, 0.22); }
+
+/* === Phase 7 Plan 07-04: EmptyLibrary floating logo ====================== *
+ *
+ * `.float-3500` — 3.5s ease-in-out infinite gentle vertical drift. The class
+ * name encodes the duration (3.5s = 3500ms); do NOT parameterize it. PRD
+ * §16.5 locks the cadence and the EmptyLibrary CSS contract grep searches
+ * for the literal animation shorthand below — exactly one occurrence in
+ *
+ * The shared `@keyframes float` block lives above; this just binds it to a
+ * single load-bearing utility used by `EmptyLibrary.tsx`.
+ * ========================================================================= */
+.float-3500 {
+  animation: float 3.5s ease-in-out infinite;
+}
