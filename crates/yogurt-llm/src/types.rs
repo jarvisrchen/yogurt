@@ -111,18 +111,12 @@ pub(crate) struct OpenAiChoice {
     pub message: ChatMessage,
 }
 
-// `#[allow(dead_code)]` until Plan 05-01 Task 2 wires `streaming.rs` —
-// the structs exist now so the wire shape lives in a single file across
-// the streaming/non-streaming split.
-
 #[derive(Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct OpenAiStreamChunk {
     pub choices: Vec<OpenAiStreamChoice>,
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct OpenAiStreamChoice {
     pub delta: OpenAiDelta,
     /// `null` mid-stream; `"stop"` / `"length"` / `"tool_calls"` on the
@@ -134,7 +128,6 @@ pub(crate) struct OpenAiStreamChoice {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct OpenAiDelta {
     /// Optional because chunks carrying only `role` (first chunk in many
     /// providers' streams) or only tool-call metadata have no text.
