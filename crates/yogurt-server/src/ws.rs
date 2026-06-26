@@ -23,14 +23,15 @@
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Query, State,
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
+        Path, Query, State,
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
 use std::collections::HashSet;
+use uuid::Uuid;
 
 use crate::AppState;
 
@@ -141,4 +142,100 @@ fn allowed_origins(port: u16) -> HashSet<String> {
     set.insert(format!("http://localhost:{port}"));
     set.insert(format!("http://127.0.0.1:{port}"));
     set
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3: per-meeting transcript WebSocket
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `/ws/meetings/:id` — upgrades the HTTP request, looks up the meeting in
+// the registry, subscribes to its transcript broadcast, then loops:
+// for each `TranscriptEvent`, serialize as JSON and push as `Message::Text`.
+//
+// S→C JSON frames per PRD §10 + CONTEXT D-10:
+//   { "type": "transcript", "payload": { ts_ms, channel, text, is_final } }
+// C→S frames in v1: none yet (Phase 4 adds `notes_edit`, Phase 6 adds
+// `chat_send`); inbound frames are read-and-discarded so the WS stays
+// bidirectionally healthy.
+//
+// If the meeting id is unknown, close with code 4404 + reason
+// `"meeting not found"` (CONTEXT D-09).
+
+/// Axum handler for `GET /ws/meetings/:id`. Upgrades the connection then
+/// hands off to `handle_meeting_socket`.
+///
+/// **Auth note:** Phase 0's `/ws` enforces Origin + session-token; this
+/// per-meeting variant intentionally does NOT (yet) — the planner's
+/// integration tests dial it without a token, and PRD trust posture for v1
+/// is single-user localhost. A future hardening pass (likely Phase 5
+/// alongside the Keychain swap) will fold this handler under the same
+/// Origin/token gate as the Phase 0 `/ws` endpoint.
+pub async fn ws_meeting_handler(
+    ws: WebSocketUpgrade,
+    Path(id): Path<Uuid>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_meeting_socket(socket, id, state))
+}
+
+async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState) {
+    let mut rx = match state.meetings.subscribe(&id).await {
+        Some(r) => r,
+        None => {
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4404,
+                    reason: "meeting not found".into(),
+                })))
+                .await;
+            return;
+        }
+    };
+
+    loop {
+        tokio::select! {
+            // Server → Client: transcript events.
+            ev = rx.recv() => match ev {
+                Ok(ev) => {
+                    let frame = match serde_json::to_string(&serde_json::json!({
+                        "type": "transcript",
+                        "payload": ev,
+                    })) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!(?e, "ws/meetings: serialize failed");
+                            continue;
+                        }
+                    };
+                    if socket.send(Message::Text(frame.into())).await.is_err() {
+                        tracing::info!(meeting=%id, "ws/meetings: client disconnected");
+                        return;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(meeting=%id, n, "ws/meetings: client lagged");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::info!(meeting=%id, "ws/meetings: transcript stream ended");
+                    return;
+                }
+            },
+            // Client → Server: drained so the WS stays healthy.
+            msg = socket.recv() => match msg {
+                Some(Ok(Message::Close(_))) | None => {
+                    tracing::info!(meeting=%id, "ws/meetings: client closed");
+                    return;
+                }
+                Some(Ok(_)) => {
+                    // Ignore for now — Phase 4 (notes_edit) and Phase 6 (chat_send)
+                    // will route here.
+                }
+                Some(Err(e)) => {
+                    tracing::warn!(meeting=%id, ?e, "ws/meetings: client recv error");
+                    return;
+                }
+            },
+        }
+    }
 }
