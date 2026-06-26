@@ -207,6 +207,6 @@ Phases execute in numeric order: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 →
 | 4. Augmented Notes Hero | 4/4 | Complete   | 2026-06-26 |
 | 5. LLM Client + Settings + Keychain | 4/4 | Complete   | 2026-06-26 |
 | 6. In-Meeting Chat | 2/2 | Complete   | 2026-06-26 |
-| 7. Library + Onboarding + States | 1/4 | In Progress|  |
+| 7. Library + Onboarding + States | 2/4 | In Progress|  |
 | 8. Local STT (whisper.cpp) | 0/TBD | Not started | - |
 | 9. Distribution Polish | 0/TBD | Not started | - |
