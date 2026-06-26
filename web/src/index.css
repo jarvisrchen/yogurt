@@ -215,3 +215,13 @@ html, body {
   100% { transform: translateX(400%); }
 }
 
+
+/* --- Phase 6: chat window pop animation (PRD §16.5) --- */
+@keyframes popUp {
+  0%   { transform: translate(-50%, 8px) scale(0.96); opacity: 0; }
+  100% { transform: translate(-50%, 0)   scale(1);    opacity: 1; }
+}
+.anim-popUp { animation: popUp 260ms ease-out both; }
+
+/* Pop-shadow used by ChatWindow (PRD §16.4 elevation: Pop) */
+.shadow-pop { box-shadow: 0 12px 30px -10px rgba(40, 30, 15, 0.22); }
