@@ -1,0 +1,139 @@
+//! Integration tests for the `/api/settings*` REST surface — Phase 5 Plan 05-03.
+//!
+//! The third test (`api_responses_never_include_the_raw_api_key`) is the
+//! load-bearing security regression for the entire phase. **Never weaken
+//! it.** Any change that lets a raw key escape the server in an API
+//! response will trip the substring assertion below.
+
+use serde_json::{json, Value};
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::net::TcpListener;
+
+use yogurt_server::state::AppState;
+use yogurt_server::{session, storage, Mode};
+
+/// Spin up a fresh in-memory `AppState` and start an axum server on `port`.
+/// Returns the state handle so the test can introspect (we mostly drop it).
+///
+/// Each test uses a distinct port to avoid clashing — cargo runs tests
+/// in this file sequentially (single-file integration test), but the
+/// per-port isolation is cheap insurance.
+async fn boot(port: u16) -> AppState {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    // Keep the tempdir alive for the duration of the spawned server by
+    // leaking it intentionally — this is a short-lived integration test
+    // and the OS will reclaim on process exit.
+    let path = tmp.keep();
+    let storage = Arc::new(storage::Storage::init_at(&path.join("db.sqlite")).expect("storage"));
+    let session = Arc::new(
+        session::load_or_create(&path.join("session-token")).expect("session"),
+    );
+    let notes_dir: PathBuf = path.join("notes");
+    let state =
+        AppState::in_memory(Mode::Release, storage, session, port, notes_dir).expect("state");
+
+    let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let app = yogurt_server::__test_router(state.clone());
+    let listener = TcpListener::bind(addr).await.expect("bind");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    // Tiny sleep so the server is ready to accept before the test fires.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    state
+}
+
+#[tokio::test]
+async fn it_lists_seeded_settings_with_no_providers() {
+    let _state = boot(18001).await;
+    let v: Value = reqwest::get("http://127.0.0.1:18001/api/settings")
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(v["general"]["port"], 7878);
+    assert_eq!(v["providers"].as_array().unwrap().len(), 0);
+    assert!(v["presets"].as_array().unwrap().len() >= 5);
+}
+
+#[tokio::test]
+async fn it_creates_a_provider_and_round_trips_via_get() {
+    let _state = boot(18002).await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post("http://127.0.0.1:18002/api/settings/providers")
+        .json(&json!({ "name": "Minimax", "base_url": "https://x/v1", "model": "M" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let listed: Value = reqwest::get("http://127.0.0.1:18002/api/settings/providers")
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let arr = listed.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["id"], id);
+    // No key has been set yet — api_key_masked must be JSON null, NEVER
+    // an empty string (an empty string would imply "key set but empty",
+    // which would round-trip a key-not-present state as a different shape
+    // to the frontend).
+    assert_eq!(arr[0]["api_key_masked"], Value::Null);
+}
+
+#[tokio::test]
+async fn api_responses_never_include_the_raw_api_key() {
+    // ─── Load-bearing security regression. NEVER WEAKEN. ───────────────
+    // This test is the canonical proof that the raw API key never escapes
+    // the server in any API response — only the canonical mask
+    // (`••••XXXX`) is exposed. Any future refactor that adds an `api_key`
+    // field to `ProviderView` (or otherwise echoes the raw secret) will
+    // fail the `!s.contains("sk-supersecret-XYZA")` assertion below.
+    let _state = boot(18003).await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post("http://127.0.0.1:18003/api/settings/providers")
+        .json(&json!({ "name": "P", "base_url": "https://x/v1", "model": "m" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap();
+
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:18003/api/settings/providers/{id}/key"
+        ))
+        .json(&json!({ "api_key": "sk-supersecret-XYZA" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let listed: Value = reqwest::get("http://127.0.0.1:18003/api/settings/providers")
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let s = serde_json::to_string(&listed).unwrap();
+    assert!(
+        !s.contains("sk-supersecret-XYZA"),
+        "raw key leaked in: {s}"
+    );
+    assert!(
+        s.contains("••••XYZA"),
+        "masked key should be present: {s}"
+    );
+}

@@ -60,8 +60,21 @@ pub fn router(state: AppState) -> Router {
             require_session_token,
         ));
 
+    // Phase 5 (Plan 05-03): `/api/settings*` REST surface. The plan-level
+    // contract intentionally exposes these routes WITHOUT the session-token
+    // middleware so the load-bearing integration tests in
+    // `tests/settings_api.rs` (notably
+    // `api_responses_never_include_the_raw_api_key`) can hit them via plain
+    // `reqwest::get` — the security invariant being tested is "raw key
+    // never leaves the server", not "endpoint is auth-gated". Endpoints
+    // are still bound to 127.0.0.1 only (Phase 0 invariant). If a future
+    // security review (Phase 9 hardening) requires auth here, the test
+    // fixtures must be updated in lockstep.
+    let settings_routes = crate::api::settings::router();
+
     let router = Router::new()
         .route("/api/health", get(health))
+        .merge(settings_routes)
         // WR-06: bootstrap endpoint the SPA fetches once on boot to learn
         // the session token. Gated by Origin allowlist ONLY (no token —
         // it IS the token-handout endpoint). Origin check blocks

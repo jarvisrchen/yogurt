@@ -1,3 +1,7 @@
+// Phase 5 (Plan 05-03): new API surfaces added after Phase 4 live under
+// `api/`. Currently houses `api::settings::router()` for the
+// `/api/settings*` endpoints.
+mod api;
 mod assets;
 pub mod audio;
 mod dev_proxy;
