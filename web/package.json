@@ -20,6 +20,7 @@
     "@tiptap/pm": "^2.27.2",
     "@tiptap/react": "^2.10.0",
     "@tiptap/starter-kit": "^2.10.0",
+    "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
     "markdown-it": "^14.2.0",
     "prosemirror-markdown": "^1.13.4",
