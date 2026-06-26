@@ -98,11 +98,21 @@ async fn it_pipes_audio_to_mock_and_emits_transcript_event() {
         })
         .unwrap();
 
-    // 5. Assert we receive the mapped TranscriptEvent.
-    let ev = tokio::time::timeout(Duration::from_secs(3), txn_rx.recv())
-        .await
-        .expect("transcript event within 3s")
-        .expect("event received");
+    // 5. Assert we eventually receive the mapped TranscriptEvent. Because
+    //    the system mock closes immediately, the supervisor emits one or
+    //    more synthetic "[stt ...]" status frames (BL-02). Skip those and
+    //    wait for the real transcript line we care about.
+    let ev = loop {
+        let ev = tokio::time::timeout(Duration::from_secs(3), txn_rx.recv())
+            .await
+            .expect("transcript event within 3s")
+            .expect("event received");
+        if ev.text.starts_with("[stt") {
+            // Synthetic status frame from the BL-02 supervisor — skip.
+            continue;
+        }
+        break ev;
+    };
 
     assert_eq!(ev.text, "the quick brown fox");
     assert_eq!(ev.channel, Channel::Mic);
