@@ -27,11 +27,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use yogurt_db::keychain::{ApiKeyStore, KeychainStore, MemoryKeyStore};
-use yogurt_db::Db;
+use yogurt_db::{Db, Meeting, MeetingPatch, MeetingRepo};
 use yogurt_llm::LlmClient;
 
 use crate::llm_mock::MockLlm;
-use crate::markdown_exporter::MarkdownExporter;
+use crate::markdown_exporter::{MarkdownExporter, Meeting as ExpMeeting};
 use crate::meetings;
 use crate::session::SessionToken;
 use crate::storage::Storage;
@@ -65,6 +65,43 @@ pub struct AppState {
     /// so tests can inject a deterministic mock without touching the rest
     /// of the state surface.
     pub llm: Arc<dyn LlmClient>,
+    /// Phase 7 (Plan 07-01): SQLite-backed Library directory.
+    ///
+    /// Coexists with the Phase-3 in-memory streaming registry on
+    /// `Self::meetings` — `meetings` owns the live audio/transcript
+    /// broadcasts, while `meeting_repo` owns the persisted directory
+    /// (title, timestamps, starred flag, persisted notes/transcript/
+    /// enriched bodies). REST handlers serving `/api/meetings*` go
+    /// through `meeting_repo`; the WebSocket and recording pipeline
+    /// still uses `meetings`.
+    pub meeting_repo: Arc<MeetingRepo>,
+}
+
+impl AppState {
+    /// Phase 7 (Plan 07-01) helper: apply a `MeetingPatch` to the SQLite
+    /// directory AND re-emit the canonical markdown file in
+    /// `~/.yogurt/notes/`. Both layers stay in lockstep so the Phase 4
+    /// "every notes/enriched mutation funnels through MarkdownExporter"
+    /// invariant (STORE-04) survives the move from in-memory state to
+    /// the new repo.
+    ///
+    /// The markdown write is best-effort here — failures bubble up via
+    /// the returned `Result` so REST handlers can map them to 500. The
+    /// SQLite write happens FIRST so a fail-during-write doesn't leave
+    /// a stale file on disk pointing at outdated content.
+    pub fn patch_and_export(&self, id: &str, p: MeetingPatch) -> anyhow::Result<Meeting> {
+        let m = self.meeting_repo.patch(id, p)?;
+        self.markdown_exporter.write(&ExpMeeting {
+            id: &m.id,
+            title: &m.title,
+            started_at_unix_ms: m.started_at,
+            ended_at_unix_ms: m.ended_at,
+            // Prefer enriched body over raw notes when both exist —
+            // matches Phase 4 `enhance` handler's emit choice.
+            body_md: m.enriched_md.as_deref().unwrap_or(&m.notes_md),
+        })?;
+        Ok(m)
+    }
 }
 
 /// Configuration for production constructors. Mirrors the field set of
@@ -105,6 +142,7 @@ impl AppState {
             Some(p) => Db::open(&p)?,
             None => Db::open_default()?,
         };
+        let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
         Ok(Self {
             mode: cfg.mode,
             storage: cfg.storage,
@@ -123,6 +161,8 @@ impl AppState {
             // will swap to a Keychain-backed OpenAiCompatClient inside
             // run_with_config based on the active provider row.
             llm: Arc::new(MockLlm),
+            // Phase 7 (Plan 07-01): the new SQLite-backed Library directory.
+            meeting_repo,
         })
     }
 
@@ -154,6 +194,8 @@ impl AppState {
             Mode::Release => yogurt_prompts::Mode::Release,
         };
         let prompts = Arc::new(yogurt_prompts::Prompts::load(prompt_mode)?);
+        let db = Db::open_in_memory()?;
+        let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
         Ok(Self {
             mode,
             storage,
@@ -162,9 +204,10 @@ impl AppState {
             meetings: meetings::Registry::new(),
             markdown_exporter: exporter,
             prompts,
-            db: Db::open_in_memory()?,
+            db,
             keys: Arc::new(MemoryKeyStore::default()),
             llm: Arc::new(MockLlm),
+            meeting_repo,
         })
     }
 }

@@ -280,15 +280,19 @@ async fn it_gets_a_meeting_after_enhance() {
         enriched.contains("data-ai-grey"),
         "GET enriched_md contains AI spans. got: {enriched}",
     );
+    // Phase 7 (Plan 07-01): the new Library GET returns the
+    // `yogurt_db::Meeting` wire shape. Field names changed from
+    // `started_at_unix_ms` / `ended_at_unix_ms` to `started_at` / `ended_at`
+    // (still i64 unix millis on the wire).
     assert_eq!(
-        body["started_at_unix_ms"].as_i64().unwrap(),
+        body["started_at"].as_i64().unwrap(),
         1_700_000_000_000,
-        "GET preserves started_at_unix_ms",
+        "GET preserves started_at",
     );
     assert_eq!(
-        body["ended_at_unix_ms"].as_i64().unwrap(),
+        body["ended_at"].as_i64().unwrap(),
         1_700_000_300_000,
-        "GET preserves ended_at_unix_ms",
+        "GET preserves ended_at",
     );
 
     // 3) Unknown meeting id → 404.

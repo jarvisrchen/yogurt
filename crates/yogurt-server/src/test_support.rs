@@ -99,6 +99,8 @@ pub async fn run_with_mock_llm(
     let session: Arc<SessionToken> = Arc::new(session_token);
     let (markdown_exporter, prompts) = crate::__test_only_aux_state(tmp.path().join("notes"))?;
 
+    let db = yogurt_db::Db::open_in_memory()?;
+    let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
     let state = AppState {
         mode: Mode::Release,
         storage,
@@ -107,9 +109,10 @@ pub async fn run_with_mock_llm(
         meetings: meetings::Registry::new(),
         markdown_exporter,
         prompts,
-        db: yogurt_db::Db::open_in_memory()?,
+        db,
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
         llm: Arc::new(MockChunksLlm::new(chunks)),
+        meeting_repo,
     };
 
     let app = crate::__test_router(state.clone());
@@ -130,17 +133,18 @@ pub async fn run_with_mock_llm(
 }
 
 /// Seed a meeting row in BOTH the in-memory registry (so the WS handler
-/// can attach) AND the Phase 0 storage meetings table (so the transcript
-/// read in `spawn_stream` doesn't trip on a missing row). Returns the
-/// minted meeting `Uuid`.
+/// can attach) AND the SQLite-backed `MeetingRepo` (so the FK on
+/// `chat_messages.meeting_id` resolves). Returns the minted meeting
+/// `Uuid`.
+///
+/// Phase 7 (Plan 07-01) update: the inline `CREATE TABLE meetings` against
+/// the yogurt-db in-memory connection is gone — V003 now creates the
+/// table inside that DB at `Db::open_in_memory()` time.
 pub async fn seed_meeting(state: &AppState) -> Uuid {
-    // Phase 6 chat uses the per-meeting events_tx for chunk delivery and
-    // the storage meetings row for transcript context. Both must exist
-    // for the chat-streaming integration tests to exercise the full
-    // happy-path code without hitting NotFound branches.
     let m = state.meetings.create().await;
     let id_str = m.id.to_string();
-    // We can't go through the read-only pool; reach the writer instead.
+    // Phase 0 storage meetings row — kept because enhance.rs hydrates
+    // from it on Re-enhance (HI-9).
     let writer = state.storage.writer();
     let conn = writer.lock().expect("writer lock");
     conn.execute(
@@ -148,30 +152,16 @@ pub async fn seed_meeting(state: &AppState) -> Uuid {
               VALUES (?1, ?2, ?3, ?4)"#,
         rusqlite::params![id_str, "test meeting", 0i64, "[]"],
     )
-    .expect("seed meetings row");
-    // Mirror the row into yogurt-db's in-memory db so the FK on
-    // chat_messages.meeting_id has a valid parent. The in-memory db
-    // doesn't share the file with `storage` (it lives in :memory:), so
-    // we create the meetings table inline if needed.
-    let db_conn = state.db.conn();
-    db_conn
-        .execute_batch(
-            r#"CREATE TABLE IF NOT EXISTS meetings (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                started_at INTEGER NOT NULL,
-                ended_at INTEGER,
-                notes_md TEXT,
-                enriched_md TEXT,
-                transcript_json TEXT
-            );"#,
-        )
-        .expect("create meetings table in yogurt-db");
-    db_conn
-        .execute(
-            "INSERT OR IGNORE INTO meetings (id, title, started_at) VALUES (?, ?, ?)",
-            rusqlite::params![id_str, "test meeting", 0i64],
-        )
-        .expect("seed meetings row in yogurt-db");
+    .expect("seed storage meetings row");
+    drop(conn);
+    // yogurt-db meetings row — required so chat_messages FK passes.
+    state
+        .meeting_repo
+        .create(yogurt_db::NewMeeting {
+            title: "test meeting".into(),
+            started_at_unix_ms: Some(0),
+            id: Some(id_str.clone()),
+        })
+        .expect("seed yogurt-db meetings row");
     m.id
 }

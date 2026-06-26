@@ -32,29 +32,27 @@ pub fn router(state: AppState) -> Router {
             require_session_token,
         ));
 
-    // WR-06: meeting lifecycle REST routes now require the same session
-    // token as `/api/audio/*`. Without auth, any localhost-reachable page
+    // WR-06: meeting lifecycle REST routes require the same session token
+    // as `/api/audio/*`. Without auth, any localhost-reachable page
     // (image preload, third-party tab, SSRF-via-link-preview) could
     // create / start / stop meetings and exhaust Deepgram quota or seed
     // bogus history.
+    //
+    // Phase 7 (Plan 07-01) split the meeting REST surface:
+    //   - The Library CRUD (`GET/POST /api/meetings`, `GET/PATCH/DELETE
+    //     /api/meetings/:id`) now lives in `api::meetings` and goes
+    //     through the SQLite-backed `MeetingRepo`. POST also registers
+    //     a fresh streaming Meeting in the in-memory registry so the
+    //     existing `/start` route can find it by id.
+    //   - The streaming + chat routes (`/start`, `/stop`, `/enhance`,
+    //     `/chat`) keep their Phase-3-shaped handlers below.
     let meeting_routes = Router::new()
-        .route("/api/meetings", post(create_meeting))
-        // axum 0.8 path syntax: `{id}` (not `:id`). The plan's superpowers
-        // source was written against 0.7 — the user prompt acceptance
-        // criteria check for the conceptual route shape, which this matches.
+        .merge(crate::api::meetings::router())
+        // axum 0.8 path syntax: `{id}` (not `:id`).
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
-        // Phase 4 (Plan 04-03): hero augmented-notes endpoint. Same auth
-        // model as the other meeting routes (session token via
-        // Authorization header OR `?token=` query string).
+        // Phase 4 (Plan 04-03): hero augmented-notes endpoint.
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
-        // Phase 4 (Plan 04-04): GET the persisted meeting row — used by the
-        // MeetingPost route to hydrate on direct-link / refresh (NOTES-13
-        // step 10 persistence gate). Returns enriched_md + notes_md +
-        // transcript_json + title + started_at_unix_ms + ended_at_unix_ms.
-        // 404 if the meeting hasn't been enhanced yet (row only exists
-        // after first enhance per Plan 04-03's UPSERT contract).
-        .route("/api/meetings/{id}", get(get_meeting))
         // Phase 6 (Plan 06-01): in-meeting chat REST surface.
         // POST inserts a user + placeholder assistant row and spawns the
         // LLM streaming task; GET hydrates the chat window on remount.
@@ -153,15 +151,6 @@ fn allowed_origins_for_port(port: u16) -> std::collections::HashSet<String> {
     set
 }
 
-/// `POST /api/meetings` — create a new meeting and return its UUID v7 id.
-///
-/// Body: empty. Returns `{ "id": <uuid>, "created_at_ms": <u64> }` (D-12).
-/// The meeting is in-memory only in Phase 3; Phase 7 will persist via SQLite.
-async fn create_meeting(State(state): State<AppState>) -> Json<Value> {
-    let m = state.meetings.create().await;
-    Json(json!({ "id": m.id, "created_at_ms": m.created_at_ms }))
-}
-
 /// `POST /api/meetings/:id/start` — open audio capture + spawn the Deepgram
 /// STT session (D-12). 200 `{"status":"started"}` on success; 400 with
 /// `{"error":<reason>}` on any failure (notably missing
@@ -172,93 +161,6 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": e.to_string() })),
-        )
-            .into_response(),
-    }
-}
-
-/// `GET /api/meetings/:id` — read the persisted meeting row from SQLite.
-///
-/// Used by the Plan 04-04 `MeetingPost` route to hydrate on direct-link
-/// or refresh — `location.state.enrichedMd` lives for one navigation,
-/// after which the post page falls back to this endpoint. Returns:
-///
-/// ```json
-/// {
-///   "id": "<uuid>",
-///   "title": "string|null",
-///   "notes_md": "string|null",
-///   "transcript_json": "string|null",
-///   "enriched_md": "string|null",
-///   "started_at_unix_ms": 1234567890,
-///   "ended_at_unix_ms": null
-/// }
-/// ```
-///
-/// 404 if the meeting hasn't been enhanced yet (the row only exists after
-/// the first `/enhance` per Plan 04-03's UPSERT contract — pre-enhance
-/// meetings live only in `AppState.meetings`).
-///
-/// `enriched_doc_json` is intentionally NOT returned — the browser uses
-/// `enriched_md` (the wire-format markdown) to reconstruct the editor via
-/// `markdownToHtml` + `setContent`. The JSON column exists for future
-/// surfaces (Phase 7 library scroll-restoration).
-async fn get_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
-    let id_str = id.to_string();
-    // HI-1: use the read pool for SELECT queries. The writer Mutex was
-    // serializing every GET behind every concurrent enhance UPSERT — a
-    // 200ms LLM-bound write would stall every page refresh on the post
-    // route. The read pool is sized to 4 connections with `query_only=ON`
-    // so SELECTs go in parallel.
-    let reader = state.storage.read();
-    let row = {
-        let conn = match reader.lock() {
-            Ok(c) => c,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": format!("db lock: {e}") })),
-                )
-                    .into_response();
-            }
-        };
-        conn.query_row(
-            r#"SELECT id, title, notes_md, transcript_json, enriched_md,
-                       started_at, ended_at
-                 FROM meetings WHERE id = ?1"#,
-            rusqlite::params![id_str],
-            |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, Option<String>>(1)?,
-                    r.get::<_, Option<String>>(2)?,
-                    r.get::<_, Option<String>>(3)?,
-                    r.get::<_, Option<String>>(4)?,
-                    r.get::<_, Option<i64>>(5)?,
-                    r.get::<_, Option<i64>>(6)?,
-                ))
-            },
-        )
-    };
-    match row {
-        Ok((id, title, notes_md, transcript_json, enriched_md, started, ended)) => Json(json!({
-            "id": id,
-            "title": title,
-            "notes_md": notes_md,
-            "transcript_json": transcript_json,
-            "enriched_md": enriched_md,
-            "started_at_unix_ms": started,
-            "ended_at_unix_ms": ended,
-        }))
-        .into_response(),
-        Err(rusqlite::Error::QueryReturnedNoRows) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("meeting {id_str} not found") })),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("db query: {e}") })),
         )
             .into_response(),
     }

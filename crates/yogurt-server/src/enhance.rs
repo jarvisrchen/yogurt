@@ -362,6 +362,49 @@ pub async fn enhance(
         }
     };
 
+    // 7c) Phase 7 (Plan 07-01): the Library REST surface (`GET /api/meetings`)
+    // reads from `yogurt_db::MeetingRepo`, not from Phase 0 storage. Mirror
+    // the post-enhance state (title, enriched_md, ended_at,
+    // started_at, notes_md, transcript_json) into the Library directory so
+    // the two layers don't diverge. Creates the row on the fly if the user
+    // enhanced a meeting that was never seen by the Library (e.g.
+    // pre-Phase-7 row). The repo bumps `updated_at` so the Library re-sorts.
+    {
+        let id = meeting_id_str.clone();
+        let title = title.clone();
+        let notes_md = req.notes_md.clone();
+        let transcript_json = req.transcript_json.clone();
+        let enriched_md_for_repo = enriched_md.clone();
+        let started_at = started_at_unix_ms;
+        let ended_at = ended_at_unix_ms;
+        let state2 = state.clone();
+        let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            // Ensure the row exists before patching — older meetings
+            // pre-date the Library surface entirely.
+            if state2.meeting_repo.get(&id)?.is_none() {
+                state2.meeting_repo.create(yogurt_db::NewMeeting {
+                    title: title.clone(),
+                    started_at_unix_ms: Some(started_at),
+                    id: Some(id.clone()),
+                })?;
+            }
+            state2.meeting_repo.patch(
+                &id,
+                yogurt_db::MeetingPatch {
+                    title: Some(title),
+                    started_at: Some(started_at),
+                    notes_md: Some(notes_md),
+                    transcript_json: Some(transcript_json),
+                    enriched_md: Some(Some(enriched_md_for_repo)),
+                    ended_at: Some(ended_at),
+                    starred: None,
+                },
+            )?;
+            Ok(())
+        })
+        .await;
+    }
+
     // 8) Emit `enhance_progress` — done.
     let _ = meeting
         .events_tx

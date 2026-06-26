@@ -43,6 +43,8 @@ async fn spawn() -> TestSetup {
 
     let (markdown_exporter, prompts) =
         yogurt_server::__test_only_aux_state(tmp.path().join("notes")).expect("build aux state");
+    let db = yogurt_db::Db::open_in_memory().unwrap();
+    let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
     let state = AppState {
         mode: Mode::Release,
         storage,
@@ -53,10 +55,12 @@ async fn spawn() -> TestSetup {
         prompts,
         // Phase 5 (Plan 05-02): test wiring uses in-memory yogurt-db +
         // MemoryKeyStore so this test doesn't touch the real Keychain.
-        db: yogurt_db::Db::open_in_memory().unwrap(),
+        db,
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
         // Phase 6 (Plan 06-01): test wiring uses MockLlm.
         llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
+        // Phase 7 (Plan 07-01): SQLite-backed Library directory.
+        meeting_repo,
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
