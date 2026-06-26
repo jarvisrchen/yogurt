@@ -4212,6 +4212,7 @@ dependencies = [
  "yogurt-llm",
  "yogurt-notes",
  "yogurt-prompts",
+ "yogurt-server",
  "yogurt-stt",
 ]
 
