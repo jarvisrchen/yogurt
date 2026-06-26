@@ -25,6 +25,17 @@ base64 = { workspace = true }
 subtle = { workspace = true }
 yogurt-audio = { path = "../yogurt-audio" }
 yogurt-stt = { path = "../yogurt-stt" }
+# Phase 5 (Plan 05-01): LlmClient trait + OpenAI-compat adapter. The
+# enhance handler talks to providers through `LlmClient`; Phase 6 chat
+# will share the same crate without going through axum.
+yogurt-llm = { path = "../yogurt-llm" }
+# Phase 5 (Plan 05-01): `MockLlm::stream` returns a `BoxStream` so the
+# server crate needs `futures_util` in main deps (also in dev-deps for
+# integration tests).
+futures-util = { workspace = true }
+# Phase 5 (Plan 05-02): providers + settings + Keychain. `Db` and
+# `ApiKeyStore` are carried on `AppState` for handlers + bootstrap.
+yogurt-db = { path = "../yogurt-db" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 # Phase 4 (Plan 04-02): date formatting for MarkdownExporter filenames.

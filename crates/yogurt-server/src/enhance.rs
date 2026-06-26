@@ -32,9 +32,9 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::llm_mock::MockLlm;
-use crate::llm_openai::OpenAiCompatClient;
 use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
+use yogurt_llm::{ChatMessage, ChatRequest, LlmClient};
 use yogurt_notes::merge_notes;
 use yogurt_prompts::EnhanceCtx;
 
@@ -147,24 +147,44 @@ pub async fn enhance(
         .events_tx
         .send(serde_json::json!({"type": "enhance_progress", "phase": "sending"}));
 
-    // 4) Call the LLM. OpenAiCompat from env when configured, else MockLlm.
+    // 4) Call the LLM via the `yogurt_llm::LlmClient` trait (Plan 05-01).
+    //
+    // Provider lookup is a two-tier fallback until Plan 05-02 lands
+    // `AppState.keys` (Keychain-backed `ApiKeyStore`):
+    //   1. Real provider via `YOGURT_LLM_*` env vars → `OpenAiCompatClient`
+    //      from `yogurt_llm`. Goes through the trait so the BL-5 timeout
+    //      logic below treats both branches identically.
+    //   2. Else fall back to `MockLlm`, which also impls `LlmClient` (the
+    //      Plan 05-01 refactor of CONTEXT D-21) so first-time developers
+    //      still get a working hero experience.
+    //
     // BL-5: wrap with a hard timeout. If reqwest's own timeout fires we
     // catch it via Err(...). If the future just stalls (e.g. an in-process
     // mock that .await's forever), tokio::time::timeout brings us back.
     // On either failure path emit `enhance_progress { phase: "error" }`
     // so the browser banner transitions to an error state instead of
     // spinning forever.
+    //
+    // System message is intentionally empty here — Phase 4's `enhance.md`
+    // prompt is rendered as the whole user payload; introducing a real
+    // system message requires moving the prompt split logic into
+    // `yogurt-prompts`. That refactor is queued for Plan 05-02's enhance
+    // rewire (which also moves to `AppState.db` for the active provider).
+    let real_client = crate::llm_openai::from_env();
+    let chat_req = ChatRequest {
+        messages: vec![ChatMessage::user(user_prompt.clone())],
+        stream: false,
+    };
     let llm_call = async {
-        match OpenAiCompatClient::from_env() {
-            Some(client) => client
-                .complete("", &user_prompt)
-                .await
-                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("llm complete failed: {e}"))),
-            None => MockLlm
-                .complete("", &user_prompt)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("mock llm: {e}"))),
-        }
+        let dyn_client: &dyn LlmClient = match real_client.as_ref() {
+            Some(c) => c,
+            None => &MockLlm,
+        };
+        dyn_client
+            .complete(chat_req)
+            .await
+            .map(|r| r.content)
+            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("llm complete failed: {e}")))
     };
     let llm_output = match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, llm_call).await
     {
