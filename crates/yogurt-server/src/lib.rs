@@ -38,6 +38,15 @@ pub mod __test_only_sanitize {
     pub use crate::sanitize::sanitize_enriched_md;
 }
 
+/// Phase 6 (Plan 06-01) test-only re-export of the deterministic mock LLM.
+/// Integration tests that construct `AppState { ... }` directly need to fill
+/// the new `llm` field without taking a dependency on `yogurt-llm`'s real
+/// `OpenAiCompatClient`. Hidden from docs.
+#[doc(hidden)]
+pub mod __test_only_llm_mock {
+    pub use crate::llm_mock::MockLlm;
+}
+
 /// Phase 4 (Plan 04-02) test-only re-export of the otherwise crate-private
 /// `markdown_exporter` module. Wiring (call from the enhance handler) lands
 /// in Plan 04-03; until then the module surface is exercised only by

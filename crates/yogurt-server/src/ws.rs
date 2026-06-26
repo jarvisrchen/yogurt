@@ -29,11 +29,35 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::AppState;
+
+/// Typed WS event surface introduced in Phase 6.
+///
+/// Phase 0/3 used ad-hoc `serde_json::Value` frames over the per-meeting
+/// `events_tx` broadcast (see `meetings.rs`). Phase 6 introduces this
+/// `WsEvent` enum for new typed surfaces — currently only `ChatChunk` —
+/// while leaving the Phase 4 `enhance_progress` `serde_json::Value` path
+/// untouched. Both surfaces share the same WebSocket and the same
+/// `{"type": "<snake_case>", ...}` discriminator convention so the browser
+/// sees one homogeneous stream.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WsEvent {
+    /// Per-token chat streaming chunk. Emitted by `api::chat::spawn_stream`
+    /// for each chunk returned by `LlmClient::stream`. Terminates with a
+    /// `done: true` chunk (possibly with `delta = ""`) so the browser can
+    /// release the streaming-caret state.
+    ChatChunk {
+        message_id: String,
+        delta: String,
+        #[serde(default)]
+        done: bool,
+    },
+}
 
 #[derive(Deserialize)]
 pub struct WsParams {
@@ -291,5 +315,27 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phase 6 (Plan 06-01) wire-shape gate: the browser-side `useChat`
+    /// hook switches on `ev.type === "chat_chunk"` and reads `message_id`,
+    /// `delta`, `done`. Any rename here breaks the frontend silently.
+    #[test]
+    fn it_serializes_chat_chunk_with_expected_keys() {
+        let ev = WsEvent::ChatChunk {
+            message_id: "01HXMSG".into(),
+            delta: "hello".into(),
+            done: false,
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "chat_chunk");
+        assert_eq!(json["message_id"], "01HXMSG");
+        assert_eq!(json["delta"], "hello");
+        assert_eq!(json["done"], false);
     }
 }
