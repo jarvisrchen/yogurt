@@ -1,3 +1,17 @@
+// Thin HTTP wrappers around the yogurt-server REST surface.
+//
+// Phase 0 shipped `fetchHealth()`. Phase 4 adds `postEnhance(...)` — the
+// browser-side trigger for `POST /api/meetings/{id}/enhance` (CONTEXT D-22).
+//
+// ## postEnhance signature
+//
+// The server-side `EnhanceRequest` (crates/yogurt-server/src/enhance.rs:40)
+// is `{ notes_md, transcript_json, title?, started_at_unix_ms?,
+// ended_at_unix_ms? }` — the body carries what the in-memory `Meeting`
+// struct does NOT yet store (per 04-03's documented deviation #5). The
+// endpoint is mounted behind `require_session_token` (WR-06), so every
+// request MUST send `Authorization: Bearer <token>`.
+
 export interface HealthResponse {
   status: string;
   service: string;
@@ -7,4 +21,64 @@ export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch("/api/health");
   if (!res.ok) throw new Error(`health check failed: ${res.status}`);
   return res.json() as Promise<HealthResponse>;
+}
+
+export interface EnhanceRequestBody {
+  /** User's raw markdown notes — preserved verbatim across merge. */
+  notes_md: string;
+  /**
+   * JSON-serialized transcript segments: `[{ts_ms, channel, text}, …]`.
+   * Empty array is fine — the LLM still gets the notes.
+   */
+  transcript_json: string;
+  /** Optional meeting title — drives the on-disk markdown filename slug. */
+  title?: string;
+  /** Optional meeting start time (unix ms). */
+  started_at_unix_ms?: number;
+  /** Optional meeting end time (unix ms). */
+  ended_at_unix_ms?: number;
+}
+
+export interface EnhanceResponse {
+  /**
+   * Wire-format enriched markdown with `<span data-ai-grey…>` and
+   * `<span data-transcript-link…>` spans embedded inline. YogurtEditor
+   * round-trips this back into ProseMirror via `setContent(html, false)`.
+   */
+  enriched_md: string;
+  /** Path on disk where the per-meeting markdown file was written. */
+  notes_file: string;
+}
+
+/**
+ * POST /api/meetings/{meetingId}/enhance.
+ *
+ * Throws on non-2xx. The thrown Error's message is the server's plaintext
+ * body — useful in DevTools without making the caller drill into a typed
+ * error shape.
+ *
+ * @param meetingId The meeting's UUID (returned by POST /api/meetings).
+ * @param body      The enhance payload (see `EnhanceRequestBody`).
+ * @param token     The session token (from `ensureSessionToken()`).
+ */
+export async function postEnhance(
+  meetingId: string,
+  body: EnhanceRequestBody,
+  token: string,
+): Promise<EnhanceResponse> {
+  const res = await fetch(`/api/meetings/${meetingId}/enhance`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      text || `enhance failed: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as EnhanceResponse;
 }

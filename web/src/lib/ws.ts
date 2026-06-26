@@ -18,13 +18,39 @@ export interface TranscriptEvent {
 }
 
 /**
- * Server envelope: every WS frame is `{type, payload}` so future phases
- * (Phase 4 notes_edit, Phase 6 chat_send) can multiplex over the same socket.
+ * `enhance_progress` WS event (Phase 4 — CONTEXT D-23 / D-24).
+ *
+ * Emitted by `crates/yogurt-server/src/enhance.rs` on `Meeting.events_tx`
+ * and multiplexed onto the per-meeting WebSocket by `ws.rs`. The shape is
+ * flat (no `payload` wrapper) because that channel forwards arbitrary
+ * `serde_json::Value`s with a top-level `type` key.
+ *
+ * Lifecycle: `sending` → `streaming` (one or more, with `chars`) → `done`.
+ * Phase 4 emits `chars` once at completion; Phase 5 will stream per-chunk.
  */
-interface ServerFrame {
-  type: "transcript";
-  payload: TranscriptEvent;
+export interface EnhanceProgressEvent {
+  type: "enhance_progress";
+  phase: "sending" | "streaming" | "done";
+  chars?: number;
 }
+
+/**
+ * Union of all WS messages the per-meeting socket can deliver.
+ *
+ *   - `transcript` frames are wrapped: `{type:"transcript", payload:…}`.
+ *   - `enhance_progress` frames are flat: `{type:"enhance_progress", …}`.
+ *
+ * `enhance_progress` is the Phase 4 surface; Phase 6 will add `chat_chunk`.
+ */
+export type WsMessage =
+  | { type: "transcript"; payload: TranscriptEvent }
+  | EnhanceProgressEvent;
+
+/**
+ * Server envelope: kept as an alias for backwards compatibility with the
+ * Phase 3 transcript dock code that imported `ServerFrame` directly.
+ */
+type ServerFrame = WsMessage;
 
 /**
  * Merge a single incoming transcript event into the running list.
@@ -183,6 +209,10 @@ export function useTranscriptWs(
           if (frame.type === "transcript") {
             setEvents((prev) => mergeEvent(prev, frame.payload));
           }
+          // `enhance_progress` is also forwarded on this socket (Phase 4
+          // CONTEXT D-23) — `useEnhanceProgress` handles it via its own
+          // subscription; this hook intentionally ignores it so the
+          // transcript dock is unaffected.
         } catch {
           // Ignore non-JSON / malformed frames; future phases may add typed
           // error frames that we'll log here.
@@ -230,4 +260,131 @@ export function useTranscriptWs(
     connected: connectionStatus === "connected",
     connectionStatus,
   };
+}
+
+/**
+ * Hook result for `useEnhanceProgress` — exposes the most recent
+ * `enhance_progress` event from the per-meeting WebSocket.
+ *
+ *   - `phase`  is `"sending"` / `"streaming"` / `"done"` once any event
+ *     has been seen, else `null`.
+ *   - `chars`  is the running character count from the most recent event,
+ *     or `null` if absent.
+ *   - `enhancing` is a convenience derived from `phase` —`true` while
+ *     `sending` or `streaming`, `false` once `done` (or before any event).
+ */
+export interface UseEnhanceProgressResult {
+  phase: EnhanceProgressEvent["phase"] | null;
+  chars: number | null;
+  enhancing: boolean;
+}
+
+/**
+ * Subscribe to `enhance_progress` events on the per-meeting WebSocket
+ * (CONTEXT D-23 / D-24).
+ *
+ * Opens its own connection (independent of `useTranscriptWs`) so a route
+ * that only cares about enhance progress (post-meeting view) doesn't have
+ * to also mount the transcript list. Both hooks can coexist on the same
+ * page — the server fans out to one broadcast subscriber per WS, so two
+ * sockets means two subscribers, no message is lost.
+ *
+ * If `meetingId` or `token` is null, the hook is dormant. Reconnect on
+ * drop follows the same backoff schedule as `useTranscriptWs`
+ * (500/1000/2000ms, 3 attempts then give up).
+ */
+export function useEnhanceProgress(
+  meetingId: string | null,
+  token: string | null,
+): UseEnhanceProgressResult {
+  const [phase, setPhase] =
+    useState<EnhanceProgressEvent["phase"] | null>(null);
+  const [chars, setChars] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!meetingId || !token) {
+      setPhase(null);
+      setChars(null);
+      return;
+    }
+
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
+
+    let attempt = 0;
+    let cancelled = false;
+    let currentWs: WebSocket | null = null;
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanupCurrentWs = () => {
+      if (currentWs) {
+        currentWs.onopen = null;
+        currentWs.onclose = null;
+        currentWs.onerror = null;
+        currentWs.onmessage = null;
+        if (
+          currentWs.readyState === WebSocket.CONNECTING ||
+          currentWs.readyState === WebSocket.OPEN
+        ) {
+          currentWs.close();
+        }
+        currentWs = null;
+      }
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const ws = new WebSocket(url);
+      currentWs = ws;
+
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const frame = JSON.parse(event.data as string) as WsMessage;
+          if (frame.type === "enhance_progress") {
+            setPhase(frame.phase);
+            if (typeof frame.chars === "number") {
+              setChars(frame.chars);
+            }
+          }
+        } catch {
+          // Ignore non-JSON / malformed frames.
+        }
+      };
+
+      const scheduleReconnect = () => {
+        if (cancelled) return;
+        cleanupCurrentWs();
+        if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
+        const delay = 500 * (1 << attempt);
+        attempt += 1;
+        backoffTimer = setTimeout(() => {
+          backoffTimer = null;
+          connect();
+        }, delay);
+      };
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        attempt = 0;
+      };
+      ws.onclose = scheduleReconnect;
+      ws.onerror = scheduleReconnect;
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (backoffTimer) {
+        clearTimeout(backoffTimer);
+        backoffTimer = null;
+      }
+      cleanupCurrentWs();
+    };
+  }, [meetingId, token]);
+
+  const enhancing = phase === "sending" || phase === "streaming";
+
+  return { phase, chars, enhancing };
 }
