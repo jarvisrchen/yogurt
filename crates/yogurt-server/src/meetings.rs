@@ -51,6 +51,13 @@ pub struct Meeting {
     pub transcript_tx: broadcast::Sender<TranscriptEvent>,
     /// `Some` while recording, `None` before start / after stop.
     pub task: Mutex<Option<JoinHandle<()>>>,
+    /// BL-05: handle to the std::thread that owns the !Send `AudioStream`.
+    /// `Registry::stop` joins this with a watchdog timeout so the
+    /// AudioStream Drop (which takes ~50 ms for SCK + cpal teardown) is
+    /// observably complete before a subsequent `start()` can open a new
+    /// SCK session. Without this join, back-to-back start/stop calls
+    /// would let two AudioStreams hold SCK + cpal handles simultaneously.
+    pub capture_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl Meeting {
@@ -63,6 +70,7 @@ impl Meeting {
             audio_tx,
             transcript_tx,
             task: Mutex::new(None),
+            capture_thread: Mutex::new(None),
         }
     }
 }
@@ -143,7 +151,11 @@ impl Registry {
         >();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
-        std::thread::spawn(move || {
+        // BL-05: capture the JoinHandle so `stop()` can wait for the
+        // AudioStream Drop (~50 ms SCK + cpal teardown) to complete before
+        // a subsequent `start()` can re-enter. Detached threads led to
+        // overlapping SCK sessions on back-to-back start/stop calls.
+        let capture_thread = std::thread::spawn(move || {
             let stream = match yogurt_audio::start_capture() {
                 Ok(s) => s,
                 Err(e) => {
@@ -200,18 +212,67 @@ impl Registry {
         });
 
         *m.task.lock().await = Some(task);
+        *m.capture_thread.lock().await = Some(capture_thread);
         Ok(())
     }
 
     /// Stop recording. Idempotent — calling on an already-stopped meeting is a no-op.
+    ///
+    /// BL-05: after aborting the supervisor task (which drops `_shutdown_tx`,
+    /// waking the std::thread's `blocking_recv` and triggering
+    /// `drop(stream)`), we join the capture thread with a 200ms watchdog so
+    /// AudioStream Drop completes before a subsequent `start()` opens a new
+    /// SCK session. The join runs inside `spawn_blocking` so we don't block
+    /// the tokio reactor; a timeout fires only if the thread is wedged
+    /// (which would be a real bug worth surfacing).
     pub async fn stop(&self, id: &MeetingId) -> Result<()> {
         let m = self
             .get(id)
             .await
             .ok_or_else(|| anyhow!("meeting not found"))?;
+
+        // Step 1: abort the tokio supervisor task. This drops `_shutdown_tx`
+        // inside the task body, which wakes the std::thread's blocking_recv.
         if let Some(t) = m.task.lock().await.take() {
             t.abort();
+            // Wait for the task to actually exit (abort is asynchronous);
+            // its body owns `_shutdown_tx` which must drop before the
+            // capture thread can wake.
+            let _ = t.await;
         }
+
+        // Step 2: join the std::thread that owns the AudioStream so the
+        // SCK + cpal teardown finishes before this call returns. Use
+        // spawn_blocking so we don't block the reactor; cap the wait at
+        // 200ms (the docs say SCK + cpal Drop is ~50ms — 200ms is generous).
+        if let Some(handle) = m.capture_thread.lock().await.take() {
+            let join_result = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                tokio::task::spawn_blocking(move || handle.join()),
+            )
+            .await;
+            match join_result {
+                Ok(Ok(Ok(()))) => {
+                    tracing::debug!("audio capture thread joined cleanly");
+                }
+                Ok(Ok(Err(e))) => {
+                    tracing::error!(?e, "audio capture thread panicked during shutdown");
+                }
+                Ok(Err(e)) => {
+                    tracing::error!(?e, "spawn_blocking for capture-thread join failed");
+                }
+                Err(_) => {
+                    // Watchdog fired — capture thread is wedged (SCK didn't
+                    // release the device, or our cleanup races). Log loudly
+                    // so future investigators have a signal.
+                    tracing::error!(
+                        "audio capture thread did not exit within 200ms — \
+                         AudioStream may still hold SCK/cpal handles"
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 
