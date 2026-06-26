@@ -109,11 +109,7 @@ async fn delete_model(
 
 /// The spawned worker that runs one model download and emits progress
 /// + terminal events on the app-wide event channel.
-async fn download_task(
-    tx: ws::AppEventTx,
-    model_name: String,
-    spec: &'static models::ModelSpec,
-) {
+async fn download_task(tx: ws::AppEventTx, model_name: String, spec: &'static models::ModelSpec) {
     let tx_progress = tx.clone();
     let model_name_progress = model_name.clone();
     let result = models::download(spec, move |p| {
