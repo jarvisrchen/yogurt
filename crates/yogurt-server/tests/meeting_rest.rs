@@ -176,6 +176,50 @@ async fn it_serves_session_token_to_allowed_origin() {
     handle.abort();
 }
 
+/// REGRESSION: browsers omit `Origin` on same-origin GET (per Fetch spec),
+/// so the bootstrap MUST accept empty Origin + `Sec-Fetch-Site: same-origin`.
+/// Without this, the SPA cannot fetch its session token and the app never
+/// loads. The original Phase 0 test above set Origin manually and missed
+/// this — that's why the bug shipped through autonomous verification.
+#[tokio::test(flavor = "multi_thread")]
+async fn it_accepts_same_origin_bootstrap_with_empty_origin() {
+    let (addr, token, handle, _tmp) = spawn_server().await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}/api/session-token"))
+        .header("Sec-Fetch-Site", "same-origin")
+        .send()
+        .await
+        .expect("server reachable");
+    assert_eq!(
+        resp.status(),
+        200,
+        "browser same-origin GET (no Origin, Sec-Fetch-Site: same-origin) must be accepted"
+    );
+    let body = resp.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(body["token"], token);
+
+    handle.abort();
+}
+
+/// REGRESSION: cross-site Sec-Fetch-Site must still 403 — an attacker
+/// iframe gets `Sec-Fetch-Site: cross-site` (unforgeable) and no Origin
+/// when fetching with credentials, and must not be able to read the token.
+#[tokio::test(flavor = "multi_thread")]
+async fn it_rejects_cross_site_bootstrap_with_empty_origin() {
+    let (addr, _token, handle, _tmp) = spawn_server().await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}/api/session-token"))
+        .header("Sec-Fetch-Site", "cross-site")
+        .send()
+        .await
+        .expect("server reachable");
+    assert_eq!(resp.status(), 403);
+
+    handle.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn it_rejects_session_token_for_bad_origin() {
     let (addr, _token, handle, _tmp) = spawn_server().await;

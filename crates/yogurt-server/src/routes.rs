@@ -143,8 +143,21 @@ async fn get_session_token(State(state): State<AppState>, headers: HeaderMap) ->
         .get("origin")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
-    if !allowed.contains(origin) {
-        tracing::warn!(%origin, "session-token: rejected — origin not in allowlist");
+    // Browsers omit the `Origin` header on same-origin GET requests (per
+    // Fetch spec) — without a fallback gate the SPA bootstrap 403s and the
+    // app never loads. `Sec-Fetch-Site: same-origin` is sent by every
+    // modern browser (Chrome 76+, Firefox 90+, Safari 16+) on every fetch
+    // and cannot be forged by attacker JS, so it preserves the CSRF intent
+    // for the empty-Origin case.
+    let sec_fetch_site = headers
+        .get("sec-fetch-site")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    let origin_in_allowlist = allowed.contains(origin);
+    let same_origin_browser_fetch = origin.is_empty() && sec_fetch_site == "same-origin";
+
+    if !origin_in_allowlist && !same_origin_browser_fetch {
+        tracing::warn!(%origin, sec_fetch_site, "session-token: rejected — origin not in allowlist");
         return (StatusCode::FORBIDDEN, "forbidden: bad origin").into_response();
     }
     Json(json!({ "token": state.session.as_str() })).into_response()
