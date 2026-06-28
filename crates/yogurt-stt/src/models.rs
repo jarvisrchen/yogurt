@@ -74,8 +74,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-tiny.en.bin",
         size_mb: 75,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
-        // PLACEHOLDER — see module WARNING.  Re-verify with shasum -a 256.
-        sha256: "921e4cf8686fdd993dcd081a5da5b6c732a464b00ce4499c1d3ed8e9d4f9b8c5",
+        // Verified against HuggingFace blob on 2026-06-28 via
+        // `curl -L <url> | shasum -a 256` (74 MB download).
+        sha256: "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
         intel_supported: true,
     },
     ModelSpec {
@@ -83,8 +84,11 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-small.en.bin",
         size_mb: 487,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
-        // PLACEHOLDER — see module WARNING.
-        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fddf0b9cd",
+        // Verified against HuggingFace blob on 2026-06-28 via a user-driven
+        // download that surfaced the placeholder mismatch (Plan 08-02's
+        // HashMismatch path deleted the file and the dialog showed the
+        // expected/actual pair, which is now pinned here).
+        sha256: "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
         intel_supported: true,
     },
     ModelSpec {
@@ -92,7 +96,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-medium.en.bin",
         size_mb: 1_530,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin",
-        // PLACEHOLDER — see module WARNING.
+        // ⚠️ STILL A PLACEHOLDER (2026-06 snapshot). Will mismatch on first
+        // real download. See `scripts/refresh-model-hashes.sh` to fix all
+        // four at once, or follow the recipe in the module WARNING above.
         sha256: "cc37e93478338ec7700281a7ac30a10128929eb8fcf02bc54cf2deddbcb22d6c",
         intel_supported: false,
     },
@@ -101,7 +107,8 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-large-v3.bin",
         size_mb: 3_094,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-        // PLACEHOLDER — see module WARNING.
+        // ⚠️ STILL A PLACEHOLDER (2026-06 snapshot). Will mismatch on first
+        // real download. See `scripts/refresh-model-hashes.sh`.
         sha256: "ad82bf6a9043ceed055076d0fd39f5f186ff8062db9e2e6f9bcd0afd6a9b9b3a",
         intel_supported: false,
     },
