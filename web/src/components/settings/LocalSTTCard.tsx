@@ -70,16 +70,26 @@ export function LocalSTTCard({
   // i.e. nothing in flight.
   const progress = useModelDownloadProgress(activeDownload?.name ?? null);
 
-  // 600 ms after the download completes (or errors) clear activeDownload
-  // so the pill stops showing `⟳ NN%`.  The models cache has already
-  // been invalidated by the hook, so the pill will read `downloaded:true`
-  // by the time this fires and renders as ✓.
+  // 600 ms after the download completes successfully, clear
+  // activeDownload so the pill stops showing `⟳ NN%`. The models cache
+  // has already been invalidated by the hook, so the pill will read
+  // `downloaded:true` by the time this fires and renders as ✓.
+  //
+  // DO NOT auto-clear on error — the user needs to SEE the error.  On
+  // error, we keep activeDownload alive so:
+  //   - the pill stays `⟳ NN%` styled (a follow-up commit could flip
+  //     to a `⚠ failed` look but for v1 leaving the pill as-is is fine)
+  //   - re-clicking the pill reopens the dialog with the error visible
+  //   - the user can read the SHA mismatch / network error message and
+  //     decide whether to retry (which resumes from the partial file)
+  //     or report it.
+  // The user dismisses the error explicitly via the dialog's Cancel
+  // button, which clears activeDownload via the onClose path below.
   useEffect(() => {
-    if (!progress) return;
-    if (!progress.complete && !progress.error) return;
+    if (!progress?.complete) return;
     const t = window.setTimeout(() => setActiveDownload(null), 600);
     return () => window.clearTimeout(t);
-  }, [progress?.complete, progress?.error]);
+  }, [progress?.complete]);
 
   const startOrReopenDownload = (name: string) => {
     const m = q.data?.find((x) => x.name === name);
@@ -92,6 +102,19 @@ export function LocalSTTCard({
     // Otherwise start a new download (replaces the tracked one).
     setActiveDownload({ name: m.name, sizeMb: m.size_mb });
     setDialogOpen(true);
+  };
+
+  const handleDialogClose = () => {
+    setDialogOpen(false);
+    // If the user is closing the dialog while an error is visible, treat
+    // that as dismissing the failed-download state — clear activeDownload
+    // so the pill returns to its idle ↓ form. Without this the pill is
+    // stuck in the ⟳ state forever after a failure.
+    // Running download with no error: leave activeDownload alive so the
+    // pill keeps ticking and the user can reopen the dialog for detail.
+    if (progress?.error) {
+      setActiveDownload(null);
+    }
   };
 
   return (
@@ -152,7 +175,7 @@ export function LocalSTTCard({
         model={dialogOpen ? activeDownload?.name ?? null : null}
         sizeMb={activeDownload?.sizeMb ?? null}
         progress={progress}
-        onClose={() => setDialogOpen(false)}
+        onClose={handleDialogClose}
       />
     </article>
   );
