@@ -127,6 +127,12 @@ None yet.
 - Phase 2 (forward note): Plan 02-03 must NOT introduce `--features synthetic` regressions. `yogurt-audio/tests/synthetic.rs` references `yogurt_audio::synthetic::*` which is `#[cfg(feature = "synthetic")]`-gated; workspace test invocations need `--features yogurt-audio/synthetic`. Could be fixed by gating the integration test file with `#![cfg(feature = "synthetic")]` but out of 02-02 scope. **Re-confirmed pre-existing during Plan 03-01 verification** — `cargo test --workspace` fails on this; tracked at `.planning/phases/03-cloud-stt-live-transcript/deferred-items.md` D-INT-01. Scoped `cargo test -p yogurt-stt` is green.
 - Phase 4 is highest payoff but also highest UX risk (TipTap mark + AST diff round-trip). Plan-phase 4 must design `enriched_doc_json` schema before writing the mark.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260628-g71 | Add microphone permission detection + UI surface symmetrical to Screen Recording | 2026-06-28 | f7313d6, 0f0b1e7 | .planning/quick/260628-g71-add-microphone-permission-detection-ui-s |
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:
