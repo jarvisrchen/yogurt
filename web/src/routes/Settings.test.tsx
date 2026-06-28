@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router";
 import type { SettingsView } from "../lib/api/settings";
 
 // ─── Mock the typed API client before importing the component ──────────────
@@ -79,9 +80,11 @@ function renderSettings() {
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={qc}>
-      <Settings />
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={["/settings"]}>
+      <QueryClientProvider client={qc}>
+        <Settings />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
