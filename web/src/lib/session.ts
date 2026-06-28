@@ -52,3 +52,47 @@ export function ensureSessionToken(): Promise<string> {
 export function _resetSessionTokenCache(): void {
   cached = null;
 }
+
+/**
+ * Shared `fetch` wrapper that attaches `Authorization: Bearer <token>` after
+ * waiting on `ensureSessionToken()`. Use this for every `/api/*` call except
+ * the bootstrap `/api/session-token` itself (which acquires the token).
+ *
+ * Why this lives here, not per-file: three separate API clients shipped
+ * with bare `fetch()` and silently 403'd, gating the SPA on a bootstrap
+ * token that never reached subsequent calls. A single shared helper makes
+ * "token attached" the path of least resistance.
+ *
+ * Returns the raw `Response` so callers can decide how to parse. For
+ * JSON-only callers, see `bearerJson`.
+ */
+export async function bearerFetch(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const token = await ensureSessionToken();
+  const headers = new Headers(init?.headers ?? {});
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(input, { ...init, headers });
+}
+
+/**
+ * `bearerFetch` + throw-on-non-2xx + `.json()` (with 204 → `undefined`).
+ * Matches the shape `meetings.ts::json` shipped — extracted here so every
+ * API client adopts the same pattern.
+ */
+export async function bearerJson<T>(
+  input: string,
+  init?: RequestInit,
+): Promise<T> {
+  const res = await bearerFetch(input, init);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+  }
+  if (res.status === 204) return undefined as unknown as T;
+  return (await res.json()) as T;
+}

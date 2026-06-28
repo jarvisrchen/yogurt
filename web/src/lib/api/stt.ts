@@ -15,9 +15,10 @@
  * `stt_model_download_progress` / `_complete` / `_error` events. See
  * `web/src/hooks/useModelDownloadProgress.ts`.
  *
- * No secrets touch this surface; the routes are bound to 127.0.0.1 only
- * and the Settings page already runs same-origin, so no auth header is
- * sent (the Phase 5 settings module follows the same convention).
+ * All three routes mount behind `require_session_token` (Phase 0 WR-06),
+ * so every call attaches the bootstrap token via `bearerFetch`.  The
+ * original comment claimed "no auth header sent" — that was wrong and
+ * caused the SPA to 403 every poll until the helper was wired in.
  */
 
 import {
@@ -27,6 +28,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { bearerFetch } from "../session";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,7 +49,7 @@ export interface ModelView {
 // ─── HTTP helper ────────────────────────────────────────────────────────────
 
 async function http<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, {
+  const res = await bearerFetch(input, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
