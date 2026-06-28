@@ -69,7 +69,7 @@ pub struct SeedReport {
 ///    active, mark this one active.
 pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
     let mut report = SeedReport::default();
-    let existing_names = providers::list_names(&state.db)?;
+    let existing = providers::list(&state.db)?;
 
     for &(env_var, name, base_url, model) in ENV_PRESETS {
         let Ok(key) = std::env::var(env_var) else {
@@ -78,8 +78,32 @@ pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
         if key.trim().is_empty() {
             continue;
         }
-        if existing_names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
-            report.skipped.push(name.to_string());
+
+        // If a row with this name already exists, BACKFILL the Keychain
+        // entry when missing instead of skipping silently. The previous
+        // behavior skipped the entire iteration — so a user who:
+        //   (1) booted with an empty .env.local stub (row never inserted)
+        //   (2) clicked the Minimax preset chip in Settings to scaffold
+        //       a row (row inserted, no key stored)
+        //   (3) added the key to .env.local and re-ran `just dev`
+        // would see the provider row but `No key stored yet.` in the UI,
+        // with no log line explaining why. Backfill restores the intent.
+        if let Some(existing_row) = existing
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(name))
+        {
+            let existing_key = state.keys.get(&existing_row.id).ok().flatten();
+            if existing_key.is_none() {
+                if let Err(e) = state.keys.set(&existing_row.id, &key) {
+                    tracing::warn!(provider = name, error = %e, "failed to backfill key in keychain");
+                    report.skipped.push(name.to_string());
+                } else {
+                    tracing::info!(provider = name, "backfilled missing keychain key from env");
+                    report.seeded.push(name.to_string());
+                }
+            } else {
+                report.skipped.push(name.to_string());
+            }
             continue;
         }
 

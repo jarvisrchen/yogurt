@@ -101,6 +101,70 @@ async fn it_is_idempotent() {
     std::env::remove_var("YOGURT_MINIMAX_API_KEY");
 }
 
+/// REGRESSION: if a provider row already exists with NO key in the
+/// Keychain (e.g. the user clicked a preset chip in Settings to scaffold
+/// the row before adding the env var), the seed MUST backfill the key
+/// instead of silently leaving the row keyless.
+///
+/// The original behavior skipped the entire iteration when a same-named
+/// row existed, which left users staring at "No key stored yet." in
+/// Settings after a `just dev` boot that should have fixed it.
+#[tokio::test]
+async fn it_backfills_missing_keychain_key_when_row_exists() {
+    let _guard = env_lock().lock().await;
+    std::env::remove_var("YOGURT_OPENAI_API_KEY");
+    std::env::remove_var("YOGURT_OPENROUTER_API_KEY");
+    std::env::remove_var("YOGURT_MINIMAX_API_KEY");
+
+    let (state, _tmp) = test_state();
+
+    // Simulate "user clicked the Minimax preset chip" — insert the row
+    // without ever writing a key. This is the exact state the UI leaves
+    // the DB in after the preset-clone flow.
+    let id = yogurt_db::providers::insert(
+        &state.db,
+        yogurt_db::providers::NewProvider {
+            name: "Minimax".to_string(),
+            base_url: "https://api.minimax.io/v1".to_string(),
+            model: "MiniMax-Text-01".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(
+        state.keys.get(&id).unwrap().is_none(),
+        "precondition: no key in Keychain"
+    );
+
+    // User then adds the env var and re-runs `just dev`.
+    std::env::set_var("YOGURT_MINIMAX_API_KEY", "sk-backfilled-12345");
+    let report = bootstrap::seed_from_env(&state).await.unwrap();
+
+    assert_eq!(
+        report.seeded,
+        vec!["Minimax".to_string()],
+        "backfill should count as a seed action, not a skip"
+    );
+    assert!(report.skipped.is_empty());
+
+    let stored = state.keys.get(&id).unwrap().expect("key backfilled");
+    assert_eq!(stored, "sk-backfilled-12345");
+
+    // Second seed with the key already in place must NOT touch the
+    // Keychain (no spurious overwrite, no duplicate row).
+    let second = bootstrap::seed_from_env(&state).await.unwrap();
+    assert!(second.seeded.is_empty(), "second seed should not re-write");
+    assert_eq!(second.skipped, vec!["Minimax".to_string()]);
+
+    let providers = yogurt_db::providers::list(&state.db).unwrap();
+    let minimax_count = providers
+        .iter()
+        .filter(|p| p.name.eq_ignore_ascii_case("Minimax"))
+        .count();
+    assert_eq!(minimax_count, 1, "exactly one Minimax row");
+
+    std::env::remove_var("YOGURT_MINIMAX_API_KEY");
+}
+
 #[tokio::test]
 async fn it_does_not_override_existing_active() {
     let _guard = env_lock().lock().await;
