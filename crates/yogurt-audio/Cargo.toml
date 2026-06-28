@@ -20,8 +20,20 @@ parking_lot = { workspace = true }
 
 # screencapturekit is gated to macOS because the crate links the Swift bridge
 # against the macOS-only ScreenCaptureKit.framework.
+#
+# objc2 + objc2-av-foundation + block2 are macOS-only Objective-C interop
+# crates used by `permission::has_microphone_permission` /
+# `permission::request_microphone_permission` to call
+# `AVCaptureDevice.authorizationStatus(for:)` and
+# `AVCaptureDevice.requestAccess(for:completionHandler:)` (DD-01 of
+# .planning/quick/260628-g71-…/260628-g71-PLAN.md). AVFoundation is an
+# Objective-C framework with no C shim, so a typed binding is the
+# idiomatic Rust path — see PLAN's DD-01 rationale.
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = { workspace = true }
+objc2 = "0.6"
+objc2-av-foundation = "0.3"
+block2 = "0.6"
 
 [dev-dependencies]
 tokio = { workspace = true }

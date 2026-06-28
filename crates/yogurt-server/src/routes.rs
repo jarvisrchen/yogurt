@@ -27,6 +27,14 @@ pub fn router(state: AppState) -> Router {
     let audio_routes = Router::new()
         .route("/api/audio/devices", get(audio::get_devices))
         .route("/api/audio/permission", get(audio::get_permission))
+        // Quick task 260628-g71 DD-05: dedicated POST to fire the macOS
+        // microphone permission dialog from the Welcome "Grant Microphone"
+        // button. Idempotent / fire-and-forget; returns the combined
+        // permission snapshot.
+        .route(
+            "/api/audio/microphone/request",
+            post(audio::request_microphone),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session_token,
