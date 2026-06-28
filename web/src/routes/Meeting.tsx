@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TranscriptDock } from "../components/TranscriptDock";
@@ -245,6 +245,26 @@ export function Meeting() {
       style={{ backgroundColor: "#FBF7EF" }}
     >
       <main className="max-w-[660px] mx-auto px-10 py-12 space-y-6">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          aria-label="Back to library — recording continues in the background"
+          title={
+            recording
+              ? "Back to library — recording continues in the background"
+              : "Back to library"
+          }
+        >
+          <span aria-hidden>←</span>
+          <span>Library</span>
+          {recording && (
+            <span
+              aria-hidden
+              className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-straw)] ml-1 animate-recpulse"
+              title="recording"
+            />
+          )}
+        </Link>
         <header className="flex items-center justify-between">
           <h1
             className="font-serif text-[32px] leading-none"
