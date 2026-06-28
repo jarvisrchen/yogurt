@@ -29,7 +29,11 @@ async fn main() -> anyhow::Result<()> {
 
     match has_screen_recording_permission() {
         PermissionStatus::Granted | PermissionStatus::NotRequired => {}
-        PermissionStatus::Denied => {
+        // `NotDetermined` was added by quick task 260628-g71 for the
+        // microphone permission surface. The screen-recording path never
+        // produces it today, but match exhaustiveness requires we handle
+        // it — collapse into the same recovery copy as `Denied`.
+        PermissionStatus::Denied | PermissionStatus::NotDetermined => {
             eprintln!("Screen Recording permission denied.");
             eprintln!();
             eprintln!("Recovery:");

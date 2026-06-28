@@ -132,15 +132,68 @@ async fn it_reports_permission_status() {
         .await
         .expect("valid JSON");
 
-    let status = body
-        .get("status")
+    // Quick task 260628-g71 DD-03: the endpoint returns BOTH permission
+    // states under their respective keys (the old single-field
+    // `{status: …}` shape was renamed in lockstep with the SPA hooks).
+    let screen_recording = body
+        .get("screen_recording")
         .and_then(|v| v.as_str())
-        .expect("response has `status` string field");
+        .expect("response has `screen_recording` string field");
+    let microphone = body
+        .get("microphone")
+        .and_then(|v| v.as_str())
+        .expect("response has `microphone` string field");
 
     assert!(
-        matches!(status, "granted" | "denied" | "not_required"),
-        "status must be one of granted|denied|not_required, got {status:?}"
+        matches!(
+            screen_recording,
+            "granted" | "denied" | "not_determined" | "not_required"
+        ),
+        "screen_recording must be a known status, got {screen_recording:?}"
     );
+    assert!(
+        matches!(
+            microphone,
+            "granted" | "denied" | "not_determined" | "not_required"
+        ),
+        "microphone must be a known status, got {microphone:?}"
+    );
+}
+
+/// 260628-g71: `POST /api/audio/microphone/request` returns the combined
+/// permission snapshot. We do not assert specific values (TCC state is
+/// environment-dependent) — only the shape.
+#[tokio::test]
+async fn it_request_microphone_returns_combined_snapshot() {
+    let (addr, token, _tmp) = spawn_server().await;
+
+    let client = reqwest::Client::new();
+    let body = client
+        .post(format!("http://{addr}/api/audio/microphone/request"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("server reachable")
+        .json::<serde_json::Value>()
+        .await
+        .expect("valid JSON");
+
+    let screen_recording = body
+        .get("screen_recording")
+        .and_then(|v| v.as_str())
+        .expect("response has `screen_recording` string field");
+    let microphone = body
+        .get("microphone")
+        .and_then(|v| v.as_str())
+        .expect("response has `microphone` string field");
+    assert!(matches!(
+        screen_recording,
+        "granted" | "denied" | "not_determined" | "not_required"
+    ));
+    assert!(matches!(
+        microphone,
+        "granted" | "denied" | "not_determined" | "not_required"
+    ));
 }
 
 /// WR-08 regression: hitting `/api/audio/*` without a token must yield 403,
