@@ -75,15 +75,16 @@ export interface AudioDevice {
 // ─── HTTP helper ────────────────────────────────────────────────────────────
 
 /**
- * Thin `fetch` wrapper that throws on non-2xx, returns `undefined` for 204
- * (the canonical no-body response from `set_provider_key` /
- * `delete_provider`), and otherwise parses JSON.
+ * Thin `fetch` wrapper that attaches the bootstrap session token (Phase 0
+ * WR-06), throws on non-2xx, returns `undefined` for 204 (the canonical
+ * no-body response from `set_provider_key` / `delete_provider`), and
+ * otherwise parses JSON.
  *
  * Always sets `content-type: application/json` — the Rust handlers reject
  * untagged bodies via axum's `Json<T>` extractor.
  */
 async function http<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, {
+  const res = await bearerFetch(input, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
@@ -152,6 +153,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { bearerFetch } from "../session";
 
 /** Shared cache key — Sidebar, Welcome, and useFirstRunRedirect all read it. */
 export const settingsKey = ["settings"] as const;

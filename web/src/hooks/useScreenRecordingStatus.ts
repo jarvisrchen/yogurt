@@ -24,6 +24,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { bearerFetch } from "../lib/session";
 
 type PermissionStatus = "granted" | "denied" | "not_required";
 
@@ -32,7 +33,10 @@ interface PermissionResponse {
 }
 
 async function fetchPermission(): Promise<PermissionResponse> {
-  const res = await fetch("/api/audio/permission");
+  // `/api/audio/permission` lives behind `require_session_token` (Phase 0
+  // WR-06) — bare fetch would 403 with "no session token presented" and
+  // gate every onboarding poll. `bearerFetch` attaches the bootstrap token.
+  const res = await bearerFetch("/api/audio/permission");
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText}`);
   }
