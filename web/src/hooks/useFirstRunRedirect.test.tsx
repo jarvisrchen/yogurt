@@ -1,15 +1,16 @@
 /**
  * Phase 7 Plan 07-04 — `useFirstRunRedirect` redirects the SPA from `/`
- * to `/welcome` when ANY of the three onboarding predicates fails:
+ * to `/welcome` when ANY of the four onboarding predicates fails:
  *   • `first_run_completed=false`
  *   • Screen Recording denied
+ *   • Microphone denied (added by quick task 260628-g71)
  *   • No active provider
  *
  * The test renders a tiny shell that mounts the hook and prints
- * `useLocation().pathname` via a `<Probe>`. We mock the two upstream
- * hooks (`useSettings`, `useScreenRecordingStatus`) so each case can
- * dial in the exact predicate combination without touching the
- * network or the React-Query cache.
+ * `useLocation().pathname` via a `<Probe>`. We mock the three upstream
+ * hooks (`useSettings`, `useScreenRecordingStatus`, `useMicrophoneStatus`)
+ * so each case can dial in the exact predicate combination without
+ * touching the network or the React-Query cache.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -24,6 +25,7 @@ import { useFirstRunRedirect } from "./useFirstRunRedirect";
 const state = vi.hoisted(() => ({
   settings: undefined as unknown,
   screenRec: undefined as unknown,
+  mic: undefined as unknown,
 }));
 
 vi.mock("../lib/api/settings", () => ({
@@ -32,6 +34,10 @@ vi.mock("../lib/api/settings", () => ({
 
 vi.mock("./useScreenRecordingStatus", () => ({
   useScreenRecordingStatus: () => state.screenRec,
+}));
+
+vi.mock("./useMicrophoneStatus", () => ({
+  useMicrophoneStatus: () => state.mic,
 }));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -85,12 +91,17 @@ function screenRecLoaded(granted: boolean) {
   return { granted, status: granted ? "granted" : "denied", isLoading: false, error: null };
 }
 
+function micLoaded(granted: boolean) {
+  return { granted, status: granted ? "granted" : "denied", isLoading: false, error: null };
+}
+
 // ─── Cases ──────────────────────────────────────────────────────────────────
 
 describe("useFirstRunRedirect", () => {
   beforeEach(() => {
     state.settings = undefined;
     state.screenRec = undefined;
+    state.mic = undefined;
   });
 
   it("redirects to /welcome when first_run_completed is false", async () => {
@@ -99,6 +110,7 @@ describe("useFirstRunRedirect", () => {
       hasActiveProvider: true,
     });
     state.screenRec = screenRecLoaded(true);
+    state.mic = micLoaded(true);
 
     const { getByTestId } = renderAt("/");
     await waitFor(() => {
@@ -112,6 +124,21 @@ describe("useFirstRunRedirect", () => {
       hasActiveProvider: true,
     });
     state.screenRec = screenRecLoaded(false);
+    state.mic = micLoaded(true);
+
+    const { getByTestId } = renderAt("/");
+    await waitFor(() => {
+      expect(getByTestId("pathname").textContent).toBe("/welcome");
+    });
+  });
+
+  it("redirects to /welcome when Microphone is denied", async () => {
+    state.settings = settingsLoaded({
+      firstRunCompleted: true,
+      hasActiveProvider: true,
+    });
+    state.screenRec = screenRecLoaded(true);
+    state.mic = micLoaded(false);
 
     const { getByTestId } = renderAt("/");
     await waitFor(() => {
@@ -125,6 +152,7 @@ describe("useFirstRunRedirect", () => {
       hasActiveProvider: false,
     });
     state.screenRec = screenRecLoaded(true);
+    state.mic = micLoaded(true);
 
     const { getByTestId } = renderAt("/");
     await waitFor(() => {
@@ -138,6 +166,7 @@ describe("useFirstRunRedirect", () => {
       hasActiveProvider: true,
     });
     state.screenRec = screenRecLoaded(true);
+    state.mic = micLoaded(true);
 
     const { getByTestId } = renderAt("/");
     // Give effects a tick to potentially redirect — they shouldn't.
@@ -151,6 +180,7 @@ describe("useFirstRunRedirect", () => {
       hasActiveProvider: false,
     });
     state.screenRec = screenRecLoaded(false);
+    state.mic = micLoaded(false);
 
     const { getByTestId } = renderAt("/settings");
     await new Promise((r) => setTimeout(r, 20));
@@ -160,6 +190,20 @@ describe("useFirstRunRedirect", () => {
   it("does nothing while settings are still loading (no flicker)", async () => {
     state.settings = { isLoading: true };
     state.screenRec = screenRecLoaded(false);
+    state.mic = micLoaded(false);
+
+    const { getByTestId } = renderAt("/");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getByTestId("pathname").textContent).toBe("/");
+  });
+
+  it("does nothing while microphone status is still loading (no flicker)", async () => {
+    state.settings = settingsLoaded({
+      firstRunCompleted: false,
+      hasActiveProvider: false,
+    });
+    state.screenRec = screenRecLoaded(false);
+    state.mic = { isLoading: true, granted: false, status: undefined, error: null };
 
     const { getByTestId } = renderAt("/");
     await new Promise((r) => setTimeout(r, 20));

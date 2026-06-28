@@ -2,15 +2,16 @@
  * Phase 7 Plan 07-04 — first-run redirect (PRD §5.10 onboarding gate).
  *
  * Mount-time hook that lives at the router shell level. On every render
- * (typically a route change or a `useSettings`/`useScreenRecordingStatus`
- * cache update) it inspects three predicates:
+ * (typically a route change or a `useSettings` / permission cache update)
+ * it inspects four predicates:
  *
  *   1. `first_run_completed` — has the user finished `/welcome`?
- *   2. `granted`              — Screen Recording permission state.
- *   3. `hasActiveProvider`    — does any provider row have `is_active=true`?
+ *   2. `granted` (screen recording) — Screen Recording permission state.
+ *   3. `micGranted` — Microphone permission state (added by 260628-g71).
+ *   4. `hasActiveProvider`    — does any provider row have `is_active=true`?
  *
  * If the SPA is at `/` AND any of those is false, we `navigate("/welcome",
- * { replace: true })`. While settings / permission are loading we do
+ * { replace: true })`. While settings / permissions are loading we do
  * nothing (avoid bouncing the user off `/` mid-load).
  *
  * Only `/` is gated. Direct deep-links to `/meeting/:id`, `/settings`,
@@ -22,6 +23,7 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useSettings } from "../lib/api/settings";
+import { useMicrophoneStatus } from "./useMicrophoneStatus";
 import { useScreenRecordingStatus } from "./useScreenRecordingStatus";
 
 export function useFirstRunRedirect(): void {
@@ -29,20 +31,29 @@ export function useFirstRunRedirect(): void {
   const { pathname } = useLocation();
   const settings = useSettings();
   const screenRec = useScreenRecordingStatus();
+  const mic = useMicrophoneStatus();
 
   useEffect(() => {
     // Only gate the root route.
     if (pathname !== "/") return;
-    // Wait until both probes have data — flickering past Welcome
-    // before settings load would be worse than a one-frame delay.
-    if (settings.isLoading || screenRec.isLoading) return;
+    // Wait until all probes have data — flickering past Welcome
+    // before settings/permissions load would be worse than a one-frame
+    // delay. Both screen-recording and mic share a single React Query
+    // poll (DD-04), so the two isLoading flags resolve in lockstep.
+    if (settings.isLoading || screenRec.isLoading || mic.isLoading) return;
     if (!settings.data) return;
 
     const firstRunCompleted = settings.data.general.first_run_completed;
     const hasActiveProvider = settings.data.providers.some((p) => p.is_active);
     const granted = screenRec.granted;
+    const micGranted = mic.granted;
 
-    if (!firstRunCompleted || !granted || !hasActiveProvider) {
+    if (
+      !firstRunCompleted ||
+      !granted ||
+      !micGranted ||
+      !hasActiveProvider
+    ) {
       nav("/welcome", { replace: true });
     }
   }, [
@@ -51,6 +62,8 @@ export function useFirstRunRedirect(): void {
     settings.data,
     screenRec.isLoading,
     screenRec.granted,
+    mic.isLoading,
+    mic.granted,
     nav,
   ]);
 }
