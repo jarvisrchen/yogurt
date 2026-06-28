@@ -106,9 +106,11 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-large-v3.bin",
         size_mb: 3_094,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-        // ⚠️ STILL A PLACEHOLDER (2026-06 snapshot). Will mismatch on first
-        // real download. See `scripts/refresh-model-hashes.sh`.
-        sha256: "ad82bf6a9043ceed055076d0fd39f5f186ff8062db9e2e6f9bcd0afd6a9b9b3a",
+        // Verified against HuggingFace blob on 2026-06-28 via a user-driven
+        // 3 GB download that surfaced the placeholder mismatch (HashMismatch
+        // path deleted the file and the dialog showed expected/actual pair,
+        // now pinned here). All four placeholders are now real values.
+        sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
         intel_supported: false,
     },
 ];

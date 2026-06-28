@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import type { ProviderView } from "../../lib/api/settings";
 
 /**
@@ -41,7 +42,15 @@ export function SidebarNav({ active, onChange, providers }: Props) {
       className="w-[212px] shrink-0 bg-[var(--color-paper)] border-r border-neutral-200 flex flex-col"
       aria-label="Settings sections"
     >
-      <header className="px-5 pt-6 pb-2">
+      <header className="px-5 pt-6 pb-2 space-y-3">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          aria-label="Back to library"
+        >
+          <span aria-hidden>←</span>
+          <span>Library</span>
+        </Link>
         <h1 className="font-serif text-[22px] leading-none text-ink">
           Settings
         </h1>
