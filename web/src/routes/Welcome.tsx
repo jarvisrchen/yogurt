@@ -7,28 +7,44 @@
  *   │  yogurt logo + serif wordmark    │  ONE-TIME SETUP (11px mono caps)   │
  *   │                                   │                                    │
  *   │  "Welcome to yogurt." (52px)     │  [Step 1: Screen Recording]        │
- *   │  Two streams, one set of notes…  │  [Step 2: Connect your model]      │
- *   │                                   │  [Step 3: Pick transcription]      │
- *   │  <TerminalMockup />              │                                    │
+ *   │  Two streams, one set of notes…  │  [Step 2: Microphone]              │
+ *   │                                   │  [Step 3: Connect your model]      │
+ *   │  <TerminalMockup />              │  [Step 4: Pick transcription]      │
  *   │                                   │  [Take me to my meetings →]        │
  *   │                                   │  "Restart once after granting…"    │
  *   └──────────────────────────────────┴────────────────────────────────────┘
  *
  * Ready-gating: the primary CTA is enabled only when Screen Recording is
- * granted AND at least one provider is active. On click it flips
- * `first_run_completed=true` (Phase 7 backend field added in this plan)
- * and navigates to `/`. The `useFirstRunRedirect` hook then keeps the
- * SPA on `/` for subsequent visits.
+ * granted AND Microphone is granted AND at least one provider is active.
+ * On click it flips `first_run_completed=true` (Phase 7 backend field
+ * added in this plan) and navigates to `/`. The `useFirstRunRedirect`
+ * hook then keeps the SPA on `/` for subsequent visits.
+ *
+ * Quick task 260628-g71 inserted Step 2 (Microphone) and renumbered the
+ * provider + transcription cards from 2/3 to 3/4. The mic StepCard's
+ * Grant button is the user-facing trigger for `POST /api/audio/microphone/request`
+ * — when status is `not_determined`, clicking it fires the macOS system
+ * dialog; when status is `denied`, clicking it deep-links into
+ * System Settings (macOS won't re-prompt after a denial).
  */
 
+import {
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { Logo } from "../components/Logo";
 import { StepCard, type StepState } from "../components/onboarding/StepCard";
 import { TerminalMockup } from "../components/onboarding/TerminalMockup";
 import {
+  permissionsKey,
+  requestMicrophonePermission,
+} from "../lib/api/audio";
+import {
   useSettings,
   useSetFirstRunCompleted,
 } from "../lib/api/settings";
+import { useMicrophoneStatus } from "../hooks/useMicrophoneStatus";
 import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
 
 const PROVIDER_CHIPS = [
@@ -40,9 +56,32 @@ const PROVIDER_CHIPS = [
 
 export function Welcome() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const settings = useSettings();
   const { granted } = useScreenRecordingStatus();
+  const { granted: micGranted, status: micStatus } = useMicrophoneStatus();
   const setFirstRun = useSetFirstRunCompleted();
+
+  const micRequest = useMutation({
+    mutationFn: requestMicrophonePermission,
+    // The POST returns the *current* (likely still `not_determined`)
+    // snapshot — the real state change arrives via the 2s poll. Invalidate
+    // here so the next render reads the freshest cached value rather
+    // than waiting up to 2s for the periodic refetch.
+    onSuccess: () => qc.invalidateQueries({ queryKey: permissionsKey }),
+  });
+
+  const handleGrantMic = () => {
+    if (micStatus === "denied") {
+      // macOS will not re-prompt after a denial — deep-link straight
+      // into the Privacy_Microphone pane instead. Exact casing matters;
+      // see `<MicPermissionDenied />` doc-comment.
+      window.location.href =
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+    } else {
+      micRequest.mutate();
+    }
+  };
 
   const providers = settings.data?.providers ?? [];
   const activeProvider = providers.find((p) => p.is_active);
@@ -54,15 +93,24 @@ export function Welcome() {
       activeProvider?.name.toLowerCase().includes(c.id),
     )?.id ?? null;
 
+  // Sequential gating mirrors PRD §5.10 — each step is only `current`
+  // once its prerequisites are satisfied. The user works through them
+  // top-to-bottom (Welcome's existing pattern; we preserve it).
   const step1State: StepState = granted ? "done" : "current";
-  const step2State: StepState = !granted
-    ? "pending"
-    : hasProvider
-      ? "done"
+  const step2State: StepState = micGranted
+    ? "done"
+    : !granted
+      ? "pending"
       : "current";
-  const step3State: StepState = "pending";
+  const step3State: StepState =
+    !granted || !micGranted
+      ? "pending"
+      : hasProvider
+        ? "done"
+        : "current";
+  const step4State: StepState = "pending";
 
-  const ready = granted && hasProvider;
+  const ready = granted && micGranted && hasProvider;
 
   const handleProceed = async () => {
     if (!ready || setFirstRun.isPending) return;
@@ -73,6 +121,13 @@ export function Welcome() {
       console.error("first_run_completed flip failed", e);
     }
   };
+
+  // Whether to render the inline Grant button under the mic StepCard.
+  // Hidden once permission is positively resolved (granted on macOS,
+  // not_required off macOS); shown for both `not_determined` (Grant)
+  // and `denied` (Open System Settings).
+  const showMicButton =
+    micStatus !== "granted" && micStatus !== "not_required";
 
   return (
     <div className="grid grid-cols-[1.05fr_0.95fr] min-h-screen">
@@ -114,8 +169,28 @@ export function Welcome() {
 
           <StepCard
             number={2}
-            title="Connect your model"
+            title="Microphone"
             state={step2State}
+            body="This is how yogurt hears your voice. macOS will show a permission prompt."
+          >
+            {showMicButton ? (
+              <button
+                type="button"
+                onClick={handleGrantMic}
+                disabled={micRequest.isPending}
+                className="px-3 py-1.5 rounded-button text-[12.5px] font-semibold text-white bg-blue shadow-button-blue hover:opacity-90 disabled:opacity-50"
+              >
+                {micStatus === "denied"
+                  ? "Open System Settings"
+                  : "Grant Microphone"}
+              </button>
+            ) : null}
+          </StepCard>
+
+          <StepCard
+            number={3}
+            title="Connect your model"
+            state={step3State}
             body="Bring your own key — OpenAI-compatible. Nothing is built in."
           >
             <div className="flex flex-wrap gap-2">
@@ -138,9 +213,9 @@ export function Welcome() {
           </StepCard>
 
           <StepCard
-            number={3}
+            number={4}
             title="Pick transcription"
-            state={step3State}
+            state={step4State}
             body="Cloud Deepgram for speed, or fully-local whisper.cpp."
           />
         </div>
