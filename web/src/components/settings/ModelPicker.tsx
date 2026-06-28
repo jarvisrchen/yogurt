@@ -17,12 +17,22 @@
  */
 import clsx from "clsx";
 import type { ModelView } from "../../lib/api/stt";
+import type { DownloadState } from "../../hooks/useModelDownloadProgress";
 
 interface ModelPickerProps {
   models: ModelView[];
   selected: string | null;
   onSelect: (name: string) => void;
+  /** Called whether the pill is for a not-yet-downloaded model OR for
+   *  the currently-active-download model. In the latter case the parent
+   *  reopens the existing dialog rather than starting a new download. */
   onRequestDownload: (name: string) => void;
+  /** Name of the model currently being downloaded, if any. Used to
+   *  render the `⟳ NN%` overlay on the matching pill. */
+  activeDownloadName?: string | null;
+  /** Live progress state from `useModelDownloadProgress` for the active
+   *  download. `null` when nothing is in flight. */
+  activeDownloadProgress?: DownloadState | null;
 }
 
 /** Naive Intel-Mac detection. UA strings on Apple Silicon Macs identify
@@ -53,6 +63,8 @@ export function ModelPicker({
   selected,
   onSelect,
   onRequestDownload,
+  activeDownloadName = null,
+  activeDownloadProgress = null,
 }: ModelPickerProps) {
   const intel = isIntelMac();
 
@@ -61,10 +73,28 @@ export function ModelPicker({
       {models.map((m) => {
         const isSelected = selected === m.name;
         const showSlow = intel && !m.intel_supported;
-        const glyph = m.downloaded ? "✓" : "↓";
+        const isDownloading = activeDownloadName === m.name && !m.downloaded;
+        const pct =
+          isDownloading &&
+          activeDownloadProgress &&
+          activeDownloadProgress.totalBytes > 0
+            ? Math.min(
+                100,
+                Math.round(
+                  (activeDownloadProgress.bytesDownloaded /
+                    activeDownloadProgress.totalBytes) *
+                    100,
+                ),
+              )
+            : null;
+        const glyph = m.downloaded ? "✓" : isDownloading ? "⟳" : "↓";
         const title = m.downloaded
           ? `${m.name}${isSelected ? " · selected" : ""}`
-          : `download (${m.size_mb} MB)`;
+          : isDownloading
+            ? pct != null
+              ? `downloading… ${pct}%`
+              : "downloading…"
+            : `download (${m.size_mb} MB)`;
         return (
           <span key={m.name} className="inline-flex items-center gap-1.5">
             <button
@@ -74,12 +104,12 @@ export function ModelPicker({
               aria-label={
                 m.downloaded
                   ? `Select ${m.name}`
-                  : `Download ${m.name} (${m.size_mb} MB)`
+                  : isDownloading
+                    ? `Show download progress for ${m.name}`
+                    : `Download ${m.name} (${m.size_mb} MB)`
               }
               onClick={() =>
-                m.downloaded
-                  ? onSelect(m.name)
-                  : onRequestDownload(m.name)
+                m.downloaded ? onSelect(m.name) : onRequestDownload(m.name)
               }
               className={clsx(
                 "text-[11px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full transition-colors",
@@ -88,13 +118,25 @@ export function ModelPicker({
                   ? "border-[1.5px] border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)]"
                   : m.downloaded
                     ? "border border-neutral-300 bg-white text-ink hover:border-[var(--color-matcha)]"
-                    : "border border-dashed border-neutral-300 bg-white text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
+                    : isDownloading
+                      ? "border border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)] hover:opacity-90"
+                      : "border border-dashed border-neutral-300 bg-white text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
               )}
             >
               <span aria-hidden>{m.name}</span>
-              <span aria-hidden>{glyph}</span>
+              <span aria-hidden className={isDownloading ? "animate-spin" : ""}>
+                {glyph}
+              </span>
             </button>
-            {!m.downloaded && (
+            {isDownloading ? (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono text-[var(--color-matcha)] font-semibold"
+                title="click pill to reopen progress dialog"
+              >
+                {pct != null ? `${pct}%` : "…"}
+              </span>
+            ) : !m.downloaded ? (
               <span
                 aria-hidden
                 className="text-[10px] font-mono text-mut"
@@ -104,7 +146,7 @@ export function ModelPicker({
                   ? `${m.size_mb} MB`
                   : `${(m.size_mb / 1024).toFixed(1)} GB`}
               </span>
-            )}
+            ) : null}
             {showSlow && (
               <span
                 title="Slower than real-time on Intel"

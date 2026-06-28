@@ -6,17 +6,35 @@
  *   - card chrome with matcha tinting when `active`
  *   - header with the title + a "Use Local" radio button
  *   - explanatory body copy
- *   - a `<ModelPicker />` row driven by `useModels()`
- *   - inline `<ModelDownloadDialog />` opened by `↓`-pill clicks
+ *   - a `<ModelPicker />` row driven by `useModels()`, with live `⟳ NN%`
+ *     progress on the pill of any currently-downloading model
+ *   - inline `<ModelDownloadDialog />` opened by `↓`-pill clicks (or by
+ *     re-clicking an in-progress pill to see byte/rate/ETA detail)
  *   - a mono footer noting `~/.yogurt/models` storage
  *
- * State strategy: model-list comes from TanStack Query; selection +
- * `stt_provider="local"` flip are owned by the parent (Settings.tsx).
- * Download-dialog visibility is local UI state on this card.
+ * State strategy:
+ *   - `activeDownload` is THE truth about "is a download in flight?".
+ *     Set when a download starts, cleared 600 ms after complete/error so
+ *     the user sees 100% momentarily. Survives the dialog closing —
+ *     that's the entire point of "Run in background".
+ *   - `dialogOpen` is JUST about whether the modal is currently visible.
+ *     Closing the modal does NOT cancel the download; it just hides the
+ *     modal. The pill keeps showing `⟳ NN%` until completion.
+ *   - The WS hook lives at this level (not inside the dialog) so the
+ *     subscription persists across dialog open/close cycles. On
+ *     `_complete` it invalidates `sttKeys.models` and the picker pill
+ *     flips from `↓` to `✓` automatically.
+ *
+ * V1 limitation: only one concurrent download is tracked in the UI. The
+ * server happily runs N parallel downloads (each `tokio::spawn`), but
+ * clicking a second pill while one is in flight replaces the tracked
+ * download — the original still completes server-side and its pill
+ * flips to ✓ via cache invalidation.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { useModels } from "../../lib/api/stt";
+import { useModelDownloadProgress } from "../../hooks/useModelDownloadProgress";
 import { ModelPicker } from "./ModelPicker";
 import { ModelDownloadDialog } from "../dialogs/ModelDownloadDialog";
 
@@ -38,10 +56,43 @@ export function LocalSTTCard({
   onActivate,
 }: LocalSTTCardProps) {
   const q = useModels();
-  const [downloading, setDownloading] = useState<{
+  // The download we're currently tracking (survives dialog close).
+  const [activeDownload, setActiveDownload] = useState<{
     name: string;
     sizeMb: number;
   } | null>(null);
+  // Whether the modal is currently open.  Closes via Cancel / Run in
+  // background / Escape; reopens when the user re-clicks the pill.
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Subscribe at THIS level so progress keeps flowing even when the
+  // dialog is closed.  Subscription drops when activeDownload is null,
+  // i.e. nothing in flight.
+  const progress = useModelDownloadProgress(activeDownload?.name ?? null);
+
+  // 600 ms after the download completes (or errors) clear activeDownload
+  // so the pill stops showing `⟳ NN%`.  The models cache has already
+  // been invalidated by the hook, so the pill will read `downloaded:true`
+  // by the time this fires and renders as ✓.
+  useEffect(() => {
+    if (!progress) return;
+    if (!progress.complete && !progress.error) return;
+    const t = window.setTimeout(() => setActiveDownload(null), 600);
+    return () => window.clearTimeout(t);
+  }, [progress?.complete, progress?.error]);
+
+  const startOrReopenDownload = (name: string) => {
+    const m = q.data?.find((x) => x.name === name);
+    if (!m) return;
+    // If this pill is already the active download, just reopen the dialog.
+    if (activeDownload?.name === name) {
+      setDialogOpen(true);
+      return;
+    }
+    // Otherwise start a new download (replaces the tracked one).
+    setActiveDownload({ name: m.name, sizeMb: m.size_mb });
+    setDialogOpen(true);
+  };
 
   return (
     <article
@@ -86,11 +137,9 @@ export function LocalSTTCard({
           models={q.data}
           selected={selectedModel}
           onSelect={onSelectModel}
-          onRequestDownload={(name) => {
-            const m = q.data.find((x) => x.name === name);
-            if (!m) return;
-            setDownloading({ name: m.name, sizeMb: m.size_mb });
-          }}
+          onRequestDownload={startOrReopenDownload}
+          activeDownloadName={activeDownload?.name ?? null}
+          activeDownloadProgress={progress}
         />
       )}
 
@@ -100,9 +149,10 @@ export function LocalSTTCard({
       </p>
 
       <ModelDownloadDialog
-        model={downloading?.name ?? null}
-        sizeMb={downloading?.sizeMb ?? null}
-        onClose={() => setDownloading(null)}
+        model={dialogOpen ? activeDownload?.name ?? null : null}
+        sizeMb={activeDownload?.sizeMb ?? null}
+        progress={progress}
+        onClose={() => setDialogOpen(false)}
       />
     </article>
   );

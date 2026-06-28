@@ -23,13 +23,16 @@
  */
 import { useEffect, useRef } from "react";
 import { useDownloadModel } from "../../lib/api/stt";
-import { useModelDownloadProgress } from "../../hooks/useModelDownloadProgress";
+import type { DownloadState } from "../../hooks/useModelDownloadProgress";
 
 interface ModelDownloadDialogProps {
   /** Model name to download (e.g. "small.en"). `null` → dialog closed. */
   model: string | null;
   /** Total size in MB to display in the mono caption. */
   sizeMb: number | null;
+  /** Live progress state owned by `LocalSTTCard` (so the subscription
+   *  survives dialog open/close cycles). */
+  progress: DownloadState | null;
   /** Called when the user clicks Cancel / Run in background, or when
    *  the download completes (auto-close after a 600 ms peek at 100%). */
   onClose: () => void;
@@ -61,12 +64,16 @@ function formatEta(seconds: number | null): string {
 export function ModelDownloadDialog({
   model,
   sizeMb,
+  progress,
   onClose,
 }: ModelDownloadDialogProps) {
   const ref = useRef<HTMLDialogElement | null>(null);
   const startedRef = useRef<string | null>(null);
   const dl = useDownloadModel();
-  const state = useModelDownloadProgress(model);
+  // Progress is owned by the parent (LocalSTTCard) so it survives the
+  // dialog closing. Local alias kept for readability with the original
+  // render code below.
+  const state = progress;
 
   // Open / close the native dialog as `model` flips, and kick off the
   // download POST once per model open.
@@ -75,13 +82,23 @@ export function ModelDownloadDialog({
     if (!d) return;
     if (model) {
       if (!d.open) d.showModal();
+      // POST /download only once per (browser session × model). If the
+      // user reopens the dialog for an already-running download (clicked
+      // the ⟳ pill while progress was streaming), don't re-POST — the
+      // worker is already running and the WS state is already current.
       if (startedRef.current !== model) {
         startedRef.current = model;
         dl.mutate(model);
       }
     } else {
       if (d.open) d.close();
-      startedRef.current = null;
+      // INTENTIONALLY do NOT reset startedRef here. The parent
+      // (LocalSTTCard) keeps the underlying download alive when the
+      // dialog closes via Run-in-background, so reopening the dialog
+      // for the same model must NOT re-POST to /download — that would
+      // spawn a duplicate server-side worker that races on the same
+      // file path. startedRef only flips when the parent actually
+      // switches to a different model (the `!== model` check above).
     }
   }, [model, dl]);
 
