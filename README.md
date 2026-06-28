@@ -80,14 +80,87 @@ chip earlier), the seeder currently skips backfilling — paste the key
 into the row's "Paste new key…" field in Settings instead. Tracked as a
 known Phase 5 gap.
 
-### Two run modes
+### Which command do I run?
 
-| Mode | Command | When to use |
-|------|---------|-------------|
-| **Release** | `just release` | Validation, acceptance testing, daily driving. Single binary with embedded web bundle. What brew users get. |
-| **Dev (HMR)** | `just dev` | UI development. Backend + Vite together in one terminal; Ctrl-C cleans both. Loads `.env.local`. |
+Pick by what you're trying to do, not by what mode the project is in.
+Yogurt has one single-binary release path and a two-process dev path —
+both share the same `~/.yogurt/yogurt.db`, so switching between them
+never loses data.
 
-For separate terminals: `just frontend` (Vite on :5173) + `just backend` (backend on :7878 in `--dev` mode).
+**Just using yogurt** (record a meeting, take notes, browse your library):
+
+```bash
+just release
+```
+
+One process, embedded web bundle, opens `http://localhost:7878`. Same
+build path a brew user gets. Paste API keys via the Settings UI on
+first run. **This is the default — pick this 90% of the time.**
+
+**Editing the React UI and want hot reload:**
+
+```bash
+just dev
+```
+
+Runs Vite (frontend) and the Rust backend together in one terminal.
+Edit any file under `web/src/**` and the browser updates without a
+restart. Reads `.env.local` and seeds providers into the Keychain on
+first boot. Ctrl-C stops both processes cleanly. Use this when you're
+working on a component or a page.
+
+**Editing the React UI and you want separate logs in two terminals:**
+
+```bash
+# terminal A
+just frontend     # Vite dev server on :5173
+
+# terminal B
+just backend      # Rust backend on :7878 in --dev mode, proxies to Vite
+```
+
+Same end result as `just dev` but you can scroll backend logs and
+frontend logs independently. Useful when you're chasing a backend log
+line through a UI interaction. **You always open the browser at
+`http://localhost:7878`, never `:5173`** — the auth session lives on
+the backend, so going direct to Vite leaves you with a blank-canvas
+SPA that can't reach the API.
+
+**Editing the Rust backend without touching the UI:**
+
+```bash
+just release      # rebuilds incrementally (~5 s if nothing changed) then runs
+```
+
+The release recipe always runs a fresh build before starting. No need
+to flip to dev mode unless you also want UI HMR. Iteration loop is
+`Ctrl-C` → edit Rust → `just release`.
+
+**Running the full test suite before committing:**
+
+```bash
+just test         # cargo test --workspace + pnpm --dir web test
+just lint         # cargo fmt --check + clippy -D warnings
+```
+
+**Resetting to a fresh-install state to retest onboarding:**
+
+```bash
+just reset-db     # wipes ~/.yogurt/yogurt.db; next launch shows /welcome
+just release      # boot it again
+```
+
+#### Quick reference
+
+| I want to… | Run | Notes |
+|---|---|---|
+| Use yogurt to record a meeting | `just release` | Single process. Paste keys in Settings UI. |
+| Edit a React component with HMR | `just dev` | One terminal, both processes. |
+| Edit React + scroll logs separately | `just frontend` + `just backend` | Two terminals. Browser still at :7878. |
+| Edit only Rust code | `just release` | Same recipe — just rebuilds + reruns. |
+| Run all tests + lint | `just test && just lint` | What CI runs. |
+| Start fresh to retest onboarding | `just reset-db && just release` | Keychain entries survive. |
+| List every recipe with description | `just` | No-arg invocation. |
 
 ### Port already in use
 
