@@ -94,6 +94,17 @@ export function ModelPicker({
               <span aria-hidden>{m.name}</span>
               <span aria-hidden>{glyph}</span>
             </button>
+            {!m.downloaded && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono text-mut"
+                title={`${m.size_mb} MB download from huggingface.co`}
+              >
+                {m.size_mb < 1000
+                  ? `${m.size_mb} MB`
+                  : `${(m.size_mb / 1024).toFixed(1)} GB`}
+              </span>
+            )}
             {showSlow && (
               <span
                 title="Slower than real-time on Intel"
