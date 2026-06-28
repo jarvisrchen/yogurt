@@ -96,10 +96,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-medium.en.bin",
         size_mb: 1_530,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin",
-        // ⚠️ STILL A PLACEHOLDER (2026-06 snapshot). Will mismatch on first
-        // real download. See `scripts/refresh-model-hashes.sh` to fix all
-        // four at once, or follow the recipe in the module WARNING above.
-        sha256: "cc37e93478338ec7700281a7ac30a10128929eb8fcf02bc54cf2deddbcb22d6c",
+        // Verified against HuggingFace blob on 2026-06-28 via
+        // `./scripts/refresh-model-hashes.sh medium.en` (1.5 GB download).
+        sha256: "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
         intel_supported: false,
     },
     ModelSpec {
