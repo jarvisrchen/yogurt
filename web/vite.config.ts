@@ -13,6 +13,17 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Pin HMR client to :5173 so it doesn't try the page-origin (:7878
+    // when served via the yogurt backend proxy). Without this, Vite's
+    // HMR client guesses `window.location.host`, opens WS to :7878,
+    // yogurt's dev_proxy rejects it ("vite proxy: refusing websocket
+    // upgrade -- use http://localhost:5173 for HMR"), Vite falls back
+    // — and the user sees a noisy `WebSocket connection failed` plus
+    // a "Direct websocket connection fallback" warning in the console.
+    hmr: {
+      host: "127.0.0.1",
+      clientPort: 5173,
+    },
     proxy: {
       "/api": "http://localhost:7878",
       "/ws": { target: "ws://localhost:7878", ws: true },
