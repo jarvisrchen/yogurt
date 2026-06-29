@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranscriptWs } from "../lib/ws";
 import { TranscriptLine } from "./TranscriptLine";
+import { AudioWaveBars } from "./AudioWaveBars";
 
 const INK = "#211D18";
 const GREY = "#A89F90";
@@ -172,9 +173,14 @@ export function TranscriptDock({
               }}
             >
               <span
-                className="text-[13px] font-semibold"
+                className="text-[13px] font-semibold inline-flex items-center gap-2"
                 style={{ color: INK }}
               >
+                <AudioWaveBars
+                  size="sm"
+                  paused={!connected}
+                  color="var(--color-blue)"
+                />
                 Live transcript
               </span>
               <span
