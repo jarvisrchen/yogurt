@@ -269,29 +269,66 @@ impl Registry {
         // AudioStream Drop (~50 ms SCK + cpal teardown) to complete before
         // a subsequent `start()` can re-enter. Detached threads led to
         // overlapping SCK sessions on back-to-back start/stop calls.
+        //
+        // Panic surface: the thread body is wrapped in catch_unwind so a
+        // panic inside `yogurt_audio::start_capture()` (most commonly the
+        // `screencapturekit` crate panicking on a TCC denial that wasn't
+        // surfaced via the preflight check) is converted into a clean
+        // `Err` on `ready_tx`. Without this, a panic dropped `ready_tx`
+        // silently and the supervisor saw `RecvError::Closed`, producing
+        // the unhelpful "channel closed" 400 — see the user-debug session
+        // 2026-06-28 where this masked a permission failure.
         let capture_thread = std::thread::spawn(move || {
-            let stream = match yogurt_audio::start_capture() {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = ready_tx.send(Err(anyhow::Error::from(e).context(
-                        "failed to open audio capture (check Screen Recording permission)",
-                    )));
+            // Use Option so the panic-handler branch can take ready_tx
+            // and send an Err.
+            let mut ready_tx_slot = Some(ready_tx);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let stream = match yogurt_audio::start_capture() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        if let Some(tx) = ready_tx_slot.take() {
+                            let _ = tx.send(Err(anyhow::Error::from(e).context(
+                                "failed to open audio capture (check Screen Recording permission)",
+                            )));
+                        }
+                        return;
+                    }
+                };
+                let mic_rx = stream.subscribe_mic();
+                let sys_rx = stream.subscribe_system();
+                let Some(tx) = ready_tx_slot.take() else { return };
+                if tx.send(Ok((mic_rx, sys_rx))).is_err() {
+                    // Supervisor task vanished before we reported ready —
+                    // just drop the stream (RAII stops capture) and exit.
                     return;
                 }
-            };
-            let mic_rx = stream.subscribe_mic();
-            let sys_rx = stream.subscribe_system();
-            if ready_tx.send(Ok((mic_rx, sys_rx))).is_err() {
-                // Supervisor task vanished before we reported ready — just drop
-                // the stream (RAII stops capture) and exit.
-                return;
+                // Block until the supervisor drops `shutdown_tx`.
+                let _ = shutdown_rx.blocking_recv();
+                // Dropping `stream` here stops both mic + system capture via RAII.
+                drop(stream);
+            }));
+            if let Err(payload) = result {
+                // The thread body panicked. Extract a human-readable
+                // message and (if we still own ready_tx) surface it as a
+                // clean error so the supervisor returns a 400 with the
+                // real reason instead of "channel closed".
+                let msg = if let Some(s) = payload.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = payload.downcast_ref::<&'static str>() {
+                    (*s).to_string()
+                } else {
+                    "unknown panic in audio capture thread".to_string()
+                };
+                tracing::error!(panic = %msg, "audio capture thread panicked");
+                if let Some(tx) = ready_tx_slot.take() {
+                    let _ = tx.send(Err(anyhow!(
+                        "audio capture panicked: {msg} \
+                         — usually means Screen Recording permission is missing \
+                         or revoked; check System Settings → Privacy & Security \
+                         → Screen Recording & System Audio"
+                    )));
+                }
             }
-            // Block until the supervisor drops `shutdown_tx`. We use
-            // `blocking_recv` semantics via a busy-blocking wait by
-            // converting the oneshot to a blocking receive.
-            let _ = shutdown_rx.blocking_recv();
-            // Dropping `stream` here stops both mic + system capture via RAII.
-            drop(stream);
         });
 
         // Await capture readiness — propagates audio open failure as Result.
