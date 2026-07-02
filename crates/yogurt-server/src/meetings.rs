@@ -288,7 +288,13 @@ impl Registry {
         // silently and the supervisor saw `RecvError::Closed`, producing
         // the unhelpful "channel closed" 400 — see the user-debug session
         // 2026-06-28 where this masked a permission failure.
+        // `start_capture()` spawns tokio drainer tasks internally
+        // (mic.rs / system.rs), so the capture thread must carry the
+        // server runtime's context - a bare std::thread has none and
+        // `tokio::spawn` panics with "no reactor running".
+        let rt_handle = tokio::runtime::Handle::current();
         let capture_thread = std::thread::spawn(move || {
+            let _rt_guard = rt_handle.enter();
             // Use Option so the panic-handler branch can take ready_tx
             // and send an Err.
             let mut ready_tx_slot = Some(ready_tx);
