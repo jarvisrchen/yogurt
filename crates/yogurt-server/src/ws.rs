@@ -186,7 +186,7 @@ pub(crate) fn enforce_ws_auth(
     params: &WsParams,
     endpoint: &'static str,
 ) -> Result<(), Response> {
-    let allowed = allowed_origins(state.bind_port);
+    let allowed = allowed_origins(state.bind_port, state.mode);
     let origin = headers
         .get("origin")
         .and_then(|h| h.to_str().ok())
@@ -294,10 +294,18 @@ async fn handle_socket(
     }
 }
 
-fn allowed_origins(port: u16) -> HashSet<String> {
+fn allowed_origins(port: u16, mode: crate::Mode) -> HashSet<String> {
     let mut set = HashSet::new();
     set.insert(format!("http://localhost:{port}"));
     set.insert(format!("http://127.0.0.1:{port}"));
+    // Dev mode: the SPA may be served straight from Vite on :5173 (its
+    // proxy forwards /ws to us but keeps the page's Origin header), so
+    // that origin is legitimate. Release builds serve embedded assets
+    // from our own port only - no extra origins there.
+    if mode == crate::Mode::Dev {
+        set.insert("http://localhost:5173".to_string());
+        set.insert("http://127.0.0.1:5173".to_string());
+    }
     set
 }
 
@@ -435,6 +443,23 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Dev mode must accept the Vite origin (:5173) - the SPA can be
+    /// served straight from Vite, whose proxy forwards /ws but keeps
+    /// the page's Origin header. Release must NOT accept it.
+    #[test]
+    fn allowed_origins_includes_vite_only_in_dev() {
+        let dev = allowed_origins(7878, crate::Mode::Dev);
+        assert!(dev.contains("http://localhost:7878"));
+        assert!(dev.contains("http://127.0.0.1:7878"));
+        assert!(dev.contains("http://localhost:5173"));
+        assert!(dev.contains("http://127.0.0.1:5173"));
+
+        let release = allowed_origins(7878, crate::Mode::Release);
+        assert!(release.contains("http://localhost:7878"));
+        assert!(!release.contains("http://localhost:5173"));
+        assert!(!release.contains("http://127.0.0.1:5173"));
+    }
 
     /// Phase 8 (Plan 08-03) wire-shape gate: the browser-side
     /// `useModelDownloadProgress` hook switches on

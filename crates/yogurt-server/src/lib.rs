@@ -96,7 +96,7 @@ pub use storage::Storage;
 /// In `Dev`, non-API requests proxy to a Vite dev server on :5173.
 /// In `Release`, non-API requests serve embedded `web/dist` assets via
 /// `rust-embed` with an SPA fallback to `index.html`.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Dev,
     Release,
