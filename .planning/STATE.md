@@ -135,6 +135,7 @@ None yet.
 | 260701-vjb | Make /welcome onboarding steps actionable (Grant Screen Recording button + settings links) | 2026-07-02 | 99fc11f, 88fd68d | [260701-vjb-make-welcome-onboarding-steps-actionable](./quick/260701-vjb-make-welcome-onboarding-steps-actionable/) |
 | 260701-wjs | Fix backend-wide hang: is_downloaded() hashed multi-GB models per call; sidecar .sha256 marker + spawn_blocking | 2026-07-02 | 1405c82, d60af23, 41ea94b | [260701-wjs-fix-sha256-hashing-hang-in-is-downloaded](./quick/260701-wjs-fix-sha256-hashing-hang-in-is-downloaded/) |
 | (fast) | Fix "no reactor running" panic on capture thread: enter runtime Handle before start_capture | 2026-07-02 | a263faa | - |
+| (fast) | Allow Vite origin :5173 for WS upgrades in dev mode; dock showed permanent "offline" from 403 bad origin | 2026-07-02 | 505cc58 | - |
 | 260701-x3u | Wire enhance to configured LLM provider (env -> Keychain provider -> mock); was silently MockLlm always | 2026-07-02 | ff84d43, da8f2e0, ca126eb | [260701-x3u-wire-enhance-endpoint-to-configured-llm-](./quick/260701-x3u-wire-enhance-endpoint-to-configured-llm-/) |
 
 ## Deferred Items
