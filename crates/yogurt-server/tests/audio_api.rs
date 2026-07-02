@@ -196,6 +196,42 @@ async fn it_request_microphone_returns_combined_snapshot() {
     ));
 }
 
+/// 260701-vjb: `POST /api/audio/screen-recording/request` returns the
+/// combined permission snapshot, mirroring the microphone request endpoint.
+/// Shape-only assertions — TCC state is environment-dependent.
+#[tokio::test]
+async fn it_request_screen_recording_returns_combined_snapshot() {
+    let (addr, token, _tmp) = spawn_server().await;
+
+    let client = reqwest::Client::new();
+    let body = client
+        .post(format!("http://{addr}/api/audio/screen-recording/request"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("server reachable")
+        .json::<serde_json::Value>()
+        .await
+        .expect("valid JSON");
+
+    let screen_recording = body
+        .get("screen_recording")
+        .and_then(|v| v.as_str())
+        .expect("response has `screen_recording` string field");
+    let microphone = body
+        .get("microphone")
+        .and_then(|v| v.as_str())
+        .expect("response has `microphone` string field");
+    assert!(matches!(
+        screen_recording,
+        "granted" | "denied" | "not_determined" | "not_required"
+    ));
+    assert!(matches!(
+        microphone,
+        "granted" | "denied" | "not_determined" | "not_required"
+    ));
+}
+
 /// WR-08 regression: hitting `/api/audio/*` without a token must yield 403,
 /// not the response body. Mirrors the WS endpoint's behaviour.
 #[tokio::test]
