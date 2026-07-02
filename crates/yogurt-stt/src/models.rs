@@ -162,6 +162,13 @@ pub fn is_downloaded(spec: &ModelSpec) -> bool {
     }
 }
 
+/// Path-injectable core of `is_downloaded` — see that fn's doc comment.
+#[allow(dead_code)] // RED phase stub; wired up in the GREEN commit.
+fn is_downloaded_at(path: &Path, expected_sha256: &str) -> bool {
+    let _ = (path, expected_sha256);
+    todo!("GREEN: marker-based downloaded check")
+}
+
 /// Progress tick reported by `download_to` (via the caller-supplied
 /// `FnMut(DownloadProgress)`).  The UI uses these to render the
 /// "Downloading 487 MB · 23%" surface in Settings.
@@ -381,6 +388,87 @@ mod tests {
         assert!(lookup("small.en").unwrap().intel_supported);
         assert!(!lookup("medium.en").unwrap().intel_supported);
         assert!(!lookup("large-v3").unwrap().intel_supported);
+    }
+
+    // ── Sidecar `.sha256` marker behavior ───────────────────────────────
+
+    /// Marker path convention shared by the tests below.
+    fn marker_of(model: &Path) -> PathBuf {
+        let mut s = model.as_os_str().to_os_string();
+        s.push(".sha256");
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn valid_marker_skips_hashing() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("ggml-test.bin");
+        let content = b"content that does NOT hash to the expected value";
+        std::fs::write(&model, content).unwrap();
+        // Expected hash is of DIFFERENT bytes — if is_downloaded_at hashed
+        // the file it would return false. A matching marker must win.
+        let expected = sha256::hash_bytes(b"the payload the registry pins");
+        std::fs::write(marker_of(&model), format!("{} {}\n", expected, content.len())).unwrap();
+        assert!(
+            is_downloaded_at(&model, &expected),
+            "valid marker (hash + length match) must short-circuit hashing"
+        );
+    }
+
+    #[test]
+    fn legacy_file_without_marker_self_heals() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("ggml-test.bin");
+        let payload = b"legacy on-disk model bytes";
+        std::fs::write(&model, payload).unwrap();
+        let expected = sha256::hash_bytes(payload);
+        assert!(is_downloaded_at(&model, &expected), "matching content must verify");
+        let marker = std::fs::read_to_string(marker_of(&model))
+            .expect("self-heal must write the marker");
+        assert_eq!(marker.trim(), format!("{} {}", expected, payload.len()));
+    }
+
+    #[test]
+    fn stale_marker_length_falls_back_to_hash_and_rewrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("ggml-test.bin");
+        let payload = b"complete model bytes";
+        std::fs::write(&model, payload).unwrap();
+        let expected = sha256::hash_bytes(payload);
+        // Right hash, wrong length — simulates a marker written for a
+        // different (e.g. truncated-then-completed) file state.
+        std::fs::write(
+            marker_of(&model),
+            format!("{} {}\n", expected, payload.len() + 1),
+        )
+        .unwrap();
+        assert!(is_downloaded_at(&model, &expected), "re-hash fallback must verify");
+        let marker = std::fs::read_to_string(marker_of(&model)).unwrap();
+        assert_eq!(
+            marker.trim(),
+            format!("{} {}", expected, payload.len()),
+            "stale marker must be rewritten with the correct length"
+        );
+    }
+
+    #[test]
+    fn corrupt_file_returns_false_and_writes_no_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("ggml-test.bin");
+        std::fs::write(&model, b"corrupted bytes").unwrap();
+        let expected = sha256::hash_bytes(b"what the registry expected");
+        assert!(!is_downloaded_at(&model, &expected));
+        assert!(
+            !marker_of(&model).exists(),
+            "a failed verification must never write a marker"
+        );
+    }
+
+    #[test]
+    fn missing_file_returns_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("does-not-exist.bin");
+        assert!(!is_downloaded_at(&model, &sha256::hash_bytes(b"x")));
     }
 
     #[test]
