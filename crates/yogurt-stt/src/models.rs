@@ -4,7 +4,7 @@
 //!
 //! The `sha256` values pinned in [`REGISTRY`] are a 2026-06 SNAPSHOT and
 //! MUST be re-verified before merge.  The download path (`download_to`,
-//! Plan 08-02 Task 3) is hard-failure on hash mismatch — if these
+//! Plan 08-02 Task 3) is hard-failure on hash mismatch - if these
 //! placeholders drift from what HuggingFace actually serves, the entire
 //! local-STT feature breaks 100% with a `HashMismatch` error.
 //!
@@ -48,17 +48,17 @@ pub struct ModelSpec {
     /// (e.g., `"small.en"`).  Matches the suffix of the HuggingFace
     /// filename.
     pub name: &'static str,
-    /// On-disk filename — `ggml-<name>.bin`.  Lives directly under
+    /// On-disk filename - `ggml-<name>.bin`.  Lives directly under
     /// `model_path()`'s parent.
     pub filename: &'static str,
     /// Approximate downloaded size in MB (used by the UI to surface
     /// "download 487 MB?" before kicking off the transfer).
     pub size_mb: u32,
-    /// Canonical HuggingFace URL — `download_to` GETs this and
+    /// Canonical HuggingFace URL - `download_to` GETs this and
     /// supports `Range:` resume.
     pub url: &'static str,
     /// Lowercase hex SHA256 of the downloaded file.  See
-    /// module-level WARNING — re-verify before merge.
+    /// module-level WARNING - re-verify before merge.
     pub sha256: &'static str,
     /// `true` if the model runs on Intel x86_64 (PRD §5.8).  Medium
     /// and large-v3 require arm64 Metal kernels and are arm64-only.
@@ -126,7 +126,7 @@ pub fn lookup(name: &str) -> Option<&'static ModelSpec> {
 /// if it does not exist.
 ///
 /// Phase 5 set the `data_local_dir` base to `~/.yogurt` via the
-/// `("com", "yogurt", "yogurt")` ProjectDirs triple — this function
+/// `("com", "yogurt", "yogurt")` ProjectDirs triple - this function
 /// follows the same convention.  If Phase 5's base ever changes,
 /// update here in lock-step.
 pub fn model_path(spec: &ModelSpec) -> std::io::Result<PathBuf> {
@@ -141,9 +141,17 @@ pub fn model_path(spec: &ModelSpec) -> std::io::Result<PathBuf> {
     Ok(dir.join(spec.filename))
 }
 
-/// `true` iff the model file exists AND its SHA256 matches `spec.sha256`
+/// `true` iff the model file exists AND verifies against `spec.sha256`
 /// (case-insensitive).  A file that exists but does not verify counts
-/// as not-downloaded — callers should re-download.
+/// as not-downloaded - callers should re-download.
+///
+/// Verification is CHEAP on the happy path: a sidecar
+/// `<filename>.sha256` marker (single line `<hash> <len>`, written by
+/// every successful full-file verification) is checked against the
+/// spec hash and the file's current byte length - no hashing.  Only a
+/// missing/invalid/stale marker falls back to a one-time full SHA256
+/// (legacy migration), which self-heals the marker on success.  This
+/// matters: hashing a 3 GB model per call starved the tokio runtime.
 ///
 /// This is the source of truth the UI uses to render "✓ Downloaded"
 /// vs "Download" in the model picker.  Any IO error (e.g., permission
@@ -153,20 +161,66 @@ pub fn is_downloaded(spec: &ModelSpec) -> bool {
         Ok(p) => p,
         Err(_) => return false,
     };
-    if !path.exists() {
-        return false;
+    is_downloaded_at(&path, spec.sha256)
+}
+
+/// Path-injectable core of `is_downloaded` - see that fn's doc comment.
+fn is_downloaded_at(path: &Path, expected_sha256: &str) -> bool {
+    // Existence short-circuit; also gives us the current length for the
+    // marker check without a second stat.
+    let len = match std::fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(_) => return false,
+    };
+    if let Some((hash, marker_len)) = read_marker(path) {
+        if hash.eq_ignore_ascii_case(expected_sha256) && marker_len == len {
+            return true;
+        }
     }
-    match sha256::hash_file(&path) {
-        Ok(actual) => actual.eq_ignore_ascii_case(spec.sha256),
-        Err(_) => false,
+    // Legacy migration / stale marker: hash once, self-heal on match.
+    match sha256::hash_file(path) {
+        Ok(actual) if actual.eq_ignore_ascii_case(expected_sha256) => {
+            write_marker(path, &actual);
+            true
+        }
+        _ => false,
     }
 }
 
-/// Path-injectable core of `is_downloaded` — see that fn's doc comment.
-#[allow(dead_code)] // RED phase stub; wired up in the GREEN commit.
-fn is_downloaded_at(path: &Path, expected_sha256: &str) -> bool {
-    let _ = (path, expected_sha256);
-    todo!("GREEN: marker-based downloaded check")
+/// `<model path>.sha256` - appends to the FULL file name
+/// (`ggml-x.bin` -> `ggml-x.bin.sha256`).  Not `with_extension`, which
+/// would replace `.bin`.
+fn marker_path(model: &Path) -> PathBuf {
+    let mut s = model.as_os_str().to_os_string();
+    s.push(".sha256");
+    PathBuf::from(s)
+}
+
+/// Best-effort: record `<lowercase-hash> <len>` next to the model so
+/// future `is_downloaded` calls skip hashing.  Failures are non-fatal -
+/// the worst case is re-hashing on the next check.
+fn write_marker(model: &Path, hash: &str) {
+    let len = match std::fs::metadata(model) {
+        Ok(m) => m.len(),
+        Err(e) => {
+            tracing::warn!(?model, %e, "sha256 marker: stat failed, skipping write");
+            return;
+        }
+    };
+    let line = format!("{} {}\n", hash.to_ascii_lowercase(), len);
+    if let Err(e) = std::fs::write(marker_path(model), line) {
+        tracing::warn!(?model, %e, "sha256 marker: write failed (non-fatal)");
+    }
+}
+
+/// Parse the sidecar marker into `(hash, len)`.  Any IO or parse
+/// failure -> `None` (caller falls back to hashing).
+fn read_marker(model: &Path) -> Option<(String, u64)> {
+    let s = std::fs::read_to_string(marker_path(model)).ok()?;
+    let mut parts = s.split_whitespace();
+    let hash = parts.next()?.to_string();
+    let len = parts.next()?.parse().ok()?;
+    Some((hash, len))
 }
 
 /// Progress tick reported by `download_to` (via the caller-supplied
@@ -174,7 +228,7 @@ fn is_downloaded_at(path: &Path, expected_sha256: &str) -> bool {
 /// "Downloading 487 MB · 23%" surface in Settings.
 ///
 /// `bytes_per_sec` and `eta_seconds` are EWMA'd over the last ~500 ms
-/// window — they jitter less than instant-rate measurements.
+/// window - they jitter less than instant-rate measurements.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DownloadProgress {
     pub bytes_downloaded: u64,
@@ -186,7 +240,7 @@ pub struct DownloadProgress {
 /// Errors surfaced by `download_to` / `download`.
 ///
 /// `HashMismatch` carries both digests so the UI can show the user
-/// what we got vs what we expected — useful when re-verifying
+/// what we got vs what we expected - useful when re-verifying
 /// REGISTRY placeholders.
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {
@@ -201,7 +255,7 @@ pub enum DownloadError {
 }
 
 /// Download a file from `url` to `dest`, resuming a partial file via
-/// `Range: bytes=N-` if present.  Verifies SHA256 after completion —
+/// `Range: bytes=N-` if present.  Verifies SHA256 after completion -
 /// on mismatch, the file is DELETED so a subsequent call won't take
 /// the fast-path against corrupted state.
 ///
@@ -211,7 +265,7 @@ pub enum DownloadError {
 /// ## Fast path
 ///
 /// If `dest` already exists AND its SHA256 matches `expected_sha256`,
-/// we return `Ok(())` without touching the network — important for
+/// we return `Ok(())` without touching the network - important for
 /// the "model already installed" case on app boot.
 ///
 /// ## Resume path
@@ -219,7 +273,7 @@ pub enum DownloadError {
 /// If `dest` exists but doesn't verify, we read its length and send
 /// `Range: bytes={len}-`.  Server is expected to reply 206
 /// PARTIAL_CONTENT; if it instead returns 200 (Range not supported)
-/// we still proceed but truncate-overwrite from byte 0 — the
+/// we still proceed but truncate-overwrite from byte 0 - the
 /// `append(true)` open + seek-to-end below handles both cases.
 pub async fn download_to<F>(
     url: &str,
@@ -234,6 +288,7 @@ where
     if dest.exists() {
         if let Ok(existing) = sha256::hash_file(dest) {
             if existing.eq_ignore_ascii_case(expected_sha256) {
+                write_marker(dest, &existing);
                 return Ok(());
             }
         }
@@ -270,7 +325,7 @@ where
         f
     } else {
         // Either no existing file, or server ignored Range and is
-        // sending the full body from byte 0 — truncate.
+        // sending the full body from byte 0 - truncate.
         std::fs::File::create(dest)?
     };
 
@@ -334,6 +389,7 @@ where
             actual,
         });
     }
+    write_marker(dest, &actual);
 
     Ok(())
 }
@@ -376,7 +432,7 @@ mod tests {
         assert_eq!(lookup("large-v3").unwrap().name, "large-v3");
         assert!(lookup("nonexistent").is_none());
         assert!(lookup("").is_none());
-        // Case-sensitive — we want the UI to be exact-match.
+        // Case-sensitive - we want the UI to be exact-match.
         assert!(lookup("Tiny.en").is_none());
     }
 
@@ -405,7 +461,7 @@ mod tests {
         let model = dir.path().join("ggml-test.bin");
         let content = b"content that does NOT hash to the expected value";
         std::fs::write(&model, content).unwrap();
-        // Expected hash is of DIFFERENT bytes — if is_downloaded_at hashed
+        // Expected hash is of DIFFERENT bytes - if is_downloaded_at hashed
         // the file it would return false. A matching marker must win.
         let expected = sha256::hash_bytes(b"the payload the registry pins");
         std::fs::write(marker_of(&model), format!("{} {}\n", expected, content.len())).unwrap();
@@ -435,7 +491,7 @@ mod tests {
         let payload = b"complete model bytes";
         std::fs::write(&model, payload).unwrap();
         let expected = sha256::hash_bytes(payload);
-        // Right hash, wrong length — simulates a marker written for a
+        // Right hash, wrong length - simulates a marker written for a
         // different (e.g. truncated-then-completed) file state.
         std::fs::write(
             marker_of(&model),
