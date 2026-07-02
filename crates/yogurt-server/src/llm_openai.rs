@@ -1,11 +1,15 @@
-//! Phase 4 → Phase 5 (Plan 05-01) compat shim.
+//! LLM client resolution for the enhance handler.
 //!
 //! The hardcoded ~50 LOC OpenAI-compat client originally lived here. Plan
 //! 05-01 promoted it into the new `yogurt-llm` crate behind the
 //! `LlmClient` trait. This module now re-exports the canonical adapter
-//! and a small `from_env()` constructor (Phase 4-shaped fallback used by
-//! the enhance handler until Plan 05-02's `AppState.keys` is wired) so
-//! existing call-sites compile unchanged.
+//! plus two constructors:
+//!
+//! - [`from_env`] — developer override via `YOGURT_LLM_*` env vars
+//!   (highest priority, checked first).
+//! - [`from_active_provider`] — the production path: active provider row
+//!   from the `providers` table + its API key from the Keychain-backed
+//!   [`yogurt_db::keychain::ApiKeyStore`].
 
 use std::time::Duration;
 
@@ -19,16 +23,11 @@ pub use yogurt_llm::OpenAiCompatClient;
 /// to the same value — defense-in-depth.
 pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Phase 4-shape `.env`-based constructor. Returns `None` if any of the
-/// three `YOGURT_LLM_*` env vars is missing; the enhance handler falls
-/// back to `MockLlm` in that case.
-///
-/// Plan 05-02 will replace this with a lookup against `AppState.db`
-/// (active provider row) + `AppState.keys` (Keychain-backed
-/// `ApiKeyStore`). Until that lands, this shim keeps the enhance handler
-/// working against a real provider when the developer sets
-/// `YOGURT_LLM_BASE_URL` + `YOGURT_LLM_API_KEY` + `YOGURT_LLM_MODEL` in
-/// their environment.
+/// `.env`-based developer override. Returns `None` if any of the three
+/// `YOGURT_LLM_*` env vars is missing; the enhance handler then falls
+/// through to [`from_active_provider`] (and finally `MockLlm`). When set,
+/// `YOGURT_LLM_BASE_URL` + `YOGURT_LLM_API_KEY` + `YOGURT_LLM_MODEL` win
+/// over the configured provider row.
 pub fn from_env() -> Option<OpenAiCompatClient> {
     let base_url = std::env::var("YOGURT_LLM_BASE_URL").ok()?;
     let api_key = std::env::var("YOGURT_LLM_API_KEY").ok()?;
@@ -45,10 +44,33 @@ pub fn from_env() -> Option<OpenAiCompatClient> {
 /// - `Err(_)` — active provider exists but its key could not be read;
 ///   caller must surface this (502), never silently fall back to mock.
 pub async fn from_active_provider(
-    _db: &yogurt_db::Db,
-    _keys: std::sync::Arc<dyn yogurt_db::keychain::ApiKeyStore>,
+    db: &yogurt_db::Db,
+    keys: std::sync::Arc<dyn yogurt_db::keychain::ApiKeyStore>,
 ) -> anyhow::Result<Option<OpenAiCompatClient>> {
-    todo!("GREEN step of quick-260701-x3u task 1")
+    let Some(provider) = yogurt_db::providers::active(db)? else {
+        return Ok(None);
+    };
+    // SET-10: Keychain reads can block for seconds (user prompt on first
+    // access) — never call ApiKeyStore::get on the tokio reactor.
+    let provider_id = provider.id.clone();
+    let key = tokio::task::spawn_blocking(move || keys.get(&provider_id))
+        .await
+        .map_err(|e| anyhow::anyhow!("key store task failed: {e}"))?
+        .unwrap_or(None);
+    // T-x3u-01: error names the provider only — never the key value.
+    match key {
+        Some(key) => Ok(Some(OpenAiCompatClient::new(
+            provider.base_url,
+            key,
+            provider.model,
+        ))),
+        None => anyhow::bail!(
+            "provider '{}' ({}) is active but its API key could not be read \
+             from the key store - re-enter it in Settings",
+            provider.name,
+            provider.id
+        ),
+    }
 }
 
 #[cfg(test)]
