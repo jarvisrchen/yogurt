@@ -2,13 +2,14 @@
  * Quick task 260628-g71 — shared audio-permission API surface.
  *
  * Centralizes the wire shape of `GET /api/audio/permission` and the
- * request endpoint `POST /api/audio/microphone/request` so both
- * `useScreenRecordingStatus` and `useMicrophoneStatus` (DD-04) consume
- * the same fetch + query key. React Query dedupes on `permissionsKey`,
- * so the two hooks share a single 2s network poll.
+ * request endpoints `POST /api/audio/microphone/request` and
+ * `POST /api/audio/screen-recording/request` (quick task 260701-vjb) so
+ * both `useScreenRecordingStatus` and `useMicrophoneStatus` (DD-04)
+ * consume the same fetch + query key. React Query dedupes on
+ * `permissionsKey`, so the two hooks share a single 2s network poll.
  *
  * Backend handler: `crates/yogurt-server/src/audio.rs::get_permission`
- * + `::request_microphone`.
+ * + `::request_microphone` + `::request_screen_recording`.
  */
 
 import { bearerFetch } from "../session";
@@ -70,6 +71,26 @@ export async function fetchPermissions(): Promise<PermissionsResponse> {
  */
 export async function requestMicrophonePermission(): Promise<PermissionsResponse> {
   const res = await bearerFetch("/api/audio/microphone/request", {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as PermissionsResponse;
+}
+
+/**
+ * Fire the macOS Screen Recording TCC prompt (quick task 260701-vjb).
+ * Fire-and-forget on the backend - the prompt only appears if the app
+ * has never asked. macOS will not re-prompt after a denial, so the
+ * caller offers a System Settings deep link for that case.
+ *
+ * Returns the *current* snapshot; the 2s `fetchPermissions` poll picks
+ * up the eventual user response. Callers should
+ * `qc.invalidateQueries({ queryKey: permissionsKey })` after this resolves.
+ */
+export async function requestScreenRecordingPermission(): Promise<PermissionsResponse> {
+  const res = await bearerFetch("/api/audio/screen-recording/request", {
     method: "POST",
   });
   if (!res.ok) {
