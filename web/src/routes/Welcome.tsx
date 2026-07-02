@@ -26,19 +26,25 @@
  * — when status is `not_determined`, clicking it fires the macOS system
  * dialog; when status is `denied`, clicking it deep-links into
  * System Settings (macOS won't re-prompt after a denial).
+ *
+ * Quick task 260701-vjb made Steps 1, 3, and 4 actionable: Step 1's Grant
+ * button hits `POST /api/audio/screen-recording/request` (with a System
+ * Settings deep link alongside), Steps 3 and 4 link to `/settings`, and
+ * Step 4's state is derived from steps 1-3 instead of hardcoded pending.
  */
 
 import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Logo } from "../components/Logo";
 import { StepCard, type StepState } from "../components/onboarding/StepCard";
 import { TerminalMockup } from "../components/onboarding/TerminalMockup";
 import {
   permissionsKey,
   requestMicrophonePermission,
+  requestScreenRecordingPermission,
 } from "../lib/api/audio";
 import {
   useSettings,
@@ -68,6 +74,11 @@ export function Welcome() {
     // snapshot — the real state change arrives via the 2s poll. Invalidate
     // here so the next render reads the freshest cached value rather
     // than waiting up to 2s for the periodic refetch.
+    onSuccess: () => qc.invalidateQueries({ queryKey: permissionsKey }),
+  });
+
+  const screenRequest = useMutation({
+    mutationFn: requestScreenRecordingPermission,
     onSuccess: () => qc.invalidateQueries({ queryKey: permissionsKey }),
   });
 
@@ -108,7 +119,11 @@ export function Welcome() {
       : hasProvider
         ? "done"
         : "current";
-  const step4State: StepState = "pending";
+  // 260701-vjb: Step 4 becomes current once steps 1-3 are done. The
+  // transcription choice does not gate `ready` - Deepgram cloud is the
+  // seeded default, so this step is informational-but-actionable.
+  const step4State: StepState =
+    granted && micGranted && hasProvider ? "current" : "pending";
 
   const ready = granted && micGranted && hasProvider;
 
@@ -165,7 +180,34 @@ export function Welcome() {
             title="Screen Recording"
             state={step1State}
             body="This is how yogurt hears the other side of the call — no meeting bot required."
-          />
+          >
+            {!granted ? (
+              // Unlike the mic path, CGPreflight cannot distinguish
+              // never-asked from denied - so we always show BOTH the Grant
+              // button (fires the prompt if never asked) and the System
+              // Settings link (recovery after a denial).
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => screenRequest.mutate()}
+                  disabled={screenRequest.isPending}
+                  className="px-3 py-1.5 rounded-button text-[12.5px] font-semibold text-white bg-blue shadow-button-blue hover:opacity-90 disabled:opacity-50"
+                >
+                  Grant Screen Recording
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href =
+                      "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+                  }}
+                  className="text-[12.5px] text-blue hover:underline"
+                >
+                  Open System Settings
+                </button>
+              </div>
+            ) : null}
+          </StepCard>
 
           <StepCard
             number={2}
@@ -210,6 +252,14 @@ export function Welcome() {
                 );
               })}
             </div>
+            {step3State === "current" ? (
+              <Link
+                to="/settings"
+                className="inline-block mt-3 text-[12.5px] text-blue hover:underline"
+              >
+                Set up in Settings →
+              </Link>
+            ) : null}
           </StepCard>
 
           <StepCard
@@ -217,7 +267,16 @@ export function Welcome() {
             title="Pick transcription"
             state={step4State}
             body="Cloud Deepgram for speed, or fully-local whisper.cpp."
-          />
+          >
+            {step4State === "current" ? (
+              <Link
+                to="/settings"
+                className="text-[12.5px] text-blue hover:underline"
+              >
+                Choose in Settings →
+              </Link>
+            ) : null}
+          </StepCard>
         </div>
 
         <button
