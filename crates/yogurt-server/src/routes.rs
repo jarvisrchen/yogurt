@@ -35,6 +35,13 @@ pub fn router(state: AppState) -> Router {
             "/api/audio/microphone/request",
             post(audio::request_microphone),
         )
+        // Quick task 260701-vjb: dedicated POST to fire the macOS Screen
+        // Recording TCC prompt from the Welcome "Grant Screen Recording"
+        // button. Fire-and-forget; returns the combined permission snapshot.
+        .route(
+            "/api/audio/screen-recording/request",
+            post(audio::request_screen_recording),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session_token,

@@ -1,6 +1,6 @@
 //! HTTP surface for `yogurt-audio` capture.
 //!
-//! Three endpoints + one in-process hook point:
+//! Four endpoints + one in-process hook point:
 //!
 //! - `GET /api/audio/permission` — surfaces both [`PermissionStatus`]
 //!   fields (screen recording + microphone) for the Phase 7 onboarding
@@ -10,12 +10,13 @@
 //! - `POST /api/audio/microphone/request` — fires the macOS microphone
 //!   permission system dialog (idempotent — no-op if already granted /
 //!   denied) and returns the *current* combined permission snapshot.
-//!   Wired to the Welcome "Grant Microphone" button (DD-05). Note that
-//!   screen-recording permission is requested implicitly the first time
-//!   `start_capture` opens an SCK stream; we do not currently expose a
-//!   parallel `POST /api/audio/screen-recording/request` because the
-//!   existing CG-based detection path triggers the prompt as a side
-//!   effect of `start_capture` already.
+//!   Wired to the Welcome "Grant Microphone" button (DD-05).
+//! - `POST /api/audio/screen-recording/request` — fires the macOS Screen
+//!   Recording TCC prompt explicitly from the Welcome Step 1 button
+//!   (quick task 260701-vjb). Previously the prompt only fired implicitly
+//!   when `start_capture` opened an SCK stream, which deadlocked first-run
+//!   users: the Welcome CTA is gated on the permission, so capture never
+//!   started and the prompt never appeared.
 //! - `GET /api/audio/devices` — enumerates input devices for the Phase 5
 //!   settings dropdown (PRD §5.6).
 //! - [`start_meeting_recording`] — Phase 3's hook into the audio pipeline.
@@ -34,13 +35,14 @@ use axum::{
 use serde::Serialize;
 use yogurt_audio::{
     has_microphone_permission, has_screen_recording_permission, list_input_devices,
-    request_microphone_permission, start_capture, AudioError, AudioStream, DeviceInfo,
-    PermissionStatus,
+    request_microphone_permission, request_screen_recording_permission, start_capture, AudioError,
+    AudioStream, DeviceInfo, PermissionStatus,
 };
 
-/// JSON body for `GET /api/audio/permission` and
-/// `POST /api/audio/microphone/request`. Both endpoints return the full
-/// snapshot — the SPA polls one cache key (`["audio", "permission"]`) and
+/// JSON body for `GET /api/audio/permission`,
+/// `POST /api/audio/microphone/request`, and
+/// `POST /api/audio/screen-recording/request`. All three endpoints return
+/// the full snapshot — the SPA polls one cache key (`["audio", "permission"]`) and
 /// derives both `useScreenRecordingStatus` and `useMicrophoneStatus` from
 /// it via `select`-style accessors (DD-04).
 ///
@@ -95,6 +97,20 @@ pub async fn request_microphone() -> Json<PermissionResponse> {
     // Fire-and-forget. The dialog appears asynchronously; the SPA's 2s
     // polling loop picks up the eventual state change on the next tick.
     let _ = request_microphone_permission();
+    Json(PermissionResponse::snapshot())
+}
+
+/// `POST /api/audio/screen-recording/request` — fire the macOS Screen
+/// Recording TCC prompt if the app has never asked (quick task 260701-vjb).
+/// If the user already denied, macOS will not re-prompt — the SPA offers a
+/// System Settings deep link for that case instead.
+///
+/// Returns the full combined snapshot so the SPA updates both permission
+/// hooks in one round-trip.
+pub async fn request_screen_recording() -> Json<PermissionResponse> {
+    // Fire-and-forget, mirroring `request_microphone`. The prompt appears
+    // asynchronously; the SPA's 2s polling loop picks up the state change.
+    let _ = request_screen_recording_permission();
     Json(PermissionResponse::snapshot())
 }
 
