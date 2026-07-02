@@ -70,7 +70,19 @@ fn to_view(spec: &models::ModelSpec) -> ModelView {
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 async fn list_models(State(_s): State<AppState>) -> Json<Vec<ModelView>> {
-    Json(models::REGISTRY.iter().map(to_view).collect())
+    // `to_view` -> `is_downloaded` touches the filesystem and, on the
+    // one-time legacy-marker migration, hashes a multi-GB model file.
+    // That must never run on a tokio worker (it starved the runtime,
+    // quick-260701-wjs), so the whole registry->view mapping goes onto
+    // the blocking pool. REGISTRY is &'static, no captures needed.
+    let views = tokio::task::spawn_blocking(|| {
+        models::REGISTRY.iter().map(to_view).collect::<Vec<_>>()
+    })
+    .await
+    // JoinError only means the closure panicked; don't 500 the model
+    // picker over a panic in a filesystem probe.
+    .unwrap_or_default();
+    Json(views)
 }
 
 async fn start_download(

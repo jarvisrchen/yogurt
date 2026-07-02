@@ -76,7 +76,11 @@ impl From<&yogurt_db::settings::General> for SttSettings {
 /// - unknown `stt_provider` (anything other than `"cloud"` / `"local"`)
 /// - `stt_model` not found in `yogurt_stt::models::REGISTRY`
 /// - local model not downloaded (checked via `models::is_downloaded`,
-///   which verifies SHA256 — a corrupt file counts as not downloaded)
+///   which reads the sidecar `.sha256` marker; it only hashes the file
+///   on the one-time legacy migration - a corrupt file counts as not
+///   downloaded). Because that migration hash can take a minute on a
+///   multi-GB model, async callers must invoke this fn via
+///   `tokio::task::spawn_blocking`.
 /// - cloud branch + no `YOGURT_DEEPGRAM_API_KEY`
 pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
     match s.stt_provider.as_str() {
@@ -243,7 +247,13 @@ impl Registry {
             return Err(anyhow!("meeting already started"));
         }
 
-        let stt_spec = select_stt(&stt_settings).context("select STT adapter")?;
+        // select_stt probes the model file on disk (and may pay a
+        // one-time legacy hash of a multi-GB file) - keep it off the
+        // tokio workers.
+        let stt_spec = tokio::task::spawn_blocking(move || select_stt(&stt_settings))
+            .await
+            .context("join select_stt")?
+            .context("select STT adapter")?;
 
         // Open audio capture on a dedicated std::thread.
         //
