@@ -2,8 +2,9 @@
 //!
 //! `POST /api/meetings/{id}/enhance` accepts the user's raw notes plus the
 //! transcript-so-far in the request body, renders the bundled `enhance.md`
-//! prompt, calls the LLM (real `OpenAiCompatClient` if env vars present,
-//! else the deterministic `MockLlm`), runs `yogurt_notes::merge_notes` over
+//! prompt, calls the LLM (env-var override, else the configured active
+//! provider + Keychain key, else the deterministic `MockLlm` when nothing
+//! is configured), runs `yogurt_notes::merge_notes` over
 //! the result, persists `enriched_md` + `enriched_doc_json` to SQLite and
 //! to a per-meeting markdown file under `~/.yogurt/notes/`, and emits
 //! three `enhance_progress` WebSocket events (`sending` → `streaming` →
@@ -149,14 +150,13 @@ pub async fn enhance(
 
     // 4) Call the LLM via the `yogurt_llm::LlmClient` trait (Plan 05-01).
     //
-    // Provider lookup is a two-tier fallback until Plan 05-02 lands
-    // `AppState.keys` (Keychain-backed `ApiKeyStore`):
-    //   1. Real provider via `YOGURT_LLM_*` env vars → `OpenAiCompatClient`
-    //      from `yogurt_llm`. Goes through the trait so the BL-5 timeout
-    //      logic below treats both branches identically.
-    //   2. Else fall back to `MockLlm`, which also impls `LlmClient` (the
-    //      Plan 05-01 refactor of CONTEXT D-21) so first-time developers
-    //      still get a working hero experience.
+    // Provider resolution is a three-tier priority chain:
+    //   1. `YOGURT_LLM_*` env vars (developer override, highest priority).
+    //   2. Active provider row (`providers` table) + its Keychain key via
+    //      `llm_openai::from_active_provider`. A configured provider whose
+    //      key can't be read is a hard 502 — never a silent mock fallback.
+    //   3. `MockLlm` only when nothing is configured at all, so first-run
+    //      users still get a working hero experience (logged as a warn).
     //
     // BL-5: wrap with a hard timeout. If reqwest's own timeout fires we
     // catch it via Err(...). If the future just stalls (e.g. an in-process
@@ -168,9 +168,27 @@ pub async fn enhance(
     // System message is intentionally empty here — Phase 4's `enhance.md`
     // prompt is rendered as the whole user payload; introducing a real
     // system message requires moving the prompt split logic into
-    // `yogurt-prompts`. That refactor is queued for Plan 05-02's enhance
-    // rewire (which also moves to `AppState.db` for the active provider).
-    let real_client = crate::llm_openai::from_env();
+    // `yogurt-prompts`.
+    let real_client = match crate::llm_openai::from_env() {
+        Some(c) => Some(c),
+        None => {
+            match crate::llm_openai::from_active_provider(&state.db, state.keys.clone()).await {
+                Ok(Some(c)) => Some(c),
+                Ok(None) => {
+                    tracing::warn!("no LLM provider configured; enhance is using MockLlm");
+                    None
+                }
+                Err(e) => {
+                    let _ = meeting.events_tx.send(serde_json::json!({
+                        "type": "enhance_progress",
+                        "phase": "error",
+                        "message": format!("Enhance failed: {e}")
+                    }));
+                    return Err((StatusCode::BAD_GATEWAY, e.to_string()));
+                }
+            }
+        }
+    };
     let chat_req = ChatRequest {
         messages: vec![ChatMessage::user(user_prompt.clone())],
         stream: false,
