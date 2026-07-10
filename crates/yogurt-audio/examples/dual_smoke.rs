@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter("yogurt_audio=info,dual_smoke=info")
         .init();
 
-    let stream = start_capture()?;
+    let stream = start_capture(None)?;
     let mut mic_rx = stream.subscribe_mic();
     let mut sys_rx = stream.subscribe_system();
 

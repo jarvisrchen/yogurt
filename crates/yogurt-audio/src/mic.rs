@@ -172,11 +172,21 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>> {
 /// into a lock-free SPSC ring. A dedicated tokio drainer task consumes the
 /// ring, runs rubato + i16 conversion + frame chunking + broadcast. The
 /// callback never blocks and never touches the broadcast sender.
-pub fn spawn_mic_capture(tx: broadcast::Sender<Frame>) -> Result<MicCapture> {
+pub fn spawn_mic_capture(
+    tx: broadcast::Sender<Frame>,
+    requested_device: Option<&str>,
+) -> Result<MicCapture> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| AudioError::MicUnavailable("no default input device".into()))?;
+    let device = match requested_device {
+        Some(name) if !name.is_empty() => host
+            .input_devices()
+            .map_err(|e| AudioError::Cpal(format!("input_devices(): {e}")))?
+            .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+            .ok_or_else(|| AudioError::MicUnavailable(format!("input device not found: {name}")))?,
+        _ => host
+            .default_input_device()
+            .ok_or_else(|| AudioError::MicUnavailable("no default input device".into()))?,
+    };
     let device_name = device.name().unwrap_or_else(|_| "<unknown>".to_string());
     let supported = device
         .default_input_config()
@@ -382,6 +392,16 @@ mod tests {
             f1.monotonic_micros,
             f2.monotonic_micros
         );
+    }
+
+    #[test]
+    fn spawn_mic_capture_unknown_device_returns_mic_unavailable() {
+        let (tx, _rx) = broadcast::channel::<Frame>(8);
+        let result = spawn_mic_capture(tx, Some("definitely-not-a-real-device-xyz123"));
+        match result {
+            Err(AudioError::MicUnavailable(_)) => {}
+            other => panic!("expected Err(AudioError::MicUnavailable(_)), got {other:?}"),
+        }
     }
 
     #[test]
