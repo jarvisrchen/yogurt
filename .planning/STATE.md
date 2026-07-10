@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 3 of 10 (Cloud STT + Live Transcript) — In progress (Plans 01 + 02 of 3 complete)
 Plan: 03-02 complete; 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion + library/meeting route switch) next
 Status: meetings::Registry is the canonical in-memory fan-out point (Phase 7 swaps for SQLite behind the same `create/get/start/stop/subscribe` API). Cross-thread !Send bridge owns AudioStream on a dedicated std::thread; supervisor tokio task holds the shutdown oneshot. WS handler serializes `{type:"transcript", payload:{ts_ms,channel,text,is_final}}` exactly matching PRD §10. The server-side half of TRANS-08 < 2s lag is pinned at < 200ms by `e2e_synthetic_audio.rs` (actual is single-digit ms); the remaining budget is the browser side (Plan 03-03) + Deepgram network/processing (manual smoke).
-Last activity: 2026-07-02 - E2E debug session: fixed backend hang (260701-wjs), capture thread reactor panic (a263faa), and silently-mocked enhance (260701-x3u). Previous: 2026-06-26 — Plan 03-02 shipped (3 commits: Registry + AppState + lib wiring; REST + WS routes; E2E < 200ms test + fmt fixup); 4 new tests pass on ports 17890/17891/17892/17893; 35 total yogurt-server tests pass across 11 suites; 3 deviations auto-fixed (AudioStream !Send via std::thread+oneshot bridge; axum 0.8 `{id}` path syntax; build_test_state helper for tempfile AppState); 1 scope deferral (D-INT-02 per-meeting WS auth → Phase 5).
+Last activity: 2026-07-10 - Completed quick task 260709-wnn: live mic/audio-source hot-swap during an active meeting (mpsc control channel into the capture thread, POST /api/meetings/:id/audio-device, in-toolbar MicDevicePicker) + fixed persisted Settings audio_input_device to actually take effect on meeting start (was dead UI due to an AudioDevice.id/name mismatch bug). Status: Needs Review (zero-gap behavior requires manual check on real hardware). Previous: 2026-07-02 - E2E debug session: fixed backend hang (260701-wjs), capture thread reactor panic (a263faa), and silently-mocked enhance (260701-x3u). Previous: 2026-06-26 — Plan 03-02 shipped (3 commits: Registry + AppState + lib wiring; REST + WS routes; E2E < 200ms test + fmt fixup); 4 new tests pass on ports 17890/17891/17892/17893; 35 total yogurt-server tests pass across 11 suites; 3 deviations auto-fixed (AudioStream !Send via std::thread+oneshot bridge; axum 0.8 `{id}` path syntax; build_test_state helper for tempfile AppState); 1 scope deferral (D-INT-02 per-meeting WS auth → Phase 5).
 
 Progress: [██▊░░░░░░░] 28%
 
@@ -129,14 +129,15 @@ None yet.
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260628-g71 | Add microphone permission detection + UI surface symmetrical to Screen Recording | 2026-06-28 | f7313d6, 0f0b1e7 | .planning/quick/260628-g71-add-microphone-permission-detection-ui-s |
-| 260701-vjb | Make /welcome onboarding steps actionable (Grant Screen Recording button + settings links) | 2026-07-02 | 99fc11f, 88fd68d | [260701-vjb-make-welcome-onboarding-steps-actionable](./quick/260701-vjb-make-welcome-onboarding-steps-actionable/) |
-| 260701-wjs | Fix backend-wide hang: is_downloaded() hashed multi-GB models per call; sidecar .sha256 marker + spawn_blocking | 2026-07-02 | 1405c82, d60af23, 41ea94b | [260701-wjs-fix-sha256-hashing-hang-in-is-downloaded](./quick/260701-wjs-fix-sha256-hashing-hang-in-is-downloaded/) |
-| (fast) | Fix "no reactor running" panic on capture thread: enter runtime Handle before start_capture | 2026-07-02 | a263faa | - |
-| (fast) | Allow Vite origin :5173 for WS upgrades in dev mode; dock showed permanent "offline" from 403 bad origin | 2026-07-02 | 505cc58 | - |
-| 260701-x3u | Wire enhance to configured LLM provider (env -> Keychain provider -> mock); was silently MockLlm always | 2026-07-02 | ff84d43, da8f2e0, ca126eb | [260701-x3u-wire-enhance-endpoint-to-configured-llm-](./quick/260701-x3u-wire-enhance-endpoint-to-configured-llm-/) |
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260628-g71 | Add microphone permission detection + UI surface symmetrical to Screen Recording | 2026-06-28 | f7313d6, 0f0b1e7 | | .planning/quick/260628-g71-add-microphone-permission-detection-ui-s |
+| 260701-vjb | Make /welcome onboarding steps actionable (Grant Screen Recording button + settings links) | 2026-07-02 | 99fc11f, 88fd68d | | [260701-vjb-make-welcome-onboarding-steps-actionable](./quick/260701-vjb-make-welcome-onboarding-steps-actionable/) |
+| 260701-wjs | Fix backend-wide hang: is_downloaded() hashed multi-GB models per call; sidecar .sha256 marker + spawn_blocking | 2026-07-02 | 1405c82, d60af23, 41ea94b | | [260701-wjs-fix-sha256-hashing-hang-in-is-downloaded](./quick/260701-wjs-fix-sha256-hashing-hang-in-is-downloaded/) |
+| (fast) | Fix "no reactor running" panic on capture thread: enter runtime Handle before start_capture | 2026-07-02 | a263faa | | - |
+| (fast) | Allow Vite origin :5173 for WS upgrades in dev mode; dock showed permanent "offline" from 403 bad origin | 2026-07-02 | 505cc58 | | - |
+| 260701-x3u | Wire enhance to configured LLM provider (env -> Keychain provider -> mock); was silently MockLlm always | 2026-07-02 | ff84d43, da8f2e0, ca126eb | | [260701-x3u-wire-enhance-endpoint-to-configured-llm-](./quick/260701-x3u-wire-enhance-endpoint-to-configured-llm-/) |
+| 260709-wnn | Add live mic/audio-source switching during an active meeting (true hot-swap, no interruption) + make persisted Settings audio_input_device actually take effect on meeting start | 2026-07-10 | 87a95a4, bafcdc3, 6d92e3b | Needs Review | [260709-wnn-add-live-mic-device-switching-during-mee](./quick/260709-wnn-add-live-mic-device-switching-during-mee/) |
 
 ## Deferred Items
 
