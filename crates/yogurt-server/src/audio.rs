@@ -128,8 +128,8 @@ pub async fn get_devices() -> Result<Json<Vec<DeviceInfo>>, (StatusCode, String)
 /// The returned [`AudioStream`] holds RAII guards over both cpal and SCK
 /// producers — dropping it terminates the OS-level capture handles
 /// cleanly (AUDIO-06 / D-26).
-pub fn start_meeting_recording() -> Result<AudioStream, AudioError> {
-    start_capture()
+pub fn start_meeting_recording(mic_device: Option<&str>) -> Result<AudioStream, AudioError> {
+    start_capture(mic_device)
 }
 
 /// Newtype wrapper that gives [`AudioError`] an [`IntoResponse`] impl

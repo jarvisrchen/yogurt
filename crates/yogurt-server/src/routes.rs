@@ -66,6 +66,10 @@ pub fn router(state: AppState) -> Router {
         // axum 0.8 path syntax: `{id}` (not `:id`).
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
+        .route(
+            "/api/meetings/{id}/audio-device",
+            post(switch_meeting_audio_device),
+        )
         // Phase 4 (Plan 04-03): hero augmented-notes endpoint.
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
         // Phase 6 (Plan 06-01): in-meeting chat REST surface.
@@ -190,10 +194,12 @@ fn allowed_origins_for_port(port: u16) -> std::collections::HashSet<String> {
 /// `settings.stt_provider` + `stt.model` from the DB and routes to
 /// either `DeepgramStt` (cloud) or `WhisperLocal` (local).
 async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
-    // Load the user's stored STT preference.  Defaults to cloud/small.en
-    // via V005 seed rows + load_general fallbacks.
-    let stt_settings = match yogurt_db::settings::load_general(&state.db) {
-        Ok(g) => crate::meetings::SttSettings::from(&g),
+    // Load the user's stored settings.  Defaults to cloud/small.en via
+    // V005 seed rows + load_general fallbacks; also carries the persisted
+    // `audio_input_device` so a new recording opens the user's chosen mic
+    // instead of always the OS default.
+    let g = match yogurt_db::settings::load_general(&state.db) {
+        Ok(g) => g,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -202,13 +208,55 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
                 .into_response();
         }
     };
-    match state.meetings.start(&id, stt_settings).await {
+    let mic_device = if g.audio_input_device.is_empty() {
+        None
+    } else {
+        Some(g.audio_input_device.clone())
+    };
+    let stt_settings = crate::meetings::SttSettings::from(&g);
+    match state.meetings.start(&id, stt_settings, mic_device).await {
         Ok(_) => (StatusCode::OK, Json(json!({ "status": "started" }))).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": format!("{e:#}") })),
         )
             .into_response(),
+    }
+}
+
+/// `POST /api/meetings/:id/audio-device` — hot-swap the mic device on an
+/// actively-recording meeting. Returns the resolved device name so the
+/// toolbar picker can reflect the actual active device.
+#[derive(Deserialize)]
+struct SwitchDeviceRequest {
+    device_id: String,
+}
+
+async fn switch_meeting_audio_device(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SwitchDeviceRequest>,
+) -> impl IntoResponse {
+    use crate::meetings::SwitchDeviceError;
+    match state.meetings.switch_mic_device(&id, body.device_id).await {
+        Ok(device) => (
+            StatusCode::OK,
+            Json(json!({ "status": "switched", "device": device })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::NotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "meeting not found" })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::NotRecording) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "meeting is not currently recording" })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::Device(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response()
+        }
     }
 }
 

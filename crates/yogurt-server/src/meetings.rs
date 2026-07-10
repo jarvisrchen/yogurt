@@ -25,7 +25,7 @@
 use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, oneshot, Mutex, RwLock};
+use tokio::sync::{broadcast, mpsc, oneshot, Mutex, RwLock};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 use yogurt_stt::{deepgram::DeepgramStt, AudioChunk, Channel, Stt, TranscriptEvent};
@@ -110,6 +110,25 @@ pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
 
 pub type MeetingId = Uuid;
 
+/// Command sent across the tokio → capture-`std::thread` bridge to hot-swap
+/// the mic device mid-recording. Serviced by `run_capture_control_loop`
+/// alongside the existing shutdown `oneshot`.
+pub enum AudioCommand {
+    SwitchMicDevice {
+        device_name: String,
+        reply: oneshot::Sender<std::result::Result<String, String>>,
+    },
+}
+
+/// Errors `Registry::switch_mic_device` can return, mapped to HTTP status
+/// codes by the routes.rs handler.
+#[derive(Debug)]
+pub enum SwitchDeviceError {
+    NotFound,
+    NotRecording,
+    Device(String),
+}
+
 /// One in-progress or just-ended meeting.
 ///
 /// `audio_tx` is the bridge between `yogurt-audio` (which speaks `Frame`)
@@ -144,6 +163,11 @@ pub struct Meeting {
     /// SCK session. Without this join, back-to-back start/stop calls
     /// would let two AudioStreams hold SCK + cpal handles simultaneously.
     pub capture_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// `Some` while recording — the sending half of the capture thread's
+    /// command channel, used by `Registry::switch_mic_device` to forward
+    /// hot-swap requests. `None` before start / after stop, so a switch
+    /// request racing with shutdown reliably observes "not recording".
+    pub audio_cmd_tx: Mutex<Option<mpsc::Sender<AudioCommand>>>,
 }
 
 impl Meeting {
@@ -159,6 +183,7 @@ impl Meeting {
             events_tx,
             task: Mutex::new(None),
             capture_thread: Mutex::new(None),
+            audio_cmd_tx: Mutex::new(None),
         }
     }
 }
@@ -236,7 +261,12 @@ impl Registry {
     ///     missing API key, model not downloaded, …)
     ///   - `yogurt_audio::start_capture()` failed (caller surfaces as
     ///     a 400 — typically a permission gate)
-    pub async fn start(&self, id: &MeetingId, stt_settings: SttSettings) -> Result<()> {
+    pub async fn start(
+        &self,
+        id: &MeetingId,
+        stt_settings: SttSettings,
+        mic_device: Option<String>,
+    ) -> Result<()> {
         let m = self
             .get(id)
             .await
@@ -274,6 +304,7 @@ impl Registry {
             )>,
         >();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let (cmd_tx, cmd_rx) = mpsc::channel::<AudioCommand>(4);
 
         // BL-05: capture the JoinHandle so `stop()` can wait for the
         // AudioStream Drop (~50 ms SCK + cpal teardown) to complete before
@@ -299,7 +330,7 @@ impl Registry {
             // and send an Err.
             let mut ready_tx_slot = Some(ready_tx);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let stream = match yogurt_audio::start_capture() {
+                let mut stream = match yogurt_audio::start_capture(mic_device.as_deref()) {
                     Ok(s) => s,
                     Err(e) => {
                         if let Some(tx) = ready_tx_slot.take() {
@@ -312,14 +343,21 @@ impl Registry {
                 };
                 let mic_rx = stream.subscribe_mic();
                 let sys_rx = stream.subscribe_system();
-                let Some(tx) = ready_tx_slot.take() else { return };
+                let Some(tx) = ready_tx_slot.take() else {
+                    return;
+                };
                 if tx.send(Ok((mic_rx, sys_rx))).is_err() {
                     // Supervisor task vanished before we reported ready —
                     // just drop the stream (RAII stops capture) and exit.
                     return;
                 }
-                // Block until the supervisor drops `shutdown_tx`.
-                let _ = shutdown_rx.blocking_recv();
+                // Block until the supervisor drops `shutdown_tx`, servicing
+                // hot-swap commands from `Registry::switch_mic_device` in
+                // the meantime.
+                run_capture_control_loop(&rt_handle, shutdown_rx, cmd_rx, |name| {
+                    let opt = if name.is_empty() { None } else { Some(name) };
+                    stream.switch_mic_device(opt).map_err(|e| e.to_string())
+                });
                 // Dropping `stream` here stops both mic + system capture via RAII.
                 drop(stream);
             }));
@@ -411,6 +449,7 @@ impl Registry {
 
         *m.task.lock().await = Some(task);
         *m.capture_thread.lock().await = Some(capture_thread);
+        *m.audio_cmd_tx.lock().await = Some(cmd_tx);
         Ok(())
     }
 
@@ -428,6 +467,11 @@ impl Registry {
             .get(id)
             .await
             .ok_or_else(|| anyhow!("meeting not found"))?;
+
+        // Clear the command channel first so any switch request racing
+        // with shutdown reliably observes "not recording" rather than
+        // sending into a channel whose receiver is about to vanish.
+        *m.audio_cmd_tx.lock().await = None;
 
         // Step 1: abort the tokio supervisor task. This drops `_shutdown_tx`
         // inside the task body, which wakes the std::thread's blocking_recv.
@@ -482,6 +526,73 @@ impl Registry {
     pub async fn subscribe(&self, id: &MeetingId) -> Option<broadcast::Receiver<TranscriptEvent>> {
         Some(self.get(id).await?.transcript_tx.subscribe())
     }
+
+    /// Hot-swap the mic device on an actively-recording meeting. Forwards
+    /// an `AudioCommand::SwitchMicDevice` into the capture thread's command
+    /// channel and awaits the reply with a 5s timeout so a wedged capture
+    /// thread surfaces as an error instead of hanging the request forever.
+    pub async fn switch_mic_device(
+        &self,
+        id: &MeetingId,
+        device_name: String,
+    ) -> std::result::Result<String, SwitchDeviceError> {
+        let m = self.get(id).await.ok_or(SwitchDeviceError::NotFound)?;
+
+        let tx = m
+            .audio_cmd_tx
+            .lock()
+            .await
+            .clone()
+            .ok_or(SwitchDeviceError::NotRecording)?;
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(AudioCommand::SwitchMicDevice {
+            device_name,
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SwitchDeviceError::NotRecording)?;
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await {
+            Ok(Ok(Ok(name))) => Ok(name),
+            Ok(Ok(Err(msg))) => Err(SwitchDeviceError::Device(msg)),
+            Ok(Err(_)) => Err(SwitchDeviceError::NotRecording),
+            Err(_) => Err(SwitchDeviceError::Device(
+                "timed out waiting for capture thread to switch device".into(),
+            )),
+        }
+    }
+}
+
+/// Service `AudioCommand`s (currently just `SwitchMicDevice`) from the
+/// tokio side while blocking the capture `std::thread` until the supervisor
+/// drops `shutdown_rx`. Runs on `rt_handle` (the same `Handle` the capture
+/// thread already carries so `start_capture`'s internal `tokio::spawn`
+/// drainer tasks have a reactor) via `block_on`, so this call blocks the
+/// calling OS thread exactly like the old `shutdown_rx.blocking_recv()` did.
+///
+/// Extracted from the inline capture-thread body so the real `tokio::select!`
+/// control loop is unit-testable across a real thread boundary without
+/// depending on audio hardware — mirrors `pump_audio_adapter`.
+fn run_capture_control_loop(
+    rt_handle: &tokio::runtime::Handle,
+    mut shutdown_rx: oneshot::Receiver<()>,
+    mut cmd_rx: mpsc::Receiver<AudioCommand>,
+    mut switch: impl FnMut(&str) -> std::result::Result<String, String>,
+) {
+    rt_handle.block_on(async {
+        loop {
+            tokio::select! {
+                _ = &mut shutdown_rx => break,
+                cmd = cmd_rx.recv() => match cmd {
+                    Some(AudioCommand::SwitchMicDevice { device_name, reply }) => {
+                        let _ = reply.send(switch(&device_name));
+                    }
+                    None => break,
+                }
+            }
+        }
+    })
 }
 
 /// Drain Frame receivers from `yogurt-audio` → publish `AudioChunk`s onto the
@@ -590,6 +701,69 @@ mod tests {
         let b = rx2.recv().await.unwrap();
         assert_eq!(a.text, "hi");
         assert_eq!(b.text, "hi");
+    }
+
+    /// Proves the real `tokio::select!` capture-thread control loop
+    /// services multiple hot-swap commands in order and exits cleanly on
+    /// shutdown, with no deadlock — entirely independent of real audio
+    /// hardware (mirrors how `pump_audio_adapter` is tested). A `1s`
+    /// timeout on each reply means a deadlock fails the test loudly rather
+    /// than hanging the test run.
+    #[test]
+    fn run_capture_control_loop_services_commands_then_exits_cleanly() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("build multi-thread runtime");
+        let handle = rt.handle().clone();
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<AudioCommand>(4);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let seen: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_for_worker = seen.clone();
+
+        // Mirrors how `Registry::start` runs the loop: a plain
+        // std::thread::spawn body that block_on's the loop on the
+        // captured `Handle`.
+        let worker = std::thread::spawn(move || {
+            run_capture_control_loop(&handle, shutdown_rx, cmd_rx, move |name: &str| {
+                seen_for_worker.lock().unwrap().push(name.to_string());
+                Ok(format!("resolved:{name}"))
+            });
+        });
+
+        rt.block_on(async {
+            for name in ["mic-a", "mic-b", "mic-c"] {
+                let (reply_tx, reply_rx) = oneshot::channel();
+                cmd_tx
+                    .send(AudioCommand::SwitchMicDevice {
+                        device_name: name.to_string(),
+                        reply: reply_tx,
+                    })
+                    .await
+                    .expect("send command");
+                let reply = tokio::time::timeout(std::time::Duration::from_secs(1), reply_rx)
+                    .await
+                    .expect("reply within 1s — a timeout means the select loop deadlocked")
+                    .expect("reply sender dropped unexpectedly");
+                assert_eq!(reply, Ok(format!("resolved:{name}")));
+            }
+        });
+
+        // Signal shutdown and join — a hang here means the loop can't
+        // observe the dropped oneshot and exit cleanly.
+        drop(shutdown_tx);
+        worker.join().expect("worker thread joins cleanly");
+
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                "mic-a".to_string(),
+                "mic-b".to_string(),
+                "mic-c".to_string()
+            ]
+        );
     }
 
     /// BL-04: when the system channel closes, the adapter must KEEP draining
