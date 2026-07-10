@@ -65,11 +65,13 @@ export interface UpdateProvider {
 }
 
 /** Phase 2 audio devices shape — re-exported here so the Audio section
- *  (plan 05-04) can consume the same typed client. */
+ *  (plan 05-04) can consume the same typed client. Mirrors the backend
+ *  `DeviceInfo` struct (`crates/yogurt-audio/src/mic.rs`) — there is no
+ *  `id` field, only `name` (the identifier the backend matches on). */
 export interface AudioDevice {
-  id: string;
   name: string;
   is_default: boolean;
+  sample_rate?: number | null;
 }
 
 // ─── HTTP helper ────────────────────────────────────────────────────────────
@@ -136,6 +138,17 @@ export const settingsApi = {
 
 export const audioApi = {
   devices: () => http<AudioDevice[]>("/api/audio/devices"),
+  /** `POST /api/meetings/:id/audio-device` (quick task 260709-wnn) — hot-swap
+   *  the mic device on an actively-recording meeting. Returns the resolved
+   *  device name so the caller can reflect the actual active device. */
+  switchMeetingDevice: (meetingId: string, deviceId: string) =>
+    http<{ status: string; device: string }>(
+      `/api/meetings/${meetingId}/audio-device`,
+      {
+        method: "POST",
+        body: JSON.stringify({ device_id: deviceId }),
+      },
+    ),
 };
 
 // ─── React-Query hooks (Phase 7 onboarding + permission gating) ─────────────

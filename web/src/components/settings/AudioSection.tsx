@@ -42,7 +42,7 @@ export function AudioSection({ general }: AudioSectionProps) {
         >
           <option value="">System default</option>
           {devices.data?.map((d) => (
-            <option key={d.id} value={d.id}>
+            <option key={d.name} value={d.name}>
               {d.name}
               {d.is_default ? " (default)" : ""}
             </option>
