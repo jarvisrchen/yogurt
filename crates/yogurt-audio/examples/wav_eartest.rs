@@ -92,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
     println!("→ talk into the mic AND keep system audio playing for the full duration");
     println!();
 
-    let stream = start_capture()?;
+    let stream = start_capture(None)?;
     let mut mic_rx = stream.subscribe_mic();
     let mut sys_rx = stream.subscribe_system();
 

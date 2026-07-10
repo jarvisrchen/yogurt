@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let (tx, mut rx) = broadcast::channel::<Frame>(128);
-    let _capture = spawn_mic_capture(tx)?;
+    let _capture = spawn_mic_capture(tx, None)?;
     tracing::info!("mic capture running; collecting 5 seconds…");
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);

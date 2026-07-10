@@ -58,7 +58,7 @@ pub const BROADCAST_CAPACITY: usize = 256;
 ///
 /// ```no_run
 /// # async fn ex() -> yogurt_audio::Result<()> {
-/// let stream = yogurt_audio::start_capture()?;
+/// let stream = yogurt_audio::start_capture(None)?;
 /// let mut mic_rx = stream.subscribe_mic();
 /// let mut sys_rx = stream.subscribe_system();
 /// loop {
@@ -100,6 +100,20 @@ impl AudioStream {
     pub fn subscribe_system(&self) -> broadcast::Receiver<Frame> {
         self.system_tx.subscribe()
     }
+
+    /// Hot-swap the mic producer in place, leaving `mic_tx`, system audio,
+    /// and all existing broadcast subscribers untouched.
+    ///
+    /// Spawns the replacement capture FIRST and only swaps `_mic` on
+    /// success — on error, the previous device keeps capturing and the
+    /// error is returned to the caller, so a bad device id never
+    /// interrupts a live recording.
+    pub fn switch_mic_device(&mut self, device_name: Option<&str>) -> Result<String> {
+        let new_mic = spawn_mic_capture(self.mic_tx.clone(), device_name)?;
+        let resolved = new_mic.device_name.clone();
+        self._mic = new_mic;
+        Ok(resolved)
+    }
 }
 
 /// Open both capture streams (mic + system audio) and return an
@@ -121,7 +135,7 @@ impl AudioStream {
 ///
 /// **Broadcast capacity (AUDIO-04):** both channels are created with
 /// [`BROADCAST_CAPACITY`] = 256 frames (~5 seconds).
-pub fn start_capture() -> Result<AudioStream> {
+pub fn start_capture(mic_device: Option<&str>) -> Result<AudioStream> {
     if has_screen_recording_permission() == PermissionStatus::Denied {
         return Err(AudioError::PermissionDenied);
     }
@@ -139,7 +153,7 @@ pub fn start_capture() -> Result<AudioStream> {
     // it opened first so the cheap, safe mic open never runs when SCK
     // is going to fail anyway.
     let _system = spawn_system_capture(system_tx.clone())?;
-    let _mic = spawn_mic_capture(mic_tx.clone())?;
+    let _mic = spawn_mic_capture(mic_tx.clone(), mic_device)?;
 
     Ok(AudioStream {
         _mic,
