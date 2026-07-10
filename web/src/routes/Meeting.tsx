@@ -4,6 +4,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
+import { MicDevicePicker } from "../components/MicDevicePicker";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
 
@@ -273,6 +274,9 @@ export function Meeting() {
             {title}
           </h1>
           <div className="flex items-center gap-2">
+            {meetingId && recording && (
+              <MicDevicePicker meetingId={meetingId} />
+            )}
             {meetingId && !recording && (
               <button
                 type="button"
