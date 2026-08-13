@@ -84,22 +84,32 @@ pub fn router(state: AppState) -> Router {
             require_session_token,
         ));
 
-    // Phase 5 (Plan 05-03): `/api/settings*` REST surface. The plan-level
-    // contract intentionally exposes these routes WITHOUT the session-token
-    // middleware so the load-bearing integration tests in
-    // `tests/settings_api.rs` (notably
-    // `api_responses_never_include_the_raw_api_key`) can hit them via plain
-    // `reqwest::get` — the security invariant being tested is "raw key
-    // never leaves the server", not "endpoint is auth-gated". Endpoints
-    // are still bound to 127.0.0.1 only (Phase 0 invariant). If a future
-    // security review (Phase 9 hardening) requires auth here, the test
-    // fixtures must be updated in lockstep.
-    let settings_routes = crate::api::settings::router();
+    // Phase 5 (Plan 05-03): `/api/settings*` REST surface.
+    //
+    // Hardening (2026-08-13, E2E security finding): these routes now require
+    // the same session token as `/api/audio/*` and the meeting surface.
+    // Previously they were left unauthed so `tests/settings_api.rs` could hit
+    // them via plain `reqwest::get`; that left an exploitable gap — any
+    // localhost-reaching page could POST `/api/settings/providers` to point
+    // the active LLM provider at an attacker `base_url` (confirmed via an
+    // unauthenticated cross-origin curl). The frontend already sends the
+    // token on every settings call (`api/settings.ts` → `bearerFetch`), so
+    // only the integration-test fixtures needed updating (in lockstep). The
+    // `api_responses_never_include_the_raw_api_key` invariant is unchanged —
+    // that test now authenticates but still asserts the raw key never leaves
+    // the server.
+    let settings_routes = crate::api::settings::router().layer(middleware::from_fn_with_state(
+        state.clone(),
+        require_session_token,
+    ));
 
     // Phase 8 (Plan 08-03): whisper.cpp model management REST surface.
-    // Follows the same auth convention as `settings_routes` — bound to
-    // 127.0.0.1 only, no secrets handled.
-    let stt_models_routes = crate::api::stt_models::router();
+    // Same auth as `settings_routes` — the frontend (`api/stt.ts`) already
+    // attaches the token via `bearerFetch`.
+    let stt_models_routes = crate::api::stt_models::router().layer(middleware::from_fn_with_state(
+        state.clone(),
+        require_session_token,
+    ));
 
     let router = Router::new()
         .route("/api/health", get(health))

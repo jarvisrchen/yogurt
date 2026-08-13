@@ -20,7 +20,7 @@ use yogurt_server::{session, storage, Mode};
 /// Each test uses a distinct port to avoid clashing — cargo runs tests
 /// in this file sequentially (single-file integration test), but the
 /// per-port isolation is cheap insurance.
-async fn boot(port: u16) -> AppState {
+async fn boot(port: u16) -> (AppState, String) {
     let tmp = tempfile::tempdir().expect("tempdir");
     // Keep the tempdir alive for the duration of the spawned server by
     // leaking it intentionally — this is a short-lived integration test
@@ -28,6 +28,9 @@ async fn boot(port: u16) -> AppState {
     let path = tmp.keep();
     let storage = Arc::new(storage::Storage::init_at(&path.join("db.sqlite")).expect("storage"));
     let session = Arc::new(session::load_or_create(&path.join("session-token")).expect("session"));
+    // The `/api/settings*` routes require the session token (hardened
+    // 2026-08-13). Read it out so each request below can present it.
+    let token = session.as_str().to_string();
     let notes_dir: PathBuf = path.join("notes");
     let state =
         AppState::in_memory(Mode::Release, storage, session, port, notes_dir).expect("state");
@@ -40,13 +43,16 @@ async fn boot(port: u16) -> AppState {
     });
     // Tiny sleep so the server is ready to accept before the test fires.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    state
+    (state, token)
 }
 
 #[tokio::test]
 async fn it_lists_seeded_settings_with_no_providers() {
-    let _state = boot(18001).await;
-    let v: Value = reqwest::get("http://127.0.0.1:18001/api/settings")
+    let (_state, token) = boot(18001).await;
+    let v: Value = reqwest::Client::new()
+        .get("http://127.0.0.1:18001/api/settings")
+        .bearer_auth(&token)
+        .send()
         .await
         .unwrap()
         .json()
@@ -59,10 +65,11 @@ async fn it_lists_seeded_settings_with_no_providers() {
 
 #[tokio::test]
 async fn it_creates_a_provider_and_round_trips_via_get() {
-    let _state = boot(18002).await;
+    let (_state, token) = boot(18002).await;
     let client = reqwest::Client::new();
     let created: Value = client
         .post("http://127.0.0.1:18002/api/settings/providers")
+        .bearer_auth(&token)
         .json(&json!({ "name": "Minimax", "base_url": "https://x/v1", "model": "M" }))
         .send()
         .await
@@ -72,7 +79,10 @@ async fn it_creates_a_provider_and_round_trips_via_get() {
         .unwrap();
     let id = created["id"].as_str().unwrap().to_string();
 
-    let listed: Value = reqwest::get("http://127.0.0.1:18002/api/settings/providers")
+    let listed: Value = client
+        .get("http://127.0.0.1:18002/api/settings/providers")
+        .bearer_auth(&token)
+        .send()
         .await
         .unwrap()
         .json()
@@ -96,10 +106,11 @@ async fn api_responses_never_include_the_raw_api_key() {
     // (`••••XXXX`) is exposed. Any future refactor that adds an `api_key`
     // field to `ProviderView` (or otherwise echoes the raw secret) will
     // fail the `!s.contains("sk-supersecret-XYZA")` assertion below.
-    let _state = boot(18003).await;
+    let (_state, token) = boot(18003).await;
     let client = reqwest::Client::new();
     let created: Value = client
         .post("http://127.0.0.1:18003/api/settings/providers")
+        .bearer_auth(&token)
         .json(&json!({ "name": "P", "base_url": "https://x/v1", "model": "m" }))
         .send()
         .await
@@ -113,13 +124,17 @@ async fn api_responses_never_include_the_raw_api_key() {
         .post(format!(
             "http://127.0.0.1:18003/api/settings/providers/{id}/key"
         ))
+        .bearer_auth(&token)
         .json(&json!({ "api_key": "sk-supersecret-XYZA" }))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), 204);
 
-    let listed: Value = reqwest::get("http://127.0.0.1:18003/api/settings/providers")
+    let listed: Value = client
+        .get("http://127.0.0.1:18003/api/settings/providers")
+        .bearer_auth(&token)
+        .send()
         .await
         .unwrap()
         .json()
@@ -128,4 +143,34 @@ async fn api_responses_never_include_the_raw_api_key() {
     let s = serde_json::to_string(&listed).unwrap();
     assert!(!s.contains("sk-supersecret-XYZA"), "raw key leaked in: {s}");
     assert!(s.contains("••••XYZA"), "masked key should be present: {s}");
+}
+
+#[tokio::test]
+async fn unauthenticated_requests_are_rejected() {
+    // Hardening regression (2026-08-13): `/api/settings*` writes were once
+    // reachable with no token — an unauthenticated cross-origin POST could
+    // repoint the active LLM provider at an attacker `base_url`. Lock it:
+    // a tokenless GET and a tokenless provider-create must both 403.
+    let (_state, _token) = boot(18004).await;
+    let client = reqwest::Client::new();
+
+    let get_status = client
+        .get("http://127.0.0.1:18004/api/settings")
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(get_status, 403, "tokenless GET /api/settings must 403");
+
+    let post_status = client
+        .post("http://127.0.0.1:18004/api/settings/providers")
+        .json(&json!({ "name": "evil", "base_url": "http://attacker/v1", "model": "x" }))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(
+        post_status, 403,
+        "tokenless POST /api/settings/providers must 403"
+    );
 }
