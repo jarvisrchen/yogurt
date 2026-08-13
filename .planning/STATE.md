@@ -138,6 +138,7 @@ None yet.
 | (fast) | Allow Vite origin :5173 for WS upgrades in dev mode; dock showed permanent "offline" from 403 bad origin | 2026-07-02 | 505cc58 | | - |
 | 260701-x3u | Wire enhance to configured LLM provider (env -> Keychain provider -> mock); was silently MockLlm always | 2026-07-02 | ff84d43, da8f2e0, ca126eb | | [260701-x3u-wire-enhance-endpoint-to-configured-llm-](./quick/260701-x3u-wire-enhance-endpoint-to-configured-llm-/) |
 | 260709-wnn | Add live mic/audio-source switching during an active meeting (true hot-swap, no interruption) + make persisted Settings audio_input_device actually take effect on meeting start | 2026-07-10 | 87a95a4, bafcdc3, 6d92e3b | Needs Review | [260709-wnn-add-live-mic-device-switching-during-mee](./quick/260709-wnn-add-live-mic-device-switching-during-mee/) |
+| (fast) | Library cards open post-meeting read view (/meeting/:id/post) instead of the live-capture view; past meetings showed an empty editor because MeetingCard linked to /meeting/:id which never hydrates saved notes | 2026-08-13 | 853fa3a | | - |
 
 ## Deferred Items
 
