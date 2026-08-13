@@ -88,10 +88,7 @@ pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
         //   (3) added the key to .env.local and re-ran `just dev`
         // would see the provider row but `No key stored yet.` in the UI,
         // with no log line explaining why. Backfill restores the intent.
-        if let Some(existing_row) = existing
-            .iter()
-            .find(|p| p.name.eq_ignore_ascii_case(name))
-        {
+        if let Some(existing_row) = existing.iter().find(|p| p.name.eq_ignore_ascii_case(name)) {
             let existing_key = state.keys.get(&existing_row.id).ok().flatten();
             if existing_key.is_none() {
                 if let Err(e) = state.keys.set(&existing_row.id, &key) {
