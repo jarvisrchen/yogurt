@@ -464,7 +464,11 @@ mod tests {
         // Expected hash is of DIFFERENT bytes - if is_downloaded_at hashed
         // the file it would return false. A matching marker must win.
         let expected = sha256::hash_bytes(b"the payload the registry pins");
-        std::fs::write(marker_of(&model), format!("{} {}\n", expected, content.len())).unwrap();
+        std::fs::write(
+            marker_of(&model),
+            format!("{} {}\n", expected, content.len()),
+        )
+        .unwrap();
         assert!(
             is_downloaded_at(&model, &expected),
             "valid marker (hash + length match) must short-circuit hashing"
@@ -478,9 +482,12 @@ mod tests {
         let payload = b"legacy on-disk model bytes";
         std::fs::write(&model, payload).unwrap();
         let expected = sha256::hash_bytes(payload);
-        assert!(is_downloaded_at(&model, &expected), "matching content must verify");
-        let marker = std::fs::read_to_string(marker_of(&model))
-            .expect("self-heal must write the marker");
+        assert!(
+            is_downloaded_at(&model, &expected),
+            "matching content must verify"
+        );
+        let marker =
+            std::fs::read_to_string(marker_of(&model)).expect("self-heal must write the marker");
         assert_eq!(marker.trim(), format!("{} {}", expected, payload.len()));
     }
 
@@ -498,7 +505,10 @@ mod tests {
             format!("{} {}\n", expected, payload.len() + 1),
         )
         .unwrap();
-        assert!(is_downloaded_at(&model, &expected), "re-hash fallback must verify");
+        assert!(
+            is_downloaded_at(&model, &expected),
+            "re-hash fallback must verify"
+        );
         let marker = std::fs::read_to_string(marker_of(&model)).unwrap();
         assert_eq!(
             marker.trim(),
