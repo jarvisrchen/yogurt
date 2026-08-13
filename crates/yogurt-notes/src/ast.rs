@@ -61,7 +61,7 @@ pub fn block_key(b: &Block) -> String {
 /// matching `</span>` close pairs, deletes BOTH for any span carrying our
 /// wire-format attribute, and leaves anything else (raw user-typed span,
 /// other markup) intact. Compiled regexes are cached in `OnceLock`.
-fn strip_markers(s: &str) -> String {
+pub(crate) fn strip_markers(s: &str) -> String {
     // Fast path: nothing to strip.
     if !s.contains("<span") && !s.contains("</span>") {
         return s.to_string();
