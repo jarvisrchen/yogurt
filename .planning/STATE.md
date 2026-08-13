@@ -140,7 +140,9 @@ None yet.
 | 260709-wnn | Add live mic/audio-source switching during an active meeting (true hot-swap, no interruption) + make persisted Settings audio_input_device actually take effect on meeting start | 2026-07-10 | 87a95a4, bafcdc3, 6d92e3b | Needs Review | [260709-wnn-add-live-mic-device-switching-during-mee](./quick/260709-wnn-add-live-mic-device-switching-during-mee/) |
 | (fast) | Library cards open post-meeting read view (/meeting/:id/post) instead of the live-capture view; past meetings showed an empty editor because MeetingCard linked to /meeting/:id which never hydrates saved notes | 2026-08-13 | 853fa3a | | - |
 | (fast) | Apply rustfmt (leftover unformatted hunks from quick task 260701-wjs blocked the `cargo fmt --check` CI gate) | 2026-08-13 | b42896a | | - |
-| (fast) | Hero enhance corruption: render::wrap_ai escaped + double-wrapped model-emitted marker spans (Minimax echoes the prompt's <span data-ai-grey> scaffolding); now strips them before escaping. +regression test | 2026-08-13 | 247606e | | - |
+| (fast) | Hero enhance corruption: render::wrap_ai escaped + double-wrapped model-emitted marker spans (Minimax echoes the prompt's <span data-ai-grey> scaffolding); now strips them before escaping. +regression test (also updated enhance_endpoint assertions that had been matching the escaped garbage) | 2026-08-13 | 247606e, 90ed9ad | | - |
+| (fast) | Chat: finished-but-empty assistant reply rendered a blank/hung-looking bubble; now shows a muted "No response." +ChatWindow test | 2026-08-13 | 848bfc9 | | - |
+| (fast) | SECURITY: /api/settings* and /api/stt/* were unauthenticated (confirmed exploitable — tokenless cross-origin POST could repoint the active LLM provider at an attacker base_url). Now require the session token; frontends already sent it via bearerFetch. +negative 403 test | 2026-08-13 | e755208 | | - |
 
 ## Deferred Items
 
