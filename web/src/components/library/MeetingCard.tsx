@@ -64,7 +64,10 @@ interface Props {
 export function MeetingCard({ meeting }: Props) {
   return (
     <Link
-      to={`/meeting/${meeting.id}`}
+      // Library opens the post-meeting READ view, which hydrates saved
+      // notes via GET /api/meetings/:id. `/meeting/:id` (no /post) is the
+      // live-capture surface and shows only a placeholder for a past meeting.
+      to={`/meeting/${meeting.id}/post`}
       className="group flex items-center gap-3 py-2 px-2 -mx-2 rounded-button hover:bg-line/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
     >
       <div
