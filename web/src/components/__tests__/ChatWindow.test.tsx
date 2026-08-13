@@ -34,6 +34,26 @@ describe("ChatWindow", () => {
     expect(screen.getByText("hi there")).toBeInTheDocument();
   });
 
+  it("shows a muted placeholder for a finished-but-empty assistant reply", () => {
+    render(
+      <ChatWindow
+        messages={[
+          {
+            id: "a-empty",
+            meeting_id: "m1",
+            role: "assistant",
+            content: "\n",
+            created_at: 3,
+          },
+        ]}
+        streamingId={null}
+        onSend={() => {}}
+        onCollapse={() => {}}
+      />,
+    );
+    expect(screen.getByText("No response.")).toBeInTheDocument();
+  });
+
   it("sends on Enter and clears the input", () => {
     const onSend = vi.fn();
     render(
