@@ -92,3 +92,34 @@ fn it_renders_merged_doc_to_wire_markdown_with_spans() {
         "deep-link suffix present, got:\n{md}"
     );
 }
+
+/// Regression: weaker LLMs (e.g. Minimax) reproduce the `<span data-ai-grey>`
+/// scaffolding from the enhance prompt literally in the bullet body. We own
+/// the wrapping, so the render layer must STRIP those model-emitted wire-format
+/// spans before escaping — otherwise the raw markup is HTML-escaped
+/// (`&lt;span…&gt;`) and double-wrapped, surfacing literal span tags in the
+/// user's notes. Found via E2E enhance against Minimax (2026-08-13).
+#[test]
+fn it_strips_model_emitted_spans_instead_of_escaping_them() {
+    let transcript = std::fs::read_to_string(
+        std::path::Path::new("tests/fixtures/01_pure_new_ai").join("transcript.json"),
+    )
+    .unwrap();
+    // The LLM echoed the prompt's span format into its own output.
+    let enriched = concat!(
+        "## Discussion\n\n",
+        "- <span data-ai-grey data-ts=\"120\">Pricing model debated",
+        "<span data-transcript-link data-ts=\"120\">↳ 02:00</span></span>\n"
+    );
+    let md = yogurt_notes::render::to_markdown(
+        &yogurt_notes::merge_notes("", enriched, &transcript).unwrap(),
+    );
+    assert!(
+        !md.contains("&lt;span"),
+        "model-emitted span markup must be stripped, not escaped; got:\n{md}"
+    );
+    assert!(
+        md.contains(r#"- <span data-ai-grey data-ts="120">Pricing model debated <span data-transcript-link data-ts="120">↳ 02:00</span></span>"#),
+        "bullet must be wrapped exactly once with clean inner text; got:\n{md}"
+    );
+}

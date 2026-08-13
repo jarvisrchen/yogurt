@@ -7,7 +7,7 @@
 //! `<span data-ai-grey data-ts="N">…</span>` with a trailing
 //! `<span data-transcript-link data-ts="N">↳ HH:MM</span>` deep-link.
 
-use crate::ast::Block;
+use crate::ast::{strip_markers, Block};
 use crate::{MergedDoc, Source};
 
 pub fn to_markdown(doc: &MergedDoc) -> String {
@@ -40,7 +40,17 @@ fn wrap_ai(rendered: &str, ts: u64) -> String {
     let mins = ts / 60;
     let secs = ts % 60;
     let stamp = format!("{:02}:{:02}", mins, secs);
-    let trim = rendered.trim_end_matches('\n');
+    // The enhance prompt asks the LLM to emit its OWN
+    // `<span data-ai-grey>` / `<span data-transcript-link>` markers, and
+    // weaker models (e.g. Minimax) reproduce that scaffolding literally in
+    // the bullet body. We own the wrapping, so strip any wire-format spans
+    // the model emitted before we escape + re-wrap. Without this, the raw
+    // markup gets HTML-escaped (`&lt;span…&gt;`) and double-wrapped,
+    // surfacing literal `<span data-ai-grey …>` text in the user's notes.
+    // strip_markers only removes OUR wire-format spans; a hallucinated
+    // `<script>` survives stripping and is still escaped below (BL-2).
+    let stripped = strip_markers(rendered);
+    let trim = stripped.trim_end_matches('\n');
     let suffix_node = format!(r#"<span data-transcript-link data-ts="{ts}">↳ {stamp}</span>"#);
     if let Some(inner) = trim.strip_prefix("- ") {
         // BL-2: The `inner` text comes from the LLM output (untrusted).
