@@ -19,6 +19,12 @@ interface Props {
  */
 export function ChatMessage({ message, isStreaming = false }: Props) {
   const isUser = message.role === "user";
+  // A finished assistant turn whose content is empty/whitespace (the model
+  // returned nothing — e.g. a question with no transcript to answer from)
+  // would otherwise render as a blank box that reads as a hung request.
+  // Show a muted placeholder instead. Never applies while still streaming.
+  const isEmptyFinishedReply =
+    !isUser && !isStreaming && message.content.trim() === "";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
@@ -28,7 +34,11 @@ export function ChatMessage({ message, isStreaming = false }: Props) {
             : "max-w-[78%] px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed"
         }
       >
-        {message.content}
+        {isEmptyFinishedReply ? (
+          <span className="italic text-[var(--color-mut)]">No response.</span>
+        ) : (
+          message.content
+        )}
         {isStreaming && !isUser && (
           <span
             aria-hidden="true"
