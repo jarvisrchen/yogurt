@@ -136,14 +136,24 @@ async fn it_enhances_a_meeting_end_to_end() {
         .expect("notes_file in response")
         .to_string();
 
-    // 3) Wire-format assertions on the response body.
+    // 3) Wire-format assertions on the response body. The AI bullet is
+    // wrapped in a `data-ai-grey` span; ammonia normalizes the boolean
+    // attribute to `data-ai-grey=""` on the way out.
     assert!(
         enriched_md.contains("- pricing"),
         "user notes preserved verbatim. got: {enriched_md}",
     );
     assert!(
-        enriched_md.contains(r#"data-ai-grey data-ts="120""#),
+        enriched_md.contains(r#"data-ai-grey="" data-ts="120""#),
         "AI bullet tagged with transcript timestamp. got: {enriched_md}",
+    );
+    // Regression (2026-08-13): the mock (like a real model) emits its own
+    // `<span data-ai-grey>` scaffolding; render must STRIP it, not escape +
+    // double-wrap it. If the corruption returns, the escaped literal markup
+    // (`&lt;span data-ai-grey`) reappears in the body.
+    assert!(
+        !enriched_md.contains("&lt;span"),
+        "model-emitted span markup must be stripped, not escaped. got: {enriched_md}",
     );
     assert!(
         enriched_md.contains("↳ 02:00"),
@@ -158,7 +168,7 @@ async fn it_enhances_a_meeting_end_to_end() {
         "markdown file starts with YAML front-matter. got: {file_body}",
     );
     assert!(
-        file_body.contains(r#"data-ai-grey data-ts="120""#),
+        file_body.contains(r#"data-ai-grey="" data-ts="120""#),
         "markdown file contains wire-format spans. got: {file_body}",
     );
     assert!(
