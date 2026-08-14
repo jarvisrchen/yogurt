@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "meetings::Registry is the canonical in-memory fan-out point (Phase 7 swaps for SQLite behind the same `create/get/start/stop/subscribe` API). Cross-thread !Send bridge owns AudioStream on a dedicated std::thread; supervisor tokio task holds the shutdown oneshot. WS handler serializes `{type:"transcript", payload:{ts_ms,channel,text,is_final}}` exactly matching PRD §10. The server-side half of TRANS-08 < 2s lag is pinned at < 200ms by `e2e_synthetic_audio.rs` (actual is single-digit ms); the remaining budget is the browser side (Plan 03-03) + Deepgram network/processing (manual smoke)."
-stopped_at: "Plan 03-02 complete — meetings::Registry wires yogurt-audio (Frame broadcast) → yogurt-stt (AudioChunk → TranscriptEvent broadcast) per meeting; 3 REST + 1 WS route mounted; cross-thread !Send bridge (std::thread + oneshot pair) cleanly owns AudioStream and shuts down via RAII on supervisor abort; < 200ms server-side fan-out lag pinned by e2e_synthetic_audio.rs (actual ≈ 5-10ms). 35 yogurt-server tests pass (11 suites). 3 commits (69ed51f, ca0d4d0, 2dbb398). TRANS-01 + TRANS-02 + TRANS-08 complete. Ready for Plan 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion at 340ms cubic-bezier(.2,.7,.2,1) per PRD §16.5 + library/meeting App.tsx switch). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) still pending from Phase 1; Plan 02-03 (REST endpoints + WAV ear-test) still pending from Phase 2 (audio.rs's `start_meeting_recording()` shim is now wired by Plan 03-02 via Registry::start, so the original 02-03 wire-up requirement is partially absorbed — only the WAV ear-test remains)."
-last_updated: "2026-06-26T03:51:50.712Z"
-last_activity: "2026-06-26 — Plan 03-02 shipped (3 commits: Registry + AppState + lib wiring; REST + WS routes; E2E < 200ms test + fmt fixup); 4 new tests pass on ports 17890/17891/17892/17893; 35 total yogurt-server tests pass across 11 suites; 3 deviations auto-fixed (AudioStream !Send via std::thread+oneshot bridge; axum 0.8 `{id}` path syntax; build_test_state helper for tempfile AppState); 1 scope deferral (D-INT-02 per-meeting WS auth → Phase 5)."
+status: "Phases 0-8 complete (skeleton, design system, audio capture, cloud STT + live transcript, augmented-notes hero, LLM client + settings + Keychain, in-meeting chat, library + onboarding, local whisper.cpp STT). Only Phase 9 (Distribution Polish — CI/release workflow, notarized per-arch tarballs, Homebrew tap, `yogurt doctor`, README) remains; its 3 plans are written but not executed and `.github/` does not exist yet. Suite health as of 2026-08-13: 218 Rust tests + 129 web tests pass, clippy + fmt clean."
+stopped_at: "2026-08-13 E2E test + fix session (see Quick Tasks table). Drove the running app via Claude-in-Chrome + API/WS probes and fixed 4 findings: (1) library cards opened the empty live-capture view instead of the post-meeting read view; (2) hero enhance double-escaped model-emitted marker spans; (3) empty LLM chat reply rendered a blank/hung bubble; (4) SECURITY: /api/settings* and /api/stt/* were unauthenticated (confirmed exploitable provider-repoint) — now token-gated. Also cleaned the `cargo fmt --check` gate and committed previously-untracked dev scripts. Next: Phase 9 (Distribution Polish), or the still-open manual items (260709-wnn hardware check, audio-eartest human verify)."
+last_updated: "2026-08-13"
+last_activity: "2026-08-13 — E2E test + fix session: 6 fixes across web + server (library routing, hero enhance span-strip, chat empty-reply, settings/stt auth hardening, rustfmt gate, dev-script tracking), each with regression tests; full workspace 218 Rust + 129 web green. Previous: 2026-07-10 — quick task 260709-wnn (live mic hot-swap, Needs Review)."
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 9
   total_plans: 32
-  completed_plans: 18
-  percent: 50
+  completed_plans: 29
+  percent: 90
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** The black-user / grey-AI in-place augmented-notes UX, running fully local on macOS without a meeting bot.
-**Current focus:** Phase 1 — Design System (next)
+**Current focus:** Phase 9 — Distribution Polish (only remaining phase)
 
 ## Current Position
 
-Phase: 3 of 10 (Cloud STT + Live Transcript) — In progress (Plans 01 + 02 of 3 complete)
-Plan: 03-02 complete; 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion + library/meeting route switch) next
-Status: meetings::Registry is the canonical in-memory fan-out point (Phase 7 swaps for SQLite behind the same `create/get/start/stop/subscribe` API). Cross-thread !Send bridge owns AudioStream on a dedicated std::thread; supervisor tokio task holds the shutdown oneshot. WS handler serializes `{type:"transcript", payload:{ts_ms,channel,text,is_final}}` exactly matching PRD §10. The server-side half of TRANS-08 < 2s lag is pinned at < 200ms by `e2e_synthetic_audio.rs` (actual is single-digit ms); the remaining budget is the browser side (Plan 03-03) + Deepgram network/processing (manual smoke).
-Last activity: 2026-07-10 - Completed quick task 260709-wnn: live mic/audio-source hot-swap during an active meeting (mpsc control channel into the capture thread, POST /api/meetings/:id/audio-device, in-toolbar MicDevicePicker) + fixed persisted Settings audio_input_device to actually take effect on meeting start (was dead UI due to an AudioDevice.id/name mismatch bug). Status: Needs Review (zero-gap behavior requires manual check on real hardware). Previous: 2026-07-02 - E2E debug session: fixed backend hang (260701-wjs), capture thread reactor panic (a263faa), and silently-mocked enhance (260701-x3u). Previous: 2026-06-26 — Plan 03-02 shipped (3 commits: Registry + AppState + lib wiring; REST + WS routes; E2E < 200ms test + fmt fixup); 4 new tests pass on ports 17890/17891/17892/17893; 35 total yogurt-server tests pass across 11 suites; 3 deviations auto-fixed (AudioStream !Send via std::thread+oneshot bridge; axum 0.8 `{id}` path syntax; build_test_state helper for tempfile AppState); 1 scope deferral (D-INT-02 per-meeting WS auth → Phase 5).
+Phase: 9 of 10 (Distribution Polish) — Not started. Phases 0-8 complete.
+Plan: 09-01/02/03 written but not executed; `.github/` (CI + release workflow) does not exist yet.
+Status: All product features (Phases 0-8) are built and tested — skeleton, design system, audio capture, cloud STT + live transcript dock, augmented-notes hero, LLM client + settings + Keychain, in-meeting chat, library + onboarding, local whisper.cpp STT. Phase 9 packages/signs/ships them: notarized per-arch tarballs, Homebrew tap, `cargo publish`, `yogurt doctor` subcommand, README.
+Last activity: 2026-08-13 — E2E test + fix session (Claude-in-Chrome + API/WS): fixed 4 findings (library→wrong-view routing, hero enhance span-double-escape, empty-chat-reply blank bubble, unauthenticated /api/settings* + /api/stt/*), cleaned the rustfmt gate, and committed previously-untracked dev scripts. Each fix carries a regression test; full workspace 218 Rust + 129 web tests green. Previous: 2026-07-10 — quick task 260709-wnn (live mic hot-swap, Needs Review). Previous: 2026-07-02 — E2E debug session (backend hang, capture reactor panic, silently-mocked enhance).
 
-Progress: [██▊░░░░░░░] 28%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
