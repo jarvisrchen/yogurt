@@ -67,6 +67,12 @@ test-rust:
 test-web:
     pnpm --dir web test
 
+# Playwright E2E smoke — drives the real SPA against a browser-mocked backend
+# (no keychain / API keys / live LLM). Starts Vite itself. First run needs
+# `pnpm --dir web exec playwright install chromium`.
+test-e2e:
+    pnpm --dir web e2e
+
 # Clippy + rustfmt check (read-only) — same as CI's lint gate.
 lint:
     cargo fmt --all -- --check
