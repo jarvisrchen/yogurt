@@ -19,3 +19,9 @@ build/
 
 # pnpm + frontend (node_modules already covered above)
 .pnpm-store/
+
+# Playwright E2E artifacts
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/.playwright/
