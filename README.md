@@ -51,11 +51,13 @@ Available recipes:
     test              # Full cargo + web test suite
     test-rust         # Just cargo tests
     test-web          # Just web tests
+    test-e2e          # Playwright E2E smoke against a browser-mocked backend
     lint              # cargo fmt --check + clippy -D warnings
     fmt               # Auto-format Rust
     clean             # Remove all build artifacts
     clean-incremental # Drop incremental compile cache (~3 GB)
-    reset-db          # Wipe ~/.yogurt/yogurt.db — next launch shows /welcome
+    reset-db          # Wipe ~/.yogurt/db.sqlite - next launch shows /welcome
+    refresh-model-hashes *args # Download whisper models, print SHA256s
 ```
 
 ### API keys
@@ -75,16 +77,14 @@ On first `just dev` boot the seeder copies any present LLM keys into
 SQLite + macOS Keychain; after that they show in Settings → Model in any
 mode.
 
-If a provider row already exists with no key (e.g. you clicked a preset
-chip earlier), the seeder currently skips backfilling — paste the key
-into the row's "Paste new key…" field in Settings instead. Tracked as a
-known Phase 5 gap.
+If a provider row already exists with no key (e.g. you clicked a preset chip earlier), the seeder backfills the missing Keychain entry from the env var on the next `just dev` boot.
+Rows that already have a key are left untouched.
 
 ### Which command do I run?
 
 Pick by what you're trying to do, not by what mode the project is in.
 Yogurt has one single-binary release path and a two-process dev path —
-both share the same `~/.yogurt/yogurt.db`, so switching between them
+both share the same `~/.yogurt/db.sqlite`, so switching between them
 never loses data.
 
 **Just using yogurt** (record a meeting, take notes, browse your library):
@@ -146,7 +146,7 @@ just lint         # cargo fmt --check + clippy -D warnings
 **Resetting to a fresh-install state to retest onboarding:**
 
 ```bash
-just reset-db     # wipes ~/.yogurt/yogurt.db; next launch shows /welcome
+just reset-db     # wipes ~/.yogurt/db.sqlite; next launch shows /welcome
 just release      # boot it again
 ```
 
@@ -188,7 +188,7 @@ the architecture diagram and §8 for the component breakdown.
 
 Local state lives under `~/.yogurt/`:
 
-- `yogurt.db` — meetings + chat history (WAL mode, single-writer + read pool)
+- `db.sqlite` - meetings, chat history, providers, and settings (WAL mode, single-writer + read pool)
 - `session-token` — random per-install token gating WebSocket + most REST endpoints (mode `0600`)
 - `models/` — downloaded whisper.cpp models (Phase 8, opt-in local STT)
 

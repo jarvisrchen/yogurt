@@ -6,7 +6,6 @@
 //! response will trip the substring assertion below.
 
 use serde_json::{json, Value};
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -14,13 +13,14 @@ use tokio::net::TcpListener;
 use yogurt_server::state::AppState;
 use yogurt_server::{session, storage, Mode};
 
-/// Spin up a fresh in-memory `AppState` and start an axum server on `port`.
-/// Returns the state handle so the test can introspect (we mostly drop it).
+/// Spin up a fresh in-memory `AppState` and start an axum server on an
+/// ephemeral kernel-assigned port. Returns the state handle (mostly
+/// dropped), the session token, and the `http://127.0.0.1:{port}` base
+/// URL to hit.
 ///
-/// Each test uses a distinct port to avoid clashing — cargo runs tests
-/// in this file sequentially (single-file integration test), but the
-/// per-port isolation is cheap insurance.
-async fn boot(port: u16) -> (AppState, String) {
+/// The listener is bound *before* the serve task is spawned, so incoming
+/// connections queue in the accept backlog — no readiness sleep needed.
+async fn boot() -> (AppState, String, String) {
     let tmp = tempfile::tempdir().expect("tempdir");
     // Keep the tempdir alive for the duration of the spawned server by
     // leaking it intentionally — this is a short-lived integration test
@@ -32,25 +32,24 @@ async fn boot(port: u16) -> (AppState, String) {
     // 2026-08-13). Read it out so each request below can present it.
     let token = session.as_str().to_string();
     let notes_dir: PathBuf = path.join("notes");
-    let state =
-        AppState::in_memory(Mode::Release, storage, session, port, notes_dir).expect("state");
 
-    let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("local_addr");
+    let state = AppState::in_memory(Mode::Release, storage, session, addr.port(), notes_dir)
+        .expect("state");
+
     let app = yogurt_server::__test_router(state.clone());
-    let listener = TcpListener::bind(addr).await.expect("bind");
     tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
-    // Tiny sleep so the server is ready to accept before the test fires.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    (state, token)
+    (state, token, format!("http://{addr}"))
 }
 
 #[tokio::test]
 async fn it_lists_seeded_settings_with_no_providers() {
-    let (_state, token) = boot(18001).await;
+    let (_state, token, base) = boot().await;
     let v: Value = reqwest::Client::new()
-        .get("http://127.0.0.1:18001/api/settings")
+        .get(format!("{base}/api/settings"))
         .bearer_auth(&token)
         .send()
         .await
@@ -65,10 +64,10 @@ async fn it_lists_seeded_settings_with_no_providers() {
 
 #[tokio::test]
 async fn it_creates_a_provider_and_round_trips_via_get() {
-    let (_state, token) = boot(18002).await;
+    let (_state, token, base) = boot().await;
     let client = reqwest::Client::new();
     let created: Value = client
-        .post("http://127.0.0.1:18002/api/settings/providers")
+        .post(format!("{base}/api/settings/providers"))
         .bearer_auth(&token)
         .json(&json!({ "name": "Minimax", "base_url": "https://x/v1", "model": "M" }))
         .send()
@@ -80,7 +79,7 @@ async fn it_creates_a_provider_and_round_trips_via_get() {
     let id = created["id"].as_str().unwrap().to_string();
 
     let listed: Value = client
-        .get("http://127.0.0.1:18002/api/settings/providers")
+        .get(format!("{base}/api/settings/providers"))
         .bearer_auth(&token)
         .send()
         .await
@@ -106,10 +105,10 @@ async fn api_responses_never_include_the_raw_api_key() {
     // (`••••XXXX`) is exposed. Any future refactor that adds an `api_key`
     // field to `ProviderView` (or otherwise echoes the raw secret) will
     // fail the `!s.contains("sk-supersecret-XYZA")` assertion below.
-    let (_state, token) = boot(18003).await;
+    let (_state, token, base) = boot().await;
     let client = reqwest::Client::new();
     let created: Value = client
-        .post("http://127.0.0.1:18003/api/settings/providers")
+        .post(format!("{base}/api/settings/providers"))
         .bearer_auth(&token)
         .json(&json!({ "name": "P", "base_url": "https://x/v1", "model": "m" }))
         .send()
@@ -121,9 +120,7 @@ async fn api_responses_never_include_the_raw_api_key() {
     let id = created["id"].as_str().unwrap();
 
     let resp = client
-        .post(format!(
-            "http://127.0.0.1:18003/api/settings/providers/{id}/key"
-        ))
+        .post(format!("{base}/api/settings/providers/{id}/key"))
         .bearer_auth(&token)
         .json(&json!({ "api_key": "sk-supersecret-XYZA" }))
         .send()
@@ -132,7 +129,7 @@ async fn api_responses_never_include_the_raw_api_key() {
     assert_eq!(resp.status(), 204);
 
     let listed: Value = client
-        .get("http://127.0.0.1:18003/api/settings/providers")
+        .get(format!("{base}/api/settings/providers"))
         .bearer_auth(&token)
         .send()
         .await
@@ -151,11 +148,11 @@ async fn unauthenticated_requests_are_rejected() {
     // reachable with no token — an unauthenticated cross-origin POST could
     // repoint the active LLM provider at an attacker `base_url`. Lock it:
     // a tokenless GET and a tokenless provider-create must both 403.
-    let (_state, _token) = boot(18004).await;
+    let (_state, _token, base) = boot().await;
     let client = reqwest::Client::new();
 
     let get_status = client
-        .get("http://127.0.0.1:18004/api/settings")
+        .get(format!("{base}/api/settings"))
         .send()
         .await
         .unwrap()
@@ -163,7 +160,7 @@ async fn unauthenticated_requests_are_rejected() {
     assert_eq!(get_status, 403, "tokenless GET /api/settings must 403");
 
     let post_status = client
-        .post("http://127.0.0.1:18004/api/settings/providers")
+        .post(format!("{base}/api/settings/providers"))
         .json(&json!({ "name": "evil", "base_url": "http://attacker/v1", "model": "x" }))
         .send()
         .await

@@ -95,8 +95,8 @@ clean-incremental:
 
 # Wipe the user database — next launch routes to /welcome onboarding again (Keychain entries stay).
 reset-db:
-    rm -rf ~/.yogurt/yogurt.db ~/.yogurt/yogurt.db-wal ~/.yogurt/yogurt.db-shm
-    @echo "  ✓ ~/.yogurt/yogurt.db removed — next launch starts fresh"
+    rm -rf ~/.yogurt/db.sqlite ~/.yogurt/db.sqlite-wal ~/.yogurt/db.sqlite-shm
+    @echo "  ✓ ~/.yogurt/db.sqlite removed — next launch starts fresh"
 
 # Download every whisper.cpp model from HuggingFace and print the current SHA256 to paste into REGISTRY.
 refresh-model-hashes *args:

@@ -79,6 +79,14 @@ if ! command -v pnpm >/dev/null 2>&1; then
 fi
 ok "pnpm $(pnpm --version)"
 
+# cmake: whisper-rs-sys builds whisper.cpp via CMake (local STT is always
+# compiled into the release binary), so the cargo build fails without it.
+if ! command -v cmake >/dev/null 2>&1; then
+  err "cmake not found. Install: brew install cmake  (required to build whisper.cpp for local STT)"
+  exit 1
+fi
+ok "cmake $(cmake --version | head -1 | awk '{print $3}')"
+
 # ── 2. just task runner (auto-install via brew) ──────────────────
 bold "[2/5] Ensuring just task runner is installed"
 
@@ -112,7 +120,7 @@ YOGURT_OPENAI_API_KEY=
 # YOGURT_OPENROUTER_API_KEY=
 EOF
   chmod 600 .env.local
-  warn "wrote .env.local stub — fill in your Deepgram key and at least one LLM key before running"
+  warn "wrote .env.local stub — only 'just dev' (dev mode) reads it; 'just release' ignores it, paste keys in the Settings UI instead"
 else
   ok ".env.local already exists (not overwriting)"
 fi
@@ -130,7 +138,7 @@ pnpm --dir web build >/tmp/yogurt-web-build.log 2>&1 || {
 }
 ok "web bundle built → web/dist/"
 
-# ── 4. Rust release binary ────────────────────────────────────────
+# ── 5. Rust release binary ────────────────────────────────────────
 if [ "$SKIP_BUILD" = "true" ]; then
   bold "[5/5] Skipping cargo build (--skip-build)"
   dim "    run ./scripts/run-release.sh and it will build on demand"
