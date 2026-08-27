@@ -6,6 +6,7 @@ import type { SettingsSection } from "../components/settings/SidebarNav";
 import { ProviderCard } from "../components/settings/ProviderCard";
 import { ProviderRow } from "../components/settings/ProviderRow";
 import { PresetChip } from "../components/settings/PresetChip";
+import { AddProviderForm } from "../components/settings/AddProviderForm";
 import { STTPicker } from "../components/settings/STTPicker";
 import { AudioSection } from "../components/settings/AudioSection";
 import { GeneralSection } from "../components/settings/GeneralSection";
@@ -27,19 +28,29 @@ import { GeneralSection } from "../components/settings/GeneralSection";
  */
 export function Settings() {
   const [section, setSection] = useState<SettingsSection>("model");
+  const [addingProvider, setAddingProvider] = useState(false);
   const q = useQuery({ queryKey: ["settings"], queryFn: settingsApi.get });
 
   if (q.isLoading) {
     return (
-      <div className="p-10 text-mut" data-testid="settings-loading">
-        Loading settings…
+      <div
+        className="p-10 space-y-3 max-w-md"
+        data-testid="settings-loading"
+        aria-busy="true"
+      >
+        <div className="h-7 w-40 rounded shimmer" />
+        <div className="h-5 w-3/4 rounded shimmer" />
+        <div className="h-5 w-2/3 rounded shimmer" />
+        <div className="h-24 w-full rounded-card shimmer" />
       </div>
     );
   }
   if (q.isError) {
     return (
-      <div className="p-10 text-[var(--color-straw)]">
-        Failed to load: {String(q.error)}
+      <div className="p-10">
+        <div className="inline-block text-[13px] text-ink bg-strsoft border border-straw/40 rounded-button px-3 py-2">
+          Failed to load: {String(q.error)}
+        </div>
       </div>
     );
   }
@@ -75,7 +86,7 @@ export function Settings() {
             {active ? (
               <ProviderCard provider={active} />
             ) : data.providers.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-neutral-300 bg-white/50 p-6 space-y-1">
+              <div className="rounded-xl border border-dashed border-line bg-white/50 p-6 space-y-1">
                 <p className="font-serif text-[18px] text-ink">
                   No providers configured yet
                 </p>
@@ -98,7 +109,7 @@ export function Settings() {
               </div>
             )}
 
-            <div className="pt-4 border-t border-dashed border-neutral-300">
+            <div className="pt-4 border-t border-dashed border-line space-y-3">
               <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey mb-2">
                 Clone a preset →
               </div>
@@ -106,13 +117,19 @@ export function Settings() {
                 {data.presets.map((p) => (
                   <PresetChip key={p.name} preset={p} />
                 ))}
-                <button
-                  type="button"
-                  className="text-[12.5px] font-semibold text-[var(--color-blue)] hover:underline"
-                >
-                  + Add
-                </button>
+                {!addingProvider && (
+                  <button
+                    type="button"
+                    onClick={() => setAddingProvider(true)}
+                    className="text-[12.5px] font-semibold text-[var(--color-blue)] hover:underline"
+                  >
+                    + Add
+                  </button>
+                )}
               </div>
+              {addingProvider && (
+                <AddProviderForm onDone={() => setAddingProvider(false)} />
+              )}
             </div>
           </section>
         )}

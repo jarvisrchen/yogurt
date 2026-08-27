@@ -35,7 +35,7 @@ export function MicDevicePicker({ meetingId }: MicDevicePickerProps) {
 
   if (devices.isLoading) {
     return (
-      <span className="text-[12px] font-mono text-neutral-500">
+      <span className="text-[12px] font-mono text-mut">
         Loading mics…
       </span>
     );
@@ -43,7 +43,7 @@ export function MicDevicePicker({ meetingId }: MicDevicePickerProps) {
 
   if (devices.isError) {
     return (
-      <span className="text-[12px] font-mono text-neutral-500">
+      <span className="text-[12px] font-mono text-mut">
         Mic list unavailable
       </span>
     );
@@ -59,7 +59,7 @@ export function MicDevicePicker({ meetingId }: MicDevicePickerProps) {
     <div className="flex items-center gap-1.5">
       <select
         aria-label="Microphone"
-        className="text-[12px] font-mono rounded-md border border-neutral-300 px-2 py-1"
+        className="text-[12px] font-mono rounded-md border border-line px-2 py-1"
         value={effectiveValue}
         disabled={switchDevice.isPending}
         onChange={(e) => switchDevice.mutate(e.target.value)}
@@ -72,7 +72,7 @@ export function MicDevicePicker({ meetingId }: MicDevicePickerProps) {
         ))}
       </select>
       {switchDevice.isPending && (
-        <span className="text-[12px] font-mono text-neutral-500">
+        <span className="text-[12px] font-mono text-mut">
           Switching…
         </span>
       )}

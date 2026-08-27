@@ -5,8 +5,7 @@
  *   1. Yogurt swirl logo + "yogurt" wordmark (Instrument-Serif)
  *   2. Primary "+ New meeting" blueberry button (creates → /meeting/:id)
  *   3. Nav: "All meetings" (lilac active), "Starred"
- *   4. FOLDERS section: 3 hardcoded v1.1-stub folders, opacity-60
- *   5. Footer:
+ *   4. Footer:
  *      - matcha "Local-only · on" pill iff no active cloud provider
  *      - ⚙ Settings row → /settings
  *
@@ -17,16 +16,11 @@
  */
 
 import { Link, NavLink, useNavigate } from "react-router";
+import { Plus, Settings as SettingsIcon } from "lucide-react";
 import { Logo } from "../Logo";
 import { useCreateMeeting } from "../../lib/api/meetings";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
-
-const SAMPLE_FOLDERS: Array<{ name: string; color: string }> = [
-  { name: "Work", color: "var(--color-blue)" },
-  { name: "Hiring", color: "var(--color-straw)" },
-  { name: "1:1s", color: "var(--color-matcha)" },
-];
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -50,7 +44,10 @@ export function Sidebar() {
   const handleNew = async () => {
     try {
       const m = await createMeeting.mutateAsync(undefined);
-      navigate(`/meeting/${m.id}`);
+      // `autoStart` tells Meeting.tsx to POST /start immediately on
+      // mount (task NOTES-01) — Granola-style one-click-and-recording,
+      // not create-then-hunt-for-the-Start-button.
+      navigate(`/meeting/${m.id}`, { state: { autoStart: true } });
     } catch (e) {
       // Surface inline; the consumer Library page will catch this via
       // the mutation's error state. Logging is enough for v1.
@@ -77,9 +74,10 @@ export function Sidebar() {
           type="button"
           onClick={handleNew}
           disabled={createMeeting.isPending}
-          className="w-full px-3 py-2 rounded-button bg-blue text-white text-[13px] font-semibold shadow-button-blue hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:opacity-50"
+          className="w-full px-3 py-2 rounded-button bg-blue text-white text-[13px] font-semibold shadow-button-blue hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:opacity-50 flex items-center justify-center gap-1.5"
         >
-          + New meeting
+          <Plus size={16} aria-hidden />
+          New meeting
         </button>
       </div>
 
@@ -112,27 +110,6 @@ export function Sidebar() {
         </NavLink>
       </nav>
 
-      {/* Folders — v1.1 stub */}
-      <div className="px-4 pt-6 pb-2 text-[11px] font-mono uppercase tracking-wider text-mut">
-        Folders
-      </div>
-      <ul className="px-2 flex flex-col gap-0.5">
-        {SAMPLE_FOLDERS.map((f) => (
-          <li
-            key={f.name}
-            title="Coming in v1.1"
-            className="px-3 py-1.5 rounded-button text-[13px] text-ink opacity-60 flex items-center gap-2 cursor-default"
-          >
-            <span
-              aria-hidden
-              className="w-2 h-2 rounded-full"
-              style={{ background: f.color }}
-            />
-            <span>{f.name}</span>
-          </li>
-        ))}
-      </ul>
-
       {/* Footer */}
       <div className="mt-auto px-4 py-4 flex flex-col gap-2">
         {isLocalOnly && (
@@ -146,7 +123,7 @@ export function Sidebar() {
           to="/settings"
           className="flex items-center gap-2 px-2 py-1.5 rounded-button text-[13px] text-ink hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
         >
-          <span aria-hidden>⚙</span>
+          <SettingsIcon size={16} aria-hidden />
           <span>Settings</span>
         </Link>
       </div>

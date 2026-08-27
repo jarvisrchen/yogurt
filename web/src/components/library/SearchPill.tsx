@@ -9,12 +9,13 @@
  * `useMeetingsSearch` refetch).
  *
  * The pill itself is a 280px-wide rounded container with the matching
- * `var(--line)` border the rest of the Library uses (cf. MeetingCard,
- * Sidebar). The leading glyph is a unicode magnifier; we deliberately
- * avoid pulling lucide-react here to keep the bundle slice small.
+ * `border-line` token border the rest of the Library uses (cf.
+ * MeetingCard, Sidebar). Leading glyph is the lucide Search icon at the
+ * app-standard 16px.
  */
 
 import { useEffect, useState } from "react";
+import { Search } from "lucide-react";
 
 interface SearchPillProps {
   /** Current canonical query held by the parent (debounced). */
@@ -45,18 +46,16 @@ export function SearchPill({ value, onChange }: SearchPillProps) {
   return (
     <div
       role="search"
-      className="flex items-center gap-2 bg-white border border-[var(--line)] rounded-full px-4 py-2 text-[13px] text-[var(--ink)] w-[280px]"
+      className="flex items-center gap-2 bg-card border border-line rounded-pill px-4 py-2 text-[13px] text-ink w-[280px] focus-within:ring-2 focus-within:ring-blue/40"
     >
-      <span aria-hidden className="text-[var(--mut)]">
-        ⌕
-      </span>
+      <Search size={16} className="text-mut shrink-0" aria-hidden />
       <input
         type="text"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder="Search notes & transcripts"
         aria-label="Search notes and transcripts"
-        className="flex-1 bg-transparent outline-none placeholder:text-[var(--mut)]"
+        className="flex-1 bg-transparent outline-none placeholder:text-mut"
       />
     </div>
   );

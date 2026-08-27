@@ -2,9 +2,10 @@
  * Phase 7 (Plan 07-01) — greeting hook for the Library hero.
  *
  * Returns a `{ timeOfDay, name, greeting }` triple keyed off the user's
- * local clock. `name` defaults to "you" — PRD §5.9: yogurt doesn't ask
- * for a username in v1, but `nameOverride` lets future surfaces
- * (e.g. a settings field) drive it without rewriting the consumer.
+ * local clock. yogurt doesn't ask for a username in v1 so the default
+ * greeting is just "Good {timeOfDay}" — `nameOverride` lets future
+ * surfaces (e.g. a settings field) append ", {name}" without rewriting
+ * the consumer.
  */
 
 export type TimeOfDay = "morning" | "afternoon" | "evening";
@@ -12,7 +13,7 @@ export type TimeOfDay = "morning" | "afternoon" | "evening";
 export interface Greeting {
   timeOfDay: TimeOfDay;
   name: string;
-  /** Pre-assembled "Good {timeOfDay}, {name}" string. */
+  /** Pre-assembled "Good {timeOfDay}" (plus ", {name}" if overridden). */
   greeting: string;
 }
 
@@ -24,11 +25,11 @@ export function greetingFor(now: Date, nameOverride?: string): Greeting {
   const h = now.getHours();
   const timeOfDay: TimeOfDay =
     h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
-  const name = (nameOverride ?? "").trim() || "you";
+  const name = (nameOverride ?? "").trim();
   return {
     timeOfDay,
     name,
-    greeting: `Good ${timeOfDay}, ${name}`,
+    greeting: name ? `Good ${timeOfDay}, ${name}` : `Good ${timeOfDay}`,
   };
 }
 

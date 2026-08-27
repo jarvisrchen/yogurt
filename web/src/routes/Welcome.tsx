@@ -31,6 +31,20 @@
  * button hits `POST /api/audio/screen-recording/request` (with a System
  * Settings deep link alongside), Steps 3 and 4 link to `/settings`, and
  * Step 4's state is derived from steps 1-3 instead of hardcoded pending.
+ *
+ * Honesty pass (fast task) — three fixes:
+ *   1. The relaunch requirement after granting Screen Recording used to
+ *      live only in the page-bottom footnote, while Steps 2-4 sat visibly
+ *      "pending" underneath — easy to read as the page being broken.
+ *      Step 1 now states the relaunch requirement inline, right where the
+ *      user is about to click Grant.
+ *   2. `PROVIDER_CHIPS` was missing LM Studio even though the preset
+ *      exists server-side (`yogurt_db::providers::PRESETS`).
+ *   3. The mic/screen-recording request mutations and the
+ *      `first_run_completed` flip previously swallowed failures into
+ *      `console.error` with nothing shown to the user. `<ErrorNote>`
+ *      surfaces a friendly line with the raw backend detail collapsed
+ *      behind a `<details>` disclosure.
  */
 
 import {
@@ -54,11 +68,43 @@ import { useMicrophoneStatus } from "../hooks/useMicrophoneStatus";
 import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
 
 const PROVIDER_CHIPS = [
+  { id: "lm studio", label: "LM Studio" },
   { id: "minimax", label: "Minimax" },
   { id: "ollama", label: "Ollama" },
   { id: "openai", label: "OpenAI" },
   { id: "openrouter", label: "OpenRouter" },
 ];
+
+/**
+ * Friendly wrapper for a mutation error. Backend messages (e.g. axum
+ * error bodies) are implementation detail, not copy — this shows one
+ * calm sentence up front and keeps the raw string available but
+ * secondary, behind a `<details>` disclosure, for anyone who wants to
+ * paste it into a bug report.
+ */
+function ErrorNote({
+  error,
+  friendly,
+}: {
+  error: unknown;
+  friendly: string;
+}) {
+  if (!error) return null;
+  const raw = error instanceof Error ? error.message : String(error);
+  return (
+    <p className="mt-2 text-[12.5px] text-straw">
+      {friendly}
+      <details className="mt-1">
+        <summary className="cursor-pointer text-[11px] text-mut">
+          Details
+        </summary>
+        <code className="block mt-1 text-[11px] font-mono text-mut break-all">
+          {raw}
+        </code>
+      </details>
+    </p>
+  );
+}
 
 export function Welcome() {
   const nav = useNavigate();
@@ -182,30 +228,42 @@ export function Welcome() {
             body="This is how yogurt hears the other side of the call — no meeting bot required."
           >
             {!granted ? (
-              // Unlike the mic path, CGPreflight cannot distinguish
-              // never-asked from denied - so we always show BOTH the Grant
-              // button (fires the prompt if never asked) and the System
-              // Settings link (recovery after a denial).
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => screenRequest.mutate()}
-                  disabled={screenRequest.isPending}
-                  className="px-3 py-1.5 rounded-button text-[12.5px] font-semibold text-white bg-blue shadow-button-blue hover:opacity-90 disabled:opacity-50"
-                >
-                  Grant Screen Recording
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href =
-                      "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
-                  }}
-                  className="text-[12.5px] text-blue hover:underline"
-                >
-                  Open System Settings
-                </button>
-              </div>
+              <>
+                {/* Unlike the mic path, CGPreflight cannot distinguish
+                    never-asked from denied - so we always show BOTH the
+                    Grant button (fires the prompt if never asked) and the
+                    System Settings link (recovery after a denial). */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => screenRequest.mutate()}
+                    disabled={screenRequest.isPending}
+                    className="px-3 py-1.5 rounded-button text-[12.5px] font-semibold text-white bg-blue shadow-button-blue hover:opacity-90 disabled:opacity-50"
+                  >
+                    Grant Screen Recording
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href =
+                        "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+                    }}
+                    className="text-[12.5px] text-blue hover:underline"
+                  >
+                    Open System Settings
+                  </button>
+                </div>
+                <p className="mt-2 text-[12px] text-mut">
+                  Granting this quits yogurt immediately — that&apos;s
+                  macOS, not a bug. Relaunch it (<code className="text-ink">just dev</code>
+                  , or reopen the app) and reload this page; the steps
+                  below will pick up where you left off.
+                </p>
+                <ErrorNote
+                  error={screenRequest.isError ? screenRequest.error : null}
+                  friendly="Couldn't reach the permission prompt."
+                />
+              </>
             ) : null}
           </StepCard>
 
@@ -216,16 +274,22 @@ export function Welcome() {
             body="This is how yogurt hears your voice. macOS will show a permission prompt."
           >
             {showMicButton ? (
-              <button
-                type="button"
-                onClick={handleGrantMic}
-                disabled={micRequest.isPending}
-                className="px-3 py-1.5 rounded-button text-[12.5px] font-semibold text-white bg-blue shadow-button-blue hover:opacity-90 disabled:opacity-50"
-              >
-                {micStatus === "denied"
-                  ? "Open System Settings"
-                  : "Grant Microphone"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleGrantMic}
+                  disabled={micRequest.isPending}
+                  className="px-3 py-1.5 rounded-button text-[12.5px] font-semibold text-white bg-blue shadow-button-blue hover:opacity-90 disabled:opacity-50"
+                >
+                  {micStatus === "denied"
+                    ? "Open System Settings"
+                    : "Grant Microphone"}
+                </button>
+                <ErrorNote
+                  error={micRequest.isError ? micRequest.error : null}
+                  friendly="Couldn't reach the permission prompt."
+                />
+              </>
             ) : null}
           </StepCard>
 
@@ -291,6 +355,10 @@ export function Welcome() {
         >
           Take me to my meetings →
         </button>
+        <ErrorNote
+          error={setFirstRun.isError ? setFirstRun.error : null}
+          friendly="Couldn't save that — your permissions and provider are still set, try again."
+        />
 
         <p className="mt-4 text-[12px] font-mono text-mut text-center">
           Restart once after granting — a macOS quirk, not us.

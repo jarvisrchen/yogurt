@@ -30,6 +30,13 @@
  * clicking a second pill while one is in flight replaces the tracked
  * download — the original still completes server-side and its pill
  * flips to ✓ via cache invalidation.
+ *
+ * "Use Local" guard (fast task) — activating local STT with a model that
+ * was never downloaded used to be possible from this card even though
+ * recording would then fail at meeting start. The "Use Local" radio is
+ * now disabled unless the currently-selected model's `downloaded` flag
+ * (from `useModels()`, already fetched for the pill row) is true, with a
+ * "Download the model first" hint taking the place of the radio.
  */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
@@ -104,6 +111,13 @@ export function LocalSTTCard({
     setDialogOpen(true);
   };
 
+  // The model backing `selectedModel` must actually be on disk before the
+  // user can flip `stt_provider` to "local" — otherwise recording fails at
+  // meeting start with a backend error the user can't self-serve from here.
+  const selectedModelDownloaded =
+    q.data?.find((m) => m.name === selectedModel)?.downloaded ?? false;
+  const activateBlocked = !active && !selectedModelDownloaded;
+
   const handleDialogClose = () => {
     setDialogOpen(false);
     // If the user is closing the dialog while an error is visible, treat
@@ -124,21 +138,39 @@ export function LocalSTTCard({
         "rounded-xl p-5 space-y-3 bg-white transition-colors",
         active
           ? "border-[1.5px] border-[var(--color-matcha)]"
-          : "border border-neutral-300",
+          : "border border-line",
       )}
     >
       <header className="flex items-center justify-between">
         <h3 className="font-serif text-xl">Local · whisper.cpp</h3>
-        <label className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider cursor-pointer">
-          <input
-            type="radio"
-            name="stt-provider"
-            checked={active}
-            onChange={onActivate}
-            className="accent-[var(--color-matcha)]"
-          />
-          <span>Use Local</span>
-        </label>
+        <div className="flex flex-col items-end gap-1">
+          <label
+            className={clsx(
+              "inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider",
+              activateBlocked ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+            )}
+          >
+            <input
+              type="radio"
+              name="stt-provider"
+              checked={active}
+              disabled={activateBlocked}
+              // `disabled` alone is a UI nicety, not enforcement — guard
+              // in the handler too so the activation can't fire via a
+              // synthetic/programmatic change event on a disabled input.
+              onChange={() => {
+                if (!activateBlocked) onActivate();
+              }}
+              className="accent-[var(--color-matcha)]"
+            />
+            <span>Use Local</span>
+          </label>
+          {activateBlocked && (
+            <span className="text-[10px] font-mono text-[var(--color-straw)]">
+              Download the model first
+            </span>
+          )}
+        </div>
       </header>
 
       <p className="text-[13px] text-mut">

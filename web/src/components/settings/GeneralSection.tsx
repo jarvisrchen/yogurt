@@ -26,7 +26,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
       <h2 className="font-serif text-[28px] leading-none">General</h2>
 
       <div className="space-y-1.5">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+        <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
           Port
         </label>
         <input
@@ -45,7 +45,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
               patch.mutate({ port: next });
             }
           }}
-          className="block w-32 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm font-mono focus:border-[var(--blue)] focus:outline-none"
+          className="block w-32 rounded-md border border-line bg-white px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
         />
       </div>
 
@@ -56,12 +56,12 @@ export function GeneralSection({ general }: GeneralSectionProps) {
           onChange={(e) =>
             patch.mutate({ open_browser_on_start: e.target.checked })
           }
-          className="h-4 w-4 rounded border-neutral-400 text-[var(--blue)] focus:ring-[var(--blue)]"
+          className="h-4 w-4 accent-blue"
         />
         <span>Open browser on start</span>
       </label>
 
-      <p className="text-xs font-mono text-neutral-500">
+      <p className="text-xs font-mono text-mut">
         Port change applies on next `yogurt start`.
       </p>
     </section>

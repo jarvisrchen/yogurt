@@ -50,6 +50,8 @@ export interface SettingsView {
   general: General;
   providers: ProviderView[];
   presets: Preset[];
+  /** "••••XXXX" when a Deepgram STT key is stored in the Keychain, null otherwise. */
+  deepgram_key_masked: string | null;
 }
 
 export interface NewProvider {
@@ -125,6 +127,14 @@ export const settingsApi = {
     }),
   setProviderKey: (id: string, api_key: string) =>
     http<void>(`/api/settings/providers/${id}/key`, {
+      method: "POST",
+      body: JSON.stringify({ api_key }),
+    }),
+  /** `POST /api/settings/stt/key` — stores the Deepgram STT key in the
+   *  Keychain. No provider id: the STT key is a singleton, keyed server-side
+   *  by `DEEPGRAM_KEY_ID`. */
+  setSttKey: (api_key: string) =>
+    http<void>("/api/settings/stt/key", {
       method: "POST",
       body: JSON.stringify({ api_key }),
     }),

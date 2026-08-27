@@ -55,6 +55,7 @@ vi.mock("../lib/api/settings", () => {
         default_model: "llama3.1:8b",
       },
     ],
+    deepgram_key_masked: null,
   };
   return {
     settingsApi: {
@@ -65,6 +66,7 @@ vi.mock("../lib/api/settings", () => {
       deleteProvider: vi.fn(),
       activateProvider: vi.fn(),
       setProviderKey: vi.fn(),
+      setSttKey: vi.fn(),
     },
     audioApi: {
       devices: vi.fn().mockResolvedValue([]),

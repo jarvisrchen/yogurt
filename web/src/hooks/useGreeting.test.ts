@@ -6,21 +6,21 @@ describe("greetingFor", () => {
     const at = new Date();
     at.setHours(9, 0, 0, 0);
     expect(greetingFor(at).timeOfDay).toBe("morning");
-    expect(greetingFor(at).greeting).toBe("Good morning, you");
+    expect(greetingFor(at).greeting).toBe("Good morning");
   });
 
   it("returns 'afternoon' between 12 and 18", () => {
     const at = new Date();
     at.setHours(14, 30, 0, 0);
     expect(greetingFor(at).timeOfDay).toBe("afternoon");
-    expect(greetingFor(at).greeting).toBe("Good afternoon, you");
+    expect(greetingFor(at).greeting).toBe("Good afternoon");
   });
 
   it("returns 'evening' from 18 onward", () => {
     const at = new Date();
     at.setHours(21, 0, 0, 0);
     expect(greetingFor(at).timeOfDay).toBe("evening");
-    expect(greetingFor(at).greeting).toBe("Good evening, you");
+    expect(greetingFor(at).greeting).toBe("Good evening");
   });
 
   it("honors nameOverride when provided", () => {
