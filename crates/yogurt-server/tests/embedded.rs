@@ -122,12 +122,19 @@ async fn it_rejects_oversized_request_body_with_413() {
     // We post just over the limit with a body the dev proxy will try to
     // buffer; Vite doesn't need to be running because the body cap fires
     // before the upstream call.
+    //
+    // Regression note: this must NOT be an `/api/*` path. `routes::router`
+    // now mounts `/api/{*rest}` -> `api_not_found` as a catch-all ahead of
+    // this SPA/dev-proxy fallback, so an `/api/*` path would 404 instantly
+    // without ever reaching `proxy_to_vite`'s body-size cap — this test
+    // used to post to `/api/upload-imaginary` and silently stopped
+    // exercising HI-03 the moment that catch-all landed.
     let (addr, handle, _tmp) = spawn_server(Mode::Dev).await;
 
     let huge = vec![b'x'; 16 * 1024 * 1024 + 1];
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{addr}/api/upload-imaginary"))
+        .post(format!("http://{addr}/upload-imaginary"))
         .body(huge)
         .send()
         .await

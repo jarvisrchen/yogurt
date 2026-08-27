@@ -186,7 +186,8 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
     let mut messages: Vec<LlmMessage> = Vec::with_capacity(history.len() + 2);
     messages.push(LlmMessage::system(system_prompt));
     messages.push(LlmMessage::system(format!(
-        "TRANSCRIPT SO FAR (most recent at bottom):\n\n{transcript}"
+        "TRANSCRIPT SO FAR (most recent at bottom):\n\n{}",
+        transcript_lines(&transcript)
     )));
     for h in &history {
         if h.id == message_id {
@@ -200,8 +201,20 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
         messages.push(m);
     }
 
-    let stream_res = state
-        .llm
+    // Resolve the LLM per-request (env override → active provider +
+    // Keychain → mock) — the exact same chain the enhance handler uses,
+    // so chat can never silently answer from a different model than the
+    // one the user configured in Settings.
+    let llm = match crate::llm_openai::resolve(&state).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "chat: LLM resolution failed");
+            broadcast_error(&state, meeting_id, &message_id, &format!("[{e}]")).await;
+            return;
+        }
+    };
+
+    let stream_res = llm
         .stream(ChatRequest {
             messages,
             stream: true,
@@ -323,6 +336,41 @@ async fn send_event(state: &AppState, meeting_id: Uuid, event: WsEvent) {
     let _ = meeting.events_tx.send(value);
 }
 
+/// Render stored transcript JSON (`[{ts_ms, channel, text}]`) as readable
+/// `[mm:ss] speaker: text` lines for the chat prompt. The model answers
+/// questions about the meeting — prose beats raw JSON here. Falls back to
+/// the input verbatim if it doesn't parse (older rows, tests).
+fn transcript_lines(transcript_json: &str) -> String {
+    #[derive(serde::Deserialize)]
+    struct Seg {
+        ts_ms: u64,
+        channel: String,
+        text: String,
+    }
+    let Ok(segs) = serde_json::from_str::<Vec<Seg>>(transcript_json) else {
+        return transcript_json.to_string();
+    };
+    if segs.is_empty() {
+        return "(no transcript captured yet)".to_string();
+    }
+    segs.iter()
+        .map(|s| {
+            let total_s = s.ts_ms / 1000;
+            let speaker = match s.channel.as_str() {
+                "me" | "mic" => "me",
+                _ => "them",
+            };
+            format!(
+                "[{:02}:{:02}] {speaker}: {}",
+                total_s / 60,
+                total_s % 60,
+                s.text
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 async fn read_transcript(state: &AppState, meeting_id: &str) -> Option<String> {
     let reader = state.storage.read();
     let meeting_id_owned = meeting_id.to_string();
@@ -349,5 +397,30 @@ async fn read_transcript(state: &AppState, meeting_id: &str) -> Option<String> {
             tracing::warn!(error = %e, "chat: transcript read task join failed");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::transcript_lines;
+
+    #[test]
+    fn renders_segments_as_speaker_lines() {
+        let json = r#"[{"ts_ms": 63000, "channel": "me", "text": "Let's talk pricing."},
+                       {"ts_ms": 71000, "channel": "them", "text": "Twenty dollars a month."}]"#;
+        assert_eq!(
+            transcript_lines(json),
+            "[01:03] me: Let's talk pricing.\n[01:11] them: Twenty dollars a month."
+        );
+    }
+
+    #[test]
+    fn empty_transcript_says_so() {
+        assert_eq!(transcript_lines("[]"), "(no transcript captured yet)");
+    }
+
+    #[test]
+    fn unparseable_input_passes_through() {
+        assert_eq!(transcript_lines("not json"), "not json");
     }
 }

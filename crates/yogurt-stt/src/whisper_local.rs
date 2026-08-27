@@ -264,11 +264,24 @@ impl Stt for WhisperLocal {
         // audio in v1 to halve whisper.cpp pressure — PRD §13 only
         // requires the still-listening indicator on the user's own voice.
         // ------------------------------------------------------------------
+        // The ticker loops forever on its own — tie its lifetime to this
+        // `start()` future (which the meeting supervisor aborts on stop) or
+        // it keeps a WhisperCtx clone (multi-GB model) alive and burns a
+        // decode every second long after the meeting ended. A plain
+        // JoinHandle drop detaches; this guard aborts instead, covering
+        // both the normal audio-closed exit AND the caller aborting us.
+        struct AbortOnDrop(tokio::task::JoinHandle<()>);
+        impl Drop for AbortOnDrop {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+
         let partial_buf: Arc<Mutex<Vec<i16>>> =
             Arc::new(Mutex::new(Vec::with_capacity(16_000 * 5)));
         let partial_buf_writer = partial_buf.clone();
         let txn_partial = txn.clone();
-        tokio::spawn(async move {
+        let _ticker_guard = AbortOnDrop(tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_millis(1000));
             // Skip the immediate first tick — we want to fire AFTER 1 s
             // of buffered audio, not at t=0 with an empty buffer.
@@ -306,7 +319,7 @@ impl Stt for WhisperLocal {
                     is_final: false,
                 });
             }
-        });
+        }));
 
         // ------------------------------------------------------------------
         // Main pump: split incoming AudioChunk by channel, feed mic

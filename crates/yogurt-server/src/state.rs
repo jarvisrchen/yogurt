@@ -30,7 +30,6 @@ use yogurt_db::keychain::{ApiKeyStore, KeychainStore, MemoryKeyStore};
 use yogurt_db::{Db, Meeting, MeetingPatch, MeetingRepo};
 use yogurt_llm::LlmClient;
 
-use crate::llm_mock::MockLlm;
 use crate::markdown_exporter::{MarkdownExporter, Meeting as ExpMeeting};
 use crate::meetings;
 use crate::session::SessionToken;
@@ -58,13 +57,14 @@ pub struct AppState {
     /// Phase 5 (Plan 05-02): API-key storage abstraction. `KeychainStore`
     /// in production, `MemoryKeyStore` in tests.
     pub keys: Arc<dyn ApiKeyStore>,
-    /// Phase 6 (Plan 06-01): LLM client used by the chat handler's
-    /// `spawn_stream` task. Production defaults to `MockLlm` here; the
-    /// hot-swap to a Keychain-backed `OpenAiCompatClient` will land with the
-    /// Phase 6 settings-driven provider lookup. Held as `Arc<dyn LlmClient>`
-    /// so tests can inject a deterministic mock without touching the rest
-    /// of the state surface.
-    pub llm: Arc<dyn LlmClient>,
+    /// Test-only LLM override. `None` in production — enhance AND chat
+    /// resolve the real client per-request via `llm_openai::resolve`
+    /// (env vars → active provider row + Keychain → MockLlm when nothing
+    /// is configured). Tests inject `Some(mock)` to keep streaming tests
+    /// deterministic. Never set this in a production constructor: a fixed
+    /// client here silently ignores the user's configured provider (the
+    /// original Phase 6 "chat always answers empty" bug).
+    pub llm_override: Option<Arc<dyn LlmClient>>,
     /// Phase 7 (Plan 07-01): SQLite-backed Library directory.
     ///
     /// Coexists with the Phase-3 in-memory streaming registry on
@@ -164,10 +164,7 @@ impl AppState {
             // unit-struct form silently no-op'd set_password() under
             // keyring 3.6.x on macOS in 2026.
             keys: Arc::new(KeychainStore::new()?),
-            // Phase 6 default: MockLlm. The Phase 6 follow-up (settings UI)
-            // will swap to a Keychain-backed OpenAiCompatClient inside
-            // run_with_config based on the active provider row.
-            llm: Arc::new(MockLlm),
+            llm_override: None,
             // Phase 7 (Plan 07-01): the new SQLite-backed Library directory.
             meeting_repo,
             // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
@@ -216,7 +213,7 @@ impl AppState {
             prompts,
             db,
             keys: Arc::new(MemoryKeyStore::default()),
-            llm: Arc::new(MockLlm),
+            llm_override: None,
             meeting_repo,
             // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
             app_events_tx,

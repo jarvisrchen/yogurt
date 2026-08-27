@@ -16,14 +16,14 @@
 //! arrives on the same WS surface.  The Settings page's
 //! `useModelDownloadProgress` hook subscribes once on mount.
 //!
-//! ## Why not auth-gate this surface?
+//! ## Auth
 //!
-//! The Phase 5 `/api/settings*` routes intentionally skipped the
-//! session-token middleware (see `routes::router` comments) so the
-//! load-bearing security tests (`tests/settings_api.rs::api_responses_*`)
-//! can hit them with a plain reqwest client.  This module follows the
-//! same convention — the surface is bound to 127.0.0.1 only, and the
-//! handlers never touch secrets.
+//! This surface IS authenticated: `routes::router` mounts `stt_models_routes`
+//! behind the same `require_session_token` middleware as `/api/settings*`
+//! and the meeting REST surface. (An earlier revision of this comment
+//! claimed the opposite — that was stale the moment `routes.rs` wrapped
+//! this router in the session-token layer; fixed here so nobody re-derives
+//! the wrong threat model from this file.)
 
 use axum::{
     extract::{Path, State},
@@ -33,6 +33,8 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use yogurt_stt::models;
 
 use crate::state::AppState;
@@ -84,11 +86,28 @@ async fn list_models(State(_s): State<AppState>) -> Json<Vec<ModelView>> {
     Json(views)
 }
 
+/// Process-wide guard against two concurrent downloads of the same model —
+/// e.g. a double-click on the Settings "Download" button, or a retried
+/// request. Without this, two writers race on the same destination file
+/// (interleaved `write_all` calls, one truncating while the other appends),
+/// corrupting the in-progress download. Keyed by `ModelSpec::name` (a
+/// `&'static str`, so no allocation is needed to check/insert).
+fn in_flight_downloads() -> &'static Mutex<HashSet<&'static str>> {
+    static SET: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    SET.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
 async fn start_download(
     State(s): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<StatusCode, Error> {
     let spec = models::lookup(&name).ok_or(Error::NotFound)?;
+    if !in_flight_downloads().lock().unwrap().insert(spec.name) {
+        return Err(Error::Conflict(format!(
+            "{} is already downloading",
+            spec.name
+        )));
+    }
     // Spawn the download as a detached tokio task so the HTTP response
     // returns immediately (202 Accepted).  Progress + terminal state
     // are delivered over `/ws` via `AppState::app_events_tx`.
@@ -96,6 +115,7 @@ async fn start_download(
     let model_name = spec.name.to_string();
     tokio::spawn(async move {
         download_task(tx, model_name, spec).await;
+        in_flight_downloads().lock().unwrap().remove(spec.name);
     });
     Ok(StatusCode::ACCEPTED)
 }
@@ -110,10 +130,17 @@ async fn delete_model(
     // `remove_file` is fine if the file is absent — treat NotFound as
     // already-deleted so DELETE is idempotent.
     match std::fs::remove_file(&path) {
-        Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(StatusCode::NO_CONTENT),
-        Err(e) => Err(Error::Internal(format!("delete {path:?}: {e}"))),
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(Error::Internal(format!("delete {path:?}: {e}"))),
     }
+    // The sidecar `.sha256` marker (written by `is_downloaded`/
+    // `download_to`) must go too — a stale marker left behind after
+    // delete would let a subsequent corrupt/partial re-download pass
+    // `is_downloaded_at`'s fast-path check against bytes that no longer
+    // exist under it.
+    let _ = std::fs::remove_file(models::marker_path(&path));
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ─── Background download task ──────────────────────────────────────────────
@@ -146,6 +173,10 @@ async fn download_task(tx: ws::AppEventTx, model_name: String, spec: &'static mo
 #[derive(Debug)]
 enum Error {
     NotFound,
+    /// A download for this model is already in flight (see
+    /// `in_flight_downloads`). Maps to 409 so the UI can show "already
+    /// downloading" instead of silently starting a second writer.
+    Conflict(String),
     Internal(String),
 }
 
@@ -153,6 +184,7 @@ impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         match self {
             Error::NotFound => (StatusCode::NOT_FOUND, "model not found").into_response(),
+            Error::Conflict(s) => (StatusCode::CONFLICT, s).into_response(),
             Error::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, s).into_response(),
         }
     }
@@ -174,5 +206,56 @@ mod tests {
         assert!(json["size_mb"].as_u64().unwrap() > 0);
         assert!(json["downloaded"].is_boolean());
         assert!(json["intel_supported"].is_boolean());
+    }
+
+    /// A second `start_download` for the same model while one is already
+    /// in flight must be rejected with 409 — a double-click on the
+    /// Settings "Download" button must not spin up two writers on the
+    /// same destination file. The first call's spawned download task
+    /// will fail fast (no network in the test sandbox); either way the
+    /// synchronous guard check runs before either request returns.
+    #[tokio::test]
+    async fn concurrent_downloads_of_the_same_model_are_rejected_with_409() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = std::sync::Arc::new(
+            crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap(),
+        );
+        let session = std::sync::Arc::new(
+            crate::session::load_or_create(&tmp.path().join("session-token")).unwrap(),
+        );
+        let state = crate::state::AppState::in_memory(
+            crate::Mode::Release,
+            storage,
+            session,
+            7878,
+            tmp.path().join("notes"),
+        )
+        .expect("in_memory state");
+
+        // Belt-and-braces: this key is process-wide and other tests in this
+        // binary don't touch "tiny.en", but start from a clean slate.
+        in_flight_downloads().lock().unwrap().remove("tiny.en");
+
+        let first = start_download(State(state.clone()), Path("tiny.en".to_string())).await;
+        assert_eq!(
+            first.unwrap(),
+            StatusCode::ACCEPTED,
+            "first request should be accepted"
+        );
+
+        let second = start_download(State(state.clone()), Path("tiny.en".to_string())).await;
+        match second {
+            Err(Error::Conflict(msg)) => assert!(
+                msg.contains("tiny.en"),
+                "conflict message should name the model: {msg}"
+            ),
+            other => panic!(
+                "expected Error::Conflict for a concurrent duplicate download, got {other:?}"
+            ),
+        }
+
+        // Cleanup so this test doesn't leak process-wide guard state into
+        // any other test that happens to touch "tiny.en" in this binary.
+        in_flight_downloads().lock().unwrap().remove("tiny.en");
     }
 }

@@ -28,6 +28,13 @@ use crate::session::{load_or_create, SessionToken};
 use crate::storage::Storage;
 use crate::{AppState, Mode};
 
+/// Test-only bridge to the crate-private LLM resolution chain
+/// (`llm_openai::resolve`: override -> `YOGURT_LLM_*` env -> active
+/// provider + Keychain key -> `MockLlm`). `llm_openai` is `pub(crate)`, so
+/// this one-line re-export is what lets `tests/llm_resolution.rs` exercise
+/// the real priority chain instead of duplicating its logic.
+pub use crate::llm_openai::resolve;
+
 /// Pre-canned-chunks mock LLM. Each `stream` call replays `chunks` once,
 /// then emits the terminal `done = true` frame.
 #[derive(Clone)]
@@ -112,7 +119,7 @@ pub async fn run_with_mock_llm(
         prompts,
         db,
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
-        llm: Arc::new(MockChunksLlm::new(chunks)),
+        llm_override: Some(Arc::new(MockChunksLlm::new(chunks))),
         meeting_repo,
         app_events_tx,
     };

@@ -59,6 +59,7 @@ pub fn router() -> Router<AppState> {
             post(activate_provider),
         )
         .route("/api/settings/providers/{id}/key", post(set_provider_key))
+        .route("/api/settings/stt/key", post(set_stt_key))
         .route("/api/settings/presets", get(list_presets))
 }
 
@@ -82,12 +83,10 @@ struct ProviderView {
     api_key_masked: Option<String>,
 }
 
-/// Convert a DB row into the wire view, consulting the Keychain abstraction
-/// for the masked form. `state.keys.masked()` returns `Ok(None)` for any
-/// provider that has no stored key (never the raw key — see
-/// `yogurt_db::keychain::ApiKeyStore::masked`).
-fn to_view(state: &AppState, p: providers::Provider) -> ProviderView {
-    let masked = state.keys.masked(&p.id).ok().flatten();
+/// Convert a DB row + its pre-fetched masked key into the wire view.
+/// The masked form comes from [`masked_views`] so the (potentially
+/// blocking) Keychain reads stay off the tokio reactor (SET-10).
+fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
     ProviderView {
         id: p.id,
         name: p.name,
@@ -96,6 +95,42 @@ fn to_view(state: &AppState, p: providers::Provider) -> ProviderView {
         is_active: p.is_active,
         created_at: p.created_at,
         api_key_masked: masked,
+    }
+}
+
+/// Fetch the masked key for each provider row on a blocking thread.
+/// SET-10: `ApiKeyStore` reads can stall for seconds on a cold Keychain
+/// (user prompt on first access) — never run them on the reactor.
+async fn masked_views(
+    state: &AppState,
+    rows: Vec<providers::Provider>,
+) -> Result<Vec<ProviderView>, Error> {
+    let keys = state.keys.clone();
+    // Bounded at 5s: a wedged Keychain (unanswered macOS access prompt
+    // after a binary rebuild) must degrade to "no mask shown" — not hang
+    // the whole Settings page on its loading skeleton.
+    let fallback: Vec<providers::Provider> = rows.clone();
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(move || {
+            rows.into_iter()
+                .map(|p| {
+                    let masked = keys.masked(&p.id).ok().flatten();
+                    to_view(p, masked)
+                })
+                .collect()
+        }),
+    )
+    .await
+    {
+        Ok(joined) => joined.map_err(|e| Error::Internal(format!("keychain task join: {e}"))),
+        Err(_) => {
+            tracing::warn!(
+                "keychain did not respond within 5s while masking provider keys — \
+                 serving settings without key masks"
+            );
+            Ok(fallback.into_iter().map(|p| to_view(p, None)).collect())
+        }
     }
 }
 
@@ -111,16 +146,15 @@ struct SettingsView {
     general: settings::General,
     providers: Vec<ProviderView>,
     presets: Vec<PresetView>,
+    /// `Some("••••XXXX")` when a Deepgram STT key is stored (Keychain entry
+    /// `stt-deepgram`), `None` otherwise. Never the raw key.
+    deepgram_key_masked: Option<String>,
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, Error> {
     let general = settings::load_general(&s.db)?;
-    let providers = providers::list(&s.db)?
-        .into_iter()
-        .map(|p| to_view(&s, p))
-        .collect();
     let presets = providers::PRESETS
         .iter()
         .map(|p| PresetView {
@@ -129,10 +163,27 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
             default_model: p.default_model,
         })
         .collect();
+    let keys = s.keys.clone();
+    // Same 5s bound as `masked_views` — see the wedged-Keychain note there.
+    // Run both Keychain lookups concurrently so a wedged Keychain costs
+    // one 5s window, not two in sequence.
+    let deepgram_fut = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(move || keys.masked(crate::meetings::DEEPGRAM_KEY_ID)),
+    );
+    let (providers, deepgram_res) =
+        tokio::join!(masked_views(&s, providers::list(&s.db)?), deepgram_fut);
+    let providers = providers?;
+    let deepgram_key_masked = deepgram_res
+        .ok()
+        .and_then(|j| j.ok())
+        .and_then(|r| r.ok())
+        .flatten();
     Ok(Json(SettingsView {
         general,
         providers,
         presets,
+        deepgram_key_masked,
     }))
 }
 
@@ -144,12 +195,7 @@ async fn patch_settings(
 }
 
 async fn list_providers(State(s): State<AppState>) -> Result<Json<Vec<ProviderView>>, Error> {
-    Ok(Json(
-        providers::list(&s.db)?
-            .into_iter()
-            .map(|p| to_view(&s, p))
-            .collect(),
-    ))
+    Ok(Json(masked_views(&s, providers::list(&s.db)?).await?))
 }
 
 async fn list_presets() -> Json<Vec<PresetView>> {
@@ -174,7 +220,8 @@ async fn create_provider(
         .into_iter()
         .find(|p| p.id == id)
         .ok_or_else(|| Error::Internal("inserted provider missing".into()))?;
-    Ok(Json(to_view(&s, p)))
+    let view = masked_views(&s, vec![p]).await?.remove(0);
+    Ok(Json(view))
 }
 
 /// Body for `PATCH /api/settings/providers/{id}`. All three fields must be
@@ -197,7 +244,8 @@ async fn update_provider(
         .into_iter()
         .find(|p| p.id == id)
         .ok_or(Error::NotFound)?;
-    Ok(Json(to_view(&s, p)))
+    let view = masked_views(&s, vec![p]).await?.remove(0);
+    Ok(Json(view))
 }
 
 async fn delete_provider(
@@ -220,7 +268,8 @@ async fn activate_provider(
     providers::set_active(&s.db, &id)?;
     let p = providers::active(&s.db)?
         .ok_or_else(|| Error::Internal("active provider missing after set_active".into()))?;
-    Ok(Json(to_view(&s, p)))
+    let view = masked_views(&s, vec![p]).await?.remove(0);
+    Ok(Json(view))
 }
 
 /// Body for `POST /api/settings/providers/{id}/key`. The `api_key` field is
@@ -229,6 +278,24 @@ async fn activate_provider(
 #[derive(Deserialize)]
 struct SetKeyBody {
     api_key: String,
+}
+
+/// `POST /api/settings/stt/key` — store the Deepgram STT key. The STT key
+/// has no `providers` table row; the Keychain entry under
+/// [`crate::meetings::DEEPGRAM_KEY_ID`] IS the configuration. Cloud
+/// recording reads it at meeting start.
+async fn set_stt_key(
+    State(s): State<AppState>,
+    Json(body): Json<SetKeyBody>,
+) -> Result<StatusCode, Error> {
+    let key = body.api_key.trim();
+    if key.is_empty() {
+        return Err(Error::Internal("api_key must not be empty".into()));
+    }
+    s.keys
+        .set(crate::meetings::DEEPGRAM_KEY_ID, key)
+        .map_err(|e| Error::Internal(format!("keychain set: {e}")))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn set_provider_key(

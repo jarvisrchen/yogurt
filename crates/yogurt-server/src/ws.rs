@@ -353,13 +353,32 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
     let m = match state.meetings.get(&id).await {
         Some(m) => m,
         None => {
-            let _ = socket
-                .send(Message::Close(Some(CloseFrame {
-                    code: 4404,
-                    reason: "meeting not found".into(),
-                })))
-                .await;
-            return;
+            // HI-9 (same rule as the enhance handler): the in-memory
+            // registry is wiped on restart, but chat chunks and
+            // enhance_progress still ride this socket for meetings that
+            // only exist in SQLite (every post-meeting view). Hydrate a
+            // transient Meeting when the row exists; hard-close only for
+            // genuinely unknown ids. Without this, chat on a post-meeting
+            // view after a server restart streamed into the void — the UI
+            // spinner never resolved.
+            let id_str = id.to_string();
+            let repo = state.meeting_repo.clone();
+            let exists = tokio::task::spawn_blocking(move || repo.get(&id_str))
+                .await
+                .ok()
+                .and_then(|r| r.ok())
+                .flatten()
+                .is_some();
+            if !exists {
+                let _ = socket
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4404,
+                        reason: "meeting not found".into(),
+                    })))
+                    .await;
+                return;
+            }
+            state.meetings.hydrate(id).await
         }
     };
     let mut rx = m.transcript_tx.subscribe();

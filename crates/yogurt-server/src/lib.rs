@@ -178,18 +178,46 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     // Phase 5 (Plan 05-02): seed providers from `YOGURT_*_API_KEY` env vars
     // (loaded from .env.local in dev mode by yogurt-cli). Idempotent —
     // existing providers are skipped, never overridden.
-    match bootstrap::seed_from_env(&state).await {
-        Ok(report) => {
-            if !report.seeded.is_empty() {
-                tracing::info!(seeded = ?report.seeded, "seeded providers from env vars");
+    //
+    // Bounded: the seeding path does Keychain reads, and a wedged Keychain
+    // (pending macOS access prompt after a rebuild changes the binary's
+    // code signature) once blocked startup for over half an hour. Run the
+    // whole step on its own task and give it 20s — on timeout the server
+    // starts anyway and seeding finishes in the background whenever the
+    // Keychain unwedges.
+    let seed_state = state.clone();
+    let seeding = tokio::spawn(async move {
+        match bootstrap::seed_from_env(&seed_state).await {
+            Ok(report) => {
+                if !report.seeded.is_empty() {
+                    tracing::info!(seeded = ?report.seeded, "seeded providers from env vars");
+                }
+                if !report.skipped.is_empty() {
+                    tracing::debug!(skipped = ?report.skipped, "skipped already-configured providers");
+                }
             }
-            if !report.skipped.is_empty() {
-                tracing::debug!(skipped = ?report.skipped, "skipped already-configured providers");
+            Err(e) => {
+                tracing::error!(error = %e, "bootstrap failed; continuing without env-var seeding")
             }
         }
-        Err(e) => {
-            tracing::error!(error = %e, "bootstrap failed; continuing without env-var seeding")
+
+        // Deepgram STT key: same .env.local convention as the LLM providers.
+        bootstrap::seed_stt_key_from_env(&seed_state);
+
+        // Repair enriched_md rows corrupted by the pre-260813 escaped-span
+        // enhance bug — idempotent, no-op on clean databases.
+        if let Err(e) = bootstrap::repair_escaped_span_rows(&seed_state) {
+            tracing::warn!(error = %e, "escaped-span repair failed; continuing");
         }
+    });
+    if tokio::time::timeout(std::time::Duration::from_secs(20), seeding)
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            "bootstrap seeding still running after 20s — starting the server anyway; \
+             seeding will complete in the background (check for a macOS Keychain prompt)"
+        );
     }
 
     let app = routes::router(state);

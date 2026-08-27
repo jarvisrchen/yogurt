@@ -190,7 +190,12 @@ fn is_downloaded_at(path: &Path, expected_sha256: &str) -> bool {
 /// `<model path>.sha256` - appends to the FULL file name
 /// (`ggml-x.bin` -> `ggml-x.bin.sha256`).  Not `with_extension`, which
 /// would replace `.bin`.
-fn marker_path(model: &Path) -> PathBuf {
+///
+/// `pub` so `yogurt-server`'s DELETE handler (`api::stt_models::delete_model`)
+/// can remove the sidecar alongside the model file — otherwise a deleted
+/// model leaves a stale marker behind that would falsely fast-path
+/// `is_downloaded_at` against bytes that no longer exist.
+pub fn marker_path(model: &Path) -> PathBuf {
     let mut s = model.as_os_str().to_os_string();
     s.push(".sha256");
     PathBuf::from(s)
@@ -285,8 +290,17 @@ where
     F: FnMut(DownloadProgress) + Send + 'static,
 {
     // 1. Fast-path: file exists and hashes correctly.
+    //
+    // Hashing runs via `spawn_blocking` — `large-v3` is ~3 GB, and a
+    // synchronous `sha256::hash_file` call here would block the tokio
+    // reactor thread for as long as the hash takes (this is the same
+    // class of bug the `list_models` handler comment in `stt_models.rs`
+    // warns about, just reachable through the download path instead).
     if dest.exists() {
-        if let Ok(existing) = sha256::hash_file(dest) {
+        let dest_owned = dest.to_path_buf();
+        if let Ok(Ok(existing)) =
+            tokio::task::spawn_blocking(move || sha256::hash_file(&dest_owned)).await
+        {
             if existing.eq_ignore_ascii_case(expected_sha256) {
                 write_marker(dest, &existing);
                 return Ok(());
@@ -381,7 +395,14 @@ where
     drop(file);
 
     // 5. Verify SHA256; delete on mismatch.
-    let actual = sha256::hash_file(dest)?;
+    //
+    // Same reactor-blocking concern as the fast-path check above — push
+    // the full-file hash onto the blocking pool rather than running it
+    // inline on the async task.
+    let dest_owned = dest.to_path_buf();
+    let actual = tokio::task::spawn_blocking(move || sha256::hash_file(&dest_owned))
+        .await
+        .map_err(|e| std::io::Error::other(format!("hash join error: {e}")))??;
     if !actual.eq_ignore_ascii_case(expected_sha256) {
         let _ = std::fs::remove_file(dest);
         return Err(DownloadError::HashMismatch {

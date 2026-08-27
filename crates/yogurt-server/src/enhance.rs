@@ -32,10 +32,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-use crate::llm_mock::MockLlm;
 use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
-use yogurt_llm::{ChatMessage, ChatRequest, LlmClient};
+use yogurt_llm::{ChatMessage, ChatRequest};
 use yogurt_notes::merge_notes;
 use yogurt_prompts::EnhanceCtx;
 
@@ -127,12 +126,35 @@ pub async fn enhance(
         }
     };
 
+    // 1b) Resolve the transcript. The server-side STT persistence task
+    // (meetings.rs) is the source of truth for what was said; the client
+    // no longer carries the transcript in the request body. Prefer the
+    // stored row whenever the request's copy is empty so Re-enhance and
+    // the normal end-of-meeting flow both see the real transcript.
+    let transcript_json = {
+        let req_empty = matches!(req.transcript_json.trim(), "" | "[]");
+        if req_empty {
+            let id = meeting_id.to_string();
+            let repo = state.meeting_repo.clone();
+            tokio::task::spawn_blocking(move || repo.get(&id))
+                .await
+                .ok()
+                .and_then(|r| r.ok())
+                .flatten()
+                .map(|m| m.transcript_json)
+                .filter(|t| !matches!(t.trim(), "" | "[]"))
+                .unwrap_or_else(|| req.transcript_json.clone())
+        } else {
+            req.transcript_json.clone()
+        }
+    };
+
     // 2) Render the user prompt.
     let user_prompt = state
         .prompts
         .render_enhance(&EnhanceCtx {
             notes: &req.notes_md,
-            transcript: &req.transcript_json,
+            transcript: &transcript_json,
         })
         .map_err(|e| {
             (
@@ -169,24 +191,15 @@ pub async fn enhance(
     // prompt is rendered as the whole user payload; introducing a real
     // system message requires moving the prompt split logic into
     // `yogurt-prompts`.
-    let real_client = match crate::llm_openai::from_env() {
-        Some(c) => Some(c),
-        None => {
-            match crate::llm_openai::from_active_provider(&state.db, state.keys.clone()).await {
-                Ok(Some(c)) => Some(c),
-                Ok(None) => {
-                    tracing::warn!("no LLM provider configured; enhance is using MockLlm");
-                    None
-                }
-                Err(e) => {
-                    let _ = meeting.events_tx.send(serde_json::json!({
-                        "type": "enhance_progress",
-                        "phase": "error",
-                        "message": format!("Enhance failed: {e}")
-                    }));
-                    return Err((StatusCode::BAD_GATEWAY, e.to_string()));
-                }
-            }
+    let llm = match crate::llm_openai::resolve(&state).await {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": format!("Enhance failed: {e}")
+            }));
+            return Err((StatusCode::BAD_GATEWAY, e.to_string()));
         }
     };
     let chat_req = ChatRequest {
@@ -194,12 +207,7 @@ pub async fn enhance(
         stream: false,
     };
     let llm_call = async {
-        let dyn_client: &dyn LlmClient = match real_client.as_ref() {
-            Some(c) => c,
-            None => &MockLlm,
-        };
-        dyn_client
-            .complete(chat_req)
+        llm.complete(chat_req)
             .await
             .map(|r| r.content)
             .map_err(|e| (StatusCode::BAD_GATEWAY, format!("llm complete failed: {e}")))
@@ -245,7 +253,13 @@ pub async fn enhance(
     // tagging each block User vs. AiGrey + timestamp.
     // BL-5: on merge failure (malformed user_md / enriched_md from a buggy
     // LLM) also emit `error` so the banner exits the spinner state.
-    let merged = match merge_notes(&req.notes_md, &llm_output, &req.transcript_json) {
+    // Some models (observed live with MiniMax-Text-01) emit CP1252-mangled
+    // punctuation as literal tokens — "â€¦" where "…" belongs. Our own
+    // pipeline is UTF-8-clean end to end; this scrubs the model's junk so
+    // the stored document isn't permanently ugly.
+    let llm_output = fix_model_mojibake(&llm_output);
+
+    let merged = match merge_notes(&req.notes_md, &llm_output, &transcript_json) {
         Ok(m) => m,
         Err(e) => {
             let _ = meeting.events_tx.send(serde_json::json!({
@@ -292,7 +306,7 @@ pub async fn enhance(
     let storage = state.storage.clone();
     let exporter = state.markdown_exporter.clone();
     let notes_md_for_blocking = req.notes_md.clone();
-    let transcript_json_for_blocking = req.transcript_json.clone();
+    let transcript_json_for_blocking = transcript_json.clone();
     let enriched_md_for_blocking = enriched_md.clone();
     let enriched_doc_json_for_blocking = enriched_doc_json.clone();
     let title_for_blocking = title.clone();
@@ -391,10 +405,17 @@ pub async fn enhance(
         let id = meeting_id_str.clone();
         let title = title.clone();
         let notes_md = req.notes_md.clone();
-        let transcript_json = req.transcript_json.clone();
+        let transcript_json = transcript_json.clone();
         let enriched_md_for_repo = enriched_md.clone();
-        let started_at = started_at_unix_ms;
-        let ended_at = ended_at_unix_ms;
+        let started_at_fallback = started_at_unix_ms;
+        // Timestamp tri-state: only touch the repo's timestamps when the
+        // REQUEST explicitly carried them. The normal flow stamps
+        // started_at on /start and ended_at on /stop — mapping an absent
+        // request field to `Some(None)` here used to CLEAR the ended_at
+        // that /stop had just written, which is why every meeting showed
+        // a dash duration in the library.
+        let started_at_patch = req.started_at_unix_ms;
+        let ended_at_patch = req.ended_at_unix_ms.map(Some);
         let state2 = state.clone();
         let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
             // Ensure the row exists before patching — older meetings
@@ -402,7 +423,7 @@ pub async fn enhance(
             if state2.meeting_repo.get(&id)?.is_none() {
                 state2.meeting_repo.create(yogurt_db::NewMeeting {
                     title: title.clone(),
-                    started_at_unix_ms: Some(started_at),
+                    started_at_unix_ms: Some(started_at_fallback),
                     id: Some(id.clone()),
                 })?;
             }
@@ -410,11 +431,11 @@ pub async fn enhance(
                 &id,
                 yogurt_db::MeetingPatch {
                     title: Some(title),
-                    started_at: Some(started_at),
+                    started_at: started_at_patch,
                     notes_md: Some(notes_md),
                     transcript_json: Some(transcript_json),
                     enriched_md: Some(Some(enriched_md_for_repo)),
-                    ended_at: Some(ended_at),
+                    ended_at: ended_at_patch,
                     starred: None,
                 },
             )?;
@@ -432,4 +453,51 @@ pub async fn enhance(
         enriched_md,
         notes_file: notes_path.to_string_lossy().into_owned(),
     }))
+}
+
+/// Repair CP1252-double-encoded punctuation that some models emit as
+/// literal tokens (UTF-8 bytes of "…" read back as Latin-1 during the
+/// model's own training/serving — not produced by our pipeline). Longer
+/// sequences first so "â€¦" wins over any "â€" prefix rule.
+fn fix_model_mojibake(s: &str) -> String {
+    const MAP: &[(&str, &str)] = &[
+        ("\u{c3}\u{a2}\u{20ac}\u{a6}", "\u{2026}"),   // â€¦ → …
+        ("\u{c3}\u{a2}\u{20ac}\u{201d}", "\u{201d}"), // â€ + ” → ”
+        ("\u{c3}\u{a2}\u{20ac}\u{153}", "\u{201c}"),  // â€œ → “
+        ("\u{c3}\u{a2}\u{20ac}\u{2122}", "\u{2019}"), // â€™ → ’
+        ("\u{c3}\u{a2}\u{20ac}\u{201c}", "\u{2013}"), // â€“ → –
+        ("\u{c3}\u{a2}\u{20ac}\u{201e}", "\u{2014}"), // â€„variant → —
+        ("\u{e2}\u{20ac}\u{a6}", "\u{2026}"),         // â€¦ (bare) → …
+        ("\u{e2}\u{20ac}\u{2122}", "\u{2019}"),       // â€™ (bare) → ’
+        ("\u{e2}\u{20ac}\u{153}", "\u{201c}"),        // â€œ (bare) → “
+        ("\u{e2}\u{20ac}\u{9d}", "\u{201d}"),         // â€ +9d (bare) → ”
+        ("\u{e2}\u{20ac}\u{201c}", "\u{2013}"),       // â€“ (bare) → –
+        ("\u{c2}\u{a0}", " "),                        // Â  (nbsp mangle) → space
+    ];
+    let mut out = s.to_string();
+    for (bad, good) in MAP {
+        if out.contains(bad) {
+            out = out.replace(bad, good);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fix_model_mojibake;
+
+    #[test]
+    fn scrubs_cp1252_mangled_ellipsis_and_quotes() {
+        let got = fix_model_mojibake(
+            "launch in October.\u{e2}\u{20ac}\u{a6} then \u{e2}\u{20ac}\u{153}ship\u{e2}\u{20ac}\u{9d}",
+        );
+        assert_eq!(got, "launch in October.\u{2026} then \u{201c}ship\u{201d}");
+    }
+
+    #[test]
+    fn clean_text_passes_through_untouched() {
+        let s = "normal text with real … and “quotes” and ↳ 00:16";
+        assert_eq!(fix_model_mojibake(s), s);
+    }
 }

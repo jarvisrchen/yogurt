@@ -235,7 +235,32 @@ async fn patch_one(
     Path(id): Path<String>,
     body: Option<Json<PatchBody>>,
 ) -> Result<Json<Meeting>, ApiError> {
-    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let mut body = body.map(|Json(b)| b).unwrap_or_default();
+    // DATA-LOSS GUARD (defense-in-depth; the client autosave has its own):
+    // never let a PATCH replace a non-empty enriched document with an
+    // empty one. The enriched body is only ever produced by enhance — an
+    // empty overwrite is always a client bug (observed live: a stale
+    // post-view mount flushing `""` on unmount), never user intent. The
+    // user-intent path for removing content is deleting the meeting.
+    if matches!(&body.enriched_md, Some(Some(md)) if md.trim().is_empty()) {
+        let repo = s.meeting_repo.clone();
+        let id_probe = id.clone();
+        let stored = tokio::task::spawn_blocking(move || repo.get(&id_probe))
+            .await
+            .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+            .map_err(ApiError::from)?;
+        if stored
+            .as_ref()
+            .and_then(|m| m.enriched_md.as_deref())
+            .is_some_and(|md| !md.trim().is_empty())
+        {
+            tracing::warn!(
+                meeting_id = %id,
+                "rejected PATCH that would blank a non-empty enriched_md"
+            );
+            body.enriched_md = None;
+        }
+    }
     // LIB-08: empty-title → "Untitled meeting" fallback. Done at the API
     // layer so the repo's empty-title rejection still protects the DB
     // invariant for non-Library callers.

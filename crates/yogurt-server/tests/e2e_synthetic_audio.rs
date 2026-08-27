@@ -47,7 +47,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         db,
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
         // Phase 6 (Plan 06-01): test wiring uses MockLlm.
-        llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
+        llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
         // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
@@ -84,7 +84,16 @@ async fn it_delivers_transcript_to_browser_well_under_2s() {
         HeaderValue::from_str(&format!("http://127.0.0.1:{}", addr.port())).unwrap(),
     );
     let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Deterministic subscribe signal: poll the broadcast's receiver count
+    // instead of a fixed sleep (flake source on slow CI).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while m.transcript_tx.receiver_count() == 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "WS handler never subscribed to transcript_tx within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 
     let t0 = Instant::now();
     m.transcript_tx

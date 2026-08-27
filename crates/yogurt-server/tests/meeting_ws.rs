@@ -52,7 +52,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
         // Phase 6 (Plan 06-01): test wiring uses the deterministic mock LLM
         // so chat-spawn tasks (if reached) don't hit the network.
-        llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
+        llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
         // Phase 8 (Plan 08-03): app-wide event broadcaster for
@@ -95,8 +95,16 @@ async fn it_fans_transcript_events_to_ws_clients() {
     );
     let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
 
-    // Wait briefly for the handler to subscribe before publishing.
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Deterministic subscribe signal: poll the broadcast's receiver count
+    // instead of a fixed sleep (flake source on slow CI).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while m.transcript_tx.receiver_count() == 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "WS handler never subscribed to transcript_tx within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 
     // Publish a transcript event.
     m.transcript_tx

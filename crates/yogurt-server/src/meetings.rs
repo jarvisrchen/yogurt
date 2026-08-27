@@ -86,7 +86,10 @@ pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
     match s.stt_provider.as_str() {
         "cloud" => {
             let api_key = s.deepgram_api_key.clone().ok_or_else(|| {
-                anyhow!("YOGURT_DEEPGRAM_API_KEY not set — required for cloud STT")
+                anyhow!(
+                    "no Deepgram API key configured — add one in Settings → \
+                     Transcription, or switch to local transcription"
+                )
             })?;
             Ok(SttSpec::Cloud { api_key })
         }
@@ -107,6 +110,11 @@ pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
         other => Err(anyhow!("unknown stt_provider: {other}")),
     }
 }
+
+/// Well-known `ApiKeyStore` entry id for the Deepgram STT key. Written by
+/// the Settings → Transcription UI (and the `.env.local` bootstrap seeder);
+/// read by `routes::start_meeting` when the env var override is absent.
+pub const DEEPGRAM_KEY_ID: &str = "stt-deepgram";
 
 pub type MeetingId = Uuid;
 
@@ -168,6 +176,25 @@ pub struct Meeting {
     /// hot-swap requests. `None` before start / after stop, so a switch
     /// request racing with shutdown reliably observes "not recording".
     pub audio_cmd_tx: Mutex<Option<mpsc::Sender<AudioCommand>>>,
+    /// `Some` while recording — shutdown signal + JoinHandle for the
+    /// transcript-persistence task spawned by `Registry::start`. `stop()`
+    /// signals it, then awaits the handle so the final SQLite write is
+    /// observably complete before the stop request returns (the browser
+    /// navigates to the post-meeting view immediately after).
+    pub persist: Mutex<Option<(oneshot::Sender<()>, JoinHandle<()>)>>,
+}
+
+/// Abort a spawned task when the owner is dropped. Used so the STT session
+/// and the whisper partial ticker cannot outlive the meeting: aborting the
+/// supervisor task drops its locals, which aborts the children in turn.
+/// (JoinHandle's own Drop detaches instead of aborting — that detachment is
+/// exactly the leak this guard exists to prevent.)
+struct AbortOnDrop(JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 impl Meeting {
@@ -184,6 +211,7 @@ impl Meeting {
             task: Mutex::new(None),
             capture_thread: Mutex::new(None),
             audio_cmd_tx: Mutex::new(None),
+            persist: Mutex::new(None),
         }
     }
 }
@@ -266,14 +294,19 @@ impl Registry {
         id: &MeetingId,
         stt_settings: SttSettings,
         mic_device: Option<String>,
+        repo: Option<Arc<yogurt_db::MeetingRepo>>,
     ) -> Result<()> {
         let m = self
             .get(id)
             .await
             .ok_or_else(|| anyhow!("meeting not found"))?;
 
-        // Refuse to start twice.
-        if m.task.lock().await.is_some() {
+        // Refuse to start twice. Hold the task lock for the whole start
+        // sequence so two concurrent /start calls can't both pass this
+        // check and open two SCK capture sessions (the loser used to leak
+        // its session forever).
+        let mut task_slot = m.task.lock().await;
+        if task_slot.is_some() {
             return Err(anyhow!("meeting already started"));
         }
 
@@ -393,9 +426,27 @@ impl Registry {
 
         let audio_tx = m.audio_tx.clone();
         let transcript_tx = m.transcript_tx.clone();
+        let events_tx = m.events_tx.clone();
         // STT subscribes BEFORE the adapter task starts publishing, so no
         // mic chunks are dropped on the wire before Deepgram's WS is ready.
         let audio_rx_for_stt = m.audio_tx.subscribe();
+
+        // Transcript persistence: subscribe before STT starts so no final
+        // segment can slip past, then accumulate finals into the meeting's
+        // SQLite row as they arrive. This is the source of truth that
+        // enhance, chat, and the post-meeting transcript panel all read —
+        // the browser never carries the transcript itself.
+        if let Some(repo) = repo {
+            let persist_rx = m.transcript_tx.subscribe();
+            let (persist_shutdown_tx, persist_shutdown_rx) = oneshot::channel::<()>();
+            let handle = tokio::spawn(persist_transcript(
+                repo,
+                m.id.to_string(),
+                persist_rx,
+                persist_shutdown_rx,
+            ));
+            *m.persist.lock().await = Some((persist_shutdown_tx, handle));
+        }
 
         let task = tokio::spawn(async move {
             // Hold the shutdown sender until this task ends; dropping it
@@ -421,6 +472,13 @@ impl Registry {
                         Ok(Ok(local)) => local,
                         Ok(Err(e)) => {
                             tracing::error!(?e, "WhisperLocal::load failed");
+                            send_stt_error(
+                                &events_tx,
+                                &format!(
+                                    "Local transcription failed to load its model: {e:#}. \
+                                     Re-download it from Settings → Transcription."
+                                ),
+                            );
                             return;
                         }
                         Err(e) => {
@@ -428,6 +486,7 @@ impl Registry {
                                 ?e,
                                 "spawn_blocking join failed for WhisperLocal::load"
                             );
+                            send_stt_error(&events_tx, "Local transcription failed to start.");
                             return;
                         }
                     };
@@ -435,19 +494,30 @@ impl Registry {
                 }
             };
 
-            // Spawn the STT engine first (so it subscribes before audio flows).
+            // Spawn the STT engine first (so it subscribes before audio
+            // flows). The AbortOnDrop guard ties the STT session's lifetime
+            // to this supervisor: when `stop()` aborts us, the guard drops
+            // and aborts the STT task too. Without it, Deepgram/Whisper
+            // sessions outlived the meeting (Deepgram kept its WS open;
+            // WhisperLocal pinned a multi-GB model and kept decoding).
             let stt2 = stt.clone();
-            let stt_handle = tokio::spawn(async move {
+            let events_tx_for_stt = events_tx.clone();
+            let stt_guard = AbortOnDrop(tokio::spawn(async move {
                 if let Err(e) = stt2.start(audio_rx_for_stt, transcript_tx).await {
                     tracing::error!(?e, "stt session failed");
+                    send_stt_error(&events_tx_for_stt, &format!("Transcription stopped: {e:#}"));
                 }
-            });
+            }));
 
             pump_audio_adapter(mic_rx, sys_rx, audio_tx).await;
-            stt_handle.abort();
+            drop(stt_guard);
         });
 
-        *m.task.lock().await = Some(task);
+        *task_slot = Some(task);
+        // Release the task lock BEFORE acquiring the sibling mutexes —
+        // `stop()` takes `audio_cmd_tx` first, so holding `task` across
+        // these acquisitions would be an ABBA deadlock window.
+        drop(task_slot);
         *m.capture_thread.lock().await = Some(capture_thread);
         *m.audio_cmd_tx.lock().await = Some(cmd_tx);
         Ok(())
@@ -515,6 +585,21 @@ impl Registry {
             }
         }
 
+        // Step 3: flush the transcript-persistence task. Signal shutdown
+        // (it drains any still-queued broadcast events, does a final SQLite
+        // write, then exits) and await it so the post-meeting view — which
+        // the browser opens immediately after this request returns — reads
+        // the complete transcript.
+        if let Some((shutdown_tx, handle)) = m.persist.lock().await.take() {
+            let _ = shutdown_tx.send(());
+            match tokio::time::timeout(std::time::Duration::from_secs(2), handle).await {
+                Ok(_) => tracing::debug!("transcript persistence flushed"),
+                Err(_) => {
+                    tracing::error!("transcript persistence did not flush within 2s");
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -561,6 +646,101 @@ impl Registry {
                 "timed out waiting for capture thread to switch device".into(),
             )),
         }
+    }
+}
+
+/// Best-effort broadcast of a fatal STT failure to the meeting's WS
+/// subscribers. Before this, an STT session that died after `/start`
+/// returned 200 was invisible: the user kept "recording" a meeting that
+/// would never transcribe. The frontend surfaces `stt_error` as a banner.
+fn send_stt_error(events_tx: &broadcast::Sender<serde_json::Value>, message: &str) {
+    let _ = events_tx.send(serde_json::json!({
+        "type": "stt_error",
+        "message": message,
+    }));
+}
+
+/// Stored-transcript segment shape — matches `yogurt_notes::TranscriptSegment`
+/// and the `meetings.transcript_json` rows the enhance/chat prompts parse.
+/// Mic audio is the user ("me"); system audio is everyone else ("them").
+fn segment_json(ev: &TranscriptEvent) -> serde_json::Value {
+    serde_json::json!({
+        "ts_ms": ev.ts_ms,
+        "channel": match ev.channel {
+            Channel::Mic => "me",
+            Channel::System => "them",
+        },
+        "text": ev.text,
+    })
+}
+
+/// Accumulate final transcript segments into the meeting's SQLite row.
+///
+/// Writes on every final segment (SQLite-local, sub-ms; finals arrive well
+/// under 1 Hz) so a crash mid-meeting loses at most the in-flight segment.
+/// On shutdown: drain whatever is still queued in the broadcast, do one
+/// last write, exit. Partials are never persisted — they're display-only.
+async fn persist_transcript(
+    repo: Arc<yogurt_db::MeetingRepo>,
+    meeting_id: String,
+    mut rx: broadcast::Receiver<TranscriptEvent>,
+    mut shutdown_rx: oneshot::Receiver<()>,
+) {
+    let mut segments: Vec<serde_json::Value> = Vec::new();
+    loop {
+        tokio::select! {
+            // Shutdown (or the sender being dropped by a failed start) both
+            // mean: drain, flush, exit.
+            _ = &mut shutdown_rx => break,
+            res = rx.recv() => match res {
+                Ok(ev) => {
+                    if ev.is_final && !ev.text.trim().is_empty() {
+                        segments.push(segment_json(&ev));
+                        write_segments(&repo, &meeting_id, &segments).await;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(n, "transcript persistence lagged — segments dropped");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    }
+    // Drain anything still queued behind the shutdown signal.
+    let mut drained_any = false;
+    while let Ok(ev) = rx.try_recv() {
+        if ev.is_final && !ev.text.trim().is_empty() {
+            segments.push(segment_json(&ev));
+            drained_any = true;
+        }
+    }
+    if drained_any {
+        write_segments(&repo, &meeting_id, &segments).await;
+    }
+}
+
+async fn write_segments(
+    repo: &Arc<yogurt_db::MeetingRepo>,
+    meeting_id: &str,
+    segments: &[serde_json::Value],
+) {
+    let json = serde_json::Value::Array(segments.to_vec()).to_string();
+    let repo = repo.clone();
+    let id = meeting_id.to_string();
+    let res = tokio::task::spawn_blocking(move || {
+        repo.patch(
+            &id,
+            yogurt_db::MeetingPatch {
+                transcript_json: Some(json),
+                ..Default::default()
+            },
+        )
+    })
+    .await;
+    match res {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => tracing::error!(error = %e, "transcript persistence write failed"),
+        Err(e) => tracing::error!(error = %e, "transcript persistence join failed"),
     }
 }
 
@@ -912,11 +1092,10 @@ mod tests {
             deepgram_api_key: None,
         };
         let err = select_stt(&s).unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("YOGURT_DEEPGRAM_API_KEY") || msg.contains("api key"),
-            "got: {msg}"
-        );
+        let msg = format!("{err:#}").to_lowercase();
+        assert!(msg.contains("api key"), "got: {msg}");
+        // The fix path must point at Settings, not at a raw env var.
+        assert!(msg.contains("settings"), "actionable msg: {msg}");
     }
 
     /// Cloud branch with a key succeeds.
@@ -934,5 +1113,123 @@ mod tests {
                 api_key: "dg_xxx".into()
             }
         );
+    }
+
+    // ─── `persist_transcript` regression coverage ───────────────────────
+
+    /// In-memory `MeetingRepo` fixture shared by the `persist_transcript`
+    /// tests below. Mirrors `yogurt_db::meetings::tests::fresh_repo` but
+    /// lives here since `meetings.rs` doesn't depend on that test helper.
+    fn fresh_repo_with_row() -> (Arc<yogurt_db::MeetingRepo>, String) {
+        let db = yogurt_db::Db::open_in_memory().expect("open in-memory db");
+        let repo = Arc::new(yogurt_db::MeetingRepo::new(db));
+        let m = repo
+            .create(yogurt_db::NewMeeting {
+                title: "Test meeting".into(),
+                ..Default::default()
+            })
+            .expect("create meeting row");
+        (repo, m.id)
+    }
+
+    fn ev(ts_ms: u64, channel: Channel, text: &str, is_final: bool) -> TranscriptEvent {
+        TranscriptEvent {
+            ts_ms,
+            channel,
+            text: text.to_string(),
+            is_final,
+        }
+    }
+
+    /// Drives `persist_transcript` directly against a broadcast channel: a
+    /// mix of finals/partials/empty-text-finals on both channels, then a
+    /// shutdown signal. Asserts the row's `transcript_json` ends up with
+    /// exactly the non-empty finals, in arrival order, with the correct
+    /// me/them channel mapping (mic -> "me", system -> "them").
+    #[tokio::test]
+    async fn persist_transcript_accumulates_only_nonempty_finals_in_order() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+        let (tx, rx) = broadcast::channel::<TranscriptEvent>(16);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let handle = tokio::spawn(persist_transcript(
+            repo.clone(),
+            meeting_id.clone(),
+            rx,
+            shutdown_rx,
+        ));
+
+        // Mix: a mic final (kept), a mic partial (ignored — not final), a
+        // system final with empty/whitespace text (ignored), and a system
+        // final with real text (kept).
+        tx.send(ev(100, Channel::Mic, "hello", true)).unwrap();
+        tx.send(ev(150, Channel::Mic, "in progress", false))
+            .unwrap();
+        tx.send(ev(200, Channel::System, "   ", true)).unwrap();
+        tx.send(ev(250, Channel::System, "world", true)).unwrap();
+
+        // Give the task a beat to process the per-final writes before we
+        // signal shutdown, so this exercises the steady-state write path
+        // (not just the drain-on-shutdown path covered by the next test).
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let _ = shutdown_tx.send(());
+        handle.await.expect("persist task joins cleanly");
+
+        let row = repo.get(&meeting_id).expect("get row").expect("row exists");
+        let segments: Vec<serde_json::Value> =
+            serde_json::from_str(&row.transcript_json).expect("valid JSON");
+        assert_eq!(
+            segments.len(),
+            2,
+            "only the two non-empty finals should persist; got {segments:?}"
+        );
+        assert_eq!(segments[0]["ts_ms"], 100);
+        assert_eq!(segments[0]["channel"], "me");
+        assert_eq!(segments[0]["text"], "hello");
+        assert_eq!(segments[1]["ts_ms"], 250);
+        assert_eq!(segments[1]["channel"], "them");
+        assert_eq!(segments[1]["text"], "world");
+    }
+
+    /// Events sent into the broadcast channel BEFORE the task ever polls
+    /// it (and shutdown signaled immediately after) must still be drained
+    /// and persisted — the "drain whatever is still queued" tail of
+    /// `persist_transcript` must not depend on the per-final write path
+    /// having already run.
+    #[tokio::test]
+    async fn persist_transcript_drains_unconsumed_events_on_immediate_shutdown() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+        let (tx, rx) = broadcast::channel::<TranscriptEvent>(16);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        // Queue several finals on the broadcast buffer, then signal
+        // shutdown immediately — none of this has been consumed by any
+        // task yet (the persist task hasn't even been spawned).
+        for i in 0..3u64 {
+            tx.send(ev(i * 10, Channel::Mic, &format!("seg{i}"), true))
+                .unwrap();
+        }
+        let _ = shutdown_tx.send(());
+
+        let handle = tokio::spawn(persist_transcript(
+            repo.clone(),
+            meeting_id.clone(),
+            rx,
+            shutdown_rx,
+        ));
+        handle.await.expect("persist task joins cleanly");
+
+        let row = repo.get(&meeting_id).expect("get row").expect("row exists");
+        let segments: Vec<serde_json::Value> =
+            serde_json::from_str(&row.transcript_json).expect("valid JSON");
+        assert_eq!(
+            segments.len(),
+            3,
+            "all pre-queued finals must be drained and persisted; got {segments:?}"
+        );
+        for (i, seg) in segments.iter().enumerate() {
+            assert_eq!(seg["text"], format!("seg{i}"));
+        }
     }
 }

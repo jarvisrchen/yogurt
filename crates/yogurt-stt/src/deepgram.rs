@@ -103,6 +103,12 @@ impl Stt for DeepgramStt {
                     break;
                 }
             };
+            // Captured before `chunk` is moved into `try_send` below — this
+            // is the real monotonic timestamp of the chunk that (if it
+            // drops) triggers the overload status event, so the synthetic
+            // event lands at the right point on the transcript timeline
+            // instead of ts_ms=0.
+            let ts_ms = chunk.ts_ms;
 
             let (dest, drops, channel) = match chunk.channel {
                 Channel::Mic => (&mic, &mut mic_drops, Channel::Mic),
@@ -126,7 +132,12 @@ impl Stt for DeepgramStt {
                             consecutive = *drops,
                             "deepgram pump: sustained backpressure — channel unrecoverable"
                         );
-                        emit_status(&txn, channel, "[stt overloaded, transcript may be lossy]");
+                        emit_status(
+                            &txn,
+                            channel,
+                            ts_ms,
+                            "[stt overloaded, transcript may be lossy]",
+                        );
                         // Reset so we don't spam the user; the supervisor's
                         // own reconnect path will signal recovery.
                         *drops = 0;
@@ -154,9 +165,17 @@ impl Stt for DeepgramStt {
 /// Emit a synthetic status TranscriptEvent so the UI knows the upstream STT
 /// session is in trouble. Uses `is_final: true` so the dock renders it as a
 /// locked line (rather than something that gets replaced).
-fn emit_status(txn: &TranscriptTx, channel: Channel, text: &str) {
+///
+/// `ts_ms` should be the most recent real audio timestamp the caller has
+/// seen (see `spawn_supervised_session`'s `last_ts_ms` and the pump loop's
+/// per-chunk `ts_ms` above) so the synthetic line lands at roughly the
+/// right point on the transcript timeline instead of always sorting first
+/// at ts_ms=0. Callers with no meaningful position yet (e.g. before any
+/// audio has flowed) pass `0`, which is the same behavior this file always
+/// had.
+fn emit_status(txn: &TranscriptTx, channel: Channel, ts_ms: u64, text: &str) {
     let _ = txn.send(TranscriptEvent {
-        ts_ms: 0,
+        ts_ms,
         channel,
         text: text.to_string(),
         is_final: true,
@@ -204,6 +223,14 @@ async fn spawn_supervised_session(
         // Run the first session with the connection we already opened.
         let mut current_ws = Some(initial);
         let mut attempt: usize = 0;
+        // Real audio timestamp of the last chunk this session forwarded,
+        // updated in the writer arm of the select loop below. Survives
+        // across reconnects (declared outside the outer `loop`) so a
+        // reconnect/auth-failure status event lands near where the audio
+        // actually was, instead of always sorting first at ts_ms=0. Stays
+        // 0 until the first chunk is ever written — there's no meaningful
+        // "last seen" position before that.
+        let mut last_ts_ms: u64 = 0;
 
         loop {
             let ws = match current_ws.take() {
@@ -216,7 +243,12 @@ async fn spawn_supervised_session(
                             attempts = attempt,
                             "deepgram supervisor: exhausted reconnects — giving up"
                         );
-                        emit_status(&txn, channel, "[stt disconnected, reconnect failed]");
+                        emit_status(
+                            &txn,
+                            channel,
+                            last_ts_ms,
+                            "[stt disconnected, reconnect failed]",
+                        );
                         return;
                     }
                     let backoff_ms = 1000u64 << attempt; // 1000, 2000, 4000
@@ -226,7 +258,7 @@ async fn spawn_supervised_session(
                         backoff_ms,
                         "deepgram supervisor: reconnecting"
                     );
-                    emit_status(&txn, channel, "[stt reconnecting]");
+                    emit_status(&txn, channel, last_ts_ms, "[stt reconnecting]");
                     tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
 
                     let cfg_local = DeepgramStt {
@@ -237,7 +269,7 @@ async fn spawn_supervised_session(
                     match connect_once(&cfg_local, channel).await {
                         Ok(w) => {
                             attempt = 0;
-                            emit_status(&txn, channel, "[stt reconnected]");
+                            emit_status(&txn, channel, last_ts_ms, "[stt reconnected]");
                             w
                         }
                         Err(ConnectError::Auth) => {
@@ -245,7 +277,7 @@ async fn spawn_supervised_session(
                                 ?channel,
                                 "deepgram supervisor: auth failed on reconnect — terminal"
                             );
-                            emit_status(&txn, channel, "[stt auth failed]");
+                            emit_status(&txn, channel, last_ts_ms, "[stt auth failed]");
                             return;
                         }
                         Err(ConnectError::Transient(msg)) => {
@@ -307,6 +339,7 @@ async fn spawn_supervised_session(
                     audio = audio_rx.recv() => {
                         match audio {
                             Some(chunk) => {
+                                last_ts_ms = chunk.ts_ms;
                                 let bytes = i16_slice_to_le_bytes(&chunk.samples);
                                 if write.send(Message::Binary(bytes)).await.is_err() {
                                     tracing::warn!(
@@ -339,7 +372,7 @@ async fn spawn_supervised_session(
             }
 
             if needs_reconnect {
-                emit_status(&txn, channel, "[stt disconnected, retrying]");
+                emit_status(&txn, channel, last_ts_ms, "[stt disconnected, retrying]");
                 // current_ws stays None → outer loop will reconnect with backoff.
             }
         }
@@ -524,5 +557,21 @@ mod tests {
         let bytes = i16_slice_to_le_bytes(&[0, 1, -1, 256]);
         // 0 = 00 00, 1 = 01 00, -1 = ff ff, 256 = 00 01
         assert_eq!(bytes, vec![0x00, 0x00, 0x01, 0x00, 0xff, 0xff, 0x00, 0x01]);
+    }
+
+    /// `emit_status` must carry through whatever `ts_ms` the caller passes
+    /// rather than hardcoding 0 — callers now thread the real last-seen
+    /// audio timestamp (`spawn_supervised_session`'s `last_ts_ms`, or the
+    /// dropped chunk's own `ts_ms` in the backpressure path) so synthetic
+    /// status lines land at the right point on the transcript timeline.
+    #[test]
+    fn emit_status_carries_the_caller_supplied_timestamp() {
+        let (tx, mut rx) = tokio::sync::broadcast::channel(4);
+        emit_status(&tx, Channel::Mic, 42_000, "[stt reconnecting]");
+        let ev = rx.try_recv().expect("event was sent");
+        assert_eq!(ev.ts_ms, 42_000);
+        assert_eq!(ev.channel, Channel::Mic);
+        assert!(ev.is_final, "status events must be final/locked lines");
+        assert_eq!(ev.text, "[stt reconnecting]");
     }
 }
