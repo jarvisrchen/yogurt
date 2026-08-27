@@ -183,11 +183,23 @@ function serializeInline(node: PMNode): string {
     if (child.isText) {
       const text = child.text ?? "";
       const aiMark = child.marks.find((m) => m.type.name === "aiGrey");
+      // Bold/italic are the only two inline marks StarterKit contributes
+      // beyond aiGrey/transcriptLink (Meeting.tsx task 4 — "that is all
+      // StarterKit allows here"). Wrap innermost-first so aiGrey's span
+      // (if present) wraps the markdown syntax chars too — round-trips
+      // cleanly since markdown-it still parses ** / _ inside html_inline
+      // span content.
+      const isBold = child.marks.some((m) => m.type.name === "bold");
+      const isItalic = child.marks.some((m) => m.type.name === "italic");
+      let decorated = text;
+      if (isBold && isItalic) decorated = `**_${decorated}_**`;
+      else if (isBold) decorated = `**${decorated}**`;
+      else if (isItalic) decorated = `_${decorated}_`;
       if (aiMark) {
         const ts = (aiMark.attrs.transcriptTs as number | undefined) ?? 0;
-        out += `<span data-ai-grey data-ts="${ts}">${text}</span>`;
+        out += `<span data-ai-grey data-ts="${ts}">${decorated}</span>`;
       } else {
-        out += text;
+        out += decorated;
       }
       return;
     }

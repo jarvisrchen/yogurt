@@ -26,12 +26,22 @@ import { useSettings } from "../lib/api/settings";
 import { useMicrophoneStatus } from "./useMicrophoneStatus";
 import { useScreenRecordingStatus } from "./useScreenRecordingStatus";
 
+// This hook is mounted once at the router `<Shell>` level, so it's alive
+// on EVERY route — including the post-meeting view, which has nothing to
+// do with permissions. Its own gate only checks `pathname === "/"`, and
+// macOS only re-reads permission state on next process launch, so a fast
+// 2s poll here bought nothing but ~10 idle `/api/audio/permission`
+// requests every 20s on every page. 60s keeps `/` correct without the
+// background chatter; `<Welcome />`'s own hook calls (unchanged, default
+// 2s) still drive the fast onboarding cadence while it's mounted.
+const SLOW_POLL_MS = 60_000;
+
 export function useFirstRunRedirect(): void {
   const nav = useNavigate();
   const { pathname } = useLocation();
   const settings = useSettings();
-  const screenRec = useScreenRecordingStatus();
-  const mic = useMicrophoneStatus();
+  const screenRec = useScreenRecordingStatus({ refetchIntervalMs: SLOW_POLL_MS });
+  const mic = useMicrophoneStatus({ refetchIntervalMs: SLOW_POLL_MS });
 
   useEffect(() => {
     // Only gate the root route.

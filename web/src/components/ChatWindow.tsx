@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage as Msg } from "../lib/api";
 import { ChatMessage } from "./ChatMessage";
+import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 
 interface Props {
   messages: Msg[];
@@ -17,10 +18,16 @@ interface Props {
  *
  * Sticky semantics (CHAT spec): outside-click does NOT collapse the
  * window — only the chevron caret in the header does. We deliberately
- * do not attach a document mousedown listener.
+ * do not attach a document mousedown listener. Escape does collapse it
+ * (task NOTES-12(b)) — a keyboard user shouldn't need to tab to the caret.
  *
  * Auto-scroll-to-bottom keeps the latest streamed bubble in view when
  * new content arrives.
+ *
+ * Task NOTES-12(a): the input autofocuses on mount so a user who just hit
+ * ⌘K or clicked the pill can start typing immediately — previously the
+ * panel opened with focus left on whatever the user last clicked, so the
+ * first few keystrokes went nowhere.
  */
 export function ChatWindow({
   messages,
@@ -30,11 +37,18 @@ export function ChatWindow({
 }: Props) {
   const [draft, setDraft] = useState("");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const el = scrollerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useKeyboardShortcut({ key: "Escape" }, onCollapse);
 
   function trySubmit() {
     const trimmed = draft.trim();
@@ -100,6 +114,7 @@ export function ChatWindow({
       </div>
       <footer className="px-3 py-3 border-t border-[var(--color-line)]">
         <input
+          ref={inputRef}
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

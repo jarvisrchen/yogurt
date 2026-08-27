@@ -49,17 +49,34 @@ export interface ScreenRecordingStatus {
   error: Error | null;
 }
 
+export interface UseScreenRecordingStatusOptions {
+  /**
+   * Poll cadence override, in ms. Defaults to the fast 2s cadence
+   * (unchanged behavior for `<Welcome />`'s onboarding gate — see the
+   * matching doc comment on `useMicrophoneStatus`'s options for the full
+   * rationale). Library's gate and the app-wide `useFirstRunRedirect`
+   * check pass a slower interval since the answer rarely changes
+   * mid-session and macOS only re-reads permission state on next process
+   * launch anyway.
+   */
+  refetchIntervalMs?: number;
+}
+
+const DEFAULT_POLL_MS = 2_000;
+
 // Re-export the shared key so existing import-site behavior stays
 // stable for callers that referenced `screenRecordingKey` directly.
 // The canonical name now lives in `../lib/api/audio` as `permissionsKey`.
 export const screenRecordingKey = permissionsKey;
 
-export function useScreenRecordingStatus(): ScreenRecordingStatus {
+export function useScreenRecordingStatus(
+  opts: UseScreenRecordingStatusOptions = {},
+): ScreenRecordingStatus {
   const q = useQuery({
     queryKey: permissionsKey,
     queryFn: fetchPermissions,
     // Poll while onboarding is open — macOS doesn't push permission events.
-    refetchInterval: 2_000,
+    refetchInterval: opts.refetchIntervalMs ?? DEFAULT_POLL_MS,
     staleTime: 0,
   });
 

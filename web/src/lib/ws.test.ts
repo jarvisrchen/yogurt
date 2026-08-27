@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useTranscriptWs, type TranscriptEvent } from "./ws";
+import {
+  useTranscriptWs,
+  useSttError,
+  storedSegmentToEvent,
+  type TranscriptEvent,
+} from "./ws";
 
 /**
  * MockWebSocket — fires `onopen` on the next microtask, exposes `emit(data)`
@@ -247,3 +252,69 @@ describe("useTranscriptWs", () => {
 
 // mergeEvent is exercised through the hook in the merge test above; this is
 // the spec for the partial-replacement logic ("mergeEvent" appears verbatim).
+
+describe("storedSegmentToEvent", () => {
+  it("maps 'me' to the mic channel and 'them' to the system channel", () => {
+    expect(
+      storedSegmentToEvent({ ts_ms: 100, channel: "me", text: "hi" }),
+    ).toEqual({ ts_ms: 100, channel: "mic", text: "hi", is_final: true });
+    expect(
+      storedSegmentToEvent({ ts_ms: 200, channel: "them", text: "hey" }),
+    ).toEqual({ ts_ms: 200, channel: "system", text: "hey", is_final: true });
+  });
+});
+
+describe("useSttError", () => {
+  beforeEach(() => {
+    MockWebSocket.lastInstance = null;
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { protocol: "http:", host: "localhost:5173" },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("surfaces the message from an stt_error frame and clears on dismiss", async () => {
+    const { result } = renderHook(() => useSttError("meeting-1", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      ws.onmessage?.call(
+        ws as unknown as WebSocket,
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "stt_error",
+            message: "Deepgram key invalid",
+          }),
+        }),
+      );
+    });
+
+    expect(result.current.message).toBe("Deepgram key invalid");
+
+    act(() => {
+      result.current.dismiss();
+    });
+    expect(result.current.message).toBeNull();
+  });
+
+  it("ignores non-stt_error frames on the shared socket", async () => {
+    const { result } = renderHook(() => useSttError("meeting-2", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      ws.emit(
+        frame({ ts_ms: 1, channel: "mic", text: "hi", is_final: true }),
+      );
+    });
+
+    expect(result.current.message).toBeNull();
+  });
+});

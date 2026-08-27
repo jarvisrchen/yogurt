@@ -45,13 +45,33 @@ export interface MicrophoneStatus {
   error: Error | null;
 }
 
-export function useMicrophoneStatus(): MicrophoneStatus {
+export interface UseMicrophoneStatusOptions {
+  /**
+   * Poll cadence override, in ms. Defaults to the fast 2s cadence
+   * (unchanged behavior — the primary consumer is `<Welcome />`'s
+   * onboarding gate, which wants near-real-time updates while the user
+   * is actively granting permission). Callers where the answer barely
+   * ever changes mid-session (Library's gate, the app-wide
+   * `useFirstRunRedirect` check) should pass a slower interval — e.g.
+   * `60_000` — so the app isn't polling `/api/audio/permission` every 2s
+   * on every route (this hook shares `permissionsKey` with
+   * `useScreenRecordingStatus`, so whichever mounted observer requests
+   * the fastest interval wins for the whole app while it's mounted;
+   * dropping the "elsewhere" call sites to 60s means the effective rate
+   * is 2s only while onboarding is actually on screen).
+   */
+  refetchIntervalMs?: number;
+}
+
+const DEFAULT_POLL_MS = 2_000;
+
+export function useMicrophoneStatus(
+  opts: UseMicrophoneStatusOptions = {},
+): MicrophoneStatus {
   const q = useQuery({
     queryKey: permissionsKey,
     queryFn: fetchPermissions,
-    // Same poll cadence as screen-recording; React Query dedupes the
-    // shared key so both hooks land on a single network request per tick.
-    refetchInterval: 2_000,
+    refetchInterval: opts.refetchIntervalMs ?? DEFAULT_POLL_MS,
     staleTime: 0,
   });
 
