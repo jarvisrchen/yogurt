@@ -75,8 +75,22 @@ dim "  Non-API requests proxy to Vite on :5173 — run ./scripts/run-frontend.sh
 dim "  Ctrl-C to stop."
 echo
 
+# Build first, launch second (instead of `cargo run`) so there is a point
+# to sign the binary. A stable `yogurt-dev` code identity makes macOS
+# Keychain "Always Allow" grants survive rebuilds — unsigned debug builds
+# get a new identity every compile, so every rebuild would re-prompt.
+# Optional: see README "Keychain prompts (macOS)" for the one-time cert setup.
 if [ -n "$PROFILE_FLAG" ]; then
-  exec cargo run $PROFILE_FLAG -p yogurt -- start --dev --port "$PORT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+  cargo build $PROFILE_FLAG -p yogurt
 else
-  exec cargo run -p yogurt -- start --dev --port "$PORT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+  cargo build -p yogurt
 fi
+BIN="target/$PROFILE_DIR/yogurt"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "yogurt-dev"; then
+  if codesign --force --sign "yogurt-dev" "$BIN" 2>/dev/null; then
+    dim "  signed with yogurt-dev identity — Keychain grants persist across rebuilds"
+  else
+    dim "  yogurt-dev signing failed — continuing unsigned"
+  fi
+fi
+exec "$BIN" start --dev --port "$PORT" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

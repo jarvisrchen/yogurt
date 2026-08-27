@@ -46,6 +46,7 @@ async fn spawn_server() -> (
     let addr = probe.local_addr().unwrap();
     drop(probe);
 
+    std::env::set_var("YOGURT_MEMORY_KEYSTORE", "1");
     let cfg = RunConfig {
         addr,
         mode: Mode::Release,

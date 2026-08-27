@@ -18,6 +18,7 @@ async fn spawn_server(mode: Mode) -> (SocketAddr, tokio::task::JoinHandle<()>, t
     let addr: SocketAddr = probe.local_addr().expect("local_addr");
     drop(probe);
 
+    std::env::set_var("YOGURT_MEMORY_KEYSTORE", "1");
     let cfg = RunConfig {
         addr,
         mode,

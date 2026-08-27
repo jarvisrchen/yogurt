@@ -56,12 +56,12 @@ build-web:
 
 # Full test suite (cargo + web) — what CI runs.
 test:
-    cargo test --workspace --features yogurt-stt/local-stt
+    YOGURT_MEMORY_KEYSTORE=1 cargo test --workspace --features yogurt-stt/local-stt
     pnpm --dir web test
 
 # Just the Rust tests.
 test-rust:
-    cargo test --workspace --features yogurt-stt/local-stt
+    YOGURT_MEMORY_KEYSTORE=1 cargo test --workspace --features yogurt-stt/local-stt
 
 # Just the web tests.
 test-web:

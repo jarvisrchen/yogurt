@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use yogurt_db::keychain::{ApiKeyStore, KeychainStore, MemoryKeyStore};
+use yogurt_db::keychain::{ApiKeyStore, KeychainStore, MemoryKeyStore, SessionCacheKeyStore};
 use yogurt_db::{Db, Meeting, MeetingPatch, MeetingRepo};
 use yogurt_llm::LlmClient;
 
@@ -150,6 +150,28 @@ impl AppState {
         };
         let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
         let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
+        // Keychain-prompt mitigation (see crates/yogurt-db/src/keychain.rs
+        // doc comment): integration/CLI tests set `YOGURT_MEMORY_KEYSTORE`
+        // so they never touch the real macOS Keychain — every test binary
+        // has a unique code identity, so "Always Allow" can never stick and
+        // prompts would otherwise recur forever. Production (dev + release)
+        // wraps the real KeychainStore in a `SessionCacheKeyStore` so keys
+        // seeded from .env.local or pasted in Settings are served from
+        // memory for the rest of the process lifetime — the Keychain is
+        // only read on a fresh boot with no env seeding.
+        let keys: Arc<dyn ApiKeyStore> =
+            if std::env::var("YOGURT_MEMORY_KEYSTORE").is_ok_and(|v| !v.is_empty()) {
+                tracing::info!(
+                "YOGURT_MEMORY_KEYSTORE set — using in-memory key store, real Keychain untouched"
+            );
+                Arc::new(MemoryKeyStore::default())
+            } else {
+                // Phase 5 BLOCKER fix: KeychainStore::new() registers the
+                // apple-native-keyring-store backend with keyring-core. The
+                // unit-struct form silently no-op'd set_password() under
+                // keyring 3.6.x on macOS in 2026.
+                Arc::new(SessionCacheKeyStore::new(Arc::new(KeychainStore::new()?)))
+            };
         Ok(Self {
             mode: cfg.mode,
             storage: cfg.storage,
@@ -159,11 +181,7 @@ impl AppState {
             markdown_exporter: exporter,
             prompts,
             db,
-            // Phase 5 BLOCKER fix: KeychainStore::new() registers the
-            // apple-native-keyring-store backend with keyring-core. The
-            // unit-struct form silently no-op'd set_password() under
-            // keyring 3.6.x on macOS in 2026.
-            keys: Arc::new(KeychainStore::new()?),
+            keys,
             llm_override: None,
             // Phase 7 (Plan 07-01): the new SQLite-backed Library directory.
             meeting_repo,

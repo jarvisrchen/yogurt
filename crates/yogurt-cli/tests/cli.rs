@@ -36,6 +36,7 @@ async fn it_starts_server_and_serves_health() {
     let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
         .args(["start", "--port", &port.to_string(), "--no-open"])
         .env("HOME", tmp.path())
+        .env("YOGURT_MEMORY_KEYSTORE", "1")
         .spawn()
         .expect("spawn yogurt");
 
@@ -85,6 +86,7 @@ async fn it_reports_port_conflict_with_friendly_error() {
     let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
         .args(["start", "--port", &port.to_string(), "--no-open"])
         .env("HOME", tmp.path())
+        .env("YOGURT_MEMORY_KEYSTORE", "1")
         .output()
         .await
         .expect("spawn yogurt");
@@ -131,6 +133,7 @@ async fn it_does_not_suggest_port_0_at_upper_boundary() {
     let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
         .args(["start", "--port", "65535", "--no-open"])
         .env("HOME", tmp.path())
+        .env("YOGURT_MEMORY_KEYSTORE", "1")
         .output()
         .await
         .expect("spawn yogurt");

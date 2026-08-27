@@ -15,7 +15,7 @@
 
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
 /// All Keychain entries are namespaced under this service name.
 pub const SERVICE: &str = "yogurt";
@@ -166,5 +166,192 @@ impl ApiKeyStore for KeychainStore {
             Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+/// Write-through in-memory cache over an inner `ApiKeyStore`.
+///
+/// Dev-rebuild mitigation: unsigned debug binaries get a new code identity
+/// every rebuild, so macOS can never remember an "Always Allow" grant for
+/// them. `SessionCacheKeyStore` means the real Keychain (`KeychainStore`) is
+/// only ever hit once per key per process — after a `set()` (key pasted in
+/// Settings) or the first successful `get()` (key seeded via `.env.local` at
+/// boot, or read from Keychain on a fresh boot), every later read for that
+/// account is served from memory for the rest of the process's lifetime.
+///
+/// `get()` only caches successful `Some(_)` reads from the inner store. A
+/// miss or an error is NOT cached, so a denied/hung Keychain read stays
+/// retryable on the next call instead of being pinned to a false negative.
+pub struct SessionCacheKeyStore {
+    inner: Arc<dyn ApiKeyStore>,
+    cache: RwLock<HashMap<String, String>>,
+}
+
+impl SessionCacheKeyStore {
+    pub fn new(inner: Arc<dyn ApiKeyStore>) -> Self {
+        Self {
+            inner,
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+impl ApiKeyStore for SessionCacheKeyStore {
+    fn get(&self, account: &str) -> Result<Option<String>> {
+        if let Some(cached) = self.cache.read().unwrap().get(account) {
+            return Ok(Some(cached.clone()));
+        }
+        let fetched = self.inner.get(account)?;
+        if let Some(secret) = &fetched {
+            self.cache
+                .write()
+                .unwrap()
+                .insert(account.to_string(), secret.clone());
+        }
+        Ok(fetched)
+    }
+
+    fn set(&self, account: &str, secret: &str) -> Result<()> {
+        // Cache first so a concurrent read on another thread sees the new
+        // value immediately; the inner write happening second is fine since
+        // errors from it propagate to the caller as before.
+        self.cache
+            .write()
+            .unwrap()
+            .insert(account.to_string(), secret.to_string());
+        self.inner.set(account, secret)
+    }
+
+    fn delete(&self, account: &str) -> Result<()> {
+        self.cache.write().unwrap().remove(account);
+        self.inner.delete(account)
+    }
+
+    fn masked(&self, account: &str) -> Result<Option<String>> {
+        if let Some(cached) = self.cache.read().unwrap().get(account) {
+            return Ok(Some(mask_suffix(cached)));
+        }
+        self.inner.masked(account)
+    }
+}
+
+#[cfg(test)]
+mod session_cache_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Probe inner store: counts calls so tests can assert the cache
+    /// actually short-circuits reads instead of just happening to return
+    /// the right value.
+    #[derive(Default)]
+    struct ProbeStore {
+        get_calls: AtomicUsize,
+        set_calls: AtomicUsize,
+        delete_calls: AtomicUsize,
+        data: Mutex<HashMap<String, String>>,
+    }
+
+    impl ApiKeyStore for ProbeStore {
+        fn get(&self, account: &str) -> Result<Option<String>> {
+            self.get_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.data.lock().unwrap().get(account).cloned())
+        }
+        fn set(&self, account: &str, secret: &str) -> Result<()> {
+            self.set_calls.fetch_add(1, Ordering::SeqCst);
+            self.data
+                .lock()
+                .unwrap()
+                .insert(account.to_string(), secret.to_string());
+            Ok(())
+        }
+        fn delete(&self, account: &str) -> Result<()> {
+            self.delete_calls.fetch_add(1, Ordering::SeqCst);
+            self.data.lock().unwrap().remove(account);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn set_then_get_never_touches_inner() {
+        let probe = Arc::new(ProbeStore::default());
+        let cache = SessionCacheKeyStore::new(probe.clone());
+
+        cache.set("acct", "sk-secret-1234").unwrap();
+        let got = cache.get("acct").unwrap();
+
+        assert_eq!(got.as_deref(), Some("sk-secret-1234"));
+        assert_eq!(
+            probe.get_calls.load(Ordering::SeqCst),
+            0,
+            "get after set must be served from cache, never the inner store"
+        );
+        assert_eq!(probe.set_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn get_miss_falls_through_then_caches_the_hit() {
+        let probe = Arc::new(ProbeStore::default());
+        probe
+            .data
+            .lock()
+            .unwrap()
+            .insert("acct".to_string(), "from-inner".to_string());
+        let cache = SessionCacheKeyStore::new(probe.clone());
+
+        let first = cache.get("acct").unwrap();
+        assert_eq!(first.as_deref(), Some("from-inner"));
+        assert_eq!(probe.get_calls.load(Ordering::SeqCst), 1);
+
+        // Second read for the same account must be served from cache.
+        let second = cache.get("acct").unwrap();
+        assert_eq!(second.as_deref(), Some("from-inner"));
+        assert_eq!(
+            probe.get_calls.load(Ordering::SeqCst),
+            1,
+            "successful Some() reads must be cached after the first hit"
+        );
+    }
+
+    #[test]
+    fn get_miss_on_unknown_account_stays_uncached() {
+        let probe = Arc::new(ProbeStore::default());
+        let cache = SessionCacheKeyStore::new(probe.clone());
+
+        assert_eq!(cache.get("ghost").unwrap(), None);
+        assert_eq!(cache.get("ghost").unwrap(), None);
+        assert_eq!(
+            probe.get_calls.load(Ordering::SeqCst),
+            2,
+            "misses must not be cached — every miss retries the inner store"
+        );
+    }
+
+    #[test]
+    fn masked_from_cache_matches_inner_format() {
+        let probe = Arc::new(ProbeStore::default());
+        let cache = SessionCacheKeyStore::new(probe.clone());
+        cache.set("acct", "sk-abcd1234").unwrap();
+
+        let masked = cache.masked("acct").unwrap();
+        let inner_masked = probe.masked("acct").unwrap();
+
+        assert_eq!(masked, inner_masked);
+        assert_eq!(masked.as_deref(), Some("••••1234"));
+    }
+
+    #[test]
+    fn delete_clears_both_cache_and_inner() {
+        let probe = Arc::new(ProbeStore::default());
+        let cache = SessionCacheKeyStore::new(probe.clone());
+        cache.set("acct", "sk-secret").unwrap();
+
+        cache.delete("acct").unwrap();
+
+        assert_eq!(probe.delete_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(cache.get("acct").unwrap(), None);
+        assert!(probe.data.lock().unwrap().get("acct").is_none());
+        // The get() above is a miss on both cache and inner, so it must
+        // have gone through to the (now-empty) inner store.
+        assert_eq!(probe.get_calls.load(Ordering::SeqCst), 1);
     }
 }

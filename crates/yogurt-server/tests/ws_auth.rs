@@ -47,6 +47,7 @@ async fn spawn_test_server() -> TestServer {
     };
     let addr = format!("127.0.0.1:{port}").parse().unwrap();
 
+    std::env::set_var("YOGURT_MEMORY_KEYSTORE", "1");
     let cfg = RunConfig {
         addr,
         mode: Mode::Release,
