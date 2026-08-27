@@ -24,9 +24,17 @@ async fn it_starts_server_and_serves_health() {
     // for HOME-tempdir rationale.
     let tmp = tempfile::tempdir().expect("create tempdir for HOME");
 
+    // Ephemeral port: let the kernel pick a free one, then release it for
+    // the CLI to bind. Fixed ports (the old 17879) race under parallel
+    // test runs. Tiny TOCTOU window between drop and the CLI's bind is
+    // acceptable — far better than a hardcoded port.
+    let probe = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+    let port = probe.local_addr().expect("local_addr").port();
+    drop(probe);
+
     // Spawn `yogurt start` in the background.
     let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
-        .args(["start", "--port", "17879", "--no-open"])
+        .args(["start", "--port", &port.to_string(), "--no-open"])
         .env("HOME", tmp.path())
         .spawn()
         .expect("spawn yogurt");
@@ -36,7 +44,7 @@ async fn it_starts_server_and_serves_health() {
     // flake source. ws_auth.rs uses this same pattern.
     let mut body = String::new();
     for _ in 0..100 {
-        if let Ok(resp) = reqwest::get("http://127.0.0.1:17879/api/health").await {
+        if let Ok(resp) = reqwest::get(format!("http://127.0.0.1:{port}/api/health")).await {
             if let Ok(t) = resp.text().await {
                 body = t;
                 break;
@@ -54,8 +62,18 @@ async fn it_starts_server_and_serves_health() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_reports_port_conflict_with_friendly_error() {
-    // Occupy the port from the test process.
-    let listener = StdTcpListener::bind("127.0.0.1:17883").expect("can bind 17883 in test");
+    // Occupy an ephemeral kernel-assigned port from the test process and
+    // keep it held — fully deterministic, no fixed-port (old 17883) races.
+    // Re-roll in the unlikely event we land on 65535: the "+1 suggestion"
+    // assertion below would overflow the port space (that boundary has its
+    // own dedicated test).
+    let listener = loop {
+        let l = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+        if l.local_addr().expect("local_addr").port() != u16::MAX {
+            break l;
+        }
+    };
+    let port = listener.local_addr().expect("local_addr").port();
 
     // SET-12 follow-up: redirect HOME to a tempdir so the spawned `yogurt`
     // subprocess doesn't touch the developer's real ~/.yogurt/db.sqlite
@@ -65,7 +83,7 @@ async fn it_reports_port_conflict_with_friendly_error() {
     let tmp = tempfile::tempdir().expect("create tempdir for HOME");
 
     let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
-        .args(["start", "--port", "17883", "--no-open"])
+        .args(["start", "--port", &port.to_string(), "--no-open"])
         .env("HOME", tmp.path())
         .output()
         .await
@@ -83,13 +101,14 @@ async fn it_reports_port_conflict_with_friendly_error() {
         stderr.contains("already in use"),
         "stderr should contain 'already in use'; got: {stderr}"
     );
+    let next = port + 1;
     assert!(
-        stderr.contains("--port 17884"),
-        "stderr should suggest --port 17884; got: {stderr}"
+        stderr.contains(&format!("--port {next}")),
+        "stderr should suggest --port {next}; got: {stderr}"
     );
     assert!(
-        stderr.contains("lsof -i :17883"),
-        "stderr should suggest lsof -i :17883; got: {stderr}"
+        stderr.contains(&format!("lsof -i :{port}")),
+        "stderr should suggest lsof -i :{port}; got: {stderr}"
     );
 }
 
