@@ -66,6 +66,18 @@ if [ ! -x "$BIN" ]; then
   cargo build --release
 fi
 
+# Optional dev signing: a stable `yogurt-dev` identity keeps macOS Keychain
+# "Always Allow" grants valid across rebuilds. Shipped releases get real
+# notarized signing in the Phase 9 pipeline; this is for local builds only.
+# See README "Keychain prompts (macOS)".
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "yogurt-dev"; then
+  if codesign --force --sign "yogurt-dev" "$BIN" 2>/dev/null; then
+    dim "  signed with yogurt-dev identity — Keychain grants persist across rebuilds"
+  else
+    dim "  yogurt-dev signing failed — continuing unsigned"
+  fi
+fi
+
 PORT=$(ensure_port_free "release" "$PORT") || exit 1
 
 bold "Starting yogurt (release mode) at http://localhost:$PORT"

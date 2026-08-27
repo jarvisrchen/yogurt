@@ -17,6 +17,7 @@ async fn it_responds_to_health() {
     let addr: SocketAddr = probe.local_addr().expect("local_addr");
     drop(probe);
 
+    std::env::set_var("YOGURT_MEMORY_KEYSTORE", "1");
     let cfg = RunConfig {
         addr,
         mode: Mode::Release,

@@ -19,6 +19,8 @@ jobs:
         run: cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings
       - name: test
         run: cargo test --workspace --features yogurt-stt/local-stt
+        env:
+          YOGURT_MEMORY_KEYSTORE: "1"
 
   web:
     runs-on: ubuntu-latest

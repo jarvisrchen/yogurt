@@ -43,6 +43,7 @@ async fn spawn_server() -> (SocketAddr, String, tempfile::TempDir) {
     let addr: SocketAddr = probe.local_addr().expect("local_addr");
     drop(probe);
 
+    std::env::set_var("YOGURT_MEMORY_KEYSTORE", "1");
     let cfg = RunConfig {
         addr,
         mode: Mode::Release,

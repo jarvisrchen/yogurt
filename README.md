@@ -195,6 +195,23 @@ Local state lives under `~/.yogurt/`:
 Audio never leaves your machine unless you opt into a cloud STT provider, and
 even then only the audio stream goes out — never the notes.
 
+## Keychain prompts (macOS)
+
+API keys are stored in the macOS Keychain, and macOS grants Keychain access per binary identity, not per app name.
+An unsigned debug build gets a new identity on every compile, so a plain `cargo build` invalidates any earlier "Always Allow" click.
+That is why unsigned dev workflows can feel like popup spam.
+
+What yogurt does about it:
+
+- The test suites never touch the real Keychain.
+  Every server-booting integration test and the CLI tests set `YOGURT_MEMORY_KEYSTORE=1`, which swaps in an in-memory store (the `just test` recipes and CI set it too).
+- Dev runs with `.env.local` do not need the Keychain at all.
+  Keys seeded from env or pasted into Settings are served from an in-process cache for the lifetime of the process, so the Keychain is only read on a fresh boot with no env seeding.
+- For dev builds where you paste keys in Settings, you can make grants permanent with a one-time step: open Keychain Access, then Certificate Assistant > Create a Certificate, name it `yogurt-dev`, set Certificate Type to Code Signing, and create it.
+  The run scripts detect the identity and sign the binary after every build, so macOS sees the same app across rebuilds and one "Always Allow" click sticks forever.
+
+Shipped release builds get real notarized signing in the distribution pipeline, so end users see at most one prompt.
+
 ## CLI
 
 ```text
