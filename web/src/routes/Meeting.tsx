@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { YogurtEditor } from "../editor";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
+import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
+import { meetingsApi, useMeeting } from "../lib/api/meetings";
+import { useSttError } from "../lib/ws";
 
 const INK = "#211D18";
 const LINE = "#EBE3D5";
@@ -14,9 +16,12 @@ const BLUE = "#5B4FC7";
 const STRAW_SOFT = "#FBE6E0";
 const STRAW = "#E07A66";
 
+const NOTES_PLACEHOLDER =
+  "Take sparse notes during the meeting — AI enhances on End.";
+
 interface MeetingCreatedResponse {
   id: string;
-  created_at_ms?: number;
+  title?: string;
 }
 
 interface ServerError {
@@ -24,37 +29,40 @@ interface ServerError {
 }
 
 /**
- * Phase 3 + Phase 4 Meeting view.
+ * Meeting view — the in-progress recording surface.
  *
  * Two URL shapes drive this route:
  *   - `/meeting/new`   — bootstraps a fresh meeting (POST /api/meetings, then
- *                        `navigate("/meeting/{id}", { replace: true })`).
- *   - `/meeting/:id`   — the in-meeting view for a known meeting id.
+ *                        `navigate("/meeting/{id}", { replace: true })`), and
+ *                        auto-starts recording (task NOTES-01 — Granola is
+ *                        one-click-and-recording, not "create then hunt for
+ *                        Start").
+ *   - `/meeting/:id`   — the in-meeting view for a known meeting id. Also
+ *                        hydrates title + any already-saved notes_md via
+ *                        `useMeeting` (covers refresh / resuming a meeting
+ *                        that was created but never finished).
  *
- * The Phase 3 `useState<View>` toggle in App.tsx routes "Open a new meeting →"
- * to `/meeting/new`, which lands here.
- *
- * Layout invariants (unchanged from Phase 3):
+ * Layout invariants (unchanged from earlier phases):
  *   - Wrapper has `pr-7` to reserve the 28px gutter the dock's closed-tab
- *     occupies (Phase 3 D-15). When the dock opens the 330px panel overlays
- *     via `position: fixed`; the notes column does NOT reflow.
+ *     occupies. When the dock opens the 330px panel overlays via
+ *     `position: fixed`; the notes column does NOT reflow.
  *   - Main column maxes at 660px (Design Board line 307 / NOTES-01).
- *   - Notes editor remains a TipTap StarterKit instance for the in-meeting
- *     view. The hero `YogurtEditor` lives on the post-meeting route — keeping
- *     them split lets the in-meeting view stay light (no aiGrey / transcript
- *     link plumbing needed while you're still typing).
+ *   - Notes editor is the shared `<YogurtEditor>` (same markdown
+ *     serializer + placeholder support as the post-meeting hero editor) —
+ *     the aiGrey/transcriptLink marks it also registers are simply unused
+ *     here (nothing grey exists pre-enhance).
  *
- * Phase 4 additions:
- *   - End meeting button: POST /api/meetings/:id/enhance with the current
- *     notes + transcript JSON, then navigate to /meeting/:id/post with the
- *     enriched markdown threaded via location.state to avoid a re-fetch.
- *   - Transcript JSON is accumulated by listening to the WS events via the
- *     TranscriptDock — to keep the data path tight we duplicate the
- *     subscription here (TODO Phase 5: lift transcript state to a shared
- *     store so the dock + this view can share one subscription).
+ * Persistence:
+ *   - Notes autosave debounced 800ms via `PATCH {notes_md}`, flushed on
+ *     unmount and before End meeting.
+ *   - End meeting: stop recording (so the server flushes the transcript)
+ *     → enhance (current notes_md + `transcript_json: "[]"` — the server
+ *     prefers its own stored transcript when the body's is empty — + the
+ *     current title) → navigate to `/meeting/:id/post`.
  */
 export function Meeting() {
   const params = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
 
   // `id` is either the routed UUID, or `"new"` (the bootstrap shape).
@@ -64,31 +72,96 @@ export function Meeting() {
   );
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True when `error` stems from a failed recording start — surfaces an
+  // "Open Settings" link since that's almost always a missing/bad STT
+  // provider key (task NOTES-01).
+  const [errorIsStartFailure, setErrorIsStartFailure] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [enhancing, setEnhancing] = useState(false);
-  // We mirror the editor's plain-text markdown so the End-meeting handler
-  // can post it. StarterKit doesn't natively serialize to markdown, so we
-  // capture the plain text via editor.getText() — good enough for the
-  // in-meeting view where users type sparse bullet lines. The hero
-  // YogurtEditor on the post-meeting route handles the full markdown
-  // round-trip.
   const [notesMd, setNotesMd] = useState<string>("");
-  // Phase 3's TranscriptDock owns the WS subscription. For the End-meeting
-  // → enhance POST we don't have the transcript events here directly; the
-  // Phase 4 endpoint accepts an empty `transcript_json` and the LLM still
-  // gets the notes (CONTEXT D-20 MockLlm fallback). When the WS-backed
-  // transcript surface lands in shared state (Phase 5), this empty array
-  // upgrade is one prop wire-up.
-  const transcriptJson = "[]";
+  // Populated exactly once (task NOTES-02 hydration) when `useMeeting`
+  // resolves a non-empty `notes_md` — fed into YogurtEditor's
+  // `enrichedMarkdown` prop, which swaps editor content WITHOUT firing
+  // onChange (so it never re-triggers autosave with its own value).
+  const [hydratedNotesMd, setHydratedNotesMd] = useState<string | undefined>(
+    undefined,
+  );
 
-  const editor = useEditor({
-    extensions: [StarterKit],
-    content:
-      "<p>Take sparse notes during the meeting — AI enhances on End.</p>",
-    onUpdate: ({ editor }) => {
-      setNotesMd(editor.getText());
-    },
-  });
+  const sttError = useSttError(meetingId, token);
+
+  function setErrorMessage(message: string | null, isStartFailure = false) {
+    setError(message);
+    setErrorIsStartFailure(isStartFailure);
+  }
+
+  // Hydration source for title + previously-saved notes. Also doubles as
+  // the "has the server round-trip for this meeting settled at least
+  // once" gate for autosave below — without it, autosave could fire
+  // before hydration and PATCH an empty notes_md over real saved content
+  // (see the `hydrationSettled` effect further down).
+  const meetingQuery = useMeeting(meetingId ?? undefined);
+  const meetingRow = meetingQuery.data;
+  const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
+
+  const title = meetingId
+    ? (meetingRow?.title ?? "Untitled meeting")
+    : "New meeting";
+
+  // Always-latest refs so the unmount-flush effect (which only runs its
+  // cleanup once, at true unmount) and `flushNotes` never read a stale
+  // closure. Plain assignment during render is the standard React pattern
+  // for this — no separate effect needed.
+  const meetingIdRef = useRef(meetingId);
+  meetingIdRef.current = meetingId;
+  const notesMdRef = useRef(notesMd);
+  notesMdRef.current = notesMd;
+  const lastSavedNotesRef = useRef<string>("");
+
+  const hydratedNotesRef = useRef(false);
+  useEffect(() => {
+    if (hydratedNotesRef.current) return;
+    if (meetingRow?.notes_md) {
+      hydratedNotesRef.current = true;
+      setHydratedNotesMd(meetingRow.notes_md);
+      // Sync the tracked-markdown state too — YogurtEditor's
+      // `enrichedMarkdown` swap intentionally does NOT fire onChange, so
+      // without this a user who hits End meeting before typing anything
+      // would send an empty notes_md, clobbering their hydrated notes.
+      setNotesMd(meetingRow.notes_md);
+      lastSavedNotesRef.current = meetingRow.notes_md;
+    }
+  }, [meetingRow]);
+
+  const flushNotes = useCallback(async () => {
+    const id = meetingIdRef.current;
+    if (!id) return;
+    const md = notesMdRef.current;
+    if (md === lastSavedNotesRef.current) return;
+    lastSavedNotesRef.current = md;
+    try {
+      await meetingsApi.patch(id, { notes_md: md });
+    } catch {
+      // Best-effort — a later autosave tick or the End-meeting flush
+      // retries. Notes still live in the editor either way; nothing is
+      // silently lost, just not yet durable server-side.
+    }
+  }, []);
+
+  // Debounced autosave (task NOTES-02, 800ms).
+  useEffect(() => {
+    if (!meetingId || !hydrationSettled) return;
+    const t = setTimeout(() => {
+      void flushNotes();
+    }, 800);
+    return () => clearTimeout(t);
+  }, [notesMd, meetingId, hydrationSettled, flushNotes]);
+
+  // Flush on unmount (task NOTES-02).
+  useEffect(() => {
+    return () => {
+      void flushNotes();
+    };
+  }, [flushNotes]);
 
   // WR-06: fetch the session token once on mount so every subsequent
   // /api/meetings* call (and the per-meeting WS) carries it.
@@ -100,7 +173,7 @@ export function Meeting() {
       },
       (e: unknown) => {
         if (!cancelled) {
-          setError(
+          setErrorMessage(
             e instanceof Error
               ? `Failed to load session token: ${e.message}`
               : "Failed to load session token",
@@ -113,9 +186,75 @@ export function Meeting() {
     };
   }, []);
 
-  // /meeting/new bootstrap: as soon as we have a token, POST /api/meetings
-  // and replace-navigate to /meeting/:id. Replace (not push) so the back
-  // button doesn't return to the bootstrap URL.
+  function authedHeaders(): Record<string, string> {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  // Guards the auto-start-on-mount call (below) against StrictMode's
+  // dev-only double-invoke of effects — a second POST /start on an
+  // already-started meeting would 400 ("meeting already started") and
+  // paint a spurious error the user never caused.
+  const autoStartedRef = useRef(false);
+
+  // Lets `endMeeting` skip its post-await state updates once the
+  // successful-navigate branch has already unmounted this component.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  async function startRecording(idOverride?: string) {
+    const id = idOverride ?? meetingId;
+    if (!id) return;
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`/api/meetings/${id}/start`, {
+        method: "POST",
+        headers: authedHeaders(),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as ServerError;
+        setErrorMessage(
+          body.error ?? `Failed to start recording (${res.status})`,
+          true,
+        );
+        return;
+      }
+      setRecording(true);
+    } catch (e) {
+      setErrorMessage(
+        e instanceof Error ? e.message : "Failed to start recording",
+        true,
+      );
+    }
+  }
+
+  async function stopRecording() {
+    if (!meetingId) return;
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}/stop`, {
+        method: "POST",
+        headers: authedHeaders(),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as ServerError;
+        setErrorMessage(body.error ?? `Failed to stop recording (${res.status})`);
+        return;
+      }
+      setRecording(false);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : "Failed to stop recording");
+    }
+  }
+
+  // /meeting/new bootstrap: as soon as we have a token, POST /api/meetings,
+  // replace-navigate to /meeting/:id, and auto-start recording (task
+  // NOTES-01 — "+ New meeting" means one click, not create-then-hunt-for-
+  // Start). Replace (not push) so the back button doesn't return to the
+  // bootstrap URL.
   useEffect(() => {
     if (routeId !== "new") return;
     if (!token) return;
@@ -129,7 +268,7 @@ export function Meeting() {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as ServerError;
           if (!cancelled) {
-            setError(
+            setErrorMessage(
               body.error ?? `Failed to create meeting (${res.status})`,
             );
           }
@@ -139,10 +278,14 @@ export function Meeting() {
         if (!cancelled) {
           setMeetingId(json.id);
           navigate(`/meeting/${json.id}`, { replace: true });
+          if (!autoStartedRef.current) {
+            autoStartedRef.current = true;
+            void startRecording(json.id);
+          }
         }
       } catch (e) {
         if (!cancelled) {
-          setError(
+          setErrorMessage(
             e instanceof Error ? e.message : "Failed to create meeting",
           );
         }
@@ -151,6 +294,7 @@ export function Meeting() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, token, navigate]);
 
   // Keep meetingId in sync if the user navigates directly to /meeting/:id.
@@ -160,59 +304,38 @@ export function Meeting() {
     }
   }, [routeId]);
 
-  function authedHeaders(): Record<string, string> {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
+  // Task NOTES-01, the actual production path: the Library sidebar's
+  // "+ New meeting" button (and its ⌘N twin) already POST /api/meetings
+  // themselves via `useCreateMeeting`, then `navigate(/meeting/:id)`
+  // directly with a REAL id — they never hit the `/meeting/new` bootstrap
+  // route above (that route has no `:id` segment, so `routeId` is never
+  // literally `"new"` when reached that way; it's kept only for direct
+  // URL bootstrapping). Sidebar.tsx / Library.tsx thread
+  // `{ state: { autoStart: true } }` through that navigation so this
+  // effect knows to fire /start immediately, same one-click-and-
+  // recording contract, same `autoStartedRef` StrictMode guard.
+  const autoStartRequested =
+    (location.state as { autoStart?: boolean } | null)?.autoStart === true;
+  useEffect(() => {
+    if (!autoStartRequested) return;
+    if (!meetingId || !token) return;
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void startRecording(meetingId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartRequested, meetingId, token]);
 
-  async function startRecording() {
-    if (!meetingId) return;
-    setError(null);
-    try {
-      const res = await fetch(`/api/meetings/${meetingId}/start`, {
-        method: "POST",
-        headers: authedHeaders(),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as ServerError;
-        setError(body.error ?? `Failed to start recording (${res.status})`);
-        return;
-      }
-      setRecording(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start recording");
-    }
-  }
-
-  async function stopRecording() {
-    if (!meetingId) return;
-    setError(null);
-    try {
-      const res = await fetch(`/api/meetings/${meetingId}/stop`, {
-        method: "POST",
-        headers: authedHeaders(),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as ServerError;
-        setError(body.error ?? `Failed to stop recording (${res.status})`);
-        return;
-      }
-      setRecording(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to stop recording");
-    }
-  }
-
-  // End meeting: POST /api/meetings/:id/enhance with the current notes +
-  // transcript, then navigate to /meeting/:id/post with the enriched
-  // markdown threaded in location.state. The post route falls back to
-  // GET /api/meetings/:id if state is absent (refresh / direct link).
+  // End meeting: flush notes, stop any active recording (so the server's
+  // transcript accumulator has flushed before enhance reads it), then
+  // POST /enhance with the CURRENT notes + the always-empty transcript
+  // body (the server prefers its own stored transcript), then navigate to
+  // the post-meeting view.
   async function endMeeting() {
     if (!meetingId || !token) return;
-    setError(null);
+    setErrorMessage(null);
     setEnhancing(true);
     try {
-      // Best-effort: stop any active recording first so the audio capture
-      // releases cleanly. Stop is idempotent server-side.
+      await flushNotes();
       if (recording) {
         try {
           await stopRecording();
@@ -224,21 +347,25 @@ export function Meeting() {
         meetingId,
         {
           notes_md: notesMd,
-          transcript_json: transcriptJson,
+          transcript_json: "[]",
+          title: meetingRow?.title,
         },
         token,
       );
       navigate(`/meeting/${meetingId}/post`, {
         state: { enrichedMd: response.enriched_md },
       });
+      // Successful navigation unmounts this component — don't touch state
+      // afterward (React warns on unmounted-component updates, and there's
+      // no UI left to reflect it anyway).
+      return;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to end meeting");
-    } finally {
-      setEnhancing(false);
+      if (isMountedRef.current) {
+        setErrorMessage(e instanceof Error ? e.message : "Failed to end meeting");
+      }
     }
+    if (isMountedRef.current) setEnhancing(false);
   }
-
-  const title = meetingId ? `Meeting · ${meetingId.slice(0, 8)}` : "New meeting";
 
   return (
     <div
@@ -267,12 +394,17 @@ export function Meeting() {
           )}
         </Link>
         <header className="flex items-center justify-between">
-          <h1
-            className="font-serif text-[32px] leading-none"
-            style={{ color: INK }}
-          >
-            {title}
-          </h1>
+          {meetingId ? (
+            <InlineTitle
+              id={meetingId}
+              title={title}
+              className="font-serif text-[32px] leading-none text-ink"
+            />
+          ) : (
+            <h1 className="font-serif text-[32px] leading-none" style={{ color: INK }}>
+              {title}
+            </h1>
+          )}
           <div className="flex items-center gap-2">
             {meetingId && recording && (
               <MicDevicePicker meetingId={meetingId} />
@@ -280,7 +412,7 @@ export function Meeting() {
             {meetingId && !recording && (
               <button
                 type="button"
-                onClick={startRecording}
+                onClick={() => startRecording()}
                 className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
                 style={{ backgroundColor: BLUE }}
               >
@@ -316,14 +448,40 @@ export function Meeting() {
         {error && (
           <div
             role="alert"
-            className="rounded-card px-4 py-3 text-[13px]"
+            className="rounded-card px-4 py-3 text-[13px] space-y-1.5"
             style={{
               backgroundColor: STRAW_SOFT,
               color: STRAW,
               border: `1px solid ${STRAW}`,
             }}
           >
-            {error}
+            <p>{error}</p>
+            {errorIsStartFailure && (
+              <Link
+                to="/settings"
+                className="inline-block underline font-semibold hover:opacity-80"
+              >
+                Open Settings
+              </Link>
+            )}
+          </div>
+        )}
+
+        {sttError.message && (
+          <div
+            role="alert"
+            data-testid="stt-error-banner"
+            className="rounded-button px-4 py-3 text-[13px] font-semibold bg-strsoft text-ink border border-straw/40 flex items-center justify-between gap-3"
+          >
+            <span>{sttError.message}</span>
+            <button
+              type="button"
+              onClick={sttError.dismiss}
+              aria-label="Dismiss transcription error"
+              className="shrink-0 text-mut hover:text-ink"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -331,7 +489,12 @@ export function Meeting() {
           className="rounded-card bg-white p-6"
           style={{ border: `1px solid ${LINE}` }}
         >
-          <EditorContent editor={editor} />
+          <YogurtEditor
+            initialMarkdown=""
+            enrichedMarkdown={hydratedNotesMd}
+            placeholder={NOTES_PLACEHOLDER}
+            onChange={setNotesMd}
+          />
         </section>
       </main>
 

@@ -42,6 +42,45 @@ describe("markdown bridge", () => {
     expect(back).toContain("↳ 11:02");
   });
 
+  it("round-trips bold text", () => {
+    expect(roundTrip("this is **bold** text").trim()).toBe(
+      "this is **bold** text",
+    );
+  });
+
+  it("round-trips italic text", () => {
+    expect(roundTrip("this is _italic_ text").trim()).toBe(
+      "this is _italic_ text",
+    );
+  });
+
+  it("round-trips bold+italic text", () => {
+    expect(roundTrip("this is **_both_** text").trim()).toBe(
+      "this is **_both_** text",
+    );
+  });
+
+  it("round-trips headings, bullet lists, and ordered lists together", () => {
+    const md = [
+      "# Heading",
+      "",
+      "- one",
+      "- two with **bold**",
+      "",
+      "1. first",
+      "2. second",
+    ].join("\n");
+    const back = roundTrip(md);
+    expect(back).toContain("# Heading");
+    expect(back).toContain("- one");
+    expect(back).toContain("- two with **bold**");
+    // serializeList emits a constant "1. " marker per item (not
+    // incrementing) — valid markdown; browsers auto-renumber <ol> via CSS
+    // counters regardless of the source numbers.
+    expect(back).toContain("1. first");
+    expect(back).toContain("1. second");
+  });
+
   it("formats seconds as MM:SS zero-padded", () => {
     expect(formatTs(0)).toBe("00:00");
     expect(formatTs(5)).toBe("00:05");

@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useTranscriptWs } from "../lib/ws";
+import {
+  useTranscriptWs,
+  storedSegmentToEvent,
+  type StoredTranscriptSegment,
+  type TranscriptEvent,
+} from "../lib/ws";
 import { TranscriptLine } from "./TranscriptLine";
 import { AudioWaveBars } from "./AudioWaveBars";
 
@@ -10,16 +15,25 @@ const PAPER = "#FCFAF5"; // Panel surface — slightly warmer than app paper (D-
 const MATCHA = "#5E9E73";
 
 /**
- * Right-edge collapsible Live Transcript dock.
+ * Right-edge collapsible transcript dock.
  *
  * Layout (Phase 3 D-13 / D-14 / D-15):
  *   - Fixed to the right edge, full-height, z-30 — overlays the notes column
  *     without reflowing it (the notes wrapper reserves `pr-7` for the tab
  *     gutter).
- *   - Collapsed state: vertical "Live transcript" tab, always rendered so
- *     the user can re-collapse the panel from outside.
+ *   - Collapsed state: vertical tab, always rendered so the user can
+ *     re-collapse the panel from outside.
  *   - Open state: 330px-wide panel that slides in via the `.dock-open`
- *     keyframe (340ms cubic-bezier(.2,.7,.2,1) — TRANS-04 + PRD §16.5).
+ *     keyframe (340ms cubic-bezier(.2,.7,.2,1) — TRANS-04 + PRD §16.5) and
+ *     slides out via `.dock-closed` before unmounting (task NOTES-14 —
+ *     symmetric open/close motion).
+ *
+ * Two modes:
+ *   - Live (default): `segments` is omitted. Subscribes to the per-meeting
+ *     WS via `useTranscriptWs` — connection chip + "Live transcript" label.
+ *   - Static (MeetingPost task 9): caller passes the meeting's persisted
+ *     `transcript_json` rows. No WS connection, no connection chip, label
+ *     reads "Transcript", empty state differs.
  *
  * Auto-scroll (Phase 3 D-17 / TRANS-06):
  *   - `stickyRef` starts true; auto-scrolls to bottom on each new event.
@@ -41,13 +55,23 @@ export interface TranscriptDockProps {
    */
   forceOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Static mode (MeetingPost task 9): pre-recorded segments parsed from
+   * the meeting row's `transcript_json`. When provided, the dock renders
+   * these instead of subscribing to the live WS — no connection chip, no
+   * "Waiting for audio…" (the meeting is over, not live).
+   */
+  segments?: StoredTranscriptSegment[];
 }
+
+type DockPhase = "closed" | "open" | "closing";
 
 export function TranscriptDock({
   meetingId,
   token,
   forceOpen,
   onOpenChange,
+  segments,
 }: TranscriptDockProps) {
   const [openLocal, setOpenLocal] = useState(false);
   // `open` is controlled by `forceOpen` if provided, else local state.
@@ -59,7 +83,32 @@ export function TranscriptDock({
       return value;
     });
   };
-  const { events, connected } = useTranscriptWs(meetingId, token);
+
+  const isStatic = segments !== undefined;
+  // In static mode the live WS is never opened (`useTranscriptWs` is a
+  // no-op when meetingId/token are null) — the meeting is over, there's
+  // nothing to subscribe to.
+  const { events: liveEvents, connected } = useTranscriptWs(
+    isStatic ? null : meetingId,
+    isStatic ? null : token,
+  );
+  const events: TranscriptEvent[] = isStatic
+    ? segments!.map(storedSegmentToEvent)
+    : liveEvents;
+  const label = isStatic ? "Transcript" : "Live transcript";
+
+  // Task NOTES-14: symmetric open/close animation. `phase` lags `open` by
+  // one animation — closing plays `.dock-closed` (slideOutRight) and only
+  // unmounts once `onAnimationEnd` fires, instead of the old hard cut.
+  const [phase, setPhase] = useState<DockPhase>("closed");
+  useEffect(() => {
+    if (open) {
+      setPhase("open");
+    } else {
+      setPhase((prev) => (prev === "closed" ? "closed" : "closing"));
+    }
+  }, [open]);
+  const mounted = phase !== "closed";
 
   // Sticky auto-scroll ref. `true` = follow new events, `false` = user
   // has scrolled up and is reading history.
@@ -80,12 +129,45 @@ export function TranscriptDock({
     stickyRef.current = atBottom;
   }
 
-  // NOTES-11: listen for `yogurt:transcript:scrollTo` and scroll the list
-  // to the line whose `ts_ms / 1000` matches the requested `ts` (in
-  // seconds — that's the unit AI bullets carry via the merge step).
-  // Finds the closest transcript line by absolute distance — exact matches
-  // are common but the AI's word-overlap heuristic (D-09) can land on any
-  // segment, and the user's expectation is "scroll to roughly that moment".
+  // Task NOTES-10 (MeetingPost deep links): find the transcript line
+  // closest to `ts` (seconds) and scroll to it with a brief highlight.
+  // Returns false if the panel isn't mounted yet (caller retries once
+  // `mounted` flips true — see the pending-scroll effect below).
+  function tryScrollTo(ts: number): boolean {
+    const root = listRef.current;
+    if (!root) return false;
+    const lines = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-transcript-ts-sec]"),
+    );
+    if (lines.length === 0) return false;
+    let bestEl: HTMLElement | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const line of lines) {
+      const raw = line.getAttribute("data-transcript-ts-sec");
+      const sec = Number(raw);
+      if (!Number.isFinite(sec)) continue;
+      const dist = Math.abs(sec - ts);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestEl = line;
+      }
+    }
+    if (!bestEl) return false;
+    bestEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Brief 1.5s bg tint (CSS keyframe in index.css) so the user's eye
+    // lands on the right line even mid-smooth-scroll.
+    bestEl.classList.add("transcript-highlight");
+    const el = bestEl;
+    setTimeout(() => el.classList.remove("transcript-highlight"), 1500);
+    return true;
+  }
+
+  // A scrollTo request that arrives while the dock is still closed (the
+  // common case — MeetingPost force-opens the dock and dispatches the
+  // event in the same tick) can't find any DOM nodes yet. Stash it and
+  // retry once the panel mounts.
+  const pendingScrollRef = useRef<number | null>(null);
+
   useEffect(() => {
     function onScrollTo(ev: Event) {
       const detail = (ev as CustomEvent<{ ts?: number }>).detail;
@@ -93,26 +175,9 @@ export function TranscriptDock({
       // Disable sticky so the new programmatic scroll position survives the
       // next render.
       stickyRef.current = false;
-
-      const root = listRef.current;
-      if (!root) return;
-      const lines = Array.from(
-        root.querySelectorAll<HTMLElement>("[data-transcript-ts-sec]"),
-      );
-      if (lines.length === 0) return;
-      let bestEl: HTMLElement | null = null;
-      let bestDist = Number.POSITIVE_INFINITY;
-      for (const line of lines) {
-        const raw = line.getAttribute("data-transcript-ts-sec");
-        const sec = Number(raw);
-        if (!Number.isFinite(sec)) continue;
-        const dist = Math.abs(sec - detail.ts);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestEl = line;
-        }
+      if (!tryScrollTo(detail.ts)) {
+        pendingScrollRef.current = detail.ts;
       }
-      bestEl?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
     window.addEventListener(
       "yogurt:transcript:scrollTo",
@@ -124,7 +189,20 @@ export function TranscriptDock({
         onScrollTo as EventListener,
       );
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Flush a pending scroll request once the panel is actually in the DOM.
+  // rAF gives the browser one paint so `scrollIntoView` has real layout.
+  useEffect(() => {
+    if (!mounted || pendingScrollRef.current === null) return;
+    const ts = pendingScrollRef.current;
+    const id = requestAnimationFrame(() => {
+      if (tryScrollTo(ts)) pendingScrollRef.current = null;
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
 
   return (
     <div
@@ -135,7 +213,7 @@ export function TranscriptDock({
         {/* Collapsed tab — always rendered. Click toggles `open`. */}
         <button
           type="button"
-          aria-label={open ? "Hide live transcript" : "Show live transcript"}
+          aria-label={open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
           onClick={() => setOpen((v) => !v)}
           className="absolute h-24 w-7 flex items-center justify-center text-[12px] font-semibold bg-white"
           style={{
@@ -151,18 +229,21 @@ export function TranscriptDock({
             zIndex: 31,
           }}
         >
-          {open ? "▶ Live transcript" : "◀ Live transcript"}
+          {open ? `▶ ${label}` : `◀ ${label}`}
         </button>
 
-        {/* Sliding panel — only mounted when open === true so the keyframe
-         * re-runs on every reopen (D-14). */}
-        {open && (
+        {/* Sliding panel — mounted while `phase !== "closed"` so the
+         * slide-out keyframe gets to play before unmount (NOTES-14). */}
+        {mounted && (
           <aside
-            className="dock-open w-[330px] h-full flex flex-col"
+            className={`${phase === "closing" ? "dock-closed" : "dock-open"} w-[330px] h-full flex flex-col`}
             data-testid="transcript-dock-panel"
             style={{
               backgroundColor: PAPER,
               borderLeft: `1px solid ${LINE}`,
+            }}
+            onAnimationEnd={() => {
+              if (phase === "closing") setPhase("closed");
             }}
           >
             <header
@@ -176,20 +257,24 @@ export function TranscriptDock({
                 className="text-[13px] font-semibold inline-flex items-center gap-2"
                 style={{ color: INK }}
               >
-                <AudioWaveBars
-                  size="sm"
-                  paused={!connected}
-                  color="var(--color-blue)"
-                />
-                Live transcript
+                {!isStatic && (
+                  <AudioWaveBars
+                    size="sm"
+                    paused={!connected}
+                    color="var(--color-blue)"
+                  />
+                )}
+                {label}
               </span>
-              <span
-                className="text-[11px] inline-flex items-center gap-1"
-                style={{ color: connected ? MATCHA : GREY }}
-              >
-                <span aria-hidden="true">{connected ? "●" : "○"}</span>
-                {connected ? "connected" : "offline"}
-              </span>
+              {!isStatic && (
+                <span
+                  className="text-[11px] inline-flex items-center gap-1"
+                  style={{ color: connected ? MATCHA : GREY }}
+                >
+                  <span aria-hidden="true">{connected ? "●" : "○"}</span>
+                  {connected ? "connected" : "offline"}
+                </span>
+              )}
             </header>
 
             <div
@@ -204,7 +289,9 @@ export function TranscriptDock({
                   className="text-[13px] mt-2"
                   style={{ color: GREY }}
                 >
-                  Waiting for audio…
+                  {isStatic
+                    ? "No transcript was captured for this meeting."
+                    : "Waiting for audio…"}
                 </p>
               ) : (
                 events.map((ev, i) => (

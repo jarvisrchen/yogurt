@@ -18,6 +18,34 @@ export interface TranscriptEvent {
 }
 
 /**
+ * Wire shape of one row in the persisted `meetings.transcript_json` column
+ * (`crates/yogurt-server/src/meetings.rs::segment_json` — mic is "me",
+ * system is "them", distinct from the LIVE `Channel` naming above).
+ */
+export interface StoredTranscriptSegment {
+  ts_ms: number;
+  channel: "me" | "them";
+  text: string;
+}
+
+/**
+ * MeetingPost.tsx task 9 — map a persisted transcript row onto the same
+ * `TranscriptEvent` shape the live dock renders, so `TranscriptLine` and
+ * the `data-transcript-ts-sec` deep-link lookup need zero changes to
+ * support static (post-meeting) playback. Stored rows are always final.
+ */
+export function storedSegmentToEvent(
+  seg: StoredTranscriptSegment,
+): TranscriptEvent {
+  return {
+    ts_ms: seg.ts_ms,
+    channel: seg.channel === "me" ? "mic" : "system",
+    text: seg.text,
+    is_final: true,
+  };
+}
+
+/**
  * `enhance_progress` WS event (Phase 4 — CONTEXT D-23 / D-24).
  *
  * Emitted by `crates/yogurt-server/src/enhance.rs` on `Meeting.events_tx`
@@ -414,4 +442,117 @@ export function useEnhanceProgress(
   const enhancing = phase === "sending" || phase === "streaming";
 
   return { phase, chars, enhancing, errorMessage };
+}
+
+/** `stt_error` WS frame — see `crates/yogurt-server/src/meetings.rs::send_stt_error`. */
+interface SttErrorEvent {
+  type: "stt_error";
+  message: string;
+}
+
+export interface UseSttErrorResult {
+  /** Most recent `stt_error` message, or null once dismissed / not yet fired. */
+  message: string | null;
+  /** Clear the current message (e.g. a dismissible banner's close button). */
+  dismiss: () => void;
+}
+
+/**
+ * Meeting.tsx task 6 — subscribe to `stt_error` frames on the per-meeting
+ * WS. Fired when the STT engine dies mid-recording (bad Deepgram key,
+ * local model load failure); recording keeps running (audio capture is
+ * independent of STT) so the user needs a visible, dismissible signal
+ * that transcription itself has stopped.
+ *
+ * Mirrors `useEnhanceProgress`'s connect/backoff lifecycle — a third
+ * independent subscription on the same per-meeting socket, alongside the
+ * transcript dock's and the chat panel's. The server fans out one
+ * broadcast subscriber per WS connection, so this is safe.
+ */
+export function useSttError(
+  meetingId: string | null,
+  token: string | null,
+): UseSttErrorResult {
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!meetingId || !token) {
+      setMessage(null);
+      return;
+    }
+
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
+
+    let attempt = 0;
+    let cancelled = false;
+    let currentWs: WebSocket | null = null;
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanupCurrentWs = () => {
+      if (currentWs) {
+        currentWs.onopen = null;
+        currentWs.onclose = null;
+        currentWs.onerror = null;
+        currentWs.onmessage = null;
+        if (
+          currentWs.readyState === WebSocket.CONNECTING ||
+          currentWs.readyState === WebSocket.OPEN
+        ) {
+          currentWs.close();
+        }
+        currentWs = null;
+      }
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const ws = new WebSocket(url);
+      currentWs = ws;
+
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const frame = JSON.parse(event.data as string) as { type?: string };
+          if (frame.type === "stt_error") {
+            setMessage((frame as SttErrorEvent).message);
+          }
+        } catch {
+          // Ignore non-JSON / malformed frames.
+        }
+      };
+
+      const scheduleReconnect = () => {
+        if (cancelled) return;
+        cleanupCurrentWs();
+        if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
+        const delay = 500 * (1 << attempt);
+        attempt += 1;
+        backoffTimer = setTimeout(() => {
+          backoffTimer = null;
+          connect();
+        }, delay);
+      };
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        attempt = 0;
+      };
+      ws.onclose = scheduleReconnect;
+      ws.onerror = scheduleReconnect;
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (backoffTimer) {
+        clearTimeout(backoffTimer);
+        backoffTimer = null;
+      }
+      cleanupCurrentWs();
+    };
+  }, [meetingId, token]);
+
+  return { message, dismiss: () => setMessage(null) };
 }

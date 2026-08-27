@@ -29,6 +29,13 @@ export interface YogurtEditorProps {
   onTranscriptLinkClick?: (tsSeconds: number) => void;
   /** Extra className on the outer wrapper (test hook + theme overrides). */
   className?: string;
+  /**
+   * Real placeholder text (Meeting.tsx task 3) rendered via
+   * `@tiptap/extension-placeholder` when the doc is empty — never enters
+   * the document, so it can't leak into notes_md / the LLM prompt the way
+   * the old seeded-content approach did.
+   */
+  placeholder?: string;
 }
 
 export function YogurtEditor(props: YogurtEditorProps) {
@@ -39,6 +46,7 @@ export function YogurtEditor(props: YogurtEditorProps) {
     onChange,
     onTranscriptLinkClick,
     className,
+    placeholder,
   } = props;
 
   const onChangeRef = useRef(onChange);
@@ -47,7 +55,7 @@ export function YogurtEditor(props: YogurtEditorProps) {
   onLinkRef.current = onTranscriptLinkClick;
 
   const editor = useEditor({
-    extensions: yogurtExtensions(),
+    extensions: yogurtExtensions({ placeholder }),
     editable,
     content: markdownToHtml(initialMarkdown),
     onUpdate: ({ editor }) => {

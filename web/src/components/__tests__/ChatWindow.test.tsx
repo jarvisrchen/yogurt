@@ -110,4 +110,52 @@ describe("ChatWindow", () => {
     fireEvent.click(screen.getByRole("button", { name: /collapse chat/i }));
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
+
+  it("autofocuses the input on mount", () => {
+    render(
+      <ChatWindow
+        messages={[]}
+        streamingId={null}
+        onSend={() => {}}
+        onCollapse={() => {}}
+      />,
+    );
+    expect(screen.getByPlaceholderText(/ask this meeting/i)).toHaveFocus();
+  });
+
+  it("calls onCollapse when Escape is pressed", () => {
+    const onCollapse = vi.fn();
+    render(
+      <ChatWindow
+        messages={[]}
+        streamingId={null}
+        onSend={() => {}}
+        onCollapse={onCollapse}
+      />,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders assistant bullets and bold text for a markdown-ish reply", () => {
+    render(
+      <ChatWindow
+        messages={[
+          {
+            id: "a1",
+            meeting_id: "m1",
+            role: "assistant",
+            content: "Decided:\n- **ship** it\n- follow up later",
+            created_at: 1,
+          },
+        ]}
+        streamingId={null}
+        onSend={() => {}}
+        onCollapse={() => {}}
+      />,
+    );
+    expect(screen.getByText("ship")).toBeInTheDocument();
+    expect(screen.getByText("ship").tagName).toBe("STRONG");
+    expect(screen.getByText("follow up later")).toBeInTheDocument();
+  });
 });

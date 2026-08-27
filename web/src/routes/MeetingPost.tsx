@@ -35,31 +35,68 @@
 // inline AND we wrap the inner column in a `max-w-[660px]` div so the
 // Legend can be absolutely positioned relative to a known container.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { ArrowLeft } from "lucide-react";
 import { YogurtEditor } from "../editor";
 import { EnhancingBanner } from "../components/EnhancingBanner";
 import { Legend } from "../components/Legend";
 import { ReEnhanceButton } from "../components/ReEnhanceButton";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
+import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
-import { useEnhanceProgress } from "../lib/ws";
+import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
+import { meetingsApi, useMeeting } from "../lib/api/meetings";
 import type { EnhanceResponse } from "../lib/api";
 
 const PAPER = "#FBF7EF"; // --color-paper
 const INK = "#211D18"; // --color-ink
+const LINE = "#EBE3D5"; // --color-line
 const STRAW = "#E07A66"; // --color-straw — error accent
 const STRAW_SOFT = "#FBE6E0"; // --color-strsoft
 
+/**
+ * Header task NOTES-08 — "Aug 26 · 2:45 PM · 47 min". Duration is omitted
+ * (no trailing dash) while `ended_at` is missing, mirroring
+ * `MeetingCard.tsx`'s `formatMeta` — this just also prefixes the date,
+ * which the Library card doesn't need (it's already grouped by day).
+ */
+export function formatMeetingSubline(
+  startedAtUnixMs: number | undefined,
+  endedAtUnixMs: number | undefined,
+): string {
+  if (startedAtUnixMs == null) return "";
+  const d = new Date(startedAtUnixMs);
+  const parts = [
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+  ];
+  if (endedAtUnixMs != null && endedAtUnixMs > startedAtUnixMs) {
+    const minutes = Math.max(
+      1,
+      Math.round((endedAtUnixMs - startedAtUnixMs) / 60_000),
+    );
+    parts.push(`${minutes} min`);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * Matches `yogurt_db::Meeting`'s actual wire field names (`started_at` /
+ * `ended_at`, NOT `*_unix_ms`) — see `crates/yogurt-db/src/meetings.rs`.
+ * The previous `*_unix_ms` field names here never matched a real response
+ * field, so `startedAtUnixMs`/`endedAtUnixMs` below were always undefined
+ * and the header could never show a date or duration.
+ */
 interface MeetingFetchResponse {
   id?: string;
   title?: string | null;
   notes_md?: string | null;
   enriched_md?: string | null;
   transcript_json?: string | null;
-  started_at_unix_ms?: number | null;
-  ended_at_unix_ms?: number | null;
+  started_at?: number | null;
+  ended_at?: number | null;
 }
 
 interface LocationStateShape {
@@ -108,6 +145,14 @@ export function MeetingPost() {
   // `enhancing` local state above also reflects the in-flight POST so the
   // banner appears IMMEDIATELY on click (not after the first WS hop).
   const ws = useEnhanceProgress(meetingId, token);
+
+  // Task NOTES-08: subscribe to the shared react-query cache purely so a
+  // rename via the header's <InlineTitle> (which writes through
+  // `useUpdateMeetingTitle`'s `setQueryData`) is reflected immediately —
+  // the generation-guarded GET below is the source of truth for the
+  // INITIAL title/notes/transcript load and is left untouched.
+  const meetingCacheQuery = useMeeting(meetingId ?? undefined);
+  const displayTitle = meetingCacheQuery.data?.title ?? title;
 
   // Bootstrap: fetch the session token once on mount.
   useEffect(() => {
@@ -169,14 +214,21 @@ export function MeetingPost() {
         const json = (await res.json()) as MeetingFetchResponse;
         if (cancelled || generationRef.current !== myGen) return;
         // Only overwrite preloaded enrichedMd if we don't already have it.
+        // `??` alone is wrong here: an empty-STRING enriched_md must also
+        // fall back to the raw notes, or the reader gets a blank document
+        // for a meeting that has notes but was never (successfully)
+        // enhanced.
         if (enrichedMd === undefined) {
-          setEnrichedMd(json.enriched_md ?? json.notes_md ?? "");
+          const enriched = json.enriched_md;
+          setEnrichedMd(
+            enriched && enriched.trim() !== "" ? enriched : (json.notes_md ?? ""),
+          );
         }
         setNotesMd(json.notes_md ?? "");
         setTranscriptJson(json.transcript_json ?? "[]");
         setTitle(json.title ?? undefined);
-        setStartedAtUnixMs(json.started_at_unix_ms ?? undefined);
-        setEndedAtUnixMs(json.ended_at_unix_ms ?? undefined);
+        setStartedAtUnixMs(json.started_at ?? undefined);
+        setEndedAtUnixMs(json.ended_at ?? undefined);
       } catch (e) {
         // AbortError from cleanup is expected — ignore.
         if (cancelled || generationRef.current !== myGen) return;
@@ -207,6 +259,28 @@ export function MeetingPost() {
     );
   }, []);
 
+  // Task NOTES-09: parse the meeting row's persisted `transcript_json`
+  // once per string value — feeds both the static TranscriptDock below
+  // and the tooltip-excerpt effect that used to re-parse the same JSON
+  // independently.
+  const segments = useMemo<StoredTranscriptSegment[]>(() => {
+    try {
+      const parsed: unknown = JSON.parse(transcriptJson);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (s): s is StoredTranscriptSegment =>
+          s !== null &&
+          typeof s === "object" &&
+          typeof s.ts_ms === "number" &&
+          (s.channel === "me" || s.channel === "them") &&
+          typeof s.text === "string",
+      );
+    } catch {
+      // Malformed transcript JSON — render with no segments rather than throw.
+      return [];
+    }
+  }, [transcriptJson]);
+
   // NOTES-11: after each enriched_md change, walk the editor DOM and set a
   // native browser tooltip (`title` attribute) on every `↳ HH:MM` link to
   // the closest transcript segment's text. We use `title` rather than a
@@ -216,23 +290,6 @@ export function MeetingPost() {
   // timestamp" — plain `title` satisfies it for v1.
   useEffect(() => {
     if (enrichedMd === undefined) return;
-    let segments: Array<{ ts_ms: number; text: string }> = [];
-    try {
-      const parsed = JSON.parse(transcriptJson);
-      if (Array.isArray(parsed)) {
-        segments = parsed
-          .filter(
-            (s): s is { ts_ms: number; text: string } =>
-              s !== null &&
-              typeof s === "object" &&
-              typeof s.ts_ms === "number" &&
-              typeof s.text === "string",
-          )
-          .map((s) => ({ ts_ms: s.ts_ms, text: s.text }));
-      }
-    } catch {
-      // Malformed transcript JSON — leave tooltips empty rather than throw.
-    }
     if (segments.length === 0) return;
 
     // The editor mounts asynchronously after `enrichedMd` arrives. Defer
@@ -267,7 +324,7 @@ export function MeetingPost() {
       });
     }, 0);
     return () => clearTimeout(handle);
-  }, [enrichedMd, transcriptJson]);
+  }, [enrichedMd, segments]);
 
   // BL-3: whenever the editor swaps to new enriched content (initial load
   // from GET, or after a Re-enhance completes), seed `liveMarkdown` so a
@@ -279,6 +336,58 @@ export function MeetingPost() {
     }
   }, [enrichedMd]);
 
+  // Task NOTES-11 — persist post-meeting edits (including grey-to-black
+  // promotions) so a reload doesn't lose them. Debounced 1s PATCH of the
+  // editor's live wire-format markdown, flushed on unmount. Gated on
+  // `enrichedMd !== undefined` (hydration settled — either preloaded via
+  // location.state or the GET resolved) so an empty initial `liveMarkdown`
+  // can't race the fetch and PATCH blank content over real saved notes.
+  const meetingIdForSaveRef = useRef(meetingId);
+  meetingIdForSaveRef.current = meetingId;
+  const liveMarkdownRef = useRef(liveMarkdown);
+  liveMarkdownRef.current = liveMarkdown;
+  const lastSavedEnrichedRef = useRef<string | undefined>(undefined);
+  // DATA-LOSS GUARD: autosave may only persist content the USER produced.
+  // Set exclusively by the editor's onChange (which TipTap fires for user
+  // transactions, never for our programmatic `setContent(html, false)`
+  // hydration). Without this gate, a mount that merely LOADED content —
+  // or failed to — would bulldoze the stored row on unmount/debounce with
+  // whatever it happened to hold (observed live: a stale mount PATCHed
+  // `enriched_md: ""` over a real document).
+  const userEditedRef = useRef(false);
+
+  const flushEnriched = useCallback(async () => {
+    const id = meetingIdForSaveRef.current;
+    if (!id) return;
+    if (!userEditedRef.current) return;
+    const md = liveMarkdownRef.current;
+    if (md === lastSavedEnrichedRef.current) return;
+    // Never persist an empty serialization: the enriched doc never
+    // legitimately becomes empty in this flow, but a hydration/parse
+    // failure serializes to "" — see the data-loss guard above.
+    if (md.trim() === "") return;
+    lastSavedEnrichedRef.current = md;
+    try {
+      await meetingsApi.patch(id, { enriched_md: md });
+    } catch {
+      // Best-effort — a later autosave tick or the next unmount retries.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (enrichedMd === undefined) return;
+    const t = setTimeout(() => {
+      void flushEnriched();
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [liveMarkdown, enrichedMd, flushEnriched]);
+
+  useEffect(() => {
+    return () => {
+      void flushEnriched();
+    };
+  }, [flushEnriched]);
+
   // Re-enhance callbacks.
   const handleEnhanced = useCallback((response: EnhanceResponse) => {
     // HI-2: bump the generation so any in-flight GET fetch's eventual
@@ -289,6 +398,7 @@ export function MeetingPost() {
   }, []);
   // BL-3: capture every editor mutation so Re-enhance has the live content.
   const handleEditorChange = useCallback((markdown: string) => {
+    userEditedRef.current = true;
     setLiveMarkdown(markdown);
   }, []);
   const handleEnhancing = useCallback((busy: boolean) => {
@@ -336,6 +446,8 @@ export function MeetingPost() {
 
   if (!meetingId) return null;
 
+  const subline = formatMeetingSubline(startedAtUnixMs, endedAtUnixMs);
+
   return (
     <div
       className="min-h-screen pr-7"
@@ -349,7 +461,8 @@ export function MeetingPost() {
         onRetry={bannerError ? dismissBannerError : undefined}
       />
 
-      {/* Sticky top-right toolbar carrying the Re-enhance button. Lives
+      {/* Task NOTES-08 — page header: "← Library" + inline-editable title
+        + date/duration line on the left, Re-enhance on the right. Sticky,
         BELOW the EnhancingBanner (z-index 10 vs banner's 20). */}
       <div
         style={{
@@ -357,11 +470,35 @@ export function MeetingPost() {
           top: bannerVisible ? 44 : 0,
           zIndex: 10,
           display: "flex",
-          justifyContent: "flex-end",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
           padding: "12px 24px",
           background: PAPER,
+          borderBottom: `1px solid ${LINE}`,
         }}
       >
+        <div className="flex items-center gap-4 min-w-0">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 shrink-0 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            <span>Library</span>
+          </Link>
+          <div className="min-w-0">
+            <InlineTitle
+              id={meetingId}
+              title={displayTitle ?? "Untitled meeting"}
+              className="block font-serif text-[19px] leading-tight text-ink truncate"
+            />
+            {subline && (
+              <p className="font-mono text-[11px] text-mut mt-0.5">
+                {subline}
+              </p>
+            )}
+          </div>
+        </div>
         {token && (
           <ReEnhanceButton
             meetingId={meetingId}
@@ -371,7 +508,7 @@ export function MeetingPost() {
             // Re-enhance (no edits yet, no enriched_md hydrated) sensible.
             notesMd={liveMarkdown || notesMd}
             transcriptJson={transcriptJson}
-            title={title}
+            title={displayTitle}
             startedAtUnixMs={startedAtUnixMs}
             endedAtUnixMs={endedAtUnixMs}
             token={token}
@@ -419,11 +556,15 @@ export function MeetingPost() {
         />
       </main>
 
+      {/* Task NOTES-09: static mode — the meeting is over, so the dock
+        renders the persisted transcript instead of subscribing to the
+        (necessarily empty) live WS. */}
       <TranscriptDock
         meetingId={meetingId}
         token={token}
         forceOpen={transcriptOpen}
         onOpenChange={setTranscriptOpen}
+        segments={segments}
       />
 
       {/* Phase 6 (Plan 06-02): CHAT-02 persistence — the Ask experience
