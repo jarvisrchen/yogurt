@@ -31,11 +31,11 @@ export function AudioSection({ general }: AudioSectionProps) {
       <h2 className="font-serif text-[28px] leading-none">Audio</h2>
 
       <div className="space-y-1.5">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+        <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
           Input device
         </label>
         <select
-          className="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-[var(--blue)] focus:outline-none"
+          className="block w-full rounded-md border border-line bg-white px-3 py-2 text-sm focus:border-blue focus:outline-none"
           defaultValue={general.audio_input_device}
           onChange={(e) => patch.mutate(e.target.value)}
           disabled={devices.isLoading || patch.isPending}
@@ -50,7 +50,7 @@ export function AudioSection({ general }: AudioSectionProps) {
         </select>
       </div>
 
-      <p className="text-xs font-mono text-neutral-500">
+      <p className="text-xs font-mono text-mut">
         System audio is captured via ScreenCaptureKit — no extra setup.
       </p>
     </section>

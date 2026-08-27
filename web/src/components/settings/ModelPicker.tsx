@@ -117,10 +117,10 @@ export function ModelPicker({
                 isSelected
                   ? "border-[1.5px] border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)]"
                   : m.downloaded
-                    ? "border border-neutral-300 bg-white text-ink hover:border-[var(--color-matcha)]"
+                    ? "border border-line bg-white text-ink hover:border-[var(--color-matcha)]"
                     : isDownloading
                       ? "border border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)] hover:opacity-90"
-                      : "border border-dashed border-neutral-300 bg-white text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
+                      : "border border-dashed border-line bg-white text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
               )}
             >
               <span aria-hidden>{m.name}</span>
@@ -150,7 +150,7 @@ export function ModelPicker({
             {showSlow && (
               <span
                 title="Slower than real-time on Intel"
-                className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--color-strsoft)] text-[var(--color-straw)]"
+                className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-strsoft text-ink border border-straw/40"
               >
                 slow
               </span>

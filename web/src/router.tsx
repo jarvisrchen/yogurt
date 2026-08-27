@@ -16,7 +16,7 @@ import { useFirstRunRedirect } from "./hooks/useFirstRunRedirect";
  * Top-level route table.
  *
  *   "/"                    — Phase 7 Library (sidebar + date-grouped meeting cards)
- *   "/starred"             — Placeholder redirect to "/" (UI surface ships v1.1)
+ *   "/starred"             — Library filtered to starred meetings
  *   "/welcome"             — Phase 7 Plan 07-04 onboarding flow (PRD §5.10)
  *   "/style-guide"         — Phase 1 design-system showcase
  *   "/meeting/new"         — Phase 4 bootstrap: POSTs /api/meetings then
@@ -47,7 +47,7 @@ export const routes: RouteObject[] = [
     element: <Shell />,
     children: [
       { path: "/", element: <Library /> },
-      { path: "/starred", element: <Navigate to="/" replace /> },
+      { path: "/starred", element: <Library starredOnly /> },
       { path: "/welcome", element: <Welcome /> },
       { path: "/style-guide", element: <StyleGuide /> },
       { path: "/meeting/new", element: <Meeting /> },

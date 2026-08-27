@@ -74,7 +74,7 @@ export function ProviderCard({ provider }: Props) {
         <Field label="BASE URL">
           {editing ? (
             <input
-              className="w-full font-mono text-[12.5px] border-b border-neutral-300 focus:border-[var(--color-blue)] outline-none py-1"
+              className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
               value={draft.base_url}
               onChange={(e) =>
                 setDraft({ ...draft, base_url: e.target.value })
@@ -89,7 +89,7 @@ export function ProviderCard({ provider }: Props) {
         <Field label="MODEL">
           {editing ? (
             <input
-              className="w-full font-mono text-[12.5px] border-b border-neutral-300 focus:border-[var(--color-blue)] outline-none py-1"
+              className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
               value={draft.model}
               onChange={(e) => setDraft({ ...draft, model: e.target.value })}
             />
@@ -112,7 +112,7 @@ export function ProviderCard({ provider }: Props) {
         </button>
       ) : null}
 
-      <div className="border-t border-neutral-200 pt-3 space-y-2">
+      <div className="border-t border-line pt-3 space-y-2">
         <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
           API KEY · in Keychain
         </div>
@@ -130,7 +130,7 @@ export function ProviderCard({ provider }: Props) {
           <input
             type="password"
             placeholder="Paste new key…"
-            className="flex-1 font-mono text-sm border border-neutral-300 rounded px-2 py-1.5 focus:border-[var(--color-blue)] outline-none"
+            className="flex-1 font-mono text-sm border border-line rounded px-2 py-1.5 focus:border-[var(--color-blue)] outline-none"
             value={keyDraft}
             onChange={(e) => setKeyDraft(e.target.value)}
           />

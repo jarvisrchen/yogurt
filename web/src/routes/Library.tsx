@@ -28,31 +28,73 @@
  */
 
 import { useState } from "react";
-import { useMeetings, useMeetingsSearch } from "../lib/api/meetings";
+import { useNavigate } from "react-router";
+import {
+  useCreateMeeting,
+  useMeetings,
+  useMeetingsSearch,
+} from "../lib/api/meetings";
 import { DateGroup } from "../components/library/DateGroup";
 import { Greeting } from "../components/library/Greeting";
 import { SearchPill } from "../components/library/SearchPill";
 import { Sidebar } from "../components/library/Sidebar";
+import { ShimmerSkeleton } from "../components/ShimmerSkeleton";
 import { EmptyLibrary } from "../components/states/EmptyLibrary";
 import { MicPermissionDenied } from "../components/states/MicPermissionDenied";
 import { PermissionDenied } from "../components/states/PermissionDenied";
+import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 import { useMicrophoneStatus } from "../hooks/useMicrophoneStatus";
 import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
 
-export function Library() {
+interface LibraryProps {
+  /** When true (the `/starred` route), only starred meetings render. */
+  starredOnly?: boolean;
+}
+
+export function Library({ starredOnly = false }: LibraryProps) {
+  const navigate = useNavigate();
+  const createMeeting = useCreateMeeting();
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
 
-  const { granted, isLoading: permissionLoading } = useScreenRecordingStatus();
-  const { granted: micGranted, isLoading: micLoading } = useMicrophoneStatus();
+  // Library isn't a page where permission state changes mid-session (the
+  // recovery flow requires restarting Yogurt anyway, which naturally
+  // refetches everything) — 60s avoids polling `/api/audio/permission`
+  // every 2s on every Library view. Onboarding's `<Welcome />` keeps the
+  // fast default.
+  const { granted, isLoading: permissionLoading } = useScreenRecordingStatus({
+    refetchIntervalMs: 60_000,
+  });
+  const { granted: micGranted, isLoading: micLoading } = useMicrophoneStatus({
+    refetchIntervalMs: 60_000,
+  });
 
   const all = useMeetings();
   const found = useMeetingsSearch(query);
 
-  const meetings = isSearching ? (found.data ?? []) : (all.data ?? []);
+  const fetched = isSearching ? (found.data ?? []) : (all.data ?? []);
+  const meetings = starredOnly ? fetched.filter((m) => m.starred) : fetched;
   const isLoading = isSearching ? found.isLoading : all.isLoading;
   const error = isSearching ? found.error : all.error;
+
+  // ⌘N — same action as the sidebar "+ New meeting" button (EmptyLibrary
+  // advertises the shortcut). Suppressed while a text input / editor has
+  // focus. Note: some browsers reserve ⌘N for "new window" and never
+  // deliver the event — the sidebar button stays the canonical path.
+  useKeyboardShortcut(
+    { key: "n", metaOrCtrl: true, ignoreWhenTyping: true },
+    async () => {
+      if (createMeeting.isPending) return;
+      try {
+        const m = await createMeeting.mutateAsync(undefined);
+        // See Sidebar.tsx's `handleNew` — same auto-start contract.
+        navigate(`/meeting/${m.id}`, { state: { autoStart: true } });
+      } catch (e) {
+        console.error("create meeting failed", e);
+      }
+    },
+  );
 
   // Permission gate (STATE-02). While the permission probe is still
   // loading we render the chrome but no empty/list content — avoids a
@@ -87,20 +129,30 @@ export function Library() {
       <Sidebar />
       <main className="flex-1 px-12 py-10 max-w-[860px]">
         <div className="flex items-start justify-between mb-8">
-          <Greeting count={isSearching ? meetings.length : (all.data ?? []).length} />
+          <Greeting
+            count={
+              isSearching || starredOnly
+                ? meetings.length
+                : (all.data ?? []).length
+            }
+          />
           <SearchPill value={query} onChange={setQuery} />
         </div>
 
-        {isLoading && (
-          <div className="text-[13px] font-mono text-mut">Loading…</div>
-        )}
+        {isLoading && <LibrarySkeleton />}
         {error && (
-          <div className="text-[13px] font-mono text-straw">
+          <div className="inline-block text-[13px] text-ink bg-strsoft border border-straw/40 rounded-button px-3 py-2">
             Couldn't load meetings: {error.message}
           </div>
         )}
         {!isLoading && !error && meetings.length === 0 && (
-          isSearching ? <NoMatches /> : <EmptyLibrary />
+          isSearching ? (
+            <NoMatches />
+          ) : starredOnly ? (
+            <NoStarred />
+          ) : (
+            <EmptyLibrary />
+          )
         )}
         {!isLoading && !error && meetings.length > 0 && (
           <DateGroup meetings={meetings} />
@@ -118,5 +170,42 @@ export function Library() {
 function NoMatches() {
   return (
     <div className="text-[13px] font-mono text-mut">No matches</div>
+  );
+}
+
+/** Empty state for the `/starred` filter — deliberately quieter than
+ *  `<EmptyLibrary />`; the user already has meetings, just no stars. */
+function NoStarred() {
+  return (
+    <div className="text-[13px] font-mono text-mut">
+      No starred meetings yet — hover a meeting and click the star.
+    </div>
+  );
+}
+
+/**
+ * Loading skeleton for the meeting list — four card-shaped shimmer rows
+ * (42px avatar block + title bar) matching the MeetingCard layout so the
+ * resolved list doesn't cause a layout jump.
+ */
+function LibrarySkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-1"
+      aria-hidden
+      data-testid="library-skeleton"
+    >
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 py-2 px-2 -mx-2">
+          <div className="w-[42px] h-[42px] rounded-[10px] shimmer shrink-0" />
+          <div className="flex-1">
+            <ShimmerSkeleton
+              staggerMs={0}
+              widthClass={i % 2 === 0 ? "w-1/2" : "w-1/3"}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

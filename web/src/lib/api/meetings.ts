@@ -181,6 +181,26 @@ export function useDeleteMeeting(): UseMutationResult<void, Error, string> {
   });
 }
 
+/**
+ * `PATCH /api/meetings/:id { starred }` — star / unstar a meeting from
+ * the Library card hover actions. Invalidates the list and primes the
+ * individual cache so a follow-up `useMeeting(id)` doesn't refetch.
+ */
+export function useToggleStarred(): UseMutationResult<
+  Meeting,
+  Error,
+  { id: string; starred: boolean }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, starred }) => meetingsApi.patch(id, { starred }),
+    onSuccess: (m) => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.setQueryData(meetingKey(m.id), m);
+    },
+  });
+}
+
 // ─── Phase 7 Plan 07-03 — inline-edit title + Copy markdown + Reveal ───────
 
 /**

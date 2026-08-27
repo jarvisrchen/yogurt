@@ -27,7 +27,7 @@ export function ProviderRow({ provider }: { provider: ProviderView }) {
   });
 
   return (
-    <div className="flex items-center justify-between border-b border-neutral-200 py-3">
+    <div className="flex items-center justify-between border-b border-line py-3">
       <div className="flex items-baseline gap-3 min-w-0">
         <span className="text-[14px] font-semibold text-ink shrink-0">
           {provider.name}
@@ -40,7 +40,7 @@ export function ProviderRow({ provider }: { provider: ProviderView }) {
             ✓ key
           </span>
         ) : (
-          <span className="text-xs text-neutral-400 font-mono shrink-0">
+          <span className="text-xs text-mut font-mono shrink-0">
             no key
           </span>
         )}
@@ -56,7 +56,7 @@ export function ProviderRow({ provider }: { provider: ProviderView }) {
         </button>
         <button
           type="button"
-          className="text-neutral-400 hover:text-[var(--color-straw)] disabled:opacity-50"
+          className="text-mut hover:text-[var(--color-straw)] disabled:opacity-50"
           onClick={() => remove.mutate()}
           disabled={remove.isPending}
         >

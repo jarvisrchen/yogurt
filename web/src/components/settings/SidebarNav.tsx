@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { ArrowLeft } from "lucide-react";
 import type { ProviderView } from "../../lib/api/settings";
 
 /**
@@ -39,7 +40,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
 
   return (
     <nav
-      className="w-[212px] shrink-0 bg-[var(--color-paper)] border-r border-neutral-200 flex flex-col"
+      className="w-[212px] shrink-0 bg-[var(--color-paper)] border-r border-line flex flex-col"
       aria-label="Settings sections"
     >
       <header className="px-5 pt-6 pb-2 space-y-3">
@@ -48,7 +49,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
           className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
           aria-label="Back to library"
         >
-          <span aria-hidden>←</span>
+          <ArrowLeft size={16} aria-hidden />
           <span>Library</span>
         </Link>
         <h1 className="font-serif text-[22px] leading-none text-ink">
@@ -64,7 +65,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
               className={`w-full text-left px-3 py-2 rounded-md text-[13.5px] ${
                 active === s.id
                   ? "bg-[var(--color-blsoft)] text-[var(--color-blue)] font-semibold"
-                  : "text-ink hover:bg-neutral-100 font-medium"
+                  : "text-ink hover:bg-line/40 font-medium"
               }`}
             >
               {s.label}
@@ -72,7 +73,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
           </li>
         ))}
       </ul>
-      <footer className="p-4 border-t border-neutral-200 space-y-2">
+      <footer className="p-4 border-t border-line space-y-2">
         {localOnly ? (
           <span
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--color-matcha)] px-2.5 py-1 rounded-full"
@@ -82,7 +83,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
             Local-only · on
           </span>
         ) : null}
-        <div className="font-mono text-[10.5px] text-neutral-500 leading-relaxed">
+        <div className="font-mono text-[10.5px] text-mut leading-relaxed">
           keys → macOS Keychain
           <br />
           data → ~/.yogurt/

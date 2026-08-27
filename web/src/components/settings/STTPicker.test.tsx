@@ -1,0 +1,111 @@
+/**
+ * STTPicker test suite (fast task: Deepgram key field + fake-pill removal).
+ *
+ * Covers:
+ *  - AssemblyAI/Groq pills are gone (only Deepgram is real).
+ *  - `deepgram_key_masked` renders the masked-key UX (mirrors ProviderCard).
+ *  - Pasting a key + clicking "Save key" posts via `settingsApi.setSttKey`.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { SettingsView } from "../../lib/api/settings";
+import type { ModelView } from "../../lib/api/stt";
+
+function fixture(overrides: Partial<SettingsView> = {}): SettingsView {
+  return {
+    general: {
+      port: 7878,
+      open_browser_on_start: true,
+      audio_input_device: "",
+      first_run_completed: true,
+      stt_provider: "cloud",
+      stt_model: "small.en",
+    },
+    providers: [],
+    presets: [],
+    deepgram_key_masked: null,
+    ...overrides,
+  };
+}
+
+const settingsApiMock = vi.hoisted(() => ({
+  get: vi.fn(),
+  patch: vi.fn(),
+  setSttKey: vi.fn(),
+}));
+
+vi.mock("../../lib/api/settings", () => ({
+  settingsApi: settingsApiMock,
+}));
+
+const modelsFixture: ModelView[] = [
+  { name: "small.en", size_mb: 487, downloaded: true, intel_supported: true },
+];
+
+vi.mock("../../lib/api/stt", () => ({
+  useModels: vi.fn(() => ({
+    data: modelsFixture,
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
+  // LocalSTTCard renders <ModelDownloadDialog>, which calls
+  // useDownloadModel() unconditionally — stub it so the module mock is
+  // complete even though no test here triggers a download.
+  useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+}));
+
+import { STTPicker } from "./STTPicker";
+
+function renderPicker() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <STTPicker />
+    </QueryClientProvider>,
+  );
+}
+
+describe("STTPicker — Cloud card", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    settingsApiMock.get.mockResolvedValue(fixture());
+    settingsApiMock.setSttKey.mockResolvedValue(undefined);
+  });
+
+  it("does not render the fake AssemblyAI/Groq pills", async () => {
+    renderPicker();
+    await waitFor(() => screen.getByTestId("cloud-stt-card"));
+    expect(screen.queryByText(/assemblyai/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/groq/i)).not.toBeInTheDocument();
+  });
+
+  it("shows 'No key stored yet' when deepgram_key_masked is null", async () => {
+    renderPicker();
+    await waitFor(() => screen.getByTestId("cloud-stt-card"));
+    expect(screen.getByText(/no key stored yet/i)).toBeInTheDocument();
+  });
+
+  it("renders the masked key + stored badge when deepgram_key_masked is set", async () => {
+    settingsApiMock.get.mockResolvedValue(
+      fixture({ deepgram_key_masked: "••••ABCD" }),
+    );
+    renderPicker();
+    await waitFor(() => screen.getByText("••••ABCD"));
+    expect(screen.getByText(/✓ stored/)).toBeInTheDocument();
+  });
+
+  it("posts the pasted key via settingsApi.setSttKey on Save key", async () => {
+    renderPicker();
+    await waitFor(() => screen.getByTestId("cloud-stt-card"));
+
+    const input = screen.getByPlaceholderText(/paste key…/i);
+    fireEvent.change(input, { target: { value: "dg-secret-123" } });
+    fireEvent.click(screen.getByRole("button", { name: /save key/i }));
+
+    await waitFor(() => {
+      expect(settingsApiMock.setSttKey).toHaveBeenCalledWith("dg-secret-123");
+    });
+  });
+});

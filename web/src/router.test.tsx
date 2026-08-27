@@ -87,10 +87,12 @@ describe("router", () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     );
-    // The Library hero greeting always says "Good {timeOfDay}, you" —
+    // The Library hero greeting always says "Good {timeOfDay}" —
     // pick a stable substring.
     expect(
-      await screen.findByRole("heading", { name: /Good \w+, you/i }),
+      await screen.findByRole("heading", {
+        name: /Good (morning|afternoon|evening)/i,
+      }),
     ).toBeInTheDocument();
   });
 

@@ -195,7 +195,7 @@ export function ModelDownloadDialog({
           <button
             type="button"
             onClick={onClose}
-            className="text-[13px] px-3 py-1.5 rounded border border-neutral-300 hover:bg-neutral-50"
+            className="text-[13px] px-3 py-1.5 rounded border border-line hover:bg-paper"
           >
             Cancel
           </button>
