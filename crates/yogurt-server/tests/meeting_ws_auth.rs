@@ -58,7 +58,7 @@ async fn spawn() -> TestSetup {
         db,
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
         // Phase 6 (Plan 06-01): test wiring uses MockLlm.
-        llm: Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
+        llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
         // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
@@ -70,9 +70,8 @@ async fn spawn() -> TestSetup {
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.ok();
     });
-
-    // Tiny wait for the listener to be ready.
-    tokio::time::sleep(Duration::from_millis(30)).await;
+    // No readiness sleep needed: the listener is bound before the serve
+    // task is spawned, so connections queue in the accept backlog.
 
     TestSetup {
         addr,
@@ -210,8 +209,16 @@ async fn it_accepts_meeting_ws_with_correct_origin_and_token() {
         .expect("ws upgrade should succeed");
     assert_eq!(response.status().as_u16(), 101);
 
-    // Give the handler a moment to subscribe to the broadcast.
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    // Deterministic subscribe signal: poll the broadcast's receiver count
+    // instead of a fixed sleep (flake source on slow CI).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while m.transcript_tx.receiver_count() == 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "WS handler never subscribed to transcript_tx within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 
     m.transcript_tx
         .send(yogurt_stt::TranscriptEvent {

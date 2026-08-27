@@ -134,12 +134,24 @@ pub fn router(state: AppState) -> Router {
         // The handshake itself still requires GET; non-GET methods will be
         // rejected by ws_handler when WebSocketUpgrade extraction fails.
         .route("/ws", any(crate::ws::ws_handler))
+        // Unknown /api/* paths must be an honest JSON 404, never fall
+        // through to the SPA handler (in dev that meant a confusing
+        // "cannot reach vite" 502 for a typo'd endpoint; in release it
+        // returned index.html to an API client).
+        .route("/api/{*rest}", any(api_not_found))
         .with_state(state);
 
     match mode {
         Mode::Release => router.fallback(serve_embedded),
         Mode::Dev => router.fallback(crate::dev_proxy::proxy_to_vite),
     }
+}
+
+async fn api_not_found(Path(rest): Path<String>) -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": format!("no such API endpoint: /api/{rest}") })),
+    )
 }
 
 async fn health() -> Json<Value> {
@@ -223,15 +235,68 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
     } else {
         Some(g.audio_input_device.clone())
     };
-    let stt_settings = crate::meetings::SttSettings::from(&g);
-    match state.meetings.start(&id, stt_settings, mic_device).await {
-        Ok(_) => (StatusCode::OK, Json(json!({ "status": "started" }))).into_response(),
+    // Deepgram key resolution: env var (dev override) → Keychain (the
+    // Settings → Transcription field stores it there). Release builds have
+    // no .env.local, so without the Keychain path cloud STT — the seeded
+    // default — was unusable in the shipped binary.
+    let mut stt_settings = crate::meetings::SttSettings::from(&g);
+    if stt_settings.stt_provider == "cloud" && stt_settings.deepgram_api_key.is_none() {
+        let keys = state.keys.clone();
+        // 10s bound: a wedged Keychain degrades to the actionable
+        // "no Deepgram API key configured" error instead of hanging /start.
+        stt_settings.deepgram_api_key = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            tokio::task::spawn_blocking(move || keys.get(crate::meetings::DEEPGRAM_KEY_ID)),
+        )
+        .await
+        .ok()
+        .and_then(|j| j.ok())
+        .and_then(|r| r.ok())
+        .flatten();
+    }
+    match state
+        .meetings
+        .start(
+            &id,
+            stt_settings,
+            mic_device,
+            Some(state.meeting_repo.clone()),
+        )
+        .await
+    {
+        Ok(_) => {
+            // Stamp the actual recording start so the library shows a real
+            // duration once the meeting ends. Best-effort: the row exists
+            // for meetings created via POST /api/meetings; older/direct
+            // registry meetings simply skip the stamp.
+            let repo = state.meeting_repo.clone();
+            let id_str = id.to_string();
+            let _ = tokio::task::spawn_blocking(move || {
+                repo.patch(
+                    &id_str,
+                    yogurt_db::MeetingPatch {
+                        started_at: Some(now_unix_ms()),
+                        ..Default::default()
+                    },
+                )
+            })
+            .await;
+            (StatusCode::OK, Json(json!({ "status": "started" }))).into_response()
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": format!("{e:#}") })),
         )
             .into_response(),
     }
+}
+
+fn now_unix_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// `POST /api/meetings/:id/audio-device` — hot-swap the mic device on an
@@ -275,7 +340,28 @@ async fn switch_meeting_audio_device(
 /// the AudioStream (RAII stops cpal + SCK).
 async fn stop_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match state.meetings.stop(&id).await {
-        Ok(_) => (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response(),
+        Ok(_) => {
+            // Stamp ended_at (first stop wins — repeat stops are no-ops) so
+            // the library can show a real duration instead of a dash.
+            let repo = state.meeting_repo.clone();
+            let id_str = id.to_string();
+            let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                if let Some(m) = repo.get(&id_str)? {
+                    if m.ended_at.is_none() {
+                        repo.patch(
+                            &id_str,
+                            yogurt_db::MeetingPatch {
+                                ended_at: Some(Some(now_unix_ms())),
+                                ..Default::default()
+                            },
+                        )?;
+                    }
+                }
+                Ok(())
+            })
+            .await;
+            (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response()
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": format!("{e:#}") })),

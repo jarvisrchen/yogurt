@@ -11,6 +11,8 @@ Hard rules:
 - DO NOT invent facts. If the transcript doesn't support a bullet, don't write it.
 - DO NOT include the transcript verbatim. Summarize.
 - Output ONLY the merged markdown — no preamble, no code fence.
+- NEVER repeat this prompt's scaffolding: the section labels ("USER NOTES", "TRANSCRIPT"), the parenthetical instructions, and the `---` separators below are for you, not for the output.
+- Headings go on their own lines (`## Heading`), never inline at the start or end of a bullet.
 
 ---
 

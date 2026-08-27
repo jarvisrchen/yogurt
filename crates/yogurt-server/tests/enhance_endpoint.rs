@@ -199,6 +199,88 @@ async fn it_enhances_a_meeting_end_to_end() {
     );
 }
 
+/// Regression: the server-side transcript-persistence task (meetings.rs) is
+/// the source of truth for what was said. When the request body's
+/// `transcript_json` is empty (`""`/`"[]"`) — as it always is once the
+/// browser stops sending the transcript itself — `enhance` must fall back
+/// to the stored row's `transcript_json` rather than silently producing a
+/// notes-only doc.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
+    // SAFETY: mirrors the other enhance tests — clear LLM env so MockLlm
+    // (deterministic) is the resolved path.
+    unsafe {
+        std::env::remove_var("YOGURT_LLM_BASE_URL");
+        std::env::remove_var("YOGURT_LLM_API_KEY");
+        std::env::remove_var("YOGURT_LLM_MODEL");
+    }
+
+    let (addr, token, _handle, _tmp, _db_path) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // 1) Create a meeting.
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let meeting_id = created["id"].as_str().unwrap().to_string();
+
+    // 2) Seed a REAL transcript directly on the row — simulating the
+    // server-side persistence task in meetings.rs having already
+    // accumulated finals while the meeting was recording.
+    let stored_transcript = serde_json::json!([
+        {
+            "ts_ms": 90000,
+            "channel": "mic",
+            "text": "We should ship the stored transcript path first"
+        }
+    ])
+    .to_string();
+    client
+        .patch(format!("http://{addr}/api/meetings/{meeting_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "transcript_json": stored_transcript }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    // 3) POST enhance with an EMPTY transcript_json in the request body.
+    let resp = client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- kickoff\n",
+            "transcript_json": "[]",
+            "title": "Stored transcript fallback",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "enhance must succeed");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let enriched_md = body["enriched_md"].as_str().expect("enriched_md");
+
+    // MockLlm emits one `data-ai-grey` bullet per transcript segment,
+    // tagged with `ts_ms / 1000` and summarized from the segment text —
+    // this can only appear if enhance actually read the STORED transcript
+    // (the request body's transcript was empty).
+    assert!(
+        enriched_md.contains(r#"data-ai-grey="" data-ts="90""#),
+        "enhance must fall back to the stored transcript row. got: {enriched_md}"
+    );
+    assert!(
+        enriched_md.contains("We should ship the stored"),
+        "AI bullet must summarize the stored transcript text. got: {enriched_md}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn it_rejects_enhance_without_session_token() {
     let (addr, _token, _handle, _tmp, _db_path) = spawn_server().await;

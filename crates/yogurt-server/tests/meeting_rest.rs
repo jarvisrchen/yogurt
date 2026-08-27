@@ -3,8 +3,9 @@
 //! - `it_creates_a_meeting_and_returns_an_id` — happy path; asserts UUID
 //!   parses and `created_at_ms > 0`.
 //! - `it_rejects_start_without_api_key` — D-07 contract; with the env var
-//!   unset, `POST /start` returns 400 and the body contains the env var name
-//!   so the UI / CLI can render a helpful "set this and retry" prompt.
+//!   unset, `POST /start` returns 400 with an actionable message pointing
+//!   the user at Settings (the message no longer names the raw env var —
+//!   see `meetings::select_stt`'s cloud branch).
 //! - `it_rejects_meeting_endpoints_without_token` — WR-06 regression: the
 //!   meeting REST endpoints now require a session token (matching the
 //!   WS endpoint's auth contract).
@@ -133,10 +134,20 @@ async fn it_rejects_start_without_api_key() {
         .unwrap();
     assert_eq!(resp.status(), 400);
     let body = resp.json::<serde_json::Value>().await.unwrap();
-    assert!(body["error"]
-        .as_str()
-        .unwrap()
-        .contains("YOGURT_DEEPGRAM_API_KEY"));
+    // Regression note: `select_stt`'s cloud-branch error (meetings.rs) was
+    // reworded to point users at Settings instead of the raw env var name
+    // — the message no longer literally contains "YOGURT_DEEPGRAM_API_KEY".
+    // Assert on the current, actionable contract instead (mirrors
+    // `meetings::tests::rejects_cloud_without_key`).
+    let msg = body["error"].as_str().unwrap().to_lowercase();
+    assert!(
+        msg.contains("api key"),
+        "error should mention the missing API key: {msg}"
+    );
+    assert!(
+        msg.contains("settings"),
+        "error should point the user at Settings: {msg}"
+    );
 
     handle.abort();
 }

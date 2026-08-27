@@ -23,6 +23,36 @@ pub use yogurt_llm::OpenAiCompatClient;
 /// to the same value — defense-in-depth.
 pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Resolve the LLM client for a request. Single source of truth shared by
+/// the enhance handler AND the chat handler so they can never disagree
+/// about which model answers (the original Phase 6 bug: chat pinned to
+/// `MockLlm` while enhance resolved the real provider).
+///
+/// Priority chain:
+///   1. `state.llm_override` — test injection, never set in production.
+///   2. `YOGURT_LLM_*` env vars — developer override.
+///   3. Active provider row + Keychain key. A configured provider whose
+///      key can't be read is a hard `Err` — never a silent mock fallback.
+///   4. `MockLlm` when nothing is configured at all (logged as a warn) so
+///      first-run users still see the hero flow work.
+pub async fn resolve(
+    state: &crate::state::AppState,
+) -> anyhow::Result<std::sync::Arc<dyn yogurt_llm::LlmClient>> {
+    if let Some(overridden) = &state.llm_override {
+        return Ok(overridden.clone());
+    }
+    if let Some(c) = from_env() {
+        return Ok(std::sync::Arc::new(c));
+    }
+    match from_active_provider(&state.db, state.keys.clone()).await? {
+        Some(c) => Ok(std::sync::Arc::new(c)),
+        None => {
+            tracing::warn!("no LLM provider configured; falling back to MockLlm");
+            Ok(std::sync::Arc::new(crate::llm_mock::MockLlm))
+        }
+    }
+}
+
 /// `.env`-based developer override. Returns `None` if any of the three
 /// `YOGURT_LLM_*` env vars is missing; the enhance handler then falls
 /// through to [`from_active_provider`] (and finally `MockLlm`). When set,
@@ -51,12 +81,26 @@ pub async fn from_active_provider(
         return Ok(None);
     };
     // SET-10: Keychain reads can block for seconds (user prompt on first
-    // access) — never call ApiKeyStore::get on the tokio reactor.
+    // access) — never call ApiKeyStore::get on the tokio reactor. Bounded
+    // at 10s: a wedged Keychain (unanswered macOS access prompt) must fail
+    // the request with an actionable message, not hang chat/enhance forever.
     let provider_id = provider.id.clone();
-    let key = tokio::task::spawn_blocking(move || keys.get(&provider_id))
-        .await
-        .map_err(|e| anyhow::anyhow!("key store task failed: {e}"))?
-        .unwrap_or(None);
+    let key = match tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::task::spawn_blocking(move || keys.get(&provider_id)),
+    )
+    .await
+    {
+        Ok(joined) => joined
+            .map_err(|e| anyhow::anyhow!("key store task failed: {e}"))?
+            .unwrap_or(None),
+        Err(_) => anyhow::bail!(
+            "macOS Keychain did not respond within 10s while reading the key for \
+             provider '{}' - approve the Keychain access prompt if one is showing, \
+             or re-enter the key in Settings",
+            provider.name
+        ),
+    };
     // T-x3u-01: error names the provider only — never the key value.
     match key {
         Some(key) => Ok(Some(OpenAiCompatClient::new(
