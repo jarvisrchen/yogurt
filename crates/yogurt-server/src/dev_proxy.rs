@@ -4,7 +4,15 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-const VITE_BASE: &str = "http://127.0.0.1:5173";
+const VITE_BASE_DEFAULT: &str = "http://127.0.0.1:5173";
+
+/// Vite target, overridable via `YOGURT_VITE_BASE` so tests can point the
+/// proxy at a dead port instead of asserting nothing is bound on the real
+/// :5173 (which made the vite-down test fail whenever a dev server was
+/// legitimately running on the developer's machine).
+fn vite_base() -> String {
+    std::env::var("YOGURT_VITE_BASE").unwrap_or_else(|_| VITE_BASE_DEFAULT.to_string())
+}
 
 /// Cap on request bodies forwarded to Vite (HI-03). Dev requests are tiny
 /// (HMR pings, asset requests, JSON RPC). 16 MiB is generous; anything larger
@@ -41,7 +49,7 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
     }
 
     let path_and_query = uri.path_and_query().map(|x| x.as_str()).unwrap_or("/");
-    let target = format!("{VITE_BASE}{path_and_query}");
+    let target = format!("{}{path_and_query}", vite_base());
 
     // HI-03: cap request body at MAX_PROXY_BODY. Reject larger bodies with 413
     // rather than allocating arbitrary memory.
@@ -112,7 +120,8 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
                 StatusCode::BAD_GATEWAY,
                 [(header::CONTENT_TYPE, "text/plain")],
                 format!(
-                    "yogurt dev proxy: cannot reach vite at {VITE_BASE}\n\nrun: pnpm --dir web dev"
+                    "yogurt dev proxy: cannot reach vite at {}\n\nrun: pnpm --dir web dev",
+                    vite_base()
                 ),
             )
                 .into_response()
