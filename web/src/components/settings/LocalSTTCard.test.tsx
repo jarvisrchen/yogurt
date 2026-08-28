@@ -72,13 +72,24 @@ describe("LocalSTTCard — Use Local guard", () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  it("does not block the radio when local is already the active provider", () => {
-    // Guard only applies to the activation transition — once local is
-    // active, the radio stays interactive even if a later model swap
-    // temporarily selects an undownloaded model.
+  it("still disables the radio and shows the hint when local is already active but the model isn't downloaded", () => {
+    // Regression for the guard gap: `activateBlocked` used to short-circuit
+    // to `false` whenever `active` was already true, so a persisted-but-
+    // broken combo (model deleted after activation, or a bad row from
+    // before this guard existed) rendered as if nothing were wrong. The
+    // guard must track disk truth regardless of which provider is active.
     renderCard({ active: true, selectedModel: "small.en" });
 
     const radio = screen.getByRole("radio", { name: /use local/i });
+    expect(radio).toBeDisabled();
+    expect(screen.getByText(/download the model first/i)).toBeInTheDocument();
+  });
+
+  it("keeps the radio enabled when local is active and the model is downloaded", () => {
+    renderCard({ active: true, selectedModel: "tiny.en" });
+
+    const radio = screen.getByRole("radio", { name: /use local/i });
     expect(radio).not.toBeDisabled();
+    expect(screen.queryByText(/download the model first/i)).not.toBeInTheDocument();
   });
 });

@@ -37,7 +37,12 @@ vi.mock("../lib/ws", () => ({
 
 const state = vi.hoisted(() => ({
   meetingRow: undefined as unknown,
-  activeRecording: null as { id: string; title: string; started_at: number } | null,
+  activeRecording: null as {
+    id: string;
+    title: string;
+    started_at: number;
+    stt?: "cloud" | "local";
+  } | null,
 }));
 
 vi.mock("../lib/api/meetings", () => ({
@@ -333,6 +338,59 @@ describe("Meeting — recovers recording state on return", () => {
     // The stt_error banner must stay silent — recovery is a pure UI resync,
     // not something that fabricates a transcription error.
     expect(screen.queryByTestId("stt-error-banner")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a truthful engine chip next to the mic picker when the live recording reports stt", async () => {
+    // The chip must reflect the server's `stt_engine` field (stamped once
+    // `Registry::start` resolves), not the Settings page — settings only
+    // apply at the *next* start, so this is the one honest source.
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+      stt: "local",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-live");
+
+    await waitFor(() => {
+      expect(screen.getByText("Local STT")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Cloud STT")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("omits the engine chip when the active recording hasn't reported stt yet", async () => {
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-live");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Local STT")).toBeNull();
+    expect(screen.queryByText("Cloud STT")).toBeNull();
 
     vi.unstubAllGlobals();
   });

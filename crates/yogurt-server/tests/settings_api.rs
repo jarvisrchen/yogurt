@@ -171,3 +171,139 @@ async fn unauthenticated_requests_are_rejected() {
         "tokenless POST /api/settings/providers must 403"
     );
 }
+
+// ─── STT local-model validation (server-side lie guard) ─────────────────────
+//
+// Settings previously let `stt_provider = "local"` persist against a model
+// that was never downloaded — the UI then showed "local/medium.en" with
+// nothing in `~/.yogurt/models`. Recording "worked" only because an
+// already-running cloud session ignores mid-recording settings changes
+// (settings apply at the *next* start). `patch_settings` now rejects any
+// PATCH whose EFFECTIVE settings (current row + patch overlaid) would
+// leave `stt_provider == "local"` pointed at an undownloaded model.
+//
+// `"ghost.en"` mirrors `meetings.rs::rejects_local_when_model_missing` —
+// a name that is not in `yogurt_stt::models::REGISTRY` at all, so the
+// check is hermetic: it can never accidentally pass because some engineer's
+// machine happens to have a real model already downloaded.
+
+#[tokio::test]
+async fn patch_to_local_with_undownloaded_model_is_rejected_and_settings_unchanged() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+
+    // Both fields in one PATCH: provider flips to local AND the model is
+    // bogus/undownloaded at the same time.
+    let res = client
+        .patch(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .json(&json!({ "stt_provider": "local", "stt_model": "ghost.en" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+    let body: Value = res.json().await.unwrap();
+    let msg = body["error"].as_str().expect("error field");
+    assert!(msg.contains("ghost.en"), "got: {msg}");
+    assert!(msg.contains("not downloaded"), "got: {msg}");
+
+    // Rejected PATCH must not have written anything — GET still shows the
+    // V005-seeded defaults.
+    let after: Value = client
+        .get(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after["general"]["stt_provider"], "cloud");
+    assert_eq!(after["general"]["stt_model"], "small.en");
+}
+
+#[tokio::test]
+async fn patch_provider_alone_to_local_is_rejected_when_stored_model_is_undownloaded() {
+    // Provider flip alone: the PATCH doesn't mention `stt_model` at all, so
+    // the effective model comes from the CURRENT row. Seed it to a name
+    // that's guaranteed not to be on disk (rather than relying on the
+    // V005 default `"small.en"`, which a dev machine that's actually used
+    // local STT before may well have downloaded already — that ambient
+    // state would make this test flaky).
+    let (state, token, base) = boot().await;
+    yogurt_db::settings::save_general_patch(
+        &state.db,
+        yogurt_db::settings::GeneralPatch {
+            stt_model: Some("ghost.en".to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("seed undownloaded model");
+
+    let client = reqwest::Client::new();
+    let res = client
+        .patch(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .json(&json!({ "stt_provider": "local" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+}
+
+#[tokio::test]
+async fn patch_model_alone_is_rejected_when_provider_is_already_local() {
+    // Model flip alone while local is already active: seed the row
+    // directly via the db layer (bypassing the HTTP validation this test
+    // exercises) so the PATCH under test carries only `stt_model`. The
+    // effective provider ("local") must come from the stored row, not the
+    // patch body.
+    let (state, token, base) = boot().await;
+    yogurt_db::settings::save_general_patch(
+        &state.db,
+        yogurt_db::settings::GeneralPatch {
+            stt_provider: Some("local".to_string()),
+            stt_model: Some("tiny.en".to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("seed local settings");
+
+    let client = reqwest::Client::new();
+    let res = client
+        .patch(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .json(&json!({ "stt_model": "ghost.en" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+
+    let after: Value = client
+        .get(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    // Unchanged from the seed — the rejected PATCH did not overwrite it.
+    assert_eq!(after["general"]["stt_model"], "tiny.en");
+}
+
+#[tokio::test]
+async fn patch_to_cloud_is_always_ok_regardless_of_model_state() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+
+    let status = client
+        .patch(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .json(&json!({ "stt_provider": "cloud", "stt_model": "ghost.en" }))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, 200);
+}

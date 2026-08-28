@@ -271,6 +271,13 @@ export interface ActiveRecording {
   title: string;
   /** Unix milliseconds — recording-start clock. */
   started_at: number;
+  /**
+   * Which STT engine `select_stt` actually resolved to for this recording.
+   * Omitted (not `null`) when the server hasn't recorded one yet. Settings
+   * only apply at the *next* start, so this can differ from the current
+   * Settings page value mid-recording — this field is the truthful one.
+   */
+  stt?: "cloud" | "local";
 }
 
 export const activeRecordingKey = ["meetings", "active"] as const;

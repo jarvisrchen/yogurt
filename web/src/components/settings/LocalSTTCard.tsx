@@ -111,12 +111,19 @@ export function LocalSTTCard({
     setDialogOpen(true);
   };
 
-  // The model backing `selectedModel` must actually be on disk before the
-  // user can flip `stt_provider` to "local" — otherwise recording fails at
-  // meeting start with a backend error the user can't self-serve from here.
+  // The model backing `selectedModel` must actually be on disk — otherwise
+  // recording fails at meeting start with a backend error the user can't
+  // self-serve from here. Guard-gap fix: this used to be `!active &&
+  // !selectedModelDownloaded`, so once `stt_provider` was ALREADY "local"
+  // the `!active` short-circuit made the guard permanently false — a
+  // persisted-but-broken combo (e.g. the active model got deleted, or a
+  // bad row predates this guard) rendered as if nothing were wrong: no
+  // warning, and the radio looked normally enabled. Dropping `!active`
+  // makes the warning + disabled state track disk truth regardless of
+  // which provider is currently active.
   const selectedModelDownloaded =
     q.data?.find((m) => m.name === selectedModel)?.downloaded ?? false;
-  const activateBlocked = !active && !selectedModelDownloaded;
+  const activateBlocked = !selectedModelDownloaded;
 
   const handleDialogClose = () => {
     setDialogOpen(false);

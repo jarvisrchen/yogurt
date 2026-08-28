@@ -601,3 +601,59 @@ async fn active_recording_route_does_not_capture_real_meeting_ids() {
 
     handle.abort();
 }
+
+/// `GET /api/meetings/active` must serialize the truthful `stt` engine
+/// once `Registry::start` has stamped it — this is the field the live
+/// header badge trusts over Settings (which only applies at the *next*
+/// start). `Registry::start` needs real audio hardware to reach the point
+/// where it stamps `stt_engine`, so this test seeds a registry meeting
+/// in-process (via the same `AppState::in_memory` + `__test_router`
+/// pattern `settings_api.rs::boot()` uses) and sets `stt_engine` directly
+/// through its `pub` field, then asserts the route reflects it.
+#[tokio::test]
+async fn active_recording_serializes_stt_engine_once_set() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.keep();
+    let storage = std::sync::Arc::new(
+        yogurt_server::storage::Storage::init_at(&path.join("db.sqlite")).unwrap(),
+    );
+    let session = std::sync::Arc::new(
+        yogurt_server::session::load_or_create(&path.join("session-token")).unwrap(),
+    );
+    let token = session.as_str().to_string();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let state = yogurt_server::state::AppState::in_memory(
+        Mode::Release,
+        storage,
+        session,
+        addr.port(),
+        path.join("notes"),
+    )
+    .unwrap();
+
+    // Seed a meeting that looks "recording" (task is Some) with the engine
+    // stamped, mirroring what `Registry::start` does right after
+    // `select_stt` resolves.
+    let m = state.meetings.create().await;
+    let never_finishes = tokio::spawn(async { std::future::pending::<()>().await });
+    *m.task.lock().await = Some(never_finishes);
+    *m.stt_engine.lock().await = Some("cloud");
+
+    let app = yogurt_server::__test_router(state.clone());
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://{addr}/api/meetings/active"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["id"], m.id.to_string());
+    assert_eq!(body["stt"], "cloud");
+}
