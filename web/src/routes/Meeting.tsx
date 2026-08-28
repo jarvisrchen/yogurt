@@ -7,7 +7,7 @@ import { MicDevicePicker } from "../components/MicDevicePicker";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
-import { meetingsApi, useMeeting } from "../lib/api/meetings";
+import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
 import { useSttError } from "../lib/ws";
 
 const INK = "#211D18";
@@ -102,6 +102,19 @@ export function Meeting() {
   const meetingQuery = useMeeting(meetingId ?? undefined);
   const meetingRow = meetingQuery.data;
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
+
+  // Resync `recording` when landing/returning on a meeting that's already
+  // live server-side (recording continues across navigation/reload/back —
+  // the server `Registry` owns it, not this component). This only flips
+  // local UI state to match reality; it must NEVER call startRecording()
+  // (no POST /start) — that would 400 "already started" and paint a
+  // spurious error banner for a meeting that's already recording fine.
+  const activeRecording = useActiveRecording();
+  useEffect(() => {
+    if (meetingId && activeRecording.data?.id === meetingId) {
+      setRecording(true);
+    }
+  }, [meetingId, activeRecording.data]);
 
   const title = meetingId
     ? (meetingRow?.title ?? "Untitled meeting")

@@ -63,15 +63,25 @@ export function formatMeta(m: Meeting): string {
 
 interface Props {
   meeting: Meeting;
+  /**
+   * Id of the currently-recording meeting (from `useActiveRecording()`),
+   * or `null`/`undefined` when nothing is recording. Passed down from the
+   * Library route so only ONE poll exists for the whole list — not one
+   * per card.
+   */
+  activeId?: string | null;
 }
 
-export function MeetingCard({ meeting }: Props) {
+export function MeetingCard({ meeting, activeId }: Props) {
+  const isLive = activeId != null && activeId === meeting.id;
   return (
     <Link
-      // Library opens the post-meeting READ view, which hydrates saved
-      // notes via GET /api/meetings/:id. `/meeting/:id` (no /post) is the
-      // live-capture surface and shows only a placeholder for a past meeting.
-      to={`/meeting/${meeting.id}/post`}
+      // A meeting that's still recording routes to the LIVE capture surface
+      // (`/meeting/:id`) — the post view is a frozen read of saved notes and
+      // has no Start/Stop controls or live transcript. Everything else opens
+      // the post-meeting READ view, which hydrates saved notes via
+      // GET /api/meetings/:id.
+      to={isLive ? `/meeting/${meeting.id}` : `/meeting/${meeting.id}/post`}
       className="group flex items-center gap-3 py-2 px-2 -mx-2 rounded-button hover:bg-line/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
     >
       <div
@@ -97,7 +107,19 @@ export function MeetingCard({ meeting }: Props) {
             />
           )}
         </div>
-        <div className="text-[12px] font-mono text-mut">{formatMeta(meeting)}</div>
+        <div className="text-[12px] font-mono text-mut flex items-center gap-1.5">
+          {isLive ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="inline-block w-2 h-2 rounded-pill bg-straw animate-recpulse"
+              />
+              <span>Recording</span>
+            </>
+          ) : (
+            formatMeta(meeting)
+          )}
+        </div>
       </div>
       <span className="text-[11px] font-mono text-mut border border-line rounded-pill px-2 py-0.5">
         Local

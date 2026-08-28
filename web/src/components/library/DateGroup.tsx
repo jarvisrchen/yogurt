@@ -83,9 +83,11 @@ interface Props {
   meetings: ReadonlyArray<Meeting>;
   /** Optional clock override for testing — defaults to now. */
   now?: Date;
+  /** Id of the currently-recording meeting, forwarded to every card. */
+  activeId?: string | null;
 }
 
-export function DateGroup({ meetings, now = new Date() }: Props) {
+export function DateGroup({ meetings, now = new Date(), activeId }: Props) {
   const groups = groupMeetingsByDay(meetings, now);
   return (
     <div className="flex flex-col gap-8">
@@ -97,7 +99,7 @@ export function DateGroup({ meetings, now = new Date() }: Props) {
           <ul className="flex flex-col gap-1">
             {g.meetings.map((m) => (
               <li key={m.id}>
-                <MeetingCard meeting={m} />
+                <MeetingCard meeting={m} activeId={activeId} />
               </li>
             ))}
           </ul>

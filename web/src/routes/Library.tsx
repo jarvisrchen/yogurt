@@ -30,6 +30,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import {
+  useActiveRecording,
   useCreateMeeting,
   useMeetings,
   useMeetingsSearch,
@@ -72,6 +73,9 @@ export function Library({ starredOnly = false }: LibraryProps) {
 
   const all = useMeetings();
   const found = useMeetingsSearch(query);
+  // Single poll for the whole list (not one per card) — cards compare
+  // their own id against this to route to the live view instead of /post.
+  const activeId = useActiveRecording().data?.id ?? null;
 
   const fetched = isSearching ? (found.data ?? []) : (all.data ?? []);
   const meetings = starredOnly ? fetched.filter((m) => m.starred) : fetched;
@@ -155,7 +159,7 @@ export function Library({ starredOnly = false }: LibraryProps) {
           )
         )}
         {!isLoading && !error && meetings.length > 0 && (
-          <DateGroup meetings={meetings} />
+          <DateGroup meetings={meetings} activeId={activeId} />
         )}
       </main>
     </div>

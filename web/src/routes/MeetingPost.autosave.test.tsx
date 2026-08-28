@@ -39,6 +39,9 @@ vi.mock("../lib/api/meetings", () => ({
   meetingsApi: { patch: patchMock },
   useMeeting: () => ({ data: undefined, isError: false }),
   useUpdateMeetingTitle: () => ({ mutate: vi.fn() }),
+  // This suite is about the autosave data-loss guard, not live-recording
+  // redirect (see MeetingPost.test.tsx) — always report nothing recording.
+  useActiveRecording: () => ({ data: null, isLoading: false, error: null }),
 }));
 
 import { MeetingPost } from "./MeetingPost";

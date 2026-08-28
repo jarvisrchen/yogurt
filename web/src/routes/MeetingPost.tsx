@@ -36,7 +36,7 @@
 // Legend can be absolutely positioned relative to a known container.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import { YogurtEditor } from "../editor";
 import { EnhancingBanner } from "../components/EnhancingBanner";
@@ -47,7 +47,7 @@ import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
-import { meetingsApi, useMeeting } from "../lib/api/meetings";
+import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
 import type { EnhanceResponse } from "../lib/api";
 
 const PAPER = "#FBF7EF"; // --color-paper
@@ -111,6 +111,13 @@ export function MeetingPost() {
 
   const stateShape = (location.state ?? {}) as LocationStateShape;
   const preloadedEnrichedMd = stateShape.enrichedMd;
+
+  // Covers deep links, refresh, and the back button landing on the frozen
+  // post view for a meeting that's STILL recording server-side — bounce to
+  // the live capture surface instead (it has the controls + live
+  // transcript this route doesn't). Checked below, after every hook in
+  // this component has run, so hooks-order rules stay intact.
+  const activeRecording = useActiveRecording();
 
   const [token, setToken] = useState<string | null>(null);
   // Editor content. `enrichedMd` undefined → editor renders blank until
@@ -445,6 +452,10 @@ export function MeetingPost() {
   }, [params.id, navigate]);
 
   if (!meetingId) return null;
+
+  if (activeRecording.data?.id === meetingId) {
+    return <Navigate to={`/meeting/${meetingId}`} replace />;
+  }
 
   const subline = formatMeetingSubline(startedAtUnixMs, endedAtUnixMs);
 
