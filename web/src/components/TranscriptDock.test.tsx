@@ -15,6 +15,13 @@ class MockWebSocket {
   static readonly CLOSED = 3;
 
   static lastInstance: MockWebSocket | null = null;
+  // Live mode now opens two independent WS connections (transcript +
+  // useAudioLevels), so tests that need the transcript socket specifically
+  // must pick it out by creation order rather than assume `lastInstance`
+  // is it. `useTranscriptWs`'s effect runs before `useAudioLevels`'s (hook
+  // declaration order in TranscriptDock), so `instances[0]` is always the
+  // transcript socket when both are open.
+  static instances: MockWebSocket[] = [];
 
   url: string;
   readyState: number = MockWebSocket.CONNECTING;
@@ -26,6 +33,7 @@ class MockWebSocket {
   constructor(url: string) {
     this.url = url;
     MockWebSocket.lastInstance = this;
+    MockWebSocket.instances.push(this);
     queueMicrotask(() => {
       this.readyState = MockWebSocket.OPEN;
       this.onopen?.call(this as unknown as WebSocket, new Event("open"));
@@ -55,6 +63,7 @@ function frame(ev: TranscriptEvent) {
 describe("TranscriptDock", () => {
   beforeEach(() => {
     MockWebSocket.lastInstance = null;
+    MockWebSocket.instances = [];
     vi.stubGlobal("WebSocket", MockWebSocket);
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -107,9 +116,10 @@ describe("TranscriptDock", () => {
       screen.getByRole("button", { name: /show live transcript/i }).click();
     });
 
-    // Wait for the WS to open.
-    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
-    const ws = MockWebSocket.lastInstance!;
+    // Wait for both WS connections to open (transcript + audio levels) and
+    // grab the transcript one specifically — see the `instances` comment above.
+    await waitFor(() => expect(MockWebSocket.instances.length).toBeGreaterThanOrEqual(2));
+    const ws = MockWebSocket.instances[0];
 
     act(() => {
       ws.emit(
@@ -142,6 +152,30 @@ describe("TranscriptDock", () => {
     // style (jsdom resolves `style.color` to rgb form).
     expect(firstLabel.style.color).toBe("rgb(33, 29, 24)");
     expect(secondLabel.style.color).toBe("rgb(168, 159, 144)");
+  });
+
+  it("shows the AudioWaveIcon in the header and the shortened 'Transcript' label on the collapsed tab in live mode", async () => {
+    render(<TranscriptDock meetingId="meeting-wave" token="test-token" />);
+    // Collapsed tab: shortened label, no overflow-prone "Live transcript" text.
+    const btn = screen.getByRole("button", { name: /show live transcript/i });
+    expect(btn.textContent).toContain("Transcript");
+    expect(btn.textContent).not.toContain("Live transcript");
+
+    act(() => {
+      btn.click();
+    });
+    // Header still says "Live transcript" (unchanged) and now renders the
+    // wave icon (aria-hidden presentation span) instead of the old static
+    // equalizer glyph.
+    const panel = screen.getByTestId("transcript-dock-panel");
+    expect(panel.textContent).toContain("Live transcript");
+    const waveIcons = panel.querySelectorAll('[role="presentation"]');
+    expect(waveIcons.length).toBeGreaterThan(0);
+
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("re-collapses when the tab is clicked again, animating out first (NOTES-14)", async () => {
@@ -185,6 +219,13 @@ describe("TranscriptDock — static mode (MeetingPost task 9)", () => {
       screen.getByRole("button", { name: /hide transcript/i }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/connected|offline/)).toBeNull();
+  });
+
+  it("renders the collapsed tab with the same shortened label and no wave icon in static mode", () => {
+    render(<TranscriptDock meetingId={null} token={null} segments={[]} />);
+    const btn = screen.getByRole("button", { name: /show transcript/i });
+    expect(btn.textContent).toContain("Transcript");
+    expect(btn.querySelectorAll('[role="presentation"]').length).toBe(0);
   });
 
   it("shows the no-transcript empty state when segments is empty", () => {

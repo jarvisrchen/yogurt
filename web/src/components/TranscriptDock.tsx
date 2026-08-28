@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   useTranscriptWs,
+  useAudioLevels,
   storedSegmentToEvent,
   type StoredTranscriptSegment,
   type TranscriptEvent,
 } from "../lib/ws";
 import { TranscriptLine } from "./TranscriptLine";
-import { AudioWaveBars } from "./AudioWaveBars";
+import { AudioWaveIcon } from "./AudioWaveIcon";
 
 const INK = "#211D18";
 const GREY = "#A89F90";
@@ -96,6 +97,13 @@ export function TranscriptDock({
     ? segments!.map(storedSegmentToEvent)
     : liveEvents;
   const label = isStatic ? "Transcript" : "Live transcript";
+
+  // Real amplitude wave (Feature A) — only subscribed in live mode; static
+  // playback has no audio on the wire.
+  const audioLevels = useAudioLevels(
+    isStatic ? null : meetingId,
+    isStatic ? null : token,
+  );
 
   // Task NOTES-14: symmetric open/close animation. `phase` lags `open` by
   // one animation — closing plays `.dock-closed` (slideOutRight) and only
@@ -210,16 +218,22 @@ export function TranscriptDock({
       data-testid="transcript-dock"
     >
       <div className="relative h-full flex pointer-events-auto">
-        {/* Collapsed tab — always rendered. Click toggles `open`. */}
+        {/* Collapsed tab — always rendered. Click toggles `open`. Sized to
+         * fit its own content (no fixed h-24 — "Transcript" at 12px in
+         * vertical-rl needs ~110px, the old fixed 96px let letters
+         * protrude past the pill). `overflow: hidden` + auto width/height
+         * from padding is the actual fix; the shortened label + AudioWaveIcon
+         * (live only) keep the pill compact. */}
         <button
           type="button"
           aria-label={open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
           onClick={() => setOpen((v) => !v)}
-          className="absolute h-24 w-7 flex items-center justify-center text-[12px] font-semibold bg-white"
+          className="absolute flex flex-col items-center justify-center gap-1.5 w-7 text-[12px] font-semibold bg-white"
           style={{
             top: "22px",
             right: open ? "330px" : "0",
-            writingMode: "vertical-rl",
+            padding: "12px 4px",
+            overflow: "hidden",
             color: INK,
             border: `1px solid ${LINE}`,
             borderRight: "none",
@@ -229,7 +243,12 @@ export function TranscriptDock({
             zIndex: 31,
           }}
         >
-          {open ? `▶ ${label}` : `◀ ${label}`}
+          {!isStatic && (
+            <AudioWaveIcon mic={audioLevels.mic} system={audioLevels.system} />
+          )}
+          <span style={{ writingMode: "vertical-rl", whiteSpace: "nowrap" }}>
+            {open ? "▶ Transcript" : "◀ Transcript"}
+          </span>
         </button>
 
         {/* Sliding panel — mounted while `phase !== "closed"` so the
@@ -258,11 +277,7 @@ export function TranscriptDock({
                 style={{ color: INK }}
               >
                 {!isStatic && (
-                  <AudioWaveBars
-                    size="sm"
-                    paused={!connected}
-                    color="var(--color-blue)"
-                  />
+                  <AudioWaveIcon mic={audioLevels.mic} system={audioLevels.system} />
                 )}
                 {label}
               </span>
