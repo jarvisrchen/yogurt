@@ -66,6 +66,15 @@ async fn it_serves_embedded_index_in_release_mode() {
 
 #[tokio::test]
 async fn it_returns_bad_gateway_in_dev_mode_when_vite_is_down() {
+    // Point the proxy at a port that is guaranteed dead (bind an ephemeral
+    // listener, note its port, drop it) instead of asserting nothing runs
+    // on the real :5173 - a legitimately-running dev server on this machine
+    // used to fail this test.
+    let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead_port = probe.local_addr().unwrap().port();
+    drop(probe);
+    std::env::set_var("YOGURT_VITE_BASE", format!("http://127.0.0.1:{dead_port}"));
+
     let (addr, handle, _tmp) = spawn_server(Mode::Dev).await;
 
     let resp = reqwest::get(format!("http://{addr}/"))
@@ -74,7 +83,7 @@ async fn it_returns_bad_gateway_in_dev_mode_when_vite_is_down() {
     assert_eq!(
         resp.status(),
         502,
-        "no vite running on :5173 should produce a 502 from the dev proxy"
+        "a dead vite target must produce a 502 from the dev proxy"
     );
 
     let body = resp.text().await.expect("body readable");

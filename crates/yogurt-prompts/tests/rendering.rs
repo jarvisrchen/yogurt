@@ -19,7 +19,7 @@ fn it_renders_enhance_with_notes_and_transcript() {
     assert!(out.contains("- pricing"), "notes substituted: {out}");
     assert!(out.contains("$14/mo"), "transcript substituted: {out}");
     assert!(
-        out.contains("USER NOTES"),
+        out.contains("<user_notes>") && out.contains("<transcript>"),
         "prompt scaffolding present: {out}"
     );
 }

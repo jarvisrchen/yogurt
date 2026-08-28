@@ -104,18 +104,25 @@ fn build_mock_output(user: &str) -> String {
 }
 
 fn split_prompt(user: &str) -> (&str, &str) {
-    let notes_marker = "## USER NOTES (preserve verbatim, do not wrap)";
-    let trans_marker = "## TRANSCRIPT";
-    let (Some(n_start), Some(t_start)) = (user.find(notes_marker), user.find(trans_marker)) else {
+    // The enhance template wraps inputs in `<user_notes>`/`<transcript>`
+    // tags. `rfind` because the template's RULES also mention the literal
+    // tag names (in backticks) well before the real wrappers appear.
+    let notes = match (user.rfind("<user_notes>"), user.rfind("</user_notes>")) {
+        (Some(start), Some(end)) if start < end => &user[start + "<user_notes>".len()..end],
         // Defensive — if the prompt format changes, return empty/empty so
         // the caller still gets a valid (if uninformative) markdown doc.
-        return ("", "[]");
+        _ => return ("", "[]"),
     };
-    let notes = &user[n_start + notes_marker.len()..t_start];
-    let after = &user[t_start..];
-    let json_start = after.find('[').unwrap_or(after.len());
+    let transcript = match (user.rfind("<transcript>"), user.rfind("</transcript>")) {
+        (Some(start), Some(end)) if start < end => {
+            let inner = &user[start + "<transcript>".len()..end];
+            let json_start = inner.find('[').unwrap_or(inner.len());
+            &inner[json_start..]
+        }
+        _ => "[]",
+    };
     // Trim outer whitespace but PRESERVE leading `-` bullets in user notes.
-    (notes.trim(), after[json_start..].trim())
+    (notes.trim(), transcript.trim())
 }
 
 #[derive(Deserialize)]
@@ -135,14 +142,14 @@ mod tests {
     async fn it_echoes_notes_and_adds_one_bullet_per_segment_via_trait() {
         let mock = MockLlm;
         let prompt = r#"
-## USER NOTES (preserve verbatim, do not wrap)
-
+<user_notes>
 - pricing
 - timeline
+</user_notes>
 
-## TRANSCRIPT
-
+<transcript>
 [{"ts_ms":120000,"channel":"mic","text":"We debated the pricing model in detail today"}]
+</transcript>
 "#;
         let resp = mock
             .complete(ChatRequest {
@@ -167,13 +174,13 @@ mod tests {
     async fn produces_no_ai_bullets_when_transcript_is_empty_via_trait() {
         let mock = MockLlm;
         let prompt = r#"
-## USER NOTES (preserve verbatim, do not wrap)
-
+<user_notes>
 - pricing
+</user_notes>
 
-## TRANSCRIPT
-
+<transcript>
 []
+</transcript>
 "#;
         let resp = mock
             .complete(ChatRequest {
