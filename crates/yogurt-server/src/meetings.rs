@@ -233,6 +233,11 @@ impl std::fmt::Debug for Meeting {
 #[derive(Default, Debug)]
 pub struct Registry {
     meetings: RwLock<HashMap<MeetingId, Arc<Meeting>>>,
+    /// Serializes `start()` calls so the single-active-recording invariant
+    /// cannot be raced by two concurrent /start requests for different
+    /// meetings (each would otherwise pass the active check before the
+    /// other claimed its task slot).
+    start_gate: Mutex<()>,
 }
 
 impl Registry {
@@ -320,6 +325,20 @@ impl Registry {
             .get(id)
             .await
             .ok_or_else(|| anyhow!("meeting not found"))?;
+
+        // Single-active-recording invariant: one meeting records at a
+        // time, matching the product model (and what the return-pill /
+        // library-badge UI assumes). The gate serializes concurrent
+        // start() calls so the check below cannot be raced.
+        let _gate = self.start_gate.lock().await;
+        if let Some(active) = self.active_recording().await {
+            if active == *id {
+                return Err(anyhow!("meeting already started"));
+            }
+            return Err(anyhow!(
+                "another meeting is already recording - stop or end it first"
+            ));
+        }
 
         // Refuse to start twice. Hold the task lock for the whole start
         // sequence so two concurrent /start calls can't both pass this
@@ -895,6 +914,43 @@ mod tests {
         let recording = reg.create().await;
         *recording.task.lock().await = Some(tokio::spawn(async {}));
         assert_eq!(reg.active_recording().await, Some(recording.id));
+    }
+
+    /// Single-active-recording invariant: starting meeting B while meeting
+    /// A records must fail with an actionable error - and BEFORE any
+    /// settings validation or audio capture is attempted.
+    #[tokio::test]
+    async fn it_refuses_to_start_a_second_recording() {
+        let reg = Registry::new();
+        let a = reg.create().await;
+        *a.task.lock().await = Some(tokio::spawn(async {
+            std::future::pending::<()>().await;
+        }));
+        let b = reg.create().await;
+
+        let err = reg
+            .start(&b.id, SttSettings::default(), None, None)
+            .await
+            .expect_err("second concurrent recording must be refused");
+        assert!(
+            format!("{err:#}").contains("another meeting is already recording"),
+            "got: {err:#}"
+        );
+
+        // Restarting the SAME already-live meeting stays its own error.
+        let err = reg
+            .start(&a.id, SttSettings::default(), None, None)
+            .await
+            .expect_err("double start of the live meeting must be refused");
+        assert!(
+            format!("{err:#}").contains("already started"),
+            "got: {err:#}"
+        );
+
+        let leftover = a.task.lock().await.take();
+        if let Some(t) = leftover {
+            t.abort();
+        }
     }
 
     #[tokio::test]
