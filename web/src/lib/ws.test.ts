@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import {
   useTranscriptWs,
   useSttError,
+  useAudioLevels,
   storedSegmentToEvent,
   type TranscriptEvent,
 } from "./ws";
@@ -316,5 +317,79 @@ describe("useSttError", () => {
     });
 
     expect(result.current.message).toBeNull();
+  });
+});
+
+describe("useAudioLevels", () => {
+  beforeEach(() => {
+    MockWebSocket.lastInstance = null;
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { protocol: "http:", host: "localhost:5173" },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("tracks mic and system levels independently from audio_level frames", async () => {
+    const { result } = renderHook(() => useAudioLevels("meeting-1", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      ws.onmessage?.call(
+        ws as unknown as WebSocket,
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "audio_level", channel: "mic", level: 0.42 }),
+        }),
+      );
+    });
+    expect(result.current).toEqual({ mic: 0.42, system: 0 });
+
+    act(() => {
+      ws.onmessage?.call(
+        ws as unknown as WebSocket,
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "audio_level", channel: "system", level: 0.9 }),
+        }),
+      );
+    });
+    expect(result.current).toEqual({ mic: 0.42, system: 0.9 });
+  });
+
+  it("decays a channel's level to 0 if no fresh event arrives within 600ms", async () => {
+    const { result } = renderHook(() => useAudioLevels("meeting-2", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      ws.onmessage?.call(
+        ws as unknown as WebSocket,
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "audio_level", channel: "mic", level: 0.75 }),
+        }),
+      );
+    });
+    expect(result.current.mic).toBe(0.75);
+
+    await waitFor(() => expect(result.current.mic).toBe(0), { timeout: 2000 });
+  });
+
+  it("ignores non-audio_level frames on the shared socket", async () => {
+    const { result } = renderHook(() => useAudioLevels("meeting-3", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      ws.emit(
+        frame({ ts_ms: 1, channel: "mic", text: "hi", is_final: true }),
+      );
+    });
+
+    expect(result.current).toEqual({ mic: 0, system: 0 });
   });
 });

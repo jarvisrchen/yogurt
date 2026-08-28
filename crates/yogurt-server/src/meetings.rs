@@ -548,7 +548,7 @@ impl Registry {
                 }
             }));
 
-            pump_audio_adapter(mic_rx, sys_rx, audio_tx).await;
+            pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx).await;
             drop(stt_guard);
         });
 
@@ -814,6 +814,43 @@ fn run_capture_control_loop(
     })
 }
 
+/// Throttled to at most one emission per channel per 100ms — feeds the
+/// Granola-style live amplitude wave (browser `useAudioLevels`), not a
+/// per-sample stream. `last_emit` is `None` until the first chunk on that
+/// channel, so the very first level always fires immediately.
+///
+/// ponytail: wall-clock `Instant` throttle, not tokio's paused-time clock —
+/// simplest thing that works for a per-chunk UI hint; upgrade only if a
+/// test ever needs `tokio::time::pause()` semantics here.
+fn maybe_emit_audio_level(
+    events_tx: &broadcast::Sender<serde_json::Value>,
+    last_emit: &mut Option<std::time::Instant>,
+    channel: &str,
+    peak: f32,
+) {
+    let now = std::time::Instant::now();
+    let due = match last_emit {
+        Some(t) => now.duration_since(*t) >= std::time::Duration::from_millis(100),
+        None => true,
+    };
+    if !due {
+        return;
+    }
+    *last_emit = Some(now);
+    let level = (peak.clamp(0.0, 1.0) * 100.0).round() / 100.0;
+    let _ = events_tx.send(serde_json::json!({
+        "type": "audio_level",
+        "channel": channel,
+        "level": level,
+    }));
+}
+
+/// Peak amplitude of a chunk, normalized 0..1 (`max(|sample|) / 32768`).
+/// `unsigned_abs` sidesteps the `i16::MIN.abs()` overflow panic.
+fn peak_amplitude(samples: &[i16]) -> f32 {
+    samples.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0) as f32 / 32768.0
+}
+
 /// Drain Frame receivers from `yogurt-audio` → publish `AudioChunk`s onto the
 /// meeting's audio broadcast for the STT engine. Lagged receivers warn +
 /// continue.
@@ -824,19 +861,27 @@ fn run_capture_control_loop(
 /// receivers (STT session ended). The `if` guards on each select arm
 /// disable a closed channel so we don't busy-poll it once it's done.
 ///
+/// Also emits throttled `audio_level` events on `events_tx` (see
+/// `maybe_emit_audio_level`) so the browser can render a real amplitude
+/// wave next to "Live transcript" instead of a heartbeat animation.
+///
 /// Extracted from the inline supervisor loop so the BL-04 behavior is unit-
 /// testable without spinning up real SCK + cpal streams.
 pub(crate) async fn pump_audio_adapter(
     mut mic_rx: broadcast::Receiver<yogurt_audio::Frame>,
     mut sys_rx: broadcast::Receiver<yogurt_audio::Frame>,
     audio_tx: broadcast::Sender<AudioChunk>,
+    events_tx: broadcast::Sender<serde_json::Value>,
 ) {
     let mut mic_open = true;
     let mut sys_open = true;
+    let mut mic_last_emit: Option<std::time::Instant> = None;
+    let mut sys_last_emit: Option<std::time::Instant> = None;
     while mic_open || sys_open {
         tokio::select! {
             res = mic_rx.recv(), if mic_open => match res {
                 Ok(frame) => {
+                    maybe_emit_audio_level(&events_tx, &mut mic_last_emit, "mic", peak_amplitude(&frame.samples));
                     let chunk = AudioChunk {
                         channel: Channel::Mic,
                         samples: frame.samples,
@@ -857,6 +902,7 @@ pub(crate) async fn pump_audio_adapter(
             },
             res = sys_rx.recv(), if sys_open => match res {
                 Ok(frame) => {
+                    maybe_emit_audio_level(&events_tx, &mut sys_last_emit, "system", peak_amplitude(&frame.samples));
                     let chunk = AudioChunk {
                         channel: Channel::System,
                         samples: frame.samples,
@@ -1047,12 +1093,13 @@ mod tests {
         let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
         let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
         let (audio_tx, mut audio_rx) = broadcast::channel::<AudioChunk>(16);
+        let (events_tx, _events_rx) = broadcast::channel::<serde_json::Value>(16);
 
         // Drop the system sender immediately → sys_rx will see Closed on
         // its first recv.
         drop(sys_tx);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx));
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
 
         // Give the adapter a beat to observe sys closed.
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
@@ -1092,10 +1139,11 @@ mod tests {
         let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
         let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
         let (audio_tx, mut audio_rx) = broadcast::channel::<AudioChunk>(16);
+        let (events_tx, _events_rx) = broadcast::channel::<serde_json::Value>(16);
 
         drop(mic_tx);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx));
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
 
         sys_tx
@@ -1126,14 +1174,93 @@ mod tests {
         let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
         let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
         let (audio_tx, _audio_rx) = broadcast::channel::<AudioChunk>(16);
+        let (events_tx, _events_rx) = broadcast::channel::<serde_json::Value>(16);
 
         drop(mic_tx);
         drop(sys_tx);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx));
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
         tokio::time::timeout(std::time::Duration::from_secs(1), pump)
             .await
             .expect("pump must exit promptly when both channels closed")
+            .expect("pump task joined");
+    }
+
+    /// Feeds a burst of mic frames with a known peak amplitude, asserts the
+    /// resulting `audio_level` event reports the right level and channel,
+    /// and that the 100ms throttle collapses a same-instant burst down to
+    /// far fewer events than frames sent. Real wall-clock sleeps (not
+    /// `tokio::time::pause`) since `maybe_emit_audio_level` throttles on
+    /// `std::time::Instant`, not tokio's virtual clock.
+    #[tokio::test]
+    async fn pump_emits_throttled_audio_level_events() {
+        let (mic_tx, mic_rx) = broadcast::channel::<yogurt_audio::Frame>(64);
+        let (sys_tx, sys_rx) = broadcast::channel::<yogurt_audio::Frame>(16);
+        let (audio_tx, _audio_rx) = broadcast::channel::<AudioChunk>(64);
+        let (events_tx, mut events_rx) = broadcast::channel::<serde_json::Value>(64);
+
+        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
+
+        // Half-scale mic frame (samples peak at 16384 -> level ~0.5).
+        let half_scale = vec![16384i16; 320];
+        mic_tx
+            .send(yogurt_audio::Frame {
+                channel: yogurt_audio::Channel::Mic,
+                samples: half_scale.clone(),
+                monotonic_micros: 0,
+            })
+            .unwrap();
+        let first = tokio::time::timeout(std::time::Duration::from_millis(500), events_rx.recv())
+            .await
+            .expect("first audio_level within 500ms")
+            .expect("recv ok");
+        assert_eq!(first["type"], "audio_level");
+        assert_eq!(first["channel"], "mic");
+        let level = first["level"].as_f64().expect("level is a number");
+        assert!((level - 0.5).abs() < 0.01, "expected ~0.5, got {level}");
+
+        // Burst 9 more frames immediately (well within the 100ms throttle
+        // window) — none of these should produce a second event yet.
+        for i in 1..10u64 {
+            mic_tx
+                .send(yogurt_audio::Frame {
+                    channel: yogurt_audio::Channel::Mic,
+                    samples: half_scale.clone(),
+                    monotonic_micros: i * 20_000,
+                })
+                .unwrap();
+        }
+        let burst_result =
+            tokio::time::timeout(std::time::Duration::from_millis(60), events_rx.recv()).await;
+        assert!(
+            burst_result.is_err(),
+            "burst within the throttle window must not emit a second event, got {burst_result:?}"
+        );
+
+        // After the throttle window elapses (real time), the next frame
+        // must emit a fresh event.
+        tokio::time::sleep(std::time::Duration::from_millis(110)).await;
+        let full_scale = vec![i16::MIN; 320];
+        mic_tx
+            .send(yogurt_audio::Frame {
+                channel: yogurt_audio::Channel::Mic,
+                samples: full_scale,
+                monotonic_micros: 300_000,
+            })
+            .unwrap();
+        let second = tokio::time::timeout(std::time::Duration::from_millis(500), events_rx.recv())
+            .await
+            .expect("second audio_level within 500ms")
+            .expect("recv ok");
+        assert_eq!(second["channel"], "mic");
+        let level2 = second["level"].as_f64().expect("level is a number");
+        assert!((level2 - 1.0).abs() < 0.01, "expected ~1.0, got {level2}");
+
+        drop(mic_tx);
+        drop(sys_tx);
+        tokio::time::timeout(std::time::Duration::from_secs(1), pump)
+            .await
+            .expect("pump should exit when both channels closed")
             .expect("pump task joined");
     }
 

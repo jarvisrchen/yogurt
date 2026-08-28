@@ -556,3 +556,132 @@ export function useSttError(
 
   return { message, dismiss: () => setMessage(null) };
 }
+
+/** `audio_level` WS frame — see `crates/yogurt-server/src/meetings.rs::maybe_emit_audio_level`. */
+interface AudioLevelEvent {
+  type: "audio_level";
+  channel: Channel;
+  level: number;
+}
+
+export interface AudioLevels {
+  mic: number;
+  system: number;
+}
+
+/** Zero out a channel's level if no `audio_level` event refreshes it within this window. */
+const AUDIO_LEVEL_DECAY_MS = 600;
+
+/**
+ * Subscribe to `audio_level` frames on the per-meeting WS (real amplitude
+ * wave, replacing the old heartbeat-only equalizer glyph). Mirrors
+ * `useSttError`'s connect/backoff lifecycle — a fourth independent
+ * subscription on the same per-meeting socket.
+ *
+ * Each channel decays to 0 if no fresh event arrives within
+ * `AUDIO_LEVEL_DECAY_MS`, so the wave visibly settles once audio stops
+ * instead of freezing at its last value.
+ */
+export function useAudioLevels(
+  meetingId: string | null,
+  token: string | null,
+): AudioLevels {
+  const [levels, setLevels] = useState<AudioLevels>({ mic: 0, system: 0 });
+
+  useEffect(() => {
+    if (!meetingId || !token) {
+      setLevels({ mic: 0, system: 0 });
+      return;
+    }
+
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
+
+    let attempt = 0;
+    let cancelled = false;
+    let currentWs: WebSocket | null = null;
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
+    const decayTimers: Record<Channel, ReturnType<typeof setTimeout> | null> = {
+      mic: null,
+      system: null,
+    };
+
+    const cleanupCurrentWs = () => {
+      if (currentWs) {
+        currentWs.onopen = null;
+        currentWs.onclose = null;
+        currentWs.onerror = null;
+        currentWs.onmessage = null;
+        if (
+          currentWs.readyState === WebSocket.CONNECTING ||
+          currentWs.readyState === WebSocket.OPEN
+        ) {
+          currentWs.close();
+        }
+        currentWs = null;
+      }
+    };
+
+    const scheduleDecay = (channel: Channel) => {
+      if (decayTimers[channel]) clearTimeout(decayTimers[channel]!);
+      decayTimers[channel] = setTimeout(() => {
+        setLevels((prev) => ({ ...prev, [channel]: 0 }));
+      }, AUDIO_LEVEL_DECAY_MS);
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const ws = new WebSocket(url);
+      currentWs = ws;
+
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const frame = JSON.parse(event.data as string) as { type?: string };
+          if (frame.type === "audio_level") {
+            const ev = frame as AudioLevelEvent;
+            setLevels((prev) => ({ ...prev, [ev.channel]: ev.level }));
+            scheduleDecay(ev.channel);
+          }
+        } catch {
+          // Ignore non-JSON / malformed frames.
+        }
+      };
+
+      const scheduleReconnect = () => {
+        if (cancelled) return;
+        cleanupCurrentWs();
+        if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
+        const delay = 500 * (1 << attempt);
+        attempt += 1;
+        backoffTimer = setTimeout(() => {
+          backoffTimer = null;
+          connect();
+        }, delay);
+      };
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        attempt = 0;
+      };
+      ws.onclose = scheduleReconnect;
+      ws.onerror = scheduleReconnect;
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (backoffTimer) {
+        clearTimeout(backoffTimer);
+        backoffTimer = null;
+      }
+      if (decayTimers.mic) clearTimeout(decayTimers.mic);
+      if (decayTimers.system) clearTimeout(decayTimers.system);
+      cleanupCurrentWs();
+      setLevels({ mic: 0, system: 0 });
+    };
+  }, [meetingId, token]);
+
+  return levels;
+}
