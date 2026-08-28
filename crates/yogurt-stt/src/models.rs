@@ -23,7 +23,9 @@
 //!
 //! # Layout
 //!
-//! Models live under `~/.yogurt/models/ggml-<name>.bin`, resolved via
+//! Models live under the ProjectDirs data dir (macOS:
+//! `~/Library/Application Support/com.yogurt.yogurt/models/ggml-<name>.bin`,
+//! NOT `~/.yogurt` - a doc lie that once sent debugging astray), resolved via
 //! `directories::ProjectDirs::data_local_dir()`.  Phase 5 set the
 //! `data_local_dir` base to `~/.yogurt`; if that ever changes, follow
 //! Phase 5's convention here.
@@ -122,7 +124,7 @@ pub fn lookup(name: &str) -> Option<&'static ModelSpec> {
     REGISTRY.iter().find(|m| m.name == name)
 }
 
-/// Resolve `~/.yogurt/models/<spec.filename>`.  Creates the directory
+/// Resolve `<data_dir>/models/<spec.filename>`.  Creates the directory
 /// if it does not exist.
 ///
 /// Phase 5 set the `data_local_dir` base to `~/.yogurt` via the

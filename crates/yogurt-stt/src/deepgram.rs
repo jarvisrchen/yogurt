@@ -457,6 +457,15 @@ pub struct UtteranceState {
     /// Timestamp of the utterance's FIRST audio, carried onto every event
     /// so dock rows and deep-links anchor at the utterance start.
     start_ms: Option<u64>,
+    /// Text of the last FINAL emitted on this connection. Deepgram can
+    /// resend the terminal `speech_final` frame verbatim (observed on
+    /// reconnect), and by the time the duplicate arrives `buf`/`start_ms`
+    /// have already been reset by the first emission — so the duplicate
+    /// looks like a brand-new one-window utterance and re-emits the same
+    /// text, anchored at the frame's own `start` (often 0 on a resend).
+    /// Comparing against the last emitted final catches and drops that
+    /// immediate repeat before it reaches the dock.
+    last_final: Option<String>,
 }
 
 fn join_words(a: &str, b: &str) -> String {
@@ -510,6 +519,14 @@ pub fn fold_deepgram_event(
         if full.is_empty() {
             return None;
         }
+        if st.last_final.as_deref() == Some(full.as_str()) {
+            // Immediate repeat of the final we just emitted (resent frame,
+            // or a duplicate empty-transcript speech_final) — suppress
+            // rather than emit a second locked line, which would otherwise
+            // land at ts_ms 0 since start_ms was already reset above.
+            return None;
+        }
+        st.last_final = Some(full.clone());
         Some(TranscriptEvent {
             ts_ms,
             channel,
@@ -764,6 +781,81 @@ mod utterance_tests {
         assert!(f.is_final);
         assert_eq!(f.text, "hello there");
         assert_eq!(f.ts_ms, 1000);
+    }
+
+    /// The bug observed live: Deepgram resends the identical `speech_final`
+    /// frame (e.g. on reconnect). Folding it twice must NOT emit the same
+    /// final twice — the second fold is suppressed.
+    #[test]
+    fn duplicate_speech_final_frame_is_suppressed() {
+        let mut st = UtteranceState::default();
+        let f1 = fold_deepgram_event(
+            &mut st,
+            &frame("hello there", 4.0, true, true),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert!(f1.is_final);
+        assert_eq!(f1.text, "hello there");
+        assert_eq!(f1.ts_ms, 4000);
+
+        let f2 = fold_deepgram_event(
+            &mut st,
+            &frame("hello there", 4.0, true, true),
+            Channel::Mic,
+        );
+        assert!(
+            f2.is_none(),
+            "resent speech_final frame must not emit a second final"
+        );
+    }
+
+    /// Variant of the same bug: the duplicate/late speech_final carries no
+    /// `start` (defaults to 0) since `start_ms` was already reset by the
+    /// first emission. Before the fix this re-emitted "hello there" a
+    /// second time stamped at ts_ms 0 instead of being suppressed.
+    #[test]
+    fn duplicate_speech_final_with_zero_start_after_reset_is_suppressed() {
+        let mut st = UtteranceState::default();
+        fold_deepgram_event(
+            &mut st,
+            &frame("hello there", 4.0, true, true),
+            Channel::Mic,
+        )
+        .unwrap();
+
+        let f2 = fold_deepgram_event(
+            &mut st,
+            &frame("hello there", 0.0, true, true),
+            Channel::Mic,
+        );
+        assert!(
+            f2.is_none(),
+            "late duplicate final with no start info must not re-emit at ts_ms 0"
+        );
+    }
+
+    /// A genuinely NEW utterance with different text after a final must
+    /// still emit normally — the suppression only catches exact repeats.
+    #[test]
+    fn distinct_final_after_a_final_still_emits() {
+        let mut st = UtteranceState::default();
+        fold_deepgram_event(
+            &mut st,
+            &frame("hello there", 4.0, true, true),
+            Channel::Mic,
+        )
+        .unwrap();
+
+        let f2 = fold_deepgram_event(
+            &mut st,
+            &frame("a different sentence", 6.0, true, true),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert!(f2.is_final);
+        assert_eq!(f2.text, "a different sentence");
+        assert_eq!(f2.ts_ms, 6000);
     }
 
     /// Single-window utterances (short speech) behave exactly as before.

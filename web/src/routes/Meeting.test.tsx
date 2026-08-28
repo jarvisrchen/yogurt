@@ -31,9 +31,13 @@ vi.mock("../components/MicDevicePicker", () => ({
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
 }));
-vi.mock("../lib/ws", () => ({
-  useSttError: () => ({ message: null, dismiss: () => {} }),
-}));
+vi.mock("../lib/ws", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/ws")>();
+  return {
+    ...actual,
+    useSttError: () => ({ message: null, dismiss: () => {} }),
+  };
+});
 
 const state = vi.hoisted(() => ({
   meetingRow: undefined as unknown,
