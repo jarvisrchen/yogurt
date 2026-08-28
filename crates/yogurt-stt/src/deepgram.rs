@@ -58,11 +58,18 @@ impl DeepgramStt {
     }
 
     /// Build the connect URL with all query params baked in.
+    ///
+    /// `endpointing` is the silence (ms) after which Deepgram closes an
+    /// utterance — each closed utterance becomes one transcript line. At
+    /// the old 300ms every breath and hesitation started a new line
+    /// ("...where the rollout." / "We are."), so lines read as chopped
+    /// fragments. 1000ms tracks real sentence boundaries; perceived
+    /// latency is unchanged because interim partials still stream live.
     fn connect_url(&self) -> String {
         format!(
             "{base}/v1/listen?model={model}\
              &encoding=linear16&sample_rate=16000&channels=1\
-             &interim_results=true&endpointing=300&smart_format=true",
+             &interim_results=true&endpointing=1000&smart_format=true",
             base = self.base_url,
             model = self.model,
         )
