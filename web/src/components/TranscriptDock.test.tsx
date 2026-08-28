@@ -154,7 +154,7 @@ describe("TranscriptDock", () => {
     expect(secondLabel.style.color).toBe("rgb(168, 159, 144)");
   });
 
-  it("shows the AudioWaveIcon in the header and the shortened 'Transcript' label on the collapsed tab in live mode", async () => {
+  it("keeps the header icon-free and shows the shortened 'Transcript' label on the collapsed tab in live mode", async () => {
     render(<TranscriptDock meetingId="meeting-wave" token="test-token" />);
     // Collapsed tab: shortened label, no overflow-prone "Live transcript" text.
     const btn = screen.getByRole("button", { name: /show live transcript/i });
@@ -170,7 +170,7 @@ describe("TranscriptDock", () => {
     const panel = screen.getByTestId("transcript-dock-panel");
     expect(panel.textContent).toContain("Live transcript");
     const waveIcons = panel.querySelectorAll('[role="presentation"]');
-    expect(waveIcons.length).toBeGreaterThan(0);
+    expect(waveIcons.length).toBe(0); // wave lives ONLY on the collapsed tab
 
     await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
     await act(async () => {
