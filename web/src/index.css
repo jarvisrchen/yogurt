@@ -217,9 +217,14 @@ html, body {
 
 
 /* --- Phase 6: chat window pop animation (PRD §16.5) --- */
+/* Centering is owned by the Tailwind v4 `translate` property
+   (-translate-x-1/2) on the element - the keyframes must NOT repeat the
+   -50% shift in `transform`, or both apply at once and the panel opens a
+   full panel-width left of its anchor (observed live: chat window jumped
+   left of the Ask pill on open). */
 @keyframes popUp {
-  0%   { transform: translate(-50%, 8px) scale(0.96); opacity: 0; }
-  100% { transform: translate(-50%, 0)   scale(1);    opacity: 1; }
+  0%   { transform: translateY(8px) scale(0.96); opacity: 0; }
+  100% { transform: translateY(0)   scale(1);    opacity: 1; }
 }
 .anim-popUp { animation: popUp 260ms ease-out both; }
 
