@@ -49,6 +49,10 @@ fn migrations() -> Migrations<'static> {
         // adapter and the WhisperLocal adapter without a settings null
         // check.  Defaults: provider=cloud, model=small.en (D-02).
         M::up(include_str!("../migrations/V005__stt_provider_model.sql")),
+        // Feature: per-meeting STT engine provenance. Nullable TEXT so old
+        // rows read back as None; new recordings get stamped in
+        // routes.rs::start_meeting.
+        M::up(include_str!("../migrations/V006__meetings_stt_engine.sql")),
     ])
 }
 

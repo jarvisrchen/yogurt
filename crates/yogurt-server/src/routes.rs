@@ -279,11 +279,23 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
             // registry meetings simply skip the stamp.
             let repo = state.meeting_repo.clone();
             let id_str = id.to_string();
+            // Feature: per-meeting STT engine provenance. Mirrors the model
+            // resolution in `DeepgramStt::new` (crates/yogurt-stt/src/deepgram.rs)
+            // — env override, default "nova-3" — so the stamped string always
+            // matches what the cloud adapter actually connected with.
+            let stt_engine = if g.stt_provider == "cloud" {
+                let model =
+                    std::env::var("YOGURT_DEEPGRAM_MODEL").unwrap_or_else(|_| "nova-3".into());
+                format!("cloud \u{b7} {model}")
+            } else {
+                format!("local \u{b7} {}", g.stt_model)
+            };
             let _ = tokio::task::spawn_blocking(move || {
                 repo.patch(
                     &id_str,
                     yogurt_db::MeetingPatch {
                         started_at: Some(now_unix_ms()),
+                        stt_engine: Some(stt_engine),
                         ..Default::default()
                     },
                 )

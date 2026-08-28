@@ -92,6 +92,8 @@ pub struct PatchBody {
     pub ended_at: Option<Option<i64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub starred: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_engine: Option<String>,
 }
 
 /// Centralized error → response mapping. The error message bubbles through
@@ -280,6 +282,7 @@ async fn patch_one(
         enriched_md: body.enriched_md,
         ended_at: body.ended_at,
         starred: body.starred,
+        stt_engine: body.stt_engine,
     };
     let state_for_blocking = s.clone();
     let id_for_blocking = id.clone();

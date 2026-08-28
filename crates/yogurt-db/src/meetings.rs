@@ -50,6 +50,9 @@ pub struct Meeting {
     pub enriched_md: Option<String>,
     pub transcript_json: String,
     pub starred: bool,
+    /// STT engine provenance, e.g. "local · small.en" or "cloud · nova-3".
+    /// `None` for meetings recorded before this column existed.
+    pub stt_engine: Option<String>,
     /// Row creation timestamp (ISO 8601 over the wire).
     pub created_at: DateTime<Utc>,
     /// Last mutation timestamp (ISO 8601 over the wire). Updated on every
@@ -108,6 +111,11 @@ pub struct MeetingPatch {
     pub ended_at: Option<Option<i64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub starred: Option<bool>,
+    /// Plain `Option<String>` semantics like `notes_md` (not tri-state):
+    /// `None` leaves the column alone, `Some(s)` overwrites it. There is
+    /// no "clear" use case for provenance, so no tri-state is needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_engine: Option<String>,
 }
 
 /// CRUD facade over the `meetings` table.
@@ -237,6 +245,10 @@ impl MeetingRepo {
                 sets.push("starred = ?");
                 args.push((if b { 1i64 } else { 0i64 }).into());
             }
+            if let Some(e) = patch.stt_engine.as_ref() {
+                sets.push("stt_engine = ?");
+                args.push(e.clone().into());
+            }
             if sets.is_empty() {
                 // No fields supplied — still touch updated_at? PRD §10
                 // says "PATCH with empty body is a no-op". Match that.
@@ -323,7 +335,7 @@ impl MeetingRepo {
             let mut stmt = conn.prepare_cached(
                 "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
                         m.enriched_md, m.transcript_json, m.starred, \
-                        m.created_at, m.updated_at \
+                        m.created_at, m.updated_at, m.stt_engine \
                  FROM meetings m \
                  JOIN meetings_fts f ON f.rowid = m.rowid \
                  WHERE meetings_fts MATCH ?1 \
@@ -354,12 +366,12 @@ impl MeetingRepo {
 // ─── Internal SQL ──────────────────────────────────────────────────────────
 
 const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
-    notes_md, enriched_md, transcript_json, starred, created_at, updated_at \
-    FROM meetings WHERE id = ?1";
+    notes_md, enriched_md, transcript_json, starred, created_at, updated_at, \
+    stt_engine FROM meetings WHERE id = ?1";
 
 const SELECT_ALL_ORDER_BY_STARTED_DESC: &str = "SELECT id, title, started_at, \
     ended_at, notes_md, enriched_md, transcript_json, starred, created_at, \
-    updated_at FROM meetings ORDER BY started_at DESC, id DESC";
+    updated_at, stt_engine FROM meetings ORDER BY started_at DESC, id DESC";
 
 /// Project one SQLite row onto the `Meeting` wire shape. Used by `get`,
 /// `list`, and (indirectly) `create` / `patch` via `get`.
@@ -378,6 +390,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     let starred_i: i64 = r.get(7)?;
     let created_at_ms: i64 = r.get(8)?;
     let updated_at_ms: i64 = r.get(9)?;
+    let stt_engine: Option<String> = r.get(10)?;
     Ok(Meeting {
         id,
         title: title.unwrap_or_default(),
@@ -387,6 +400,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
         enriched_md,
         transcript_json: transcript_json.unwrap_or_else(|| "[]".into()),
         starred: starred_i != 0,
+        stt_engine,
         created_at: ms_to_dt(created_at_ms),
         updated_at: ms_to_dt(updated_at_ms),
     })
@@ -474,6 +488,33 @@ mod tests {
         assert!(!m.starred);
         assert!(m.created_at <= chrono::Utc::now());
         assert_eq!(m.created_at, m.updated_at);
+        assert_eq!(m.stt_engine, None, "new meetings have no stamp yet");
+    }
+
+    #[test]
+    fn stt_engine_patch_persists_and_reads_back() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "Standup".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let patched = repo
+            .patch(
+                &m.id,
+                MeetingPatch {
+                    stt_engine: Some("local \u{b7} small.en".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(patched.stt_engine.as_deref(), Some("local \u{b7} small.en"));
+        let reloaded = repo.get(&m.id).unwrap().unwrap();
+        assert_eq!(
+            reloaded.stt_engine.as_deref(),
+            Some("local \u{b7} small.en")
+        );
     }
 
     #[test]

@@ -441,61 +441,73 @@ export function Meeting() {
             />
           )}
         </Link>
-        <header className="flex items-center justify-between">
-          {meetingId ? (
-            <InlineTitle
-              id={meetingId}
-              title={title}
-              className="font-serif text-[32px] leading-none text-ink"
-            />
-          ) : (
-            <h1 className="font-serif text-[32px] leading-none" style={{ color: INK }}>
-              {title}
-            </h1>
-          )}
-          <div className="flex items-center gap-2">
-            {meetingId && recording && activeRecording.data?.stt && (
-              <span className="px-2 py-1 rounded-button border border-line bg-paper text-[11px] font-mono uppercase text-mut">
-                {activeRecording.data.stt === "cloud" ? "Cloud STT" : "Local STT"}
-              </span>
-            )}
-            {meetingId && recording && (
-              <MicDevicePicker meetingId={meetingId} />
-            )}
-            {meetingId && !recording && (
-              <button
-                type="button"
-                onClick={() => startRecording()}
-                className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
-                style={{ backgroundColor: BLUE }}
-              >
-                Start recording
-              </button>
-            )}
-            {meetingId && recording && (
-              <button
-                type="button"
-                onClick={stopRecording}
-                className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
-                style={{ backgroundColor: BLUE }}
-              >
-                Stop recording
-              </button>
-            )}
-            {meetingId && (
-              <button
-                type="button"
-                onClick={endMeeting}
-                disabled={enhancing}
-                aria-busy={enhancing}
-                data-testid="end-meeting"
-                className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90 disabled:opacity-70"
-                style={{ backgroundColor: BLUE }}
-              >
-                {enhancing ? "Enhancing…" : "End meeting"}
-              </button>
-            )}
+        <header className="space-y-2">
+          {/* Row 1: title + STT chip (left, gap-3 so the InlineTitle edit
+              border never touches the chip) and the recording controls
+              (right). flex-wrap lets the button group drop below the
+              title group at narrow widths instead of clipping. */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {meetingId ? (
+                <InlineTitle
+                  id={meetingId}
+                  title={title}
+                  className="font-serif text-[32px] leading-none text-ink"
+                />
+              ) : (
+                <h1 className="font-serif text-[32px] leading-none" style={{ color: INK }}>
+                  {title}
+                </h1>
+              )}
+              {meetingId && recording && activeRecording.data?.stt && (
+                <span className="shrink-0 px-2 py-1 rounded-button border border-line bg-paper text-[11px] font-mono uppercase text-mut">
+                  {activeRecording.data.stt === "cloud" ? "Cloud STT" : "Local STT"}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {meetingId && !recording && (
+                <button
+                  type="button"
+                  onClick={() => startRecording()}
+                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
+                  style={{ backgroundColor: BLUE }}
+                >
+                  Start recording
+                </button>
+              )}
+              {meetingId && recording && (
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
+                  style={{ backgroundColor: BLUE }}
+                >
+                  Stop recording
+                </button>
+              )}
+              {meetingId && (
+                <button
+                  type="button"
+                  onClick={endMeeting}
+                  disabled={enhancing}
+                  aria-busy={enhancing}
+                  data-testid="end-meeting"
+                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90 disabled:opacity-70"
+                  style={{ backgroundColor: BLUE }}
+                >
+                  {enhancing ? "Enhancing…" : "End meeting"}
+                </button>
+              )}
+            </div>
           </div>
+          {/* Row 2: mic picker, left-aligned under the title, on its own
+              (smaller) line instead of crowding row 1. */}
+          {meetingId && recording && (
+            <div className="flex items-center">
+              <MicDevicePicker meetingId={meetingId} />
+            </div>
+          )}
         </header>
 
         {error && (

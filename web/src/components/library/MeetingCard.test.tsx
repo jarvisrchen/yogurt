@@ -27,6 +27,7 @@ function meeting(over: Partial<Meeting> = {}): Meeting {
     enriched_md: null,
     transcript_json: "[]",
     starred: false,
+    stt_engine: null,
     created_at: new Date(START).toISOString(),
     updated_at: new Date(START).toISOString(),
     ...over,
@@ -69,5 +70,22 @@ describe("MeetingCard — live-recording routing", () => {
 
     expect(screen.getByRole("link")).toHaveAttribute("href", "/meeting/past-2/post");
     expect(screen.queryByText("Recording")).toBeNull();
+  });
+});
+
+describe("MeetingCard — engine chip", () => {
+  it("shows Local for a null stt_engine (pre-column meetings)", () => {
+    renderCard(meeting({ id: "old-1", stt_engine: null }));
+    expect(screen.getByText("Local")).toBeInTheDocument();
+  });
+
+  it("shows Local for a local · <model> stamp", () => {
+    renderCard(meeting({ id: "local-1", stt_engine: "local · small.en" }));
+    expect(screen.getByText("Local")).toBeInTheDocument();
+  });
+
+  it("shows Cloud for a cloud · <model> stamp", () => {
+    renderCard(meeting({ id: "cloud-1", stt_engine: "cloud · nova-3" }));
+    expect(screen.getByText("Cloud")).toBeInTheDocument();
   });
 });
