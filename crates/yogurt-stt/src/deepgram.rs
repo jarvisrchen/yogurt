@@ -315,6 +315,7 @@ async fn spawn_supervised_session(
             // reconnect (or clean shutdown if audio_rx returned None).
             let mut clean_shutdown = false;
             let mut needs_reconnect = false;
+            let mut utterance = UtteranceState::default();
             loop {
                 tokio::select! {
                     // biased: prefer reader so server-initiated close is
@@ -323,7 +324,7 @@ async fn spawn_supervised_session(
                     msg = read.next() => {
                         match msg {
                             Some(Ok(Message::Text(t))) => {
-                                if let Some(ev) = parse_deepgram_event(&t, channel) {
+                                if let Some(ev) = fold_deepgram_event(&mut utterance, &t, channel) {
                                     let _ = txn.send(ev);
                                 }
                             }
@@ -435,6 +436,102 @@ fn i16_slice_to_le_bytes(samples: &[i16]) -> Vec<u8> {
         out.extend_from_slice(&s.to_le_bytes());
     }
     out
+}
+
+/// Per-connection utterance accumulator.
+///
+/// Deepgram delivers one utterance as MULTIPLE result windows: interim
+/// frames (`is_final: false`), then a window-final (`is_final: true,
+/// speech_final: false`) that locks THAT WINDOW's text while the utterance
+/// continues, and finally `speech_final: true` at end-of-utterance. A
+/// window-final's frame carries only its own window's words - so treating
+/// frames statelessly loses every earlier window: the dock showed each
+/// window replacing the last, and the persisted "final" contained only the
+/// utterance's tail (observed live once endpointing went to 1000ms and
+/// utterances started spanning windows: a 15-minute meeting persisted a
+/// handful of tails).
+#[derive(Default)]
+pub struct UtteranceState {
+    /// Text of window-finalized chunks of the in-progress utterance.
+    buf: String,
+    /// Timestamp of the utterance's FIRST audio, carried onto every event
+    /// so dock rows and deep-links anchor at the utterance start.
+    start_ms: Option<u64>,
+}
+
+fn join_words(a: &str, b: &str) -> String {
+    match (a.is_empty(), b.is_empty()) {
+        (true, _) => b.to_string(),
+        (_, true) => a.to_string(),
+        _ => format!("{a} {b}"),
+    }
+}
+
+/// Fold one Deepgram JSON frame into `st`, returning the event to emit:
+/// - interim         -> partial carrying buffered + live window text
+/// - window-final    -> partial carrying the full buffered text so far
+/// - speech_final    -> FINAL carrying the complete joined utterance; state resets
+pub fn fold_deepgram_event(
+    st: &mut UtteranceState,
+    text: &str,
+    channel: Channel,
+) -> Option<TranscriptEvent> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if v.get("type")?.as_str()? != "Results" {
+        return None;
+    }
+    let transcript = v
+        .get("channel")?
+        .get("alternatives")?
+        .get(0)?
+        .get("transcript")?
+        .as_str()?
+        .trim()
+        .to_string();
+    let window_final = v.get("is_final").and_then(|x| x.as_bool()).unwrap_or(false);
+    let speech_final = v
+        .get("speech_final")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(window_final);
+    let ts_now = (v.get("start").and_then(|x| x.as_f64()).unwrap_or(0.0) * 1000.0) as u64;
+
+    if transcript.is_empty() && !speech_final {
+        return None; // silence/heartbeat frame
+    }
+    if st.start_ms.is_none() && !transcript.is_empty() {
+        st.start_ms = Some(ts_now);
+    }
+    let ts_ms = st.start_ms.unwrap_or(ts_now);
+
+    if speech_final {
+        let full = join_words(&st.buf, &transcript);
+        st.buf.clear();
+        st.start_ms = None;
+        if full.is_empty() {
+            return None;
+        }
+        Some(TranscriptEvent {
+            ts_ms,
+            channel,
+            text: full,
+            is_final: true,
+        })
+    } else if window_final {
+        st.buf = join_words(&st.buf, &transcript);
+        Some(TranscriptEvent {
+            ts_ms,
+            channel,
+            text: st.buf.clone(),
+            is_final: false,
+        })
+    } else {
+        Some(TranscriptEvent {
+            ts_ms,
+            channel,
+            text: join_words(&st.buf, &transcript),
+            is_final: false,
+        })
+    }
 }
 
 /// Parse one Deepgram JSON frame into a [`TranscriptEvent`].
@@ -585,5 +682,104 @@ mod tests {
         assert_eq!(ev.channel, Channel::Mic);
         assert!(ev.is_final, "status events must be final/locked lines");
         assert_eq!(ev.text, "[stt reconnecting]");
+    }
+}
+
+#[cfg(test)]
+mod utterance_tests {
+    use super::*;
+
+    fn frame(text: &str, start: f64, window_final: bool, speech_final: bool) -> String {
+        format!(
+            r#"{{"type":"Results","channel":{{"alternatives":[{{"transcript":"{text}"}}]}},"is_final":{window_final},"speech_final":{speech_final},"start":{start}}}"#
+        )
+    }
+
+    /// The bug observed live: an utterance spanning two Deepgram windows
+    /// must persist ALL its text, not just the tail window.
+    #[test]
+    fn multi_window_utterance_joins_all_text() {
+        let mut st = UtteranceState::default();
+        // interim, then window-final locking window 1
+        let p1 = fold_deepgram_event(
+            &mut st,
+            &frame("we wanna isolate", 4.0, false, false),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert!(!p1.is_final);
+        let w1 = fold_deepgram_event(
+            &mut st,
+            &frame("we wanna isolate them longer", 4.0, true, false),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert!(!w1.is_final, "window-final is not utterance-final");
+        assert_eq!(w1.text, "we wanna isolate them longer");
+        // next window's interim must carry the buffer
+        let p2 = fold_deepgram_event(
+            &mut st,
+            &frame("from the changes", 9.5, false, false),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert_eq!(p2.text, "we wanna isolate them longer from the changes");
+        assert_eq!(p2.ts_ms, 4000, "anchored at utterance start");
+        // speech_final closes with the FULL joined text
+        let f = fold_deepgram_event(
+            &mut st,
+            &frame("from the changes we introduce", 9.5, true, true),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert!(f.is_final);
+        assert_eq!(
+            f.text,
+            "we wanna isolate them longer from the changes we introduce"
+        );
+        assert_eq!(f.ts_ms, 4000);
+        // state reset: next utterance starts fresh
+        let n = fold_deepgram_event(
+            &mut st,
+            &frame("next thought", 12.0, false, false),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert_eq!(n.text, "next thought");
+        assert_eq!(n.ts_ms, 12000);
+    }
+
+    /// Deepgram may close an utterance with an EMPTY speech_final frame -
+    /// the buffered windows must still flush as the final.
+    #[test]
+    fn empty_speech_final_flushes_buffer() {
+        let mut st = UtteranceState::default();
+        fold_deepgram_event(
+            &mut st,
+            &frame("hello there", 1.0, true, false),
+            Channel::System,
+        )
+        .unwrap();
+        let f = fold_deepgram_event(&mut st, &frame("", 2.0, true, true), Channel::System).unwrap();
+        assert!(f.is_final);
+        assert_eq!(f.text, "hello there");
+        assert_eq!(f.ts_ms, 1000);
+    }
+
+    /// Single-window utterances (short speech) behave exactly as before.
+    #[test]
+    fn single_window_utterance_is_unchanged() {
+        let mut st = UtteranceState::default();
+        let f = fold_deepgram_event(
+            &mut st,
+            &frame("quick reply", 3.0, true, true),
+            Channel::Mic,
+        )
+        .unwrap();
+        assert!(f.is_final);
+        assert_eq!(f.text, "quick reply");
+        assert!(
+            fold_deepgram_event(&mut st, &frame("", 4.0, false, false), Channel::Mic).is_none()
+        );
     }
 }
