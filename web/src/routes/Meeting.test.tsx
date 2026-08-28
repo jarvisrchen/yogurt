@@ -37,6 +37,7 @@ vi.mock("../lib/ws", () => ({
 
 const state = vi.hoisted(() => ({
   meetingRow: undefined as unknown,
+  activeRecording: null as { id: string; title: string; started_at: number } | null,
 }));
 
 vi.mock("../lib/api/meetings", () => ({
@@ -47,6 +48,11 @@ vi.mock("../lib/api/meetings", () => ({
   // InlineTitle (real, unmocked — it's the reused library rename flow)
   // needs this the moment `meetingId` is known and it mounts.
   useUpdateMeetingTitle: () => ({ mutate: vi.fn() }),
+  useActiveRecording: () => ({
+    data: state.activeRecording,
+    isLoading: false,
+    error: null,
+  }),
 }));
 
 const postEnhanceMock = vi.fn();
@@ -82,6 +88,7 @@ function renderAt(
 describe("Meeting — auto-start on '+ New meeting'", () => {
   beforeEach(() => {
     state.meetingRow = undefined;
+    state.activeRecording = null;
     vi.clearAllMocks();
   });
 
@@ -191,6 +198,7 @@ describe("Meeting — End meeting flow", () => {
       created_at: "",
       updated_at: "",
     };
+    state.activeRecording = null;
     vi.clearAllMocks();
     postEnhanceMock.mockResolvedValue({
       enriched_md: "# enriched",
@@ -286,6 +294,66 @@ describe("Meeting — End meeting flow", () => {
     expect(body).toMatchObject({
       notes_md: "existing notes from before refresh",
     });
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Meeting — recovers recording state on return", () => {
+  beforeEach(() => {
+    state.meetingRow = undefined;
+    state.activeRecording = null;
+    vi.clearAllMocks();
+  });
+
+  it("shows Stop recording (not Start) when GET /api/meetings/active reports this meeting live, without POSTing /start again", async () => {
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/meeting/meeting-live");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /^start recording$/i }),
+    ).toBeNull();
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).endsWith("/start")),
+    ).toBe(false);
+    // The stt_error banner must stay silent — recovery is a pure UI resync,
+    // not something that fabricates a transcription error.
+    expect(screen.queryByTestId("stt-error-banner")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows Start recording when nothing is actively recording", async () => {
+    state.activeRecording = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/meeting/meeting-idle");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^start recording$/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).endsWith("/start")),
+    ).toBe(false);
 
     vi.unstubAllGlobals();
   });
