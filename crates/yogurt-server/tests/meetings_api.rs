@@ -544,3 +544,60 @@ async fn patch_with_empty_enriched_md_does_not_blank_stored_content() {
 
     task.abort();
 }
+
+/// GET /api/meetings/active with nothing recording returns `200 null`
+/// (not 404 — the frontend polls this every 5s for the floating "Return
+/// to recording" pill, and a 404 would just be constant noise).
+#[tokio::test(flavor = "multi_thread")]
+async fn active_recording_returns_null_when_nothing_is_recording() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("http://{addr}/api/meetings/active"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body.is_null());
+
+    handle.abort();
+}
+
+/// Route-order guard: `/api/meetings/active` (registered in `routes.rs`)
+/// must not shadow the `/api/meetings/:id` matcher (registered in
+/// `api::meetings::router()`) — a real meeting id still resolves to
+/// `get_one`, proving axum 0.8 prefers the literal segment over the `{id}`
+/// param regardless of which router the two routes were merged from.
+#[tokio::test(flavor = "multi_thread")]
+async fn active_recording_route_does_not_capture_real_meeting_ids() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "route order guard" }))
+        .send()
+        .await
+        .expect("create")
+        .json()
+        .await
+        .expect("create json");
+    let id = created["id"].as_str().expect("id").to_string();
+
+    let get_resp = client
+        .get(format!("http://{addr}/api/meetings/{id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), 200);
+    let got: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(got["id"].as_str().unwrap(), id);
+    assert_eq!(got["title"].as_str().unwrap(), "route order guard");
+
+    handle.abort();
+}

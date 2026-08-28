@@ -250,6 +250,26 @@ impl Registry {
         self.meetings.read().await.get(id).cloned()
     }
 
+    /// Return the id of the single currently-recording meeting, if any.
+    /// "Recording" means `task` is `Some` (the audio + STT supervisor task
+    /// is live). Backs the floating "Return to recording" pill (GET
+    /// `/api/meetings/active`), which the frontend polls every 5s.
+    ///
+    /// ponytail: O(n) scan + a `task` mutex lock per entry. Fine at this
+    /// scale — a handful of in-memory meetings, one real recording at a
+    /// time (single mic). Upgrade to a tracked "active id" field only if
+    /// the registry ever grows large enough for this to show up in a
+    /// profile.
+    pub async fn active_recording(&self) -> Option<MeetingId> {
+        let meetings = self.meetings.read().await;
+        for (id, m) in meetings.iter() {
+            if m.task.lock().await.is_some() {
+                return Some(*id);
+            }
+        }
+        None
+    }
+
     /// HI-9: Re-hydrate a known-to-exist meeting (caller has verified the
     /// SQLite row) into a fresh in-memory Meeting. The audio/transcript
     /// broadcasts are empty (recording is over by definition — the meeting
@@ -859,6 +879,22 @@ mod tests {
         let m1 = reg.create().await;
         let m2 = reg.create().await;
         assert_ne!(m1.id, m2.id);
+    }
+
+    #[tokio::test]
+    async fn active_recording_is_none_when_nothing_started() {
+        let reg = Registry::new();
+        let _m = reg.create().await;
+        assert_eq!(reg.active_recording().await, None);
+    }
+
+    #[tokio::test]
+    async fn active_recording_finds_the_meeting_with_a_live_task() {
+        let reg = Registry::new();
+        let _idle = reg.create().await;
+        let recording = reg.create().await;
+        *recording.task.lock().await = Some(tokio::spawn(async {}));
+        assert_eq!(reg.active_recording().await, Some(recording.id));
     }
 
     #[tokio::test]

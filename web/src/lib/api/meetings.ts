@@ -262,3 +262,31 @@ export async function copyMeetingMarkdown(id: string): Promise<void> {
 export async function revealMeetingInFinder(id: string): Promise<void> {
   await json<void>(`/api/meetings/${id}/reveal`, { method: "POST" });
 }
+
+// ─── "Return to recording" floating pill ───────────────────────────────────
+
+/** Wire shape of `GET /api/meetings/active`'s non-null body. */
+export interface ActiveRecording {
+  id: string;
+  title: string;
+  /** Unix milliseconds — recording-start clock. */
+  started_at: number;
+}
+
+export const activeRecordingKey = ["meetings", "active"] as const;
+
+/**
+ * `GET /api/meetings/active` — the single currently-recording meeting, if
+ * any. Powers `<RecordingPill>` so the user always has a way back to a live
+ * recording after navigating elsewhere (recording continues server-side
+ * regardless of what the browser is showing). Polls every 5s and on window
+ * focus so the pill appears promptly.
+ */
+export function useActiveRecording(): UseQueryResult<ActiveRecording | null, Error> {
+  return useQuery({
+    queryKey: activeRecordingKey,
+    queryFn: () => json<ActiveRecording | null>("/api/meetings/active"),
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
+  });
+}

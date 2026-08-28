@@ -63,6 +63,14 @@ pub fn router(state: AppState) -> Router {
     //     `/chat`) keep their Phase-3-shaped handlers below.
     let meeting_routes = Router::new()
         .merge(crate::api::meetings::router())
+        // Floating "Return to recording" pill (discoverability for
+        // navigate-away-while-recording). Static segment — axum 0.8's
+        // matchit router prefers literal segments over the `{id}` param
+        // matcher in `api::meetings::router()` regardless of registration
+        // order (same guarantee the `/api/meetings/search` route already
+        // relies on), so `active` can never be swallowed as an id.
+        // `route_order_guard` in tests/meetings_api.rs asserts this holds.
+        .route("/api/meetings/active", get(active_recording))
         // axum 0.8 path syntax: `{id}` (not `:id`).
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
@@ -289,6 +297,39 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
         )
             .into_response(),
     }
+}
+
+/// `GET /api/meetings/active` — the single currently-recording meeting, if
+/// any. Backs the floating "Return to recording" pill (PRD discoverability
+/// requirement: recording continues server-side across navigation, so the
+/// UI needs a global way back). Polled every 5s by the frontend, so this
+/// always returns `200` — `null` when nothing is recording, never `404`
+/// (a 404 would just be constant background noise in the network log).
+async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
+    let Some(id) = state.meetings.active_recording().await else {
+        return (StatusCode::OK, Json(Value::Null)).into_response();
+    };
+    // Best-effort title/started_at lookup — the SQLite row always exists in
+    // practice (POST /api/meetings creates it before the registry entry can
+    // start recording), but if it's ever missing, fall back to a generic
+    // title and "just started" so the pill still renders something sane
+    // rather than erroring the poll.
+    let repo = state.meeting_repo.clone();
+    let id_str = id.to_string();
+    let row = tokio::task::spawn_blocking(move || repo.get(&id_str))
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .flatten();
+    let (title, started_at) = match row {
+        Some(m) => (m.title, m.started_at),
+        None => ("Recording".to_string(), now_unix_ms()),
+    };
+    (
+        StatusCode::OK,
+        Json(json!({ "id": id.to_string(), "title": title, "started_at": started_at })),
+    )
+        .into_response()
 }
 
 fn now_unix_ms() -> i64 {
