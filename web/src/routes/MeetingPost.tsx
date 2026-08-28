@@ -65,6 +65,7 @@ const STRAW_SOFT = "#FBE6E0"; // --color-strsoft
 export function formatMeetingSubline(
   startedAtUnixMs: number | undefined,
   endedAtUnixMs: number | undefined,
+  sttEngine?: string | null,
 ): string {
   if (startedAtUnixMs == null) return "";
   const d = new Date(startedAtUnixMs);
@@ -79,6 +80,9 @@ export function formatMeetingSubline(
     );
     parts.push(`${minutes} min`);
   }
+  // Feature: per-meeting STT engine provenance, e.g. "local · small.en" —
+  // already contains its own "·" separator, so it slots in as one more part.
+  if (sttEngine) parts.push(sttEngine);
   return parts.join(" · ");
 }
 
@@ -97,6 +101,7 @@ interface MeetingFetchResponse {
   transcript_json?: string | null;
   started_at?: number | null;
   ended_at?: number | null;
+  stt_engine?: string | null;
 }
 
 interface LocationStateShape {
@@ -143,6 +148,7 @@ export function MeetingPost() {
   const [endedAtUnixMs, setEndedAtUnixMs] = useState<number | undefined>(
     undefined,
   );
+  const [sttEngine, setSttEngine] = useState<string | undefined>(undefined);
   const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -236,6 +242,7 @@ export function MeetingPost() {
         setTitle(json.title ?? undefined);
         setStartedAtUnixMs(json.started_at ?? undefined);
         setEndedAtUnixMs(json.ended_at ?? undefined);
+        setSttEngine(json.stt_engine ?? undefined);
       } catch (e) {
         // AbortError from cleanup is expected — ignore.
         if (cancelled || generationRef.current !== myGen) return;
@@ -457,7 +464,7 @@ export function MeetingPost() {
     return <Navigate to={`/meeting/${meetingId}`} replace />;
   }
 
-  const subline = formatMeetingSubline(startedAtUnixMs, endedAtUnixMs);
+  const subline = formatMeetingSubline(startedAtUnixMs, endedAtUnixMs, sttEngine);
 
   return (
     <div

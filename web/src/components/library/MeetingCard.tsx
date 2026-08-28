@@ -61,6 +61,17 @@ export function formatMeta(m: Meeting): string {
   return parts.join(" · ");
 }
 
+/**
+ * Right-aligned engine pill text. `stt_engine` is stamped at recording
+ * start as "local · <model>" or "cloud · <model>" (routes.rs
+ * `start_meeting`) — we only need the provider half here. `null` covers
+ * meetings recorded before this column existed; default to "Local" since
+ * that was the only value the old static chip ever showed.
+ */
+export function engineLabel(sttEngine: string | null): string {
+  return sttEngine?.startsWith("cloud") ? "Cloud" : "Local";
+}
+
 interface Props {
   meeting: Meeting;
   /**
@@ -122,7 +133,7 @@ export function MeetingCard({ meeting, activeId }: Props) {
         </div>
       </div>
       <span className="text-[11px] font-mono text-mut border border-line rounded-pill px-2 py-0.5">
-        Local
+        {engineLabel(meeting.stt_engine)}
       </span>
       <MeetingCardActions id={meeting.id} starred={meeting.starred} />
     </Link>

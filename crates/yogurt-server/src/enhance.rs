@@ -439,6 +439,7 @@ pub async fn enhance(
                     enriched_md: Some(Some(enriched_md_for_repo)),
                     ended_at: ended_at_patch,
                     starred: None,
+                    stt_engine: None,
                 },
             )?;
             Ok(())

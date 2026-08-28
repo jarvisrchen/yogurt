@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMeta } from "./MeetingCard";
+import { engineLabel, formatMeta } from "./MeetingCard";
 import type { Meeting } from "../../lib/api/meetings";
 
 const START = new Date("2026-06-25T14:45:00").getTime();
@@ -14,6 +14,7 @@ function meeting(over: Partial<Meeting> = {}): Meeting {
     enriched_md: null,
     transcript_json: "[]",
     starred: false,
+    stt_engine: null,
     created_at: new Date(START).toISOString(),
     updated_at: new Date(START).toISOString(),
     ...over,
@@ -45,5 +46,19 @@ describe("formatMeta", () => {
   it("appends enhanced when enriched_md is present", () => {
     const m = meeting({ ended_at: START + 60_000, enriched_md: "x" });
     expect(formatMeta(m)).toBe(`${startTime} · 1 min · enhanced`);
+  });
+});
+
+describe("engineLabel", () => {
+  it("shows Local for a local · <model> stamp", () => {
+    expect(engineLabel("local · small.en")).toBe("Local");
+  });
+
+  it("shows Cloud for a cloud · <model> stamp", () => {
+    expect(engineLabel("cloud · nova-3")).toBe("Cloud");
+  });
+
+  it("falls back to Local for null (meetings recorded before this column)", () => {
+    expect(engineLabel(null)).toBe("Local");
   });
 });

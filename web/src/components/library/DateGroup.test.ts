@@ -12,6 +12,7 @@ function fakeMeeting(id: string, startedAt: Date): Meeting {
     enriched_md: null,
     transcript_json: "[]",
     starred: false,
+    stt_engine: null,
     created_at: startedAt.toISOString(),
     updated_at: startedAt.toISOString(),
   };

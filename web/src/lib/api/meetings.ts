@@ -32,6 +32,12 @@ export interface Meeting {
   enriched_md: string | null;
   transcript_json: string;
   starred: boolean;
+  /**
+   * Which STT engine transcribed this meeting, e.g. "local · small.en" or
+   * "cloud · nova-3". `null` for meetings recorded before this field
+   * existed, or if the best-effort stamp on start failed.
+   */
+  stt_engine: string | null;
   /** ISO 8601 UTC string. */
   created_at: string;
   /** ISO 8601 UTC string. */
@@ -48,6 +54,8 @@ export interface MeetingPatch {
   enriched_md?: string | null;
   ended_at?: number | null;
   starred?: boolean;
+  /** Plain optional semantics (not tri-state) — mirrors Rust `notes_md`. */
+  stt_engine?: string;
 }
 
 // ─── Cache keys ────────────────────────────────────────────────────────────

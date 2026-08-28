@@ -172,6 +172,59 @@ async fn it_patches_title_and_writes_markdown_file() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn it_patches_stt_engine_and_persists() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "Standup" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+    assert!(
+        created["stt_engine"].is_null(),
+        "fresh meeting has no stamp yet"
+    );
+
+    let patch_resp = client
+        .patch(format!("http://{addr}/api/meetings/{id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "stt_engine": "local \u{b7} small.en" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(patch_resp.status(), 200);
+    let body: serde_json::Value = patch_resp.json().await.unwrap();
+    assert_eq!(
+        body["stt_engine"].as_str().unwrap(),
+        "local \u{b7} small.en"
+    );
+
+    // GET reflects the persisted value.
+    let get_resp: serde_json::Value = client
+        .get(format!("http://{addr}/api/meetings/{id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        get_resp["stt_engine"].as_str().unwrap(),
+        "local \u{b7} small.en"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn it_deletes_and_returns_404() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
