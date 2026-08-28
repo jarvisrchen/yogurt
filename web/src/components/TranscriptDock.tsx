@@ -276,9 +276,6 @@ export function TranscriptDock({
                 className="text-[13px] font-semibold inline-flex items-center gap-2"
                 style={{ color: INK }}
               >
-                {!isStatic && (
-                  <AudioWaveIcon mic={audioLevels.mic} system={audioLevels.system} />
-                )}
                 {label}
               </span>
               {!isStatic && (

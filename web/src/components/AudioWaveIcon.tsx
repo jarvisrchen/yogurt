@@ -26,7 +26,11 @@ const IDLE_FLOOR = 0.2;
 const BAR_MULTIPLIERS = [0.7, 1, 0.85];
 
 export function AudioWaveIcon({ mic, system, className }: AudioWaveIconProps) {
-  const level = Math.max(mic, system, 0);
+  // Perceptual scaling: raw peak amplitudes for normal speech sit around
+// 0.02-0.3 (far-field mic audio much lower), so a linear map leaves the
+// bars visually dead at the idle floor. pow(level, 0.35) approximates
+// loudness perception: 0.01 -> 0.20, 0.05 -> 0.35, 0.15 -> 0.51, 0.5 -> 0.78.
+const level = Math.pow(Math.max(mic, system, 0), 0.35);
   // ponytail: color reflects the dominant channel (straw = mic/"you",
   // matching the recording-indicator accent; blue = system/"them",
   // matching the existing equalizer icon) rather than a fixed color —
