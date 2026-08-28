@@ -19,6 +19,10 @@ vi.mock("./lib/api/meetings", async () => {
       mutateAsync: vi.fn(),
       isPending: false,
     }),
+    // RecordingPill (mounted globally by Shell) polls this on every route —
+    // stub it to "nothing recording" so these route-smoke tests don't hit
+    // the network or render an unrelated floating pill.
+    useActiveRecording: () => ({ data: null, isLoading: false, error: null }),
   };
 });
 

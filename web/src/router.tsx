@@ -11,6 +11,7 @@ import { Settings } from "./routes/Settings";
 import { Library } from "./routes/Library";
 import { Welcome } from "./routes/Welcome";
 import { useFirstRunRedirect } from "./hooks/useFirstRunRedirect";
+import { RecordingPill } from "./components/RecordingPill";
 
 /**
  * Top-level route table.
@@ -35,11 +36,20 @@ import { useFirstRunRedirect } from "./hooks/useFirstRunRedirect";
  * `/settings` / `/meeting/:id` continue to work pre-onboarding. We use a
  * pathless wrapper route (no `path`) so every child renders inside the
  * shell without an extra URL segment.
+ *
+ * `<Shell>` also mounts `<RecordingPill>` alongside `<Outlet>` so the
+ * "return to recording" affordance is available on every route (it hides
+ * itself on the live meeting view — see `RecordingPill.tsx`).
  */
 
 function Shell() {
   useFirstRunRedirect();
-  return <Outlet />;
+  return (
+    <>
+      <RecordingPill />
+      <Outlet />
+    </>
+  );
 }
 
 export const routes: RouteObject[] = [
