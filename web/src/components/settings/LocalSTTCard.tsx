@@ -10,7 +10,7 @@
  *     progress on the pill of any currently-downloading model
  *   - inline `<ModelDownloadDialog />` opened by `↓`-pill clicks (or by
  *     re-clicking an in-progress pill to see byte/rate/ETA detail)
- *   - a mono footer noting `~/.yogurt/models` storage
+ *   - a mono footer noting the models directory
  *
  * State strategy:
  *   - `activeDownload` is THE truth about "is a download in flight?".
@@ -207,7 +207,7 @@ export function LocalSTTCard({
 
       <p className="text-[11px] font-mono text-mut pt-1">
         Models download on first use · stored in{" "}
-        <code className="text-ink">~/.yogurt/models</code>
+        <code className="text-ink">~/Library/Application Support/com.yogurt.yogurt/models</code>
       </p>
 
       <ModelDownloadDialog

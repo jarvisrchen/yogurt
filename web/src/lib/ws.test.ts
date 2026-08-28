@@ -249,6 +249,61 @@ describe("useTranscriptWs", () => {
     );
     expect(constructed.length).toBe(2);
   });
+
+  it("seeds events from seedHistory once per meetingId, then live WS events append on top", async () => {
+    const seed: TranscriptEvent[] = [
+      { ts_ms: 500, channel: "mic", text: "earlier line", is_final: true },
+    ];
+    const { result } = renderHook(() =>
+      useTranscriptWs("meeting-seed", "test-token", seed),
+    );
+    // Seeded synchronously by the seed effect — before the WS even opens.
+    expect(result.current.events).toEqual(seed);
+
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    const ws = MockWebSocket.lastInstance!;
+    act(() => {
+      ws.emit(
+        frame({ ts_ms: 2000, channel: "mic", text: "new line", is_final: true }),
+      );
+    });
+    expect(result.current.events).toEqual([
+      seed[0],
+      { ts_ms: 2000, channel: "mic", text: "new line", is_final: true },
+    ]);
+  });
+
+  it("drops a live FINAL that duplicates a seeded history entry, but keeps a live partial with the same text", async () => {
+    const seed: TranscriptEvent[] = [
+      { ts_ms: 500, channel: "mic", text: "hello there", is_final: true },
+    ];
+    const { result } = renderHook(() =>
+      useTranscriptWs("meeting-dedupe", "test-token", seed),
+    );
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      // The same final redelivered on WS (re)connect — must be dropped,
+      // not appended as a second line (BL: live dock loses history).
+      ws.emit(
+        frame({ ts_ms: 0, channel: "mic", text: "hello there", is_final: true }),
+      );
+    });
+    expect(result.current.events).toEqual(seed);
+
+    act(() => {
+      // A live partial carrying the same text is NOT deduped — only
+      // finals are checked against the seeded set.
+      ws.emit(
+        frame({ ts_ms: 3000, channel: "mic", text: "hello there", is_final: false }),
+      );
+    });
+    expect(result.current.events).toEqual([
+      seed[0],
+      { ts_ms: 3000, channel: "mic", text: "hello there", is_final: false },
+    ]);
+  });
 });
 
 // mergeEvent is exercised through the hook in the merge test above; this is

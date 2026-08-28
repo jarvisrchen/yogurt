@@ -63,6 +63,15 @@ export interface TranscriptDockProps {
    * "Waiting for audio…" (the meeting is over, not live).
    */
   segments?: StoredTranscriptSegment[];
+  /**
+   * Live-mode history seed: the meeting's persisted transcript (also from
+   * `transcript_json`, via `storedSegmentToEvent`) so navigating away from
+   * a live meeting and back doesn't show an empty dock that only fills
+   * with new lines. Unlike `segments`, this does NOT switch the dock into
+   * static mode — the live WS still connects and appends on top. Seeded
+   * once per `meetingId` by `useTranscriptWs`.
+   */
+  history?: TranscriptEvent[];
 }
 
 type DockPhase = "closed" | "open" | "closing";
@@ -73,6 +82,7 @@ export function TranscriptDock({
   forceOpen,
   onOpenChange,
   segments,
+  history,
 }: TranscriptDockProps) {
   const [openLocal, setOpenLocal] = useState(false);
   // `open` is controlled by `forceOpen` if provided, else local state.
@@ -92,6 +102,7 @@ export function TranscriptDock({
   const { events: liveEvents, connected } = useTranscriptWs(
     isStatic ? null : meetingId,
     isStatic ? null : token,
+    isStatic ? undefined : history,
   );
   const events: TranscriptEvent[] = isStatic
     ? segments!.map(storedSegmentToEvent)

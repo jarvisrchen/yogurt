@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { YogurtEditor } from "../editor";
 import { TranscriptDock } from "../components/TranscriptDock";
@@ -8,7 +8,12 @@ import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
 import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
-import { useSttError } from "../lib/ws";
+import {
+  storedSegmentToEvent,
+  useSttError,
+  type StoredTranscriptSegment,
+  type TranscriptEvent,
+} from "../lib/ws";
 
 const INK = "#211D18";
 const LINE = "#EBE3D5";
@@ -102,6 +107,36 @@ export function Meeting() {
   const meetingQuery = useMeeting(meetingId ?? undefined);
   const meetingRow = meetingQuery.data;
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
+
+  // Live-dock-loses-history-on-remount fix: parse the meeting row's
+  // persisted `transcript_json` the same way MeetingPost's static dock
+  // does (NOTES-09), map it onto live `TranscriptEvent`s via
+  // `storedSegmentToEvent`, and hand it to TranscriptDock as a live-mode
+  // seed — see that component's `history` prop doc. Navigating away from
+  // a live meeting and back otherwise showed an empty dock that only
+  // filled with new lines, even though the full transcript was already
+  // persisted server-side.
+  const transcriptHistory = useMemo<TranscriptEvent[]>(() => {
+    const raw = meetingRow?.transcript_json;
+    if (!raw) return [];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(
+          (s): s is StoredTranscriptSegment =>
+            s !== null &&
+            typeof s === "object" &&
+            typeof s.ts_ms === "number" &&
+            (s.channel === "me" || s.channel === "them") &&
+            typeof s.text === "string",
+        )
+        .map(storedSegmentToEvent);
+    } catch {
+      // Malformed transcript JSON — seed nothing rather than throw.
+      return [];
+    }
+  }, [meetingRow?.transcript_json]);
 
   // Resync `recording` when landing/returning on a meeting that's already
   // live server-side (recording continues across navigation/reload/back —
@@ -516,7 +551,7 @@ export function Meeting() {
         </section>
       </main>
 
-      <TranscriptDock meetingId={meetingId} token={token} />
+      <TranscriptDock meetingId={meetingId} token={token} history={transcriptHistory} />
 
       {/* Phase 6 (Plan 06-02): floating Ask-pill / chat window. Mounted at
           the route root (sibling to TranscriptDock) so the fixed-position

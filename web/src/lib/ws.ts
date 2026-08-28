@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Channel discriminator on the wire — matches `yogurt-stt::Channel`
@@ -177,10 +177,45 @@ const MAX_RECONNECT_ATTEMPTS = 3;
 export function useTranscriptWs(
   meetingId: string | null,
   token: string | null,
+  /**
+   * Live-dock-loses-history-on-remount fix: persisted transcript segments
+   * (from `GET /api/meetings/:id`, mapped via `storedSegmentToEvent`) to
+   * seed `events` with ONCE per `meetingId`, before any live WS events
+   * arrive. Callers pass this from `meetingRow.transcript_json` so
+   * navigating away from a live meeting and back repopulates the dock
+   * instead of showing an empty list that only fills with new lines.
+   */
+  seedHistory?: TranscriptEvent[],
 ): UseTranscriptWsResult {
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
+
+  // Guards the seed below to fire once per meetingId — `seedHistory` itself
+  // may change reference (query refetch) without new data, and re-seeding
+  // would duplicate the history entries already merged in.
+  const seededMeetingIdRef = useRef<string | null>(null);
+  // (channel, text) signatures of the seeded finals — checked in the WS
+  // onmessage handler below to drop a live FINAL that duplicates one of
+  // these (Deepgram/the server can redeliver the same final between the
+  // history fetch and the WS subscribe completing).
+  const seededFinalsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!meetingId) {
+      seededMeetingIdRef.current = null;
+      return;
+    }
+    if (seededMeetingIdRef.current === meetingId) return;
+    if (!seedHistory || seedHistory.length === 0) return;
+    seededMeetingIdRef.current = meetingId;
+    seededFinalsRef.current = new Set(
+      seedHistory
+        .filter((e) => e.is_final)
+        .map((e) => `${e.channel} ${e.text}`),
+    );
+    setEvents((prev) => [...seedHistory, ...prev]);
+  }, [meetingId, seedHistory]);
 
   useEffect(() => {
     // WR-06 + BL-01: the per-meeting WS handler now requires the session
@@ -242,7 +277,20 @@ export function useTranscriptWs(
         try {
           const frame = JSON.parse(event.data as string) as ServerFrame;
           if (frame.type === "transcript") {
-            setEvents((prev) => mergeEvent(prev, frame.payload));
+            const ev = frame.payload;
+            // Dedupe at the seam: a live FINAL whose (channel, text)
+            // matches one already seeded from persisted history is the
+            // same utterance landing twice (fetch raced the WS subscribe,
+            // or the server redelivered it) — drop it. Partials are never
+            // in the seeded set (seed history is always-final) so they're
+            // unaffected.
+            if (
+              ev.is_final &&
+              seededFinalsRef.current.has(`${ev.channel} ${ev.text}`)
+            ) {
+              return;
+            }
+            setEvents((prev) => mergeEvent(prev, ev));
           }
           // `enhance_progress` is also forwarded on this socket (Phase 4
           // CONTEXT D-23) — `useEnhanceProgress` handles it via its own
