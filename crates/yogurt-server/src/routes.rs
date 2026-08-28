@@ -325,11 +325,18 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
         Some(m) => (m.title, m.started_at),
         None => ("Recording".to_string(), now_unix_ms()),
     };
-    (
-        StatusCode::OK,
-        Json(json!({ "id": id.to_string(), "title": title, "started_at": started_at })),
-    )
-        .into_response()
+    // Truthful engine badge (not the Settings row, which may have been
+    // flipped mid-recording and won't apply until the next start) — read
+    // straight off the `Meeting` that `Registry::start` stamped.
+    let stt = match state.meetings.get(&id).await {
+        Some(m) => *m.stt_engine.lock().await,
+        None => None,
+    };
+    let mut body = json!({ "id": id.to_string(), "title": title, "started_at": started_at });
+    if let Some(engine) = stt {
+        body["stt"] = json!(engine);
+    }
+    (StatusCode::OK, Json(body)).into_response()
 }
 
 fn now_unix_ms() -> i64 {

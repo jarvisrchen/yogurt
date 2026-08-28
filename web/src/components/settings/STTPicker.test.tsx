@@ -108,4 +108,35 @@ describe("STTPicker — Cloud card", () => {
       expect(settingsApiMock.setSttKey).toHaveBeenCalledWith("dg-secret-123");
     });
   });
+
+  it("shows the 'applies to next recording' notice", async () => {
+    renderPicker();
+    await waitFor(() => screen.getByTestId("cloud-stt-card"));
+    expect(
+      screen.getByText(/changes apply to the next recording/i),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces the server's 422 message when a PATCH is rejected", async () => {
+    settingsApiMock.patch.mockRejectedValue(
+      new Error(
+        '422 Unprocessable Entity: {"error":"local model medium.en is not downloaded - download it in Settings > Transcription first"}',
+      ),
+    );
+    renderPicker();
+    await waitFor(() => screen.getByTestId("cloud-stt-card"));
+
+    // "small.en" is downloaded per `modelsFixture`, so "Use Local" is the
+    // clickable transition from the fixture's default `stt_provider:
+    // "cloud"` — clicking an already-checked radio wouldn't fire onChange.
+    fireEvent.click(screen.getByRole("radio", { name: /use local/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stt-patch-error")).toHaveTextContent(
+        "local model medium.en is not downloaded - download it in Settings > Transcription first",
+      );
+    });
+    // The raw status-code-prefixed JSON blob must not leak into the UI.
+    expect(screen.queryByText(/422 unprocessable/i)).not.toBeInTheDocument();
+  });
 });

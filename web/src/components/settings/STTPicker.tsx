@@ -24,6 +24,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
 import { LocalSTTCard } from "./LocalSTTCard";
 
+/** `http()` throws `Error("<status> <statusText>: <raw body>")`. The server's
+ *  422 body is `{"error": "<msg>"}` (see settings.rs's `Error::Unprocessable`)
+ *  — pull just the message out so the UI shows the actual sentence instead
+ *  of a status-code-prefixed JSON blob. Falls back to the raw message for
+ *  anything that isn't that shape. */
+function patchErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart === -1) return raw;
+  try {
+    const parsed = JSON.parse(raw.slice(jsonStart)) as { error?: string };
+    return parsed.error ?? raw;
+  } catch {
+    return raw;
+  }
+}
+
 export function STTPicker() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["settings"], queryFn: settingsApi.get });
@@ -50,7 +67,19 @@ export function STTPicker() {
   const selectedModel = general.stt_model || "small.en";
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="space-y-3">
+      {patch.isError && (
+        <p
+          data-testid="stt-patch-error"
+          className="text-[13px] text-[var(--color-straw)]"
+        >
+          {patchErrorMessage(patch.error)}
+        </p>
+      )}
+      <p className="text-[11px] font-mono text-mut">
+        Changes apply to the next recording.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {/* ─── Cloud card ─────────────────────────────────────────────── */}
       <article
         data-testid="cloud-stt-card"
@@ -127,6 +156,7 @@ export function STTPicker() {
           })
         }
       />
+      </div>
     </div>
   );
 }

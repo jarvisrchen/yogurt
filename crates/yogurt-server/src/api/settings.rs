@@ -187,10 +187,63 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
     }))
 }
 
+/// Reject a PATCH that would leave `stt_provider == "local"` pointed at a
+/// model that isn't actually on disk. Settings only take effect at the
+/// *next* recording start (`Registry::start` reads them fresh via
+/// `select_stt`), so persisting an undownloaded model here is a lie the
+/// UI would show immediately, not just a future footgun — exactly the
+/// bug this handler exists to prevent.
+///
+/// Checks the EFFECTIVE settings (current row with `patch` overlaid), so
+/// it catches all three PATCH shapes: provider flips to local while the
+/// stored model is undownloaded, model flips while local is already
+/// active, or both fields arrive in the same PATCH.
+async fn validate_stt_patch(
+    db: &yogurt_db::Db,
+    patch: &settings::GeneralPatch,
+) -> Result<(), Error> {
+    let current = settings::load_general(db)?;
+    let effective_provider = patch
+        .stt_provider
+        .as_deref()
+        .unwrap_or(&current.stt_provider);
+    if effective_provider != "local" {
+        return Ok(());
+    }
+    let effective_model = patch
+        .stt_model
+        .clone()
+        .unwrap_or_else(|| current.stt_model.clone());
+
+    // `is_downloaded` can fall back to hashing a multi-GB file on a
+    // legacy/stale marker (see yogurt_stt::models docs) — keep it off
+    // the tokio reactor, same as `select_stt` does at meeting start.
+    let downloaded = tokio::task::spawn_blocking({
+        let model = effective_model.clone();
+        move || {
+            yogurt_stt::models::lookup(&model)
+                .map(yogurt_stt::models::is_downloaded)
+                .unwrap_or(false)
+        }
+    })
+    .await
+    .map_err(|e| Error::Internal(format!("join is_downloaded check: {e}")))?;
+
+    if downloaded {
+        Ok(())
+    } else {
+        Err(Error::Unprocessable(format!(
+            "local model {effective_model} is not downloaded - download it in \
+             Settings > Transcription first"
+        )))
+    }
+}
+
 async fn patch_settings(
     State(s): State<AppState>,
     Json(patch): Json<settings::GeneralPatch>,
 ) -> Result<Json<settings::General>, Error> {
+    validate_stt_patch(&s.db, &patch).await?;
     Ok(Json(settings::save_general_patch(&s.db, patch)?))
 }
 
@@ -321,6 +374,9 @@ async fn set_provider_key(
 enum Error {
     NotFound,
     Internal(String),
+    /// 422 — the patch is well-formed JSON but describes an invalid
+    /// configuration (e.g. local STT pointed at an undownloaded model).
+    Unprocessable(String),
 }
 
 impl From<anyhow::Error> for Error {
@@ -340,6 +396,11 @@ impl IntoResponse for Error {
         match self {
             Error::NotFound => (StatusCode::NOT_FOUND, "not found").into_response(),
             Error::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, s).into_response(),
+            Error::Unprocessable(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({ "error": msg })),
+            )
+                .into_response(),
         }
     }
 }

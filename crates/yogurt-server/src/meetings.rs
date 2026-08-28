@@ -182,6 +182,14 @@ pub struct Meeting {
     /// observably complete before the stop request returns (the browser
     /// navigates to the post-meeting view immediately after).
     pub persist: Mutex<Option<(oneshot::Sender<()>, JoinHandle<()>)>>,
+    /// Which STT engine `select_stt` actually resolved to for the
+    /// in-progress (or most recent) recording — `"cloud"` or `"local"`.
+    /// `None` before the first start. Set once, right after `select_stt`
+    /// resolves in `Registry::start`, so it reflects truth even if the
+    /// user flips Settings mid-recording (settings only apply at the
+    /// *next* start — see settings.rs's PATCH validation). Read by the
+    /// `GET /api/meetings/active` route for the live engine badge.
+    pub stt_engine: Mutex<Option<&'static str>>,
 }
 
 /// Abort a spawned task when the owner is dropped. Used so the STT session
@@ -212,6 +220,7 @@ impl Meeting {
             capture_thread: Mutex::new(None),
             audio_cmd_tx: Mutex::new(None),
             persist: Mutex::new(None),
+            stt_engine: Mutex::new(None),
         }
     }
 }
@@ -356,6 +365,15 @@ impl Registry {
             .await
             .context("join select_stt")?
             .context("select STT adapter")?;
+
+        // Record which engine actually won, before spawning anything —
+        // this is the truthful source for the live-header badge (D-XX:
+        // settings only take effect at the *next* start, so a mid-
+        // recording Settings flip must not lie about what's running).
+        *m.stt_engine.lock().await = Some(match stt_spec {
+            SttSpec::Cloud { .. } => "cloud",
+            SttSpec::Local { .. } => "local",
+        });
 
         // Open audio capture on a dedicated std::thread.
         //

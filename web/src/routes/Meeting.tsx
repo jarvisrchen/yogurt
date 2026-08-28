@@ -419,6 +419,11 @@ export function Meeting() {
             </h1>
           )}
           <div className="flex items-center gap-2">
+            {meetingId && recording && activeRecording.data?.stt && (
+              <span className="px-2 py-1 rounded-button border border-line bg-paper text-[11px] font-mono uppercase text-mut">
+                {activeRecording.data.stt === "cloud" ? "Cloud STT" : "Local STT"}
+              </span>
+            )}
             {meetingId && recording && (
               <MicDevicePicker meetingId={meetingId} />
             )}
