@@ -53,7 +53,12 @@ impl DeepgramStt {
         Self {
             api_key: api_key.into(),
             base_url: "wss://api.deepgram.com".into(),
-            model: "nova-2".into(),
+            // nova-3 is markedly better than nova-2 on far-field / noisy
+            // audio (observed live: nova-2 silently dropped whole clauses
+            // of room audio that other engines caught - it refuses to
+            // guess below its confidence floor). Env-overridable for
+            // experiments without a rebuild.
+            model: std::env::var("YOGURT_DEEPGRAM_MODEL").unwrap_or_else(|_| "nova-3".into()),
         }
     }
 
