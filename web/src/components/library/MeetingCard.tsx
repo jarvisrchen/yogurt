@@ -4,10 +4,10 @@
  * Layout (PRD §5.9 + D-06):
  *   [42px tinted avatar with 2-letter serif initials]
  *   ╎ Title (Hanken-bold 15px)
- *   ╎ {2:45 PM} · {47 min}             ← mono 12px; duration omitted while
- *   ╎                                     ended_at is null; `· not enhanced`
- *   ╎                                     appended only for the exception:
- *   ╎                                     ended but never enhanced
+ *   ╎ [2:45 PM] [47 min]               ← mono 11px pills (MetaPill); duration
+ *   ╎                                     omitted while ended_at is null;
+ *   ╎                                     [not enhanced] only for the
+ *   ╎                                     exception: ended but never enhanced
  *   [Local · medium.en engine pill, right-aligned; omitted when unknown]
  *
  * Avatar tint is deterministic per id (hash → 3-palette cycle) so the
@@ -18,7 +18,7 @@ import { Link } from "react-router";
 import { Star } from "lucide-react";
 import type { Meeting } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
-import { EnginePill } from "../MeetingMetaPills";
+import { EnginePill, MetaPill } from "../MeetingMetaPills";
 import { InlineTitle } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
 
@@ -49,22 +49,31 @@ export function initials(title: string): string {
   return (words[0]![0]! + words[1]![0]!).toUpperCase();
 }
 
-export function formatMeta(m: Meeting): string {
-  const parts = [
-    new Date(m.started_at).toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }),
+/**
+ * Card metadata as pills, same visual language as `MeetingMetaPills` in the
+ * meeting headers. Time only (the list is already grouped by day); duration
+ * once ended; and a strawberry "not enhanced" flag for the one case worth
+ * noticing: ended without an enrichment pass (enhance failed or skipped).
+ * Tagging the normal enhanced case would be noise.
+ */
+export function metaParts(m: Meeting): { text: string; tone: "neutral" | "warn" }[] {
+  const parts: { text: string; tone: "neutral" | "warn" }[] = [
+    {
+      text: new Date(m.started_at).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+      tone: "neutral",
+    },
   ];
   if (m.ended_at != null && m.ended_at > m.started_at) {
     const minutes = Math.max(1, Math.round((m.ended_at - m.started_at) / 60_000));
-    parts.push(`${minutes} min`);
+    parts.push({ text: `${minutes} min`, tone: "neutral" });
   }
-  // Enhancement is the normal outcome of ending a meeting, so tagging every
-  // card "enhanced" is noise. Flag only the exception: ended, no enrichment
-  // (enhance failed or was skipped), so the user knows to hit Re-enhance.
-  if (m.ended_at != null && m.enriched_md == null) parts.push("not enhanced");
-  return parts.join(" · ");
+  if (m.ended_at != null && m.enriched_md == null) {
+    parts.push({ text: "not enhanced", tone: "warn" });
+  }
+  return parts;
 }
 
 interface Props {
@@ -113,17 +122,21 @@ export function MeetingCard({ meeting, activeId }: Props) {
             />
           )}
         </div>
-        <div className="text-[12px] font-mono text-mut flex items-center gap-1.5">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {isLive ? (
-            <>
+            <MetaPill tone="warn">
               <span
                 aria-hidden="true"
-                className="inline-block w-2 h-2 rounded-pill bg-straw animate-recpulse"
+                className="inline-block w-1.5 h-1.5 rounded-pill bg-straw animate-recpulse"
               />
-              <span>Recording</span>
-            </>
+              Recording
+            </MetaPill>
           ) : (
-            formatMeta(meeting)
+            metaParts(meeting).map((p) => (
+              <MetaPill key={p.text} tone={p.tone}>
+                {p.text}
+              </MetaPill>
+            ))
           )}
         </div>
         {meeting.labels.length > 0 && (
