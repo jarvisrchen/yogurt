@@ -66,12 +66,8 @@ pub(crate) async fn stream(
     // shape (the boxed stream is `Send + 'static` so it can be spawned
     // onto a tokio task, e.g. by Phase 6's chat WebSocket handler).
     //
-    // A `ThinkStripper` state machine wraps the chunk emission so any
-    // `<think>…</think>` block carried in `delta.content` is elided before
-    // the chunk ever leaves the crate. Reasoning models (DeepSeek R1,
-    // MiniMax M3, Qwen QwQ) leak chain-of-thought into `content` even
-    // when providers honor `reasoning_split: true` — this is the
-    // model-agnostic backstop.
+    // A `ThinkStripper` removes leading `<think>...</think>` content before
+    // any response text leaves the crate.
     let mapped = events.map(|ev| -> Result<ChatChunk> {
         let ev = ev.map_err(|e| anyhow!("SSE parse error: {e}"))?;
         // OpenAI terminates streams with `data: [DONE]` — emit a final
@@ -106,19 +102,13 @@ pub(crate) async fn stream(
     // holds its own state across chunks so a tag split across the
     // chunk boundary is handled correctly (see `ThinkStripper` docs).
     //
-    // On `done=true` we drop any text the stripper was holding back —
-    // typically the partial-tag suffix of a clean response. Malformed
-    // output (stream ends inside an unclosed think block) is also
-    // dropped, matching the `strip_thinking` whole-string behavior for
-    // unterminated blocks. A future "show reasoning" toggle could
-    // surface `stripper.flush()` here instead.
     let mut stripper = ThinkStripper::new();
     let stripped = mapped.map(move |chunk_res| {
         let mut chunk = chunk_res?;
-        if chunk.done {
-            stripper.flush();
-        }
         chunk.delta = stripper.push(&chunk.delta);
+        if chunk.done {
+            chunk.delta.push_str(&stripper.flush());
+        }
         Ok(chunk)
     });
 
