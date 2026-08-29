@@ -113,20 +113,22 @@ export function ChatWindow({
         )}
       </div>
       <footer className="px-3 py-3 border-t border-[var(--color-line)]">
-        <input
-          ref={inputRef}
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              trySubmit();
-            }
-          }}
-          placeholder="Ask this meeting…"
-          className="w-full h-9 px-3 rounded-md bg-[var(--color-card)] border border-[var(--color-line)] text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-mut)] focus:outline-none focus:border-[var(--color-blue)] transition-colors"
-        />
+        <div className="flex items-center h-9 px-3 rounded-full bg-[var(--color-card)] border border-[var(--color-line)] focus-within:ring-2 focus-within:ring-blue/40 transition-colors">
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                trySubmit();
+              }
+            }}
+            placeholder="Ask this meeting…"
+            className="w-full bg-transparent text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-mut)] outline-none"
+          />
+        </div>
       </footer>
     </div>
   );
