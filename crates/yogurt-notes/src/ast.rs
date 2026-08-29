@@ -144,9 +144,12 @@ pub(crate) fn strip_markers(s: &str) -> String {
                             // Inside the OUTER ai-grey span: preserve the
                             // inner bullet text. For a transcript-link
                             // outer span, suppress everything.
-                            out.push(bytes[j] as char);
+                            let c = char_at(s, j);
+                            out.push(c);
+                            j += c.len_utf8();
+                        } else {
+                            j += 1;
                         }
-                        j += 1;
                     }
                     i = j;
                     continue;
@@ -163,10 +166,20 @@ pub(crate) fn strip_markers(s: &str) -> String {
             i += "</span>".len();
             continue;
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        let c = char_at(s, i);
+        out.push(c);
+        i += c.len_utf8();
     }
     out
+}
+
+/// The char starting at byte index `i`. Every caller only lands on `i`
+/// after advancing by whole chars or past ASCII markers, so `i` is always
+/// a char boundary. Copying `bytes[i] as char` instead was the 2026-08-29
+/// mojibake bug: it turned each byte of a multi-byte UTF-8 char into its
+/// own Latin-1 char ("\u{2019}" became "\u{e2}\u{80}\u{99}").
+fn char_at(s: &str, i: usize) -> char {
+    s[i..].chars().next().expect("i < s.len()")
 }
 
 /// Parse markdown into our flat block list. Lists are flattened — each
@@ -282,6 +295,19 @@ mod tests {
     /// the block key. The old global `</span>` regex stripped both closers
     /// and left the transcript-link text glued onto the user's bullet
     /// content, breaking re-enhance matching on previously-promoted lines.
+    /// Non-ASCII text must survive the scan byte-for-byte: it is copied as
+    /// whole chars, never as `byte as char`. Regression for the 2026-08-29
+    /// post-view mojibake ("user\u{2019}s" rendered as "userâ\u{80}\u{99}s").
+    #[test]
+    fn strip_markers_preserves_non_ascii() {
+        let input = "- Today is the user\u{2019}s last day <span data-ai-grey data-ts=\"4\">caf\u{e9} \u{2026} \u{4f1a}\u{8b70} <span data-transcript-link data-ts=\"4\">\u{21b3} 00:04</span></span> done";
+        let stripped = strip_markers(input);
+        assert_eq!(
+            stripped,
+            "- Today is the user\u{2019}s last day caf\u{e9} \u{2026} \u{4f1a}\u{8b70}  done"
+        );
+    }
+
     #[test]
     fn strip_markers_handles_nested_wire_format_spans() {
         let input = r#"<span data-ai-grey data-ts="120">pricing <span data-transcript-link data-ts="120">↳ 02:00</span></span>"#;
