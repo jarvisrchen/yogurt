@@ -98,6 +98,8 @@ pub(crate) struct OpenAiRequest<'a> {
     pub model: &'a str,
     pub messages: &'a [ChatMessage],
     pub stream: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub reasoning_split: bool,
 }
 
 #[derive(Deserialize)]

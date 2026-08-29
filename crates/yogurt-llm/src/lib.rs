@@ -129,6 +129,11 @@ impl OpenAiCompatClient {
         &self.model
     }
 
+    #[doc(hidden)]
+    pub fn split_reasoning(&self) -> bool {
+        self.model.to_ascii_lowercase().starts_with("minimax-")
+    }
+
     /// Probe the provider's `/models` endpoint and return the list of model
     /// ids it advertises. Used by the Settings page's `Refresh` button to
     /// populate the MODEL datalist with the live, authoritative list
@@ -192,6 +197,7 @@ impl LlmClient for OpenAiCompatClient {
             model: &self.model,
             messages: &req.messages,
             stream: false,
+            reasoning_split: self.split_reasoning(),
         };
         let resp = self
             .http

@@ -29,6 +29,7 @@ pub(crate) async fn stream(
         model: client.model_for_streaming(),
         messages: &req.messages,
         stream: true,
+        reasoning_split: client.split_reasoning(),
     };
 
     let resp = client

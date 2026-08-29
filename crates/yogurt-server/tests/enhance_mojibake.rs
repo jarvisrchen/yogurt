@@ -197,4 +197,17 @@ async fn model_mojibake_is_repaired_before_persist() {
         stored.contains("user\u{2019}s"),
         "clean apostrophe mangled: {stored:?}"
     );
+
+    let stored = enhance_with(
+        "<think>\nThe user wrote no notes. Let me extract facts.\n</think>\n\n## Decision\n\n- Launch Monday",
+    )
+    .await;
+    assert!(
+        !stored.contains("Let me extract"),
+        "reasoning leaked: {stored:?}"
+    );
+    assert!(
+        stored.contains("Launch Monday"),
+        "final answer missing: {stored:?}"
+    );
 }
