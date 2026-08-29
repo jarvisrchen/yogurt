@@ -4,8 +4,20 @@
 
 use serde_json::json;
 use wiremock::matchers::{header, method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 use yogurt_llm::{ChatMessage, ChatRequest, LlmClient, OpenAiCompatClient};
+
+/// Matches only when no `authorization` header is present at all. Used to
+/// assert local-runtime providers (Ollama, LM Studio) get no auth header
+/// when the stored key is empty - wiremock has no built-in "header
+/// absent" matcher.
+struct NoAuthHeader;
+
+impl wiremock::Match for NoAuthHeader {
+    fn matches(&self, request: &Request) -> bool {
+        request.headers.get("authorization").is_none()
+    }
+}
 
 #[tokio::test]
 async fn it_sends_messages_and_returns_assistant_content() {
@@ -147,5 +159,101 @@ async fn list_models_propagates_auth_failure() {
     assert!(
         msg.contains("401") || msg.contains("Incorrect API key"),
         "expected status or upstream message in error, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn list_models_strips_models_prefix() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [
+                { "id": "models/gemini-2.5-flash", "object": "model" },
+                { "id": "gpt-4o", "object": "model" },
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "gemini-2.5-flash".into());
+    let models = client.list_models().await.expect("list_models ok");
+    assert_eq!(
+        models,
+        vec!["gemini-2.5-flash".to_string(), "gpt-4o".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn list_models_sends_no_auth_header_when_key_is_empty() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .and(NoAuthHeader)
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [{ "id": "llama3.2", "object": "model" }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "".into(), "llama3.2".into());
+    let models = client.list_models().await.expect("list_models ok");
+    assert_eq!(models, vec!["llama3.2".to_string()]);
+}
+
+#[tokio::test]
+async fn errors_never_contain_the_raw_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "message": "Incorrect API key provided: sk-secret-123456" }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "message": "Incorrect API key provided: sk-secret-123456" }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(
+        server.uri(),
+        "sk-secret-123456".into(),
+        "gpt-4o-mini".into(),
+    );
+
+    let complete_err = client
+        .complete(ChatRequest {
+            messages: vec![ChatMessage::user("hi")],
+            stream: false,
+        })
+        .await
+        .expect_err("should fail");
+    let complete_msg = format!("{complete_err:#}");
+    assert!(
+        !complete_msg.contains("sk-secret-123456"),
+        "raw key leaked from complete(): {complete_msg}"
+    );
+    assert!(
+        complete_msg.contains("[key redacted]"),
+        "expected redaction marker in: {complete_msg}"
+    );
+
+    let list_err = client.list_models().await.expect_err("should fail");
+    let list_msg = format!("{list_err:#}");
+    assert!(
+        !list_msg.contains("sk-secret-123456"),
+        "raw key leaked from list_models(): {list_msg}"
+    );
+    assert!(
+        list_msg.contains("[key redacted]"),
+        "expected redaction marker in: {list_msg}"
     );
 }

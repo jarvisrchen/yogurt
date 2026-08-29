@@ -13,6 +13,18 @@ use tokio::net::TcpListener;
 use yogurt_server::state::AppState;
 use yogurt_server::{session, storage, Mode};
 
+/// Matches only when no `authorization` header is present at all. Used to
+/// assert the keyless `/models` probe (local runtimes need no key)
+/// reaches upstream with no auth header - wiremock has no built-in
+/// "header absent" matcher.
+struct NoAuthHeader;
+
+impl wiremock::Match for NoAuthHeader {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        request.headers.get("authorization").is_none()
+    }
+}
+
 /// Spin up a fresh in-memory `AppState` and start an axum server on an
 /// ephemeral kernel-assigned port. Returns the state handle (mostly
 /// dropped), the session token, and the `http://127.0.0.1:{port}` base
@@ -528,12 +540,27 @@ async fn list_models_uses_draft_key_when_no_stored_key() {
     );
 }
 
-/// No key at all — neither draft nor stored — must 422 so the UI can
-/// render "paste a key, then refresh" instead of pretending to call.
+/// No key at all - neither draft nor stored - must NOT be treated as an
+/// error: local runtimes (Ollama, LM Studio) need no key at all, so the
+/// probe proceeds keyless. The request must reach the upstream with no
+/// `authorization` header, and a provider that's happy to answer without
+/// one (as a local runtime would) returns its model list normally.
 #[tokio::test]
-async fn list_models_without_any_key_returns_422() {
+async fn list_models_without_any_key_probes_with_no_auth_header() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/models"))
+        .and(NoAuthHeader)
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [{ "id": "llama3.2", "object": "model" }]
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
     let (_state, token, base) = boot().await;
-    let id = make_provider(&base, &token, "https://api.example.com/v1").await;
+    let id = make_provider(&base, &token, &upstream.uri()).await;
 
     let resp = reqwest::Client::new()
         .post(format!("{base}/api/settings/providers/{id}/models"))
@@ -542,5 +569,41 @@ async fn list_models_without_any_key_returns_422() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 422);
+    assert_eq!(resp.status(), 200);
+    let models: Vec<String> = resp.json().await.unwrap();
+    assert_eq!(models, vec!["llama3.2".to_string()]);
+}
+
+/// SECURITY: an upstream 401 must surface as our 502 (the provider is at
+/// fault, not us), with a JSON `{"error": ...}` body that never echoes the
+/// draft key back - even in the error text a misconfigured provider might
+/// quote it into.
+#[tokio::test]
+async fn list_models_upstream_401_surfaces_as_502_without_the_key() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/models"))
+        .respond_with(wiremock::ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "message": "Incorrect API key provided: sk-draft-bad-99999" }
+        })))
+        .mount(&upstream)
+        .await;
+
+    let (_state, token, base) = boot().await;
+    let id = make_provider(&base, &token, &upstream.uri()).await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers/{id}/models"))
+        .bearer_auth(&token)
+        .json(&json!({ "api_key": "sk-draft-bad-99999" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 502);
+    let body: Value = resp.json().await.unwrap();
+    let msg = body["error"].as_str().expect("error field");
+    assert!(
+        !msg.contains("sk-draft-bad-99999"),
+        "raw key leaked in 502 body: {msg}"
+    );
 }

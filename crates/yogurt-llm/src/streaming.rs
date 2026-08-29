@@ -49,7 +49,10 @@ pub(crate) async fn stream(
         // converts this into an `enhance_progress { phase: "error" }`
         // WebSocket event.
         let body = resp.text().await.unwrap_or_default();
-        return Err(anyhow!("LLM stream open failed: {status} — {body}"));
+        return Err(anyhow!(
+            "LLM stream open failed: {status} - {}",
+            client.scrub(&body)
+        ));
     }
 
     let byte_stream = resp.bytes_stream();

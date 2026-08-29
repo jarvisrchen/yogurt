@@ -2,7 +2,7 @@
 //!
 //! `providers` rows describe an OpenAI-compatible LLM endpoint the user has
 //! configured (base URL + model + active flag). API keys are NOT stored
-//! here — they live in `~/.yogurt/keys.json` via the [`crate::keys`] module.
+//! here - they live in `~/.yogurt/keys.json` via the [`crate::keys`] module.
 //!
 //! The "single active LLM provider" invariant is enforced by a partial
 //! unique index in `V001__initial.sql`:
@@ -24,7 +24,7 @@ pub struct Preset {
     /// Settings UI's MODEL `<datalist>` so a freshly-cloned provider has
     /// autocomplete suggestions before the user pastes a key. `default_model`
     /// is always included here so the initial state of the dropdown matches
-    /// what gets saved. The user can still type any custom model — this is
+    /// what gets saved. The user can still type any custom model - this is
     /// autocomplete, not a hard constraint.
     ///
     /// Lists go stale when a provider ships a new model; the Settings page
@@ -34,7 +34,7 @@ pub struct Preset {
     pub models: &'static [&'static str],
     /// Public URL of the provider's "available models" page. Rendered by
     /// the Settings page as a small `See all models →` link next to the
-    /// MODEL field — useful both as a Refresh fallback (some providers
+    /// MODEL field - useful both as a Refresh fallback (some providers
     /// don't expose `/v1/models`) and as a discovery surface for preview /
     /// regional models the static list will never have.
     pub docs_url: &'static str,
@@ -44,7 +44,7 @@ pub struct Preset {
 /// Cloud majors first, then local runtimes, then the aggregator.
 ///
 /// Every entry must speak the OpenAI `/chat/completions` shape, because
-/// `OpenAiCompatClient` is the only client `yogurt-llm` ships — a preset is
+/// `OpenAiCompatClient` is the only client `yogurt-llm` ships - a preset is
 /// purely a saved base URL + model, never a new adapter.
 pub const PRESETS: &[Preset] = &[
     Preset {
@@ -75,7 +75,7 @@ pub const PRESETS: &[Preset] = &[
     },
     // Google exposes Gemini through an OpenAI-compatible shim; the native
     // `generativeLanguage` REST shape is NOT what we speak. The trailing
-    // slash is load-bearing upstream but harmless here — `OpenAiCompatClient`
+    // slash is load-bearing upstream but harmless here - `OpenAiCompatClient`
     // trims it before appending `/chat/completions`.
     Preset {
         name: "Google Gemini",
@@ -103,8 +103,11 @@ pub const PRESETS: &[Preset] = &[
         base_url: "http://localhost:11434/v1",
         default_model: "llama3.2",
         // Ollama models depend entirely on what the user has pulled
-        // locally — there is no safe static list. Leave empty so the
-        // datalist only shows whatever the user has typed or refreshed.
+        // locally, so these are hints, not a guarantee - a few common
+        // `ollama pull` targets to seed the datalist before the user has
+        // pulled anything. Ollama needs no key, so Refresh (live
+        // `GET /v1/models`) is one click away and always wins once
+        // there's a real local list to show.
         models: &["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2"],
         docs_url: "https://ollama.com/library",
     },
@@ -112,7 +115,10 @@ pub const PRESETS: &[Preset] = &[
         name: "LM Studio (local)",
         base_url: "http://localhost:1234/v1",
         default_model: "",
-        // Same shape as Ollama — model list is what's loaded locally.
+        // Empty, unlike Ollama: LM Studio has no well-known model names to
+        // hint at, since whatever's loaded is purely local (a GGUF the
+        // user downloaded). Refresh is the only way this datalist ever
+        // gets populated.
         models: &[],
         docs_url: "https://lmstudio.ai/models",
     },
