@@ -24,10 +24,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # (name, url) pairs.
 declare -a MODELS=(
-  "tiny.en      https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin"
-  "small.en     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
-  "medium.en    https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin"
-  "large-v3     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
+  "tiny.en          https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin"
+  "small.en         https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
+  "medium.en        https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin"
+  "large-v3         https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
+  "large-v3-turbo   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
 )
 
 # Filter by name args if provided.
