@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yogurt v1.0 — Full Validation Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-chip: 6px; --r-btn: 9px; --r-card: 14px; --r-pill: 999px;
+  --sh-card:   0 2px 6px rgba(40, 30, 15, 0.08);
+  --sh-pop:    0 12px 30px -10px rgba(40, 30, 15, 0.22);
+}
+* { box-sizing: border-box; min-width: 0; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-sans); font-size: 15px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 32px; max-width: 1240px; margin: 0 auto; padding: 32px 28px 96px; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+/* ── Sticky sidebar ──────────────────────────────────────── */
+.toc { position: sticky; top: 24px; align-self: start; }
+.toc .h { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mut); margin: 14px 0 6px; }
+.toc a {
+  display: block; padding: 7px 12px; color: var(--ink);
+  text-decoration: none; border-radius: var(--r-btn); font-size: 13px;
+  transition: background 120ms ease;
+}
+.toc a:hover { background: var(--blsoft); }
+.toc a.done { color: var(--matcha); }
+.toc a.done::before { content: "✓ "; color: var(--matcha); font-weight: 600; }
+.toc-mini {
+  font-family: var(--font-mono); font-size: 10px; color: var(--mut);
+  margin-top: 14px; padding: 10px 12px; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--r-btn); line-height: 1.5;
+}
+.toc-mini strong { color: var(--ink); font-family: var(--font-sans); display: block; font-size: 11px; margin-bottom: 4px; }
+
+/* ── Hero ───────────────────────────────────────────────── */
+.hero { margin-bottom: 32px; }
+.hero .crumbs {
+  font-family: var(--font-mono); font-size: 11px; color: var(--mut);
+  letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: var(--font-serif); font-weight: 400; font-size: 48px;
+  line-height: 1.05; margin: 0 0 12px 0; letter-spacing: -0.01em;
+}
+.hero h1 em { color: var(--blue); font-style: italic; }
+.hero p.lede { font-size: 15px; color: var(--mut); margin: 0; max-width: 720px; }
+.hero .ribbon {
+  margin-top: 18px; padding: 14px 18px; background: var(--blsoft);
+  border-left: 3px solid var(--blue); border-radius: 8px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink);
+}
+.hero .ribbon strong { font-family: var(--font-sans); }
+
+/* ── Section card ───────────────────────────────────────── */
+.section {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 26px 28px; margin-bottom: 18px;
+  box-shadow: var(--sh-card);
+}
+.section .header {
+  display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--line);
+}
+.section .header .step {
+  font-family: var(--font-mono); font-size: 11px; color: var(--blue);
+  background: var(--blsoft); padding: 4px 10px; border-radius: var(--r-pill);
+  letter-spacing: 0.06em;
+}
+.section h2 {
+  font-family: var(--font-serif); font-weight: 400; font-size: 28px;
+  margin: 0; line-height: 1.15;
+}
+.section .why {
+  flex: 1; color: var(--mut); font-size: 13px; text-align: right;
+  font-style: italic;
+}
+
+.section h3 {
+  font-family: var(--font-serif); font-weight: 400; font-size: 19px;
+  margin: 18px 0 8px 0; line-height: 1.2;
+}
+.section h3 .pill {
+  display: inline-block; margin-left: 8px; padding: 2px 8px;
+  background: var(--mtsoft); color: var(--matcha); border-radius: var(--r-pill);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  text-transform: uppercase; vertical-align: middle;
+}
+.section h3 .pill.straw { background: var(--strsoft); color: var(--straw); }
+.section h3 .pill.blue { background: var(--blsoft); color: var(--blue); }
+
+.section p { margin: 0 0 12px 0; }
+.section p.small { font-size: 13px; color: var(--mut); }
+
+/* ── Code blocks ─────────────────────────────────────────── */
+pre.cmd {
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55;
+  background: var(--ink); color: #F5EFE3; padding: 14px 18px;
+  border-radius: var(--r-btn); overflow-x: auto;
+  margin: 10px 0 14px 0;
+}
+pre.cmd .c { color: #998b76; }      /* comment */
+pre.cmd .p { color: #8FB1FF; }      /* prompt */
+pre.cmd .ok { color: #99D4A4; }     /* success line */
+pre.cmd .x { color: #F3A693; }      /* error/warn */
+code.inline {
+  font-family: var(--font-mono); font-size: 12.5px;
+  background: var(--paper); padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+/* ── Checklist rows ─────────────────────────────────────── */
+ul.check { list-style: none; padding: 0; margin: 10px 0 4px 0; }
+ul.check li {
+  display: grid; grid-template-columns: 24px 1fr; gap: 10px;
+  padding: 10px 0; border-bottom: 1px dashed var(--line);
+  align-items: start;
+}
+ul.check li:last-child { border-bottom: 0; }
+ul.check input[type=checkbox] {
+  appearance: none; width: 18px; height: 18px; margin-top: 2px;
+  border: 1.5px solid var(--grey); border-radius: 5px; cursor: pointer;
+  background: var(--card); transition: border-color 120ms ease, background 120ms ease;
+}
+ul.check input[type=checkbox]:checked { background: var(--matcha); border-color: var(--matcha); }
+ul.check input[type=checkbox]:checked::after {
+  content: "✓"; color: white; display: block; text-align: center;
+  line-height: 17px; font-size: 13px; font-weight: 700;
+}
+ul.check li.x input[type=checkbox]:checked { background: var(--straw); border-color: var(--straw); }
+ul.check .lbl { font-size: 14px; line-height: 1.5; }
+ul.check .lbl strong { color: var(--ink); }
+ul.check .expect { display: block; margin-top: 4px; color: var(--mut); font-size: 12.5px; }
+ul.check .expect::before { content: "Expected: "; color: var(--matcha); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+ul.check .iffail { display: block; margin-top: 4px; color: var(--straw); font-size: 12.5px; }
+ul.check .iffail::before { content: "If broken: "; color: var(--straw); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ── Callouts ───────────────────────────────────────────── */
+.cal {
+  margin: 12px 0; padding: 12px 16px;
+  border-radius: var(--r-btn); font-size: 13px; line-height: 1.55;
+}
+.cal.warn { background: var(--strsoft); border-left: 3px solid var(--straw); color: var(--ink); }
+.cal.note { background: var(--mtsoft); border-left: 3px solid var(--matcha); }
+.cal.tip { background: var(--blsoft); border-left: 3px solid var(--blue); }
+.cal strong { font-weight: 700; }
+
+/* ── Progress strip ─────────────────────────────────────── */
+.progress {
+  position: sticky; top: 0; background: var(--paper); padding: 12px 28px;
+  margin: -32px -28px 24px -28px; z-index: 50;
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 14px;
+}
+.progress .bar { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.progress .bar > span { display: block; height: 100%; background: var(--matcha); width: 0%; transition: width 280ms ease; }
+.progress .pct {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--mut); min-width: 50px; text-align: right;
+}
+
+/* ── Verdict footer ─────────────────────────────────────── */
+.verdict {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 22px 26px; box-shadow: var(--sh-pop);
+  position: sticky; bottom: 14px; margin-top: 20px;
+}
+.verdict h3 { font-family: var(--font-serif); font-weight: 400; font-size: 22px; margin: 0 0 10px 0; }
+.verdict .row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+.verdict textarea {
+  flex: 1; min-height: 60px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-btn);
+  font-family: var(--font-sans); font-size: 13px; resize: vertical;
+}
+.verdict textarea:focus { border-color: var(--blue); outline: none; }
+.verdict .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.verdict button {
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  padding: 10px 18px; border-radius: var(--r-btn);
+  font-family: var(--font-sans); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.verdict button:hover { transform: translateY(-1px); }
+.verdict button.primary { background: var(--blue); color: white; border-color: var(--blue); }
+.verdict button.primary:hover { box-shadow: 0 4px 12px rgba(91,79,199,0.4); }
+.verdict button.danger { background: var(--strsoft); border-color: var(--straw); color: var(--ink); }
+.verdict .summary { font-family: var(--font-mono); font-size: 12px; color: var(--mut); }
+.verdict .summary strong { color: var(--ink); font-family: var(--font-sans); font-weight: 700; }
+
+/* tables */
+table.kv { border-collapse: collapse; font-size: 13px; width: 100%; }
+table.kv th { text-align: left; font-weight: 600; padding: 8px 12px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+table.kv td { padding: 8px 12px; border: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── SIDEBAR TOC ── -->
+  <nav class="toc" aria-label="Walkthrough sections">
+    <div class="h">Setup</div>
+    <a href="#env">1 · One-time setup</a>
+    <a href="#build">2 · Start yogurt</a>
+    <a href="#tcc">3 · Grant Screen Recording</a>
+
+    <div class="h">Smoke</div>
+    <a href="#welcome">4 · /welcome onboarding</a>
+    <a href="#settings">5 · Settings UI</a>
+
+    <div class="h">Hero flow</div>
+    <a href="#audio">6 · Audio capture (Phase 2)</a>
+    <a href="#cloudstt">7 · Cloud transcript (Phase 3)</a>
+    <a href="#hero">8 · Augmented notes (Phase 4)</a>
+    <a href="#chat">9 · ⌘K chat (Phase 6)</a>
+
+    <div class="h">Library</div>
+    <a href="#library">10 · Library + FTS (Phase 7)</a>
+
+    <div class="h">Local STT</div>
+    <a href="#localstt">11 · M1 Air bench (Phase 8)</a>
+
+    <div class="h">Hardening</div>
+    <a href="#persist">12 · Persistence + restart</a>
+    <a href="#states">13 · Empty / error states</a>
+    <a href="#unwind">14 · Cleanup</a>
+
+    <div class="toc-mini">
+      <strong>Two commands.</strong>
+      <code style="font-family: var(--font-mono); font-size: 10px;">./scripts/setup.sh</code> once → <code style="font-family: var(--font-mono); font-size: 10px;">just release</code> (validation) or <code style="font-family: var(--font-mono); font-size: 10px;">just dev</code> (UI work). Type <code style="font-family: var(--font-mono); font-size: 10px;">just</code> alone to list every recipe.
+    </div>
+  </nav>
+
+  <!-- ── MAIN ── -->
+  <main>
+
+    <div class="progress">
+      <div class="bar"><span id="bar"></span></div>
+      <div class="pct" id="pct">0 / 0</div>
+    </div>
+
+    <section class="hero">
+      <div class="crumbs">v1.0 · milestone validation · 14 sections · 2 scripts</div>
+      <h1>Validate every <em>autonomously-built</em> piece of Yogurt.</h1>
+      <p class="lede">All nine phases (0–8) shipped without you sitting at the keyboard. This walkthrough is the hand-off: from "I just cloned the repo" to "I trust this binary." Each step has a copy-pasteable command, an expected result, and a recovery hint if it breaks. Tick the boxes as you go — your progress is saved in the page.</p>
+      <div class="ribbon">
+        <strong>Two commands, no path-typing.</strong> <code style="font-family: var(--font-mono); font-size: 12px;">./scripts/setup.sh</code> once (also installs <code style="font-family: var(--font-mono); font-size: 12px;">just</code> for you via Homebrew). Then from anywhere in the repo: <code style="font-family: var(--font-mono); font-size: 12px;">just release</code> (or <code style="font-family: var(--font-mono); font-size: 12px;">just dev</code> for UI work with HMR). Type <code style="font-family: var(--font-mono); font-size: 12px;">just</code> with no args to see every recipe. Numbered steps below are checkpoints, not extra commands.
+      </div>
+    </section>
+
+    <!-- ── 1 · ONE-TIME SETUP ─────────────────────────────── -->
+    <section class="section" id="env">
+      <div class="header">
+        <span class="step">step 1</span>
+        <h2>One-time setup</h2>
+        <span class="why">./scripts/setup.sh — runs once</span>
+      </div>
+
+      <p>One script handles everything: checks prereqs (macOS / Rust / Node / pnpm), installs the <code class="inline">just</code> task runner via Homebrew so you have <code class="inline">just release</code> / <code class="inline">just dev</code> later, writes a <code class="inline">.env.local</code> stub for API keys, installs web dependencies, builds the web bundle, and builds the release binary.</p>
+
+      <pre class="cmd"><span class="c"># from the repo root — only command you have to type-from-path</span>
+./scripts/setup.sh
+
+<span class="c"># expected timeline:</span>
+<span class="c">#   [1/5] Checking prerequisites                — instant</span>
+<span class="c">#   [2/5] Ensuring just task runner installed   — ~10 s if missing, instant if present</span>
+<span class="c">#   [3/5] Provisioning .env.local               — instant</span>
+<span class="c">#   [4/5] Installing web deps + build           — ~1 min</span>
+<span class="c">#   [5/5] Building release binary               — 8-15 min on first run</span>
+
+<span class="c"># tail looks like:</span>
+<span class="ok">  ✓ binary built → target/release/yogurt</span>
+<span class="ok">Done.</span>
+<span class="ok">Next: just release   (single binary at http://localhost:7878)</span>
+<span class="ok">      just dev       (UI dev with HMR, one terminal)</span>
+<span class="ok">      just           (no args — lists every recipe)</span></pre>
+
+      <div class="cal tip">
+        <strong>Why <code class="inline">just</code> gets installed for you?</strong> So Step 2 onward is literally <code class="inline">just release</code> from anywhere in the repo — no script paths to remember. If you prefer to skip it: <code class="inline">./scripts/setup.sh --no-just</code>; the <code class="inline">./scripts/run-*.sh</code> entry points all still work directly.
+      </div>
+
+      <div class="cal note">
+        <strong>What got written for you:</strong> <code class="inline">.env.local</code> in the repo root (chmod 600), with three empty lines: <code class="inline">YOGURT_DEEPGRAM_API_KEY</code>, <code class="inline">YOGURT_OPENAI_API_KEY</code>, and commented-out alternatives for Minimax / OpenRouter. The setup script doesn't fail if you leave them blank — but transcription needs Deepgram and augmented notes need an LLM key, so fill at least those two before step 3.
+      </div>
+
+      <h3>1a · Paste your API keys <span class="pill blue">required</span></h3>
+
+      <p>Open <code class="inline">.env.local</code> (the IDE already has it open). You need:</p>
+
+      <ul style="font-size: 14px; padding-left: 22px; line-height: 1.7; margin: 8px 0 12px 0;">
+        <li><strong>Deepgram</strong> for cloud transcript. Sign up at <code class="inline">console.deepgram.com</code> — they hand out $200 free credit.</li>
+        <li><strong>One LLM key</strong> (OpenAI is simplest). Phase 4 augmented notes + Phase 6 chat both consume it.</li>
+      </ul>
+
+      <p class="small">The keys get loaded into <code class="inline">.env.local</code> → seeded into SQLite + macOS Keychain on first launch with <code class="inline">--dev</code>. Release-installed binaries from brew never touch that file (privacy invariant SET-11).</p>
+
+      <div class="cal warn">
+        <strong>Don't have Xcode CLI tools?</strong> <code class="inline">xcode-select --install</code> first — <code class="inline">whisper-rs-sys</code> needs the C toolchain. If <code class="inline">./scripts/setup.sh</code> errors at step 4 with <code class="inline">linker `cc` not found</code>, that's why.
+      </div>
+
+      <div class="cal tip" style="margin-top: 12px;">
+        <strong>Plan for ~12 GB of free disk.</strong> Release build → <strong>4–6 GB</strong> of <code class="inline">target/</code> + <strong>2–4 GB</strong> of cargo registry + <strong>~500 MB</strong> of node_modules. Setup script warns if you have less than 8 GB.
+      </div>
+
+      <h3>1b · Recovery — if setup fails <span class="pill straw">if needed</span></h3>
+
+      <p class="small">The script stops on the first failure and tells you what to do. Common ones:</p>
+
+      <ul style="font-size: 13px; padding-left: 22px; line-height: 1.7;">
+        <li><strong>"cargo not found"</strong> → install Rust at <code class="inline">https://rustup.rs</code>, then re-run.</li>
+        <li><strong>"pnpm not found"</strong> → <code class="inline">brew install pnpm</code>, then re-run.</li>
+        <li><strong>"no space left on device"</strong> → free 2–3 GB and re-run. <code class="inline">just clean-incremental</code> recovers ~3 GB without wiping the whole build.</li>
+        <li><strong>Stalled at step 4 for &gt;30 min</strong> → tail the output; if you see <code class="inline">Compiling whisper-rs-sys</code> over and over, your machine is paging. Close Chrome.</li>
+      </ul>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="su-1" />
+          <label class="lbl">
+            <strong><code class="inline">just setup</code> finishes with <code class="inline">Done.</code></strong>
+            <span class="expect">Final lines tell you the next command (<code class="inline">just release</code>). <code class="inline">target/release/yogurt</code> exists. <code class="inline">.env.local</code> exists.</span>
+            <span class="iffail">Read the last error line — it points to a single prereq. Fix that one thing and re-run; the recipe is idempotent.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="su-2" />
+          <label class="lbl">
+            <strong><code class="inline">.env.local</code> has your Deepgram key + one LLM key filled in.</strong>
+            <span class="expect"><code class="inline">grep -c YOGURT_ .env.local</code> shows 4+, with no empty values on the two required vars.</span>
+            <span class="iffail">Release mode (Step 2) skips <code class="inline">.env.local</code> anyway, so you can also paste keys via the Settings UI. <code class="inline">.env.local</code> matters only for <code class="inline">just dev</code>.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 2 · RUN ──────────────────────────────────────────── -->
+    <section class="section" id="build">
+      <div class="header">
+        <span class="step">step 2</span>
+        <h2>Start yogurt</h2>
+        <span class="why">pick the right script for what you're doing</span>
+      </div>
+
+      <p><strong>For this validation walkthrough, use <code class="inline">just release</code></strong> — it boots the release binary as a single process with the web bundle baked in. Same code path a brew-installed user gets, which is the version we want to confirm works.</p>
+
+      <p class="small">The dev-mode recipe (<code class="inline">just dev</code>) exists for editing the React UI with hot reload, but it adds a Vite process and proxy hop you don't need for acceptance testing. Covered briefly below for completeness.</p>
+
+      <h3>2a · Release mode <span class="pill">validation path</span></h3>
+
+      <pre class="cmd"><span class="c"># single process, embedded web bundle, http://localhost:7878</span>
+just release
+
+<span class="c"># expected output (~1 s for first response):</span>
+<span class="p">Starting yogurt (release mode) at http://localhost:7878</span>
+  Single binary with embedded web bundle — no Vite, no .env.local.
+  Enter API keys via the Settings UI on first run.
+  Ctrl-C to stop.
+
+<span class="ok">2026-06-27T... INFO yogurt::commands::start: yogurt is starting url=http://127.0.0.1:7878</span>
+<span class="ok">2026-06-27T... INFO yogurt_db::keychain: Registered apple-native-keyring-store as default credential backend</span>
+<span class="ok">2026-06-27T... INFO yogurt_server: yogurt-server starting addr=127.0.0.1:7878 mode=Release</span></pre>
+
+      <div class="cal warn">
+        <strong>Release mode doesn't read <code class="inline">.env.local</code></strong> — that's a privacy invariant (SET-11). Your seeded keys won't pre-populate; you'll paste them via the Settings UI on first run. Two API keys to have ready: Deepgram (for transcript) and one LLM key (for augmented notes / chat).
+      </div>
+
+      <h3>2b · Port already in use <span class="pill blue">interactive</span></h3>
+
+      <p class="small">If port 7878 is busy, every runner prompts you before the binary starts:</p>
+
+      <pre class="cmd"><span class="c">! port 7878 (release) is busy — held by PID 12345</span>
+   process: /Applications/Some.app/Contents/MacOS/some-other-thing
+
+   [k] kill it       (kill -9 12345)
+   [n] use next port (try 7879, 7880, …)
+   [a] abort
+
+   choose [k/n/a]:</pre>
+
+      <p class="small">Or skip the prompt with an env var, or pick a specific port up-front:</p>
+
+      <pre class="cmd"><span class="c"># kill the holder silently</span>
+YOGURT_PORT_POLICY=kill just release
+
+<span class="c"># pick the next free port silently</span>
+YOGURT_PORT_POLICY=next just release
+
+<span class="c"># pass extra args through `just release` — anything after the recipe name</span>
+just release --port 7900 --no-open</pre>
+
+      <h3>2c · Dev mode (UI development only) <span class="pill">optional</span></h3>
+
+      <p class="small">If you're editing React components and want HMR, use <code class="inline">just dev</code>. It spawns Vite in the background, waits for it to bind, then starts the backend in the foreground — single terminal, Ctrl-C cleans both processes. Skip this for validation.</p>
+
+      <pre class="cmd"><span class="c"># both processes in one terminal — Vite on :5173, backend on :7878</span>
+just dev
+
+<span class="c"># expected:</span>
+<span class="p">Starting Vite dev server at http://127.0.0.1:5173</span>
+  VITE v6.4.3  ready in 274 ms
+<span class="p">Starting yogurt backend (dev mode) at http://localhost:7878</span>
+
+<span class="c"># open http://localhost:7878 (NOT 5173 — auth lives on the backend)</span>
+<span class="c"># Ctrl-C stops both cleanly via a trap-EXIT handler.</span></pre>
+
+      <p class="small">If you want them in two terminals (separate logs): <code class="inline">just frontend</code> in one, <code class="inline">just backend</code> in the other.</p>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="s-1" />
+          <label class="lbl">
+            <strong>Server stays running</strong> and binds to <code class="inline">127.0.0.1:7878</code>.
+            <span class="expect">No crash log; <code class="inline">curl -s http://127.0.0.1:7878/api/health</code> returns 200.</span>
+            <span class="iffail">Port collision → answer the interactive prompt, or restart with <code class="inline">--port 7879</code>. Other binds (e.g. 0.0.0.0) are forbidden by Phase 0 — that's a regression worth reporting.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="s-2" />
+          <label class="lbl">
+            <strong>Browser opens to <code class="inline">http://localhost:7878</code>.</strong>
+            <span class="expect">A Yogurt SPA loads — either <code class="inline">/welcome</code> (first run) or <code class="inline">/library</code> (subsequent).</span>
+            <span class="iffail">If page is blank, open DevTools — most likely the embedded web assets weren't bundled. Re-run <code class="inline">./scripts/setup.sh</code> to rebuild the binary with web/dist embedded, then restart.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="s-3" />
+          <label class="lbl">
+            <strong>Keychain backend registered</strong> in the bootstrap log.
+            <span class="expect"><code class="inline">Registered apple-native-keyring-store as default credential backend</code> appears in the terminal logs.</span>
+            <span class="iffail">If you see "keychain backend not available" the first time you save a key in Settings, the keychain prompt didn't fire. macOS will pop a Keychain Access dialog — approve it.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 3 · TCC PERMISSION ────────────────────────────── -->
+    <section class="section" id="tcc">
+      <div class="header">
+        <span class="step">step 3</span>
+        <h2>Screen Recording permission</h2>
+        <span class="why">macOS TCC — required for system-audio capture</span>
+      </div>
+
+      <p>ScreenCaptureKit's audio loopback requires the user to grant <em>Screen Recording</em> permission (the same one apps like Loom and OBS ask for). macOS prompts the first time you try to start a meeting.</p>
+
+      <div class="cal warn">
+        <strong>The dialog only appears on first attempt.</strong> If you've previously denied yogurt-cli, no prompt will reappear — you'll have to flip it manually in System Settings.
+      </div>
+
+      <ol style="font-size: 14px; padding-left: 22px; line-height: 1.7;">
+        <li>In the browser, click <strong>+ New meeting</strong> (or whatever the empty-state CTA shows).</li>
+        <li>macOS will pop the "yogurt-cli would like to record this computer's screen and audio" dialog. Click <strong>Open System Settings</strong>.</li>
+        <li>System Settings opens to Privacy &amp; Security → Screen Recording &amp; System Audio. Toggle <strong>yogurt-cli</strong> ON.</li>
+        <li>Return to the browser. Click <strong>+ New meeting</strong> again — this time it should proceed.</li>
+      </ol>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="t-1" />
+          <label class="lbl">
+            <strong>The macOS Screen Recording prompt appeared</strong> (or the toggle already exists in System Settings).
+            <span class="expect">After granting, browser falls through to the live-meeting view with recording badge.</span>
+            <span class="iffail">No prompt + no entry in System Settings → the binary may not be signed correctly. For dev builds this is fine; for release builds it would be a notarization regression.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="t-2" />
+          <label class="lbl">
+            <strong>Recording badge animates</strong> (pulsing red dot on the left).
+            <span class="expect">PRD §16.5 "recpulse" animation: 1.4s ease-in-out infinite.</span>
+            <span class="iffail">Static badge → the SCK stream didn't open. Look at terminal logs for <code class="inline">audio capture failed</code>.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 4 · WELCOME ────────────────────────────────────── -->
+    <section class="section" id="welcome">
+      <div class="header">
+        <span class="step">step 4</span>
+        <h2>First-run onboarding</h2>
+        <span class="why">Phase 7 / Plan 07-04</span>
+      </div>
+
+      <p>If this is a clean DB (<code class="inline">rm -rf ~/.yogurt/yogurt.db</code>), the SPA routes you to <code class="inline">/welcome</code>. Otherwise you'll land on <code class="inline">/library</code> — to test onboarding, wipe and restart.</p>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="w-1" />
+          <label class="lbl">
+            <strong><code class="inline">/welcome</code> renders three StepCards</strong> with the terminal mockup at top.
+            <span class="expect">PRD §5.2 layout — three steps stepping through "install / paste keys / record."</span>
+            <span class="iffail">Blank screen → check <code class="inline">first_run_completed</code> column in <code class="inline">~/.yogurt/yogurt.db</code> settings KV.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="w-2" />
+          <label class="lbl">
+            <strong>"Get started" button advances to <code class="inline">/library</code></strong> AND sets <code class="inline">first_run_completed=1</code>.
+            <span class="expect">Reload the page — it stays on <code class="inline">/library</code>, doesn't bounce back to <code class="inline">/welcome</code>.</span>
+            <span class="iffail">Bounces back → <code class="inline">useFirstRunRedirect</code> is misreading the settings response. Check Network tab for <code class="inline">GET /api/settings/general</code>.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 5 · SETTINGS ───────────────────────────────────── -->
+    <section class="section" id="settings">
+      <div class="header">
+        <span class="step">step 5</span>
+        <h2>Settings UI · API keys + provider switch</h2>
+        <span class="why">Phase 5</span>
+      </div>
+
+      <p>Open <code class="inline">http://localhost:7878/settings</code>. Four cards in the sidebar — Model, Transcription, Audio, General.</p>
+
+      <div class="cal warn">
+        <strong>Release mode starts with zero providers.</strong> You'll paste your keys here on first run. Get them ready: a Deepgram key (transcript) and one LLM key (augmented notes / chat).
+      </div>
+
+      <h3>5a · Add your providers <span class="pill blue">required</span></h3>
+
+      <ol style="font-size: 14px; padding-left: 22px; line-height: 1.7; margin: 8px 0 12px 0;">
+        <li>Click <strong>Transcription</strong> in the sidebar. Click the Deepgram card. Paste your Deepgram key. Save. (macOS may pop a Keychain Access prompt — approve it once.)</li>
+        <li>Click <strong>Model</strong> in the sidebar. Click <strong>+ Add provider</strong>. Pick OpenAI from the preset list (or any OpenAI-compatible base URL). Paste your key. Save.</li>
+        <li>Both should now show with masked keys (<code class="inline">sk-•••••••••...••12</code>) and the active one highlighted.</li>
+      </ol>
+
+      <h3>5b · Verify the keychain wired up <span class="pill">checkpoint</span></h3>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="set-1" />
+          <label class="lbl">
+            <strong>Model card lists the provider you added</strong> with the key masked (<code class="inline">sk-•••••••••...••12</code>).
+            <span class="expect">Keys masked except last 4. Active provider chip highlighted in blue.</span>
+            <span class="iffail">Plaintext keys shown → SET-04 leak; flag immediately. Empty list after save → the macOS Keychain write silently no-op'd (a Phase 5 bug we already patched once, regression worth catching).</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="set-2" />
+          <label class="lbl">
+            <strong>"Add provider" works for an OpenAI-compatible base URL</strong> (e.g. paste a Groq URL + key).
+            <span class="expect">New row appears; clicking "Make active" switches the highlight. Refreshing the page preserves both.</span>
+            <span class="iffail">Save button silent? — that was the original macOS Keychain 3.6 noop bug. The autonomous run patched this — confirm the patch held.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="set-3" />
+          <label class="lbl">
+            <strong>Transcription card shows BOTH "Cloud · Deepgram" AND "Local · whisper.cpp"</strong>.
+            <span class="expect">No "Coming soon" badge anywhere. Local card has 4 model pills: <code class="inline">tiny.en</code>, <code class="inline">small.en ↓</code>, <code class="inline">medium.en ↓</code>, <code class="inline">large-v3 ↓</code>.</span>
+            <span class="iffail">Still says "Coming soon" → Plan 08-03 didn't ship; rebuild with <code class="inline">--features yogurt-stt/local-stt</code>.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 6 · AUDIO CAPTURE ─────────────────────────────── -->
+    <section class="section" id="audio">
+      <div class="header">
+        <span class="step">step 6</span>
+        <h2>Audio capture · mic + system</h2>
+        <span class="why">Phase 2 — highest risk during autonomous run</span>
+      </div>
+
+      <p>Start a meeting, then play a sound from another app (YouTube tab, Spotify, anything). Talk into the mic. Both should be captured into separate channels with timestamps aligned.</p>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="a-1" />
+          <label class="lbl">
+            <strong>+ New meeting opens the live view</strong> with recording badge pulsing and a transcript dock slot reserved on the right.
+            <span class="expect">URL changes to <code class="inline">/meetings/&lt;ULID&gt;</code>. Empty notes editor on the left.</span>
+            <span class="iffail">400 / "select STT adapter" error → your <code class="inline">YOGURT_DEEPGRAM_API_KEY</code> isn't in the seeded providers. Check Settings.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="a-2" />
+          <label class="lbl">
+            <strong>Play audio from another app + speak into mic for ~30 seconds.</strong>
+            <span class="expect">Terminal logs show both channels flowing — no warnings about <code class="inline">audio capture failed</code> or <code class="inline">overflow</code>.</span>
+            <span class="iffail">If only mic flows, system audio loopback failed. Phase 2 has a Swift sidecar fallback documented but not wired — that would be the v1.1 escalation.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 7 · CLOUD STT ──────────────────────────────────── -->
+    <section class="section" id="cloudstt">
+      <div class="header">
+        <span class="step">step 7</span>
+        <h2>Cloud transcript dock</h2>
+        <span class="why">Phase 3 — TRANS-08 &lt; 2 s lag</span>
+      </div>
+
+      <p>The right-edge transcript dock should slide in (340 ms, ease-slide token) and start emitting bars within 2 s of you speaking.</p>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="c-1" />
+          <label class="lbl">
+            <strong>Transcript dock visible on the right edge</strong> with Me / Them channel labels.
+            <span class="expect">Me bars (from mic) on top, Them bars (from system audio) below — or however Phase 3 surfaces the channel split. Slide-in motion is smooth, not janky.</span>
+            <span class="iffail">No dock → WebSocket <code class="inline">/ws/meetings/&lt;id&gt;</code> didn't connect. Check DevTools Network → WS tab.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="c-2" />
+          <label class="lbl">
+            <strong>First transcript bar appears in &lt; 2 seconds.</strong>
+            <span class="expect">Time the gap between you starting to speak and the first text rendered. PRD calls for &lt; 2 s; cloud Deepgram routinely hits ~600 ms.</span>
+            <span class="iffail">&gt; 2 s suggests Deepgram round-trip is slow OR the broadcast fan-out has buffer issues. Phase 3 e2e_synthetic test pinned server-side fan-out at &lt; 200 ms, so the variable is network.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="c-3" />
+          <label class="lbl">
+            <strong>Partial transcripts update in place</strong> as you keep speaking, then finalize to a single bar.
+            <span class="expect">Deepgram's <code class="inline">is_final: true</code> events convert the partial into the settled version; no duplicate bars.</span>
+            <span class="iffail">Duplicates → the partial/settled merge in the dock is broken. Phase 3 Plan 03-03 is the place to look.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 8 · AUGMENTED NOTES HERO ──────────────────────── -->
+    <section class="section" id="hero">
+      <div class="header">
+        <span class="step">step 8</span>
+        <h2>The hero: augmented notes</h2>
+        <span class="why">Phase 4 — &lt; 30 s after End meeting</span>
+      </div>
+
+      <p>This is what Yogurt is FOR. While the meeting runs, type a few black bullets in the notes editor. End the meeting. Within 30 seconds, AI grey bullets fuse into your document with <code class="inline">↳ HH:MM</code> deep-links to the transcript.</p>
+
+      <pre class="cmd"><span class="c"># sample notes to type during the meeting:</span>
+- Q3 roadmap discussion
+- Want to talk about local STT
+- Need to wrap by 3pm</pre>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="h-1" />
+          <label class="lbl">
+            <strong>You can type markdown bullets in the editor while recording.</strong>
+            <span class="expect">TipTap renders the bullet list inline. Black text (<code class="inline">--ink #211D18</code>).</span>
+            <span class="iffail">Editor frozen → check that <code class="inline">@tiptap/extension-markdown</code> initialised; DevTools Console will scream.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="h-2" />
+          <label class="lbl">
+            <strong>Click "End meeting" and within 30 s see grey AI bullets appear.</strong>
+            <span class="expect">Grey colour <code class="inline">--grey #A89F90</code>, sitting between your black bullets where the LLM thinks they belong.</span>
+            <span class="iffail">No grey bullets after 30 s → LLM call failed. Check terminal for <code class="inline">OpenAiCompatClient</code> error. May be model-name mismatch (Settings → Model).</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="h-3" />
+          <label class="lbl">
+            <strong>Each grey bullet carries a <code class="inline">↳ HH:MM</code> deep-link.</strong>
+            <span class="expect">Clicking the deep-link scrolls the transcript dock to that timestamp (the dock should re-open if collapsed).</span>
+            <span class="iffail">No deep-links → the <code class="inline">enriched_doc_json</code> schema migration (V004 or thereabouts) didn't apply. Restart and check logs.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="h-4" />
+          <label class="lbl">
+            <strong>Reload the page. Black AND grey bullets persist.</strong>
+            <span class="expect">TipTap marks survive a hard refresh because <code class="inline">enriched_doc_json TEXT</code> column stores them.</span>
+            <span class="iffail">Greys disappear on reload → schema migration is missing or the round-trip serializer drops marks. Phase 4 regression.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 9 · ⌘K CHAT ──────────────────────────────────── -->
+    <section class="section" id="chat">
+      <div class="header">
+        <span class="step">step 9</span>
+        <h2>⌘K · in-meeting chat</h2>
+        <span class="why">Phase 6</span>
+      </div>
+
+      <p>The floating "Ask this meeting…" pill sits bottom-center. Hit <code class="inline">⌘K</code> and it expands into a chat window scoped to that meeting's transcript.</p>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="ck-1" />
+          <label class="lbl">
+            <strong>⌘K expands the chat window</strong> from the floating pill.
+            <span class="expect">Smooth pop-up animation (260 ms ease-pop). Input focused.</span>
+            <span class="iffail">No animation → the global keyboard listener isn't wired; check the Shell wrapper.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="ck-2" />
+          <label class="lbl">
+            <strong>Ask "Summarize what we just talked about."</strong>
+            <span class="expect">Response streams in (tokens appear word-by-word). Uses the meeting's transcript as context — should reference specific things you said.</span>
+            <span class="iffail">No streaming → SSE handling is broken; falls back to all-at-once render. Or LLM provider's <code class="inline">stream: true</code> isn't honored.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="ck-3" />
+          <label class="lbl">
+            <strong>Close the chat, reopen with ⌘K — history persists.</strong>
+            <span class="expect">Previous Q&amp;A still visible. SQLite <code class="inline">chat_messages</code> table holds them.</span>
+            <span class="iffail">History gone → either client-side state never flushed to API, or the <code class="inline">meeting_id</code> filter is wrong. Phase 6 regression.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 10 · LIBRARY + SEARCH + EDIT + DELETE ─────────── -->
+    <section class="section" id="library">
+      <div class="header">
+        <span class="step">step 10</span>
+        <h2>Library · search + edit + delete + reveal</h2>
+        <span class="why">Phase 7 — FTS5, inline-edit, copy-md, reveal-in-finder</span>
+      </div>
+
+      <p>Click the Yogurt logo / "Library" sidebar item. You should see your meeting(s) as date-grouped cards. To make this interesting, run at least <strong>two more meetings</strong> (short ones — 10 seconds each is fine) with different keywords so you can search.</p>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="l-1" />
+          <label class="lbl">
+            <strong>Meetings are grouped by date</strong> (Today / Yesterday / Earlier this week / etc.).
+            <span class="expect">Today's meetings on top. Cards show title, time, and a snippet of notes.</span>
+            <span class="iffail">All in one flat list → date grouping isn't applied. Plan 07-01.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="l-2" />
+          <label class="lbl">
+            <strong>Search pill: type a word from one of the meetings.</strong>
+            <span class="expect">FTS5 narrows results to matching meetings. Highlighting on matched substrings is bonus.</span>
+            <span class="iffail">No results → FTS5 virtual table didn't index. Plan 07-02. Check SQLite: <code class="inline">SELECT * FROM meetings_fts WHERE meetings_fts MATCH 'word';</code></span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="l-3" />
+          <label class="lbl">
+            <strong>Inline-edit title:</strong> double-click the title on a card. Edit it. Press Enter.
+            <span class="expect">Title updates immediately; reload preserves the change. Server PATCH lands.</span>
+            <span class="iffail">Reverts on reload → the PATCH endpoint didn't persist. Plan 07-03 Task 2.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="l-4" />
+          <label class="lbl">
+            <strong>Right-click / overflow menu offers "Copy markdown" and "Reveal in Finder".</strong>
+            <span class="expect">Copy → clipboard has the meeting's enriched notes as markdown (black + grey bullets, with deep-links rendered as <code class="inline">↳ HH:MM</code>). Reveal → Finder opens to <code class="inline">~/.yogurt/meetings/&lt;id&gt;.md</code>.</span>
+            <span class="iffail">"Reveal" does nothing → POST <code class="inline">/api/meetings/:id/reveal</code> returned 404 or the OS handler isn't connected.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="l-5" />
+          <label class="lbl">
+            <strong>Delete card flow: click delete, confirm.</strong>
+            <span class="expect">Card removes from library. Reload: still gone. SQLite <code class="inline">meetings</code> row gone (CASCADE removes chat_messages too).</span>
+            <span class="iffail">Card returns after reload → DELETE wasn't called. Plan 07-03 Task 3.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 11 · LOCAL STT M1 BENCH ───────────────────────── -->
+    <section class="section" id="localstt">
+      <div class="header">
+        <span class="step">step 11</span>
+        <h2>Local STT · the M1 Air kill criterion</h2>
+        <span class="why">Phase 8 — LOCAL-04</span>
+      </div>
+
+      <p>This is the only "blocking" gate from the autonomous run. It can only be validated on Apple Silicon — ideally <strong>M1 Air</strong>, since that's the slowest hardware Yogurt commits to supporting in v1. M3 Max is too easy.</p>
+
+      <div class="cal warn">
+        <strong>If you're on M3 Max or M4:</strong> the bench will look healthy, but it doesn't prove LOCAL-04. Flag this in your validation summary so a real M1 Air bench can happen pre-release.
+      </div>
+
+      <ol style="font-size: 14px; padding-left: 22px; line-height: 1.7;">
+        <li>Open <code class="inline">http://localhost:7878/settings</code> → Transcription.</li>
+        <li>Click <strong>Use Local</strong> radio button on the right card. Matcha border appears.</li>
+        <li>Click <code class="inline">small.en ↓</code>. Download dialog opens.</li>
+        <li>Wait for download (~50 s on fast wifi). Pill flips to <code class="inline">small.en ✓</code>.</li>
+        <li>In a new terminal: <code class="inline">shasum -a 256 ~/.yogurt/models/ggml-small.en.bin</code>.</li>
+        <li>Click <strong>+ New meeting</strong>. Talk for 30 s. <strong>Time the first transcript bar with a stopwatch.</strong></li>
+        <li>End meeting; confirm the transcript persisted to library.</li>
+        <li>Turn wifi OFF. Close browser. Restart yogurt-cli. Start a new meeting. Talk. Transcript should still flow.</li>
+        <li>Turn wifi back ON.</li>
+      </ol>
+
+      <ul class="check">
+        <li class="x">
+          <input type="checkbox" data-id="ls-1" />
+          <label class="lbl">
+            <strong>Download dialog ticks bytes / MB-per-sec / ETA in real time.</strong>
+            <span class="expect">Progress bar fills matcha green. Final tick lands at 100% before the dialog auto-closes after ~600 ms.</span>
+            <span class="iffail">Bar stuck at 99% → the always-fire-at-100% tick in Plan 08-02 didn't ship. Annoying UX bug, not a kill.</span>
+          </label>
+        </li>
+        <li class="x">
+          <input type="checkbox" data-id="ls-2" />
+          <label class="lbl">
+            <strong>SHA256 of downloaded file matches REGISTRY.</strong>
+            <span class="expect"><code class="inline">shasum</code> output matches the <code class="inline">small.en</code> hash pinned in <code class="inline">crates/yogurt-stt/src/models.rs</code>.</span>
+            <span class="iffail">Mismatch → the REGISTRY placeholder hash drifted from what HuggingFace serves. Re-verify and pin before any v1.0 tag.</span>
+          </label>
+        </li>
+        <li class="x">
+          <input type="checkbox" data-id="ls-3" />
+          <label class="lbl">
+            <strong>First transcript bar latency &lt; 3.0 seconds on M1 Air.</strong>
+            <span class="expect">Stopwatch from start-of-speech to text-on-screen.</span>
+            <span class="iffail">&gt; 3 s on M1 Air → LOCAL-04 fails. Two paths: tune the dual whisper_state preview window OR escalate to WhisperKit/ANE in v1.1.</span>
+          </label>
+        </li>
+        <li class="x">
+          <input type="checkbox" data-id="ls-4" />
+          <label class="lbl">
+            <strong>Offline transcription works (wifi OFF).</strong>
+            <span class="expect">After restart with no network, new meeting still produces transcript bars. This is the privacy posture's whole point.</span>
+            <span class="iffail">Errors when offline → a code path is calling out to Deepgram by mistake even in Local mode. Phase 8 regression.</span>
+          </label>
+        </li>
+      </ul>
+
+      <div class="cal note">
+        Report back: <code class="inline">approved</code> if &lt; 3 s + offline OK, OR <code class="inline">escalate to v2 — M1 Air bench failed at &lt;Ns&gt;</code> with the measured number.
+      </div>
+    </section>
+
+    <!-- ── 12 · PERSISTENCE ──────────────────────────────── -->
+    <section class="section" id="persist">
+      <div class="header">
+        <span class="step">step 12</span>
+        <h2>Restart-survival smoke</h2>
+        <span class="why">SQLite WAL + dual pool baseline</span>
+      </div>
+
+      <p>Kill the yogurt process (Ctrl-C in its terminal). Restart it. The library should look identical: meetings, titles, notes (black + grey), chat messages, downloaded model, settings.</p>
+
+      <pre class="cmd"><span class="c"># in the terminal where `just release` is running</span>
+^C
+
+<span class="c"># confirm clean shutdown — no panics, no "thread … panicked" lines</span>
+<span class="c"># restart:</span>
+just release</pre>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="pr-1" />
+          <label class="lbl">
+            <strong>Ctrl-C shuts the process down cleanly</strong> (no panics, no orphaned audio threads).
+            <span class="expect">Process exits within ~1 s. Re-running gives the same port without "Address in use."</span>
+            <span class="iffail">Hangs → the std::thread + oneshot bridge for AudioStream may have a lingering reference. Phase 2 RAII regression.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="pr-2" />
+          <label class="lbl">
+            <strong>Everything from steps 5–11 still works post-restart.</strong>
+            <span class="expect">Library shows same meetings, augmented notes show same black + grey, settings shows same providers/active, downloaded <code class="inline">small.en</code> still present.</span>
+            <span class="iffail">Anything missing → SQLite migration ordering or WAL replay regression.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 13 · ERROR STATES ────────────────────────────── -->
+    <section class="section" id="states">
+      <div class="header">
+        <span class="step">step 13</span>
+        <h2>Empty &amp; error states</h2>
+        <span class="why">Phase 7 / Plan 07-04</span>
+      </div>
+
+      <p>Two specific states ship: <code class="inline">EmptyLibrary</code> (no meetings yet, beautiful empty illustration) and <code class="inline">PermissionDenied</code> (TCC revoked, helpful "open System Settings" CTA).</p>
+
+      <ol style="font-size: 14px; padding-left: 22px; line-height: 1.7;">
+        <li><strong>EmptyLibrary:</strong> in a separate test, delete every meeting from the library. The card grid should be replaced with the EmptyLibrary illustration + "Start your first meeting" CTA.</li>
+        <li><strong>PermissionDenied:</strong> in System Settings → Privacy → Screen Recording, toggle yogurt-cli OFF. Try to start a meeting in the browser. The view should swap to PermissionDenied state with an "Open System Settings" button.</li>
+        <li>Re-enable Screen Recording after the test.</li>
+      </ol>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="st-1" />
+          <label class="lbl">
+            <strong>EmptyLibrary renders cleanly</strong> with the right copy and the matcha float animation on the illustration.
+            <span class="expect">PRD §5.4 layout. CTA button visible and clickable.</span>
+            <span class="iffail">Just a blank page → the conditional render in <code class="inline">Library.tsx</code> isn't gated on <code class="inline">meetings.length === 0</code>.</span>
+          </label>
+        </li>
+        <li>
+          <input type="checkbox" data-id="st-2" />
+          <label class="lbl">
+            <strong>PermissionDenied appears when TCC is revoked</strong>; "Open System Settings" deep-links into the right pane.
+            <span class="expect">macOS opens System Settings directly to Privacy → Screen Recording.</span>
+            <span class="iffail">No deep-link → the <code class="inline">x-apple.systempreferences:</code> URL handler isn't being invoked. Plan 07-04 Task 1.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── 14 · CLEANUP ──────────────────────────────────── -->
+    <section class="section" id="unwind">
+      <div class="header">
+        <span class="step">step 14</span>
+        <h2>Clean unwind</h2>
+        <span class="why">leave no orphan processes</span>
+      </div>
+
+      <pre class="cmd"><span class="c"># confirm nothing's listening on 7878 after Ctrl-C</span>
+lsof -nP -iTCP:7878 -sTCP:LISTEN
+<span class="c"># no rows → good</span>
+
+<span class="c"># confirm no orphaned cargo / yogurt process</span>
+pgrep -fl yogurt</pre>
+
+      <ul class="check">
+        <li>
+          <input type="checkbox" data-id="cu-1" />
+          <label class="lbl">
+            <strong>After Ctrl-C, port 7878 is free</strong> and no <code class="inline">yogurt</code> process remains.
+            <span class="expect">Both commands produce no output.</span>
+            <span class="iffail">Stale process → <code class="inline">pkill -9 yogurt</code> and investigate the shutdown path.</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── VERDICT ────────────────────────────────────────── -->
+    <div class="verdict" id="verdict">
+      <h3>Verdict</h3>
+      <p class="summary"><span id="passSummary"><strong>0</strong> of <strong id="totalCount">0</strong> checks confirmed.</span> When you're ready, send the verdict. Anything you couldn't validate I'll capture as deferred items for Phase 9.</p>
+      <textarea id="notes" placeholder="Optional: notes for me — what broke, what felt off, anything I should chase before Phase 9 starts. E.g. 'M1 Air bench: 2.4s first bar — approved.'"></textarea>
+      <div class="actions">
+        <button class="primary" data-verdict="approved">Approve · proceed to Phase 9</button>
+        <button data-verdict="partial">Partial · review notes</button>
+        <button class="danger" data-verdict="blocked">Blocked · stop here</button>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<script>
+(function() {
+  const boxes = Array.from(document.querySelectorAll('ul.check input[type=checkbox]'));
+  const bar = document.getElementById('bar');
+  const pct = document.getElementById('pct');
+  const total = document.getElementById('totalCount');
+  const passSummary = document.getElementById('passSummary');
+  const STORAGE = 'yogurt-v1-validation';
+
+  // Restore prior state
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE) || '{}');
+    boxes.forEach(b => { if (saved[b.dataset.id]) b.checked = true; });
+  } catch(e) {}
+
+  function update() {
+    const done = boxes.filter(b => b.checked).length;
+    const all = boxes.length;
+    const p = all === 0 ? 0 : Math.round(done * 100 / all);
+    bar.style.width = p + '%';
+    pct.textContent = done + ' / ' + all;
+    total.textContent = all;
+    passSummary.innerHTML = '<strong>' + done + '</strong> of <strong>' + all + '</strong> checks confirmed.';
+
+    // Color the bar
+    if (p < 33) bar.style.background = 'var(--straw)';
+    else if (p < 100) bar.style.background = 'var(--blue)';
+    else bar.style.background = 'var(--matcha)';
+
+    // Persist
+    const state = {};
+    boxes.forEach(b => { if (b.checked) state[b.dataset.id] = true; });
+    localStorage.setItem(STORAGE, JSON.stringify(state));
+
+    // Mark TOC links done when all checks in their section pass
+    document.querySelectorAll('nav.toc a[href^="#"]').forEach(a => {
+      const id = a.getAttribute('href').slice(1);
+      const section = document.getElementById(id);
+      if (!section) return;
+      const inSection = Array.from(section.querySelectorAll('ul.check input[type=checkbox]'));
+      if (inSection.length === 0) return;
+      const allChecked = inSection.every(b => b.checked);
+      a.classList.toggle('done', allChecked);
+    });
+  }
+
+  boxes.forEach(b => b.addEventListener('change', update));
+  update();
+
+  // Verdict
+  document.querySelectorAll('.verdict button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const verdict = btn.dataset.verdict;
+      const notes = document.getElementById('notes').value.trim();
+      const done = boxes.filter(b => b.checked).length;
+      const failed = boxes.filter(b => !b.checked).map(b => b.dataset.id);
+      const payload = {
+        verdict,
+        passed: done,
+        total: boxes.length,
+        unchecked: failed,
+        notes
+      };
+      if (window.lavish && typeof window.lavish.send === 'function') {
+        window.lavish.send(payload);
+      } else {
+        try { navigator.clipboard.writeText('[v1 validation] ' + JSON.stringify(payload)); } catch(e){}
+        btn.textContent = 'Copied → paste in chat ✓';
+        btn.disabled = true;
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

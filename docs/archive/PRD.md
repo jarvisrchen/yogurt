@@ -474,7 +474,7 @@ No remaining open questions for v1. Next step: writing-plans skill produces the 
 
 ## 16. Brand &amp; Visual Design System
 
-Source of truth: `yogurt-app-design/project/Yogurt Design Board.dc.html`. This section is the implementation reference — keep it in sync if the design board changes.
+Source of truth: `docs/archive/yogurt-app-design/project/Yogurt Design Board.dc.html`. This section is the implementation reference — keep it in sync if the design board changes.
 
 ### 16.1 Brand identity
 

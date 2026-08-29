@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yogurt E2E Overhaul</title>
+<style>
+  :root {
+    --paper: #faf6ef; --card: #ffffff; --ink: #1c1a17; --mut: #8a8378;
+    --line: #e7e0d4; --straw: #b89b5e; --strsoft: #f6ede0; --blue: #5b53c7;
+    --blue-soft: #eceafd; --green: #3d7a4f; --green-soft: #e8f2ea;
+    --red: #b0503c; --red-soft: #f9e9e4;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--paper); color: var(--ink); font: 15px/1.6 -apple-system, "Helvetica Neue", sans-serif; padding: 48px 20px 80px; }
+  .wrap { max-width: 880px; margin: 0 auto; min-width: 0; }
+  h1 { font-family: Georgia, serif; font-size: 34px; font-weight: 500; margin-bottom: 6px; }
+  .sub { color: var(--mut); font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 36px; }
+  h2 { font-family: Georgia, serif; font-size: 21px; font-weight: 500; margin: 40px 0 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 12px; }
+  .row { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  .tag { flex: 0 0 auto; font: 600 10.5px/1 ui-monospace, Menlo, monospace; letter-spacing: .05em; padding: 4px 8px; border-radius: 99px; text-transform: uppercase; }
+  .fixed { background: var(--green-soft); color: var(--green); }
+  .was { background: var(--red-soft); color: var(--red); }
+  .note { background: var(--strsoft); color: #7a6534; }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 18px 0 4px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+  .stat b { display: block; font-family: Georgia, serif; font-size: 24px; font-weight: 500; }
+  .stat span { color: var(--mut); font: 11.5px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .05em; }
+  p { margin-bottom: 10px; }
+  .mut { color: var(--mut); }
+  code { font: 12.5px ui-monospace, Menlo, monospace; background: var(--strsoft); border-radius: 4px; padding: 1px 5px; }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 12.5px ui-monospace, Menlo, monospace; color: var(--ink); margin: 8px 0 2px; }
+  .flow .step { background: var(--blue-soft); color: var(--blue); border-radius: 6px; padding: 5px 9px; }
+  .flow .arr { color: var(--mut); }
+  ul { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 5px; }
+  .commits { font: 12.5px/1.9 ui-monospace, Menlo, monospace; overflow-x: auto; }
+  .commits b { color: var(--blue); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Yogurt E2E Overhaul</h1>
+  <div class="sub">2026-08-26 · full-app audit, fix, and live validation session</div>
+
+  <div class="stat-row">
+    <div class="stat"><b>68</b><span>audit findings triaged</span></div>
+    <div class="stat"><b>239 + 169</b><span>rust + web tests green</span></div>
+    <div class="stat"><b>4</b><span>commits, clippy + fmt clean</span></div>
+    <div class="stat"><b>9</b><span>agents (5 audit, 4 build)</span></div>
+  </div>
+
+  <h2>The hero flow was broken end to end. Now it is real.</h2>
+  <div class="card">
+    <div class="row"><span class="tag was">was</span><span>The live transcript was never persisted anywhere.
+    The browser sent a hardcoded <code>[]</code> to enhance, so the AI notes, chat answers, transcript panel, and search all ran against an empty transcript in every real meeting.</span></div>
+    <div class="row"><span class="tag fixed">fixed</span><span>The server now accumulates final STT segments into the meeting row while recording and flushes on stop.
+    Enhance and chat read the stored transcript. Deep links, the post-meeting transcript panel, and grounded chat all work.</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><span class="tag was">was</span><span>Chat always answered from a hardcoded mock LLM.
+    Your configured provider was never called once - the source of every "No response." bubble.</span></div>
+    <div class="row"><span class="tag fixed">fixed</span><span>Chat and enhance share one per-request resolver: env override, then the active provider + Keychain key, mock only when nothing is configured.
+    Verified live against Minimax: asked the pricing meeting a question, got the grounded answer.</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><span class="tag was">was</span><span>Stopping a meeting leaked the STT session forever - Deepgram kept its socket open and local whisper pinned a multi-GB model, decoding every second.
+    Timestamps were never stamped, so every meeting showed a dash duration.</span></div>
+    <div class="row"><span class="tag fixed">fixed</span><span>STT lifetime is tied to the meeting (abort guards), start/stop stamp the timestamps, and a tri-state bug that let enhance erase <code>ended_at</code> is gone.
+    The library now shows "9:06 PM · 2 min · enhanced".</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><span class="tag was">was</span><span>Notes lived only in React state (navigate away, lose everything), and during validation the new post view was caught wiping a real enhanced document with a blank unmount flush.</span></div>
+    <div class="row"><span class="tag fixed">fixed</span><span>Debounced autosave for notes and enhanced content, gated so only genuine user edits persist, plus a server-side guard that refuses to blank a non-empty document.
+    Both layers carry regression tests reproducing the observed wipe.</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><span class="tag was">was</span><span>Release builds had no way to enter a Deepgram key (env var only), so cloud transcription - the default - could never work for a real install.</span></div>
+    <div class="row"><span class="tag fixed">fixed</span><span>The key lives in the macOS Keychain with a Settings field and endpoint; dev still seeds from <code>.env.local</code>.
+    Every Keychain read is now bounded with an actionable error instead of hanging (one wedged read used to stall boot for half an hour).</span></div>
+  </div>
+
+  <h2>Validated live, no mocks</h2>
+  <div class="card">
+    <div class="flow">
+      <span class="step">+ New meeting</span><span class="arr">-></span>
+      <span class="step">recording auto-starts</span><span class="arr">-></span>
+      <span class="step">spoken audio -> live Deepgram transcript</span><span class="arr">-></span>
+      <span class="step">typed note</span><span class="arr">-></span>
+      <span class="step">End meeting</span><span class="arr">-></span>
+      <span class="step">Minimax enhance</span><span class="arr">-></span>
+      <span class="step">post view: fused notes + deep links + duration</span><span class="arr">-></span>
+      <span class="step">chat grounded in transcript</span>
+    </div>
+    <p class="mut" style="margin-top:8px">Driven twice in Chrome against the real app - real ScreenCaptureKit capture, real Deepgram streaming, real Minimax completion.
+    The second run also verified the model-output cleanups (no prompt scaffolding echo, no mojibake) and the duration stamp surviving enhance.</p>
+  </div>
+
+  <h2>Also fixed along the way</h2>
+  <div class="card">
+    <ul>
+      <li><b>Library</b> - day grouping (Today / Yesterday / Aug 13), real durations, starred wired end to end with a <code>/starred</code> view, fake sample folders removed, Cmd+N, skeleton loading, inline delete confirm, lucide icons.</li>
+      <li><b>Post view</b> - back navigation, editable title, date + duration header, stored-transcript dock with click-to-highlight deep links, symmetric dock animation.</li>
+      <li><b>Chat window</b> - input autofocus (typed text used to vanish), Escape to close, markdown rendering, design-token caret; chat streaming now survives server restarts (WS hydrates SQLite-only meetings).</li>
+      <li><b>Settings</b> - Deepgram key field, working + Add provider form, Use Local blocked until the model is downloaded, fake provider pills removed, warm palette + contrast fixes.</li>
+      <li><b>Onboarding honesty</b> - permission screens name the app macOS actually lists, explain the quit-on-grant behavior, and the fake page-reload "Restart" button is gone.</li>
+      <li><b>Repairs</b> - legacy corrupted enhanced notes (escaped span markup) are fixed at boot; verified against the real database.</li>
+      <li><b>Infra</b> - minimal CI (fmt, clippy -D warnings, tests, typecheck), <code>just reset-db</code> deleted the wrong file, README/setup.sh accuracy pass, cmake prereq check, flaky fixed-port tests moved to kernel-assigned ports.</li>
+    </ul>
+  </div>
+
+  <h2>Commits</h2>
+  <div class="card commits">
+    <div><b>1e19fd6</b> fix(server): make the hero flow real - transcript persistence, LLM resolution, lifecycle</div>
+    <div><b>522502d</b> feat(web): one-click hero flow - auto-record, autosaves, stored transcript, chat polish</div>
+    <div><b>b5a9974</b> feat(web): library, settings, and onboarding polish</div>
+    <div><b>e8f4a69</b> chore: minimal CI, doc accuracy, test deflaking</div>
+  </div>
+
+  <h2>Open items, honestly</h2>
+  <div class="card">
+    <div class="row"><span class="tag note">dev only</span><span><b>Keychain wedge after rebuilds.</b> Unsigned debug binaries lose Keychain consent on every rebuild; reads now fail fast with instructions instead of hanging.
+    Launch from your own terminal once and click "Always Allow", or rely on <code>.env.local</code> in dev. Signed release builds will not have this.</span></div>
+    <div class="row"><span class="tag note">papercut</span><span><b>First click after page load</b> on "+ New meeting" can no-op before the session token resolves (no orphan is created). Second click always works.</span></div>
+    <div class="row"><span class="tag note">cut</span><span><b>Granola parity gaps that remain by design</b> (PRD-documented cuts): calendar integration, note templates, sharing links, cross-meeting AI search.
+    Folders were fake sample UI and were removed rather than built; say the word if you want real folders next.</span></div>
+    <div class="row"><span class="tag note">later</span><span><b>Phase 9 distribution</b> (signed/notarized tarballs, Homebrew tap, <code>yogurt doctor</code>) remains the last unexecuted phase; its plans are written.</span></div>
+  </div>
+
+  <h2>Run it from scratch</h2>
+  <div class="card">
+    <p><code>just setup</code> checks prereqs (now including cmake), builds web + release binary.
+    <code>just dev</code> for development with <code>.env.local</code> keys, or <code>just release</code> for the single-binary experience where keys are pasted in Settings.
+    <code>just test</code> and <code>just lint</code> are what CI runs.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -26,7 +26,7 @@ parking_lot = { workspace = true }
 # `permission::request_microphone_permission` to call
 # `AVCaptureDevice.authorizationStatus(for:)` and
 # `AVCaptureDevice.requestAccess(for:completionHandler:)` (DD-01 of
-# .planning/quick/260628-g71-…/260628-g71-PLAN.md). AVFoundation is an
+# docs/archive/.planning/v1/quick/260628-g71-…/260628-g71-PLAN.md). AVFoundation is an
 # Objective-C framework with no C shim, so a typed binding is the
 # idiomatic Rust path — see PLAN's DD-01 rationale.
 [target.'cfg(target_os = "macos")'.dependencies]

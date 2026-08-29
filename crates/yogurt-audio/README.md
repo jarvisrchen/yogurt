@@ -50,13 +50,13 @@ This crate is being scaffolded across Phase 2's two GSD plans:
 | 02-01 | Type surface (`Frame`, `Channel`, `AudioError`, format consts), permission detection, synthetic sine-wave test fixture. |
 | 02-XX | Real mic capture (`cpal`), real system capture (`screencapturekit` 8.x), resampler (`rubato`), broadcast plumbing, REST endpoints. |
 
-See the phase context at `.planning/phases/02-audio-capture-highest-risk/`.
+See the phase context at `docs/archive/.planning/v1/phases/02-audio-capture-highest-risk/`.
 
 ## Phase 2 spike result
 
 The mandatory `screencapturekit` 8.x audio-loopback spike (Plan 02-01 Task 1)
 **passed** on Apple Silicon macOS 15.6 — 74% non-zero bytes captured over a
 5-second window with system audio playing. See
-[`docs/superpowers/notes/2026-06-25-sck-spike-result.md`](../../docs/superpowers/notes/2026-06-25-sck-spike-result.md)
+[`docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md`](../../docs/superpowers/notes/2026-06-25-sck-spike-result.md)
 for empirical evidence, the SCK 8.x API quirks Plan 02 must work around,
 and the Swift-runtime rpath gotcha future implementers will hit.

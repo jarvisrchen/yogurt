@@ -10,7 +10,7 @@ Once `v0.1.0` ships: `brew install jarvisrchen/yogurt/yogurt && yogurt start`.
 **Status:** v1.0 code-complete (Phases 0-8 shipped, Phase 9 distribution polish in progress).
 Homebrew, direct-download, and GitHub Releases go live with the `v0.1.0` tag.
 Until then, run from source (see below).
-See [docs/PRD.md](docs/PRD.md) for the v1 plan and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the system works.
+See [docs/archive/PRD.md](docs/archive/PRD.md) for the v1 plan and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the system works.
 
 Yogurt captures your microphone and Mac system audio without joining the call
 as a bot, transcribes live, and produces "augmented notes" -- sparse markdown
@@ -87,7 +87,7 @@ webview. Local state lives under `~/.yogurt/`:
 - `models/` -- downloaded whisper.cpp models (opt-in local STT)
 - `notes/*.md` -- markdown export of every meeting, independent of the DB
 
-See [docs/PRD.md §7](docs/PRD.md) for the full architecture diagram and §8 for the crate breakdown.
+See [docs/archive/PRD.md §7](docs/archive/PRD.md) for the full architecture diagram and §8 for the crate breakdown.
 
 ## Diagnostics
 
