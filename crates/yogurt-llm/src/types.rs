@@ -134,3 +134,15 @@ pub(crate) struct OpenAiDelta {
     #[serde(default)]
     pub content: Option<String>,
 }
+
+/// `GET /v1/models` response shape (OpenAI-compatible). `data` is the
+/// list of model descriptors; `object` is metadata we ignore.
+#[derive(Deserialize)]
+pub(crate) struct ModelsResponse {
+    pub data: Vec<ModelDescriptor>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ModelDescriptor {
+    pub id: String,
+}

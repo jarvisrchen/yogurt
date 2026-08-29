@@ -68,6 +68,16 @@ impl LlmClient for MockLlm {
         ]);
         Ok(s.boxed())
     }
+
+    async fn list_models(&self) -> Result<Vec<String>> {
+        // The mock has no upstream; advertise a single placeholder so any
+        // caller wiring `Refresh` against the dev fallback gets something
+        // back instead of a 500. The Settings UI only hits this through
+        // `list_provider_models`, which requires a stored key — and the
+        // dev fallback path has no key store, so this is effectively
+        // unreachable in normal flows.
+        Ok(vec!["mock-model".into()])
+    }
 }
 
 /// Phase 4-shape mock output: echo user notes verbatim, then emit one

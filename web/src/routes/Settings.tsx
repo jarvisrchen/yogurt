@@ -33,6 +33,12 @@ function isValidSection(s: unknown): s is SettingsSection {
  * - Section selection is URL-driven (`/settings/:section`). Reading
  *   `useParams` keeps a refresh on the same surface; clicking a sidebar
  *   item pushes a new path rather than mutating local state.
+ * - `newlyCreatedProviderId` is a one-shot hint: when `createProvider`
+ *   returns, the chip/form hands the new id up here, and the matching
+ *   `ProviderRow` mounts with its API key input already expanded and
+ *   focused so the user lands at the cursor instead of clicking again.
+ *   The hint is overwritten on the next create; non-matching rows see
+ *   `autoOpenKey={false}` and behave normally.
  * - Falls back to "model" when `:section` is missing or invalid so the
  *   component still renders sensibly if mounted outside the route table
  *   (e.g. older tests).
@@ -44,6 +50,14 @@ export function Settings() {
     ? params.section
     : "model";
   const [addingProvider, setAddingProvider] = useState(false);
+  // Tracks the most recently created provider so its card can auto-open
+  // the API key input. Reset on the next user action that suggests the
+  // auto-open was consumed (the row's own dismiss/save, or starting a new
+  // form). Cleared eagerly here so a rapid second create doesn't point
+  // the auto-open at a stale id.
+  const [newlyCreatedProviderId, setNewlyCreatedProviderId] = useState<
+    string | null
+  >(null);
   const q = useQuery({ queryKey: ["settings"], queryFn: settingsApi.get });
 
   if (q.isLoading) {
@@ -99,7 +113,13 @@ export function Settings() {
             </header>
 
             {active ? (
-              <ProviderCard provider={active} />
+              <ProviderCard
+                provider={active}
+                presetModels={
+                  data.presets.find((p) => p.base_url === active.base_url)
+                    ?.models ?? []
+                }
+              />
             ) : data.providers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line bg-white/50 p-6 space-y-1">
                 <p className="font-serif text-[18px] text-ink">
@@ -119,7 +139,15 @@ export function Settings() {
             {inactive.length > 0 && (
               <div data-testid="inactive-providers">
                 {inactive.map((p) => (
-                  <ProviderRow key={p.id} provider={p} />
+                  <ProviderRow
+                    key={p.id}
+                    provider={p}
+                    autoOpenKey={p.id === newlyCreatedProviderId}
+                    presetModels={
+                      data.presets.find((preset) => preset.base_url === p.base_url)
+                        ?.models ?? []
+                    }
+                  />
                 ))}
               </div>
             )}
@@ -130,7 +158,11 @@ export function Settings() {
               </div>
               <div className="flex flex-wrap gap-2 items-center">
                 {data.presets.map((p) => (
-                  <PresetChip key={p.name} preset={p} />
+                  <PresetChip
+                    key={p.name}
+                    preset={p}
+                    onCreated={setNewlyCreatedProviderId}
+                  />
                 ))}
                 {!addingProvider && (
                   <button
@@ -143,7 +175,10 @@ export function Settings() {
                 )}
               </div>
               {addingProvider && (
-                <AddProviderForm onDone={() => setAddingProvider(false)} />
+                <AddProviderForm
+                  onDone={() => setAddingProvider(false)}
+                  onCreated={setNewlyCreatedProviderId}
+                />
               )}
             </div>
           </section>

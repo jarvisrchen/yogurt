@@ -57,6 +57,13 @@ pub trait LlmClient: Send + Sync {
     /// The model name this client sends on the wire, for provenance
     /// stamps (`meetings.llm_model`). Mocks return a fixed marker.
     fn model_name(&self) -> String;
+
+    /// Probe the provider's `/models` endpoint and return the list of model
+    /// ids it advertises. Used by the Settings page's `Refresh` button to
+    /// populate the MODEL datalist with the live, authoritative list
+    /// (presets ship a static hint; this overrides it once a key is on
+    /// file). Errors are surfaced as-is — the UI shows them inline.
+    async fn list_models(&self) -> Result<Vec<String>>;
 }
 
 /// OpenAI-compatible HTTP adapter. Speaks the `/chat/completions` shape —
@@ -171,5 +178,22 @@ impl LlmClient for OpenAiCompatClient {
 
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
         streaming::stream(self, req).await
+    }
+
+    async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/models", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!("LLM call failed: {status} — {body}"));
+        }
+        let parsed: types::ModelsResponse = resp.json().await?;
+        Ok(parsed.data.into_iter().map(|m| m.id).collect())
     }
 }

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ProviderView } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { ModelSelect } from "./ModelSelect";
 
 /**
  * Active provider card — Phase 5 (Plan 05-03), SET-04.
@@ -23,7 +24,10 @@ interface Props {
   provider: ProviderView;
 }
 
-export function ProviderCard({ provider }: Props) {
+export function ProviderCard({
+  provider,
+  presetModels = [],
+}: Props & { presetModels?: string[] }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({
@@ -80,10 +84,13 @@ export function ProviderCard({ provider }: Props) {
         </Field>
         <Field label="MODEL">
           {editing ? (
-            <input
-              className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
+            <ModelSelect
+              providerId={provider.id}
+              providerName={provider.name}
               value={draft.model}
-              onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+              onChange={(next) => setDraft({ ...draft, model: next })}
+              presetModels={presetModels}
+              hasStoredKey={!!provider.api_key_masked}
             />
           ) : (
             <code className="font-mono text-[12.5px] text-ink">

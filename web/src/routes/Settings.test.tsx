@@ -18,8 +18,8 @@ import { MemoryRouter } from "react-router";
 import type { SettingsView } from "../lib/api/settings";
 
 // ─── Mock the typed API client before importing the component ──────────────
-vi.mock("../lib/api/settings", () => {
-  const fixture: SettingsView = {
+const { baseFixture } = vi.hoisted(() => {
+  const baseFixture: SettingsView = {
     general: {
       port: 7878,
       open_browser_on_start: true,
@@ -53,27 +53,30 @@ vi.mock("../lib/api/settings", () => {
         name: "Ollama (local)",
         base_url: "http://localhost:11434/v1",
         default_model: "llama3.1:8b",
+        models: ["llama3.1:8b", "mistral"],
       },
     ],
     deepgram_key_masked: null,
   };
-  return {
-    settingsApi: {
-      get: vi.fn().mockResolvedValue(fixture),
-      patch: vi.fn(),
-      createProvider: vi.fn(),
-      updateProvider: vi.fn(),
-      deleteProvider: vi.fn(),
-      activateProvider: vi.fn(),
-      setProviderKey: vi.fn(),
-      testProvider: vi.fn(),
-      setSttKey: vi.fn(),
-    },
-    audioApi: {
-      devices: vi.fn().mockResolvedValue([]),
-    },
-  };
+  return { baseFixture };
 });
+
+vi.mock("../lib/api/settings", () => ({
+  settingsApi: {
+    get: vi.fn().mockResolvedValue(baseFixture),
+    patch: vi.fn(),
+    createProvider: vi.fn(),
+    updateProvider: vi.fn(),
+    deleteProvider: vi.fn(),
+    activateProvider: vi.fn(),
+    setProviderKey: vi.fn(),
+    testProvider: vi.fn(),
+    setSttKey: vi.fn(),
+  },
+  audioApi: {
+    devices: vi.fn().mockResolvedValue([]),
+  },
+}));
 
 // Import AFTER vi.mock so the mocked module is wired up
 import { Settings } from "./Settings";
@@ -233,5 +236,66 @@ describe("test connection", () => {
     await waitFor(() => {
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * Cloning a preset chip should land the user at the API key field with
+ * the cursor already there — the whole point of cloning is to paste a key,
+ * so requiring a second click on `Add key` would be friction with no upside.
+ */
+describe("preset cloning auto-opens the key input", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("expands the freshly-cloned provider's key field without an extra click", async () => {
+    const cloned = {
+      id: "01HZZZZZZZZZZZZZZZZZZZZZZ",
+      name: "Google Gemini",
+      base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-1.5-pro",
+      is_active: false,
+      created_at: 1719360000,
+      api_key_masked: null,
+    };
+
+    // The factory's `get` returns a static fixture, so the cloned row
+    // would never appear after invalidation. Mock get to a mutable impl
+    // that appends any provider createProvider has returned so far — the
+    // same shape the real backend would produce.
+    const appended: typeof cloned[] = [];
+    vi.mocked(settingsApi.createProvider).mockImplementation(async () => {
+      appended.push(cloned);
+      return cloned;
+    });
+    vi.mocked(settingsApi.get).mockImplementation(async () => ({
+      ...baseFixture,
+      providers: [...baseFixture.providers, ...appended],
+    }));
+
+    renderSettings();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /ollama \(local\)/i }),
+    );
+
+    // Two inactive cards now — waitFor (not findAllBy*, which resolves on
+    // the first hit) so we don't assert before the refetch re-renders.
+    await waitFor(() => {
+      expect(screen.getAllByTestId("inactive-provider-card")).toHaveLength(2);
+    });
+
+    // The freshly-cloned card is the one whose key input is already open
+    // — findByLabelText would throw if it were collapsed (the input isn't
+    // in the DOM until keying=true).
+    const input = await screen.findByLabelText("API key for Google Gemini");
+    expect(input).toBeInTheDocument();
+
+    // Pre-existing Minimax card stays collapsed: its "Add key" button is
+    // still visible (not replaced by the input).
+    expect(
+      screen.getByRole("button", { name: "Add key" }),
+    ).toBeInTheDocument();
   });
 });

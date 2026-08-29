@@ -10,18 +10,19 @@
 //!
 //! ## Endpoint map
 //!
-//! | Method | Path                                       | Handler            |
-//! |--------|--------------------------------------------|--------------------|
-//! | GET    | `/api/settings`                            | `get_settings`     |
-//! | PATCH  | `/api/settings`                            | `patch_settings`   |
-//! | GET    | `/api/settings/providers`                  | `list_providers`   |
-//! | POST   | `/api/settings/providers`                  | `create_provider`  |
-//! | PATCH  | `/api/settings/providers/{id}`             | `update_provider`  |
-//! | DELETE | `/api/settings/providers/{id}`             | `delete_provider`  |
-//! | POST   | `/api/settings/providers/{id}/activate`    | `activate_provider`|
-//! | POST   | `/api/settings/providers/{id}/key`         | `set_provider_key` |
-//! | POST   | `/api/settings/providers/{id}/test`        | `test_provider`    |
-//! | GET    | `/api/settings/presets`                    | `list_presets`     |
+//! | Method | Path                                       | Handler               |
+//! |--------|--------------------------------------------|-----------------------|
+//! | GET    | `/api/settings`                            | `get_settings`        |
+//! | PATCH  | `/api/settings`                            | `patch_settings`      |
+//! | GET    | `/api/settings/providers`                  | `list_providers`      |
+//! | POST   | `/api/settings/providers`                  | `create_provider`     |
+//! | PATCH  | `/api/settings/providers/{id}`             | `update_provider`     |
+//! | DELETE | `/api/settings/providers/{id}`             | `delete_provider`     |
+//! | POST   | `/api/settings/providers/{id}/activate`    | `activate_provider`   |
+//! | POST   | `/api/settings/providers/{id}/key`         | `set_provider_key`    |
+//! | POST   | `/api/settings/providers/{id}/test`        | `test_provider`       |
+//! | GET    | `/api/settings/providers/{id}/models`      | `list_provider_models`|
+//! | GET    | `/api/settings/presets`                    | `list_presets`        |
 //!
 //! ## axum 0.8 path syntax
 //!
@@ -61,6 +62,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/settings/providers/{id}/key", post(set_provider_key))
         .route("/api/settings/providers/{id}/test", post(test_provider))
+        .route(
+            "/api/settings/providers/{id}/models",
+            get(list_provider_models),
+        )
         .route("/api/settings/stt/key", post(set_stt_key))
         .route("/api/settings/presets", get(list_presets))
 }
@@ -141,6 +146,7 @@ struct PresetView {
     name: &'static str,
     base_url: &'static str,
     default_model: &'static str,
+    models: &'static [&'static str],
 }
 
 #[derive(Serialize)]
@@ -163,6 +169,7 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
             name: p.name,
             base_url: p.base_url,
             default_model: p.default_model,
+            models: p.models,
         })
         .collect();
     let keys = s.keys.clone();
@@ -261,6 +268,7 @@ async fn list_presets() -> Json<Vec<PresetView>> {
                 name: p.name,
                 base_url: p.base_url,
                 default_model: p.default_model,
+                models: p.models,
             })
             .collect(),
     )
@@ -477,6 +485,53 @@ async fn test_provider(
             )),
         },
     }))
+}
+
+/// `GET /api/settings/providers/{id}/models` — probe the provider's
+/// `/v1/models` endpoint with the stored Keychain key and return its
+/// model list.
+///
+/// The Settings UI's `Refresh` button hits this once a key is on file;
+/// the response populates the MODEL `<datalist>` so the user sees the
+/// authoritative list (anything the static preset hint doesn't cover,
+/// e.g. preview models or a freshly-released tier).
+///
+/// A missing or wrong key surfaces as a normal upstream HTTP error —
+/// `redact_key` scrubs the raw secret out of the message so a
+/// misconfigured provider can't smuggle it back through the response.
+async fn list_provider_models(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<String>>, Error> {
+    let provider = providers::list(&s.db)?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or(Error::NotFound)?;
+
+    let key = match read_stored_key(&s, &id, &provider.name).await? {
+        Some(k) => k,
+        None => {
+            return Err(Error::Unprocessable(
+                "No key stored for this provider yet - paste one above, \
+                 then refresh."
+                    .into(),
+            ));
+        }
+    };
+
+    use yogurt_llm::LlmClient as _;
+    let client = crate::llm_openai::OpenAiCompatClient::new(
+        provider.base_url.clone(),
+        key.clone(),
+        provider.model.clone(),
+    );
+    match client.list_models().await {
+        Ok(models) => Ok(Json(models)),
+        Err(e) => Err(Error::Internal(truncate(
+            &redact_key(&format!("{e:#}"), &key),
+            MAX_TEST_ERROR_LEN,
+        ))),
+    }
 }
 
 /// Read a provider's stored key off the reactor, bounded.

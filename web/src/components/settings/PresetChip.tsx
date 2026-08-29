@@ -13,9 +13,19 @@ import { settingsApi } from "../../lib/api/settings";
  * The list itself comes from `GET /api/settings` and is owned by the
  * Rust-side `PRESETS` const (`crates/yogurt-db/src/providers.rs`) — do not
  * enumerate it here, it drifts.
+ *
+ * `onCreated` surfaces the new provider's id back to the page so the
+ * freshly-cloned card can auto-open its API key input — the user came
+ * here to paste a key, not to click `Add key` again.
  */
 
-export function PresetChip({ preset }: { preset: Preset }) {
+export function PresetChip({
+  preset,
+  onCreated,
+}: {
+  preset: Preset;
+  onCreated?: (id: string) => void;
+}) {
   const qc = useQueryClient();
   const clone = useMutation({
     mutationFn: () =>
@@ -24,7 +34,10 @@ export function PresetChip({ preset }: { preset: Preset }) {
         base_url: preset.base_url,
         model: preset.default_model,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      onCreated?.(created.id);
+    },
   });
 
   return (
