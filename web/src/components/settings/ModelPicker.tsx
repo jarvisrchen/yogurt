@@ -127,6 +127,15 @@ export function ModelPicker({
               <span aria-hidden className={isDownloading ? "animate-spin" : ""}>
                 {glyph}
               </span>
+              <span
+                aria-hidden
+                className="text-[10px] font-mono normal-case tracking-normal"
+                title={`${m.size_mb} MB on huggingface.co`}
+              >
+                {m.size_mb < 1000
+                  ? `${m.size_mb} MB`
+                  : `${(m.size_mb / 1024).toFixed(1)} GB`}
+              </span>
             </button>
             {isDownloading ? (
               <span
@@ -135,16 +144,6 @@ export function ModelPicker({
                 title="click pill to reopen progress dialog"
               >
                 {pct != null ? `${pct}%` : "…"}
-              </span>
-            ) : !m.downloaded ? (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono text-mut"
-                title={`${m.size_mb} MB download from huggingface.co`}
-              >
-                {m.size_mb < 1000
-                  ? `${m.size_mb} MB`
-                  : `${(m.size_mb / 1024).toFixed(1)} GB`}
               </span>
             ) : null}
             {showSlow && (
