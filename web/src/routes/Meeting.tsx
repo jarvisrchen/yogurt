@@ -409,7 +409,7 @@ export function Meeting() {
         token,
       );
       navigate(`/meeting/${meetingId}/post`, {
-        state: { enrichedMd: response.enriched_md },
+        state: { enrichedMd: response.enriched_md, tooShort: response.too_short },
       });
       // Successful navigation unmounts this component — don't touch state
       // afterward (React warns on unmounted-component updates, and there's

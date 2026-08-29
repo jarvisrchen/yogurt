@@ -35,8 +35,22 @@ use uuid::Uuid;
 use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
 use yogurt_llm::{ChatMessage, ChatRequest};
-use yogurt_notes::merge_notes;
+use yogurt_notes::{merge_notes, TranscriptSegment};
 use yogurt_prompts::EnhanceCtx;
+
+/// A meeting with no typed notes AND a transcript under this many words has
+/// nothing meaningful for the LLM to work with - an accidental start/stop,
+/// a few seconds of silence, a stray "hello?". Word count (not char count)
+/// so a handful of filler words can't dodge the check by being long.
+///
+/// Deliberately low, not the ~20 words a first cut might reach for: any
+/// real notes at all skip this path entirely (see the
+/// `notes_md.trim().is_empty()` guard below), so the only meetings this
+/// gate can catch are ones with ZERO typed notes - and a real single
+/// sentence ("today is my last day, thanks everyone") is common there and
+/// must still enhance. Bump this if "too short" starts firing on genuine
+/// short meetings; nothing below depends on the exact value.
+const TOO_SHORT_TRANSCRIPT_WORDS: usize = 6;
 
 #[derive(Debug, Deserialize)]
 pub struct EnhanceRequest {
@@ -70,6 +84,13 @@ pub struct EnhanceResponse {
     /// Path on disk where the per-meeting markdown file was written.
     /// Mostly useful for the integration test; the browser ignores it.
     pub notes_file: String,
+    /// True when the meeting had no notes and a trivial transcript, so the
+    /// server skipped the LLM/merge/persist pipeline entirely - `enriched_md`
+    /// and `notes_file` are both empty in that case. The browser shows a
+    /// "Meeting too short" state and returns to the library instead of
+    /// rendering a near-empty post-meeting editor.
+    #[serde(default)]
+    pub too_short: bool,
 }
 
 /// `POST /api/meetings/{id}/enhance`.
@@ -148,6 +169,25 @@ pub async fn enhance(
             req.transcript_json.clone()
         }
     };
+
+    // 1c) Skip the LLM entirely when there's nothing meaningful to enhance:
+    // no user notes AND a trivial transcript (see `TOO_SHORT_TRANSCRIPT_WORDS`
+    // above). Running the LLM - and writing a near-empty markdown file - on
+    // an accidental one-second recording just produces noise; the caller
+    // shows a "Meeting too short" state and bounces to the library instead.
+    let transcript_word_count: usize =
+        serde_json::from_str::<Vec<TranscriptSegment>>(&transcript_json)
+            .unwrap_or_default()
+            .iter()
+            .map(|seg| seg.text.split_whitespace().count())
+            .sum();
+    if req.notes_md.trim().is_empty() && transcript_word_count < TOO_SHORT_TRANSCRIPT_WORDS {
+        return Ok(Json(EnhanceResponse {
+            enriched_md: String::new(),
+            notes_file: String::new(),
+            too_short: true,
+        }));
+    }
 
     // 2) Render the user prompt.
     let user_prompt = state
@@ -456,6 +496,7 @@ pub async fn enhance(
     Ok(Json(EnhanceResponse {
         enriched_md,
         notes_file: notes_path.to_string_lossy().into_owned(),
+        too_short: false,
     }))
 }
 
