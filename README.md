@@ -82,6 +82,33 @@ Something not working? Run `yogurt doctor` for a rust/macOS/permissions/
 providers/STT/models dump, or `yogurt doctor --json` for a machine-readable
 version that's safe to paste into a bug report.
 
+## Command line
+
+`yogurt --help` and `yogurt <command> --help` are the source of truth; this is the same information in one place.
+
+### `yogurt start`
+
+Launches the local server and opens the browser.
+
+| Flag | Default | What it does |
+|------|---------|--------------|
+| `--port <PORT>` | `7878` | TCP port to bind. Always binds `127.0.0.1` only, never a LAN interface. |
+| `--no-open` | off | Do not auto-open `http://localhost:<port>` in your default browser once the server is listening. |
+| `--dev` | off | Developer mode. Proxies every non-`/api` request to the Vite dev server on `:5173` instead of serving the web bundle embedded in the binary, loads `.env.local` from the current directory, and allows WebSocket upgrades from the `:5173` origin for hot reload. Never use this for normal use; see [CONTRIBUTING.md](CONTRIBUTING.md). |
+
+Without `--dev` the UI you see is whatever was compiled into the binary at build time.
+
+### `yogurt doctor`
+
+Prints a diagnostic dump (Rust and macOS versions, Screen Recording and Microphone permission state, configured providers, downloaded STT models) plus repair actions.
+
+| Flag | What it does |
+|------|--------------|
+| `--json` | Emit the same diagnostics as JSON, safe to paste into a bug report. |
+| `--check-port` | Report whether port 7878 is free or in use, and suggest a `--port` value if it is busy. |
+| `--reset-screen-recording` | Reset the Screen Recording TCC grant for `ai.yogurt.app` so macOS prompts again on next start. |
+| `--redownload-model <MODEL>` | Delete the local copy of a whisper.cpp model (for example `small.en`) so the next start re-downloads it. |
+
 ## How it works
 
 One Rust process runs the audio capture (ScreenCaptureKit), live STT

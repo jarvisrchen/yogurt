@@ -114,6 +114,23 @@ clippy/test for the same reason.
 - **STT engine:** implement the `Stt` trait in `crates/yogurt-stt/src/` (see `deepgram.rs` or `whisper_local.rs` for the shape).
 - **LLM provider:** add a preset card to `yogurt_db::providers::PRESETS` in `crates/yogurt-db/src/providers.rs` -- any OpenAI-compatible `base_url` works without new code.
 
+## Dev-only environment variables
+
+All of these are read only when the backend runs with `--dev` (which loads `.env.local`) or by the test suite and run scripts.
+Release builds never read `.env.local`.
+
+| Variable | Read by | Effect |
+|----------|---------|--------|
+| `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into the Keychain on first run. |
+| `YOGURT_OPENAI_API_KEY`, `YOGURT_OPENROUTER_API_KEY`, `YOGURT_MINIMAX_API_KEY` | bootstrap | Seed the matching LLM provider preset. |
+| `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`, `YOGURT_LLM_MODEL` | LLM resolver | Override the active LLM provider for this process without touching Settings or the Keychain. Handy when a rebuilt unsigned binary is waiting on a Keychain prompt. |
+| `YOGURT_DEEPGRAM_MODEL` | cloud STT | Deepgram model name (default `nova-3`). Stamped into each meeting's `stt_engine`. |
+| `YOGURT_VITE_BASE` | `--dev` proxy | Vite origin to proxy to (default `http://127.0.0.1:5173`). |
+| `YOGURT_MEMORY_KEYSTORE=1` | tests | In-memory key store so tests never touch the real Keychain. Set automatically by `just test`. |
+| `YOGURT_PORT_POLICY` | `scripts/run-*.sh` | What to do when the port is busy: `ask` (default), `kill`, `next`, or `fail`. |
+
+The `yogurt start` and `yogurt doctor` flags themselves are documented in the [README](README.md#command-line).
+
 ## Troubleshooting the dev loop
 
 **Keychain prompts on every rebuild.** macOS grants Keychain access per binary
