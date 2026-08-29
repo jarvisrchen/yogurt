@@ -380,7 +380,7 @@ graph TB
         STT["yogurt-stt&lt;br/&gt;Stt trait"]
         NOTES["yogurt-notes&lt;br/&gt;AST diff + merge"]
         LLM["yogurt-llm&lt;br/&gt;OpenAI-compatible client"]
-        DB["yogurt-db&lt;br/&gt;rusqlite + Keychain"]
+        DB["yogurt-db&lt;br/&gt;rusqlite + key file store"]
     end
 
     subgraph Disk["~/.yogurt/"]
@@ -394,7 +394,7 @@ graph TB
         PROV["LLM provider"]
     end
 
-    KC["macOS Keychain"]
+    KC["~/.yogurt/keys.json (0600)"]
 
     SPA -->|"Bearer token"| REST
     SPA -->|"WebSocket ?token="| WSM
@@ -429,7 +429,7 @@ graph TB
           <tr><td><code>yogurt-notes</code></td><td>Markdown parse, block diff of user notes vs LLM output, render to wire format.</td></tr>
           <tr><td><code>yogurt-prompts</code></td><td>Embedded prompt templates and their render context.</td></tr>
           <tr><td><code>yogurt-llm</code></td><td><code>LlmClient</code> trait, OpenAI-compatible HTTP client, SSE streaming.</td></tr>
-          <tr><td><code>yogurt-db</code></td><td>SQLite open/migrate, <code>MeetingRepo</code>, settings, providers, Keychain <code>ApiKeyStore</code>.</td></tr>
+          <tr><td><code>yogurt-db</code></td><td>SQLite open/migrate, <code>MeetingRepo</code>, settings, providers, <code>ApiKeyStore</code> over <code>~/.yogurt/keys.json</code>.</td></tr>
         </tbody>
       </table>
     </div>
@@ -503,20 +503,17 @@ sequenceDiagram
     participant U as User (terminal)
     participant CLI as yogurt-cli
     participant S as yogurt-server
-    participant KC as Keychain
+    participant KC as keys.json
     participant B as Browser
 
     U->>CLI: yogurt
     CLI->>S: run_with_config(addr, mode)
     S->>S: Storage::init_at(~/.yogurt/db.sqlite)&lt;br/&gt;WAL, writer + reader conns, migrations
     S->>S: load_or_create session token (0600 on disk)
-    S->>S: AppState::production_warmed(...)&lt;br/&gt;eager Keychain warm, 5s cap
-    par background, 20s budget
-        S->>KC: seed providers from YOGURT_*_API_KEY
-        S->>KC: seed Deepgram STT key
-        S->>S: repair legacy escaped-span rows
-    end
-    Note over S: still seeding at 20s? serve anyway,&lt;br/&gt;finish in background
+    S->>S: AppState::production(...)&lt;br/&gt;FileKeyStore::open_default() loads keys.json once
+    S->>KC: seed providers from YOGURT_*_API_KEY
+    S->>KC: seed Deepgram STT key
+    S->>S: repair legacy escaped-span rows
     S->>S: bind TcpListener, axum::serve
     U->>B: open http://localhost:7878
     B->>S: GET /api/session-token (Origin-checked)
@@ -637,7 +634,7 @@ sequenceDiagram
     E->>PR: render_enhance({ notes, transcript })
     E->>WS: enhance_progress phase sending
 
-    E->>E: resolve LLM: env, then provider+Keychain, then MockLlm
+    E->>E: resolve LLM: env, then provider+stored key, then MockLlm
     Note over E: configured provider with unreadable key&lt;br/&gt;is a hard 502, never a silent mock
     E->>L: chat completion, non-streaming, hard timeout
     alt error or timeout
@@ -862,7 +859,7 @@ graph TB
       </table>
     </div>
 
-    <p>Pointing the active provider at either one makes enhance and chat fully local. Nothing else in the pipeline changes: the same prompts render, the same merge runs, the same sanitizer applies. The API-key field still writes to Keychain, which local servers simply ignore.</p>
+    <p>Pointing the active provider at either one makes enhance and chat fully local. Nothing else in the pipeline changes: the same prompts render, the same merge runs, the same sanitizer applies. The API-key field still writes to the key file, which local servers simply ignore.</p>
 
     <div class="note">
       <span class="tag">The honest caveat</span>
@@ -874,12 +871,12 @@ graph TB
     <div class="sec-head"><span class="sec-num">08</span><h2>Where state lives</h2></div>
 
     <div class="diagram">
-      <div class="cap">In-memory vs SQLite vs filesystem vs Keychain</div>
+      <div class="cap">In-memory vs SQLite vs filesystem vs key file</div>
       <div class="body"><pre class="mermaid">
 graph TB
     subgraph Mem["In-memory, lost on restart"]
         REG["Registry: live meetings&lt;br/&gt;audio_tx, transcript_tx, events_tx,&lt;br/&gt;capture + task handles"]
-        WARM["warmed Keychain cache"]
+        WARM["FileKeyStore: keys.json held in memory,&lt;br/&gt;rewritten atomically on set/delete"]
     end
     subgraph SQ["~/.yogurt/db.sqlite (WAL)"]
         MT["meetings: notes_md, transcript_json,&lt;br/&gt;enriched_md, enriched_doc_json"]
@@ -893,7 +890,7 @@ graph TB
         MOD["models/*.bin + .sha256"]
         TOK["session token file, 0600"]
     end
-    KC["macOS Keychain, service 'yogurt'"]
+    KC["~/.yogurt/keys.json, mode 0600&lt;br/&gt;key = provider ULID, or 'stt-deepgram'"]
     REG -.->|"on stop / enhance"| MT
     MT --> FTS
     PRV -->|"key never in SQLite"| KC
@@ -921,7 +918,7 @@ graph TB
 
     <div class="note good">
       <span class="tag">Keys</span>
-      <p>API keys are never in SQLite and never in a response body. The providers table holds <code>base_url</code>, model, and active flag; the secret lives in Keychain keyed by the provider's ULID. Responses return a masked suffix only.</p>
+      <p>API keys are never in SQLite and never in a response body. The providers table holds <code>base_url</code>, model, and active flag; the secret lives in <code>~/.yogurt/keys.json</code> keyed by the provider's ULID. The file is parsed once at boot into an in-memory map, so key reads are plain lookups; every write goes through a 0600 temp file and an atomic rename. Responses return a masked suffix only. The macOS Keychain was dropped on 2026-08-29: its per-binary-signature ACLs re-prompted on every dev rebuild, a wedged prompt could hang boot, and machines without Keychain write access could not run yogurt.</p>
     </div>
   </section>
 
@@ -1019,7 +1016,7 @@ graph TB
 
     <div class="note good">
       <span class="tag">Free fallbacks</span>
-      <p>If no provider is configured at all, <code>MockLlm</code> answers deterministically at $0. A provider that <em>is</em> configured but whose Keychain key cannot be read is a hard 502, never a silent free fallback, so you can never be quietly downgraded to fake output.</p>
+      <p>If no provider is configured at all, <code>MockLlm</code> answers deterministically at $0. A provider that <em>is</em> configured but whose stored key cannot be read is a hard 502, never a silent free fallback, so you can never be quietly downgraded to fake output.</p>
     </div>
 
     <h3>STT is where the money goes, and it bills at 2&times;</h3>
