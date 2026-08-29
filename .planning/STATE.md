@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 9 of 10 (Distribution Polish) — Not started. Phases 0-8 complete.
-Plan: 09-01/02/03 written but not executed; `.github/` (CI + release workflow) does not exist yet.
-Status: All product features (Phases 0-8) are built and tested — skeleton, design system, audio capture, cloud STT + live transcript dock, augmented-notes hero, LLM client + settings + Keychain, in-meeting chat, library + onboarding, local whisper.cpp STT. Phase 9 packages/signs/ships them: notarized per-arch tarballs, Homebrew tap, `cargo publish`, `yogurt doctor` subcommand, README.
-Last activity: 2026-08-29 - Completed quick task 260828-q1x: Whisper model storage moved to ~/.yogurt/models with legacy migration, real 4.8GB migration E2E verified
+Phase: 9 of 10 (Distribution Polish) — Executed (descoped). Plans 09-01/02/03 done; v0.1.0 tag deferred until repo goes public.
+Plan: Release-day runbook lives in scripts/release-checklist.md. Descoped by user decision: Apple notarization (ad-hoc signing is fine for brew/curl installs), cargo publish (irreversible; deferred), hand-written CHANGELOG (GitHub auto release notes instead).
+Status: All product features (Phases 0-8) built and tested. Phase 9 delivered: ci.yml (with web/dist prebuild fix), release.yml (unsigned matrix tarballs + GitHub Release + tap job, dry-run dispatch), scripts/homebrew/ tap seed, `yogurt doctor` (+ --json, --check-port, --reset-screen-recording, --redownload-model), README install matrix, CONTRIBUTING.md. Brew install E2E-verified via local tap + real tarball. Remaining for launch (user actions in checklist): flip repo public, gh auth as jarvisrchen, create tap repo, HOMEBREW_TAP_TOKEN secret, tag v0.1.0.
+Last activity: 2026-08-29 - Executed Phase 9 (plans 09-01/02/03, notarization + cargo publish descoped); brew install E2E-verified locally; code pushed to origin/main (private)
 
 Progress: [█████████░] 90%
 
