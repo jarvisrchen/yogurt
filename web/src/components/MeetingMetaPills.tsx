@@ -52,6 +52,25 @@ export function formatDuration(startedAt: number, endedAt: number): string | nul
 const PILL =
   "inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-mono leading-none";
 
+/**
+ * The STT engine pill on its own - shared with the Library card so the
+ * same meeting reads identically everywhere. Renders nothing for `null`
+ * (meetings recorded before the column existed) rather than guessing.
+ */
+export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined }) {
+  const engine = parseSttEngine(sttEngine);
+  if (!engine) return null;
+  return (
+    <span
+      className={`${PILL} ${engine.cloud ? "bg-blsoft text-blue" : "bg-mtsoft text-matcha"}`}
+      title={engine.cloud ? "Transcribed by cloud STT" : "Transcribed on this Mac"}
+    >
+      {engine.cloud ? <Cloud size={11} aria-hidden /> : <HardDrive size={11} aria-hidden />}
+      {engine.text}
+    </span>
+  );
+}
+
 export function MeetingMetaPills({ startedAt, endedAt, sttEngine }: Props) {
   const engine = parseSttEngine(sttEngine);
   const duration =
@@ -67,17 +86,7 @@ export function MeetingMetaPills({ startedAt, endedAt, sttEngine }: Props) {
       {duration && (
         <span className={`${PILL} border border-line bg-paper text-mut`}>{duration}</span>
       )}
-      {engine && (
-        <span
-          className={`${PILL} ${
-            engine.cloud ? "bg-blsoft text-blue" : "bg-mtsoft text-matcha"
-          }`}
-          title={engine.cloud ? "Transcribed by cloud STT" : "Transcribed on this Mac"}
-        >
-          {engine.cloud ? <Cloud size={11} aria-hidden /> : <HardDrive size={11} aria-hidden />}
-          {engine.text}
-        </span>
-      )}
+      {engine && <EnginePill sttEngine={sttEngine} />}
     </div>
   );
 }

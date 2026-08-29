@@ -74,19 +74,19 @@ describe("MeetingCard — live-recording routing", () => {
   });
 });
 
-describe("MeetingCard — engine chip", () => {
-  it("shows Local for a null stt_engine (pre-column meetings)", () => {
+describe("MeetingCard — engine pill", () => {
+  it("shows no engine pill for a null stt_engine (pre-column meetings)", () => {
     renderCard(meeting({ id: "old-1", stt_engine: null }));
-    expect(screen.getByText("Local")).toBeInTheDocument();
+    expect(screen.queryByText(/Local|Cloud/)).toBeNull();
   });
 
-  it("shows Local for a local · <model> stamp", () => {
+  it("shows the same provider · model pill as the meeting headers", () => {
     renderCard(meeting({ id: "local-1", stt_engine: "local · small.en" }));
-    expect(screen.getByText("Local")).toBeInTheDocument();
+    expect(screen.getByText("Local · small.en")).toBeInTheDocument();
   });
 
-  it("shows Cloud for a cloud · <model> stamp", () => {
+  it("shows Cloud · model for a cloud stamp", () => {
     renderCard(meeting({ id: "cloud-1", stt_engine: "cloud · nova-3" }));
-    expect(screen.getByText("Cloud")).toBeInTheDocument();
+    expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@
  *   ╎                                     ended_at is null; `· not enhanced`
  *   ╎                                     appended only for the exception:
  *   ╎                                     ended but never enhanced
- *   [Local pill, right-aligned]
+ *   [Local · medium.en engine pill, right-aligned; omitted when unknown]
  *
  * Avatar tint is deterministic per id (hash → 3-palette cycle) so the
  * same meeting always shows the same color across reloads.
@@ -18,6 +18,7 @@ import { Link } from "react-router";
 import { Star } from "lucide-react";
 import type { Meeting } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
+import { EnginePill } from "../MeetingMetaPills";
 import { InlineTitle } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
 
@@ -64,17 +65,6 @@ export function formatMeta(m: Meeting): string {
   // (enhance failed or was skipped), so the user knows to hit Re-enhance.
   if (m.ended_at != null && m.enriched_md == null) parts.push("not enhanced");
   return parts.join(" · ");
-}
-
-/**
- * Right-aligned engine pill text. `stt_engine` is stamped at recording
- * start as "local · <model>" or "cloud · <model>" (routes.rs
- * `start_meeting`) — we only need the provider half here. `null` covers
- * meetings recorded before this column existed; default to "Local" since
- * that was the only value the old static chip ever showed.
- */
-export function engineLabel(sttEngine: string | null): string {
-  return sttEngine?.startsWith("cloud") ? "Cloud" : "Local";
 }
 
 interface Props {
@@ -144,9 +134,10 @@ export function MeetingCard({ meeting, activeId }: Props) {
           </div>
         )}
       </div>
-      <span className="text-[11px] font-mono text-mut border border-line rounded-pill px-2 py-0.5">
-        {engineLabel(meeting.stt_engine)}
-      </span>
+      {/* Same pill as the meeting headers (MeetingMetaPills), so a meeting
+          reads "Local · medium.en" identically in the list and in the note.
+          Nothing for pre-column rows rather than a guessed "Local". */}
+      <EnginePill sttEngine={meeting.stt_engine} />
       <MeetingCardActions id={meeting.id} starred={meeting.starred} labels={meeting.labels} />
     </Link>
   );
