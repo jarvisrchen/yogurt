@@ -101,3 +101,13 @@ reset-db:
 # Download every whisper.cpp model from HuggingFace and print the current SHA256 to paste into REGISTRY.
 refresh-model-hashes *args:
     ./scripts/refresh-model-hashes.sh {{args}}
+
+# ── Model evals ──────────────────────────────────────────────────────
+
+# Speak the fixed eval conversation through the speaker (start a meeting first; see docs/MODEL-EVAL.md).
+eval-play *args:
+    ./scripts/eval/play.sh {{args}}
+
+# Judge two enhanced meetings that were fed the same audio: `just eval-compare <url-or-id> <url-or-id>`.
+eval-compare a b:
+    ./scripts/eval/compare.sh {{a}} {{b}}

@@ -450,6 +450,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
       transcript_json: "[]",
       starred: false,
       stt_engine: "cloud · nova-3",
+      llm_model: null,
       created_at: "",
       updated_at: "",
     };

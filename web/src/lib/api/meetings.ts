@@ -48,6 +48,8 @@ export interface Meeting {
    * existed, or if the best-effort stamp on start failed.
    */
   stt_engine: string | null;
+  /** LLM that produced `enriched_md` (e.g. "MiniMax-Text-01"); `null` until enhanced. */
+  llm_model: string | null;
   /** ISO 8601 UTC string. */
   created_at: string;
   /** ISO 8601 UTC string. */

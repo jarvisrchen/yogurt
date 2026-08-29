@@ -28,6 +28,10 @@ pub struct MockLlm;
 
 #[async_trait]
 impl LlmClient for MockLlm {
+    fn model_name(&self) -> String {
+        "mock".into()
+    }
+
     async fn complete(&self, req: ChatRequest) -> Result<ChatResponse> {
         // Phase 4 wraps the user-facing payload as a single `user`-role
         // message containing the rendered enhance.md prompt. We rebuild

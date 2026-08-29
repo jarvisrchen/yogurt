@@ -251,6 +251,7 @@ async fn patch_one(
         ended_at: body.ended_at,
         starred: body.starred,
         stt_engine: body.stt_engine,
+        llm_model: None,
         label_ids: body.label_ids,
     };
     let state_for_blocking = s.clone();

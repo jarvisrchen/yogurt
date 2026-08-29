@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Model Evals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-chip: 6px; --r-btn: 9px; --r-card: 14px; --r-pill: 999px;
+  --sh-card: 0 2px 6px rgba(40, 30, 15, 0.08);
+}
+
+* { box-sizing: border-box; min-width: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+header.top {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(251, 247, 239, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top-inner {
+  max-width: 1180px; margin: 0 auto;
+  padding: 14px 28px;
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+}
+.brand { font-family: var(--font-serif); font-size: 26px; letter-spacing: -0.01em; }
+.brand span { color: var(--blue); }
+.tagline {
+  font-family: var(--font-mono);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--mut);
+}
+nav.top-nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+nav.top-nav a {
+  font-family: var(--font-mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--mut); text-decoration: none;
+  padding: 5px 9px; border-radius: var(--r-chip);
+  transition: background 140ms, color 140ms;
+  white-space: nowrap;
+}
+nav.top-nav a:hover { background: var(--blsoft); color: var(--blue); }
+
+/* ── Layout ─────────────────────────────────────────────── */
+main { max-width: 1180px; margin: 0 auto; padding: 40px 28px 120px; }
+
+.hero { margin-bottom: 44px; }
+.hero h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(38px, 6vw, 60px);
+  line-height: 1.04; margin: 0 0 14px; letter-spacing: -0.02em;
+}
+.hero p.lede { font-size: 18px; color: var(--mut); max-width: 62ch; margin: 0 0 8px; }
+.hero p.sub { font-size: 14px; color: var(--grey); max-width: 62ch; margin: 0; }
+
+.facts {
+  display: grid; gap: 12px; margin: 28px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+}
+.fact {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 16px 18px; box-shadow: var(--sh-card);
+}
+.fact .n {
+  font-family: var(--font-serif); font-size: 30px; line-height: 1.1;
+  color: var(--blue); display: block;
+}
+.fact .n.warn { color: var(--straw); }
+.fact .n.good { color: var(--matcha); }
+.fact .l {
+  font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--mut); margin-top: 4px; display: block;
+}
+
+section.sec { margin: 0 0 64px; scroll-margin-top: 88px; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.sec-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  color: var(--blue); background: var(--blsoft);
+  padding: 3px 8px; border-radius: var(--r-chip); letter-spacing: 0.05em;
+}
+h2 { font-family: var(--font-serif); font-size: 32px; margin: 0; letter-spacing: -0.01em; font-weight: 400; }
+h3 { font-family: var(--font-sans); font-size: 15px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -0.005em; }
+.sec > p, .sec > ul, .sec > ol { max-width: 78ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 14px; padding-left: 20px; }
+li { margin-bottom: 7px; }
+strong { font-weight: 600; }
+code {
+  font-family: var(--font-mono); font-size: 0.875em;
+  background: var(--blsoft); color: #3d349a;
+  padding: 1.5px 5px; border-radius: 4px;
+}
+a { color: var(--blue); }
+
+/* ── Framed blocks: diagrams and code ───────────────────── */
+.frame {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--sh-card);
+  margin: 20px 0 22px; overflow: hidden;
+}
+.frame > .cap {
+  font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--mut);
+  padding: 11px 18px; border-bottom: 1px solid var(--line); background: #FDFBF7;
+  display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+}
+.frame > .cap .rhs { color: var(--grey); text-transform: none; letter-spacing: 0.02em; }
+.frame > .body { overflow-x: auto; padding: 22px 18px; }
+.frame .mermaid { display: flex; justify-content: center; min-width: 0; }
+.frame .mermaid svg { max-width: 100%; height: auto; }
+pre.code {
+  margin: 0; padding: 16px 18px; overflow-x: auto;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+  color: var(--ink); background: var(--card);
+}
+pre.code .c { color: var(--grey); }
+pre.code .p { color: var(--blue); }
+pre.code .s { color: #3f7a53; }
+
+/* ── Tables ─────────────────────────────────────────────── */
+.tablewrap {
+  overflow-x: auto; margin: 16px 0 22px;
+  border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--card); box-shadow: var(--sh-card);
+}
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th {
+  text-align: left; font-family: var(--font-mono);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--mut); font-weight: 500;
+  padding: 11px 16px; border-bottom: 1px solid var(--line);
+  background: #FDFBF7; white-space: nowrap;
+}
+td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+th.lbl, td.lbl { white-space: nowrap; font-family: var(--font-mono); font-size: 11.5px; color: var(--mut); }
+td.ui { background: #FCFAFF; }
+
+/* ── Callouts ───────────────────────────────────────────── */
+.note {
+  border-left: 3px solid var(--blue); background: var(--blsoft);
+  padding: 14px 18px; border-radius: 0 var(--r-btn) var(--r-btn) 0;
+  margin: 18px 0; max-width: 82ch;
+}
+.note.warn { border-left-color: var(--straw); background: var(--strsoft); }
+.note.good { border-left-color: var(--matcha); background: var(--mtsoft); }
+.note .tag {
+  font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--blue); display: block; margin-bottom: 5px;
+}
+.note.warn .tag { color: #b8503a; }
+.note.good .tag { color: #3f7a53; }
+.note p:last-child { margin-bottom: 0; }
+
+/* ── Symptom cards ──────────────────────────────────────── */
+.symptoms { display: grid; gap: 14px; margin: 20px 0 8px; max-width: 92ch; }
+.sym {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--straw);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+  padding: 16px 18px; box-shadow: var(--sh-card);
+}
+.sym.expected { border-left-color: var(--matcha); }
+.sym.info { border-left-color: var(--blue); }
+.sym h4 {
+  margin: 0 0 8px; font-size: 14.5px; font-weight: 600;
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+}
+.sym p { margin: 0 0 8px; font-size: 13.5px; color: var(--mut); line-height: 1.6; }
+.sym p:last-child { margin-bottom: 0; }
+.sym .where {
+  font-family: var(--font-mono); font-size: 11px; color: var(--grey);
+  display: block; margin-top: 8px;
+}
+.badge {
+  font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; padding: 3px 8px; border-radius: var(--r-pill);
+  background: var(--strsoft); color: #b8503a; white-space: nowrap; font-weight: 500;
+}
+.badge.expected { background: var(--mtsoft); color: #3f7a53; }
+.badge.info { background: var(--blsoft); color: var(--blue); }
+
+footer {
+  border-top: 1px solid var(--line); margin-top: 40px; padding-top: 22px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--grey);
+  max-width: 1180px; margin-left: auto; margin-right: auto;
+}
+footer a { color: var(--mut); }
+
+@media (max-width: 720px) {
+  main { padding: 28px 18px 80px; }
+  .top-inner { padding: 12px 18px; }
+  nav.top-nav { width: 100%; margin-left: 0; }
+  h2 { font-size: 26px; }
+}
+</style>
+<style>
+/* ── Steps ──────────────────────────────────────────────── */
+.steps { display: grid; gap: 12px; margin: 20px 0 8px; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+.step {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: 16px 18px 14px; box-shadow: var(--sh-card); display: flex; flex-direction: column; gap: 6px;
+}
+.step .k { font-family: var(--font-serif); font-size: 28px; color: var(--blue); line-height: 1; }
+.step h4 { margin: 4px 0 0; font-size: 14.5px; font-weight: 600; }
+.step p { margin: 0; font-size: 13.5px; color: var(--mut); line-height: 1.55; }
+.step .who { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--grey); }
+.step.term .k { color: var(--matcha); }
+/* ── Pills (mirror MeetingMetaPills) ────────────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono);
+  font-size: 11px; padding: 3px 9px; border-radius: var(--r-pill); white-space: nowrap;
+}
+.pill.local { background: var(--mtsoft); color: #3f7a53; }
+.pill.cloud { background: var(--blsoft); color: var(--blue); }
+.pill.llm { background: #FDF3E7; color: #9a6a2a; }
+.pill.mut { background: #F3EFE6; color: var(--mut); }
+/* ── Transcript sample ──────────────────────────────────── */
+.convo { display: grid; gap: 8px; padding: 18px; }
+.line { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; align-items: baseline; font-size: 13.5px; }
+.line .spk { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 7px; border-radius: var(--r-chip); text-align: center; }
+.line.a .spk { background: var(--blsoft); color: var(--blue); }
+.line.b .spk { background: var(--mtsoft); color: #3f7a53; }
+.line.pause { color: var(--grey); font-family: var(--font-mono); font-size: 11px; }
+.line.pause .spk { background: #F3EFE6; color: var(--grey); }
+.line mark { background: #FDF3E7; color: inherit; padding: 0 1px; border-radius: 3px; }
+/* ── Rubric ─────────────────────────────────────────────── */
+.rubric { display: grid; gap: 12px; margin: 20px 0 8px; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); }
+.crit { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card); padding: 16px 18px; box-shadow: var(--sh-card); }
+.crit h4 { margin: 0 0 6px; font-size: 14.5px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.crit h4 .w { font-family: var(--font-mono); font-size: 10px; color: var(--grey); letter-spacing: 0.06em; text-transform: uppercase; }
+.crit p { margin: 0; font-size: 13.5px; color: var(--mut); line-height: 1.55; }
+.crit.top { border-left: 3px solid var(--straw); border-radius: 0 var(--r-card) var(--r-card) 0; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <div class="brand">yogurt<span>.</span></div>
+      <div class="tagline">Model evals</div>
+    </div>
+    <nav class="top-nav">
+      <a href="#loop">The loop</a>
+      <a href="#pieces">Pieces</a>
+      <a href="#trial">Run a trial</a>
+      <a href="#compare">Compare</a>
+      <a href="#voices">Voices</a>
+      <a href="#script">Write a script</a>
+      <a href="DEBUGGING-TRANSCRIPTS.html">Debugging &rarr;</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <div class="hero">
+    <h1>Same audio, different brains</h1>
+    <p class="lede">Feed two recordings the exact same scripted conversation, swap the STT engine or the LLM between them, and let a headless judge grade the two AI summaries against the script.</p>
+    <p class="sub">Mirrors <code>docs/MODEL-EVAL.md</code> - everything lives in <code>scripts/eval/</code>, wired as <code>just eval-play</code> and <code>just eval-compare</code>.</p>
+
+    <div class="facts">
+      <div class="fact"><span class="n">~5 min</span><span class="l">spoken, 675 words, 8 pauses</span></div>
+      <div class="fact"><span class="n good">2</span><span class="l">voices, mac <code>say</code>, zero deps</span></div>
+      <div class="fact"><span class="n">5</span><span class="l">action items with owner + date</span></div>
+      <div class="fact"><span class="n warn">4</span><span class="l">rubric criteria, 1&ndash;5 each</span></div>
+    </div>
+  </div>
+
+  <section class="sec" id="loop">
+    <div class="sec-head"><span class="sec-num">00</span><h2>The loop</h2></div>
+    <p>The script is the fixed input <em>and</em> the ground truth. Each trial goes through the real product path: speaker &rarr; ScreenCaptureKit &rarr; STT under test &rarr; enhance with the LLM under test. Every meeting row remembers what produced it, so the judge never has to guess which run was which.</p>
+
+    <div class="frame">
+      <div class="cap"><span>One script, two trials, one verdict</span><span class="rhs">scripts/eval/</span></div>
+      <div class="body"><pre class="mermaid">
+flowchart LR
+  TXT["conversation.txt<br/>fixed input + ground truth"]
+  PLAY["play.sh<br/>say -v A / say -v B"]
+  SPK["speaker"]
+  subgraph T1["Trial A - e.g. local large-v3-turbo + MiniMax"]
+    direction TB
+    M1["recording meeting"] --> S1["STT A"] --> E1["enhance, LLM A"] --> R1[("row A<br/>stt_engine, llm_model")]
+  end
+  subgraph T2["Trial B - e.g. cloud nova-3 + gpt-4o-mini"]
+    direction TB
+    M2["recording meeting"] --> S2["STT B"] --> E2["enhance, LLM B"] --> R2[("row B<br/>stt_engine, llm_model")]
+  end
+  CMP["compare.sh<br/>SQLite pull + rubric prompt"]
+  JUDGE["claude -p"]
+  OUT["scorecard.md"]
+
+  TXT --> PLAY --> SPK
+  SPK --> M1
+  SPK --> M2
+  R1 --> CMP
+  R2 --> CMP
+  TXT -. ground truth .-> CMP
+  CMP --> JUDGE --> OUT
+      </pre></div>
+    </div>
+
+    <div class="note good">
+      <span class="tag">Provenance</span>
+      <p><code>stt_engine</code> is stamped on <code>/start</code> (existing), <code>llm_model</code> is stamped by <code>enhance.rs</code> with the model the resolved client actually called (new, migration V008). The report header reads them straight off the row: <span class="pill local">local &middot; large-v3-turbo</span> <span class="pill llm">MiniMax-Text-01</span></p>
+    </div>
+  </section>
+
+  <section class="sec" id="pieces">
+    <div class="sec-head"><span class="sec-num">01</span><h2>The pieces</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>File</th><th>Role</th><th>Needs</th></tr></thead>
+        <tbody>
+          <tr><td class="lbl">scripts/eval/conversation.txt</td><td>Scripted two-person sync (Sam, product; Dan, eng lead) about a feature rollout. Contains small talk, numbers, a decision, a disagreement resolved by compromise, a self-correction, an interruption, filler, a tangent, and five action items.</td><td><span class="pill mut">nothing</span></td></tr>
+          <tr><td class="lbl">scripts/eval/play.sh</td><td>Speaks the script with two <code>say</code> voices, honoring <code>PAUSE</code> lines and a small gap between turns. Prints each line as it goes; ends with <em>done - stop the meeting now</em>.</td><td><span class="pill mut">macOS say</span></td></tr>
+          <tr><td class="lbl">scripts/eval/compare.sh</td><td>Pulls two meetings straight from SQLite, strips the <code>&lt;span data-ts&gt;</code> markup, bundles them with the script into a rubric prompt, pipes to <code>claude -p</code>.</td><td><span class="pill mut">sqlite3</span> <span class="pill mut">claude CLI</span></td></tr>
+          <tr><td class="lbl">just eval-play / eval-compare</td><td>Task-runner aliases for the two scripts.</td><td><span class="pill mut">just</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="frame">
+      <div class="cap"><span>conversation.txt, the parts the judge checks hardest</span><span class="rhs">A: / B: spoken &nbsp; PAUSE n &nbsp; # comment</span></div>
+      <div class="convo">
+        <div class="line b"><span class="spk">Dan</span><span>So we shipped to <mark>five percent</mark> of users on Tuesday. Error rate is sitting at <mark>zero point three percent</mark>, which is under our one percent threshold.</span></div>
+        <div class="line a"><span class="spk">Sam</span><span>I want to go to <mark>twenty-five percent on Monday</mark>, and then fifty the following week.</span></div>
+        <div class="line b"><span class="spk">Dan</span><span>I'd rather do ten percent first.</span></div>
+        <div class="line pause"><span class="spk">pause</span><span>1.5 s</span></div>
+        <div class="line b"><span class="spk">Dan</span><span>Twenty-five percent on Monday, but we add an automatic <mark>kill switch</mark> if the error rate crosses zero point eight percent for more than fifteen minutes.</span></div>
+        <div class="line b"><span class="spk">Dan</span><span>Actually, wait, sorry, Monday is <mark>the fifth, not the fourth</mark>. Let me double check. Yeah, the fifth.</span></div>
+        <div class="line b"><span class="spk">Dan</span><span>Oh, unrelated, did you see the thing about the office <mark>espresso machine</mark>?</span></div>
+        <div class="line a"><span class="spk">Sam</span><span>I'll ask <mark>Jordan</mark> today. Anything else?</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="trial">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Run one trial</h2></div>
+    <p>Repeat this once per configuration you want to compare. The UI and the terminal alternate; nothing is automated across the two on purpose, so the run goes through exactly what a user does.</p>
+
+    <div class="steps">
+      <div class="step"><span class="k">1</span><span class="who">Settings</span><h4>Pick the engine and model</h4><p>Choose STT and LLM in Settings, or start the backend with <code>YOGURT_LLM_*</code> env vars.</p></div>
+      <div class="step"><span class="k">2</span><span class="who">You</span><h4>Put on headphones</h4><p>Keeps the mic from double-capturing the speaker as <em>me</em>. System audio is still captured.</p></div>
+      <div class="step"><span class="k">3</span><span class="who">UI</span><h4>Start a new meeting</h4><p>Recording begins, <code>stt_engine</code> is stamped.</p></div>
+      <div class="step term"><span class="k">4</span><span class="who">Terminal</span><h4><code>just eval-play</code></h4><p>Speaks the script, ~5 minutes. Watch the lines scroll; wait for <em>done</em>.</p></div>
+      <div class="step"><span class="k">5</span><span class="who">UI</span><h4>Stop, let enhance finish</h4><p><code>llm_model</code> is stamped once the summary lands.</p></div>
+      <div class="step"><span class="k">6</span><span class="who">You</span><h4>Copy the meeting URL</h4><p><code>/meeting/&lt;id&gt;/post</code> from the address bar. Bare ids work too.</p></div>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">Why headphones</span>
+      <p>System audio is captured through ScreenCaptureKit whatever the output device, so the <em>them</em> channel is always clean. An open mic next to the speakers records the same audio a second time as <em>me</em>, which is the live-transcript duplication already logged in <code>docs/TODO.md</code>, and it would skew the comparison.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="compare">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Compare two trials</h2></div>
+
+    <div class="frame">
+      <div class="cap"><span>scripts/eval/compare.sh</span><span class="rhs">report to stdout, redirect to keep it</span></div>
+      <pre class="code"><span class="c"># URLs or bare ids, in any mix</span>
+just eval-compare <span class="p">http://localhost:7878/meeting/&lt;id-a&gt;/post</span> <span class="p">&lt;id-b&gt;</span> &gt; report.md
+
+<span class="c"># print the assembled prompt instead of judging (paste it into another model)</span>
+PROMPT_ONLY=1 scripts/eval/compare.sh <span class="p">&lt;a&gt;</span> <span class="p">&lt;b&gt;</span>
+
+<span class="c"># pick the judge model, or swap the ground truth</span>
+JUDGE_MODEL=opus scripts/eval/compare.sh <span class="p">&lt;a&gt;</span> <span class="p">&lt;b&gt;</span>
+SCRIPT=scripts/eval/standup.txt scripts/eval/compare.sh <span class="p">&lt;a&gt;</span> <span class="p">&lt;b&gt;</span></pre>
+    </div>
+
+    <h3>What the judge grades</h3>
+    <div class="rubric">
+      <div class="crit top"><h4>Transcript accuracy <span class="w">matters most</span></h4><p>Words, numbers, names, dates versus the script. Every wrong number or name is called out: <em>five percent</em>, <em>zero point three</em>, <em>the fifth not the fourth</em>, <em>Priya</em>, <em>Jordan</em>.</p></div>
+      <div class="crit"><h4>Summary faithfulness</h4><p>Does the summary say only things the conversation said? Every hallucination or misattribution is listed.</p></div>
+      <div class="crit"><h4>Coverage</h4><p>The decision, the disagreement and its resolution, the self-correction, and every action item with owner and date, as an A / B table.</p></div>
+      <div class="crit"><h4>Usefulness</h4><p>Would someone who missed it be correctly briefed? Structure, concision, and no tangents as headlines (the espresso machine is bait).</p></div>
+    </div>
+    <p>The report ends with a scorecard table, a one-paragraph verdict naming the better run, and the single most damaging error in each run.</p>
+
+    <h3>Knobs</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Var</th><th>Script</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td class="lbl">PROMPT_ONLY=1</td><td>compare</td><td>Print the prompt, skip Claude.</td></tr>
+          <tr><td class="lbl">JUDGE_MODEL</td><td>compare</td><td>Passed through to <code>claude --model</code>.</td></tr>
+          <tr><td class="lbl">SCRIPT</td><td>compare</td><td>Different ground truth. For <code>play.sh</code> pass the path as the first argument instead.</td></tr>
+          <tr><td class="lbl">YOGURT_DB</td><td>compare</td><td>Point at another SQLite file (default <code>~/.yogurt/db.sqlite</code>).</td></tr>
+          <tr><td class="lbl">A_VOICE, B_VOICE</td><td>play</td><td>Voice names from <code>say -v '?'</code>, quoted if they contain spaces.</td></tr>
+          <tr><td class="lbl">RATE, GAP</td><td>play</td><td>Words per minute (175) and seconds of silence between turns (0.5).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="voices">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Better voices</h2></div>
+    <p>The voices that ship with macOS are the compact variants and sound robotic. Apple's Premium and Enhanced variants are free downloads and <code>say</code> can use them; <code>play.sh</code> prefers them automatically once they are on disk.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Speaker</th><th>Preference order</th><th>Fallback</th></tr></thead>
+        <tbody>
+          <tr><td class="lbl">A (Sam)</td><td>Ava (Premium) &rarr; Zoe (Premium) &rarr; Samantha (Enhanced)</td><td>Samantha</td></tr>
+          <tr><td class="lbl">B (Dan)</td><td>Daniel (Enhanced) &rarr; Tom (Enhanced)</td><td>Daniel</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="tag">Install once</span>
+      <p>System Settings &rarr; Accessibility &rarr; Spoken Content &rarr; System Voice &rarr; <strong>Manage Voices...</strong>, tick the voices above, wait for the download. Confirm with <code>say -v '?' | grep -i premium</code>. Siri voices are not exposed to <code>say</code>. Override any time: <code>A_VOICE="Zoe (Premium)" just eval-play</code>.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="script">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Writing another script</h2></div>
+    <p>Keep the format: <code>A:</code> and <code>B:</code> lines are spoken, <code>PAUSE &lt;seconds&gt;</code> is silence, <code>#</code> is a comment. Anything else makes <code>play.sh</code> stop with the offending line.</p>
+    <ul>
+      <li>Spell numbers and dates out the way a person says them. That is what the STT hears and what the judge checks against.</li>
+      <li>Give the judge something to grade: at least one decision, one disagreement, one correction, and action items with owners and dates.</li>
+      <li>Add one tangent. A summary that headlines it is a useful failure signal.</li>
+      <li>Keep it under ~700 words so a trial stays around five minutes.</li>
+    </ul>
+    <p>Play it with <code>just eval-play path/to/new.txt</code> and compare with <code>SCRIPT=path/to/new.txt just eval-compare a b</code>.</p>
+  </section>
+
+</main>
+
+<footer>
+  Source of truth: <code>docs/MODEL-EVAL.md</code> &nbsp;&middot;&nbsp; scripts: <code>scripts/eval/</code> &nbsp;&middot;&nbsp; sibling: <a href="DEBUGGING-TRANSCRIPTS.html">Debugging transcripts</a>
+</footer>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({
+  startOnLoad: true,
+  theme: "base",
+  securityLevel: "loose",
+  fontFamily: '"Hanken Grotesk", ui-sans-serif, system-ui, sans-serif',
+  themeVariables: {
+    background: "#FFFFFF",
+    primaryColor: "#ECE9FB",
+    primaryTextColor: "#211D18",
+    primaryBorderColor: "#5B4FC7",
+    lineColor: "#A89F90",
+    secondaryColor: "#E7F0E8",
+    tertiaryColor: "#FBF7EF",
+    fontSize: "13px",
+    clusterBkg: "#FDFBF7",
+    clusterBorder: "#EBE3D5",
+    edgeLabelBackground: "#FBF7EF"
+  },
+  flowchart: { curve: "basis", useMaxWidth: true, padding: 14 }
+});
+</script>
+
+</body>
+</html>
