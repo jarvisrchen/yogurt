@@ -37,11 +37,30 @@ already enforces this -- do not touch it without preserving the order.
    git push origin main
    ```
 
-4. **Create a fine-grained PAT with `contents:write` on `homebrew-yogurt`, add it as `HOMEBREW_TAP_TOKEN`.**
-   - GitHub -> Settings -> Developer settings -> Fine-grained tokens -> Generate new token.
-   - Repository access: only `jarvisrchen/homebrew-yogurt`.
-   - Permissions: Contents -> Read and write.
-   - Add the token as a repo secret on `jarvisrchen/yogurt`: Settings -> Secrets and variables -> Actions -> `HOMEBREW_TAP_TOKEN`.
+4. **Create a fine-grained PAT scoped to `homebrew-yogurt`, add it as `HOMEBREW_TAP_TOKEN`.**
+   Fine-grained PATs can only be created in the browser -- there is no `gh`
+   or REST path for it. Everything after this step is CLI-doable.
+   - <https://github.com/settings/personal-access-tokens/new>
+   - Resource owner: `jarvisrchen`. Repository access: only `jarvisrchen/homebrew-yogurt`.
+   - Permissions: Contents -> Read and write, **and** Pull requests -> Read and write.
+     Both are required: Contents alone pushes the `bump-<version>` branch but
+     `gh pr create` then 403s. (Metadata -> Read-only is added automatically.)
+   - Add the token as a repo secret on `jarvisrchen/yogurt`:
+     ```bash
+     gh secret set HOMEBREW_TAP_TOKEN -R jarvisrchen/yogurt   # paste at the prompt
+     gh secret list -R jarvisrchen/yogurt                     # confirm it is there
+     ```
+   - Smoke-test the token before spending a real tag -- this runs the same two
+     operations the `tap` job does, in the same order:
+     ```bash
+     export GH_TOKEN=github_pat_...
+     git clone https://x-access-token:$GH_TOKEN@github.com/jarvisrchen/homebrew-yogurt.git /tmp/tap-check
+     cd /tmp/tap-check && git checkout -b token-smoke && git commit --allow-empty -m smoke
+     git push origin token-smoke
+     gh pr create --title smoke --body smoke --base main --head token-smoke
+     gh pr close token-smoke -R jarvisrchen/homebrew-yogurt --delete-branch
+     cd - && rm -rf /tmp/tap-check && unset GH_TOKEN
+     ```
 
 ## Every release
 
