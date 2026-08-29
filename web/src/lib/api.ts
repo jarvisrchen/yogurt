@@ -112,6 +112,13 @@ export interface EnhanceResponse {
   enriched_md: string;
   /** Path on disk where the per-meeting markdown file was written. */
   notes_file: string;
+  /**
+   * True when the meeting had no notes and a trivial transcript, so the
+   * server skipped enhancing entirely (`enriched_md` / `notes_file` are
+   * both empty). The caller shows a "Meeting too short" state instead of
+   * a near-empty editor.
+   */
+  too_short?: boolean;
 }
 
 /**

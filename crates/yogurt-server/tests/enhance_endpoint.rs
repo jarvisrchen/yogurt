@@ -89,7 +89,7 @@ async fn it_enhances_a_meeting_end_to_end() {
         std::env::remove_var("YOGURT_LLM_MODEL");
     }
 
-    let (addr, token, _handle, _tmp, db_path) = spawn_server().await;
+    let (addr, token, _handle, tmp, db_path) = spawn_server().await;
     let client = reqwest::Client::new();
 
     // 1) Create a fresh meeting via POST /api/meetings.
@@ -279,6 +279,122 @@ async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
     assert!(
         enriched_md.contains("We should ship the stored"),
         "AI bullet must summarize the stored transcript text. got: {enriched_md}"
+    );
+}
+
+/// A meeting with no typed notes and a trivial transcript (well under
+/// `TOO_SHORT_TRANSCRIPT_WORDS`) must skip the LLM/merge/persist pipeline
+/// entirely and report `too_short: true` instead of enhancing a near-empty
+/// document.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_skips_llm_for_a_too_short_meeting() {
+    // Belt-and-suspenders like the other tests: the too-short path returns
+    // before the LLM is ever resolved, but clear the env anyway so a stray
+    // leaked var can't mask a regression that removes the early return.
+    unsafe {
+        std::env::remove_var("YOGURT_LLM_BASE_URL");
+        std::env::remove_var("YOGURT_LLM_API_KEY");
+        std::env::remove_var("YOGURT_LLM_MODEL");
+    }
+
+    let (addr, token, _handle, tmp, _db_path) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let meeting_id = created["id"].as_str().unwrap().to_string();
+
+    // No notes, and a transcript well under the 20-word threshold - an
+    // accidental tap that caught a stray "hello?" before the user hung up.
+    let resp = client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "",
+            "transcript_json": "[{\"ts_ms\":500,\"channel\":\"mic\",\"text\":\"hello is anyone there\"}]",
+            "title": "Accidental tap",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "too-short meetings still return 200");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["too_short"].as_bool(), Some(true), "got: {body}");
+    assert_eq!(body["enriched_md"].as_str(), Some(""), "got: {body}");
+
+    // The LLM/merge/persist pipeline never ran - the Library row
+    // POST /api/meetings created (in yogurt-db, not the Phase-0 storage
+    // enhance itself writes to) stays untouched, so enriched_md is still
+    // NULL.
+    let app_db_path = tmp.path().join("yogurt-app.sqlite");
+    let conn = rusqlite::Connection::open(&app_db_path).expect("reopen yogurt-db");
+    let enriched_md_db: Option<String> = conn
+        .query_row(
+            "SELECT enriched_md FROM meetings WHERE id = ?",
+            [&meeting_id],
+            |row| row.get(0),
+        )
+        .expect("meeting row should exist from POST /api/meetings");
+    assert!(
+        enriched_md_db.is_none(),
+        "too-short meeting must not persist an enriched_md: {enriched_md_db:?}"
+    );
+}
+
+/// Regression guard for the threshold's notes-gate: real user notes must
+/// still enhance normally even when the transcript itself is trivial - the
+/// too-short skip is about having NOTHING to work with, not a short
+/// transcript alone.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_still_runs_when_notes_are_present_even_with_a_trivial_transcript() {
+    unsafe {
+        std::env::remove_var("YOGURT_LLM_BASE_URL");
+        std::env::remove_var("YOGURT_LLM_API_KEY");
+        std::env::remove_var("YOGURT_LLM_MODEL");
+    }
+
+    let (addr, token, _handle, _tmp, _db_path) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let meeting_id = created["id"].as_str().unwrap().to_string();
+
+    let resp = client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- pricing\n",
+            "transcript_json": "[]",
+            "title": "Real notes, silent transcript",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["too_short"].as_bool(),
+        Some(false),
+        "notes alone are enough to enhance. got: {body}"
+    );
+    assert!(
+        body["enriched_md"].as_str().unwrap().contains("- pricing"),
+        "got: {body}"
     );
 }
 

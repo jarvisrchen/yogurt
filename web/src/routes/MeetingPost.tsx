@@ -79,7 +79,16 @@ interface MeetingFetchResponse {
 
 interface LocationStateShape {
   enrichedMd?: string;
+  /** Set by `Meeting.tsx`'s endMeeting when `EnhanceResponse.too_short` came
+   * back true — the server skipped enhancing a meeting with no notes and a
+   * trivial transcript. Drives the brief "Meeting too short" state below
+   * instead of rendering a near-empty editor. */
+  tooShort?: boolean;
 }
+
+/** How long the "Meeting too short" state stays up before bouncing to the
+ * library — long enough to read, short enough not to feel stuck. */
+const TOO_SHORT_REDIRECT_MS = 1400;
 
 export function MeetingPost() {
   const params = useParams<{ id: string }>();
@@ -89,6 +98,7 @@ export function MeetingPost() {
 
   const stateShape = (location.state ?? {}) as LocationStateShape;
   const preloadedEnrichedMd = stateShape.enrichedMd;
+  const tooShort = stateShape.tooShort === true;
 
   // Covers deep links, refresh, and the back button landing on the frozen
   // post view for a meeting that's STILL recording server-side — bounce to
@@ -431,7 +441,37 @@ export function MeetingPost() {
     }
   }, [params.id, navigate]);
 
+  // Too-short meetings never ran enhance server-side (see enhance.rs'
+  // TOO_SHORT_TRANSCRIPT_WORDS gate) — show the brief state below, then
+  // auto-return to the library instead of leaving the user on a blank
+  // editor they'd have to navigate out of manually.
+  useEffect(() => {
+    if (!tooShort) return;
+    const t = setTimeout(
+      () => navigate("/", { replace: true }),
+      TOO_SHORT_REDIRECT_MS,
+    );
+    return () => clearTimeout(t);
+  }, [tooShort, navigate]);
+
   if (!meetingId) return null;
+
+  if (tooShort) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: PAPER }}
+        data-testid="meeting-too-short"
+      >
+        <div role="status" aria-live="polite" className="text-center space-y-1.5">
+          <p className="font-serif text-[19px] text-ink">Meeting too short</p>
+          <p className="text-[13px] text-mut">
+            Nothing to enhance — back to the library…
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (activeRecording.data?.id === meetingId) {
     return <Navigate to={`/meeting/${meetingId}`} replace />;

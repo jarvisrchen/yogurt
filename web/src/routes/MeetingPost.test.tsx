@@ -64,19 +64,24 @@ function mockMeetingFetch(row: Record<string, unknown>) {
   );
 }
 
-function renderPost() {
+function renderPost(routerState?: Record<string, unknown>) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[`/meeting/${MEETING_ID}/post`]}>
+      <MemoryRouter
+        initialEntries={[
+          { pathname: `/meeting/${MEETING_ID}/post`, state: routerState },
+        ]}
+      >
         <Routes>
           <Route path="/meeting/:id/post" element={<MeetingPost />} />
           <Route
             path="/meeting/:id"
             element={<div data-testid="live-view" />}
           />
+          <Route path="/" element={<div data-testid="library-view" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -147,5 +152,41 @@ describe("MeetingPost — live-recording redirect", () => {
       expect(screen.getByTestId("meeting-post-route")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("live-view")).toBeNull();
+  });
+});
+
+describe("MeetingPost — too-short meeting", () => {
+  // Reproduces the docs/TODO.md "too short" case: `endMeeting()` navigates
+  // here with `tooShort: true` in router state when the server's enhance
+  // response reported `too_short` (empty notes + trivial transcript, see
+  // `enhance.rs`'s `TOO_SHORT_TRANSCRIPT_WORDS` gate). The route must show
+  // the brief state instead of the editor, then auto-return to the library.
+  beforeEach(() => {
+    state.active = null;
+    patchMock.mockClear();
+  });
+
+  it("shows a 'Meeting too short' state instead of the editor, then returns to the library", async () => {
+    mockMeetingFetch({
+      id: MEETING_ID,
+      title: "Accidental tap",
+      started_at: 1000,
+      ended_at: 1500,
+      notes_md: "",
+      enriched_md: null,
+      transcript_json: "[]",
+    });
+
+    renderPost({ tooShort: true });
+
+    expect(screen.getByTestId("meeting-too-short")).toBeInTheDocument();
+    expect(screen.queryByTestId("meeting-post-route")).toBeNull();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("library-view")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
   });
 });
