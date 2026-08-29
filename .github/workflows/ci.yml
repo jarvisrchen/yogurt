@@ -4,21 +4,44 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  INSTA_UPDATE: no
 
 jobs:
   rust:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust (stable)
-        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.83"
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: rustfmt
         run: cargo fmt --all -- --check
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      # rust-embed's #[folder = "../../web/dist/"] derive requires the
+      # folder to exist at compile time (web/dist is gitignored) -- build
+      # it before anything that compiles yogurt-server (clippy, test).
+      - name: build web (rust-embed needs web/dist at compile time)
+        run: |
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web build
       - name: clippy
         run: cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings
       - name: test
-        run: cargo test --workspace --features yogurt-stt/local-stt
+        run: cargo test --workspace --features yogurt-stt/local-stt --no-fail-fast
         env:
           YOGURT_MEMORY_KEYSTORE: "1"
 
@@ -40,3 +63,5 @@ jobs:
         run: pnpm --dir web typecheck
       - name: test
         run: pnpm --dir web test
+      - name: build
+        run: pnpm --dir web build
