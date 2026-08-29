@@ -54,6 +54,7 @@ const { baseFixture } = vi.hoisted(() => {
         base_url: "http://localhost:11434/v1",
         default_model: "llama3.1:8b",
         models: ["llama3.1:8b", "mistral"],
+        docs_url: "https://ollama.com/library",
       },
     ],
     deepgram_key_masked: null,
@@ -241,6 +242,34 @@ describe("test connection", () => {
 });
 
 /**
+ * Pasting a key into the password field shows a live preview in the
+ * stored-key format (`••••XXXX`, last 4 chars) so the user can confirm
+ * they pasted the right key — without it, a partial paste / stray
+ * whitespace / wrong-keyboard-layout typo isn't visible until after
+ * Save, when the masked view re-renders from the server.
+ */
+describe("API key live preview", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the last 4 chars as ••••XXXX once the draft is long enough", async () => {
+    renderSettings();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
+    const field = await screen.findByLabelText("API key for Minimax");
+
+    // Empty draft: no preview yet.
+    expect(screen.queryByText(/Will save as/)).not.toBeInTheDocument();
+
+    fireEvent.change(field, { target: { value: "sk-ABCDefgh" } });
+    expect(
+      await screen.findByText(/Will save as/),
+    ).toHaveTextContent("••••efgh");
+  });
+});
+
+/**
  * Cloning a preset chip should land the user at the API key field with
  * the cursor already there — the whole point of cloning is to paste a key,
  * so requiring a second click on `Add key` would be friction with no upside.
@@ -359,5 +388,37 @@ describe("MODEL Refresh works with a draft API key", () => {
         "sk-draft",
       );
     });
+  });
+});
+
+/**
+ * Each preset ships a `docs_url` pointing at the provider's public
+ * model catalog. The Settings page renders it as a small link below
+ * the MODEL input so the user has a discovery surface even when
+ * `/v1/models` is wrong, missing, or behind auth — the canonical
+ * case being a Google Gemini deprecation where the user needs to see
+ * the new tiers before they can pick one.
+ */
+describe("preset docs link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders a See all {preset} models link anchored at the preset's docs_url", async () => {
+    renderSettings();
+
+    // Scope to the active card — the inactive Minimax row doesn't match
+    // any preset base_url so it has no docs link, which would otherwise
+    // either be missing (findBy fails) or be a different match.
+    const activeCard = await screen.findByTestId("active-provider-card");
+    // The link text uses the preset's brand name ("Ollama (local)"),
+    // NOT the user-chosen provider name ("Local Ollama") — the docs
+    // page belongs to the brand, not to the user's nickname.
+    const link = await within(activeCard).findByRole("link", {
+      name: /see all ollama \(local\) models/i,
+    });
+    expect(link).toHaveAttribute("href", "https://ollama.com/library");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 });

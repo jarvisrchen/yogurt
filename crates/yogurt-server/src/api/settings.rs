@@ -147,6 +147,7 @@ struct PresetView {
     base_url: &'static str,
     default_model: &'static str,
     models: &'static [&'static str],
+    docs_url: &'static str,
 }
 
 #[derive(Serialize)]
@@ -170,6 +171,7 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
             base_url: p.base_url,
             default_model: p.default_model,
             models: p.models,
+            docs_url: p.docs_url,
         })
         .collect();
     let keys = s.keys.clone();
@@ -269,6 +271,7 @@ async fn list_presets() -> Json<Vec<PresetView>> {
                 base_url: p.base_url,
                 default_model: p.default_model,
                 models: p.models,
+                docs_url: p.docs_url,
             })
             .collect(),
     )

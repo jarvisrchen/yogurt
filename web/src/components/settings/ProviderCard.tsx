@@ -27,7 +27,18 @@ interface Props {
 export function ProviderCard({
   provider,
   presetModels = [],
-}: Props & { presetModels?: string[] }) {
+  docsUrl,
+  presetName,
+}: Props & {
+  presetModels?: string[];
+  docsUrl?: string;
+  /**
+   * Brand name from the matching built-in preset (e.g. "Google Gemini").
+   * Used as the visible text of the docs link — the user-chosen
+   * `provider.name` ("My workspace") would read badly there.
+   */
+  presetName?: string;
+}) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({
@@ -104,6 +115,16 @@ export function ProviderCard({
           )}
         </Field>
       </div>
+      {docsUrl && (
+        <a
+          href={docsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
+        >
+          See all {presetName ?? provider.name} models →
+        </a>
+      )}
 
       {editing ? (
         <button

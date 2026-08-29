@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { settingsApi } from "../lib/api/settings";
+import type { Preset } from "../lib/api/settings";
 import { SidebarNav } from "../components/settings/SidebarNav";
 import type { SettingsSection } from "../components/settings/SidebarNav";
 import { ProviderCard } from "../components/settings/ProviderCard";
@@ -86,6 +87,12 @@ export function Settings() {
   const data = q.data!;
   const active = data.providers.find((p) => p.is_active);
   const inactive = data.providers.filter((p) => !p.is_active);
+  // Match a saved provider to its built-in preset by base_url so the card
+  // can show the preset's model hint and docs link. The match is by URL
+  // only — if the user pastes a custom URL we just don't show the hint,
+  // which is the same behavior as before the preset metadata existed.
+  const findPreset = (baseUrl: string): Preset | undefined =>
+    data.presets.find((p) => p.base_url === baseUrl);
 
   return (
     <div className="flex min-h-screen bg-[var(--color-paper)]">
@@ -115,10 +122,9 @@ export function Settings() {
             {active ? (
               <ProviderCard
                 provider={active}
-                presetModels={
-                  data.presets.find((p) => p.base_url === active.base_url)
-                    ?.models ?? []
-                }
+                presetModels={findPreset(active.base_url)?.models ?? []}
+                docsUrl={findPreset(active.base_url)?.docs_url}
+                presetName={findPreset(active.base_url)?.name}
               />
             ) : data.providers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line bg-white/50 p-6 space-y-1">
@@ -143,10 +149,9 @@ export function Settings() {
                     key={p.id}
                     provider={p}
                     autoOpenKey={p.id === newlyCreatedProviderId}
-                    presetModels={
-                      data.presets.find((preset) => preset.base_url === p.base_url)
-                        ?.models ?? []
-                    }
+                    presetModels={findPreset(p.base_url)?.models ?? []}
+                    docsUrl={findPreset(p.base_url)?.docs_url}
+                    presetName={findPreset(p.base_url)?.name}
                   />
                 ))}
               </div>

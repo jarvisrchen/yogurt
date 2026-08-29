@@ -29,8 +29,15 @@ pub struct Preset {
     ///
     /// Lists go stale when a provider ships a new model; the Settings page
     /// exposes a `Refresh` button that replaces the datalist with the live
-    /// `GET {base_url}/models` response (requires a stored key).
+    /// `GET {base_url}/models` response (requires a stored key) and a
+    /// `docs_url` link for when `/models` is wrong / missing / behind auth.
     pub models: &'static [&'static str],
+    /// Public URL of the provider's "available models" page. Rendered by
+    /// the Settings page as a small `See all models →` link next to the
+    /// MODEL field — useful both as a Refresh fallback (some providers
+    /// don't expose `/v1/models`) and as a discovery surface for preview /
+    /// regional models the static list will never have.
+    pub docs_url: &'static str,
 }
 
 /// Built-in presets. Order matters: it's the order chips appear in the UI.
@@ -50,6 +57,7 @@ pub const PRESETS: &[Preset] = &[
             "abab6.5s-chat",
             "abab6.5-chat",
         ],
+        docs_url: "https://platform.MiniMax.io/docs/api-reference",
     },
     Preset {
         name: "OpenAI",
@@ -63,6 +71,7 @@ pub const PRESETS: &[Preset] = &[
             "o4-mini",
             "o3",
         ],
+        docs_url: "https://platform.openai.com/docs/models",
     },
     // Google exposes Gemini through an OpenAI-compatible shim; the native
     // `generativeLanguage` REST shape is NOT what we speak. The trailing
@@ -80,12 +89,14 @@ pub const PRESETS: &[Preset] = &[
             "gemini-1.5-pro",
             "gemini-1.5-flash",
         ],
+        docs_url: "https://ai.google.dev/gemini/docs/models",
     },
     Preset {
         name: "DeepSeek",
         base_url: "https://api.deepseek.com/v1",
         default_model: "deepseek-chat",
         models: &["deepseek-chat", "deepseek-reasoner"],
+        docs_url: "https://api-docs.deepseek.com/quick_start/pricing",
     },
     Preset {
         name: "Ollama (local)",
@@ -95,6 +106,7 @@ pub const PRESETS: &[Preset] = &[
         // locally — there is no safe static list. Leave empty so the
         // datalist only shows whatever the user has typed or refreshed.
         models: &["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2"],
+        docs_url: "https://ollama.com/library",
     },
     Preset {
         name: "LM Studio (local)",
@@ -102,6 +114,7 @@ pub const PRESETS: &[Preset] = &[
         default_model: "",
         // Same shape as Ollama — model list is what's loaded locally.
         models: &[],
+        docs_url: "https://lmstudio.ai/models",
     },
     Preset {
         name: "OpenRouter",
@@ -114,6 +127,7 @@ pub const PRESETS: &[Preset] = &[
             "google/gemini-2.5-flash",
             "meta-llama/llama-3.1-70b-instruct",
         ],
+        docs_url: "https://openrouter.ai/models",
     },
 ];
 
