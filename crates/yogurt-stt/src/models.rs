@@ -116,6 +116,17 @@ pub const REGISTRY: &[ModelSpec] = &[
         sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
         intel_supported: false,
     },
+    ModelSpec {
+        name: "large-v3-turbo",
+        filename: "ggml-large-v3-turbo.bin",
+        size_mb: 1_620,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        // PLACEHOLDER — must be re-verified via `./scripts/refresh-model-hashes.sh large-v3-turbo`
+        // before merge (see file-top SHA256 PLACEHOLDERS warning).
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000",
+        // Same Metal/arm64-only constraint as large-v3.
+        intel_supported: false,
+    },
 ];
 
 /// Linear scan for a model by name.  Returns `None` for unknown names.
