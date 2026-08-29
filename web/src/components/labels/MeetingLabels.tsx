@@ -14,10 +14,9 @@ import { LabelPicker } from "./LabelPicker";
 interface Props {
   meetingId: string;
   labels?: Label[];
-  compact?: boolean;
 }
 
-export function MeetingLabels({ meetingId, labels, compact }: Props) {
+export function MeetingLabels({ meetingId, labels }: Props) {
   const [open, setOpen] = useState(false);
   const meetingQuery = useMeeting(labels ? undefined : meetingId);
   const setLabels = useSetMeetingLabels();
@@ -36,7 +35,6 @@ export function MeetingLabels({ meetingId, labels, compact }: Props) {
         <LabelChip
           key={l.id}
           label={l}
-          size={compact ? "sm" : "md"}
           onRemove={() => removeLabel(l.id)}
         />
       ))}
