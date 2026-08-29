@@ -105,6 +105,18 @@ pub const REGISTRY: &[ModelSpec] = &[
         intel_supported: false,
     },
     ModelSpec {
+        name: "large-v3-turbo",
+        filename: "ggml-large-v3-turbo.bin",
+        size_mb: 1_620,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        // Verified against the HuggingFace LFS pointer on 2026-08-29
+        // (`raw/main/ggml-large-v3-turbo.bin` -> oid sha256, size
+        // 1624555275 bytes). Same value the blob download must hash to.
+        sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+        // Same Metal/arm64-only constraint as large-v3.
+        intel_supported: false,
+    },
+    ModelSpec {
         name: "large-v3",
         filename: "ggml-large-v3.bin",
         size_mb: 3_094,
@@ -116,22 +128,11 @@ pub const REGISTRY: &[ModelSpec] = &[
         sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
         intel_supported: false,
     },
-    ModelSpec {
-        name: "large-v3-turbo",
-        filename: "ggml-large-v3-turbo.bin",
-        size_mb: 1_620,
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-        // PLACEHOLDER — must be re-verified via `./scripts/refresh-model-hashes.sh large-v3-turbo`
-        // before merge (see file-top SHA256 PLACEHOLDERS warning).
-        sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-        // Same Metal/arm64-only constraint as large-v3.
-        intel_supported: false,
-    },
 ];
 
 /// Linear scan for a model by name.  Returns `None` for unknown names.
 ///
-/// O(n) but `n == 4` so it doesn't matter; no hashmap overhead.
+/// O(n) but `n == 5` so it doesn't matter; no hashmap overhead.
 pub fn lookup(name: &str) -> Option<&'static ModelSpec> {
     REGISTRY.iter().find(|m| m.name == name)
 }
@@ -494,8 +495,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_has_four_models_in_size_order() {
-        assert_eq!(REGISTRY.len(), 4, "registry must contain exactly 4 models");
+    fn registry_has_five_models_in_size_order() {
+        assert_eq!(REGISTRY.len(), 5, "registry must contain exactly 5 models");
         // Ascending by size_mb.
         for pair in REGISTRY.windows(2) {
             assert!(
@@ -515,6 +516,7 @@ mod tests {
         assert_eq!(lookup("tiny.en").unwrap().name, "tiny.en");
         assert_eq!(lookup("medium.en").unwrap().name, "medium.en");
         assert_eq!(lookup("large-v3").unwrap().name, "large-v3");
+        assert_eq!(lookup("large-v3-turbo").unwrap().name, "large-v3-turbo");
         assert!(lookup("nonexistent").is_none());
         assert!(lookup("").is_none());
         // Case-sensitive - we want the UI to be exact-match.
