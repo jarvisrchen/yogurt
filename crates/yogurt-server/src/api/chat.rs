@@ -202,7 +202,7 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
     }
 
     // Resolve the LLM per-request (env override → active provider +
-    // Keychain → mock) — the exact same chain the enhance handler uses,
+    // stored key → mock) — the exact same chain the enhance handler uses,
     // so chat can never silently answer from a different model than the
     // one the user configured in Settings.
     let llm = match crate::llm_openai::resolve(&state).await {

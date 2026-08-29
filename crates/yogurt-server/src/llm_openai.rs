@@ -8,8 +8,8 @@
 //! - [`from_env`] — developer override via `YOGURT_LLM_*` env vars
 //!   (highest priority, checked first).
 //! - [`from_active_provider`] — the production path: active provider row
-//!   from the `providers` table + its API key from the Keychain-backed
-//!   [`yogurt_db::keychain::ApiKeyStore`].
+//!   from the `providers` table + its API key from the file-backed
+//!   [`yogurt_db::keys::ApiKeyStore`].
 
 use std::time::Duration;
 
@@ -31,7 +31,7 @@ pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 /// Priority chain:
 ///   1. `state.llm_override` — test injection, never set in production.
 ///   2. `YOGURT_LLM_*` env vars — developer override.
-///   3. Active provider row + Keychain key. A configured provider whose
+///   3. Active provider row + stored key. A configured provider whose
 ///      key can't be read is a hard `Err` — never a silent mock fallback.
 ///   4. `MockLlm` when nothing is configured at all (logged as a warn) so
 ///      first-run users still see the hero flow work.
@@ -66,7 +66,7 @@ pub fn from_env() -> Option<OpenAiCompatClient> {
 }
 
 /// Production resolution path: build a client from the active provider row
-/// (`providers` table) + its Keychain-stored API key.
+/// (`providers` table) + its stored API key.
 ///
 /// Contract (the enhance handler maps each arm directly):
 /// - `Ok(None)` — no active provider configured; caller falls back to mock.
@@ -75,32 +75,12 @@ pub fn from_env() -> Option<OpenAiCompatClient> {
 ///   caller must surface this (502), never silently fall back to mock.
 pub async fn from_active_provider(
     db: &yogurt_db::Db,
-    keys: std::sync::Arc<dyn yogurt_db::keychain::ApiKeyStore>,
+    keys: std::sync::Arc<dyn yogurt_db::keys::ApiKeyStore>,
 ) -> anyhow::Result<Option<OpenAiCompatClient>> {
     let Some(provider) = yogurt_db::providers::active(db)? else {
         return Ok(None);
     };
-    // SET-10: Keychain reads can block for seconds (user prompt on first
-    // access) — never call ApiKeyStore::get on the tokio reactor. Bounded
-    // at 10s: a wedged Keychain (unanswered macOS access prompt) must fail
-    // the request with an actionable message, not hang chat/enhance forever.
-    let provider_id = provider.id.clone();
-    let key = match tokio::time::timeout(
-        Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || keys.get(&provider_id)),
-    )
-    .await
-    {
-        Ok(joined) => joined
-            .map_err(|e| anyhow::anyhow!("key store task failed: {e}"))?
-            .unwrap_or(None),
-        Err(_) => anyhow::bail!(
-            "macOS Keychain did not respond within 10s while reading the key for \
-             provider '{}' - approve the Keychain access prompt if one is showing, \
-             or re-enter the key in Settings",
-            provider.name
-        ),
-    };
+    let key = keys.get(&provider.id)?;
     // T-x3u-01: error names the provider only — never the key value.
     match key {
         Some(key) => Ok(Some(OpenAiCompatClient::new(
@@ -121,7 +101,7 @@ pub async fn from_active_provider(
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use yogurt_db::keychain::{ApiKeyStore, MemoryKeyStore};
+    use yogurt_db::keys::{ApiKeyStore, MemoryKeyStore};
     use yogurt_db::providers::{insert, set_active, NewProvider};
     use yogurt_db::Db;
 

@@ -2,7 +2,7 @@
 //!
 //! `providers` rows describe an OpenAI-compatible LLM endpoint the user has
 //! configured (base URL + model + active flag). API keys are NOT stored
-//! here — they live in the macOS Keychain via the [`crate::keychain`] module.
+//! here — they live in `~/.yogurt/keys.json` via the [`crate::keys`] module.
 //!
 //! The "single active LLM provider" invariant is enforced by a partial
 //! unique index in `V001__initial.sql`:
@@ -268,7 +268,7 @@ pub fn update(db: &Db, id: &str, name: &str, base_url: &str, model: &str) -> Res
 }
 
 /// Delete a provider row. Caller is responsible for deleting the matching
-/// Keychain entry (see `keychain::ApiKeyStore::delete`).
+/// key-file entry (see `keys::ApiKeyStore::delete`).
 pub fn delete(db: &Db, id: &str) -> Result<()> {
     db.with_conn(|conn| conn.execute("DELETE FROM providers WHERE id=?1", params![id]))?;
     Ok(())

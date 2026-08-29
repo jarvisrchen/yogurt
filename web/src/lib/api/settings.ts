@@ -19,7 +19,7 @@
  *
  * A rejected key still comes back HTTP 200 with `ok: false`; the request
  * succeeded, the answer is just "no". Non-200 means the test could not be
- * run at all (unknown id, wedged Keychain).
+ * run at all (unknown id).
  */
 export interface TestConnectionResult {
   ok: boolean;
@@ -80,7 +80,7 @@ export interface SettingsView {
   general: General;
   providers: ProviderView[];
   presets: Preset[];
-  /** "••••XXXX" when a Deepgram STT key is stored in the Keychain, null otherwise. */
+  /** "••••XXXX" when a Deepgram STT key is stored, null otherwise. */
   deepgram_key_masked: string | null;
 }
 
@@ -163,9 +163,9 @@ export const settingsApi = {
   /**
    * `POST /api/settings/providers/:id/test` — verify a key actually works
    * before committing it. Pass the draft key to test something you have not
-   * saved yet; omit it to test whatever is already in the Keychain.
+   * saved yet; omit it to test whatever is already stored.
    *
-   * The draft never reaches the Keychain, and the server scrubs it out of
+   * The draft never reaches the key file, and the server scrubs it out of
    * the provider's error text before replying.
    */
   testProvider: (id: string, api_key?: string) =>
@@ -174,7 +174,7 @@ export const settingsApi = {
       body: JSON.stringify(api_key ? { api_key } : {}),
     }),
   /** `POST /api/settings/stt/key` — stores the Deepgram STT key in the
-   *  Keychain. No provider id: the STT key is a singleton, keyed server-side
+   *  key file. No provider id: the STT key is a singleton, keyed server-side
    *  by `DEEPGRAM_KEY_ID`. */
   setSttKey: (api_key: string) =>
     http<void>("/api/settings/stt/key", {
@@ -184,10 +184,10 @@ export const settingsApi = {
   /**
    * `POST /api/settings/providers/:id/models` — probe the provider's
    * `/v1/models` and return the list of model ids it advertises. A draft
-   * `apiKey` is preferred over the stored Keychain entry so the user can
+   * `apiKey` is preferred over the stored key so the user can
    * discover what's available *before* saving — useful when the saved
    * model is the only thing wrong (e.g. Google's frequent deprecations).
-   * The draft never reaches the Keychain. Backend returns 422 if neither
+   * The draft never reaches the key file. Backend returns 422 if neither
    * a draft nor a stored key is available.
    */
   listProviderModels: (id: string, apiKey?: string) =>

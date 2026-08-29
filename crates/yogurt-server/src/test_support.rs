@@ -30,7 +30,7 @@ use crate::{AppState, Mode};
 
 /// Test-only bridge to the crate-private LLM resolution chain
 /// (`llm_openai::resolve`: override -> `YOGURT_LLM_*` env -> active
-/// provider + Keychain key -> `MockLlm`). `llm_openai` is `pub(crate)`, so
+/// provider + stored key -> `MockLlm`). `llm_openai` is `pub(crate)`, so
 /// this one-line re-export is what lets `tests/llm_resolution.rs` exercise
 /// the real priority chain instead of duplicating its logic.
 pub use crate::llm_openai::resolve;
@@ -131,7 +131,7 @@ pub async fn run_with_mock_llm(
         markdown_exporter,
         prompts,
         db,
-        keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
+        keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
         llm_override: Some(Arc::new(MockChunksLlm::new(chunks))),
         meeting_repo,
         label_repo,

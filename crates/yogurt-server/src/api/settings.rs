@@ -73,7 +73,7 @@ pub fn router() -> Router<AppState> {
 // ─── Provider serialization (NO API KEY EVER) ────────────────────────────────
 
 /// Wire-format view of a provider row. **Intentionally has no `api_key`
-/// field.** The Keychain-resident secret is exposed only via
+/// field.** The stored secret is exposed only via
 /// [`Self::api_key_masked`] (`"••••XXXX"` or `null`). The load-bearing
 /// regression test
 /// `api_responses_never_include_the_raw_api_key` enforces that no handler
@@ -90,9 +90,7 @@ struct ProviderView {
     api_key_masked: Option<String>,
 }
 
-/// Convert a DB row + its pre-fetched masked key into the wire view.
-/// The masked form comes from [`masked_views`] so the (potentially
-/// blocking) Keychain reads stay off the tokio reactor (SET-10).
+/// Convert a DB row + its masked key into the wire view.
 fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
     ProviderView {
         id: p.id,
@@ -105,40 +103,13 @@ fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
     }
 }
 
-/// Fetch the masked key for each provider row on a blocking thread.
-/// SET-10: `ApiKeyStore` reads can stall for seconds on a cold Keychain
-/// (user prompt on first access) — never run them on the reactor.
-async fn masked_views(
-    state: &AppState,
-    rows: Vec<providers::Provider>,
-) -> Result<Vec<ProviderView>, Error> {
-    let keys = state.keys.clone();
-    // Bounded at 5s: a wedged Keychain (unanswered macOS access prompt
-    // after a binary rebuild) must degrade to "no mask shown" — not hang
-    // the whole Settings page on its loading skeleton.
-    let fallback: Vec<providers::Provider> = rows.clone();
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        tokio::task::spawn_blocking(move || {
-            rows.into_iter()
-                .map(|p| {
-                    let masked = keys.masked(&p.id).ok().flatten();
-                    to_view(p, masked)
-                })
-                .collect()
-        }),
-    )
-    .await
-    {
-        Ok(joined) => joined.map_err(|e| Error::Internal(format!("keychain task join: {e}"))),
-        Err(_) => {
-            tracing::warn!(
-                "keychain did not respond within 5s while masking provider keys — \
-                 serving settings without key masks"
-            );
-            Ok(fallback.into_iter().map(|p| to_view(p, None)).collect())
-        }
-    }
+fn masked_views(state: &AppState, rows: Vec<providers::Provider>) -> Vec<ProviderView> {
+    rows.into_iter()
+        .map(|p| {
+            let masked = state.keys.masked(&p.id).ok().flatten();
+            to_view(p, masked)
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -155,7 +126,7 @@ struct SettingsView {
     general: settings::General,
     providers: Vec<ProviderView>,
     presets: Vec<PresetView>,
-    /// `Some("••••XXXX")` when a Deepgram STT key is stored (Keychain entry
+    /// `Some("••••XXXX")` when a Deepgram STT key is stored (key-file entry
     /// `stt-deepgram`), `None` otherwise. Never the raw key.
     deepgram_key_masked: Option<String>,
 }
@@ -174,21 +145,11 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
             docs_url: p.docs_url,
         })
         .collect();
-    let keys = s.keys.clone();
-    // Same 5s bound as `masked_views` — see the wedged-Keychain note there.
-    // Run both Keychain lookups concurrently so a wedged Keychain costs
-    // one 5s window, not two in sequence.
-    let deepgram_fut = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        tokio::task::spawn_blocking(move || keys.masked(crate::meetings::DEEPGRAM_KEY_ID)),
-    );
-    let (providers, deepgram_res) =
-        tokio::join!(masked_views(&s, providers::list(&s.db)?), deepgram_fut);
-    let providers = providers?;
-    let deepgram_key_masked = deepgram_res
+    let providers = masked_views(&s, providers::list(&s.db)?);
+    let deepgram_key_masked = s
+        .keys
+        .masked(crate::meetings::DEEPGRAM_KEY_ID)
         .ok()
-        .and_then(|j| j.ok())
-        .and_then(|r| r.ok())
         .flatten();
     Ok(Json(SettingsView {
         general,
@@ -259,7 +220,7 @@ async fn patch_settings(
 }
 
 async fn list_providers(State(s): State<AppState>) -> Result<Json<Vec<ProviderView>>, Error> {
-    Ok(Json(masked_views(&s, providers::list(&s.db)?).await?))
+    Ok(Json(masked_views(&s, providers::list(&s.db)?)))
 }
 
 async fn list_presets() -> Json<Vec<PresetView>> {
@@ -286,7 +247,7 @@ async fn create_provider(
         .into_iter()
         .find(|p| p.id == id)
         .ok_or_else(|| Error::Internal("inserted provider missing".into()))?;
-    let view = masked_views(&s, vec![p]).await?.remove(0);
+    let view = masked_views(&s, vec![p]).remove(0);
     Ok(Json(view))
 }
 
@@ -310,7 +271,7 @@ async fn update_provider(
         .into_iter()
         .find(|p| p.id == id)
         .ok_or(Error::NotFound)?;
-    let view = masked_views(&s, vec![p]).await?.remove(0);
+    let view = masked_views(&s, vec![p]).remove(0);
     Ok(Json(view))
 }
 
@@ -318,10 +279,9 @@ async fn delete_provider(
     State(s): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Error> {
-    // Clean up the matching Keychain entry FIRST. This is best-effort —
-    // any error is swallowed since the DB row deletion is the canonical
-    // "remove provider" intent. A stale Keychain entry without a DB row
-    // is harmless (the warm-up loop ignores it).
+    // Clean up the stored key FIRST. This is best-effort — any error is
+    // swallowed since the DB row deletion is the canonical "remove
+    // provider" intent. A stale key entry without a DB row is harmless.
     let _ = s.keys.delete(&id);
     providers::delete(&s.db, &id)?;
     Ok(StatusCode::NO_CONTENT)
@@ -334,7 +294,7 @@ async fn activate_provider(
     providers::set_active(&s.db, &id)?;
     let p = providers::active(&s.db)?
         .ok_or_else(|| Error::Internal("active provider missing after set_active".into()))?;
-    let view = masked_views(&s, vec![p]).await?.remove(0);
+    let view = masked_views(&s, vec![p]).remove(0);
     Ok(Json(view))
 }
 
@@ -347,7 +307,7 @@ struct SetKeyBody {
 }
 
 /// `POST /api/settings/stt/key` — store the Deepgram STT key. The STT key
-/// has no `providers` table row; the Keychain entry under
+/// has no `providers` table row; the key-file entry under
 /// [`crate::meetings::DEEPGRAM_KEY_ID`] IS the configuration. Cloud
 /// recording reads it at meeting start.
 async fn set_stt_key(
@@ -360,7 +320,7 @@ async fn set_stt_key(
     }
     s.keys
         .set(crate::meetings::DEEPGRAM_KEY_ID, key)
-        .map_err(|e| Error::Internal(format!("keychain set: {e}")))?;
+        .map_err(|e| Error::Internal(format!("key store set: {e}")))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -369,15 +329,15 @@ async fn set_provider_key(
     Path(id): Path<String>,
     Json(body): Json<SetKeyBody>,
 ) -> Result<StatusCode, Error> {
-    // Verify the provider exists before touching the Keychain. Without
-    // this, a typo'd ID would leak an orphan Keychain entry on every
+    // Verify the provider exists before touching the key store. Without
+    // this, a typo'd ID would leak an orphan key entry on every
     // failed attempt.
     if providers::list(&s.db)?.iter().all(|p| p.id != id) {
         return Err(Error::NotFound);
     }
     s.keys
         .set(&id, &body.api_key)
-        .map_err(|e| Error::Internal(format!("keychain set: {e}")))?;
+        .map_err(|e| Error::Internal(format!("key store set: {e}")))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -386,7 +346,7 @@ async fn set_provider_key(
 #[derive(Deserialize)]
 struct TestProviderBody {
     /// Draft key to test WITHOUT storing it. `None`/empty means "test the
-    /// key already in the Keychain". This is the whole point of the
+    /// key already in the key store". This is the whole point of the
     /// endpoint: the user can verify a pasted key before committing it.
     #[serde(default)]
     api_key: Option<String>,
@@ -397,7 +357,7 @@ struct TestProviderBody {
 /// A rejected key is a SUCCESSFUL request — it answers the user's question.
 /// So the happy and unhappy paths both return 200 with `ok` discriminating;
 /// non-200 is reserved for "the test itself could not be run" (unknown
-/// provider id, wedged Keychain).
+/// provider id).
 #[derive(Serialize)]
 struct TestProviderResult {
     ok: bool,
@@ -417,7 +377,7 @@ const MAX_TEST_ERROR_LEN: usize = 400;
 /// against this provider, reporting whether the key works.
 ///
 /// The draft key travels in the request body and is used to build a
-/// throwaway client. It is NEVER written to the Keychain, never logged,
+/// throwaway client. It is NEVER written to the key file, never logged,
 /// and never echoed back: `redact_key` scrubs it out of the provider's own
 /// error text, because providers routinely quote the offending key back at
 /// you ("Incorrect API key provided: sk-abc123"). That would otherwise
@@ -439,7 +399,7 @@ async fn test_provider(
         .filter(|k| !k.is_empty());
     let key = match draft {
         Some(k) => k,
-        None => match read_stored_key(&s, &id, &provider.name).await? {
+        None => match read_stored_key(&s, &id)? {
             Some(k) => k,
             None => {
                 return Ok(Json(TestProviderResult {
@@ -491,7 +451,7 @@ async fn test_provider(
 }
 
 /// Optional `POST /api/settings/providers/{id}/models` body. When present,
-/// the draft `api_key` is used in place of the stored Keychain entry so
+/// the draft `api_key` is used in place of the stored key so
 /// the user can discover what models are available *before* committing
 /// the key — useful when the saved `model` is the only thing wrong with
 /// the provider (e.g. Google's frequent deprecations).
@@ -505,11 +465,11 @@ struct ListModelsBody {
 /// `/v1/models` endpoint and return its model list.
 ///
 /// The Settings UI's `Refresh` button hits this. The handler prefers a
-/// draft `api_key` from the request body over the stored Keychain entry
+/// draft `api_key` from the request body over the stored key
 /// so the button is useful on a freshly-cloned provider (the whole point:
 /// when the saved `model` is deprecated, the user needs to see what is
 /// actually available before they can pick a replacement). The draft
-/// never reaches the Keychain — it's used once for the probe and
+/// never reaches the key file — it's used once for the probe and
 /// discarded.
 ///
 /// A missing-or-wrong key surfaces as a normal upstream HTTP error —
@@ -531,7 +491,7 @@ async fn list_provider_models(
         .filter(|k| !k.is_empty());
     let key = match draft {
         Some(k) => k,
-        None => match read_stored_key(&s, &id, &provider.name).await? {
+        None => match read_stored_key(&s, &id)? {
             Some(k) => k,
             None => {
                 return Err(Error::Unprocessable(
@@ -558,33 +518,10 @@ async fn list_provider_models(
     }
 }
 
-/// Read a provider's stored key off the reactor, bounded.
-///
-/// Same shape as `llm_openai::from_active_provider`: a Keychain read can
-/// block for seconds behind a macOS access prompt, so it goes to
-/// `spawn_blocking` with a 10s ceiling rather than stalling the handler.
-async fn read_stored_key(
-    s: &AppState,
-    id: &str,
-    provider_name: &str,
-) -> Result<Option<String>, Error> {
-    let keys = s.keys.clone();
-    let owned = id.to_string();
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || keys.get(&owned)),
-    )
-    .await
-    {
-        Ok(joined) => Ok(joined
-            .map_err(|e| Error::Internal(format!("key store task failed: {e}")))?
-            .unwrap_or(None)),
-        Err(_) => Err(Error::Internal(format!(
-            "macOS Keychain did not respond within 10s while reading the key for \
-             provider '{provider_name}' - approve the Keychain prompt if one is \
-             showing, or re-enter the key"
-        ))),
-    }
+fn read_stored_key(s: &AppState, id: &str) -> Result<Option<String>, Error> {
+    s.keys
+        .get(id)
+        .map_err(|e| Error::Internal(format!("key store read: {e}")))
 }
 
 /// Replace every occurrence of `key` in `text` with a mask.

@@ -246,24 +246,17 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
     } else {
         Some(g.audio_input_device.clone())
     };
-    // Deepgram key resolution: env var (dev override) → Keychain (the
+    // Deepgram key resolution: env var (dev override) → key file (the
     // Settings → Transcription field stores it there). Release builds have
-    // no .env.local, so without the Keychain path cloud STT — the seeded
+    // no .env.local, so without the stored-key path cloud STT — the seeded
     // default — was unusable in the shipped binary.
     let mut stt_settings = crate::meetings::SttSettings::from(&g);
     if stt_settings.stt_provider == "cloud" && stt_settings.deepgram_api_key.is_none() {
-        let keys = state.keys.clone();
-        // 10s bound: a wedged Keychain degrades to the actionable
-        // "no Deepgram API key configured" error instead of hanging /start.
-        stt_settings.deepgram_api_key = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            tokio::task::spawn_blocking(move || keys.get(crate::meetings::DEEPGRAM_KEY_ID)),
-        )
-        .await
-        .ok()
-        .and_then(|j| j.ok())
-        .and_then(|r| r.ok())
-        .flatten();
+        stt_settings.deepgram_api_key = state
+            .keys
+            .get(crate::meetings::DEEPGRAM_KEY_ID)
+            .ok()
+            .flatten();
     }
     match state
         .meetings

@@ -170,8 +170,8 @@ fn strip_escaped_spans(s: &str) -> String {
 /// 1. Skip if env var is absent or trims to empty.
 /// 2. Skip (and record in `skipped`) if a provider with the same name
 ///    already exists (case-insensitive).
-/// 3. Otherwise: insert the provider row, write the key to Keychain
-///    (non-fatal: a Keychain write failure is logged but doesn't abort the
+/// 3. Otherwise: insert the provider row, write the key to the key file
+///    (non-fatal: a key-file write failure is logged but doesn't abort the
 ///    bootstrap — the user can re-enter the key via the Settings UI).
 /// 4. If this is the first LLM provider seeded and no provider is currently
 ///    active, mark this one active.
@@ -187,8 +187,8 @@ pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
             continue;
         }
 
-        // If a row with this name already exists, BACKFILL the Keychain
-        // entry when missing instead of skipping silently. The previous
+        // If a row with this name already exists, BACKFILL the stored
+        // key when missing instead of skipping silently. The previous
         // behavior skipped the entire iteration — so a user who:
         //   (1) booted with an empty .env.local stub (row never inserted)
         //   (2) clicked the Minimax preset chip in Settings to scaffold
@@ -200,10 +200,10 @@ pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
             let existing_key = state.keys.get(&existing_row.id).ok().flatten();
             if existing_key.is_none() {
                 if let Err(e) = state.keys.set(&existing_row.id, &key) {
-                    tracing::warn!(provider = name, error = %e, "failed to backfill key in keychain");
+                    tracing::warn!(provider = name, error = %e, "failed to backfill key in key store");
                     report.skipped.push(name.to_string());
                 } else {
-                    tracing::info!(provider = name, "backfilled missing keychain key from env");
+                    tracing::info!(provider = name, "backfilled missing key from env");
                     report.seeded.push(name.to_string());
                 }
             } else {
@@ -221,11 +221,11 @@ pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
             },
         )?;
 
-        // Store the key in the configured `ApiKeyStore` (Keychain in
+        // Store the key in the configured `ApiKeyStore` (file store in
         // production, MemoryKeyStore in tests). Non-fatal on failure —
         // the user can re-enter the key via the Settings UI.
         if let Err(e) = state.keys.set(&id, &key) {
-            tracing::warn!(provider = name, error = %e, "failed to store key in keychain");
+            tracing::warn!(provider = name, error = %e, "failed to store key in key store");
         }
 
         // First LLM seeded → active iff nothing else active. We treat

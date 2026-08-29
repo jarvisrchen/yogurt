@@ -24,3 +24,8 @@ pub fn yogurt_dir() -> Result<PathBuf> {
 pub fn db_path() -> Result<PathBuf> {
     Ok(yogurt_dir()?.join("db.sqlite"))
 }
+
+/// API-key file: `~/.yogurt/keys.json` (mode 0600, see `crate::keys`).
+pub fn keys_path() -> Result<PathBuf> {
+    Ok(yogurt_dir()?.join("keys.json"))
+}

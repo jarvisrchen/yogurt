@@ -9,7 +9,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 ## Hard constraints (never violate)
 
 - Audio never leaves the machine unless the user opted into cloud STT - and then only audio, never notes. Captured audio is deleted after transcription.
-- API keys go to the macOS Keychain via the `keyring` crate - never plaintext files.
+- API keys live only in `~/.yogurt/keys.json` (mode 0600, `FileKeyStore`) - never in SQLite, never in a response body, never logged.
 - One process: no subprocesses, no IPC, no sidecars. The binary embeds `web/dist` (rust-embed) and bundles SQLite (rusqlite `bundled`).
 - Zero telemetry of any kind.
 - macOS 13+ only (ScreenCaptureKit).

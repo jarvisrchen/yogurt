@@ -1,7 +1,7 @@
 //! Settings KV store.
 //!
 //! `settings(key, value)` rows are the canonical persistence target for
-//! non-secret configuration (SET-09). Secrets live in the Keychain, NEVER
+//! non-secret configuration (SET-09). Secrets live in the key file, NEVER
 //! here. `General` is a typed projection over the well-known keys.
 
 use crate::Db;

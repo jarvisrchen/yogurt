@@ -68,7 +68,7 @@ test-web:
     pnpm --dir web test
 
 # Playwright E2E smoke — drives the real SPA against a browser-mocked backend
-# (no keychain / API keys / live LLM). Starts Vite itself. First run needs
+# (no API keys / live LLM). Starts Vite itself. First run needs
 # `pnpm --dir web exec playwright install chromium`.
 test-e2e:
     pnpm --dir web e2e
@@ -93,7 +93,7 @@ clean:
 clean-incremental:
     find target -name "incremental" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Wipe the user database — next launch routes to /welcome onboarding again (Keychain entries stay).
+# Wipe the user database — next launch routes to /welcome onboarding again (~/.yogurt/keys.json stays).
 reset-db:
     rm -rf ~/.yogurt/db.sqlite ~/.yogurt/db.sqlite-wal ~/.yogurt/db.sqlite-shm
     @echo "  ✓ ~/.yogurt/db.sqlite removed — next launch starts fresh"

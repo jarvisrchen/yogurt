@@ -82,7 +82,7 @@ graph TB
         NOTES["yogurt-notes<br/>markdown AST diff + merge"]
         PROMPTS["yogurt-prompts<br/>embedded templates"]
         LLM["yogurt-llm<br/>OpenAI-compatible client"]
-        DB["yogurt-db<br/>rusqlite + Keychain store"]
+        DB["yogurt-db<br/>rusqlite + key file store"]
     end
 
     subgraph Disk["~/.yogurt/"]
@@ -96,7 +96,7 @@ graph TB
         PROV["LLM provider<br/>OpenAI / Ollama / LM Studio / OpenRouter / ..."]
     end
 
-    KC["macOS Keychain<br/>service = yogurt"]
+    KC["~/.yogurt/keys.json<br/>mode 0600"]
 
     SPA -->|"fetch + Bearer token"| REST
     SPA -->|"WebSocket ?token="| WSM
@@ -134,7 +134,7 @@ Crate responsibilities, one line each:
 | `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output, render back to wire-format markdown. |
 | `yogurt-prompts` | Embedded prompt templates and their render context. |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming. |
-| `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over macOS Keychain. |
+| `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
 
 ### The one format contract that everything downstream depends on
 
@@ -202,20 +202,17 @@ sequenceDiagram
     participant U as User (terminal)
     participant CLI as yogurt-cli
     participant S as yogurt-server
-    participant KC as Keychain
+    participant KC as keys.json
     participant B as Browser
 
     U->>CLI: yogurt
     CLI->>S: run_with_config(addr, mode)
     S->>S: Storage::init_at(~/.yogurt/db.sqlite)<br/>WAL, writer + reader conns, migrations
     S->>S: load_or_create session token (0600 on disk)
-    S->>S: AppState::production_warmed(...)<br/>eager Keychain warm, 5s cap
-    par background, 20s budget
-        S->>KC: seed providers from YOGURT_*_API_KEY
-        S->>KC: seed Deepgram STT key
-        S->>S: repair legacy escaped-span rows
-    end
-    Note over S: if seeding is still running at 20s,<br/>start serving anyway and finish in background<br/>(a wedged Keychain once blocked boot for 30+ min)
+    S->>S: AppState::production(...)<br/>FileKeyStore::open_default() loads keys.json once
+    S->>KC: seed providers from YOGURT_*_API_KEY
+    S->>KC: seed Deepgram STT key
+    S->>S: repair legacy escaped-span rows
     S->>S: bind TcpListener, axum::serve
     U->>B: open http://localhost:7878
     B->>S: GET /api/session-token (Origin-checked, no token)
@@ -331,7 +328,7 @@ sequenceDiagram
     E->>WS: enhance_progress { phase: "sending" }
     WS-->>B: banner: sending
 
-    E->>E: resolve LLM: 1) YOGURT_LLM_* env  2) active provider + Keychain key  3) MockLlm
+    E->>E: resolve LLM: 1) YOGURT_LLM_* env  2) active provider + stored key  3) MockLlm
     Note over E: a configured provider whose key cannot be read<br/>is a hard 502, never a silent mock fallback
     E->>L: chat completion (non-streaming, hard timeout)
     alt error or timeout
@@ -521,7 +518,7 @@ Two of the shipped presets are already localhost:
 
 Pointing the active provider at either one makes enhance and chat fully local.
 Nothing else in the pipeline changes: the same prompts render, the same merge runs, the same sanitizer applies.
-The API-key field is still there and still writes to Keychain, which local servers simply ignore.
+The API-key field is still there and still writes to the key file, which local servers simply ignore.
 
 ### 7.5 The honest caveat
 
@@ -536,7 +533,7 @@ That is a real tradeoff presented as one, not a feature-parity claim.
 graph TB
     subgraph Mem["In-memory, lost on restart"]
         REG["Registry: live meetings<br/>audio_tx, transcript_tx, events_tx,<br/>capture handles, task handles"]
-        WARM["warmed Keychain cache"]
+        WARM["FileKeyStore: keys.json held in memory,<br/>rewritten atomically on every set/delete"]
     end
     subgraph SQ["~/.yogurt/db.sqlite (WAL)"]
         MT["meetings: notes_md, transcript_json,<br/>enriched_md, enriched_doc_json, timestamps"]
@@ -550,7 +547,7 @@ graph TB
         MOD["models/*.bin + .sha256"]
         TOK["session token file, 0600"]
     end
-    KC["macOS Keychain, service 'yogurt'<br/>account = provider ULID, or 'stt-deepgram'"]
+    KC["~/.yogurt/keys.json, mode 0600<br/>key = provider ULID, or 'stt-deepgram'"]
 
     REG -.->|"on stop / enhance"| MT
     MT --> FTS
@@ -564,7 +561,7 @@ Notes on the storage layout, since it surprises people reading the code:
   They deliberately do not depend on each other for path resolution. Keep the two path helpers in sync if that path ever moves.
 - **`storage` uses a dual pool**: one writer connection behind a mutex, one read-only connection, WAL with `synchronous=NORMAL`.
 - **rusqlite is synchronous**, so every DB touch inside a request handler goes through `spawn_blocking`. Same for the markdown export, which does write + rename + fsync.
-- **API keys are never in SQLite and never in a response body.** The providers table holds `base_url`, model, and active flag; the secret lives in Keychain keyed by the provider's ULID. Responses return a masked suffix only.
+- **API keys are never in SQLite and never in a response body.** The providers table holds `base_url`, model, and active flag; the secret lives in `~/.yogurt/keys.json` keyed by the provider's ULID. Responses return a masked suffix only.
 - **Markdown files are an export, not the source of truth.** SQLite is authoritative; the `.md` file exists so the user's notes are portable and greppable outside the app.
 
 ---
@@ -583,7 +580,7 @@ graph LR
     end
     subgraph Never["Never sent anywhere"]
         TEL["telemetry (none, not even opt-in)"]
-        KEYS["API keys (Keychain only)"]
+        KEYS["API keys (keys.json only)"]
     end
 ```
 
@@ -654,7 +651,7 @@ graph TB
 | 3 | `api/chat.rs:218` `llm.stream` | Same provider | Once per **chat message sent** | Input + output tokens |
 
 Fallbacks that cost nothing: if no provider is configured at all, `MockLlm` answers deterministically (`$0`).
-A provider that *is* configured but whose Keychain key cannot be read is a hard 502, never a silent free fallback, so you can never be silently downgraded to fake output.
+A provider that *is* configured but whose stored key cannot be read is a hard 502, never a silent free fallback, so you can never be silently downgraded to fake output.
 
 ### 10.2 STT is where the money goes, and it bills at 2x
 
@@ -753,7 +750,7 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 
 - **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio - never notes.
 Captured audio is deleted after transcription.
-API keys live in the macOS Keychain (`keyring` crate), never in plaintext files.
+API keys live in `~/.yogurt/keys.json` (mode 0600, written atomically), never in SQLite and never in a response body. The macOS Keychain was dropped: its ACLs are bound to the binary's code signature, so every unsigned dev rebuild re-prompted per key, a wedged prompt could hang boot, and machines without Keychain write access could not run yogurt at all.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.

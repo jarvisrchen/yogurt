@@ -51,7 +51,7 @@ Use `just release` (rebuilds) or `just dev` (proxies to Vite) instead of invokin
 That is all a Homebrew user ever runs.
 
 `just` is the contributor task runner.
-Every recipe is a thin wrapper over a script in `scripts/` that builds something and/or execs `yogurt start` with the right flags, plus conveniences the bare binary does not have: an incremental rebuild before launch, a prompt when the port is busy, and optional dev codesigning so Keychain grants survive rebuilds.
+Every recipe is a thin wrapper over a script in `scripts/` that builds something and/or execs `yogurt start` with the right flags, plus conveniences the bare binary does not have: an incremental rebuild before launch and a prompt when the port is busy.
 There is nothing you can do with `just` that you cannot do by hand; `just --list` shows every recipe.
 
 | `just` recipe | Runs |
@@ -89,7 +89,7 @@ Eight crates under `crates/`:
 | `yogurt-audio` | Mic + system-audio capture (ScreenCaptureKit), TCC permission checks |
 | `yogurt-stt` | Pluggable `Stt` trait; Deepgram cloud adapter + whisper.cpp local adapter |
 | `yogurt-llm` | OpenAI-compatible LLM client, provider presets |
-| `yogurt-db` | SQLite (providers, settings, meetings) + macOS Keychain wrapper |
+| `yogurt-db` | SQLite (providers, settings, meetings) + `~/.yogurt/keys.json` key store |
 | `yogurt-notes` | Augmented-notes diffing/merge logic |
 | `yogurt-prompts` | Bundled enhance/chat prompt templates |
 
@@ -130,37 +130,17 @@ Release builds never read `.env.local`.
 
 | Variable | Read by | Effect |
 |----------|---------|--------|
-| `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into the Keychain on first run. |
+| `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into `~/.yogurt/keys.json` on first run. |
 | `YOGURT_OPENAI_API_KEY`, `YOGURT_OPENROUTER_API_KEY`, `YOGURT_MINIMAX_API_KEY`, `YOGURT_GEMINI_API_KEY`, `YOGURT_DEEPSEEK_API_KEY` | bootstrap | Seed the matching LLM provider preset. One per entry in `ENV_PRESETS` (`crates/yogurt-server/src/bootstrap.rs`). |
-| `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`, `YOGURT_LLM_MODEL` | LLM resolver | Override the active LLM provider for this process without touching Settings or the Keychain. Handy when a rebuilt unsigned binary is waiting on a Keychain prompt. |
+| `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`, `YOGURT_LLM_MODEL` | LLM resolver | Override the active LLM provider for this process without touching Settings or the key file. |
 | `YOGURT_DEEPGRAM_MODEL` | cloud STT | Deepgram model name (default `nova-3`). Stamped into each meeting's `stt_engine`. |
 | `YOGURT_VITE_BASE` | `--dev` proxy | Vite origin to proxy to (default `http://127.0.0.1:5173`). |
-| `YOGURT_MEMORY_KEYSTORE=1` | tests | In-memory key store so tests never touch the real Keychain. Set automatically by `just test`. |
+| `YOGURT_MEMORY_KEYSTORE=1` | tests | In-memory key store so tests never touch the real `~/.yogurt/keys.json`. Set automatically by `just test`. |
 | `YOGURT_PORT_POLICY` | `scripts/run-*.sh` | What to do when the port is busy: `ask` (default), `kill`, `next`, or `fail`. |
 
 The `yogurt start` and `yogurt doctor` flags themselves are documented in the [README](README.md#command-line).
 
 ## Troubleshooting the dev loop
-
-**Keychain prompts on every rebuild.** macOS grants Keychain access per binary
-identity, not per app name. An unsigned debug build gets a new identity on
-every compile, so a plain `cargo build` invalidates any earlier "Always
-Allow" click -- this is why unsigned dev workflows can feel like popup spam.
-Test suites never touch the real Keychain (`YOGURT_MEMORY_KEYSTORE=1`, set by
-`just test` and CI), and the LLM resolver checks `YOGURT_LLM_*` env vars from
-`.env.local` before Keychain, so a dev loop that never pastes a key in Settings
-never prompts.
-For a dev build where you do paste keys in Settings, make the grant permanent
-with a one-time self-signed code-signing identity:
-
-1. Open Keychain Access -> Keychain Access menu -> Certificate Assistant -> Create a Certificate.
-2. Name: `yogurt-dev`. Identity Type: Self Signed Root. Certificate Type: Code Signing. Create.
-3. Verify: `security find-identity -v -p codesigning | grep yogurt-dev` prints one line.
-   If it does not, double-click the cert in Keychain Access, expand Trust, and set Code Signing to Always Trust.
-4. Run `just dev` / `just backend` / `just release` as usual. The scripts detect the identity, `codesign` the binary after every build, and print "signed with yogurt-dev identity".
-
-Click "Always Allow" on the next Keychain prompt and it sticks across rebuilds, because macOS now sees the same signed app every time.
-Shipped release builds are signed with a real Developer ID, so end users never hit this.
 
 **Port already in use.** `just release` and `just dev` prompt before
 starting if the target port is busy (`[k] kill it`, `[n] use next port`,
@@ -170,7 +150,7 @@ starting if the target port is busy (`[k] kill it`, `[n] use next port`,
 **Resetting to a fresh-install state:**
 
 ```bash
-just reset-db     # wipes ~/.yogurt/db.sqlite; next launch shows /welcome (Keychain entries stay)
+just reset-db     # wipes ~/.yogurt/db.sqlite; next launch shows /welcome (~/.yogurt/keys.json stays)
 just release
 ```
 
