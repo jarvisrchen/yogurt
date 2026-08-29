@@ -23,12 +23,13 @@
 //!
 //! # Layout
 //!
-//! Models live under the ProjectDirs data dir (macOS:
-//! `~/Library/Application Support/com.yogurt.yogurt/models/ggml-<name>.bin`,
-//! NOT `~/.yogurt` - a doc lie that once sent debugging astray), resolved via
-//! `directories::ProjectDirs::data_local_dir()`.  Phase 5 set the
-//! `data_local_dir` base to `~/.yogurt`; if that ever changes, follow
-//! Phase 5's convention here.
+//! Models live at `~/.yogurt/models/ggml-<name>.bin`, alongside the rest
+//! of the app data (`db.sqlite`, the session token), resolved via
+//! `directories::BaseDirs::home_dir()` - the same pattern as
+//! `yogurt-db::paths` and `yogurt-server::storage`.  A one-time
+//! migration from the legacy
+//! `~/Library/Application Support/com.yogurt.yogurt/models/` path is
+//! performed by `migrate_legacy_model` on first resolution.
 //!
 //! See PRD §5.6 (model storage path) and §5.8 (Intel x86_64 supports
 //! tiny/small only; medium/large are arm64-only due to whisper.cpp
