@@ -2,7 +2,7 @@
 
 > Local-first, open-source meeting copilot. Granola's UX, your machine.
 
-**Status:** v1.0 milestone code-complete (Phases 0–8 shipped, Phase 9 distribution remaining). See [docs/PRD.md](docs/PRD.md) for the v1 plan.
+**Status:** v1.0 milestone code-complete (Phases 0–8 shipped, Phase 9 distribution remaining). See [docs/PRD.md](docs/PRD.md) for the v1 plan and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the system works.
 
 Yogurt captures your microphone and Mac system audio without joining the call
 as a bot, transcribes live, and produces "augmented notes" — sparse markdown
