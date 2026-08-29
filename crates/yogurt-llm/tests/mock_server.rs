@@ -99,3 +99,53 @@ async fn it_strips_trailing_slash_from_base_url() {
         .expect("should hit single-slash endpoint");
     assert_eq!(resp.content, "ok");
 }
+
+#[tokio::test]
+async fn list_models_returns_ids_from_provider() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .and(header("authorization", "Bearer sk-test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [
+                { "id": "gpt-4o-mini", "object": "model" },
+                { "id": "gpt-4o", "object": "model" },
+                { "id": "o4-mini", "object": "model" },
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "gpt-4o-mini".into());
+    let models = client.list_models().await.expect("list_models ok");
+    assert_eq!(
+        models,
+        vec![
+            "gpt-4o-mini".to_string(),
+            "gpt-4o".to_string(),
+            "o4-mini".to_string()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn list_models_propagates_auth_failure() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "message": "Incorrect API key provided", "type": "auth_error" }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-bad".into(), "gpt-4o-mini".into());
+    let err = client.list_models().await.expect_err("should fail");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("401") || msg.contains("Incorrect API key"),
+        "expected status or upstream message in error, got: {msg}"
+    );
+}

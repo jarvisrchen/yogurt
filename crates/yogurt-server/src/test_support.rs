@@ -80,6 +80,14 @@ impl LlmClient for MockChunksLlm {
         }));
         Ok(stream::iter(frames).boxed())
     }
+
+    async fn list_models(&self) -> Result<Vec<String>> {
+        // Tests that exercise the mock LLM never call `Refresh`; this
+        // exists to satisfy the trait bound. Return a single placeholder
+        // so a future test that DOES touch this path has something to
+        // assert against.
+        Ok(vec!["mock-chunks-model".into()])
+    }
 }
 
 /// Handle returned by [`run_with_mock_llm`]. Owns the tempdir; drop to

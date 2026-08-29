@@ -59,6 +59,14 @@ export interface Preset {
   name: string;
   base_url: string;
   default_model: string;
+  /**
+   * Static list of popular model ids for this preset, used to seed the
+   * MODEL `<datalist>` on a freshly-cloned provider. The Settings page's
+   * `Refresh` button replaces this with the live `/v1/models` response
+   * once a key is on file. Empty for runtimes like Ollama / LM Studio
+   * where the model list is purely local.
+   */
+  models: string[];
 }
 
 export interface SettingsView {
@@ -166,6 +174,13 @@ export const settingsApi = {
       method: "POST",
       body: JSON.stringify({ api_key }),
     }),
+  /**
+   * `GET /api/settings/providers/:id/models` — probe the provider's
+   * `/v1/models` using the stored Keychain key and return the list of
+   * model ids it advertises. Backend returns 422 if no key is stored.
+   */
+  listProviderModels: (id: string) =>
+    http<string[]>(`/api/settings/providers/${id}/models`),
 };
 
 // ─── Audio API (Phase 2 endpoint, re-exported for plan 05-04 Audio section)

@@ -20,6 +20,17 @@ pub struct Preset {
     pub name: &'static str,
     pub base_url: &'static str,
     pub default_model: &'static str,
+    /// Static list of popular model ids for this preset. Used by the
+    /// Settings UI's MODEL `<datalist>` so a freshly-cloned provider has
+    /// autocomplete suggestions before the user pastes a key. `default_model`
+    /// is always included here so the initial state of the dropdown matches
+    /// what gets saved. The user can still type any custom model — this is
+    /// autocomplete, not a hard constraint.
+    ///
+    /// Lists go stale when a provider ships a new model; the Settings page
+    /// exposes a `Refresh` button that replaces the datalist with the live
+    /// `GET {base_url}/models` response (requires a stored key).
+    pub models: &'static [&'static str],
 }
 
 /// Built-in presets. Order matters: it's the order chips appear in the UI.
@@ -33,11 +44,25 @@ pub const PRESETS: &[Preset] = &[
         name: "Minimax",
         base_url: "https://api.minimax.io/v1",
         default_model: "MiniMax-Text-01",
+        models: &[
+            "MiniMax-Text-01",
+            "minimax-text-01-250515",
+            "abab6.5s-chat",
+            "abab6.5-chat",
+        ],
     },
     Preset {
         name: "OpenAI",
         base_url: "https://api.openai.com/v1",
         default_model: "gpt-4o-mini",
+        models: &[
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "o4-mini",
+            "o3",
+        ],
     },
     // Google exposes Gemini through an OpenAI-compatible shim; the native
     // `generativeLanguage` REST shape is NOT what we speak. The trailing
@@ -47,26 +72,48 @@ pub const PRESETS: &[Preset] = &[
         name: "Google Gemini",
         base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
         default_model: "gemini-2.5-flash",
+        models: &[
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+        ],
     },
     Preset {
         name: "DeepSeek",
         base_url: "https://api.deepseek.com/v1",
         default_model: "deepseek-chat",
+        models: &["deepseek-chat", "deepseek-reasoner"],
     },
     Preset {
         name: "Ollama (local)",
         base_url: "http://localhost:11434/v1",
         default_model: "llama3.2",
+        // Ollama models depend entirely on what the user has pulled
+        // locally — there is no safe static list. Leave empty so the
+        // datalist only shows whatever the user has typed or refreshed.
+        models: &["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2"],
     },
     Preset {
         name: "LM Studio (local)",
         base_url: "http://localhost:1234/v1",
         default_model: "",
+        // Same shape as Ollama — model list is what's loaded locally.
+        models: &[],
     },
     Preset {
         name: "OpenRouter",
         base_url: "https://openrouter.ai/api/v1",
         default_model: "anthropic/claude-3.5-sonnet",
+        models: &[
+            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-3.5-haiku",
+            "openai/gpt-4o-mini",
+            "google/gemini-2.5-flash",
+            "meta-llama/llama-3.1-70b-instruct",
+        ],
     },
 ];
 

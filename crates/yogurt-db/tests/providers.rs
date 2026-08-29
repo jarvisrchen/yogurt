@@ -91,6 +91,27 @@ fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
     }
 }
 
+/// Each preset's `default_model` is what gets written into the providers
+/// table on clone, so it MUST appear in the preset's `models` datalist —
+/// otherwise the initial state of the dropdown wouldn't match what was
+/// saved and the user would see "Saved as X, suggested Y" confusion.
+#[test]
+fn preset_default_model_appears_in_its_models_list() {
+    for p in providers::PRESETS {
+        if p.default_model.is_empty() {
+            // LM Studio starts blank; nothing to assert.
+            continue;
+        }
+        assert!(
+            p.models.contains(&p.default_model),
+            "{}: default_model {:?} must be in models {:?}",
+            p.name,
+            p.default_model,
+            p.models
+        );
+    }
+}
+
 #[test]
 fn list_names_returns_creation_order() {
     let db = Db::open_in_memory().unwrap();

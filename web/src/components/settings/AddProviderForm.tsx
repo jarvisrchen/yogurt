@@ -17,9 +17,16 @@ import { settingsApi } from "../../lib/api/settings";
 
 interface Props {
   onDone: () => void;
+  /**
+   * Reports the new provider's id back to the page so the freshly-created
+   * card can auto-open its API key input — same affordance as cloning a
+   * preset chip, since the form's only purpose is to set up a new provider
+   * the user is about to key.
+   */
+  onCreated?: (id: string) => void;
 }
 
-export function AddProviderForm({ onDone }: Props) {
+export function AddProviderForm({ onDone, onCreated }: Props) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -32,8 +39,9 @@ export function AddProviderForm({ onDone }: Props) {
         base_url: baseUrl.trim(),
         model: model.trim(),
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["settings"] });
+      onCreated?.(created.id);
       onDone();
     },
   });
