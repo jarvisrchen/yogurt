@@ -131,9 +131,8 @@ async fn complete_strips_think_block_when_provider_leaks_it() {
     );
 }
 
-/// When the provider splits reasoning into a sibling `reasoning_content`
-/// field (DeepSeek, MiniMax M3 variants that honor `reasoning_split`),
-/// the field is parsed and discarded — never leaked to the caller.
+/// Unknown sibling fields such as `reasoning_content` are ignored and never
+/// leak into the visible response.
 #[tokio::test]
 async fn complete_discards_separate_reasoning_content_field() {
     let server = MockServer::start().await;

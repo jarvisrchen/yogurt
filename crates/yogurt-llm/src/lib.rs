@@ -218,17 +218,14 @@ impl LlmClient for OpenAiCompatClient {
         }
         let parsed: types::OpenAiResponse = resp.json().await?;
         let model = parsed.model;
-        let message = parsed
+        let content = parsed
             .choices
             .into_iter()
             .next()
             .ok_or_else(|| anyhow!("no choices in response"))?
-            .message;
-        // Strip any inline `<think>…</think>` block the provider leaked
-        // into content despite `reasoning_split: true`. Model-agnostic
-        // backstop — see `crate::thinking` for the supported tag set.
-        // Sibling `reasoning_content` was already dropped at parse time.
-        let content = crate::thinking::strip_thinking(&message.content);
+            .message
+            .content;
+        let content = crate::thinking::strip_thinking(&content);
         Ok(ChatResponse { content, model })
     }
 
