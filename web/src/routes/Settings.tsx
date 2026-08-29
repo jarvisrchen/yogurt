@@ -20,11 +20,11 @@ function isValidSection(s: unknown): s is SettingsSection {
 }
 
 /**
- * `/settings/:section` page — Phase 5 (Plan 05-03), satisfies SET-01..SET-06.
+ * `/settings/:section` page - Phase 5 (Plan 05-03), satisfies SET-01..SET-06.
  *
  * Layout: 212px sidebar + flexible main content. The Model section is
  * fully wired to `/api/settings*` in this plan; Transcription / Audio /
- * General render placeholder text — those sections land in plan 05-04.
+ * General render placeholder text - those sections land in plan 05-04.
  *
  * State strategy:
  * - `useQuery(["settings"])` is the single source of truth for the entire
@@ -39,7 +39,10 @@ function isValidSection(s: unknown): s is SettingsSection {
  *   `ProviderRow` mounts with its API key input already expanded and
  *   focused so the user lands at the cursor instead of clicking again.
  *   The hint is overwritten on the next create; non-matching rows see
- *   `autoOpenKey={false}` and behave normally.
+ *   `autoOpenKey={false}` and behave normally. `ProviderRow` calls
+ *   `onKeyClosed` (passed here) when its key section collapses (Save
+ *   or Cancel), which resets this back to `null` so the hint doesn't
+ *   linger and re-trigger the auto-open on some later re-render.
  * - Falls back to "model" when `:section` is missing or invalid so the
  *   component still renders sensibly if mounted outside the route table
  *   (e.g. older tests).
@@ -89,7 +92,7 @@ export function Settings() {
   const inactive = data.providers.filter((p) => !p.is_active);
   // Match a saved provider to its built-in preset by base_url so the card
   // can show the preset's model hint and docs link. The match is by URL
-  // only — if the user pastes a custom URL we just don't show the hint,
+  // only - if the user pastes a custom URL we just don't show the hint,
   // which is the same behavior as before the preset metadata existed.
   const findPreset = (baseUrl: string): Preset | undefined =>
     data.presets.find((p) => p.base_url === baseUrl);
@@ -138,7 +141,7 @@ export function Settings() {
               </div>
             ) : (
               <p className="text-sm text-mut">
-                No active provider — pick one below to set active.
+                No active provider - pick one below to set active.
               </p>
             )}
 
@@ -152,6 +155,7 @@ export function Settings() {
                     presetModels={findPreset(p.base_url)?.models ?? []}
                     docsUrl={findPreset(p.base_url)?.docs_url}
                     presetName={findPreset(p.base_url)?.name}
+                    onKeyClosed={() => setNewlyCreatedProviderId(null)}
                   />
                 ))}
               </div>

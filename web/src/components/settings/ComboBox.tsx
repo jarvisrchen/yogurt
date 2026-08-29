@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 /**
- * ComboBox — a text input paired with a clickable dropdown of suggestions.
+ * ComboBox - a text input paired with a clickable dropdown of suggestions.
  *
  * Why not `<input list="…">` + `<datalist>`: native HTML autocomplete is a
  * *typing* aid, not a *click-to-open* affordance. On Safari/macOS the
@@ -10,11 +10,19 @@ import { useEffect, useId, useRef, useState } from "react";
  * guaranteed-to-work button + popup that lists every option, with a
  * text-filter input for narrowing down.
  *
- * Free text is always allowed — the popup is just for picking a known
+ * Free text is always allowed - the popup is just for picking a known
  * suggestion, never for constraining what the user can type. The value
  * surfaces up through `onChange` on every keystroke (so the parent's
- * draft / PATCH flow keeps working); clicking a suggestion just sets
- * the value in one shot.
+ * draft state keeps working); `onCommit` fires separately, once, when
+ * the user actually commits to a value - picking an option, pressing
+ * Enter with nothing highlighted, or blurring away from the component -
+ * so a parent doing a PATCH-on-commit flow can tell a keystroke from a
+ * decision.
+ *
+ * Filtering: typing narrows the popup to options whose id contains the
+ * typed text (case-insensitive). Opening the popup any other way (focus,
+ * trigger click, ArrowDown) shows the full list again - the user hasn't
+ * typed a filter yet.
  *
  * Accessibility: the input keeps a normal `aria-label`, the trigger
  * button has an `aria-label` that names the provider, the popup uses
@@ -25,10 +33,14 @@ import { useEffect, useId, useRef, useState } from "react";
 interface Props {
   value: string;
   onChange: (next: string) => void;
+  /** Fires once when the user commits to a value: picking an option,
+   *  pressing Enter with nothing highlighted, or blurring outside the
+   *  component. Does not fire per keystroke. */
+  onCommit?: (value: string) => void;
   options: string[];
   placeholder?: string;
   ariaLabel: string;
-  /** Accessible name for the dropdown trigger — distinct from the input's
+  /** Accessible name for the dropdown trigger - distinct from the input's
    *  own label so a screen reader user can tell them apart. */
   triggerLabel: string;
   disabled?: boolean;
@@ -38,6 +50,7 @@ interface Props {
 export function ComboBox({
   value,
   onChange,
+  onCommit,
   options,
   placeholder,
   ariaLabel,
@@ -52,12 +65,16 @@ export function ComboBox({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState(false);
-  const [highlight, setHighlight] = useState(0);
+  // -1 means nothing highlighted - Enter in that state commits the typed
+  // text instead of picking an option.
+  const [highlight, setHighlight] = useState(-1);
+  // null means "show everything" (popup just opened without typing); a
+  // string is the in-progress filter from typing.
+  const [query, setQuery] = useState<string | null>(null);
 
-  // Reset highlight whenever the option set or filter changes.
-  useEffect(() => {
-    setHighlight(0);
-  }, [options, open]);
+  const filtered = query
+    ? options.filter((o) => o.toLowerCase().includes(query.toLowerCase()))
+    : options;
 
   // Close on outside click.
   useEffect(() => {
@@ -74,25 +91,38 @@ export function ComboBox({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
 
-  // `value` is the source of truth for the input; the dropdown is just a
-  // filter+picker over the options.
-  const filtered = options;
+  function openShowingAll() {
+    setQuery(null);
+    setHighlight(-1);
+    setOpen(true);
+  }
 
   function pick(option: string) {
     onChange(option);
+    onCommit?.(option);
     setOpen(false);
+    setQuery(null);
+    setHighlight(-1);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
-      setOpen(true);
+    if (!open) {
+      if (e.key === "ArrowDown") {
+        openShowingAll();
+        return;
+      }
+      if (e.key === "Enter") {
+        onCommit?.(value);
+        return;
+      }
       return;
     }
     if (e.key === "Escape") {
       setOpen(false);
+      setQuery(null);
+      setHighlight(-1);
       return;
     }
-    if (!open) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlight((h) => Math.min(h + 1, filtered.length - 1));
@@ -101,8 +131,15 @@ export function ComboBox({
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const opt = filtered[highlight];
-      if (opt !== undefined) pick(opt);
+      const opt = highlight >= 0 ? filtered[highlight] : undefined;
+      if (opt !== undefined) {
+        pick(opt);
+      } else {
+        setOpen(false);
+        setQuery(null);
+        setHighlight(-1);
+        onCommit?.(value);
+      }
     }
   }
 
@@ -115,8 +152,29 @@ export function ComboBox({
         spellCheck={false}
         disabled={disabled}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          const next = e.target.value;
+          onChange(next);
+          setQuery(next);
+          setHighlight(-1);
+          setOpen(true);
+        }}
+        onFocus={() => {
+          if (!open) openShowingAll();
+        }}
+        onBlur={(e) => {
+          if (
+            containerRef.current &&
+            e.relatedTarget &&
+            containerRef.current.contains(e.relatedTarget as Node)
+          ) {
+            return;
+          }
+          setOpen(false);
+          setQuery(null);
+          setHighlight(-1);
+          onCommit?.(value);
+        }}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         aria-label={ariaLabel}
@@ -124,7 +182,7 @@ export function ComboBox({
         aria-expanded={open}
         aria-controls={listboxId}
         aria-activedescendant={
-          open && filtered[highlight] !== undefined
+          open && highlight >= 0 && filtered[highlight] !== undefined
             ? `${listboxId}-opt-${highlight}`
             : undefined
         }
@@ -135,7 +193,7 @@ export function ComboBox({
         id={triggerId}
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openShowingAll())}
         aria-label={triggerLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -194,7 +252,9 @@ export function ComboBox({
           role="listbox"
           className="absolute z-10 mt-1 left-0 right-0 bg-white border border-line rounded-md shadow-lg px-3 py-2 text-[12px] text-mut"
         >
-          No saved suggestions — type a model id and press Enter.
+          {options.length === 0
+            ? "No saved suggestions - type a model id and press Enter."
+            : "No matches - press Enter to use what you typed."}
         </div>
       )}
     </div>

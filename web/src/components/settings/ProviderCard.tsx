@@ -105,7 +105,6 @@ export function ProviderCard({
               value={draft.model}
               onChange={(next) => setDraft({ ...draft, model: next })}
               presetModels={presetModels}
-              hasStoredKey={!!provider.api_key_masked}
               apiKeyDraft={apiKeyDraft}
             />
           ) : (

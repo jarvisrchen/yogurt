@@ -35,6 +35,7 @@ export function ProviderRow({
   presetModels = [],
   docsUrl,
   presetName,
+  onKeyClosed,
 }: {
   provider: ProviderView;
   autoOpenKey?: boolean;
@@ -44,6 +45,10 @@ export function ProviderRow({
    *  Used as the visible text of the docs link — the user-chosen
    *  `provider.name` would read badly there. */
   presetName?: string;
+  /** Called whenever the API key section collapses (Save or Cancel), so
+   *  the page can drop its one-shot auto-open hint (`autoOpenKey`) for
+   *  this provider. */
+  onKeyClosed?: () => void;
 }) {
   const qc = useQueryClient();
   const [keying, setKeying] = useState(autoOpenKey);
@@ -69,9 +74,10 @@ export function ProviderRow({
     mutationFn: () => settingsApi.deleteProvider(provider.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
-  // PATCH on selection — every preset option is a discrete change, so a
-  // debounce would just hide the fact that this fires. `provider.model` is
-  // the source of truth; we only PATCH when the draft actually differs.
+  // PATCH on commit - a pick from the dropdown, pressing Enter, or blurring
+  // the field - never per keystroke, so free typing doesn't fire a PATCH
+  // per character. `provider.model` is the source of truth; we only PATCH
+  // when the committed value actually differs from it.
   const updateModel = useMutation({
     mutationFn: (next: string) =>
       settingsApi.updateProvider(provider.id, {
@@ -113,12 +119,11 @@ export function ProviderRow({
             providerId={provider.id}
             providerName={provider.name}
             value={modelDraft}
-            onChange={(next) => {
-              setModelDraft(next);
+            onChange={setModelDraft}
+            onCommit={(next) => {
               if (next !== provider.model) updateModel.mutate(next);
             }}
             presetModels={presetModels}
-            hasStoredKey={!!provider.api_key_masked}
             apiKeyDraft={apiKeyDraft}
           />
           {updateModel.isError && (
@@ -160,12 +165,19 @@ export function ProviderRow({
               providerName={provider.name}
               hasStoredKey={!!provider.api_key_masked}
               autoFocus
-              onSaved={() => setKeying(false)}
+              onSaved={() => {
+                setKeying(false);
+                onKeyClosed?.();
+              }}
               onDraftChange={setApiKeyDraft}
             />
             <button
               type="button"
-              onClick={() => setKeying(false)}
+              onClick={() => {
+                setKeying(false);
+                setApiKeyDraft("");
+                onKeyClosed?.();
+              }}
               className="text-[12.5px] font-semibold text-mut hover:text-ink"
             >
               Cancel
