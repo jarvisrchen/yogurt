@@ -84,7 +84,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
           </span>
         ) : null}
         <div className="font-mono text-[10.5px] text-mut leading-relaxed">
-          keys → macOS Keychain
+          keys → ~/.yogurt/keys.json
           <br />
           data → ~/.yogurt/
         </div>

@@ -339,7 +339,7 @@ describe("preset cloning auto-opens the key input", () => {
  *
  * The flow: paste a draft key → the MODEL `Refresh` button becomes
  * enabled → click it → the backend receives the draft key in the body
- * of POST /api/settings/providers/{id}/models. The stored Keychain
+ * of POST /api/settings/providers/{id}/models. The stored
  * entry stays untouched.
  */
 describe("MODEL Refresh works with a draft API key", () => {

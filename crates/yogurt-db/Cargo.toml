@@ -5,13 +5,11 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Yogurt SQLite (providers + settings) + macOS Keychain wrapper"
+description = "Yogurt SQLite (providers + settings) + API-key file store"
 
 [dependencies]
 rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
-keyring = { workspace = true }
-keyring-core = { workspace = true }
 directories = { workspace = true }
 ulid = { workspace = true }
 serde = { workspace = true }
@@ -24,17 +22,3 @@ tracing = { workspace = true }
 # `serde` feature gives us `DateTime<Utc>` serialization for free without
 # pulling in the heavier `time` crate's serde adapters.
 chrono = { workspace = true, features = ["serde"] }
-
-# Phase 5 BLOCKER fix: explicit macOS Keychain backend for keyring 4.x.
-# We register this with keyring_core::set_default_store in
-# KeychainStore::new() so set_password() actually persists to the real
-# Keychain instead of silently no-op'ing (the keyring 3.6.x bug). The
-# `keychain` feature pulls in security-framework. macOS-only; non-mac
-# builds (CI Linux) fall back to keyring's built-in v1 init.
-[target.'cfg(target_os = "macos")'.dependencies]
-apple-native-keyring-store = { version = "1", features = ["keychain"] }
-
-[features]
-# Gated because real Keychain reads prompt the user on macOS.
-# Manual: `cargo test -p yogurt-db --features keychain-live -- --ignored`.
-keychain-live = []

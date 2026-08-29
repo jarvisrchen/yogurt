@@ -3,7 +3,7 @@
 //! `POST /api/meetings/{id}/enhance` accepts the user's raw notes plus the
 //! transcript-so-far in the request body, renders the bundled `enhance.md`
 //! prompt, calls the LLM (env-var override, else the configured active
-//! provider + Keychain key, else the deterministic `MockLlm` when nothing
+//! provider + stored key, else the deterministic `MockLlm` when nothing
 //! is configured), runs `yogurt_notes::merge_notes` over
 //! the result, persists `enriched_md` + `enriched_doc_json` to SQLite and
 //! to a per-meeting markdown file under `~/.yogurt/notes/`, and emits
@@ -214,7 +214,7 @@ pub async fn enhance(
     //
     // Provider resolution is a three-tier priority chain:
     //   1. `YOGURT_LLM_*` env vars (developer override, highest priority).
-    //   2. Active provider row (`providers` table) + its Keychain key via
+    //   2. Active provider row (`providers` table) + its stored key via
     //      `llm_openai::from_active_provider`. A configured provider whose
     //      key can't be read is a hard 502 — never a silent mock fallback.
     //   3. `MockLlm` only when nothing is configured at all, so first-run

@@ -37,7 +37,7 @@ yogurt-llm = { path = "../yogurt-llm" }
 # server crate needs `futures_util` in main deps (also in dev-deps for
 # integration tests).
 futures-util = { workspace = true }
-# Phase 5 (Plan 05-02): providers + settings + Keychain. `Db` and
+# Phase 5 (Plan 05-02): providers + settings + key file. `Db` and
 # `ApiKeyStore` are carried on `AppState` for handlers + bootstrap.
 yogurt-db = { path = "../yogurt-db" }
 uuid = { workspace = true }

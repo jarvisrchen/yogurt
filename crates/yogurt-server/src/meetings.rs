@@ -9,7 +9,7 @@
 //!   - the JoinHandle of the audio + STT supervisor task, used to abort on stop.
 //!
 //! Phase 3 wiring strategy:
-//!   1. `start()` reads `YOGURT_DEEPGRAM_API_KEY` (D-07; Phase 5 swaps to Keychain).
+//!   1. `start()` reads `YOGURT_DEEPGRAM_API_KEY` (D-07; Phase 5 swaps to the key file).
 //!   2. Spawns a supervisor task that opens `yogurt_audio::start_capture()` and
 //!      holds the resulting `AudioStream` for the lifetime of the meeting
 //!      (RAII: dropping it stops both mic + system capture).

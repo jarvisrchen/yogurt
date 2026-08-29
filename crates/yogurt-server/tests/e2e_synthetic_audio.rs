@@ -44,9 +44,9 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         markdown_exporter,
         prompts,
         // Phase 5 (Plan 05-02): test wiring uses in-memory yogurt-db +
-        // MemoryKeyStore so this test doesn't touch the real Keychain.
+        // MemoryKeyStore so this test doesn't touch the real key file.
         db,
-        keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
+        keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
         // Phase 6 (Plan 06-01): test wiring uses MockLlm.
         llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.

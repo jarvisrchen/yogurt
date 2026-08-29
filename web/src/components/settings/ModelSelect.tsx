@@ -36,7 +36,7 @@ interface Props {
   value: string;
   onChange: (next: string) => void;
   presetModels: string[];
-  /** True if there's a key in the Keychain for this provider. */
+  /** True if there's a stored key for this provider. */
   hasStoredKey: boolean;
   /**
    * Draft key currently typed in the sibling API KEY field. Preferred

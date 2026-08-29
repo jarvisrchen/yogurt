@@ -174,63 +174,39 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         None => default_notes_dir()?,
     };
 
-    // Phase 5 (Plan 05-02): construct AppState via the new
-    // `state::AppState::production_warmed()` constructor. The `_warmed`
-    // variant eager-loads Keychain entries with a 5s timeout (SET-10) so
-    // request handlers never block on `keyring` during a request.
-    let state = AppState::production_warmed(state::ProductionConfig {
+    let state = AppState::production(state::ProductionConfig {
         mode: cfg.mode,
         bind_port: cfg.addr.port(),
         storage,
         session,
         notes_dir,
         app_db_path: cfg.app_db_path,
-    })
-    .await?;
+    })?;
 
     // Phase 5 (Plan 05-02): seed providers from `YOGURT_*_API_KEY` env vars
     // (loaded from .env.local in dev mode by yogurt-cli). Idempotent —
     // existing providers are skipped, never overridden.
-    //
-    // Bounded: the seeding path does Keychain reads, and a wedged Keychain
-    // (pending macOS access prompt after a rebuild changes the binary's
-    // code signature) once blocked startup for over half an hour. Run the
-    // whole step on its own task and give it 20s — on timeout the server
-    // starts anyway and seeding finishes in the background whenever the
-    // Keychain unwedges.
-    let seed_state = state.clone();
-    let seeding = tokio::spawn(async move {
-        match bootstrap::seed_from_env(&seed_state).await {
-            Ok(report) => {
-                if !report.seeded.is_empty() {
-                    tracing::info!(seeded = ?report.seeded, "seeded providers from env vars");
-                }
-                if !report.skipped.is_empty() {
-                    tracing::debug!(skipped = ?report.skipped, "skipped already-configured providers");
-                }
+    match bootstrap::seed_from_env(&state).await {
+        Ok(report) => {
+            if !report.seeded.is_empty() {
+                tracing::info!(seeded = ?report.seeded, "seeded providers from env vars");
             }
-            Err(e) => {
-                tracing::error!(error = %e, "bootstrap failed; continuing without env-var seeding")
+            if !report.skipped.is_empty() {
+                tracing::debug!(skipped = ?report.skipped, "skipped already-configured providers");
             }
         }
-
-        // Deepgram STT key: same .env.local convention as the LLM providers.
-        bootstrap::seed_stt_key_from_env(&seed_state);
-
-        // Repair enriched_md rows corrupted by the pre-260813 escaped-span
-        // enhance bug — idempotent, no-op on clean databases.
-        if let Err(e) = bootstrap::repair_escaped_span_rows(&seed_state) {
-            tracing::warn!(error = %e, "escaped-span repair failed; continuing");
+        Err(e) => {
+            tracing::error!(error = %e, "bootstrap failed; continuing without env-var seeding")
         }
-    });
-    if tokio::time::timeout(std::time::Duration::from_secs(20), seeding)
-        .await
-        .is_err()
-    {
-        tracing::warn!(
-            "bootstrap seeding still running after 20s — starting the server anyway; \
-             seeding will complete in the background (check for a macOS Keychain prompt)"
-        );
+    }
+
+    // Deepgram STT key: same .env.local convention as the LLM providers.
+    bootstrap::seed_stt_key_from_env(&state);
+
+    // Repair enriched_md rows corrupted by the pre-260813 escaped-span
+    // enhance bug — idempotent, no-op on clean databases.
+    if let Err(e) = bootstrap::repair_escaped_span_rows(&state) {
+        tracing::warn!(error = %e, "escaped-span repair failed; continuing");
     }
 
     let app = routes::router(state);

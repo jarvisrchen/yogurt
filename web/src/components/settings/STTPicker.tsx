@@ -110,7 +110,7 @@ export function STTPicker() {
 
         <div className="border-t border-line pt-3 space-y-2">
           <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-            DEEPGRAM API KEY · in Keychain
+            DEEPGRAM API KEY · stored locally
           </div>
           {q.data.deepgram_key_masked ? (
             <div className="flex items-center gap-2 text-[12.5px] font-mono">

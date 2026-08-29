@@ -127,7 +127,7 @@ sequence diagrams, and trust boundaries.
 - Audio never leaves your machine unless you opt into a cloud STT provider,
   and even then only the audio stream goes out, never the notes.
 - No telemetry, no phone-home, not even opt-in crash reporting.
-- API keys live in the macOS Keychain, never in plaintext config.
+- API keys live in `~/.yogurt/keys.json` (mode 0600), never in the database or in any response body.
 - Audio is deleted from disk after transcription.
 - All data lives locally at `~/.yogurt/`.
 

@@ -1,4 +1,4 @@
-//! Bootstrap tests — `seed_from_env` env-var → providers + Keychain mapping.
+//! Bootstrap tests — `seed_from_env` env-var → providers + key store mapping.
 //!
 //! Phase 5 (Plan 05-02) Task 3. Asserts:
 //! 1. `YOGURT_MINIMAX_API_KEY` env var seeds a Minimax provider, sets the
@@ -110,7 +110,7 @@ async fn it_is_idempotent() {
 }
 
 /// REGRESSION: if a provider row already exists with NO key in the
-/// Keychain (e.g. the user clicked a preset chip in Settings to scaffold
+/// key store (e.g. the user clicked a preset chip in Settings to scaffold
 /// the row before adding the env var), the seed MUST backfill the key
 /// instead of silently leaving the row keyless.
 ///
@@ -118,7 +118,7 @@ async fn it_is_idempotent() {
 /// row existed, which left users staring at "No key stored yet." in
 /// Settings after a `just dev` boot that should have fixed it.
 #[tokio::test]
-async fn it_backfills_missing_keychain_key_when_row_exists() {
+async fn it_backfills_missing_key_when_row_exists() {
     let _guard = env_lock().lock().await;
     clear_provider_env();
 
@@ -138,7 +138,7 @@ async fn it_backfills_missing_keychain_key_when_row_exists() {
     .unwrap();
     assert!(
         state.keys.get(&id).unwrap().is_none(),
-        "precondition: no key in Keychain"
+        "precondition: no key stored"
     );
 
     // User then adds the env var and re-runs `just dev`.
@@ -156,7 +156,7 @@ async fn it_backfills_missing_keychain_key_when_row_exists() {
     assert_eq!(stored, "sk-backfilled-12345");
 
     // Second seed with the key already in place must NOT touch the
-    // Keychain (no spurious overwrite, no duplicate row).
+    // key store (no spurious overwrite, no duplicate row).
     let second = bootstrap::seed_from_env(&state).await.unwrap();
     assert!(second.seeded.is_empty(), "second seed should not re-write");
     assert_eq!(second.skipped, vec!["Minimax".to_string()]);

@@ -1,6 +1,6 @@
 //! Integration coverage for `llm_openai::resolve`'s priority chain:
 //! `state.llm_override` -> `YOGURT_LLM_*` env vars -> active provider row +
-//! Keychain key -> `MockLlm` fallback.
+//! stored key -> `MockLlm` fallback.
 //!
 //! `resolve` lives in a `pub(crate)` module, so this file reaches it via
 //! `yogurt_server::test_support::resolve` — a one-line re-export added

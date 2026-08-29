@@ -1,4 +1,4 @@
-//! `yogurt-db` — SQLite (providers + settings) + macOS Keychain wrapper.
+//! `yogurt-db` — SQLite (providers + settings) + API-key file store.
 //!
 //! Owned by Phase 5, Plan 05-02. Coexists with the Phase 0
 //! `yogurt-server::storage` module by managing a disjoint set of tables
@@ -8,7 +8,7 @@
 //! - [`paths`] — filesystem path resolution (`~/.yogurt/`, `db.sqlite`).
 //! - [`providers`] — CRUD + preset definitions + atomic active-flag toggle.
 //! - [`settings`] — typed `General` settings backed by the KV table.
-//! - [`keychain`] — `ApiKeyStore` trait + `KeychainStore` + `MemoryKeyStore`.
+//! - [`keys`] — `ApiKeyStore` trait + `FileKeyStore` + `MemoryKeyStore`.
 //!
 //! ## Concurrency
 //! `rusqlite::Connection` is not `Sync`, so `Db` wraps it in
@@ -18,7 +18,7 @@
 mod migrations;
 
 pub mod chat;
-pub mod keychain;
+pub mod keys;
 pub mod labels;
 pub mod meetings;
 pub mod paths;

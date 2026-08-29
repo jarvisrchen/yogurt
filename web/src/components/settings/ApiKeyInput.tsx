@@ -54,7 +54,7 @@ export function ApiKeyInput({
    *
    * The draft never reaches this component's onSaved path without an
    * explicit `Save key` click, so the parent's read of it stays
-   * read-only from the Keychain's perspective.
+   * read-only from the key store's perspective.
    */
   onDraftChange?: (draft: string) => void;
 }) {
