@@ -99,6 +99,17 @@ Example entry:
   Open decisions before scoping: accept Apache-2.0 (sherpa-onnx) alongside MIT; its build.rs downloads a prebuilt static lib at build time; CPU-only inference needs a perf spike on Apple Silicon (no Metal path); Parakeet weights are CC-BY-4.0, so attribution may need surfacing in Settings.
   </details>
 
+- [ ] Add the ability to delete a downloaded local STT model
+  <details>
+  <summary>Details</summary>
+
+  The Settings → Local whisper.cpp panel lists every model with a `✓` + size when it's already downloaded under `~/.yogurt/models/`, but offers no way to remove one.
+  Case in point: `large-v3` is sitting at 3.0 GB on disk and the only way to reclaim that space today is `rm -rf` by hand.
+  Add a delete affordance per downloaded chip - probably a trash/X icon on hover, with a confirm step (matching the post-meeting trashcan UX) so a stray click doesn't nuke a 1.6 GB model.
+  Backend: new `DELETE /api/local-stt/models/:name` that removes the directory + SHA-pinned file, returns the freed bytes, and rejects if the model is the currently active one (force the user to switch first).
+  Frontend: invalidate the model list query so the chip flips back to "download" state and the size badge clears.
+  </details>
+
 ## LLM
 
 - [x] Add Google Gemini and DeepSeek as built-in LLM provider presets
