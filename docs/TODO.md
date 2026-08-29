@@ -99,7 +99,7 @@ Example entry:
   Open decisions before scoping: accept Apache-2.0 (sherpa-onnx) alongside MIT; its build.rs downloads a prebuilt static lib at build time; CPU-only inference needs a perf spike on Apple Silicon (no Metal path); Parakeet weights are CC-BY-4.0, so attribution may need surfacing in Settings.
   </details>
 
-- [ ] Add the ability to delete a downloaded local STT model
+- [x] Add the ability to delete a downloaded local STT model
   <details>
   <summary>Details</summary>
 

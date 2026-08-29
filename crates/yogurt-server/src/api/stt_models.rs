@@ -8,6 +8,13 @@
 //! | POST   | `/api/stt/models/{name}/download`     | `start_download`|
 //! | DELETE | `/api/stt/models/{name}`              | `delete_model`  |
 //!
+//! `DELETE` returns `200 OK` with `{"freed_bytes": <u64>}` on success
+//! (idempotent - deleting an already-absent model returns `freed_bytes: 0`,
+//! not an error), or `409 Conflict` if `name` is the currently active
+//! local model (`general.stt_provider == "local" && general.stt_model ==
+//! name`) - the user must switch models/providers before deleting the one
+//! in use.
+//!
 //! The download endpoint is **202-Accepted-and-fire-and-forget** —
 //! it spawns a background task that calls
 //! [`yogurt_stt::models::download`] with a progress callback that fans
@@ -69,6 +76,12 @@ fn to_view(spec: &models::ModelSpec) -> ModelView {
     }
 }
 
+/// Response body for a successful `DELETE /api/stt/models/{name}`.
+#[derive(Debug, Serialize)]
+struct DeleteView {
+    freed_bytes: u64,
+}
+
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 async fn list_models(State(_s): State<AppState>) -> Json<Vec<ModelView>> {
@@ -121,26 +134,55 @@ async fn start_download(
 }
 
 async fn delete_model(
-    State(_s): State<AppState>,
+    State(s): State<AppState>,
     Path(name): Path<String>,
-) -> Result<StatusCode, Error> {
+) -> Result<Json<DeleteView>, Error> {
     let spec = models::lookup(&name).ok_or(Error::NotFound)?;
-    let path = models::model_path(spec)
-        .map_err(|e| Error::Internal(format!("resolve model path: {e}")))?;
-    // `remove_file` is fine if the file is absent — treat NotFound as
-    // already-deleted so DELETE is idempotent.
-    match std::fs::remove_file(&path) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(Error::Internal(format!("delete {path:?}: {e}"))),
+
+    // Refuse to delete the model actively backing local STT - this check
+    // must run before any filesystem work so a test (or a real request)
+    // never touches disk when it's going to 409 anyway.
+    let general = yogurt_db::settings::load_general(&s.db)
+        .map_err(|e| Error::Internal(format!("load general settings: {e}")))?;
+    if general.stt_provider == "local" && general.stt_model == spec.name {
+        return Err(Error::Conflict(format!(
+            "{} is the active local model - switch to another model or to Cloud first",
+            spec.name
+        )));
     }
-    // The sidecar `.sha256` marker (written by `is_downloaded`/
-    // `download_to`) must go too — a stale marker left behind after
-    // delete would let a subsequent corrupt/partial re-download pass
-    // `is_downloaded_at`'s fast-path check against bytes that no longer
-    // exist under it.
-    let _ = std::fs::remove_file(models::marker_path(&path));
-    Ok(StatusCode::NO_CONTENT)
+
+    // Filesystem work (in particular `model_path`'s one-time legacy-marker
+    // migration, which can rename a multi-GB file) must not run on a tokio
+    // worker - same reasoning as `list_models` above.
+    tokio::task::spawn_blocking(move || -> Result<DeleteView, Error> {
+        let path = models::model_path(spec)
+            .map_err(|e| Error::Internal(format!("resolve model path: {e}")))?;
+        // `metadata` before `remove_file` so a model that was already
+        // absent reports `freed_bytes: 0` rather than erroring - DELETE
+        // stays idempotent.
+        let model_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::Internal(format!("delete {path:?}: {e}"))),
+        }
+        // The sidecar `.sha256` marker (written by `is_downloaded`/
+        // `download_to`) must go too — a stale marker left behind after
+        // delete would let a subsequent corrupt/partial re-download pass
+        // `is_downloaded_at`'s fast-path check against bytes that no longer
+        // exist under it. Best-effort, like the removal below it.
+        let marker_path = models::marker_path(&path);
+        let marker_bytes = std::fs::metadata(&marker_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let _ = std::fs::remove_file(&marker_path);
+        Ok(DeleteView {
+            freed_bytes: model_bytes + marker_bytes,
+        })
+    })
+    .await
+    .map_err(|e| Error::Internal(format!("delete task panicked: {e}")))?
+    .map(Json)
 }
 
 // ─── Background download task ──────────────────────────────────────────────
@@ -257,5 +299,59 @@ mod tests {
         // Cleanup so this test doesn't leak process-wide guard state into
         // any other test that happens to touch "tiny.en" in this binary.
         in_flight_downloads().lock().unwrap().remove("tiny.en");
+    }
+
+    /// Wire-shape gate for the DELETE 200 body — a rename here silently
+    /// breaks whatever the Settings page does with the freed-space number.
+    #[test]
+    fn delete_view_serializes_freed_bytes() {
+        let json = serde_json::to_value(DeleteView { freed_bytes: 123 }).unwrap();
+        assert_eq!(json["freed_bytes"], 123);
+    }
+
+    /// Deleting the model currently backing local STT must 409 *before*
+    /// touching the filesystem — the 409 check runs ahead of any fs access,
+    /// which this test relies on: the in-memory state's home dir is never
+    /// created, so a filesystem-touching bug here would fail loudly rather
+    /// than silently deleting from the developer's real
+    /// `~/.yogurt/models/`.
+    #[tokio::test]
+    async fn deleting_the_active_local_model_is_rejected_with_409() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = std::sync::Arc::new(
+            crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap(),
+        );
+        let session = std::sync::Arc::new(
+            crate::session::load_or_create(&tmp.path().join("session-token")).unwrap(),
+        );
+        let state = crate::state::AppState::in_memory(
+            crate::Mode::Release,
+            storage,
+            session,
+            7878,
+            tmp.path().join("notes"),
+        )
+        .expect("in_memory state");
+
+        yogurt_db::settings::save_general_patch(
+            &state.db,
+            yogurt_db::settings::GeneralPatch {
+                stt_provider: Some("local".to_string()),
+                stt_model: Some("tiny.en".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("save_general_patch");
+
+        let result = delete_model(State(state), Path("tiny.en".to_string())).await;
+        match result {
+            Err(Error::Conflict(msg)) => assert!(
+                msg.contains("tiny.en"),
+                "conflict message should name the model: {msg}"
+            ),
+            other => panic!(
+                "expected Error::Conflict for deleting the active local model, got {other:?}"
+            ),
+        }
     }
 }

@@ -54,6 +54,18 @@ vi.mock("../../lib/api/stt", () => ({
   // useDownloadModel() unconditionally — stub it so the module mock is
   // complete even though no test here triggers a download.
   useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  // LocalSTTCard also calls useDeleteModel() unconditionally for the
+  // ModelPicker trash affordance - stub it even though no test here
+  // deletes a model.
+  useDeleteModel: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    isSuccess: false,
+    error: null,
+    data: undefined,
+    variables: undefined,
+  })),
 }));
 
 import { STTPicker } from "./STTPicker";
