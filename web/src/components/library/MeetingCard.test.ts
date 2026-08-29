@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engineLabel, formatMeta } from "./MeetingCard";
+import { formatMeta } from "./MeetingCard";
 import type { Meeting } from "../../lib/api/meetings";
 
 const START = new Date("2026-06-25T14:45:00").getTime();
@@ -54,19 +54,5 @@ describe("formatMeta", () => {
     expect(formatMeta(ended)).toBe(`${startTime} · 1 min · not enhanced`);
     // Still live: no verdict yet, so no flag.
     expect(formatMeta(meeting({ enriched_md: null }))).toBe(startTime);
-  });
-});
-
-describe("engineLabel", () => {
-  it("shows Local for a local · <model> stamp", () => {
-    expect(engineLabel("local · small.en")).toBe("Local");
-  });
-
-  it("shows Cloud for a cloud · <model> stamp", () => {
-    expect(engineLabel("cloud · nova-3")).toBe("Cloud");
-  });
-
-  it("falls back to Local for null (meetings recorded before this column)", () => {
-    expect(engineLabel(null)).toBe("Local");
   });
 });
