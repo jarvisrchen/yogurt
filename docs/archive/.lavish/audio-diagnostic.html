@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yogurt — Audio capture diagnostic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-chip: 6px; --r-btn: 9px; --r-card: 14px; --r-pill: 999px;
+  --sh-card:   0 2px 6px rgba(40, 30, 15, 0.08);
+  --sh-pop:    0 12px 30px -10px rgba(40, 30, 15, 0.22);
+  --sh-btn:    0 2px 8px rgba(91, 79, 199, 0.30);
+}
+* { box-sizing: border-box; min-width: 0; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-sans); font-size: 14.5px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ─────────────────────────────────────────────── */
+.shell { max-width: 1180px; margin: 0 auto; padding: 40px 28px 96px; }
+.hero { margin-bottom: 36px; }
+.crumbs {
+  font-family: var(--font-mono); font-size: 11px; color: var(--mut);
+  letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: var(--font-serif); font-weight: 400; font-size: 44px;
+  line-height: 1.05; margin: 0 0 12px 0; letter-spacing: -0.01em;
+}
+.hero h1 em { color: var(--blue); font-style: italic; }
+.hero p {
+  font-size: 15px; color: var(--mut); margin: 0; max-width: 760px;
+}
+
+.split {
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+@media (max-width: 880px) { .split { grid-template-columns: 1fr; } }
+
+/* ── Question card ──────────────────────────────────────── */
+.qcard {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 22px 24px; box-shadow: var(--sh-card);
+  margin-bottom: 18px;
+}
+.qhead {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+  padding-bottom: 12px; border-bottom: 1px dashed var(--line);
+}
+.qnum {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--blsoft); color: var(--blue);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+.qhead.answered .qnum { background: var(--matcha); color: white; }
+.qtitle {
+  font-family: var(--font-serif); font-size: 22px; font-weight: 400;
+  line-height: 1.2; flex: 1; min-width: 0;
+}
+.qhint {
+  font-family: var(--font-mono); font-size: 11px; color: var(--mut);
+  display: block; margin-top: 2px;
+}
+
+.options { display: grid; gap: 10px; }
+.opt {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: var(--r-btn); background: var(--card);
+  cursor: pointer; transition: border-color 140ms ease, background 140ms ease;
+}
+.opt:hover { border-color: var(--blue); background: var(--blsoft); }
+.opt input[type=radio] { display: none; }
+.opt.selected {
+  border-color: var(--blue); background: var(--blsoft);
+  box-shadow: 0 0 0 1px var(--blue) inset;
+}
+.opt .marker {
+  width: 16px; height: 16px; border: 1.5px solid var(--grey);
+  border-radius: 50%; flex-shrink: 0; margin-top: 2px;
+  background: var(--card); transition: all 140ms ease;
+}
+.opt.selected .marker {
+  border-color: var(--blue); background: var(--blue);
+  box-shadow: inset 0 0 0 3px var(--card);
+}
+.opt-body { flex: 1; min-width: 0; }
+.opt-label { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+.opt-sub {
+  font-size: 12.5px; color: var(--mut); line-height: 1.5;
+}
+.opt-sub code {
+  font-family: var(--font-mono); font-size: 11.5px;
+  background: var(--paper); padding: 1px 5px; border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+/* ── Diagnosis panel ────────────────────────────────────── */
+.diag {
+  position: sticky; top: 28px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 26px; box-shadow: var(--sh-pop);
+  align-self: start;
+}
+.diag .head {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mut); margin-bottom: 12px;
+}
+.diag h2 {
+  font-family: var(--font-serif); font-weight: 400; font-size: 26px;
+  margin: 0 0 12px 0; line-height: 1.2;
+}
+.diag .body { font-size: 14px; line-height: 1.6; color: var(--ink); }
+.diag .body p { margin: 0 0 12px 0; }
+.diag .body code {
+  font-family: var(--font-mono); font-size: 12.5px;
+  background: var(--paper); padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--line);
+}
+.diag .body pre {
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5;
+  background: var(--ink); color: #F5EFE3; padding: 12px 14px;
+  border-radius: var(--r-btn); overflow-x: auto; margin: 10px 0;
+}
+.diag .pill {
+  display: inline-block; padding: 3px 10px; border-radius: var(--r-pill);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; font-weight: 600; margin-bottom: 8px;
+}
+.pill.straw   { background: var(--strsoft); color: var(--straw); }
+.pill.matcha  { background: var(--mtsoft);  color: var(--matcha); }
+.pill.blue    { background: var(--blsoft);  color: var(--blue); }
+.pill.grey    { background: #F0EBE0;        color: var(--mut); }
+
+.empty {
+  font-size: 14px; color: var(--mut); font-style: italic;
+  text-align: center; padding: 60px 20px;
+}
+.progress-line {
+  display: flex; gap: 6px; margin-bottom: 18px;
+}
+.progress-line .seg {
+  flex: 1; height: 4px; border-radius: 2px; background: var(--line);
+}
+.progress-line .seg.done { background: var(--matcha); }
+
+/* ── Footer / send ──────────────────────────────────────── */
+.footer {
+  margin-top: 28px; padding: 18px 22px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--sh-pop);
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+}
+.footer .lbl {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--mut);
+  flex: 1; min-width: 240px;
+}
+.footer .lbl strong { color: var(--ink); font-family: var(--font-sans); font-size: 13px; }
+.footer button {
+  background: var(--blue); color: white; border: 0;
+  padding: 10px 20px; border-radius: var(--r-btn);
+  font-family: var(--font-sans); font-size: 13.5px; font-weight: 600;
+  cursor: pointer; box-shadow: var(--sh-btn);
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.footer button:hover { transform: translateY(-1px); }
+.footer button:disabled {
+  background: var(--line); color: var(--mut); cursor: not-allowed;
+  box-shadow: none; transform: none;
+}
+
+.note {
+  font-family: var(--font-mono); font-size: 11px; color: var(--mut);
+  text-align: center; margin-top: 14px;
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <section class="hero">
+    <div class="crumbs">debugging · audio capture · just dev / release</div>
+    <h1>Why isn't <em>audio coming in</em>?</h1>
+    <p>The most common cause is one of three things: you didn't click Start recording, the wrong STT provider is selected for the mode you're in, or macOS doesn't have Screen Recording permission for the binary. Click through to narrow it down — the diagnosis updates live.</p>
+  </section>
+
+  <div class="split">
+
+    <div class="questions">
+
+      <!-- Q1 -->
+      <div class="qcard" data-q="q1">
+        <div class="qhead">
+          <span class="qnum">1</span>
+          <div>
+            <div class="qtitle">What happened when you clicked "Start recording"?</div>
+            <span class="qhint">The button is the blue one at the top-right of the meeting page</span>
+          </div>
+        </div>
+        <div class="options">
+          <label class="opt" data-value="not-clicked">
+            <input type="radio" name="q1" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">I never clicked it — I was just on the meeting page</div>
+              <div class="opt-sub">Creating a meeting (the "+ New meeting" click) only inserts a database row. Audio capture is a separate, explicit action.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="flipped-no-error">
+            <input type="radio" name="q1" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Button flipped to "Stop recording", no error visible</div>
+              <div class="opt-sub">The server says recording started. Audio is flowing through capture; problem is downstream (STT).</div>
+            </div>
+          </label>
+          <label class="opt" data-value="not-flipped-error">
+            <input type="radio" name="q1" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Button stayed as "Start recording" + a red banner appeared</div>
+              <div class="opt-sub">Server-side <code>start_meeting</code> rejected. The banner text is the diagnostic — paste it if you can.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="flipped-then-error">
+            <input type="radio" name="q1" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Button flipped, THEN a red banner appeared</div>
+              <div class="opt-sub">Recording started but capture failed mid-way. Usually a TCC / Screen Recording revocation.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Q2 -->
+      <div class="qcard" data-q="q2">
+        <div class="qhead">
+          <span class="qnum">2</span>
+          <div>
+            <div class="qtitle">In Settings → Transcription, which provider is active?</div>
+            <span class="qhint">The card with the green matcha radio button selected</span>
+          </div>
+        </div>
+        <div class="options">
+          <label class="opt" data-value="cloud">
+            <input type="radio" name="q2" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Use Cloud (Deepgram)</div>
+              <div class="opt-sub">Needs <code>YOGURT_DEEPGRAM_API_KEY</code> env var live in the process. Only loaded when started with <code>--dev</code>.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="local-with-model">
+            <input type="radio" name="q2" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Use Local — model has a ✓ next to it</div>
+              <div class="opt-sub">whisper.cpp on Metal. No env var dependency. Needs the model file on disk + Screen Recording permission.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="local-no-model">
+            <input type="radio" name="q2" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Use Local — but no model has a ✓</div>
+              <div class="opt-sub">No downloaded model = WhisperLocal can't load = start_meeting will reject.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Q3 -->
+      <div class="qcard" data-q="q3">
+        <div class="qhead">
+          <span class="qnum">3</span>
+          <div>
+            <div class="qtitle">Screen Recording &amp; System Audio permission?</div>
+            <span class="qhint">System Settings → Privacy &amp; Security → Screen Recording &amp; System Audio</span>
+          </div>
+        </div>
+        <div class="options">
+          <label class="opt" data-value="on">
+            <input type="radio" name="q3" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Listed and toggled ON</div>
+              <div class="opt-sub">Permission is granted for the running binary.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="off">
+            <input type="radio" name="q3" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Listed but toggled OFF</div>
+              <div class="opt-sub">macOS denies SCK access without this. start_meeting will fail with a permission error.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="missing">
+            <input type="radio" name="q3" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">Not listed at all</div>
+              <div class="opt-sub">The first start_meeting attempt should have prompted. If it didn't, the binary may not be signed in a way macOS recognizes (debug builds), or the prompt was dismissed.</div>
+            </div>
+          </label>
+          <label class="opt" data-value="unknown">
+            <input type="radio" name="q3" />
+            <span class="marker"></span>
+            <div class="opt-body">
+              <div class="opt-label">I haven't checked / can't tell</div>
+              <div class="opt-sub">Open System Settings now — link below opens it directly.</div>
+            </div>
+          </label>
+        </div>
+        <p style="font-size: 12px; color: var(--mut); margin: 12px 0 0; font-family: var(--font-mono);">
+          ↗ <a href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" style="color: var(--blue);">open System Settings → Screen Recording</a>
+        </p>
+      </div>
+
+    </div>
+
+    <!-- ── Diagnosis panel ── -->
+    <div class="diag" id="diag">
+      <div class="head">live diagnosis</div>
+      <div class="progress-line">
+        <div class="seg" id="seg-1"></div>
+        <div class="seg" id="seg-2"></div>
+        <div class="seg" id="seg-3"></div>
+      </div>
+      <div id="diag-content">
+        <div class="empty">
+          Pick an option in each question on the left.<br/>
+          The diagnosis appears here as you answer.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <div class="lbl">
+      <strong>When you've answered all three, send the diagnosis back.</strong><br/>
+      I'll route to the specific fix and ship it.
+    </div>
+    <button id="send" disabled>Send answers →</button>
+  </div>
+
+  <div class="note">
+    Lavish artifact · <code>.lavish/audio-diagnostic.html</code> · design: Yogurt PRD §16 Blueberry tokens (loaded directly from <code>web/src/index.css</code>)
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const answers = { q1: null, q2: null, q3: null };
+  const diagContent = document.getElementById("diag-content");
+  const sendBtn = document.getElementById("send");
+
+  // Wire options
+  document.querySelectorAll(".qcard").forEach(card => {
+    const q = card.dataset.q;
+    card.querySelectorAll(".opt").forEach(opt => {
+      opt.addEventListener("click", () => {
+        card.querySelectorAll(".opt").forEach(o => o.classList.remove("selected"));
+        opt.classList.add("selected");
+        answers[q] = opt.dataset.value;
+        card.querySelector(".qhead").classList.add("answered");
+        document.getElementById(`seg-${q.slice(1)}`).classList.add("done");
+        renderDiagnosis();
+      });
+    });
+  });
+
+  function renderDiagnosis() {
+    const { q1, q2, q3 } = answers;
+    const answered = [q1, q2, q3].filter(Boolean).length;
+
+    // Update send button
+    sendBtn.disabled = answered < 3;
+
+    // Q1 alone is enough for the most common case
+    if (q1 === "not-clicked") {
+      diagContent.innerHTML = `
+        <span class="pill matcha">most common cause</span>
+        <h2>You haven't started recording yet.</h2>
+        <div class="body">
+          <p><strong>+ New Meeting</strong> creates an empty meeting in the database — it doesn't start capturing audio. To actually record, you have to click the blue <strong>Start recording</strong> button at the top-right of the meeting page.</p>
+          <p>Once you click it:</p>
+          <ul style="margin: 0 0 12px 18px; padding: 0; line-height: 1.7;">
+            <li>Button flips to "Stop recording"</li>
+            <li>If this is the first time on this binary, macOS pops a Screen Recording prompt — say yes</li>
+            <li>Audio frames start flowing to the configured STT engine</li>
+            <li>Transcript bars appear in the right-edge dock with &lt; 2 s lag (Cloud) or &lt; 3 s (Local small.en on M1 Air)</li>
+          </ul>
+          <p>Answer Q2 + Q3 anyway so I can pre-stage any fixes for the next-most-likely failure when you do click Start.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // All three answered → routing logic
+    if (q1 && q2 && q3) {
+      diagContent.innerHTML = routeDiagnosis(q1, q2, q3);
+      return;
+    }
+
+    // Partial — show progress
+    diagContent.innerHTML = `
+      <span class="pill grey">${answered}/3 answered</span>
+      <h2>Keep going…</h2>
+      <div class="body">
+        <p>Answer ${3 - answered} more question${3 - answered === 1 ? "" : "s"} to get a routed diagnosis.</p>
+        ${q1 ? `<p><strong>Q1:</strong> ${labelFor("q1", q1)}</p>` : ""}
+        ${q2 ? `<p><strong>Q2:</strong> ${labelFor("q2", q2)}</p>` : ""}
+        ${q3 ? `<p><strong>Q3:</strong> ${labelFor("q3", q3)}</p>` : ""}
+      </div>
+    `;
+  }
+
+  function labelFor(q, v) {
+    const m = {
+      q1: {
+        "not-clicked": "Never clicked Start",
+        "flipped-no-error": "Button flipped, no error",
+        "not-flipped-error": "Button didn't flip + error banner",
+        "flipped-then-error": "Button flipped then error",
+      },
+      q2: {
+        "cloud": "Use Cloud (Deepgram)",
+        "local-with-model": "Use Local + ✓ model",
+        "local-no-model": "Use Local, no ✓ model",
+      },
+      q3: {
+        "on": "Permission ON",
+        "off": "Permission OFF",
+        "missing": "Not listed",
+        "unknown": "Haven't checked",
+      },
+    };
+    return m[q][v];
+  }
+
+  function routeDiagnosis(q1, q2, q3) {
+    // Permission OFF / missing trumps almost everything
+    if (q3 === "off" || q3 === "missing") {
+      return `
+        <span class="pill straw">root cause</span>
+        <h2>macOS Screen Recording permission isn't granted.</h2>
+        <div class="body">
+          <p>ScreenCaptureKit refuses to open without this permission. Every <code>start_meeting</code> will fail at the audio-capture step, regardless of STT provider.</p>
+          <p><strong>Fix:</strong></p>
+          <ol style="margin: 0 0 12px 18px; padding: 0; line-height: 1.7;">
+            <li>Open <strong>System Settings → Privacy &amp; Security → Screen Recording &amp; System Audio</strong></li>
+            <li>${q3 === "missing"
+              ? `If <code>yogurt</code> isn't listed, click the <strong>+</strong> button and navigate to <code>~/.treehouse/yogurt-c2d339/2/yogurt/target/release/yogurt</code>`
+              : `Toggle <code>yogurt</code> (or <code>target/release/yogurt</code>) ON`}</li>
+            <li>You'll be prompted to <strong>Quit &amp; Reopen</strong> — accept. macOS keys this permission on the binary's content hash, so each rebuild needs re-granting.</li>
+            <li>Restart with <code>just release</code> (or <code>just dev</code>) and click Start recording again.</li>
+          </ol>
+          <p style="font-size: 12px; color: var(--mut);">Note: we rebuilt the binary several times today, so a previous grant may no longer apply — that's the most likely reason this is currently OFF.</p>
+        </div>
+      `;
+    }
+
+    // Local STT with no downloaded model
+    if (q2 === "local-no-model") {
+      return `
+        <span class="pill straw">root cause</span>
+        <h2>Local STT selected but no model downloaded.</h2>
+        <div class="body">
+          <p><code>WhisperLocal::load</code> needs a model file on disk. With no <code>✓</code> next to any model, <code>start_meeting</code>'s local arm rejects with "no model selected" or similar.</p>
+          <p><strong>Fix:</strong> in Settings → Transcription, click the <code>↓</code> pill for <strong>small.en</strong> (487 MB, fastest setup). Wait for the download to flip to <code>✓</code>. Then click Start recording.</p>
+        </div>
+      `;
+    }
+
+    // Cloud + release mode
+    if (q2 === "cloud") {
+      return `
+        <span class="pill straw">root cause</span>
+        <h2>Cloud STT in release mode = no Deepgram key path.</h2>
+        <div class="body">
+          <p><code>just release</code> doesn't read <code>.env.local</code> (the SET-11 privacy invariant — release builds installed via brew should never auto-slurp sibling files). Without <code>YOGURT_DEEPGRAM_API_KEY</code> in the process env, <code>start_meeting</code>'s cloud arm errors with <code>"YOGURT_DEEPGRAM_API_KEY not set"</code>.</p>
+          <p>I flagged this as a real Phase 9 architectural gap — the Settings UI doesn't yet have a Deepgram-key input. Two paths forward:</p>
+          <p><strong>Right now (workaround):</strong> switch to <strong>Local</strong> with <code>small.en ✓</code>. No env var dependency, works in release mode.</p>
+          <p><strong>Alternative:</strong> kill <code>just release</code>, run <code>just dev</code> instead. That loads <code>.env.local</code> and Cloud will work — but the page is then served via Vite proxy, not the embedded bundle.</p>
+          <p><strong>The real fix:</strong> plumb a Deepgram-key field into the Transcription card + store it in Keychain like the LLM keys + read from there in <code>meetings.rs::select_stt</code>. ~100 lines. Want me to ship it?</p>
+        </div>
+      `;
+    }
+
+    // Button didn't flip + error banner — server-side reject, but Cloud / Local-no-model
+    // already handled above, so this means Local-with-model + permission ON
+    if (q1 === "not-flipped-error" && q2 === "local-with-model" && q3 === "on") {
+      return `
+        <span class="pill straw">need the error text</span>
+        <h2>Server-side <code>start_meeting</code> rejected, but the obvious failure modes are ruled out.</h2>
+        <div class="body">
+          <p>Local STT with a downloaded model + permission ON should work. The red banner under the title has the actual reason — paste it back to me.</p>
+          <p>Also worth checking in your <code>just release</code> terminal for any log line at the time of click matching:</p>
+          <pre>grep -E "ERROR|panic|SCK|cpal|WhisperLocal|select STT" terminal.log</pre>
+          <p>Likely candidates: WhisperLocal failed to load the model (corrupt file?), the model's SHA changed (unlikely now that all 4 are pinned), or a cpal device-init regression.</p>
+        </div>
+      `;
+    }
+
+    // Button flipped, no error → recording started; problem is STT pipeline silent
+    if (q1 === "flipped-no-error" && q3 === "on") {
+      const isCloud = q2 === "cloud";
+      return `
+        <span class="pill blue">recording started, transcript path silent</span>
+        <h2>The audio side is alive; the STT side isn't producing events.</h2>
+        <div class="body">
+          <p>Server-side <code>start_meeting</code> succeeded — capture is running, frames are flowing on the broadcast bus. But no <code>TranscriptEvent</code> is reaching the WS, so the dock stays empty.</p>
+          ${isCloud ? `
+            <p><strong>Cloud-specific likely causes:</strong></p>
+            <ul style="margin: 0 0 12px 18px; padding: 0; line-height: 1.7;">
+              <li>Deepgram WS auth failed (wrong API key, expired, rate-limit). Check <code>just release</code> terminal for <code>deepgram</code>-prefixed warnings.</li>
+              <li>Deepgram API key not set (you'd be on release mode where <code>.env.local</code> isn't read — go back to Q2)</li>
+              <li>Network down — try <code>curl https://api.deepgram.com</code>.</li>
+            </ul>
+          ` : `
+            <p><strong>Local-specific likely causes:</strong></p>
+            <ul style="margin: 0 0 12px 18px; padding: 0; line-height: 1.7;">
+              <li>WhisperLocal model failed to load — check terminal for <code>whisper</code> / <code>ggml</code> errors.</li>
+              <li>VAD segmenter is too aggressive and not finding speech to transcribe. Try talking longer / louder.</li>
+              <li>First-decode latency on this model — large-v3 can take 10-20 s for the first segment on M3. Wait ~30 s before declaring it broken.</li>
+            </ul>
+          `}
+          <p>Also: confirm the TranscriptDock WS is connected. The dock header should show a green <strong>● connected</strong> indicator (you'll see it once the wave-bars feature ships in the next refresh). If it says <strong>○ offline</strong>, the WS auth or connection itself is broken.</p>
+        </div>
+      `;
+    }
+
+    // Flipped then error — recording started then mid-way died
+    if (q1 === "flipped-then-error") {
+      return `
+        <span class="pill straw">recording died mid-way</span>
+        <h2>Audio capture started then dropped.</h2>
+        <div class="body">
+          <p>The supervisor task lost its SCK stream mid-recording. Common causes:</p>
+          <ul style="margin: 0 0 12px 18px; padding: 0; line-height: 1.7;">
+            <li>You toggled Screen Recording permission OFF in System Settings while recording (very common during dev)</li>
+            <li>Sleep / display-off briefly killed the capture thread</li>
+            <li>An audio device was unplugged or switched defaults (USB mic, AirPods)</li>
+            <li>SCK crashed — would show up as <code>panic</code> in the terminal log</li>
+          </ul>
+          <p><strong>Paste the red banner text</strong> — that's the precise reason. And include the <code>just release</code> terminal output from the time around the failure.</p>
+        </div>
+      `;
+    }
+
+    // Catch-all
+    return `
+      <span class="pill blue">all three answered</span>
+      <h2>Diagnosis ready below.</h2>
+      <div class="body">
+        <p>Your combination is uncommon — please send the answers so I can investigate.</p>
+        <p><strong>Q1:</strong> ${labelFor("q1", q1)}<br/>
+        <strong>Q2:</strong> ${labelFor("q2", q2)}<br/>
+        <strong>Q3:</strong> ${labelFor("q3", q3)}</p>
+      </div>
+    `;
+  }
+
+  sendBtn.addEventListener("click", () => {
+    const payload = { ...answers };
+    if (window.lavish && typeof window.lavish.send === "function") {
+      window.lavish.send(payload);
+    } else {
+      try { navigator.clipboard.writeText("[audio diagnostic] " + JSON.stringify(payload)); } catch(e) {}
+      sendBtn.textContent = "Copied → paste in chat ✓";
+      sendBtn.disabled = true;
+    }
+  });
+})();
+</script>
+</body>
+</html>

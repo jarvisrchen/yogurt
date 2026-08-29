@@ -10,7 +10,7 @@
 //!     dyld: Library not loaded: @rpath/libswift_Concurrency.dylib
 //!       Reason: no LC_RPATH's found
 //!
-//! See `docs/superpowers/notes/2026-06-25-sck-spike-result.md` ("What didn't
+//! See `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` ("What didn't
 //! work" #1) for the full discovery story.
 //!
 //! Do **not** add Xcode's swift-5.5 toolchain path as a second fallback —

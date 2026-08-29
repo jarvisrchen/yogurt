@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yogurt — Phase 8 → 9 Handoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  /* PRD §16.2 Blueberry tokens */
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --r-chip: 6px;
+  --r-btn:  9px;
+  --r-card: 14px;
+  --r-pill: 999px;
+
+  --sh-card:   0 2px 6px rgba(40, 30, 15, 0.08);
+  --sh-pop:    0 12px 30px -10px rgba(40, 30, 15, 0.22);
+  --sh-button: 0 2px 8px rgba(91, 79, 199, 0.30);
+}
+
+* { box-sizing: border-box; min-width: 0; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.shell { max-width: 980px; margin: 0 auto; padding: 48px 28px 96px; }
+
+/* ── Top hero ─────────────────────────────────────────────── */
+.hero { margin-bottom: 36px; }
+.hero .crumbs {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mut);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 52px;
+  line-height: 1.05;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.01em;
+}
+.hero h1 em {
+  color: var(--blue);
+  font-style: italic;
+}
+.hero p.lede {
+  font-size: 16px;
+  color: var(--mut);
+  margin: 0;
+  max-width: 720px;
+}
+
+/* ── Progress strip ───────────────────────────────────────── */
+.progress {
+  display: flex;
+  gap: 6px;
+  margin: 28px 0 36px;
+  align-items: stretch;
+}
+.progress .seg {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.progress .seg.done { background: var(--blue); }
+.progress .seg.now  { background: var(--matcha); }
+
+/* ── Status card grid (Phase 8 result + bench gate) ──────── */
+.row2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 36px;
+}
+@media (max-width: 760px) { .row2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 24px 26px;
+  box-shadow: var(--sh-card);
+}
+.card.matcha   { background: var(--mtsoft); border-color: rgba(94,158,115,0.32); }
+.card.straw    { background: var(--strsoft); border-color: rgba(224,122,102,0.32); }
+.card.blueberry { background: var(--blsoft); border-color: rgba(91,79,199,0.22); }
+
+.card .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--mut);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.card .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--matcha); }
+.card.straw .eyebrow .dot { background: var(--straw); animation: rec 1.4s ease-in-out infinite; }
+@keyframes rec { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.55;transform:scale(1.15)} }
+
+.card h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 26px;
+  margin: 0 0 14px 0;
+  line-height: 1.15;
+}
+.card p { margin: 0 0 12px 0; }
+.card p:last-child { margin-bottom: 0; }
+
+/* ── KPI strip inside the Phase 8 card ────────────────────── */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0 6px;
+}
+.kpi {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  padding: 12px 14px;
+}
+.kpi .v {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.kpi .k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+
+/* ── Commit log ───────────────────────────────────────────── */
+.commits {
+  margin: 20px 0 8px;
+  display: grid;
+  gap: 6px;
+}
+.commit {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.commit:last-child { border-bottom: 0; }
+.commit .sha { color: var(--blue); }
+.commit .msg { color: var(--ink); }
+.commit .msg span { color: var(--mut); }
+
+/* ── Section title ────────────────────────────────────────── */
+.section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 28px 0 18px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.section-title h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 24px;
+  margin: 0;
+}
+.section-title .pill {
+  display: inline-block;
+  background: var(--blsoft);
+  color: var(--blue);
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.section-title .grow { flex: 1; }
+
+/* ── Choice cards ─────────────────────────────────────────── */
+.choices { display: grid; gap: 14px; }
+.choice {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 22px 24px;
+  box-shadow: var(--sh-card);
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+.choice:hover {
+  border-color: var(--blue);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-pop);
+}
+.choice.selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), var(--sh-card);
+  background: var(--card);
+}
+.choice .top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.choice h4 {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0;
+  line-height: 1.15;
+}
+.choice .badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge.recommended { background: var(--mtsoft); color: var(--matcha); }
+.badge.hands-on    { background: var(--blsoft); color: var(--blue); }
+.badge.halt        { background: var(--strsoft); color: var(--straw); }
+
+.choice .desc { color: var(--mut); font-size: 14px; margin-bottom: 12px; }
+.choice .impact {
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 640px) { .choice .impact { grid-template-columns: 1fr; } }
+.choice .impact div {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mut);
+  line-height: 1.5;
+}
+.choice .impact strong {
+  display: block;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+/* ── Phase 9 preview ──────────────────────────────────────── */
+.p9 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 760px) { .p9 { grid-template-columns: 1fr; } }
+.p9-plan {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 20px 22px;
+}
+.p9-plan .num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--blue);
+  letter-spacing: 0.06em;
+}
+.p9-plan h4 {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 400;
+  margin: 4px 0 10px 0;
+  line-height: 1.2;
+}
+.p9-plan p {
+  color: var(--mut);
+  font-size: 13px;
+  margin: 0 0 10px 0;
+}
+.p9-plan .reqs {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  padding: 6px 8px;
+  border-radius: var(--r-chip);
+  display: inline-block;
+  margin-top: 4px;
+}
+
+/* ── Bench detail panel ───────────────────────────────────── */
+.bench {
+  background: var(--card);
+  border: 1px dashed var(--straw);
+  border-radius: var(--r-card);
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+.bench h4 {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 400;
+  margin: 0 0 6px 0;
+  line-height: 1.2;
+}
+.bench h4 .icon { color: var(--straw); }
+.bench .sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mut);
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+.bench ol {
+  padding-left: 22px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+.bench ol li { margin-bottom: 6px; }
+.bench code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--paper);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ink);
+}
+
+/* ── Confirm bar ──────────────────────────────────────────── */
+.confirm {
+  position: sticky;
+  bottom: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 16px 22px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--sh-pop);
+  margin-top: 24px;
+}
+.confirm .label {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--mut);
+}
+.confirm .label strong {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  display: block;
+  margin-bottom: 2px;
+}
+button.send {
+  background: var(--blue);
+  color: white;
+  border: 0;
+  padding: 12px 22px;
+  border-radius: var(--r-btn);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--sh-button);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+button.send:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(91, 79, 199, 0.45); }
+button.send:disabled {
+  background: var(--line);
+  color: var(--mut);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ── Footnote ─────────────────────────────────────────────── */
+.footnote {
+  margin-top: 20px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mut);
+  text-align: center;
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="crumbs">Milestone v1.0 · autonomous mode · Phase 8 of 10</div>
+    <h1>Local STT shipped. <em>One human gate left.</em></h1>
+    <p class="lede">Phase 8 code is green end-to-end — registry, downloader, VAD, WhisperLocal adapter, settings UI, and the start_meeting branch. The plan's final checkpoint requires M1 Air hardware that this autonomous session doesn't have. Pick a path before Phase 9 starts.</p>
+  </section>
+
+  <!-- PROGRESS -->
+  <div class="progress" aria-label="Milestone phase progress">
+    <div class="seg done" title="Phase 0"></div>
+    <div class="seg done" title="Phase 1"></div>
+    <div class="seg done" title="Phase 2"></div>
+    <div class="seg done" title="Phase 3"></div>
+    <div class="seg done" title="Phase 4"></div>
+    <div class="seg done" title="Phase 5"></div>
+    <div class="seg done" title="Phase 6"></div>
+    <div class="seg done" title="Phase 7"></div>
+    <div class="seg done" title="Phase 8 — code complete"></div>
+    <div class="seg now"  title="Phase 9 — Distribution Polish"></div>
+  </div>
+
+  <!-- STATUS CARDS -->
+  <div class="row2">
+    <div class="card matcha">
+      <div class="eyebrow"><span class="dot"></span>Phase 8 · Local STT · code complete</div>
+      <h2>What landed</h2>
+      <p>Three plans across whisper.cpp adapter, model registry + resumable downloader, and the end-to-end wiring through settings UI and meeting supervisor. The DeepgramAdapter ↔ WhisperLocal swap is a single match arm in <code style="font-family: var(--font-mono); font-size: 12px; background: var(--card); padding: 1px 6px; border-radius: 4px;">select_stt</code>.</p>
+
+      <div class="kpis">
+        <div class="kpi"><div class="v">196</div><div class="k">cargo tests</div></div>
+        <div class="kpi"><div class="v">121</div><div class="k">web tests</div></div>
+        <div class="kpi"><div class="v">3 / 3</div><div class="k">plans</div></div>
+        <div class="kpi"><div class="v">0</div><div class="k">clippy warns</div></div>
+      </div>
+
+      <div class="commits">
+        <div class="commit"><span class="sha">ddb0e92</span><span class="msg">docs(08-03): SUMMARY + 08-VERIFICATION <span>(bench deferred)</span></span></div>
+        <div class="commit"><span class="sha">8e2a1a5</span><span class="msg">feat(web,08-03 T4): LocalSTTCard + ModelPicker + ModelDownloadDialog</span></div>
+        <div class="commit"><span class="sha">a0dc737</span><span class="msg">feat(web,08-03 T3): STT API client + WS download-progress hook</span></div>
+        <div class="commit"><span class="sha">9b5307e</span><span class="msg">feat(server,db,08-03 T2): branch start_meeting + V005 stt KV seed</span></div>
+        <div class="commit"><span class="sha">252b9b1</span><span class="msg">feat(server,08-03 T1): WS event variants + REST endpoints</span></div>
+        <div class="commit"><span class="sha">d0e025c</span><span class="msg">docs(08-02): VAD segmenter + model registry + resumable download</span></div>
+      </div>
+    </div>
+
+    <div class="card straw">
+      <div class="eyebrow"><span class="dot"></span>blocking checkpoint</div>
+      <h2>M1 Air bench</h2>
+      <p style="font-size: 14px;">LOCAL-04 says first-transcript-bar latency must be <strong style="color: var(--ink);">&lt; 3 s on M1 Air</strong> with <code style="font-family: var(--font-mono); font-size: 12px;">small.en</code>, then offline transcription must work with wifi off. If it fails, Phase 8 escalates to WhisperKit/ANE in v2.</p>
+      <p style="font-family: var(--font-mono); font-size: 11px; color: var(--mut); margin-top: 12px;">No M1 Air attached → bench is <strong style="color: var(--straw); font-family: var(--font-sans); font-weight: 600;">human_needed</strong> in <code style="font-family: var(--font-mono); font-size: 11px;">08-VERIFICATION.md</code>.</p>
+    </div>
+  </div>
+
+  <!-- DECISION -->
+  <div class="section-title">
+    <h3>Pick the next move</h3>
+    <span class="pill">decision</span>
+    <span class="grow"></span>
+  </div>
+
+  <div class="choices" role="radiogroup" aria-label="Next action">
+    <label class="choice selected" data-value="defer">
+      <input type="radio" name="choice" value="defer" checked hidden />
+      <div class="top">
+        <h4>Defer the bench, start Phase 9 now</h4>
+        <span class="badge recommended">Recommended</span>
+      </div>
+      <p class="desc">Phase 8 code stays at 100%; <code style="font-family: var(--font-mono); font-size: 12px;">08-VERIFICATION.md</code> keeps <code style="font-family: var(--font-mono); font-size: 12px;">status: human_needed</code>. Autonomous mode advances to Phase 9 (Distribution Polish). You run the bench whenever you next sit at the M1 Air — milestone close detects it as outstanding and reminds you.</p>
+      <div class="impact">
+        <div><strong>Risk</strong>If the bench fails later you'll have shipped notarized binaries against a tuning that doesn't hold on M1 Air. Recovery: cut a v0.1.1 with tighter dual-state split.</div>
+        <div><strong>Time saved now</strong>Phase 9 is ~3 plans × 2-3 hours each. Starting tonight beats waiting for M1 Air availability.</div>
+        <div><strong>Reversibility</strong>Fully reversible — the bench is a tuning gate, not a code gate. Code in Phase 9 doesn't touch the STT path.</div>
+      </div>
+    </label>
+
+    <label class="choice" data-value="run-now">
+      <input type="radio" name="choice" value="run-now" hidden />
+      <div class="top">
+        <h4>You'll run the bench now</h4>
+        <span class="badge hands-on">Hands-on</span>
+      </div>
+      <p class="desc">I'll build a release binary, start it locally, and walk you through the 9-step protocol from <code style="font-family: var(--font-mono); font-size: 12px;">08-VERIFICATION.md</code>. You report the measured latency and offline-test result; we either approve the phase or escalate to v2.</p>
+      <div class="impact">
+        <div><strong>Risk</strong>Phase 9 doesn't start tonight if the bench surfaces tuning work. But Phase 8 gets a real ✓ instead of a deferred-with-fingers-crossed.</div>
+        <div><strong>Time cost</strong>~15-25 minutes: build (~3-5 min), small.en download (~1-3 min), record + measure (~5 min), offline test (~5 min).</div>
+        <div><strong>Reversibility</strong>Same as defer — choosing to bench now doesn't lock anything; you can still stop at any point.</div>
+      </div>
+    </label>
+
+    <label class="choice" data-value="stop">
+      <input type="radio" name="choice" value="stop" hidden />
+      <div class="top">
+        <h4>Stop autonomous mode</h4>
+        <span class="badge halt">Halt</span>
+      </div>
+      <p class="desc">End the autonomous run here. Phase 8 stays as code-complete-with-deferred-bench. Resume later with <code style="font-family: var(--font-mono); font-size: 12px;">/gsd-autonomous --from 9</code> after you've closed out the bench, or <code style="font-family: var(--font-mono); font-size: 12px;">--only 9</code> for just the distribution phase.</p>
+      <div class="impact">
+        <div><strong>When to pick</strong>You want to read the Phase 9 plans yourself before they get touched. Distribution involves signing certs and a Homebrew tap — fair to want eyes on it.</div>
+        <div><strong>State</strong>STATE.md + ROADMAP.md reflect Phase 8 complete (code) + bench deferred. Resume picks up clean.</div>
+        <div><strong>Time cost</strong>~0 now. Distribution phase queued, runs whenever you start it.</div>
+      </div>
+    </label>
+  </div>
+
+  <!-- M1 AIR BENCH DETAIL (collapsed-ish, just present) -->
+  <div class="section-title">
+    <h3>What the deferred bench will ask of you</h3>
+    <span class="pill">protocol</span>
+    <span class="grow"></span>
+  </div>
+
+  <div class="bench">
+    <h4><span class="icon">⏱</span> The 3-second kill criterion</h4>
+    <div class="sub">9 steps · expected duration ~15 min on M1 Air · LOCAL-04 + LOCAL-03 + offline</div>
+    <ol>
+      <li>Open <code>http://localhost:7878/settings</code>. Confirm the "Local · whisper.cpp" card replaces the old "Coming soon" stub.</li>
+      <li>Click the <strong>Use Local</strong> radio. Matcha border appears.</li>
+      <li>Click the <code>small.en ↓</code> pill. The download dialog opens with live bytes / MB/s / ETA.</li>
+      <li>After download, the pill flips to <code>small.en ✓</code>. <code>shasum -a 256 ~/.yogurt/models/ggml-small.en.bin</code> matches REGISTRY.</li>
+      <li>Click <strong>+ New meeting</strong> and talk for 30 s. <strong>Time the first transcript bar.</strong> Target: <code>&lt; 3.0 s</code>.</li>
+      <li>End the meeting. Confirm transcript persisted to library.</li>
+      <li>Disable wifi, close browser, restart yogurt, start new meeting, talk — transcript must still flow.</li>
+      <li>Re-enable wifi; in the browser, confirm cloud mode still works after the local round-trip (no settings corruption).</li>
+      <li>Report: <code>"approved"</code> or <code>"escalate to v2 — M1 Air bench failed at &lt;Ns&gt;"</code>.</li>
+    </ol>
+  </div>
+
+  <!-- PHASE 9 PREVIEW -->
+  <div class="section-title">
+    <h3>Phase 9 preview · Distribution Polish</h3>
+    <span class="pill">next</span>
+    <span class="grow"></span>
+  </div>
+
+  <div class="p9">
+    <div class="p9-plan">
+      <div class="num">09-01</div>
+      <h4>Release pipeline + CI</h4>
+      <p>GitHub Actions matrix for <code style="font-family: var(--font-mono); font-size: 11px;">aarch64</code> + <code style="font-family: var(--font-mono); font-size: 11px;">x86_64</code> Darwin. Codesign + notarize via <code style="font-family: var(--font-mono); font-size: 11px;">notarytool</code>, staple, package, attach to Releases. Adds <code style="font-family: var(--font-mono); font-size: 11px;">ci.yml</code> for fmt+clippy+test.</p>
+      <span class="reqs">DIST-01..05</span>
+    </div>
+    <div class="p9-plan">
+      <div class="num">09-02</div>
+      <h4>Homebrew tap + crates.io</h4>
+      <p>Bootstraps <code style="font-family: var(--font-mono); font-size: 11px;">homebrew-yogurt</code> tap. Extends release.yml with <code style="font-family: var(--font-mono); font-size: 11px;">tap</code> + <code style="font-family: var(--font-mono); font-size: 11px;">publish</code> jobs after artifacts are live. CHANGELOG.md gets the v0.1.0 entry.</p>
+      <span class="reqs">DIST-06, DIST-07</span>
+    </div>
+    <div class="p9-plan">
+      <div class="num">09-03</div>
+      <h4>yogurt doctor + ship gate</h4>
+      <p><code style="font-family: var(--font-mono); font-size: 11px;">yogurt doctor</code> subcommand (TCC reset, port probe, model re-download). README + CONTRIBUTING + release checklist. <strong style="color: var(--straw);">Another human gate</strong>: <code style="font-family: var(--font-mono); font-size: 11px;">brew install yogurt</code> on a fresh Mac.</p>
+      <span class="reqs">DIST-08..10</span>
+    </div>
+  </div>
+
+  <!-- CONFIRM -->
+  <div class="confirm">
+    <div class="label" id="summary">
+      <strong>Your choice</strong>
+      <span id="summary-text">Defer the bench and proceed to Phase 9</span>
+    </div>
+    <button class="send" id="send" type="button">Send decision →</button>
+  </div>
+
+  <div class="footnote">
+    Lavish artifact · <code>.lavish/phase8-decision.html</code> · paint matches Yogurt PRD §16 Blueberry tokens (loaded directly from <code>web/src/index.css</code>)
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const choices = document.querySelectorAll('.choice');
+  const summary = document.getElementById('summary-text');
+  const btn = document.getElementById('send');
+
+  const labels = {
+    'defer':    'Defer the bench and proceed to Phase 9',
+    'run-now':  'Pause here so you can run the M1 Air bench now',
+    'stop':     'Stop autonomous mode after Phase 8'
+  };
+
+  function select(value) {
+    choices.forEach(c => c.classList.toggle('selected', c.dataset.value === value));
+    summary.textContent = labels[value] || '—';
+    btn.dataset.value = value;
+  }
+
+  choices.forEach(c => {
+    c.addEventListener('click', () => select(c.dataset.value));
+  });
+
+  btn.dataset.value = 'defer';
+
+  btn.addEventListener('click', () => {
+    const value = btn.dataset.value || 'defer';
+    if (window.lavish && typeof window.lavish.send === 'function') {
+      window.lavish.send({ decision: value });
+    } else {
+      // Fallback: copy + visual confirm so the user can paste it back
+      const note = '[Phase 8 → 9 handoff] decision: ' + value;
+      try { navigator.clipboard.writeText(note); } catch (e) {}
+      btn.textContent = 'Copied → paste in chat ✓';
+      btn.disabled = true;
+    }
+  });
+})();
+</script>
+</body>
+</html>

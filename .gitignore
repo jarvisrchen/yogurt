@@ -11,7 +11,7 @@ build/
 .cache/
 
 # Lavish review artifacts (local-only scratch surfaces)
-.lavish/
+/.lavish/
 
 # Rust
 /target/
@@ -25,3 +25,6 @@ web/test-results/
 web/playwright-report/
 web/blob-report/
 web/.playwright/
+
+# GSD planning scratch (v1 archived in docs/archive/.planning/v1; future runs stay local)
+/.planning/

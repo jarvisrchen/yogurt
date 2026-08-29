@@ -10,7 +10,7 @@
 //!
 //!     dyld: Library not loaded: @rpath/libswift_Concurrency.dylib
 //!
-//! See `docs/superpowers/notes/2026-06-25-sck-spike-result.md` ("What
+//! See `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` ("What
 //! didn't work" #1) for the full discovery story.
 
 fn main() {

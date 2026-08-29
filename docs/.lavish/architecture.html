@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yogurt Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-chip: 6px; --r-btn: 9px; --r-card: 14px; --r-pill: 999px;
+  --sh-card: 0 2px 6px rgba(40, 30, 15, 0.08);
+  --sh-pop:  0 12px 30px -10px rgba(40, 30, 15, 0.22);
+}
+
+* { box-sizing: border-box; min-width: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+header.top {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(251, 247, 239, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top-inner {
+  max-width: 1180px; margin: 0 auto;
+  padding: 14px 28px;
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--font-serif);
+  font-size: 26px; letter-spacing: -0.01em;
+}
+.brand span { color: var(--blue); }
+.tagline {
+  font-family: var(--font-mono);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--mut);
+}
+nav.top-nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+nav.top-nav a {
+  font-family: var(--font-mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--mut); text-decoration: none;
+  padding: 5px 9px; border-radius: var(--r-chip);
+  transition: background 140ms, color 140ms;
+  white-space: nowrap;
+}
+nav.top-nav a:hover { background: var(--blsoft); color: var(--blue); }
+
+/* ── Layout ─────────────────────────────────────────────── */
+main { max-width: 1180px; margin: 0 auto; padding: 40px 28px 120px; }
+
+.hero { margin-bottom: 44px; }
+.hero h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(38px, 6vw, 60px);
+  line-height: 1.04; margin: 0 0 14px; letter-spacing: -0.02em;
+}
+.hero p.lede { font-size: 18px; color: var(--mut); max-width: 62ch; margin: 0 0 8px; }
+.hero p.sub { font-size: 14px; color: var(--grey); max-width: 62ch; margin: 0; }
+
+.facts {
+  display: grid; gap: 12px; margin: 28px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+}
+.fact {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 16px 18px; box-shadow: var(--sh-card);
+}
+.fact .n {
+  font-family: var(--font-serif); font-size: 30px; line-height: 1.1;
+  color: var(--blue); display: block;
+}
+.fact .n.warn { color: var(--straw); }
+.fact .n.good { color: var(--matcha); }
+.fact .l {
+  font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--mut); margin-top: 4px; display: block;
+}
+
+section.sec { margin: 0 0 64px; scroll-margin-top: 88px; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.sec-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  color: var(--blue); background: var(--blsoft);
+  padding: 3px 8px; border-radius: var(--r-chip); letter-spacing: 0.05em;
+}
+h2 { font-family: var(--font-serif); font-size: 32px; margin: 0; letter-spacing: -0.01em; font-weight: 400; }
+h3 {
+  font-family: var(--font-sans); font-size: 15px; font-weight: 600;
+  margin: 32px 0 10px; letter-spacing: -0.005em;
+}
+.sec > p, .sec > ul, .sec > ol { max-width: 78ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 14px; padding-left: 20px; }
+li { margin-bottom: 7px; }
+strong { font-weight: 600; }
+code {
+  font-family: var(--font-mono); font-size: 0.875em;
+  background: var(--blsoft); color: #3d349a;
+  padding: 1.5px 5px; border-radius: 4px;
+}
+a { color: var(--blue); }
+
+/* ── Diagram frames ─────────────────────────────────────── */
+.diagram {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--sh-card);
+  margin: 20px 0 22px; overflow: hidden;
+}
+.diagram > .cap {
+  font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--mut);
+  padding: 11px 18px; border-bottom: 1px solid var(--line); background: #FDFBF7;
+}
+.diagram > .body { overflow-x: auto; padding: 22px 18px; }
+.diagram .mermaid { display: flex; justify-content: center; min-width: 0; }
+.diagram .mermaid svg { max-width: 100%; height: auto; }
+
+/* ── Tables ─────────────────────────────────────────────── */
+.tablewrap {
+  overflow-x: auto; margin: 16px 0 22px;
+  border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--card); box-shadow: var(--sh-card);
+}
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th {
+  text-align: left; font-family: var(--font-mono);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--mut); font-weight: 500;
+  padding: 11px 16px; border-bottom: 1px solid var(--line);
+  background: #FDFBF7; white-space: nowrap;
+}
+td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+td.num { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+tr.total td { background: var(--blsoft); font-weight: 600; }
+
+/* ── Callouts ───────────────────────────────────────────── */
+.note {
+  border-left: 3px solid var(--blue); background: var(--blsoft);
+  padding: 14px 18px; border-radius: 0 var(--r-btn) var(--r-btn) 0;
+  margin: 18px 0; max-width: 82ch;
+}
+.note.warn { border-left-color: var(--straw); background: var(--strsoft); }
+.note.good { border-left-color: var(--matcha); background: var(--mtsoft); }
+.note .tag {
+  font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--blue); display: block; margin-bottom: 5px;
+}
+.note.warn .tag { color: #b8503a; }
+.note.good .tag { color: #3f7a53; }
+.note p:last-child { margin-bottom: 0; }
+
+/* ── Rule cards ─────────────────────────────────────────── */
+.rules { display: grid; gap: 12px; margin: 18px 0 22px;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.rule {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 15px 17px; box-shadow: var(--sh-card);
+}
+.rule h4 { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
+.rule p { margin: 0; font-size: 13px; color: var(--mut); line-height: 1.55; }
+
+/* ── Cost bar ───────────────────────────────────────────── */
+.costbar { margin: 22px 0 8px; }
+.costbar .track {
+  display: flex; height: 40px; border-radius: var(--r-btn);
+  overflow: hidden; border: 1px solid var(--line); box-shadow: var(--sh-card);
+}
+.costbar .seg {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 11px; color: #fff;
+  overflow: hidden; white-space: nowrap;
+}
+.costbar .legend {
+  display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--mut);
+}
+.costbar .legend span::before {
+  content: ""; display: inline-block; width: 9px; height: 9px;
+  border-radius: 2px; margin-right: 6px; background: var(--blue);
+}
+.costbar .legend span.s2::before { background: var(--matcha); }
+.costbar .legend span.s3::before { background: var(--grey); }
+
+.gloss { display: grid; gap: 14px; margin: 18px 0 26px;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
+.gcard {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+  padding: 16px 18px; box-shadow: var(--sh-card);
+}
+.gcard .term {
+  font-family: var(--font-serif); font-size: 26px; line-height: 1.1;
+  color: var(--blue); display: block; margin-bottom: 2px;
+}
+.gcard .exp { font-size: 13.5px; font-weight: 600; display: block; margin-bottom: 8px; }
+.gcard p { margin: 0; font-size: 13px; color: var(--mut); line-height: 1.55; }
+.gcard.g2 { border-left-color: var(--matcha); }
+.gcard.g2 .term { color: var(--matcha); }
+.gcard.g3 { border-left-color: var(--straw); }
+.gcard.g3 .term { color: var(--straw); }
+
+.pill {
+  display: inline-block; font-family: var(--font-mono); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  padding: 3px 9px; border-radius: var(--r-pill);
+  background: var(--blsoft); color: var(--blue); margin-right: 6px;
+}
+.pill.free { background: var(--mtsoft); color: #3f7a53; }
+.pill.paid { background: var(--strsoft); color: #b8503a; }
+
+footer {
+  border-top: 1px solid var(--line); margin-top: 40px; padding-top: 22px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--grey);
+  max-width: 1180px; margin-left: auto; margin-right: auto;
+}
+footer a { color: var(--mut); }
+
+@media (max-width: 720px) {
+  main { padding: 28px 18px 80px; }
+  .top-inner { padding: 12px 18px; }
+  nav.top-nav { width: 100%; margin-left: 0; }
+  h2 { font-size: 26px; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <div class="brand">yogurt<span>.</span></div>
+      <div class="tagline">Architecture &amp; cost map</div>
+    </div>
+    <nav class="top-nav">
+      <a href="#glossary">Glossary</a>
+      <a href="#map">Map</a>
+      <a href="#threads">Threads</a>
+      <a href="#boot">Boot</a>
+      <a href="#record">Record</a>
+      <a href="#enhance">Enhance</a>
+      <a href="#chat">Chat</a>
+      <a href="#models">Local mode</a>
+      <a href="#state">State</a>
+      <a href="#trust">Trust</a>
+      <a href="#cost">AI &amp; cost</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <div class="hero">
+    <h1>How yogurt actually works</h1>
+    <p class="lede">One Rust process, two audio channels, three AI call sites, and one number that dominates every bill.</p>
+    <p class="sub">Traced from source rather than from the plan docs. Mirrors <code>docs/ARCHITECTURE.md</code>. Prices checked 2026-08-28.</p>
+
+    <div class="facts">
+      <div class="fact">
+        <span class="n">3</span>
+        <span class="l">AI call sites in prod</span>
+      </div>
+      <div class="fact">
+        <span class="n warn">2&times;</span>
+        <span class="l">Deepgram streams per meeting</span>
+      </div>
+      <div class="fact">
+        <span class="n warn">~96%</span>
+        <span class="l">of cost is STT, not the LLM</span>
+      </div>
+      <div class="fact">
+        <span class="n good">$0.00</span>
+        <span class="l">fully-local mode</span>
+      </div>
+    </div>
+  </div>
+
+  <section class="sec" id="glossary">
+    <div class="sec-head"><span class="sec-num">00</span><h2>Glossary</h2></div>
+    <p>This page leans on a few acronyms. These three carry most of the weight.</p>
+
+    <div class="gloss">
+      <div class="gcard">
+        <span class="term">STT</span>
+        <span class="exp">Speech to text</span>
+        <p>Turning spoken audio into written words, also called ASR or "transcription". In yogurt this is the <code>yogurt-stt</code> crate, with two interchangeable engines behind one <code>Stt</code> trait: Deepgram in the cloud, or whisper.cpp on your Mac. It produces the live transcript.</p>
+      </div>
+      <div class="gcard g2">
+        <span class="term">LLM</span>
+        <span class="exp">Large language model</span>
+        <p>The thing you send text to and get text back from (GPT, Claude, Llama, MiniMax). Used in exactly two places: turning sparse notes plus transcript into augmented notes, and answering chat questions. <strong>Never used for transcription.</strong></p>
+      </div>
+      <div class="gcard g3">
+        <span class="term">VAD</span>
+        <span class="exp">Voice activity detection</span>
+        <p>A cheap check for "is anyone actually talking?" that runs before the expensive model does. Only on the local STT path (<code>vad.rs</code>). It chops audio into utterances and skips silence, which is why local transcription costs nothing while idle.</p>
+      </div>
+    </div>
+
+    <h3>Supporting cast</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Term</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td><strong>WS</strong></td><td>WebSocket. A persistent two-way connection, unlike a one-shot HTTP request. Pushes transcript lines and chat tokens to the browser as they happen.</td></tr>
+          <tr><td><strong>SPA</strong></td><td>Single-page application. The React frontend, served as one HTML page that swaps views client-side.</td></tr>
+          <tr><td><strong>PCM</strong></td><td>Raw uncompressed audio samples. "16 kHz mono i16 PCM" = 16,000 samples/sec, one channel, each sample a 16-bit integer.</td></tr>
+          <tr><td><strong>ScreenCaptureKit / SCK</strong></td><td>Apple's macOS framework for capturing screen and system audio. How yogurt hears the other side of a call without joining as a bot.</td></tr>
+          <tr><td><strong>loopback</strong></td><td>Capturing the audio your Mac is <em>playing</em> (the other participants) rather than what your mic hears.</td></tr>
+          <tr><td><strong>TCC</strong></td><td>Apple's permissions system (Transparency, Consent, and Control). Source of the "allow Screen Recording?" prompts.</td></tr>
+          <tr><td><strong>WAL</strong></td><td>Write-ahead logging, a SQLite mode where readers do not block the writer.</td></tr>
+          <tr><td><strong>FTS</strong></td><td>Full-text search. SQLite's built-in search index, used for the Library search box. No AI involved.</td></tr>
+          <tr><td><strong>RAII</strong></td><td>A pattern where cleanup happens automatically when a value is dropped. Here: dropping the audio handle stops the microphone.</td></tr>
+          <tr><td><strong>SSE</strong></td><td>Server-sent events. The streaming format LLM providers use to send a response token by token.</td></tr>
+          <tr><td><strong>ULID</strong></td><td>A sortable unique identifier, like a UUID but time-ordered. Used for provider ids.</td></tr>
+          <tr><td><strong>Metal / CoreML / ANE</strong></td><td>Apple hardware acceleration. Metal is the GPU (enabled), CoreML/ANE is the Neural Engine (deliberately not enabled).</td></tr>
+          <tr><td><strong>ggml</strong></td><td>The tensor library whisper.cpp is built on. <code>.bin</code> model files are in its format.</td></tr>
+          <tr><td><strong>diarization</strong></td><td>Working out who spoke. Yogurt does the minimum version: mic is "Me", system audio is "Them".</td></tr>
+          <tr><td><strong>endpointing</strong></td><td>How long a speaker must pause before the engine decides the sentence is over.</td></tr>
+          <tr><td><strong>backpressure</strong></td><td>What a system does when data arrives faster than it can be processed.</td></tr>
+          <tr><td><strong>mojibake</strong></td><td>Garbled text from a character-encoding mismatch, e.g. <code>&acirc;&euro;&brvbar;</code> where <code>&hellip;</code> belongs.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══ 1 ══════════════════════════════════════════════ -->
+  <section class="sec" id="map">
+    <div class="sec-head"><span class="sec-num">01</span><h2>High-level map</h2></div>
+    <p>One Rust process. No sidecars, no IPC, no subprocesses. The browser is a render surface: it holds the editor buffer and nothing else authoritative.</p>
+
+    <div class="diagram">
+      <div class="cap">Component map — what talks to what</div>
+      <div class="body"><pre class="mermaid">
+graph TB
+    subgraph Browser["Browser at localhost:7878"]
+        SPA["React 19 SPA&lt;br/&gt;TipTap editor, Library, Settings"]
+    end
+
+    subgraph Proc["yogurt single binary (one tokio runtime)"]
+        subgraph Web["yogurt-server (axum 0.8)"]
+            REST["REST /api/*&lt;br/&gt;session-token gated"]
+            WSM["WS /ws/meetings/{id}"]
+            ASSETS["rust-embed web/dist"]
+            REG["meetings::Registry"]
+            ENH["enhance handler"]
+            CHAT["chat handler"]
+        end
+        AUD["yogurt-audio&lt;br/&gt;cpal mic + ScreenCaptureKit"]
+        STT["yogurt-stt&lt;br/&gt;Stt trait"]
+        NOTES["yogurt-notes&lt;br/&gt;AST diff + merge"]
+        LLM["yogurt-llm&lt;br/&gt;OpenAI-compatible client"]
+        DB["yogurt-db&lt;br/&gt;rusqlite + Keychain"]
+    end
+
+    subgraph Disk["~/.yogurt/"]
+        SQLITE[("db.sqlite (WAL)")]
+        NOTESDIR["notes/*.md"]
+        MODELS["models/*.bin"]
+    end
+
+    subgraph Cloud["Network, only on opt-in"]
+        DG["Deepgram streaming WS"]
+        PROV["LLM provider"]
+    end
+
+    KC["macOS Keychain"]
+
+    SPA -->|"Bearer token"| REST
+    SPA -->|"WebSocket ?token="| WSM
+    SPA --> ASSETS
+    REST --> REG
+    REST --> ENH
+    REST --> CHAT
+    REG --> AUD
+    REG --> STT
+    STT -.->|"cloud only"| DG
+    ENH --> LLM
+    ENH --> NOTES
+    CHAT --> LLM
+    LLM -.-> PROV
+    ENH --> DB
+    REG --> DB
+    DB --> SQLITE
+    ENH --> NOTESDIR
+    STT -.->|"local only"| MODELS
+    DB --> KC
+      </pre></div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Crate</th><th>Owns</th></tr></thead>
+        <tbody>
+          <tr><td><code>yogurt-cli</code></td><td>Arg parsing, <code>--dev</code> mode, <code>.env.local</code> load (dev only).</td></tr>
+          <tr><td><code>yogurt-server</code></td><td>axum router, auth, meeting registry, enhance/chat orchestration, WS fan-out, embedded assets.</td></tr>
+          <tr><td><code>yogurt-audio</code></td><td>Mic (cpal) + system loopback (ScreenCaptureKit), resample, broadcast frames.</td></tr>
+          <tr><td><code>yogurt-stt</code></td><td>Speech to text. <code>Stt</code> trait, plus <code>DeepgramStt</code> (cloud) and <code>WhisperLocal</code> (whisper.cpp).</td></tr>
+          <tr><td><code>yogurt-notes</code></td><td>Markdown parse, block diff of user notes vs LLM output, render to wire format.</td></tr>
+          <tr><td><code>yogurt-prompts</code></td><td>Embedded prompt templates and their render context.</td></tr>
+          <tr><td><code>yogurt-llm</code></td><td><code>LlmClient</code> trait, OpenAI-compatible HTTP client, SSE streaming.</td></tr>
+          <tr><td><code>yogurt-db</code></td><td>SQLite open/migrate, <code>MeetingRepo</code>, settings, providers, Keychain <code>ApiKeyStore</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="tag">The one contract everything depends on</span>
+      <p><code>yogurt-audio</code> emits <strong>16 kHz mono i16 PCM, 320 samples (20 ms) per Frame</strong>, on two independent channels. Both STT adapters consume exactly that. Nothing resamples at the STT boundary. Mic renders as "Me", system loopback as "Them", which is the whole of our diarization.</p>
+    </div>
+  </section>
+
+  <!-- ══ 2 ══════════════════════════════════════════════ -->
+  <section class="sec" id="threads">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Process and thread topology</h2></div>
+    <p>The interesting constraint: <code>cpal::Stream</code> is <code>!Send</code>, so the capture handle cannot live in a tokio task. That single fact shapes the whole recording path.</p>
+
+    <div class="diagram">
+      <div class="cap">Threads, tasks, and who owns the capture handle</div>
+      <div class="body"><pre class="mermaid">
+graph LR
+    subgraph OS["Dedicated std::thread, one per meeting"]
+        CAP["AudioStream owner&lt;br/&gt;(cpal Stream + SCStream)&lt;br/&gt;blocks on shutdown oneshot"]
+    end
+    subgraph RT["tokio runtime"]
+        SUP["supervisor task&lt;br/&gt;pump_audio_adapter"]
+        STTT["STT session task&lt;br/&gt;(AbortOnDrop guard)"]
+        PERS["persist_transcript task"]
+        WSC["one task per WS client"]
+        HTTP["axum request handlers"]
+    end
+    CB["CoreAudio / SCK callbacks&lt;br/&gt;realtime, ring write only"]
+    CB -->|"ring buffer"| DRAIN["drainer tasks&lt;br/&gt;resample, chunk, broadcast"]
+    DRAIN -->|"broadcast Frame, cap 256"| SUP
+    CAP -.->|"owns, RAII drop stops capture"| CB
+    SUP -->|"broadcast AudioChunk"| STTT
+    STTT -->|"TranscriptEvent"| PERS
+    STTT -->|"TranscriptEvent"| WSC
+    HTTP -.->|"start / stop"| CAP
+      </pre></div>
+    </div>
+
+    <div class="rules">
+      <div class="rule">
+        <h4>Realtime callbacks never allocate or lock</h4>
+        <p>They write into a ring buffer. A tokio drainer does the resample, quantize, chunk, and broadcast.</p>
+      </div>
+      <div class="rule">
+        <h4>RAII is the stop mechanism</h4>
+        <p>Dropping <code>AudioStream</code> stops both cpal and the SCStream. <code>stop()</code> joins the thread so back-to-back starts cannot overlap SCK sessions.</p>
+      </div>
+      <div class="rule">
+        <h4>The capture thread is wrapped in catch_unwind</h4>
+        <p>A panic inside ScreenCaptureKit (usually a TCC denial) becomes a clean 400 with a permission hint, not a mystery "channel closed".</p>
+      </div>
+      <div class="rule">
+        <h4>Broadcast, not mpsc, for frames</h4>
+        <p>256 frames is about 5 seconds. A slow consumer gets <code>Lagged(n)</code> and drops old audio, which is correct for wall-clock-bound speech.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 3 ══════════════════════════════════════════════ -->
+  <section class="sec" id="boot">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Boot and session-token handshake</h2></div>
+    <p>Everything except the token handout and health requires a bearer token. The token endpoint itself is gated by an Origin allowlist, because it <em>is</em> the token.</p>
+
+    <div class="diagram">
+      <div class="cap">Cold start to first authenticated request</div>
+      <div class="body"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as User (terminal)
+    participant CLI as yogurt-cli
+    participant S as yogurt-server
+    participant KC as Keychain
+    participant B as Browser
+
+    U->>CLI: yogurt
+    CLI->>S: run_with_config(addr, mode)
+    S->>S: Storage::init_at(~/.yogurt/db.sqlite)&lt;br/&gt;WAL, writer + reader conns, migrations
+    S->>S: load_or_create session token (0600 on disk)
+    S->>S: AppState::production_warmed(...)&lt;br/&gt;eager Keychain warm, 5s cap
+    par background, 20s budget
+        S->>KC: seed providers from YOGURT_*_API_KEY
+        S->>KC: seed Deepgram STT key
+        S->>S: repair legacy escaped-span rows
+    end
+    Note over S: still seeding at 20s? serve anyway,&lt;br/&gt;finish in background
+    S->>S: bind TcpListener, axum::serve
+    U->>B: open http://localhost:7878
+    B->>S: GET /api/session-token (Origin-checked)
+    S-->>B: { token }
+    B->>S: every later call carries the token
+      </pre></div>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">Why ?token= on WebSockets</span>
+      <p>The browser <code>WebSocket</code> API cannot set headers, and echoing a subprotocol for auth violates RFC 6455 if done sloppily. The accepted tradeoff is tokens in URLs, mitigated by redacting <code>?token=</code> from tracing output.</p>
+    </div>
+  </section>
+
+  <!-- ══ 4 ══════════════════════════════════════════════ -->
+  <section class="sec" id="record">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Record a meeting, live transcript</h2></div>
+    <p>The hot path. Note that the browser never accumulates the transcript, the server does.</p>
+
+    <div class="diagram">
+      <div class="cap">Start &rarr; live transcript &rarr; stop</div>
+      <div class="body"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant R as routes.rs
+    participant REG as Registry
+    participant TH as capture std::thread
+    participant A as yogurt-audio
+    participant STT as Stt impl
+    participant DG as Deepgram / whisper
+    participant P as persist_transcript
+    participant DB as SQLite
+    participant WS as WS /ws/meetings/id
+
+    B->>R: POST /api/meetings (create row)
+    B->>WS: connect ?token=...
+    WS->>REG: subscribe transcript_tx + events_tx
+
+    B->>R: POST /api/meetings/{id}/start
+    REG->>REG: lock task slot (refuse double-start)
+    REG->>REG: select_stt on spawn_blocking
+    REG->>TH: spawn thread, enter runtime handle
+    TH->>A: start_capture(mic_device)
+    alt capture fails or panics
+        TH-->>REG: Err via ready_tx
+        REG-->>B: 400 with permission hint
+    else ok
+        TH-->>REG: Ok(mic_rx, sys_rx)
+    end
+    REG->>P: spawn persist_transcript (subscribes FIRST)
+    REG->>STT: spawn stt.start(audio_rx, transcript_tx)
+    R-->>B: 200 recording
+
+    loop every 20 ms, per channel
+        A->>REG: Frame 16 kHz mono i16
+        REG->>STT: AudioChunk { channel, samples, ts_ms }
+        STT->>DG: PCM bytes
+        DG-->>STT: interim + speech_final
+        STT->>WS: TranscriptEvent
+        STT->>P: same event
+        WS-->>B: transcript frame, merge into dock
+        P->>DB: rewrite transcript_json (finals only)
+    end
+
+    B->>R: POST /api/meetings/{id}/stop
+    REG->>STT: abort via AbortOnDrop
+    REG->>TH: drop shutdown_tx, capture stops
+    REG->>P: drain queued finals, final write
+    R->>DB: stamp ended_at (first stop wins)
+      </pre></div>
+    </div>
+
+    <div class="rules">
+      <div class="rule">
+        <h4>is_final comes from speech_final</h4>
+        <p>Not Deepgram's <code>is_final</code>. Reading the wrong field made every interim-final render as a new locked line. <code>endpointing=1000</code> turns fragments into sentences.</p>
+      </div>
+      <div class="rule">
+        <h4>Subscription order is load-bearing</h4>
+        <p>Persistence and STT both subscribe before the audio pump publishes, so no opening words are dropped.</p>
+      </div>
+      <div class="rule">
+        <h4>Backpressure is visible, not silent</h4>
+        <p>64-chunk <code>try_send</code> buffer per channel. After 50 consecutive drops, the server emits <code>[stt overloaded, transcript may be lossy]</code>.</p>
+      </div>
+      <div class="rule">
+        <h4>Frontend reconnects with backoff</h4>
+        <p>Exponential, capped at 3 attempts, with connecting / reconnecting / offline surfaced in the UI.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 5 ══════════════════════════════════════════════ -->
+  <section class="sec" id="enhance">
+    <div class="sec-head"><span class="sec-num">05</span><h2>End meeting and enhance notes</h2></div>
+    <p>The hero flow. The browser sends its notes buffer; the server owns the transcript, the prompt, the merge, and both persistence targets.</p>
+
+    <div class="diagram">
+      <div class="cap">End meeting &rarr; LLM &rarr; merge &rarr; dual persist</div>
+      <div class="body"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant B as Browser (TipTap)
+    participant E as enhance.rs
+    participant DB as SQLite
+    participant PR as yogurt-prompts
+    participant L as LLM provider
+    participant N as yogurt-notes
+    participant FS as ~/.yogurt/notes/
+    participant WS as WS events
+
+    B->>B: flushNotes() (800 ms autosave, forced here)
+    B->>E: POST /stop, then POST /enhance
+    E->>DB: in registry? else SELECT + hydrate
+    Note over E,DB: registry wiped on restart, so hydrate&lt;br/&gt;keeps Re-enhance working
+    E->>DB: request transcript empty, read stored transcript_json
+    E->>PR: render_enhance({ notes, transcript })
+    E->>WS: enhance_progress phase sending
+
+    E->>E: resolve LLM: env, then provider+Keychain, then MockLlm
+    Note over E: configured provider with unreadable key&lt;br/&gt;is a hard 502, never a silent mock
+    E->>L: chat completion, non-streaming, hard timeout
+    alt error or timeout
+        E->>WS: enhance_progress phase error
+        E-->>B: 502 / 504
+    else ok
+        L-->>E: enriched markdown
+    end
+    E->>WS: enhance_progress phase streaming
+
+    E->>E: fix_model_mojibake + strip_prompt_scaffolding
+    E->>N: merge_notes(notes, llm_output, transcript)
+    N-->>E: MergedDoc, blocks tagged User or AiGrey
+    E->>E: to_markdown, then ammonia sanitize
+    par one spawn_blocking
+        E->>DB: UPSERT meetings row
+        E->>FS: atomic write tmp + rename + fsync
+    end
+    E->>WS: enhance_progress phase done
+    E-->>B: { enriched_md, notes_file }
+      </pre></div>
+    </div>
+
+    <div class="note">
+      <span class="tag">The black / grey UX in one paragraph</span>
+      <p><code>yogurt-notes</code> parses both the user's markdown and the LLM's markdown into block ASTs, keys blocks by normalized text, and for every LLM block that is not a user block emits <code>Source::AiGrey</code> with a guessed transcript timestamp. Those get wrapped in <code>&lt;span data-ai-grey data-ts=...&gt;</code>, which is what TipTap styles grey and what makes click-to-transcript work. User blocks pass through verbatim, which is the invariant that makes the feature trustworthy.</p>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">Three defensive layers, because real models misbehave</span>
+      <p>Mojibake repair (CP1252-mangled punctuation, observed live from MiniMax), scaffolding strip (models echoing the prompt's XML tags), then ammonia sanitization before anything is persisted. A hallucinated <code>&lt;script&gt;</code> never reaches SQLite or disk.</p>
+    </div>
+  </section>
+
+  <!-- ══ 6 ══════════════════════════════════════════════ -->
+  <section class="sec" id="chat">
+    <div class="sec-head"><span class="sec-num">06</span><h2>In-meeting chat streaming</h2></div>
+    <p>REST kicks it off and returns immediately. Tokens arrive over the same per-meeting WebSocket the transcript uses.</p>
+
+    <div class="diagram">
+      <div class="cap">POST returns instantly, tokens arrive over WS</div>
+      <div class="body"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant B as Browser (ChatWindow)
+    participant C as api/chat.rs
+    participant DB as SQLite
+    participant L as LLM provider
+    participant WS as WS /ws/meetings/id
+
+    B->>C: POST /chat { content }
+    C->>DB: insert user message
+    C->>DB: insert empty assistant placeholder
+    C->>C: spawn_stream(...)
+    C-->>B: 200 { message_id } immediately
+
+    C->>DB: load transcript + chat history
+    C->>L: stream(ChatRequest)
+    alt stream fails to open
+        C->>WS: chat_chunk delta "[stream error]" done true
+    else
+        loop per SSE chunk
+            L-->>C: delta
+            C->>WS: chat_chunk done false
+            WS-->>B: append to bubble, keep caret
+        end
+        C->>DB: UPDATE assistant row with full text
+        C->>WS: chat_chunk delta "" done true
+    end
+    Note over B: on remount, GET /chat rehydrates history
+      </pre></div>
+    </div>
+
+    <p>One discriminator convention across the whole socket: every frame is <code>{"type": "&lt;snake_case&gt;", ...}</code>. <code>transcript</code> frames nest their body under <code>payload</code>; <code>enhance_progress</code> and <code>chat_chunk</code> are flat.</p>
+  </section>
+
+  <!-- ══ 7 ══════════════════════════════════════════════ -->
+  <section class="sec" id="models">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Local mode: on-device STT and LLM</h2></div>
+    <p>The privacy escape hatch: no audio and no notes leave the machine, and the marginal cost is zero. It is not the default, and the code is honest about why.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Switch</th><th>Setting</th><th>Default</th><th>Off-machine traffic when local</th></tr></thead>
+        <tbody>
+          <tr><td><strong>STT</strong></td><td><code>settings.stt_provider</code> = <code>cloud</code> | <code>local</code></td><td><code>cloud</code></td><td><span class="pill free">none</span> audio never leaves</td></tr>
+          <tr><td><strong>LLM</strong></td><td>active <code>providers</code> row pointed at a localhost <code>base_url</code></td><td>none configured</td><td><span class="pill free">none</span> notes never leave</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Two independent switches. Either can be flipped without the other.</p>
+
+    <h3>7.1 &nbsp;Getting a model onto disk</h3>
+
+    <div class="diagram">
+      <div class="cap">Resumable download, SHA256 verify, sidecar marker</div>
+      <div class="body"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant B as Settings page
+    participant M as api/stt_models.rs
+    participant HF as model host
+    participant FS as ~/.yogurt/models/
+    participant WS as WS /ws app events
+
+    B->>M: GET /api/stt/models
+    B->>M: POST /api/stt/models/{name}/download
+    M->>M: spawn download_task
+    M-->>B: 202 accepted
+    loop while downloading
+        M->>HF: GET with Range header (resumable)
+        M->>WS: stt_model_download_progress
+        WS-->>B: matcha progress bar
+    end
+    M->>M: streaming SHA256 verify
+    alt hash mismatch or IO error
+        M->>WS: stt_model_download_error
+    else
+        M->>FS: persist model + .sha256 sidecar
+        M->>WS: stt_model_download_complete
+        B->>B: dialog auto-closes ~600 ms later
+    end
+      </pre></div>
+    </div>
+
+    <div class="note good">
+      <span class="tag">Hashes are real, not copied from a manifest</span>
+      <p>Models come from the <code>ggerganov/whisper.cpp</code> HuggingFace repo, and every SHA256 in <code>models::REGISTRY</code> was verified against the actual blob (2026-06-28). A mismatch deletes the file and shows the expected/actual pair in the dialog, so a truncated or MITM'd download can never be silently used.</p>
+    </div>
+
+    <p>At meeting start, <code>select_stt</code> checks the <code>.sha256</code> sidecar rather than rehashing a multi-GB file. The one-time legacy migration path <em>can</em> hash, which is why the whole check runs on <code>spawn_blocking</code>. <code>WhisperLocal::load</code> then reads the model (up to 3 GB) and runs ggml init, also on <code>spawn_blocking</code>.</p>
+
+    <h3>7.2 &nbsp;How local decoding actually works</h3>
+    <p>The cloud adapter hands audio to Deepgram and gets lines back. The local adapter has to build that behavior itself, with a <strong>VAD gate plus two different decoders against one shared model</strong>.</p>
+
+    <div class="diagram">
+      <div class="cap">VAD gate, then two sampling strategies against one WhisperContext</div>
+      <div class="body"><pre class="mermaid">
+graph TB
+    subgraph Shared["One WhisperContext, shared by Arc (the model weights)"]
+        CTX["ggml model in RAM&lt;br/&gt;Metal backend"]
+    end
+
+    MICF["mic frames"] --> SEGM["Segmenter (mic)"]
+    SYSF["system frames"] --> SEGS["Segmenter (system)"]
+
+    subgraph VADBOX["VAD gate: silence is never decoded"]
+        SEGM
+        SEGS
+    end
+
+    SEGM -->|"full utterance"| FIN["BeamSearch decoder&lt;br/&gt;beam_size 5, patience 1.0&lt;br/&gt;set_no_context(false)"]
+    SEGS -->|"full utterance"| FIN
+    MICF -->|"rolling 5 s window, every 1 s"| PART["Greedy decoder&lt;br/&gt;best_of 1&lt;br/&gt;set_no_context(true)"]
+
+    FIN -->|"is_final true, locks in dock"| OUT["TranscriptEvent"]
+    PART -->|"is_final false, still listening"| OUT
+
+    FIN -.->|"fresh WhisperState per call"| CTX
+    PART -.->|"fresh WhisperState per call"| CTX
+      </pre></div>
+    </div>
+
+    <div class="rules">
+      <div class="rule">
+        <h4>VAD first, decode second</h4>
+        <p><code>MIN_SPEECH_MS</code> 250 (shorter is a cough, discarded), <code>SILENCE_HANG_MS</code> 600 (end of utterance), <code>MAX_SEGMENT_MS</code> 25 s (so one monologue cannot stall the decoder). Silence costs literally nothing, which is the structural difference from the cloud path.</p>
+      </div>
+      <div class="rule">
+        <h4>Mic and system get their own segmenter</h4>
+        <p>Independent speakers with independent pauses. A shared segmenter would splice "Me" and "Them" into one utterance.</p>
+      </div>
+      <div class="rule">
+        <h4>Two sampling strategies, one model</h4>
+        <p>Greedy <code>best_of: 1</code> on a rolling 5 s window every 1 s gives live partials. BeamSearch <code>beam_size: 5</code> on complete utterances gives the finals. Slower and much better, which is right when one output is throwaway and the other is permanent.</p>
+      </div>
+      <div class="rule">
+        <h4>set_no_context differs per decoder</h4>
+        <p>Partials run <code>no_context(true)</code> so a hallucination cannot carry forward. Finals run <code>no_context(false)</code> so consecutive utterances read coherently.</p>
+      </div>
+      <div class="rule">
+        <h4>Fresh WhisperState per decode</h4>
+        <p>The weights (<code>WhisperContext</code>) are shared by <code>Arc</code>. <code>create_state</code> is cheap, and pooling would complicate the <code>spawn_blocking</code> lifetimes for no gain.</p>
+      </div>
+      <div class="rule">
+        <h4>Metal on, CoreML off</h4>
+        <p><code>whisper-rs</code> is pulled in only by <code>yogurt-stt</code>'s <code>local-stt</code> feature with <code>metal</code> enabled. <code>coreml</code> (ANE) is deliberately skipped: it would add a model-conversion step to the build.</p>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">The invariant not to break</span>
+      <p><code>whisper_full</code> is synchronous C++ that blocks for hundreds of ms to several seconds. Every decode site in <code>whisper_local.rs</code> is wrapped in <code>tokio::task::spawn_blocking</code>: the mic final decoder, the system final decoder, and the partial ticker. Remove one and you deadlock the WebSocket broadcast pump under load. There should always be at least three occurrences in that file.</p>
+    </div>
+
+    <h3>7.3 &nbsp;Choosing a model</h3>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Model</th><th>Disk</th><th>Intel Macs</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>tiny.en</code></td><td class="num">75 MB</td><td>yes</td><td>Fastest, roughest. Fine for a smoke test.</td></tr>
+          <tr><td><code>small.en</code> <span class="pill">seeded default</span></td><td class="num">487 MB</td><td>yes</td><td>The intended balance point (<code>V005</code>).</td></tr>
+          <tr><td><code>medium.en</code></td><td class="num">1.5 GB</td><td>no</td><td>Apple Silicon only.</td></tr>
+          <tr><td><code>large-v3</code></td><td class="num">3.1 GB</td><td>no</td><td>Apple Silicon only. Beam-search finals here are slow enough to feel.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>All four are English-only or English-first, matching the app's single-language v1 scope. <code>intel_supported</code> is a real gate, not a hint: the two larger models are marked unsupported on x86 Macs because Metal acceleration is not there to carry them.</p>
+
+    <h3>7.4 &nbsp;The local LLM side</h3>
+    <p>Independent of local STT, and it needs no new code at all: <code>yogurt-llm</code> speaks OpenAI-compatible HTTP and <code>OpenAiCompatClient</code> takes an arbitrary <code>base_url</code>. Two shipped presets are already localhost.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Preset</th><th><code>base_url</code></th><th>Default model</th></tr></thead>
+        <tbody>
+          <tr><td>Ollama (local)</td><td class="num">http://localhost:11434/v1</td><td><code>llama3.2</code></td></tr>
+          <tr><td>LM Studio (local)</td><td class="num">http://localhost:1234/v1</td><td>blank, you pick in LM Studio</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Pointing the active provider at either one makes enhance and chat fully local. Nothing else in the pipeline changes: the same prompts render, the same merge runs, the same sanitizer applies. The API-key field still writes to Keychain, which local servers simply ignore.</p>
+
+    <div class="note">
+      <span class="tag">The honest caveat</span>
+      <p>Local partial quality is openly worse than Deepgram's, and <code>whisper_local.rs</code> says so: it is <em>"the privacy escape hatch, not the daily driver"</em>. Greedy decoding on a 5 s window cannot match a cloud model with full acoustic context, and beam-search finals arrive after the utterance ends rather than streaming through it. What you get in exchange is that nothing ever leaves the machine, and the meeting costs nothing. A real tradeoff presented as one, not a feature-parity claim.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="state">
+    <div class="sec-head"><span class="sec-num">08</span><h2>Where state lives</h2></div>
+
+    <div class="diagram">
+      <div class="cap">In-memory vs SQLite vs filesystem vs Keychain</div>
+      <div class="body"><pre class="mermaid">
+graph TB
+    subgraph Mem["In-memory, lost on restart"]
+        REG["Registry: live meetings&lt;br/&gt;audio_tx, transcript_tx, events_tx,&lt;br/&gt;capture + task handles"]
+        WARM["warmed Keychain cache"]
+    end
+    subgraph SQ["~/.yogurt/db.sqlite (WAL)"]
+        MT["meetings: notes_md, transcript_json,&lt;br/&gt;enriched_md, enriched_doc_json"]
+        FTS["meetings_fts (search)"]
+        CM["chat_messages"]
+        PRV["providers (base_url, model, active)"]
+        SET["settings (stt_provider, stt_model)"]
+    end
+    subgraph FSD["~/.yogurt/"]
+        MD["notes/*.md (portable export)"]
+        MOD["models/*.bin + .sha256"]
+        TOK["session token file, 0600"]
+    end
+    KC["macOS Keychain, service 'yogurt'"]
+    REG -.->|"on stop / enhance"| MT
+    MT --> FTS
+    PRV -->|"key never in SQLite"| KC
+      </pre></div>
+    </div>
+
+    <div class="rules">
+      <div class="rule">
+        <h4>One SQLite file, two independent openers</h4>
+        <p><code>yogurt-server::storage</code> and <code>yogurt-db</code> both resolve <code>~/.yogurt/db.sqlite</code> and both run their own idempotent migrations. Keep the two path helpers in sync.</p>
+      </div>
+      <div class="rule">
+        <h4>Dual pool, WAL</h4>
+        <p>One writer connection behind a mutex, one read-only connection, <code>synchronous=NORMAL</code>.</p>
+      </div>
+      <div class="rule">
+        <h4>Every DB touch goes through spawn_blocking</h4>
+        <p>rusqlite is synchronous. Same for the markdown export, which does write + rename + fsync.</p>
+      </div>
+      <div class="rule">
+        <h4>Markdown files are an export, not the truth</h4>
+        <p>SQLite is authoritative. The <code>.md</code> file exists so notes are portable and greppable outside the app.</p>
+      </div>
+    </div>
+
+    <div class="note good">
+      <span class="tag">Keys</span>
+      <p>API keys are never in SQLite and never in a response body. The providers table holds <code>base_url</code>, model, and active flag; the secret lives in Keychain keyed by the provider's ULID. Responses return a masked suffix only.</p>
+    </div>
+  </section>
+
+  <!-- ══ 9 ══════════════════════════════════════════════ -->
+  <section class="sec" id="trust">
+    <div class="sec-head"><span class="sec-num">09</span><h2>Trust boundaries</h2></div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Surface</th><th>Gate</th></tr></thead>
+        <tbody>
+          <tr><td><code>/api/health</code></td><td>none</td></tr>
+          <tr><td><code>/api/session-token</code></td><td>Origin allowlist only (it hands out the token)</td></tr>
+          <tr><td><code>/api/meetings*</code>, <code>/api/audio/*</code>, <code>/api/settings*</code>, <code>/api/stt/*</code></td><td><code>require_session_token</code> middleware</td></tr>
+          <tr><td><code>/ws</code>, <code>/ws/meetings/{id}</code></td><td>Origin allowlist + <code>?token=</code></td></tr>
+          <tr><td>unknown <code>/api/*</code></td><td>explicit 404, never falls through to the SPA</td></tr>
+          <tr><td>everything else</td><td>embedded assets with SPA fallback, or Vite proxy in <code>--dev</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">Localhost binding is not the boundary</span>
+      <p>Image preloads, iframes, and link-preview SSRF can reach GETs without CORS protection, which is why even device enumeration requires the token. Unauthenticated settings writes were a real finding: before hardening, any localhost-reaching page could POST <code>/api/settings/providers</code> and repoint the active LLM at an attacker <code>base_url</code>.</p>
+    </div>
+  </section>
+
+  <!-- ══ 10 ═════════════════════════════════════════════ -->
+  <section class="sec" id="cost">
+    <div class="sec-head"><span class="sec-num">10</span><h2>AI usage and cost map</h2></div>
+    <p>Prices checked 2026-08-28, pay-as-you-go public rates. Treat the <em>structure</em> as durable and the <em>numbers</em> as a snapshot.</p>
+
+    <h3>There are exactly three AI call sites</h3>
+    <p>Grep-verified: <code>llm.complete</code> appears once in production code, <code>llm.stream</code> once, and <code>Stt::start</code> once. Everything else in the app is deterministic Rust.</p>
+
+    <div class="diagram">
+      <div class="cap">Which parts use AI, and which billing meter they turn</div>
+      <div class="body"><pre class="mermaid">
+graph TB
+    subgraph Free["No AI, no marginal cost"]
+        LIB["Library list, search (SQLite FTS5)"]
+        TITLE["Meeting titles (user-typed)"]
+        MERGE["Black/grey diff (AST diff)"]
+        EXPORT["Markdown export"]
+        SAN["Mojibake repair, sanitize"]
+    end
+    subgraph STTBox["AI #1: Speech to text, billed per MINUTE"]
+        DGC["DeepgramStt (cloud) nova-3&lt;br/&gt;2 concurrent WS: mic + system"]
+        WL["WhisperLocal on-device&lt;br/&gt;whisper.cpp + Metal, VAD-gated"]
+    end
+    subgraph LLMBox["AI #2 and #3: LLM, billed per TOKEN"]
+        ENH["enhance: 1 call per End-meeting&lt;br/&gt;or Re-enhance, non-streaming"]
+        CHT["chat: 1 call per user message,&lt;br/&gt;streaming"]
+    end
+    MIC["mic + system audio"] --> STTBox
+    STTBox --> TXT["transcript_json in SQLite"]
+    TXT --> ENH
+    TXT --> CHT
+    NOTES3["user notes"] --> ENH
+    DGC -->|"per streamed minute"| BILL1["Deepgram account"]
+    WL -->|"$0, costs battery"| BILL2["your Mac"]
+    ENH -->|"per token"| BILL3["LLM provider account"]
+    CHT -->|"per token"| BILL3
+      </pre></div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>#</th><th>Where in code</th><th>Which AI</th><th>Fires when</th><th>Billing unit</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="num">1</td>
+            <td><code>meetings.rs::start</code> &rarr; <code>Stt::start</code></td>
+            <td>Deepgram <code>nova-3</code> <strong>or</strong> local whisper.cpp</td>
+            <td>Continuously while recording</td>
+            <td><span class="pill paid">per minute</span> local: free</td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td><code>enhance.rs:210</code> <code>llm.complete</code></td>
+            <td>Configured LLM provider</td>
+            <td>Once per <strong>End meeting</strong>, once per <strong>Re-enhance</strong></td>
+            <td><span class="pill paid">per token</span></td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td><code>api/chat.rs:218</code> <code>llm.stream</code></td>
+            <td>Same provider</td>
+            <td>Once per <strong>chat message sent</strong></td>
+            <td><span class="pill paid">per token</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note good">
+      <span class="tag">Free fallbacks</span>
+      <p>If no provider is configured at all, <code>MockLlm</code> answers deterministically at $0. A provider that <em>is</em> configured but whose Keychain key cannot be read is a hard 502, never a silent free fallback, so you can never be quietly downgraded to fake output.</p>
+    </div>
+
+    <h3>STT is where the money goes, and it bills at 2&times;</h3>
+    <p>The mic and system channels are <strong>two separate Deepgram WebSocket sessions</strong> (<code>spawn_supervised_session</code> is called once for <code>Channel::Mic</code>, once for <code>Channel::System</code>). Both stream continuously for the whole meeting, including silence, because the cloud path has no VAD gate.</p>
+
+    <div class="note warn">
+      <span class="tag">The headline number</span>
+      <p><strong>Billed minutes = 2 &times; wall-clock meeting length</strong>, regardless of how much anyone actually talks. A solo meeting where nobody else is on the call still pays for the system channel streaming an hour of silence.</p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Nova-3 streaming, pay-as-you-go</th><th>Per streamed min</th><th>Per 1 h meeting (2 streams = 120 min)</th></tr></thead>
+        <tbody>
+          <tr><td>Promotional rate (current)</td><td class="num">$0.0048</td><td class="num"><strong>$0.58</strong></td></tr>
+          <tr><td>Standard rate (post-promo)</td><td class="num">$0.0077</td><td class="num"><strong>$0.92</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Roughly <strong>$0.60 to $0.90 per meeting-hour</strong>. A 20 h/month meeting habit is about <strong>$12 to $18/month</strong>.</p>
+
+    <div class="note good">
+      <span class="tag">The local path is structurally different</span>
+      <p><code>vad.rs</code> only hands whisper.cpp segments where speech was actually detected (<code>MIN_SPEECH_MS</code> 250, <code>SILENCE_HANG_MS</code> 600, <code>MAX_SEGMENT_MS</code> 25 s), so silence costs nothing at all. Local mic and system each get their own segmenter, and every decode runs on <code>spawn_blocking</code>.</p>
+    </div>
+
+    <h3>The LLM calls are cheap, but one of them grows</h3>
+    <p><strong>Enhance</strong>, for a 1-hour meeting, sends roughly:</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Part of the prompt</th><th>Approx tokens</th></tr></thead>
+        <tbody>
+          <tr><td><code>enhance.md</code> instructions (fixed, 2.6 KB)</td><td class="num">~650</td></tr>
+          <tr><td>User's sparse notes</td><td class="num">100 to 400</td></tr>
+          <tr><td><code>transcript_json</code></td><td class="num">~24,000</td></tr>
+          <tr><td>Output (the merged document)</td><td class="num">400 to 1,200</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The transcript is the whole cost. It goes to the model as raw JSON, not prose, so every segment carries <code>{"ts_ms":3600000,"channel":"them","text":"..."}</code> scaffolding. At ~700 utterances per hour that JSON punctuation alone is roughly 14k tokens on top of ~10k tokens of actual words. The model needs <code>ts_ms</code> to emit the <code>data-ts</code> timestamps that make click-to-transcript work, so this is a real tradeoff, not waste, but it is where the tokens are.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Provider (preset)</th><th>In / Out per 1M</th><th>Cost of one 1 h enhance</th></tr></thead>
+        <tbody>
+          <tr><td>MiniMax-Text-01 <span class="pill">your .env.local</span></td><td class="num">$0.20 / $1.10</td><td class="num"><strong>~$0.006</strong></td></tr>
+          <tr><td>gpt-4o-mini</td><td class="num">$0.15 / $0.60</td><td class="num"><strong>~$0.004</strong></td></tr>
+          <tr><td>Ollama / LM Studio</td><td class="num">free</td><td class="num"><strong>$0</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">Chat is the line item to watch</span>
+      <p>Every message re-sends the entire transcript plus the entire prior conversation:</p>
+      <p style="font-family:var(--font-mono);font-size:12.5px;margin-top:8px;">cost(message N) = system prompt + FULL transcript so far + all N-1 prior messages</p>
+      <p style="margin-top:8px;">There is no windowing, no truncation, and no summarization anywhere in <code>run_stream</code>. Ten questions across a one-hour meeting is on the order of 120k input tokens, about <strong>$0.02 on MiniMax</strong>, which is fine. But the growth is quadratic in messages-times-meeting-length, so a long meeting with heavy chat use is the one path that can surprise you.</p>
+    </div>
+
+    <h3>Putting it together</h3>
+    <p>One 1-hour meeting, transcribed in the cloud, enhanced once, with a handful of chat questions:</p>
+
+    <div class="costbar">
+      <div class="track">
+        <div class="seg" style="flex:96;background:var(--blue);">Deepgram, 2 streams &times; 60 min &mdash; ~96%</div>
+        <div class="seg" style="flex:3;background:var(--grey);"></div>
+        <div class="seg" style="flex:1;background:var(--matcha);"></div>
+      </div>
+      <div class="legend">
+        <span>Deepgram STT &nbsp;$0.58 to $0.92</span>
+        <span class="s3">Chat, ~10 messages &nbsp;~$0.02</span>
+        <span class="s2">Enhance, 1 call &nbsp;~$0.005</span>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Line item</th><th>Cost</th><th>Share</th></tr></thead>
+        <tbody>
+          <tr><td>Deepgram nova-3, 2 streams &times; 60 min</td><td class="num">$0.58 to $0.92</td><td class="num"><strong>~95 to 98%</strong></td></tr>
+          <tr><td>Enhance, one LLM call</td><td class="num">~$0.005</td><td class="num">~1%</td></tr>
+          <tr><td>Chat, ~10 messages</td><td class="num">~$0.02</td><td class="num">~2 to 3%</td></tr>
+          <tr><td>Everything else (SQLite, FTS, diff, export, UI)</td><td class="num">$0</td><td class="num">0%</td></tr>
+          <tr class="total"><td>Total per meeting-hour</td><td class="num">~$0.61 to $0.95</td><td class="num"></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Switch STT to local and the same meeting costs <strong>~$0.025</strong>. Switch STT <em>and</em> the LLM to local (whisper.cpp + Ollama) and it costs <strong>$0.00</strong>, paid instead in battery, fan noise, and a one-time model download.</p>
+
+    <p>The one-time cost of local mode is disk and bandwidth for the model (75 MB to 3.1 GB), plus battery and thermals while decoding. See <a href="#models">7.3 Choosing a model</a> for sizes and <a href="#models">7.2</a> for why silence is free there.</p>
+
+    <h3>What the architecture does and does not do about cost</h3>
+
+    <div class="rules">
+      <div class="rule">
+        <h4><span class="pill free">present</span> Local-everything escape hatch</h4>
+        <p>Both AI surfaces sit behind traits (<code>Stt</code>, <code>LlmClient</code>), so $0 mode is a settings change, not a fork.</p>
+      </div>
+      <div class="rule">
+        <h4><span class="pill free">present</span> Hard timeout on enhance</h4>
+        <p><code>LLM_HTTP_TIMEOUT</code> means a hung provider cannot bill indefinitely.</p>
+      </div>
+      <div class="rule">
+        <h4><span class="pill free">present</span> Visible STT backpressure</h4>
+        <p>Surfaces <code>[stt overloaded, transcript may be lossy]</code> rather than silently paying for audio it dropped.</p>
+      </div>
+      <div class="rule">
+        <h4><span class="pill free">present</span> Env-overridable Deepgram model</h4>
+        <p><code>YOGURT_DEEPGRAM_MODEL</code> trades quality for price without a rebuild.</p>
+      </div>
+    </div>
+
+    <p style="margin-top:22px;">Not present, in rough priority order if cost ever matters:</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>#</th><th>Gap</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="num">1</td>
+            <td><strong>No gating of the system channel</strong></td>
+            <td>It streams silence for the entire meeting at full price. Gating on output-audio activity would cut the Deepgram bill by close to half for solo work.</td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td><strong>No transcript windowing in chat</strong></td>
+            <td>Every message pays for the full transcript again.</td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td><strong>No prompt caching</strong></td>
+            <td>The <code>enhance.md</code> prefix is fixed at ~650 tokens and the chat system prompt is stable, but neither claims providers' cached-input discounts (OpenAI prices cached input at half rate).</td>
+          </tr>
+          <tr>
+            <td class="num">4</td>
+            <td><strong>No spend meter</strong></td>
+            <td>Nothing tells the user what a meeting cost, which for a BYO-key product is the number they would most want to see.</td>
+          </tr>
+          <tr>
+            <td class="num">5</td>
+            <td><strong>Re-enhance is a full re-run</strong></td>
+            <td>Full price each time, no diffing against the previous result.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Source of truth: <code>docs/ARCHITECTURE.md</code> &nbsp;&middot;&nbsp; traced from code, not from plan docs &nbsp;&middot;&nbsp; prices checked 2026-08-28
+</footer>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({
+  startOnLoad: true,
+  theme: "base",
+  securityLevel: "loose",
+  fontFamily: '"Hanken Grotesk", ui-sans-serif, system-ui, sans-serif',
+  themeVariables: {
+    background: "#FFFFFF",
+    primaryColor: "#ECE9FB",
+    primaryTextColor: "#211D18",
+    primaryBorderColor: "#5B4FC7",
+    lineColor: "#A89F90",
+    secondaryColor: "#E7F0E8",
+    tertiaryColor: "#FBF7EF",
+    fontSize: "13px",
+    clusterBkg: "#FDFBF7",
+    clusterBorder: "#EBE3D5",
+    edgeLabelBackground: "#FBF7EF",
+    actorBkg: "#ECE9FB",
+    actorBorder: "#5B4FC7",
+    actorTextColor: "#211D18",
+    actorLineColor: "#A89F90",
+    signalColor: "#211D18",
+    signalTextColor: "#211D18",
+    labelBoxBkgColor: "#FBE6E0",
+    labelBoxBorderColor: "#E07A66",
+    labelTextColor: "#211D18",
+    loopTextColor: "#211D18",
+    noteBkgColor: "#E7F0E8",
+    noteBorderColor: "#5E9E73",
+    noteTextColor: "#211D18",
+    sequenceNumberColor: "#FFFFFF"
+  },
+  flowchart: { curve: "basis", useMaxWidth: true, padding: 14 },
+  sequence: { useMaxWidth: true, actorMargin: 42, boxMargin: 10, mirrorActors: false, wrap: true, width: 170 }
+});
+</script>
+
+</body>
+</html>
