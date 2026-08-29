@@ -43,6 +43,9 @@ vi.mock("../lib/api/meetings", () => ({
   // redirect (see MeetingPost.test.tsx) — always report nothing recording.
   useActiveRecording: () => ({ data: null, isLoading: false, error: null }),
   useSetMeetingLabels: () => ({ mutate: vi.fn() }),
+  // The header's delete button mounts DeleteMeetingConfirm, which
+  // calls this hook on render even though these suites never click it.
+  useDeleteMeeting: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 import { MeetingPost } from "./MeetingPost";

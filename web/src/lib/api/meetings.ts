@@ -117,8 +117,10 @@ export const meetingsApi = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  delete: (id: string) =>
-    json<void>(`/api/meetings/${id}`, { method: "DELETE" }),
+  delete: (id: string, deleteFile: boolean) =>
+    json<void>(`/api/meetings/${id}?delete_file=${deleteFile}`, {
+      method: "DELETE",
+    }),
 };
 
 // ─── React-Query hooks ─────────────────────────────────────────────────────
@@ -192,11 +194,15 @@ export function useMeetingsSearch(
 }
 
 /** `DELETE /api/meetings/:id`. Invalidates list + the specific row. */
-export function useDeleteMeeting(): UseMutationResult<void, Error, string> {
+export function useDeleteMeeting(): UseMutationResult<
+  void,
+  Error,
+  { id: string; deleteFile: boolean }
+> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => meetingsApi.delete(id),
-    onSuccess: (_void, id) => {
+    mutationFn: ({ id, deleteFile }) => meetingsApi.delete(id, deleteFile),
+    onSuccess: (_void, { id }) => {
       qc.invalidateQueries({ queryKey: meetingsKey });
       qc.removeQueries({ queryKey: meetingKey(id) });
     },

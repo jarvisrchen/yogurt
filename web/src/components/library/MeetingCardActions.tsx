@@ -23,9 +23,8 @@
  *   - `role="menu"` / `role="menuitem"` on the dropdown items so VoiceOver
  *     announces it as a menu (matches PRD §16 accessibility posture).
  *
- * D-10 / PRD §5.7 reminder: Delete removes the SQLite row + cascades
- * `chat_messages`, but the on-disk markdown file in `~/.yogurt/notes/`
- * survives. The confirm caption makes that explicit.
+ * The Delete item + its confirm live in `DeleteMeetingConfirm`, shared
+ * with the post-meeting header so both surfaces delete identically.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -33,9 +32,9 @@ import { MoreHorizontal, Star, Tag } from "lucide-react";
 import {
   copyMeetingMarkdown,
   revealMeetingInFinder,
-  useDeleteMeeting,
   useToggleStarred,
 } from "../../lib/api/meetings";
+import { DeleteMeetingConfirm } from "./DeleteMeetingConfirm";
 import type { Label } from "../../lib/api/labels";
 import { LabelPicker } from "../labels/LabelPicker";
 
@@ -47,10 +46,8 @@ interface Props {
 
 export function MeetingCardActions({ id, starred, labels }: Props) {
   const [open, setOpen] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const del = useDeleteMeeting();
   const star = useToggleStarred();
 
   // Click-outside closes the menu so it doesn't get marooned open when
@@ -63,19 +60,11 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
         !wrapperRef.current.contains(e.target as Node)
       ) {
         setOpen(false);
-        setConfirming(false);
       }
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
-
-  // The inline "Delete?" confirm auto-reverts after 3s of inaction.
-  useEffect(() => {
-    if (!confirming) return;
-    const t = setTimeout(() => setConfirming(false), 3000);
-    return () => clearTimeout(t);
-  }, [confirming]);
 
   const stop = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -95,20 +84,6 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
     stop(e);
     setOpen(false);
     await revealMeetingInFinder(id);
-  };
-  const onDeleteClick = (e: React.MouseEvent) => {
-    stop(e);
-    setConfirming(true);
-  };
-  const onConfirmDelete = async (e: React.MouseEvent) => {
-    stop(e);
-    setOpen(false);
-    setConfirming(false);
-    await del.mutateAsync(id);
-  };
-  const onCancelDelete = (e: React.MouseEvent) => {
-    stop(e);
-    setConfirming(false);
   };
 
   const iconButton =
@@ -166,7 +141,6 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
         onClick={(e) => {
           stop(e);
           setOpen((o) => !o);
-          setConfirming(false);
           setLabelPickerOpen(false);
         }}
         className={`${iconButton} text-mut hover:text-ink`}
@@ -194,42 +168,11 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
           >
             Reveal in Finder
           </button>
-          {confirming ? (
-            <div className="px-3 py-2 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  role="menuitem"
-                  autoFocus
-                  onClick={onConfirmDelete}
-                  disabled={del.isPending}
-                  className="px-2 py-1 rounded-button bg-strsoft text-ink border border-straw/40 font-semibold hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50 disabled:opacity-50"
-                >
-                  Delete?
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={onCancelDelete}
-                  className="px-2 py-1 rounded-button text-mut hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
-                >
-                  Cancel
-                </button>
-              </div>
-              <p className="text-[11px] font-mono text-mut">
-                .md file stays in ~/.yogurt/notes
-              </p>
-            </div>
-          ) : (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onDeleteClick}
-              className="block w-full text-left px-3 py-2 text-straw hover:bg-paper"
-            >
-              Delete
-            </button>
-          )}
+          <DeleteMeetingConfirm
+            id={id}
+            variant="menuitem"
+            onDeleted={() => setOpen(false)}
+          />
         </div>
       )}
     </div>

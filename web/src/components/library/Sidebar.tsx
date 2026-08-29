@@ -60,8 +60,13 @@ export function Sidebar() {
 
   return (
     <aside
-      className="w-[212px] shrink-0 flex flex-col bg-paper border-r border-line"
-      style={{ minHeight: "100vh" }}
+      // `sticky top-0 h-screen` pins the rail to the viewport instead of
+      // letting it stretch to the height of a long meeting list. Before
+      // this, the flex parent sized the aside to the tallest child, so
+      // `mt-auto` parked Settings at the bottom of the *document* and you
+      // had to scroll the library to reach it. Sticky keeps the document
+      // scroll on <main> only, which is what the layout always meant.
+      className="w-[212px] shrink-0 flex flex-col bg-paper border-r border-line sticky top-0 h-screen"
     >
       {/* Header — logo + wordmark */}
       <div className="px-5 pt-5 pb-4 flex items-center gap-2">

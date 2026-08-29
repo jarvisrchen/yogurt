@@ -15,12 +15,14 @@
 //!
 //! **Markdown side-effect:** create + patch funnel through
 //! `MarkdownExporter::write` so the canonical `~/.yogurt/notes/<…>.md` file
-//! is always in sync with the SQLite row. DELETE intentionally does NOT
-//! remove the markdown file (D-10 / PRD §5.7) — the file is the user's
-//! grep-able source of truth even after they purge the library entry.
+//! is always in sync with the SQLite row. DELETE removes the markdown file
+//! only when the caller passes `?delete_file=true`; the default stays false
+//! so the file remains the user's grep-able source of truth (D-10 / PRD
+//! §5.7) unless deletion is explicitly asked for. The Library UI checkbox
+//! defaults to checked, so the common path does delete both.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -373,19 +375,56 @@ async fn reveal_in_finder(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Query string for `DELETE /api/meetings/:id`.
+#[derive(Debug, Default, Deserialize)]
+pub struct DeleteQuery {
+    /// Also unlink `~/.yogurt/notes/<…>.md`. Defaults to false: an absent
+    /// flag must never destroy a file, so the destructive behaviour is
+    /// opt-in at the API layer even though the UI checkbox pre-checks it.
+    #[serde(default)]
+    delete_file: bool,
+}
+
 async fn delete_one(
     State(s): State<AppState>,
     Path(id): Path<String>,
+    Query(q): Query<DeleteQuery>,
 ) -> Result<StatusCode, ApiError> {
     let repo = s.meeting_repo.clone();
-    // Intentional: do NOT touch the markdown file on disk. PRD §5.7 + D-10
-    // — the markdown file in ~/.yogurt/notes/ is the user's grep-able source
-    // of truth and survives Library deletion. SQLite cascade purges the
-    // chat rows.
-    let removed = tokio::task::spawn_blocking(move || repo.delete(&id))
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
-        .map_err(ApiError::from)?;
+    let exporter = s.markdown_exporter.clone();
+    // Resolve the markdown path BEFORE dropping the row — `path_for` needs
+    // the meeting's fields to rebuild the filename, and after the delete
+    // there's nothing left to derive it from.
+    let removed = tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
+        let path = if q.delete_file {
+            repo.get(&id)?
+                .map(|m| exporter.path_for(&exporter_view(&m)))
+                .transpose()?
+        } else {
+            None
+        };
+        // SQLite cascade purges the chat rows.
+        let removed = repo.delete(&id)?;
+        // Only unlink once the row is actually gone, so a failed delete
+        // never leaves the library pointing at a missing file. A missing
+        // file is not an error — the exporter writes lazily, so a meeting
+        // that was never enhanced has no .md to remove.
+        if removed {
+            if let Some(path) = path {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => {
+                        tracing::warn!(?e, path = %path.display(), "delete: could not remove markdown file");
+                    }
+                }
+            }
+        }
+        Ok(removed)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
     if removed {
         Ok(StatusCode::NO_CONTENT)
     } else {

@@ -47,6 +47,7 @@ import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
+import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
@@ -490,6 +491,7 @@ export function MeetingPost() {
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-1.5 shrink-0">
         {token && (
           <ReEnhanceButton
             meetingId={meetingId}
@@ -508,6 +510,18 @@ export function MeetingPost() {
             onError={handleError}
           />
         )}
+        {/* Delete lives here too, not just on the Library card — you decide
+          a meeting was useless while reading it, not while scanning the
+          list. Same confirm + .md checkbox; on success we bounce to the
+          Library since this route's meeting no longer exists. */}
+        {meetingId && (
+          <DeleteMeetingConfirm
+            id={meetingId}
+            variant="icon"
+            onDeleted={() => navigate("/")}
+          />
+        )}
+        </div>
       </div>
 
       {/* Hero column. `position: relative` so the Legend's absolute
