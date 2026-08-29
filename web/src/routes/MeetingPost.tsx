@@ -45,6 +45,7 @@ import { ReEnhanceButton } from "../components/ReEnhanceButton";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
+import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
@@ -515,6 +516,7 @@ export function MeetingPost() {
                 {subline}
               </p>
             )}
+            {meetingId && <MeetingLabels meetingId={meetingId} compact />}
           </div>
         </div>
         {token && (

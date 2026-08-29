@@ -62,6 +62,8 @@ vi.mock("../lib/api/meetings", () => ({
     isLoading: false,
     error: null,
   }),
+  // MeetingLabels (mounted in the header) needs this hook to exist.
+  useSetMeetingLabels: () => ({ mutate: vi.fn() }),
 }));
 
 const postEnhanceMock = vi.fn();

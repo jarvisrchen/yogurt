@@ -41,6 +41,7 @@ vi.mock("../lib/api/meetings", () => ({
   useMeeting: () => ({ data: undefined, isError: false }),
   useUpdateMeetingTitle: () => ({ mutate: vi.fn() }),
   useActiveRecording: () => ({ data: state.active, isLoading: false, error: null }),
+  useSetMeetingLabels: () => ({ mutate: vi.fn() }),
 }));
 
 import { MeetingPost } from "./MeetingPost";

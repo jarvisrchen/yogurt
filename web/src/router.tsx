@@ -18,6 +18,7 @@ import { RecordingPill } from "./components/RecordingPill";
  *
  *   "/"                    — Phase 7 Library (sidebar + date-grouped meeting cards)
  *   "/starred"             — Library filtered to starred meetings
+ *   "/label/:labelId"      — Library filtered to meetings carrying a label
  *   "/welcome"             — Phase 7 Plan 07-04 onboarding flow (PRD §5.10)
  *   "/style-guide"         — Phase 1 design-system showcase
  *   "/meeting/new"         — Phase 4 bootstrap: POSTs /api/meetings then
@@ -58,6 +59,7 @@ export const routes: RouteObject[] = [
     children: [
       { path: "/", element: <Library /> },
       { path: "/starred", element: <Library starredOnly /> },
+      { path: "/label/:labelId", element: <Library /> },
       { path: "/welcome", element: <Welcome /> },
       { path: "/style-guide", element: <StyleGuide /> },
       { path: "/meeting/new", element: <Meeting /> },

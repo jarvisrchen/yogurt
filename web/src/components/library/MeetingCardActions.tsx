@@ -29,22 +29,26 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal, Star } from "lucide-react";
+import { MoreHorizontal, Star, Tag } from "lucide-react";
 import {
   copyMeetingMarkdown,
   revealMeetingInFinder,
   useDeleteMeeting,
   useToggleStarred,
 } from "../../lib/api/meetings";
+import type { Label } from "../../lib/api/labels";
+import { LabelPicker } from "../labels/LabelPicker";
 
 interface Props {
   id: string;
   starred: boolean;
+  labels: Label[];
 }
 
-export function MeetingCardActions({ id, starred }: Props) {
+export function MeetingCardActions({ id, starred, labels }: Props) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const del = useDeleteMeeting();
   const star = useToggleStarred();
@@ -132,6 +136,30 @@ export function MeetingCardActions({ id, starred }: Props) {
       </button>
       <button
         type="button"
+        aria-label="Edit labels"
+        // Also stop mousedown (not just click) so LabelPicker's own
+        // outside-click listener — which fires on mousedown, before this
+        // click handler runs — doesn't see this button as "outside" and
+        // close what we're about to open (or reopen what we're closing).
+        onMouseDown={stop}
+        onClick={(e) => {
+          stop(e);
+          setLabelPickerOpen((o) => !o);
+          setOpen(false);
+        }}
+        className={`${iconButton} text-mut hover:text-ink opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100`}
+      >
+        <Tag size={16} aria-hidden />
+      </button>
+      <LabelPicker
+        meetingId={id}
+        selected={labels}
+        open={labelPickerOpen}
+        onClose={() => setLabelPickerOpen(false)}
+        anchorClassName="absolute right-0 top-full mt-1 bg-card border border-line rounded-card shadow-pop py-1 min-w-[220px] z-20 text-[13px]"
+      />
+      <button
+        type="button"
         aria-label="Meeting actions"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -139,6 +167,7 @@ export function MeetingCardActions({ id, starred }: Props) {
           stop(e);
           setOpen((o) => !o);
           setConfirming(false);
+          setLabelPickerOpen(false);
         }}
         className={`${iconButton} text-mut hover:text-ink`}
       >

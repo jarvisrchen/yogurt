@@ -28,13 +28,14 @@
  */
 
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import {
   useActiveRecording,
   useCreateMeeting,
   useMeetings,
   useMeetingsSearch,
 } from "../lib/api/meetings";
+import { useLabels } from "../lib/api/labels";
 import { DateGroup } from "../components/library/DateGroup";
 import { Greeting } from "../components/library/Greeting";
 import { SearchPill } from "../components/library/SearchPill";
@@ -54,6 +55,8 @@ interface LibraryProps {
 
 export function Library({ starredOnly = false }: LibraryProps) {
   const navigate = useNavigate();
+  const { labelId } = useParams<{ labelId: string }>();
+  const labels = useLabels();
   const createMeeting = useCreateMeeting();
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
@@ -78,9 +81,20 @@ export function Library({ starredOnly = false }: LibraryProps) {
   const activeId = useActiveRecording().data?.id ?? null;
 
   const fetched = isSearching ? (found.data ?? []) : (all.data ?? []);
-  const meetings = starredOnly ? fetched.filter((m) => m.starred) : fetched;
+  const filteredByStar = starredOnly ? fetched.filter((m) => m.starred) : fetched;
+  const meetings = labelId
+    ? filteredByStar.filter((m) => m.labels.some((l) => l.id === labelId))
+    : filteredByStar;
   const isLoading = isSearching ? found.isLoading : all.isLoading;
   const error = isSearching ? found.error : all.error;
+
+  // A label filter for a deleted label id: bounce to the Library root once
+  // the labels list has resolved and confirms the id is gone. Guarded on
+  // `!labels.isLoading` so a fresh page load doesn't redirect before the
+  // labels list has had a chance to populate.
+  if (labelId && !labels.isLoading && labels.data && !labels.data.some((l) => l.id === labelId)) {
+    return <Navigate to="/" replace />;
+  }
 
   // ⌘N — same action as the sidebar "+ New meeting" button (EmptyLibrary
   // advertises the shortcut). Suppressed while a text input / editor has
@@ -135,7 +149,7 @@ export function Library({ starredOnly = false }: LibraryProps) {
         <div className="flex items-start justify-between mb-8">
           <Greeting
             count={
-              isSearching || starredOnly
+              isSearching || starredOnly || labelId
                 ? meetings.length
                 : (all.data ?? []).length
             }
@@ -152,6 +166,8 @@ export function Library({ starredOnly = false }: LibraryProps) {
         {!isLoading && !error && meetings.length === 0 && (
           isSearching ? (
             <NoMatches />
+          ) : labelId ? (
+            <NoLabelMeetings />
           ) : starredOnly ? (
             <NoStarred />
           ) : (
@@ -174,6 +190,15 @@ export function Library({ starredOnly = false }: LibraryProps) {
 function NoMatches() {
   return (
     <div className="text-[13px] font-mono text-mut">No matches</div>
+  );
+}
+
+/** Empty state for a `/label/:labelId` filter with zero matches. */
+function NoLabelMeetings() {
+  return (
+    <div className="text-[13px] font-mono text-mut">
+      No meetings with this label yet.
+    </div>
   );
 }
 
