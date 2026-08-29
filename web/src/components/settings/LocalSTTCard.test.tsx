@@ -6,7 +6,7 @@
  * disabled (and show a "Download the model first" hint) until the
  * currently-selected model's `downloaded` flag is true.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModelView } from "../../lib/api/stt";
@@ -16,18 +16,47 @@ const modelsFixture: ModelView[] = [
   { name: "small.en", size_mb: 487, downloaded: false, intel_supported: true },
 ];
 
-vi.mock("../../lib/api/stt", () => ({
-  useModels: vi.fn(() => ({
-    data: modelsFixture,
-    isLoading: false,
-    isError: false,
-    error: null,
-  })),
-  // LocalSTTCard always renders <ModelDownloadDialog>, which calls
-  // useDownloadModel() unconditionally — stub it even though no test
-  // here opens the dialog.
-  useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-}));
+interface DeleteModelResult {
+  mutate: (name: string) => void;
+  isPending: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  error: Error | null;
+  data: { freed_bytes: number } | undefined;
+  variables: string | undefined;
+}
+
+const deleteModelMock = vi.hoisted(() =>
+  vi.fn(
+    (): DeleteModelResult => ({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+      error: null,
+      data: undefined,
+      variables: undefined,
+    }),
+  ),
+);
+
+vi.mock("../../lib/api/stt", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api/stt")>();
+  return {
+    ...actual,
+    useModels: vi.fn(() => ({
+      data: modelsFixture,
+      isLoading: false,
+      isError: false,
+      error: null,
+    })),
+    // LocalSTTCard always renders <ModelDownloadDialog>, which calls
+    // useDownloadModel() unconditionally - stub it even though no test
+    // here opens the dialog.
+    useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+    useDeleteModel: deleteModelMock,
+  };
+});
 
 import { LocalSTTCard } from "./LocalSTTCard";
 
@@ -91,5 +120,60 @@ describe("LocalSTTCard — Use Local guard", () => {
     const radio = screen.getByRole("radio", { name: /use local/i });
     expect(radio).not.toBeDisabled();
     expect(screen.queryByText(/download the model first/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("LocalSTTCard - delete a downloaded model", () => {
+  beforeEach(() => {
+    deleteModelMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+      error: null,
+      data: undefined,
+      variables: undefined,
+    });
+  });
+
+  it("confirming the trash for a downloaded, non-active model calls mutate(name)", () => {
+    const mutate = vi.fn();
+    deleteModelMock.mockReturnValue({
+      mutate,
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+      error: null,
+      data: undefined,
+      variables: undefined,
+    });
+
+    renderCard({ selectedModel: "small.en" });
+
+    fireEvent.click(screen.getByRole("button", { name: /delete tiny\.en/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /confirm delete tiny\.en/i }),
+    );
+
+    expect(mutate).toHaveBeenCalledWith("tiny.en");
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the freed-bytes line when the delete mutation succeeds", () => {
+    deleteModelMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: true,
+      error: null,
+      data: { freed_bytes: 3_094_000_000 },
+      variables: "tiny.en",
+    });
+
+    renderCard();
+
+    expect(screen.getByTestId("model-freed")).toHaveTextContent(
+      "Deleted tiny.en - freed 3.0 GB",
+    );
   });
 });

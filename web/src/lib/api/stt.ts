@@ -4,11 +4,11 @@
  *
  * Mirrors `crates/yogurt-server/src/api/stt_models.rs`:
  *
- * | Method | Path                                  | Returns                |
- * |--------|---------------------------------------|------------------------|
- * | GET    | `/api/stt/models`                     | `ModelView[]`          |
- * | POST   | `/api/stt/models/:name/download`      | 202 Accepted (no body) |
- * | DELETE | `/api/stt/models/:name`               | 204 No Content         |
+ * | Method | Path                                  | Returns                            |
+ * |--------|---------------------------------------|-------------------------------------|
+ * | GET    | `/api/stt/models`                     | `ModelView[]`                       |
+ * | POST   | `/api/stt/models/:name/download`      | 202 Accepted (no body)              |
+ * | DELETE | `/api/stt/models/:name`               | 200 `{ freed_bytes }` (idempotent - 0 if already gone); 404 unknown name; 409 plain-text if it's the active local model |
  *
  * The download endpoint is fire-and-forget — progress + terminal state
  * arrive over the app-wide `/ws` WebSocket as
@@ -35,7 +35,12 @@ import { bearerFetch } from "../session";
 /** Whisper-rs / whisper.cpp model identifiers shipped in
  *  `yogurt_stt::models::REGISTRY`. The Rust handler returns one entry
  *  per `ModelSpec` in REGISTRY order. */
-export type ModelName = "tiny.en" | "small.en" | "medium.en" | "large-v3";
+export type ModelName =
+  | "tiny.en"
+  | "small.en"
+  | "medium.en"
+  | "large-v3-turbo"
+  | "large-v3";
 
 /** Wire-shape mirror of
  *  `crates/yogurt-server/src/api/stt_models.rs::ModelView`. */
@@ -77,10 +82,22 @@ async function startDownload(name: ModelName | string): Promise<void> {
   );
 }
 
-async function deleteModel(name: ModelName | string): Promise<void> {
-  return http<void>(`/api/stt/models/${encodeURIComponent(name)}`, {
-    method: "DELETE",
-  });
+async function deleteModel(
+  name: ModelName | string,
+): Promise<{ freed_bytes: number }> {
+  return http<{ freed_bytes: number }>(
+    `/api/stt/models/${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** Format a byte count exactly the way the pill size chip in `ModelPicker`
+ *  formats `size_mb`, so "freed 487 MB" matches the "487 MB" chip that
+ *  was just deleted: `size_mb` is decimal (bytes / 1e6), whole MB below
+ *  1000, else one-decimal GB via / 1024. */
+export function formatBytes(n: number): string {
+  const mb = n / 1_000_000;
+  return mb < 1000 ? `${Math.floor(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`;
 }
 
 // ─── Query keys ─────────────────────────────────────────────────────────────
@@ -125,9 +142,11 @@ export function useDownloadModel(): UseMutationResult<
 }
 
 /** `DELETE /api/stt/models/:name` — idempotent (404 on the file is
- *  treated as already-deleted server-side). */
+ *  treated as already-deleted server-side). Resolves with `freed_bytes`
+ *  so the caller can show "freed N GB"; rejects with the server's 409
+ *  message when the model is the active local one. */
 export function useDeleteModel(): UseMutationResult<
-  void,
+  { freed_bytes: number },
   Error,
   ModelName | string
 > {

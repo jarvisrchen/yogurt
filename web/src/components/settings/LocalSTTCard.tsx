@@ -37,13 +37,31 @@
  * now disabled unless the currently-selected model's `downloaded` flag
  * (from `useModels()`, already fetched for the pill row) is true, with a
  * "Download the model first" hint taking the place of the radio.
+ *
+ * Delete affordance - `ModelPicker` renders a trash icon next to every
+ * downloaded, non-active model pill. Confirming wires to
+ * `useDeleteModel()`; the active model (whichever `stt_model` is
+ * selected while local is in use) is never offered, since the server
+ * 409s that case anyway. A 409/other error renders as a `role="alert"`
+ * line via `deleteErrorMessage`, which strips the `http()` helper's
+ * `"<status> <statusText>: "` prefix; a success renders a transient
+ * "Deleted <name> - freed <size>" line for 4s.
  */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { useModels } from "../../lib/api/stt";
+import { useModels, useDeleteModel, formatBytes } from "../../lib/api/stt";
 import { useModelDownloadProgress } from "../../hooks/useModelDownloadProgress";
 import { ModelPicker } from "./ModelPicker";
 import { ModelDownloadDialog } from "../dialogs/ModelDownloadDialog";
+
+/** `http()` throws `Error("<status> <statusText>: <raw body>")`. The
+ *  delete endpoint's 409 body is a plain sentence (not JSON) - strip the
+ *  status prefix so the user sees just that sentence. */
+function deleteErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  // `[^:]*` not `+`: HTTP/2 has no reason phrase, so the prefix can be "409 : ".
+  return raw.replace(/^\d+\s+[^:]*:\s*/, "");
+}
 
 interface LocalSTTCardProps {
   /** `true` when `settings.stt_provider === "local"`. */
@@ -63,6 +81,17 @@ export function LocalSTTCard({
   onActivate,
 }: LocalSTTCardProps) {
   const q = useModels();
+  const del = useDeleteModel();
+  // Success line clears itself 4s after a delete resolves; tracked
+  // separately from `del.isSuccess` so a later error doesn't leave a
+  // stale "Deleted…" line hanging around forever.
+  const [showFreed, setShowFreed] = useState(false);
+  useEffect(() => {
+    if (!del.isSuccess) return;
+    setShowFreed(true);
+    const t = window.setTimeout(() => setShowFreed(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [del.isSuccess, del.data]);
   // The download we're currently tracking (survives dialog close).
   const [activeDownload, setActiveDownload] = useState<{
     name: string;
@@ -201,7 +230,26 @@ export function LocalSTTCard({
           onRequestDownload={startOrReopenDownload}
           activeDownloadName={activeDownload?.name ?? null}
           activeDownloadProgress={progress}
+          onDelete={(name) => del.mutate(name)}
+          activeModelName={active ? selectedModel : null}
         />
+      )}
+
+      {del.isError && (
+        <p role="alert" className="text-[11px] font-mono text-[var(--color-straw)]">
+          {deleteErrorMessage(del.error)}
+        </p>
+      )}
+      {showFreed && del.data && (
+        <p
+          data-testid="model-freed"
+          className="text-[11px] font-mono text-[var(--color-matcha)]"
+        >
+          Deleted {del.variables}
+          {del.data.freed_bytes > 0
+            ? ` - freed ${formatBytes(del.data.freed_bytes)}`
+            : ""}
+        </p>
       )}
 
       <p className="text-[11px] font-mono text-mut pt-1">

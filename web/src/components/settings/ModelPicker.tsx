@@ -10,12 +10,19 @@
  *   - On Intel hardware (detected via `navigator.userAgent`) a model
  *     with `intel_supported: false` renders an additional "slow"
  *     straw warning chip per PRD §5.8.
+ *   - A downloaded, non-active model also gets a compact trash affordance
+ *     (`onDelete`) next to its pill, following `DeleteMeetingConfirm`'s
+ *     icon variant: click the trash, an inline `Delete?` / `Cancel` pair
+ *     replaces it, confirming calls `onDelete(name)`. Auto-reverts after
+ *     3s. Only one model's confirm can be open at a time.
  *
  * Matcha tokens per PRD §16.2:
  *   - selected pill — `var(--color-matcha)` border + `var(--color-mtsoft)` bg.
  *   - unselected pill — neutral line border + white bg.
  */
+import { useEffect, useState } from "react";
 import clsx from "clsx";
+import { Trash2 } from "lucide-react";
 import type { ModelView } from "../../lib/api/stt";
 import type { DownloadState } from "../../hooks/useModelDownloadProgress";
 
@@ -33,6 +40,11 @@ interface ModelPickerProps {
   /** Live progress state from `useModelDownloadProgress` for the active
    *  download. `null` when nothing is in flight. */
   activeDownloadProgress?: DownloadState | null;
+  /** Called with the model name to delete after the inline confirm.
+   *  Omit to hide the trash affordance entirely. */
+  onDelete?: (name: string) => void;
+  /** The model currently in use - never offered for deletion. */
+  activeModelName?: string | null;
 }
 
 /** Naive Intel-Mac detection. UA strings on Apple Silicon Macs identify
@@ -65,8 +77,17 @@ export function ModelPicker({
   onRequestDownload,
   activeDownloadName = null,
   activeDownloadProgress = null,
+  onDelete,
+  activeModelName = null,
 }: ModelPickerProps) {
   const intel = isIntelMac();
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(null), 3000);
+    return () => clearTimeout(t);
+  }, [confirming]);
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -113,7 +134,10 @@ export function ModelPicker({
               }
               className={clsx(
                 "text-[11px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full transition-colors",
-                "inline-flex items-center gap-1.5",
+                // nowrap + shrink-0: when the delete confirm pair appears next
+                // to the pill, the pill must wrap to the next row as a unit,
+                // not squeeze its size chip onto a second line.
+                "inline-flex items-center gap-1.5 whitespace-nowrap shrink-0",
                 isSelected
                   ? "border-[1.5px] border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)]"
                   : m.downloaded
@@ -154,6 +178,48 @@ export function ModelPicker({
                 slow
               </span>
             )}
+            {m.downloaded && onDelete && m.name !== activeModelName ? (
+              confirming === m.name ? (
+                <span className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    autoFocus
+                    aria-label={`Confirm delete ${m.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirming(null);
+                      onDelete(m.name);
+                    }}
+                    className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-strsoft text-ink border border-straw/40 font-semibold whitespace-nowrap hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50"
+                  >
+                    Delete?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirming(null);
+                    }}
+                    className="text-[10px] font-mono text-mut hover:text-ink"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`Delete ${m.name}`}
+                  title="Delete downloaded model"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirming(m.name);
+                  }}
+                  className="p-1 rounded-full text-mut hover:text-straw hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/40"
+                >
+                  <Trash2 size={13} aria-hidden />
+                </button>
+              )
+            ) : null}
           </span>
         );
       })}
