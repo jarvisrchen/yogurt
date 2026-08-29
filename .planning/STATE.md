@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "All product phases (0-8) complete and hardened by the 2026-08-26 full-app E2E overhaul session. Hero flow now works end to end for real: server-side transcript persistence, per-request LLM resolution (chat was permanently wired to MockLlm before), meeting lifecycle teardown (STT sessions used to outlive meetings), notes/enriched autosave with data-loss guards, stored-transcript post view with deep links, honest onboarding and settings (Deepgram key via Keychain + Settings UI). Minimal CI now exists at .github/workflows/ci.yml (fmt, clippy, cargo test, web typecheck+test). Phase 9 distribution work (notarized tarballs, Homebrew tap, yogurt doctor) still unexecuted. Suite health 2026-08-26: 246 Rust + 169 web tests, clippy + fmt clean, Playwright smoke green."
-stopped_at: "2026-08-26 full-app E2E overhaul (Fable + 5 audit agents + 4 sonnet implementation agents). 68 audit findings triaged; all critical/high fixed with regression tests. Verified live: record -> Deepgram live transcript -> typed note -> End -> real Minimax enhance -> post view with deep links, duration, chat grounded in stored transcript. Known dev-env friction: rebuilt unsigned binaries invalidate macOS Keychain ACLs; all Keychain reads now bounded with actionable errors instead of hanging. Open papercuts: first sidebar click after page load can no-op (handler not armed yet); MiniMax model occasionally emits prompt scaffolding (prompt hardened, mojibake scrubbed server-side)."
-last_updated: "2026-08-26"
-last_activity: "2026-08-26 - Full-app E2E overhaul: transcript persistence (the hero flow enhanced against an empty transcript before), chat LLM resolution, STT lifecycle leaks, double-start race, started/ended stamps (+ tri-state clear bug in enhance mirror), enriched autosave data-loss guard (client gate + server guard + fallback), WS hydration for post-view chat, Deepgram key via Keychain + Settings endpoint + env seed, legacy escaped-span repair at boot, bounded Keychain reads everywhere, api 404 catcher, library date groups + starred + durations, lucide icons + skeletons + editor typography, settings key UX + honest permission copy, CI workflow, README/setup/justfile accuracy, test deflaking. Previous: 2026-08-13 E2E test + fix session."
+status: "All product features (Phases 0-8) are built and tested — skeleton, design system, audio capture, cloud STT + live transcript dock, augmented-notes hero, LLM client + settings + Keychain, in-meeting chat, library + onboarding, local whisper.cpp STT. Phase 9 packages/signs/ships them: notarized per-arch tarballs, Homebrew tap, `cargo publish`, `yogurt doctor` subcommand, README."
+stopped_at: context exhaustion at 75% (2026-08-28)
+last_updated: "2026-08-28T19:55:13.881Z"
+last_activity: "2026-08-13 — E2E test + fix session (Claude-in-Chrome + API/WS): fixed 4 findings (library→wrong-view routing, hero enhance span-double-escape, empty-chat-reply blank bubble, unauthenticated /api/settings* + /api/stt/*), cleaned the rustfmt gate, and committed previously-untracked dev scripts. Each fix carries a regression test; full workspace 218 Rust + 129 web tests green. Previous: 2026-07-10 — quick task 260709-wnn (live mic hot-swap, Needs Review). Previous: 2026-07-02 — E2E debug session (backend hang, capture reactor panic, silently-mocked enhance)."
 progress:
   total_phases: 10
   completed_phases: 9
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 9 of 10 (Distribution Polish) — Not started. Phases 0-8 complete.
 Plan: 09-01/02/03 written but not executed; `.github/` (CI + release workflow) does not exist yet.
 Status: All product features (Phases 0-8) are built and tested — skeleton, design system, audio capture, cloud STT + live transcript dock, augmented-notes hero, LLM client + settings + Keychain, in-meeting chat, library + onboarding, local whisper.cpp STT. Phase 9 packages/signs/ships them: notarized per-arch tarballs, Homebrew tap, `cargo publish`, `yogurt doctor` subcommand, README.
-Last activity: 2026-08-13 — E2E test + fix session (Claude-in-Chrome + API/WS): fixed 4 findings (library→wrong-view routing, hero enhance span-double-escape, empty-chat-reply blank bubble, unauthenticated /api/settings* + /api/stt/*), cleaned the rustfmt gate, and committed previously-untracked dev scripts. Each fix carries a regression test; full workspace 218 Rust + 129 web tests green. Previous: 2026-07-10 — quick task 260709-wnn (live mic hot-swap, Needs Review). Previous: 2026-07-02 — E2E debug session (backend hang, capture reactor panic, silently-mocked enhance).
+Last activity: 2026-08-29 - Completed quick task 260828-ogf: Granola-style meeting labels (sidebar, cards, live + post headers), E2E verified in Chrome
 
 Progress: [█████████░] 90%
 
@@ -138,6 +138,7 @@ None yet.
 | (fast) | Allow Vite origin :5173 for WS upgrades in dev mode; dock showed permanent "offline" from 403 bad origin | 2026-07-02 | 505cc58 | | - |
 | 260701-x3u | Wire enhance to configured LLM provider (env -> Keychain provider -> mock); was silently MockLlm always | 2026-07-02 | ff84d43, da8f2e0, ca126eb | | [260701-x3u-wire-enhance-endpoint-to-configured-llm-](./quick/260701-x3u-wire-enhance-endpoint-to-configured-llm-/) |
 | 260709-wnn | Add live mic/audio-source switching during an active meeting (true hot-swap, no interruption) + make persisted Settings audio_input_device actually take effect on meeting start | 2026-07-10 | 87a95a4, bafcdc3, 6d92e3b | Needs Review | [260709-wnn-add-live-mic-device-switching-during-mee](./quick/260709-wnn-add-live-mic-device-switching-during-mee/) |
+| 260828-ogf | Add Granola-style meeting labels: labels + meeting_labels tables, /api/labels REST, label_ids on meeting PATCH, sidebar Labels section with /label/:id filter + rename/recolor/delete, LabelPicker on cards + live/post headers | 2026-08-29 | 09008c8, 2f283d2, 4666f85, c4b0a4e | E2E verified | [260828-ogf-add-meeting-labels-granola-style-with-si](./quick/260828-ogf-add-meeting-labels-granola-style-with-si/) |
 | (fast) | Library cards open post-meeting read view (/meeting/:id/post) instead of the live-capture view; past meetings showed an empty editor because MeetingCard linked to /meeting/:id which never hydrates saved notes | 2026-08-13 | 853fa3a | | - |
 | (fast) | Apply rustfmt (leftover unformatted hunks from quick task 260701-wjs blocked the `cargo fmt --check` CI gate) | 2026-08-13 | b42896a | | - |
 | (fast) | Hero enhance corruption: render::wrap_ai escaped + double-wrapped model-emitted marker spans (Minimax echoes the prompt's <span data-ai-grey> scaffolding); now strips them before escaping. +regression test (also updated enhance_endpoint assertions that had been matching the escaped garbage) | 2026-08-13 | 247606e, 90ed9ad | | - |
@@ -154,6 +155,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T00:58:00.000Z
-Stopped at: Plan 03-02 complete — meetings::Registry wires yogurt-audio (Frame broadcast) → yogurt-stt (AudioChunk → TranscriptEvent broadcast) per meeting; 3 REST + 1 WS route mounted; cross-thread !Send bridge (std::thread + oneshot pair) cleanly owns AudioStream and shuts down via RAII on supervisor abort; < 200ms server-side fan-out lag pinned by e2e_synthetic_audio.rs (actual ≈ 5-10ms). 35 yogurt-server tests pass (11 suites). 3 commits (69ed51f, ca0d4d0, 2dbb398). TRANS-01 + TRANS-02 + TRANS-08 complete. Ready for Plan 03-03 (dock UI: useTranscriptWs hook + TranscriptDock component + slide-in-right motion at 340ms cubic-bezier(.2,.7,.2,1) per PRD §16.5 + library/meeting App.tsx switch). **Note:** Plan 01-03 (style-guide route + React Router 7 setup) still pending from Phase 1; Plan 02-03 (REST endpoints + WAV ear-test) still pending from Phase 2 (audio.rs's `start_meeting_recording()` shim is now wired by Plan 03-02 via Registry::start, so the original 02-03 wire-up requirement is partially absorbed — only the WAV ear-test remains).
+Last session: 2026-08-28T19:55:13.875Z
+Stopped at: context exhaustion at 75% (2026-08-28)
 Resume file: None
