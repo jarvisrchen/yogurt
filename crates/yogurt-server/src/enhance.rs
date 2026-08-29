@@ -566,18 +566,17 @@ fn strip_prompt_scaffolding(s: &str) -> String {
         .join("\n")
 }
 
-/// MiniMax reasoning models include chain-of-thought in `content` unless
-/// `reasoning_split` is honored by the endpoint. Keep this backstop at the
-/// persistence boundary for compatible gateways that ignore that extension.
-fn strip_model_reasoning(s: &str) -> String {
-    let mut output = s.trim_start();
-    while let Some(reasoning) = output.strip_prefix("<think>") {
-        let Some(end) = reasoning.find("</think>") else {
-            break;
-        };
-        output = reasoning[end + 8..].trim_start();
-    }
-    output.trim().to_string()
+/// Strip model-side chain-of-thought reasoning blocks (`<think>…</think>`)
+/// from `s`. Model-agnostic — works against any provider whose response
+/// carries inline reasoning markers (DeepSeek R1, MiniMax M3, Qwen QwQ).
+///
+/// We delegate to [`yogurt_llm::strip_thinking`] (the canonical
+/// implementation, also used by the chat path) instead of running a
+/// private copy here so the two LLM consumers never drift in their
+/// tag handling. The original `strip_model_reasoning` lived only in this
+/// file and predated the chat path's adoption of the same backstop.
+pub(crate) fn strip_model_reasoning(s: &str) -> String {
+    yogurt_llm::strip_thinking(s)
 }
 
 /// Repair mojibake the model emits as literal tokens: UTF-8 bytes of a

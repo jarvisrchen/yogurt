@@ -110,7 +110,7 @@ pub(crate) struct OpenAiResponse {
 
 #[derive(Deserialize)]
 pub(crate) struct OpenAiChoice {
-    pub message: ChatMessage,
+    pub message: OpenAiMessage,
 }
 
 #[derive(Deserialize)]
@@ -129,12 +129,57 @@ pub(crate) struct OpenAiStreamChoice {
     pub finish_reason: Option<String>,
 }
 
+/// Assistant message shape. Some reasoning providers (DeepSeek R1,
+/// MiniMax M3 variants) carry chain-of-thought in a sibling
+/// `reasoning_content` field instead of (or in addition to) inline
+/// `<think>…</think>` blocks in `content`. The stripper in
+/// `crate::thinking` handles the inline case; here we parse the
+/// sibling field and explicitly discard it so it can never reach the
+/// caller's `ChatResponse`.
+#[derive(Deserialize)]
+pub(crate) struct OpenAiMessage {
+    #[serde(default)]
+    pub role: String,
+    pub content: String,
+    /// Parsed and intentionally discarded — see field doc on the
+    /// struct. `#[serde(default)]` keeps deserialization working for
+    /// providers that don't emit the field.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub reasoning_content: Option<String>,
+}
+
+impl From<OpenAiMessage> for ChatMessage {
+    fn from(m: OpenAiMessage) -> Self {
+        // `role` falls back to "assistant" when the provider omits it;
+        // matches what we'd default to in the public constructor.
+        let role = if m.role.is_empty() {
+            "assistant".to_string()
+        } else {
+            m.role
+        };
+        ChatMessage {
+            role,
+            content: m.content,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub(crate) struct OpenAiDelta {
     /// Optional because chunks carrying only `role` (first chunk in many
     /// providers' streams) or only tool-call metadata have no text.
     #[serde(default)]
     pub content: Option<String>,
+    /// Parsed and intentionally discarded — see [`OpenAiMessage`] for
+    /// the field semantics. Same sibling-reasoning field as the
+    /// non-streaming shape; some providers (DeepSeek) emit it per
+    /// delta. The streaming stripper already elides `<think>…</think>`
+    /// blocks inside `content`, so this field is here purely to make
+    /// the "we know about it, we drop it" intent explicit.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub reasoning_content: Option<String>,
 }
 
 /// `GET /v1/models` response shape (OpenAI-compatible). `data` is the

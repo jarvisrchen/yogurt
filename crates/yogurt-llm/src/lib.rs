@@ -19,8 +19,10 @@
 //!   (see `tests/mock_server.rs` and `tests/streaming.rs`).
 
 mod streaming;
+mod thinking;
 mod types;
 
+pub use thinking::strip_thinking;
 pub use types::{ChatChunk, ChatMessage, ChatRequest, ChatResponse};
 
 use anyhow::{anyhow, Result};
@@ -216,13 +218,17 @@ impl LlmClient for OpenAiCompatClient {
         }
         let parsed: types::OpenAiResponse = resp.json().await?;
         let model = parsed.model;
-        let content = parsed
+        let message = parsed
             .choices
             .into_iter()
             .next()
             .ok_or_else(|| anyhow!("no choices in response"))?
-            .message
-            .content;
+            .message;
+        // Strip any inline `<think>…</think>` block the provider leaked
+        // into content despite `reasoning_split: true`. Model-agnostic
+        // backstop — see `crate::thinking` for the supported tag set.
+        // Sibling `reasoning_content` was already dropped at parse time.
+        let content = crate::thinking::strip_thinking(&message.content);
         Ok(ChatResponse { content, model })
     }
 
