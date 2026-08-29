@@ -29,12 +29,21 @@ yogurt start
 
 ### From source
 
+Prereqs: macOS 13+, and `brew install rust node pnpm cmake` (all four --
+`cmake` builds whisper.cpp for local STT, and `pnpm` does not pull Node).
+
 ```bash
 git clone https://github.com/jarvisrchen/yogurt.git
 cd yogurt
+./scripts/setup.sh          # checks prereqs, builds the web bundle + release binary
+./target/release/yogurt start
+```
+
+`setup.sh` is idempotent and the recommended path. To do it by hand instead:
+
+```bash
 pnpm --dir web install && pnpm --dir web build
 cargo build --release
-./target/release/yogurt start
 ```
 
 (Or `cargo install --path crates/yogurt-cli` to put `yogurt` on your `$PATH`.)
