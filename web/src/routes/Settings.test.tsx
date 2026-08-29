@@ -168,6 +168,9 @@ describe("inactive provider key entry", () => {
 describe("test connection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks keeps implementations, so restore the baseline fixture
+    // for the tests that don't override it.
+    vi.mocked(settingsApi.get).mockResolvedValue(baseFixture);
   });
 
   it("reports a rejected key and does not save it", async () => {
@@ -215,6 +218,43 @@ describe("test connection", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       /Connection works.*MiniMax-Text-01/,
+    );
+  });
+
+  it("tests the stored key from a collapsed provider card", async () => {
+    // The card the user most wants to probe is one that is already fully
+    // set up (stored key + saved model) and quietly failing — that card
+    // sits collapsed, so `Test` has to be reachable without pretending to
+    // replace the key.
+    vi.mocked(settingsApi.get).mockResolvedValue({
+      ...baseFixture,
+      providers: baseFixture.providers.map((p) =>
+        p.is_active ? p : { ...p, api_key_masked: "••••1234" },
+      ),
+    });
+    vi.mocked(settingsApi.testProvider).mockResolvedValue({
+      ok: false,
+      error: "LLM call failed: 401 Unauthorized",
+    });
+    renderSettings();
+
+    const card = (await screen.findAllByTestId("inactive-provider-card"))[0];
+    // Still collapsed: the password field was never opened.
+    expect(screen.queryByLabelText("API key for Minimax")).toBeNull();
+
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Test connection for Minimax" }),
+    );
+
+    await waitFor(() => {
+      // No draft → the stored key is what gets tested.
+      expect(settingsApi.testProvider).toHaveBeenCalledWith(
+        "01HYYYYYYYYYYYYYYYYYYYYYYY",
+        undefined,
+      );
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /401 Unauthorized/,
     );
   });
 

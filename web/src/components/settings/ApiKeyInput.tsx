@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
+import { TestKeyButton } from "./TestKeyButton";
 
 /**
- * Password field + "Test" + "Save key" for one provider's Keychain entry.
+ * Password field + "Test" + "Save key" for one provider's stored key.
  *
  * Shared by `ProviderCard` (always visible on the active provider) and
  * `ProviderRow` (revealed on demand for an inactive one). Before this
@@ -75,12 +76,6 @@ export function ApiKeyInput({
     },
   });
 
-  const test = useMutation({
-    // Empty draft → test the stored key instead.
-    mutationFn: () => settingsApi.testProvider(providerId, draft || undefined),
-  });
-
-  const canTest = (!!draft || !!hasStoredKey) && !test.isPending;
   // Mirror the backend's mask shape (`••••XXXX`, last 4 chars visible) so
   // the user can confirm they pasted the right key BEFORE clicking Save
   // — the password field hides the rest, but a key paste where the last
@@ -91,7 +86,7 @@ export function ApiKeyInput({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="password"
           placeholder="Paste new key…"
@@ -100,27 +95,19 @@ export function ApiKeyInput({
           autoFocus={autoFocus}
           className="flex-1 font-mono text-sm border border-line rounded px-2 py-1.5 focus:border-[var(--color-blue)] outline-none"
           value={draft}
-          onChange={(e) => {
-            updateDraft(e.target.value);
-            // A previous verdict describes a key that is no longer in the
-            // box — showing a stale green tick next to new text is a lie.
-            test.reset();
-          }}
+          onChange={(e) => updateDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && draft && !setKey.isPending) {
               setKey.mutate(draft);
             }
           }}
         />
-        <button
-          type="button"
-          disabled={!canTest}
-          aria-label={`Test connection for ${providerName}`}
-          className="text-sm font-semibold text-mut border border-line rounded-md px-3 py-1.5 hover:text-ink hover:border-grey disabled:opacity-40 shrink-0"
-          onClick={() => test.mutate()}
-        >
-          {test.isPending ? "Testing…" : "Test"}
-        </button>
+        <TestKeyButton
+          providerId={providerId}
+          providerName={providerName}
+          draft={draft}
+          hasStoredKey={hasStoredKey}
+        />
         <button
           type="button"
           disabled={!draft || setKey.isPending}
@@ -141,25 +128,6 @@ export function ApiKeyInput({
         </p>
       )}
 
-      {test.data && (
-        <p
-          role="status"
-          className={`text-[12.5px] ${
-            test.data.ok
-              ? "text-[var(--color-matcha)]"
-              : "text-[var(--color-straw)]"
-          }`}
-        >
-          {test.data.ok
-            ? `✓ Connection works${test.data.model ? ` · answered as ${test.data.model}` : ""}`
-            : `✗ ${test.data.error ?? "Connection failed."}`}
-        </p>
-      )}
-      {test.isError && (
-        <p role="status" className="text-[12.5px] text-[var(--color-straw)]">
-          ✗ Could not reach the yogurt server to run the test.
-        </p>
-      )}
     </div>
   );
 }
