@@ -9,10 +9,10 @@ import { settingsApi } from "../../lib/api/settings";
  * No modal library — this renders as an inline card in the same spot the
  * button sat, matching `ProviderCard`'s rounded-xl/border-line/bg-white
  * chrome. `POST /api/settings/providers` inserts the row inactive
- * (`is_active=0`, same as `PresetChip`), so on success it shows up as a
- * `ProviderRow` in the inactive list — the existing "Set active" action
- * promotes it to `ProviderCard`, whose card UX already handles pasting
- * the key. This form does not duplicate that key UI.
+ * (`is_active=0`, same as `PresetChip`), so on success it shows up as an
+ * inactive `ProviderRow` card in the list — the footer `Set active`
+ * action promotes it to `ProviderCard`, whose card UX already handles
+ * pasting the key. This form does not duplicate that key UI.
  */
 
 interface Props {
