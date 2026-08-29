@@ -4,6 +4,7 @@ import type { ProviderView } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelSelect } from "./ModelSelect";
+import { TestKeyButton } from "./TestKeyButton";
 
 /**
  * Inactive provider card — mirrors `ProviderCard`'s structure so every
@@ -19,7 +20,9 @@ import { ModelSelect } from "./ModelSelect";
  * key is stored) and persists on selection, so the user can switch from
  * `gemini-2.5-flash` to `gemini-2.5-pro` before activating without first
  * promoting the provider to active. The API KEY section is collapsible so
- * the card stays compact until the user opts into keying.
+ * the card stays compact until the user opts into keying — but `Test`
+ * sits next to `Replace key` in the collapsed state, because a provider
+ * that is already keyed is the one most worth probing.
  *
  * `autoOpenKey` opens the key input on first mount and seeds its
  * `autoFocus`, so cloning a preset chip lands the user at the key field
@@ -169,13 +172,22 @@ export function ProviderRow({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setKeying(true)}
-            className="text-[12.5px] font-semibold text-mut hover:text-ink"
-          >
-            {provider.api_key_masked ? "Replace key" : "Add key"}
-          </button>
+          // Collapsed: `Test` stays reachable so a provider that is fully
+          // set up can be probed without pretending to replace its key.
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setKeying(true)}
+              className="text-[12.5px] font-semibold text-mut hover:text-ink"
+            >
+              {provider.api_key_masked ? "Replace key" : "Add key"}
+            </button>
+            <TestKeyButton
+              providerId={provider.id}
+              providerName={provider.name}
+              hasStoredKey={!!provider.api_key_masked}
+            />
+          </div>
         )}
       </div>
 
