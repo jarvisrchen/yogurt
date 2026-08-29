@@ -1,18 +1,26 @@
 /**
  * Meeting.tsx — hero in-meeting flow coverage.
  *
- * Covers two of the biggest behavior changes:
+ * Covers three of the biggest behavior changes:
  *   1. "+ New meeting" auto-starts recording on mount (task NOTES-01) —
  *      no more create-then-hunt-for-Start.
  *   2. End meeting stops recording BEFORE enhancing, sends the always-
  *      empty `transcript_json: "[]"` (server prefers its own stored
  *      transcript), omits started/ended timestamps, and navigates to the
  *      post-meeting view (task NOTES-07).
+ *   3. The mic picker and STT engine chip stay visible once a meeting is
+ *      stopped (but not ended) — only End meeting should clear the header
+ *      down to just the buttons. The picker's own read/write wiring
+ *      (hot-swap vs `settings.audio_input_device` patch) is covered by
+ *      `MicDevicePicker.test.tsx`; here we only assert Meeting.tsx keeps it
+ *      mounted and passes it the right `recording` flag.
  *
- * TranscriptDock / AskExperience / MicDevicePicker are stubbed out — they
- * own their own WS connections and are covered by their own test files;
- * pulling them in here would just add unrelated network/WS noise to a
- * route-logic test.
+ * TranscriptDock / AskExperience are stubbed out — they own their own WS
+ * connections and are covered by their own test files; pulling them in
+ * here would just add unrelated network/WS noise to a route-logic test.
+ * MicDevicePicker is stubbed with a prop-recording marker (not `() => null`)
+ * so this file can assert on its mount state and `recording` prop without
+ * pulling in its real `audioApi`/`settingsApi` network calls.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -26,7 +34,9 @@ vi.mock("../components/AskExperience", () => ({
   AskExperience: () => null,
 }));
 vi.mock("../components/MicDevicePicker", () => ({
-  MicDevicePicker: () => null,
+  MicDevicePicker: ({ recording }: { meetingId: string; recording: boolean }) => (
+    <div data-testid="mic-picker" data-recording={String(recording)} />
+  ),
 }));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
@@ -419,6 +429,131 @@ describe("Meeting — recovers recording state on return", () => {
     expect(
       fetchMock.mock.calls.some((c) => String(c[0]).endsWith("/start")),
     ).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Meeting — header stays put once stopped (meeting still open)", () => {
+  // "Stopped" here means Stop recording was clicked but End meeting was
+  // not — the meeting is still open on this route. Only End meeting (which
+  // navigates away) should clear the mic picker / engine chip; Stop must
+  // not.
+  beforeEach(() => {
+    state.meetingRow = {
+      id: "meeting-4",
+      title: "Weekly sync",
+      started_at: 1000,
+      ended_at: null,
+      notes_md: "",
+      enriched_md: null,
+      transcript_json: "[]",
+      starred: false,
+      stt_engine: "cloud · nova-3",
+      created_at: "",
+      updated_at: "",
+    };
+    state.activeRecording = {
+      id: "meeting-4",
+      title: "Weekly sync",
+      started_at: Date.now(),
+    };
+    vi.clearAllMocks();
+  });
+
+  it("keeps the mic picker mounted after Stop recording, flipping its recording prop to false", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/meetings/meeting-4/stop") {
+          return new Response(JSON.stringify({ status: "stopped" }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-4");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mic-picker")).toHaveAttribute(
+        "data-recording",
+        "true",
+      );
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: /stop recording/i }).click();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^start recording$/i }),
+      ).toBeInTheDocument();
+    });
+    // Gone from the DOM would mean the old `recording &&` gate regressed.
+    expect(screen.getByTestId("mic-picker")).toHaveAttribute(
+      "data-recording",
+      "false",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the mic picker with recording=false for a meeting opened already-stopped", async () => {
+    state.activeRecording = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-4");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^start recording$/i }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("mic-picker")).toHaveAttribute(
+      "data-recording",
+      "false",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the STT engine chip visible after Stop recording when the meeting has a stamped stt_engine", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/meetings/meeting-4/stop") {
+          return new Response(JSON.stringify({ status: "stopped" }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-4");
+
+    await waitFor(() => {
+      expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: /stop recording/i }).click();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^start recording$/i }),
+      ).toBeInTheDocument();
+    });
+    // The chip is meeting metadata (stamped at start), not a live status —
+    // it must not vanish just because recording flipped to false.
+    expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });

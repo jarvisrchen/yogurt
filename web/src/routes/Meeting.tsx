@@ -450,10 +450,11 @@ export function Meeting() {
           )}
         </Link>
         <header className="space-y-2">
-          {/* Row 1: title + STT chip (left, gap-3 so the InlineTitle edit
-              border never touches the chip) and the recording controls
-              (right). flex-wrap lets the button group drop below the
-              title group at narrow widths instead of clipping. */}
+          {/* Row 1: title (left) and the recording controls (right).
+              flex-wrap lets the button group drop below the title group at
+              narrow widths instead of clipping. The STT engine chip lives
+              in the MeetingMetaPills row below — it's meeting metadata
+              (persists after Stop), not part of the title cluster. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {meetingId ? (
@@ -519,13 +520,18 @@ export function Meeting() {
               }
             />
           )}
-          {/* Row 3: label chips + picker, left-aligned under the title. */}
+          {/* Row 3: label chips, left-aligned under the title. */}
           {meetingId && <MeetingLabels meetingId={meetingId} />}
-          {/* Row 3: mic picker, left-aligned under the title, on its own
-              (smaller) line instead of crowding row 1. */}
-          {meetingId && recording && (
+          {/* Row 4: mic picker, left-aligned under the title, on its own
+              (smaller) line instead of crowding row 1. Visible whenever the
+              meeting is open (recording OR stopped) — while recording it
+              hot-swaps the live capture device; while stopped it persists
+              `settings.audio_input_device`, the same field `POST /start`
+              reads, so picking a mic on a stopped-but-open meeting takes
+              effect the next time recording starts. */}
+          {meetingId && (
             <div className="flex items-center">
-              <MicDevicePicker meetingId={meetingId} />
+              <MicDevicePicker meetingId={meetingId} recording={recording} />
             </div>
           )}
         </header>
