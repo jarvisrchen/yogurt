@@ -99,14 +99,7 @@ impl LabelRepo {
                 params![id, name, color, now_ms],
             )
             .context("insert label")?;
-            Ok((
-                Label {
-                    id,
-                    name,
-                    color,
-                },
-                true,
-            ))
+            Ok((Label { id, name, color }, true))
         })
     }
 
@@ -120,7 +113,8 @@ impl LabelRepo {
         }
         let id_owned = id.to_string();
         self.db.with_conn(|conn| -> Result<Label> {
-            let current = find_by_id(conn, &id_owned)?.ok_or_else(|| anyhow::anyhow!("label not found"))?;
+            let current =
+                find_by_id(conn, &id_owned)?.ok_or_else(|| anyhow::anyhow!("label not found"))?;
             if let Some(n) = name.as_ref() {
                 if let Some(other) = find_by_name(conn, n)? {
                     if other.id != id_owned {
@@ -174,7 +168,9 @@ pub(crate) fn set_for_meeting_conn(
     let tx = conn.unchecked_transaction().context("begin label tx")?;
     for lid in label_ids {
         let exists: Option<i64> = tx
-            .query_row("SELECT 1 FROM labels WHERE id = ?1", params![lid], |r| r.get(0))
+            .query_row("SELECT 1 FROM labels WHERE id = ?1", params![lid], |r| {
+                r.get(0)
+            })
             .optional()?;
         if exists.is_none() {
             bail!("label not found");
@@ -321,7 +317,9 @@ mod tests {
             })
             .unwrap();
         let (l, _) = labels.find_or_create("Sales", None).unwrap();
-        labels.set_for_meeting(&m.id, &[l.id.clone()]).unwrap();
+        labels
+            .set_for_meeting(&m.id, std::slice::from_ref(&l.id))
+            .unwrap();
         assert!(labels.delete(&l.id).unwrap());
         let reloaded = meetings.get(&m.id).unwrap().unwrap();
         assert!(reloaded.labels.is_empty());
@@ -337,7 +335,9 @@ mod tests {
             })
             .unwrap();
         let (l, _) = labels.find_or_create("Sales", None).unwrap();
-        labels.set_for_meeting(&m.id, &[l.id.clone()]).unwrap();
+        labels
+            .set_for_meeting(&m.id, std::slice::from_ref(&l.id))
+            .unwrap();
         assert!(meetings.delete(&m.id).unwrap());
         let count: i64 = db
             .conn()
