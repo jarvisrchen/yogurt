@@ -52,6 +52,26 @@ export function formatDuration(startedAt: number, endedAt: number): string | nul
 const PILL =
   "inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-mono leading-none";
 
+/** Neutral metadata pill (date, time, duration). `tone="warn"` flags an
+ *  exception such as "not enhanced" in strawberry. */
+export function MetaPill({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "warn";
+}) {
+  return (
+    <span
+      className={`${PILL} ${
+        tone === "warn" ? "bg-strsoft text-straw" : "border border-line bg-paper text-mut"
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
 /**
  * The STT engine pill on its own - shared with the Library card so the
  * same meeting reads identically everywhere. Renders nothing for `null`
@@ -78,14 +98,8 @@ export function MeetingMetaPills({ startedAt, endedAt, sttEngine }: Props) {
   if (startedAt == null && !engine) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5" data-testid="meeting-meta">
-      {startedAt != null && (
-        <span className={`${PILL} border border-line bg-paper text-mut`}>
-          {formatStartedAt(startedAt)}
-        </span>
-      )}
-      {duration && (
-        <span className={`${PILL} border border-line bg-paper text-mut`}>{duration}</span>
-      )}
+      {startedAt != null && <MetaPill>{formatStartedAt(startedAt)}</MetaPill>}
+      {duration && <MetaPill>{duration}</MetaPill>}
       {engine && <EnginePill sttEngine={sttEngine} />}
     </div>
   );

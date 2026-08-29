@@ -1,6 +1,6 @@
 /**
  * MeetingCard — render coverage for the live-recording-aware `Link` target
- * (see `formatMeta` pure-function tests in `MeetingCard.test.ts`).
+ * (see `metaParts` pure-function tests in `MeetingCard.test.ts`).
  *
  * A meeting still recording server-side must route to the LIVE capture
  * surface (`/meeting/:id`, controls + live transcript) instead of the
