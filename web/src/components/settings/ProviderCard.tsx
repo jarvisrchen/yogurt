@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ProviderView } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
+import { ApiKeyInput } from "./ApiKeyInput";
 
 /**
  * Active provider card — Phase 5 (Plan 05-03), SET-04.
@@ -13,9 +14,9 @@ import { settingsApi } from "../../lib/api/settings";
  * The masked-key UX: when a key is stored, the field shows the canonical
  * `••••XXXX` form (server-derived from the last 4 chars) followed by a
  * green matcha `✓ stored` badge. The raw key NEVER lives in React state
- * after `setProviderKey` resolves — the input is uncontrolled after save
- * (`setKeyDraft("")` in onSuccess) and the masked view re-renders from
- * the invalidated query.
+ * after `setProviderKey` resolves — see `ApiKeyInput`, which clears its
+ * own draft on success so the masked view re-renders from the invalidated
+ * query rather than from React state.
  */
 
 interface Props {
@@ -24,7 +25,6 @@ interface Props {
 
 export function ProviderCard({ provider }: Props) {
   const qc = useQueryClient();
-  const [keyDraft, setKeyDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({
     name: provider.name,
@@ -39,14 +39,6 @@ export function ProviderCard({ provider }: Props) {
       setEditing(false);
     },
   });
-  const setKey = useMutation({
-    mutationFn: (k: string) => settingsApi.setProviderKey(provider.id, k),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings"] });
-      setKeyDraft("");
-    },
-  });
-
   return (
     <article
       className="rounded-xl border-[1.5px] border-[var(--color-blue)] bg-white p-5 shadow-[0_4px_14px_-6px_rgba(91,79,199,0.35)] space-y-4"
@@ -126,22 +118,8 @@ export function ProviderCard({ provider }: Props) {
         ) : (
           <div className="text-sm text-mut">No key stored yet.</div>
         )}
-        <div className="flex items-center gap-2 pt-1">
-          <input
-            type="password"
-            placeholder="Paste new key…"
-            className="flex-1 font-mono text-sm border border-line rounded px-2 py-1.5 focus:border-[var(--color-blue)] outline-none"
-            value={keyDraft}
-            onChange={(e) => setKeyDraft(e.target.value)}
-          />
-          <button
-            type="button"
-            disabled={!keyDraft || setKey.isPending}
-            className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
-            onClick={() => setKey.mutate(keyDraft)}
-          >
-            {setKey.isPending ? "Saving…" : "Save key"}
-          </button>
+        <div className="pt-1">
+          <ApiKeyInput providerId={provider.id} providerName={provider.name} />
         </div>
       </div>
     </article>
