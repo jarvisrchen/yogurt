@@ -307,3 +307,152 @@ async fn patch_to_cloud_is_always_ok_regardless_of_model_state() {
         .status();
     assert_eq!(status, 200);
 }
+
+// ─── POST /api/settings/providers/{id}/test ──────────────────────────────────
+
+/// Create a provider pointed at `base_url` and return its id.
+async fn make_provider(base: &str, token: &str, provider_base_url: &str) -> String {
+    let v: Value = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(token)
+        .json(&json!({
+            "name": "Under test",
+            "base_url": provider_base_url,
+            "model": "gpt-4o-mini",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    v["id"].as_str().expect("provider id").to_string()
+}
+
+async fn post_test(base: &str, token: &str, id: &str, body: Value) -> (u16, Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers/{id}/test"))
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    // A 404 has a plain-text body, so fall back to Null rather than panicking.
+    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    (status, v)
+}
+
+#[tokio::test]
+async fn test_provider_reports_ok_for_a_working_draft_key() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/chat/completions"))
+        .and(wiremock::matchers::header(
+            "authorization",
+            "Bearer sk-draft-not-yet-saved",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(json!({
+            "model": "gpt-4o-mini",
+            "choices": [{ "message": { "role": "assistant", "content": "ok" } }]
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let (_state, token, base) = boot().await;
+    let id = make_provider(&base, &token, &upstream.uri()).await;
+
+    let (status, v) = post_test(
+        &base,
+        &token,
+        &id,
+        json!({ "api_key": "sk-draft-not-yet-saved" }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(v["ok"], true, "expected a passing test, got {v}");
+    assert_eq!(v["model"], "gpt-4o-mini");
+
+    // The draft key must NOT have been persisted as a side effect of
+    // testing it — testing is not saving.
+    let settings: Value = reqwest::Client::new()
+        .get(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let provider = settings["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == id.as_str())
+        .expect("provider present");
+    assert!(
+        provider["api_key_masked"].is_null(),
+        "testing a draft key must not store it, got {provider}"
+    );
+}
+
+/// SECURITY: providers routinely quote the rejected key back inside their
+/// error body. That text must never reach the client verbatim — it would
+/// smuggle a raw key into an API response.
+#[tokio::test]
+async fn test_provider_reports_failure_without_echoing_the_key() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/chat/completions"))
+        .respond_with(wiremock::ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "message": "Incorrect API key provided: sk-bad-key-12345" }
+        })))
+        .mount(&upstream)
+        .await;
+
+    let (_state, token, base) = boot().await;
+    let id = make_provider(&base, &token, &upstream.uri()).await;
+
+    let (status, v) = post_test(&base, &token, &id, json!({ "api_key": "sk-bad-key-12345" })).await;
+    assert_eq!(status, 200, "a rejected key is still a completed test");
+    assert_eq!(v["ok"], false);
+
+    let body = v.to_string();
+    assert!(
+        !body.contains("sk-bad-key-12345"),
+        "raw key leaked into the test result: {body}"
+    );
+    assert!(
+        body.contains("401"),
+        "error should keep the provider's status: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_provider_says_so_when_no_key_is_stored() {
+    let (_state, token, base) = boot().await;
+    let id = make_provider(&base, &token, "https://example.invalid/v1").await;
+
+    // No draft key and nothing in the key store.
+    let (status, v) = post_test(&base, &token, &id, json!({})).await;
+    assert_eq!(status, 200);
+    assert_eq!(v["ok"], false);
+    assert!(
+        v["error"].as_str().unwrap().contains("No key stored"),
+        "got {v}"
+    );
+}
+
+#[tokio::test]
+async fn test_provider_404s_for_an_unknown_id() {
+    let (_state, token, base) = boot().await;
+    let (status, _) = post_test(
+        &base,
+        &token,
+        "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+        json!({ "api_key": "sk-x" }),
+    )
+    .await;
+    assert_eq!(status, 404);
+}

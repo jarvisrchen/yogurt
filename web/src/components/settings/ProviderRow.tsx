@@ -91,6 +91,7 @@ export function ProviderRow({ provider }: { provider: ProviderView }) {
           <ApiKeyInput
             providerId={provider.id}
             providerName={provider.name}
+            hasStoredKey={!!provider.api_key_masked}
             autoFocus
             onSaved={() => setKeying(false)}
           />

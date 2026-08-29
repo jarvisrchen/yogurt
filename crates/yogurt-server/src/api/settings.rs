@@ -20,6 +20,7 @@
 //! | DELETE | `/api/settings/providers/{id}`             | `delete_provider`  |
 //! | POST   | `/api/settings/providers/{id}/activate`    | `activate_provider`|
 //! | POST   | `/api/settings/providers/{id}/key`         | `set_provider_key` |
+//! | POST   | `/api/settings/providers/{id}/test`        | `test_provider`    |
 //! | GET    | `/api/settings/presets`                    | `list_presets`     |
 //!
 //! ## axum 0.8 path syntax
@@ -59,6 +60,7 @@ pub fn router() -> Router<AppState> {
             post(activate_provider),
         )
         .route("/api/settings/providers/{id}/key", post(set_provider_key))
+        .route("/api/settings/providers/{id}/test", post(test_provider))
         .route("/api/settings/stt/key", post(set_stt_key))
         .route("/api/settings/presets", get(list_presets))
 }
@@ -366,6 +368,165 @@ async fn set_provider_key(
         .set(&id, &body.api_key)
         .map_err(|e| Error::Internal(format!("keychain set: {e}")))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Connection test ─────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct TestProviderBody {
+    /// Draft key to test WITHOUT storing it. `None`/empty means "test the
+    /// key already in the Keychain". This is the whole point of the
+    /// endpoint: the user can verify a pasted key before committing it.
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+/// Outcome of a live round-trip against the provider.
+///
+/// A rejected key is a SUCCESSFUL request — it answers the user's question.
+/// So the happy and unhappy paths both return 200 with `ok` discriminating;
+/// non-200 is reserved for "the test itself could not be run" (unknown
+/// provider id, wedged Keychain).
+#[derive(Serialize)]
+struct TestProviderResult {
+    ok: bool,
+    /// Model name the provider echoed back, which is not always the one we
+    /// asked for (aliases, `-latest` tags, OpenRouter routing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Longest error text handed back to the UI. Provider error bodies can be
+/// multi-KB JSON blobs; the actionable part is always at the front.
+const MAX_TEST_ERROR_LEN: usize = 400;
+
+/// `POST /api/settings/providers/{id}/test` — one real chat completion
+/// against this provider, reporting whether the key works.
+///
+/// The draft key travels in the request body and is used to build a
+/// throwaway client. It is NEVER written to the Keychain, never logged,
+/// and never echoed back: `redact_key` scrubs it out of the provider's own
+/// error text, because providers routinely quote the offending key back at
+/// you ("Incorrect API key provided: sk-abc123"). That would otherwise
+/// smuggle a raw key into an API response and violate the invariant
+/// `api_responses_never_include_the_raw_api_key` enforces.
+async fn test_provider(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<TestProviderBody>,
+) -> Result<Json<TestProviderResult>, Error> {
+    let provider = providers::list(&s.db)?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or(Error::NotFound)?;
+
+    let draft = body
+        .api_key
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty());
+    let key = match draft {
+        Some(k) => k,
+        None => match read_stored_key(&s, &id, &provider.name).await? {
+            Some(k) => k,
+            None => {
+                return Ok(Json(TestProviderResult {
+                    ok: false,
+                    model: None,
+                    error: Some(
+                        "No key stored for this provider yet - paste one above, \
+                         then test."
+                            .into(),
+                    ),
+                }))
+            }
+        },
+    };
+
+    // ponytail: a plain one-turn completion rather than a `/models` probe.
+    // It exercises the exact path enhance and chat use, so it also catches a
+    // wrong model name and a base URL that answers but is not OpenAI-shaped
+    // - which `/models` would both miss. No `max_tokens` cap: some reasoning
+    // models reject a tiny budget outright, and a false failure here is
+    // worse than a handful of tokens.
+    // `complete` lives on the LlmClient trait, not the concrete type.
+    use yogurt_llm::LlmClient as _;
+    let client = crate::llm_openai::OpenAiCompatClient::new(
+        provider.base_url.clone(),
+        key.clone(),
+        provider.model.clone(),
+    );
+    let req = yogurt_llm::ChatRequest {
+        messages: vec![yogurt_llm::ChatMessage::user("Reply with: ok")],
+        stream: false,
+    };
+
+    Ok(Json(match client.complete(req).await {
+        Ok(resp) => TestProviderResult {
+            ok: true,
+            model: Some(resp.model),
+            error: None,
+        },
+        Err(e) => TestProviderResult {
+            ok: false,
+            model: None,
+            error: Some(truncate(
+                &redact_key(&format!("{e:#}"), &key),
+                MAX_TEST_ERROR_LEN,
+            )),
+        },
+    }))
+}
+
+/// Read a provider's stored key off the reactor, bounded.
+///
+/// Same shape as `llm_openai::from_active_provider`: a Keychain read can
+/// block for seconds behind a macOS access prompt, so it goes to
+/// `spawn_blocking` with a 10s ceiling rather than stalling the handler.
+async fn read_stored_key(
+    s: &AppState,
+    id: &str,
+    provider_name: &str,
+) -> Result<Option<String>, Error> {
+    let keys = s.keys.clone();
+    let owned = id.to_string();
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::task::spawn_blocking(move || keys.get(&owned)),
+    )
+    .await
+    {
+        Ok(joined) => Ok(joined
+            .map_err(|e| Error::Internal(format!("key store task failed: {e}")))?
+            .unwrap_or(None)),
+        Err(_) => Err(Error::Internal(format!(
+            "macOS Keychain did not respond within 10s while reading the key for \
+             provider '{provider_name}' - approve the Keychain prompt if one is \
+             showing, or re-enter the key"
+        ))),
+    }
+}
+
+/// Replace every occurrence of `key` in `text` with a mask.
+///
+/// Guards the case where a provider quotes the rejected key back inside its
+/// error body. Short keys are skipped: a 1-3 char "key" is not a real
+/// secret and substring-replacing it would shred unrelated error text.
+fn redact_key(text: &str, key: &str) -> String {
+    if key.len() < 4 {
+        return text.to_string();
+    }
+    text.replace(key, "[key redacted]")
+}
+
+/// Truncate on a char boundary, appending an ellipsis when cut.
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max).collect();
+    format!("{cut}…")
 }
 
 // ─── Error mapping ───────────────────────────────────────────────────────────

@@ -13,6 +13,21 @@
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+/**
+ * Result of `POST /api/settings/providers/:id/test` — one live round-trip
+ * against the provider.
+ *
+ * A rejected key still comes back HTTP 200 with `ok: false`; the request
+ * succeeded, the answer is just "no". Non-200 means the test could not be
+ * run at all (unknown id, wedged Keychain).
+ */
+export interface TestConnectionResult {
+  ok: boolean;
+  /** Model the provider echoed back, which may differ from the one asked for. */
+  model?: string;
+  error?: string;
+}
+
 export interface General {
   port: number;
   open_browser_on_start: boolean;
@@ -129,6 +144,19 @@ export const settingsApi = {
     http<void>(`/api/settings/providers/${id}/key`, {
       method: "POST",
       body: JSON.stringify({ api_key }),
+    }),
+  /**
+   * `POST /api/settings/providers/:id/test` — verify a key actually works
+   * before committing it. Pass the draft key to test something you have not
+   * saved yet; omit it to test whatever is already in the Keychain.
+   *
+   * The draft never reaches the Keychain, and the server scrubs it out of
+   * the provider's error text before replying.
+   */
+  testProvider: (id: string, api_key?: string) =>
+    http<TestConnectionResult>(`/api/settings/providers/${id}/test`, {
+      method: "POST",
+      body: JSON.stringify(api_key ? { api_key } : {}),
     }),
   /** `POST /api/settings/stt/key` — stores the Deepgram STT key in the
    *  Keychain. No provider id: the STT key is a singleton, keyed server-side
