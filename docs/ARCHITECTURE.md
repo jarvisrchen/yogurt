@@ -561,7 +561,9 @@ Notes on the storage layout, since it surprises people reading the code:
   They deliberately do not depend on each other for path resolution. Keep the two path helpers in sync if that path ever moves.
 - **`storage` uses a dual pool**: one writer connection behind a mutex, one read-only connection, WAL with `synchronous=NORMAL`.
 - **rusqlite is synchronous**, so every DB touch inside a request handler goes through `spawn_blocking`. Same for the markdown export, which does write + rename + fsync.
-- **API keys are never in SQLite and never in a response body.** The providers table holds `base_url`, model, and active flag; the secret lives in `~/.yogurt/keys.json` keyed by the provider's ULID. Responses return a masked suffix only.
+- **API keys are never in SQLite and never in a response body.** The providers table holds `base_url`, model, and active flag; the secret lives in `~/.yogurt/keys.json` keyed by the provider's ULID (or `stt-deepgram` for the STT singleton). Responses return a masked suffix only.
+- **The key file is read once and held in memory.** `FileKeyStore::open` (`yogurt-db/src/keys.rs`) parses `keys.json` at boot into a map behind an `RwLock`; every `get` is a map lookup, so key reads happen inline in request handlers with no `spawn_blocking` and no timeouts. Every `set`/`delete` rewrites the whole file through a same-directory temp file with mode 0600 and an atomic rename, so a crash mid-write can never truncate it. The file is created on the first write, not at boot.
+- **Tests never touch the real key file.** `YOGURT_MEMORY_KEYSTORE=1` (set by `just test` and CI) makes `AppState::production` use `MemoryKeyStore` instead; everything else behind the `ApiKeyStore` trait is identical.
 - **Markdown files are an export, not the source of truth.** SQLite is authoritative; the `.md` file exists so the user's notes are portable and greppable outside the app.
 
 ---
@@ -750,7 +752,7 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 
 - **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio - never notes.
 Captured audio is deleted after transcription.
-API keys live in `~/.yogurt/keys.json` (mode 0600, written atomically), never in SQLite and never in a response body. The macOS Keychain was dropped: its ACLs are bound to the binary's code signature, so every unsigned dev rebuild re-prompted per key, a wedged prompt could hang boot, and machines without Keychain write access could not run yogurt at all.
+API keys live only in `~/.yogurt/keys.json` (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
@@ -769,6 +771,7 @@ No subprocesses, no IPC, no sidecar binaries.
 | Rust frontends (yew/leptos) | Debugging a Rust frontend the night before launch is a poor trade for a solo project | React + TypeScript |
 | WhisperKit / CoreML / ANE | Pulls in a Swift toolchain and a model-conversion step | `whisper-rs` with the `metal` feature (GPU is fast enough on Apple Silicon) |
 | Per-provider LLM SDKs | One OpenAI-compatible client covers OpenAI, Ollama, LM Studio, OpenRouter, Groq, vLLM, MiniMax, and friends | `async-openai` with a configurable `base_url` |
+| macOS Keychain for API keys (`keyring` crate, used until 2026-08-29) | Keychain ACLs are bound to the binary's code signature, so every unsigned dev rebuild re-prompted once per stored key; a prompt nobody could answer wedged boot for 30+ minutes and forced 5s/10s/20s timeout scaffolding around every key read; and a machine where the user cannot write to Keychain could not run yogurt at all | `FileKeyStore` over `~/.yogurt/keys.json`: same posture as `~/.aws/credentials`, encrypted at rest by FileVault, no consent dialogs, works everywhere the data directory does |
 
 ### Load-bearing seams
 
