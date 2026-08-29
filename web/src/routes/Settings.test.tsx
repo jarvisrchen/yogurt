@@ -66,6 +66,7 @@ vi.mock("../lib/api/settings", () => {
       deleteProvider: vi.fn(),
       activateProvider: vi.fn(),
       setProviderKey: vi.fn(),
+      testProvider: vi.fn(),
       setSttKey: vi.fn(),
     },
     audioApi: {
@@ -151,5 +152,86 @@ describe("inactive provider key entry", () => {
     });
     // Keying must NOT have promoted the provider.
     expect(settingsApi.activateProvider).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The point of "Test" is a verdict BEFORE the key is committed, so the
+ * failing path must report the provider's reason and must not have written
+ * anything.
+ */
+describe("test connection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reports a rejected key and does not save it", async () => {
+    vi.mocked(settingsApi.testProvider).mockResolvedValue({
+      ok: false,
+      error: "LLM call failed: 401 Unauthorized — Incorrect API key provided",
+    });
+    renderSettings();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
+    fireEvent.change(await screen.findByLabelText("API key for Minimax"), {
+      target: { value: "sk-wrong" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Test connection for Minimax" }),
+    );
+
+    await waitFor(() => {
+      expect(settingsApi.testProvider).toHaveBeenCalledWith(
+        "01HYYYYYYYYYYYYYYYYYYYYYYY",
+        "sk-wrong",
+      );
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /401 Unauthorized/,
+    );
+    // Testing is not saving.
+    expect(settingsApi.setProviderKey).not.toHaveBeenCalled();
+  });
+
+  it("reports a working key with the model the provider echoed back", async () => {
+    vi.mocked(settingsApi.testProvider).mockResolvedValue({
+      ok: true,
+      model: "MiniMax-Text-01",
+    });
+    renderSettings();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
+    fireEvent.change(await screen.findByLabelText("API key for Minimax"), {
+      target: { value: "sk-right" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Test connection for Minimax" }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /Connection works.*MiniMax-Text-01/,
+    );
+  });
+
+  it("clears a stale verdict once the key is edited again", async () => {
+    vi.mocked(settingsApi.testProvider).mockResolvedValue({
+      ok: true,
+      model: "MiniMax-Text-01",
+    });
+    renderSettings();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
+    const field = await screen.findByLabelText("API key for Minimax");
+    fireEvent.change(field, { target: { value: "sk-right" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Test connection for Minimax" }),
+    );
+    await screen.findByRole("status");
+
+    // A green tick sitting next to a key that is no longer in the box is a lie.
+    fireEvent.change(field, { target: { value: "sk-different" } });
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
   });
 });

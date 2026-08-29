@@ -119,7 +119,11 @@ export function ProviderCard({ provider }: Props) {
           <div className="text-sm text-mut">No key stored yet.</div>
         )}
         <div className="pt-1">
-          <ApiKeyInput providerId={provider.id} providerName={provider.name} />
+          <ApiKeyInput
+            providerId={provider.id}
+            providerName={provider.name}
+            hasStoredKey={!!provider.api_key_masked}
+          />
         </div>
       </div>
     </article>
