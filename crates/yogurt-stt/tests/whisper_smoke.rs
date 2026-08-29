@@ -41,12 +41,13 @@ async fn it_transcribes_a_sine_wave_run_without_crashing() {
         return;
     }
 
-    // Path resolution matches Plan 08-02's models.rs::model_path —
-    // `~/Library/Application Support/com.yogurt.yogurt/models/` on macOS.
-    let model = directories::ProjectDirs::from("com", "yogurt", "yogurt")
-        .expect("project dirs")
-        .data_local_dir()
-        .join("models/ggml-small.en.bin");
+    // Reuse the crate's own resolver (~/.yogurt/models/) instead of
+    // duplicating path logic.  Safe here: we're past the
+    // RUN_WHISPER_SMOKE gate, so plain test runs never reach this.
+    let model = yogurt_stt::models::model_path(
+        yogurt_stt::models::lookup("small.en").expect("small.en in registry"),
+    )
+    .expect("resolve model path");
     assert!(
         model.exists(),
         "model not at {} — run Plan 08-02 download flow first",
