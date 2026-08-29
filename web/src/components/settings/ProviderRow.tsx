@@ -5,21 +5,18 @@ import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
 
 /**
- * Inactive provider stacked row — Phase 5 (Plan 05-03), SET-05.
+ * Inactive provider card — mirrors `ProviderCard`'s structure so every
+ * provider (active or not) reads as a card. The 1.5px blueberry border,
+ * ACTIVE badge, soft shadow, and Edit toggle are reserved for the active
+ * card (UI-SPEC §Visuals + §Accent reservations #1) — the inactive card
+ * uses a regular `--color-line` border, no shadow, and exposes
+ * `Set active` as the primary footer action instead of Edit.
  *
- * Renders the name, base_url in mono, a key-presence indicator (`✓ key`
- * matcha vs `no key` neutral), and action links: `Add key` / `Replace key`,
- * blueberry `Set active` (UI-SPEC §Accent reservations #4) and a muted
- * `Remove` link that turns strawberry on hover.
- *
- * The key affordance exists because cloning a preset chip creates an
- * INACTIVE row, and originally only the active card could accept a key —
- * so the only way to key a freshly-cloned provider was to activate it
- * first, knocking out whatever LLM was currently working.
- *
- * Clicking `Set active` invokes the atomic `POST /api/settings/providers/:id/activate`
- * — the server's `set_active` transaction guarantees no flicker / no
- * two-active state (UI-SPEC §Interaction 2).
+ * BASE URL and MODEL are read-only here; editing them on an inactive
+ * provider is a separate feature. The API KEY section is collapsible so
+ * the card stays compact until the user opts into keying — same shape as
+ * before, just lifted into the card's API KEY section so the active and
+ * inactive surfaces share a vocabulary.
  */
 
 export function ProviderRow({ provider }: { provider: ProviderView }) {
@@ -35,68 +32,107 @@ export function ProviderRow({ provider }: { provider: ProviderView }) {
   });
 
   return (
-    <div className="border-b border-line py-3">
-      {/* gap-4 is load-bearing: a long base_url truncates and eats every
-       * pixel of slack, at which point justify-between leaves the key
-       * indicator butted right up against the "Add key" link. */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-baseline gap-3 min-w-0">
-          <span className="text-[14px] font-semibold text-ink shrink-0">
-            {provider.name}
-          </span>
-          <code className="font-mono text-xs text-grey truncate">
+    <article
+      className="rounded-xl border border-line bg-white p-5 space-y-4"
+      data-testid="inactive-provider-card"
+    >
+      <header className="flex items-center justify-between">
+        <h3 className="font-serif text-[20px] leading-tight">
+          {provider.name}
+        </h3>
+        <button
+          type="button"
+          className="text-[12.5px] font-semibold text-mut hover:text-[var(--color-straw)] disabled:opacity-50"
+          onClick={() => remove.mutate()}
+          disabled={remove.isPending}
+          aria-label={`Remove provider ${provider.name}`}
+        >
+          Remove
+        </button>
+      </header>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+        <Field label="BASE URL">
+          <code className="font-mono text-[12.5px] text-ink break-all">
             {provider.base_url}
           </code>
-          {provider.api_key_masked ? (
-            <span className="text-xs text-[var(--color-matcha)] font-mono font-semibold shrink-0">
-              ✓ key
-            </span>
-          ) : (
-            <span className="text-xs text-mut font-mono shrink-0">no key</span>
-          )}
-        </div>
-        <div className="flex items-center gap-4 text-[12.5px] shrink-0">
-          <button
-            type="button"
-            className="text-mut font-semibold hover:text-ink"
-            onClick={() => setKeying((k) => !k)}
-          >
-            {keying
-              ? "Cancel"
-              : provider.api_key_masked
-                ? "Replace key"
-                : "Add key"}
-          </button>
-          <button
-            type="button"
-            className="text-[var(--color-blue)] font-semibold hover:underline disabled:opacity-50"
-            onClick={() => activate.mutate()}
-            disabled={activate.isPending}
-          >
-            Set active
-          </button>
-          <button
-            type="button"
-            className="text-mut hover:text-[var(--color-straw)] disabled:opacity-50"
-            onClick={() => remove.mutate()}
-            disabled={remove.isPending}
-          >
-            Remove
-          </button>
-        </div>
+        </Field>
+        <Field label="MODEL">
+          <code className="font-mono text-[12.5px] text-ink break-all">
+            {provider.model || "—"}
+          </code>
+        </Field>
       </div>
 
-      {keying && (
-        <div className="pt-3">
-          <ApiKeyInput
-            providerId={provider.id}
-            providerName={provider.name}
-            hasStoredKey={!!provider.api_key_masked}
-            autoFocus
-            onSaved={() => setKeying(false)}
-          />
+      <div className="border-t border-line pt-3 space-y-2">
+        <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
+          API KEY · in Keychain
         </div>
-      )}
+        {provider.api_key_masked ? (
+          <div className="flex items-center gap-2 text-[12.5px] font-mono">
+            <span className="text-ink">{provider.api_key_masked}</span>
+            <span className="text-[var(--color-matcha)] font-semibold">
+              ✓ stored
+            </span>
+          </div>
+        ) : (
+          <div className="text-sm text-mut">No key stored yet.</div>
+        )}
+        {keying ? (
+          <div className="pt-1 space-y-2">
+            <ApiKeyInput
+              providerId={provider.id}
+              providerName={provider.name}
+              hasStoredKey={!!provider.api_key_masked}
+              autoFocus
+              onSaved={() => setKeying(false)}
+            />
+            <button
+              type="button"
+              onClick={() => setKeying(false)}
+              className="text-[12.5px] font-semibold text-mut hover:text-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setKeying(true)}
+            className="text-[12.5px] font-semibold text-mut hover:text-ink"
+          >
+            {provider.api_key_masked ? "Replace key" : "Add key"}
+          </button>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+          onClick={() => activate.mutate()}
+          disabled={activate.isPending}
+        >
+          {activate.isPending ? "Activating…" : "Set active"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
+        {label}
+      </div>
+      <div>{children}</div>
     </div>
   );
 }
