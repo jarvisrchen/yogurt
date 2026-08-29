@@ -4,9 +4,10 @@
  * Layout (PRD §5.9 + D-06):
  *   [42px tinted avatar with 2-letter serif initials]
  *   ╎ Title (Hanken-bold 15px)
- *   ╎ {2:45 PM} · {47 min} · enhanced  ← mono 12px; duration omitted while
- *   ╎                                     ended_at is null; `· enhanced` only
- *   ╎                                     if enriched_md != null
+ *   ╎ {2:45 PM} · {47 min}             ← mono 12px; duration omitted while
+ *   ╎                                     ended_at is null; `· not enhanced`
+ *   ╎                                     appended only for the exception:
+ *   ╎                                     ended but never enhanced
  *   [Local pill, right-aligned]
  *
  * Avatar tint is deterministic per id (hash → 3-palette cycle) so the
@@ -58,7 +59,10 @@ export function formatMeta(m: Meeting): string {
     const minutes = Math.max(1, Math.round((m.ended_at - m.started_at) / 60_000));
     parts.push(`${minutes} min`);
   }
-  if (m.enriched_md != null) parts.push("enhanced");
+  // Enhancement is the normal outcome of ending a meeting, so tagging every
+  // card "enhanced" is noise. Flag only the exception: ended, no enrichment
+  // (enhance failed or was skipped), so the user knows to hit Re-enhance.
+  if (m.ended_at != null && m.enriched_md == null) parts.push("not enhanced");
   return parts.join(" · ");
 }
 

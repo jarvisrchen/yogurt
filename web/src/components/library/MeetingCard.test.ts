@@ -29,7 +29,7 @@ const startTime = new Date(START).toLocaleTimeString(undefined, {
 
 describe("formatMeta", () => {
   it("shows start time and duration when the meeting has ended", () => {
-    const m = meeting({ ended_at: START + 47 * 60_000 });
+    const m = meeting({ ended_at: START + 47 * 60_000, enriched_md: "x" });
     expect(formatMeta(m)).toBe(`${startTime} · 47 min`);
   });
 
@@ -40,13 +40,20 @@ describe("formatMeta", () => {
   });
 
   it("rounds sub-minute meetings up to 1 min", () => {
-    const m = meeting({ ended_at: START + 10_000 });
+    const m = meeting({ ended_at: START + 10_000, enriched_md: "x" });
     expect(formatMeta(m)).toBe(`${startTime} · 1 min`);
   });
 
-  it("appends enhanced when enriched_md is present", () => {
+  it("does not tag the normal case (ended + enhanced)", () => {
     const m = meeting({ ended_at: START + 60_000, enriched_md: "x" });
-    expect(formatMeta(m)).toBe(`${startTime} · 1 min · enhanced`);
+    expect(formatMeta(m)).toBe(`${startTime} · 1 min`);
+  });
+
+  it("flags 'not enhanced' only when ended without enrichment", () => {
+    const ended = meeting({ ended_at: START + 60_000, enriched_md: null });
+    expect(formatMeta(ended)).toBe(`${startTime} · 1 min · not enhanced`);
+    // Still live: no verdict yet, so no flag.
+    expect(formatMeta(meeting({ enriched_md: null }))).toBe(startTime);
   });
 });
 
