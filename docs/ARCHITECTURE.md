@@ -3,8 +3,9 @@
 How the system actually works, traced from the code rather than the plan.
 Diagrams are Mermaid, so GitHub renders them inline.
 
-Companion docs: [PRD.md](./PRD.md) for product intent, this file for mechanism.
+Companion docs: [archive/PRD.md](./archive/PRD.md) for the original product intent, this file for mechanism.
 
+- [0. Glossary](#0-glossary)
 - [1. High-level map](#1-high-level-map)
 - [2. Process and thread topology](#2-process-and-thread-topology)
 - [3. Boot and session-token handshake](#3-boot-and-session-token-handshake)
@@ -15,12 +16,48 @@ Companion docs: [PRD.md](./PRD.md) for product intent, this file for mechanism.
 - [8. Where state lives](#8-where-state-lives)
 - [9. Trust boundaries](#9-trust-boundaries)
 - [10. AI usage and cost map](#10-ai-usage-and-cost-map)
+- [11. Key decisions and rejected alternatives](#11-key-decisions-and-rejected-alternatives)
+
+---
+
+## 0. Glossary
+
+The doc leans on a few acronyms. The first three carry most of the weight.
+
+| Term | Means | In yogurt specifically |
+|---|---|---|
+| **STT** | **Speech to text.** Turning spoken audio into written words, also called ASR or "transcription". | The `yogurt-stt` crate. It has two interchangeable engines behind one `Stt` trait: Deepgram in the cloud, or whisper.cpp running on your Mac. This is what produces the live transcript. |
+| **LLM** | **Large language model.** The thing you send text to and get text back from (GPT, Claude, Llama, MiniMax). | Used in exactly two places: turning your sparse notes plus the transcript into augmented notes ("enhance"), and answering chat questions about the meeting. Never used for transcription. |
+| **VAD** | **Voice activity detection.** A cheap check for "is anyone actually talking right now?" that runs before the expensive model does. | Only on the local STT path (`vad.rs`). It chops continuous audio into utterances and skips silence entirely, which is why local transcription costs nothing while idle. |
+
+Supporting cast, in rough order of how often they appear:
+
+| Term | Means |
+|---|---|
+| **WS** | WebSocket. A persistent two-way connection, unlike a one-shot HTTP request. Used to push transcript lines and chat tokens to the browser as they happen. |
+| **SPA** | Single-page application. The React frontend, served as one HTML page that swaps views client-side. |
+| **PCM** | Raw uncompressed audio samples. "16 kHz mono i16 PCM" means 16,000 samples per second, one channel, each sample a 16-bit integer. |
+| **ScreenCaptureKit / SCK** | Apple's macOS framework for capturing screen and system audio. It is how yogurt hears the other side of a call without joining as a bot. |
+| **loopback** | Capturing the audio your Mac is *playing* (the other participants) rather than what your mic hears. |
+| **TCC** | Apple's permissions system (Transparency, Consent, and Control). The source of the "allow Screen Recording?" prompts. |
+| **WAL** | Write-ahead logging, a SQLite mode where readers do not block the writer. |
+| **FTS** | Full-text search. SQLite's built-in search index, used for the Library search box. No AI involved. |
+| **RAII** | A Rust/C++ pattern where cleanup happens automatically when a value is dropped. Here: dropping the audio handle stops the microphone. |
+| **SSE** | Server-sent events. The streaming format LLM providers use to send a response token by token. |
+| **ULID** | A sortable unique identifier, like a UUID but time-ordered. Used for provider ids. |
+| **Metal / CoreML / ANE** | Apple hardware acceleration. Metal is the GPU (enabled), CoreML/ANE is the Neural Engine (deliberately not enabled). |
+| **ggml** | The tensor library whisper.cpp is built on. `.bin` model files are in its format. |
+| **diarization** | Working out who spoke. Yogurt does the minimum version: mic is "Me", system audio is "Them". |
+| **endpointing** | How long a speaker must pause before the engine decides the sentence is over. |
+| **backpressure** | What a system does when data arrives faster than it can be processed. |
+| **mojibake** | Garbled text from a character-encoding mismatch, e.g. `â€¦` where `…` belongs. |
 
 ---
 
 ## 1. High-level map
 
 One Rust process. No sidecars, no IPC, no subprocesses.
+If any acronym below is unfamiliar, [section 0](#0-glossary) defines them.
 The browser is a dumb-ish render surface: it holds the editor buffer and nothing else authoritative.
 
 ```mermaid
@@ -93,7 +130,7 @@ Crate responsibilities, one line each:
 | `yogurt-cli` | Arg parsing, `--dev` mode, `.env.local` load (dev only), calls `yogurt_server::run`. |
 | `yogurt-server` | axum router, auth, meeting registry, enhance/chat orchestration, WS fan-out, embedded assets. |
 | `yogurt-audio` | Mic (cpal) + system loopback (ScreenCaptureKit), resample to the frame contract, broadcast frames. |
-| `yogurt-stt` | `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
+| `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
 | `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output, render back to wire-format markdown. |
 | `yogurt-prompts` | Embedded prompt templates and their render context. |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming. |
@@ -702,3 +739,40 @@ Not present, in rough priority order if cost ever matters:
 3. **No prompt caching.** The `enhance.md` prefix is fixed at ~650 tokens and the chat system prompt is stable, but neither is sent in a form that claims providers' cached-input discounts (OpenAI prices cached input at half rate).
 4. **No spend meter.** Nothing in the app tells the user what a meeting cost, which for a BYO-key product is the number they would most want to see.
 5. **Re-enhance is a full re-run** at full price, with no diffing against the previous result.
+
+---
+
+## 11. Key decisions and rejected alternatives
+
+The stack choices that shape everything else, and what was deliberately not used.
+Version truth lives in `Cargo.toml` / `web/package.json`; this section records the *why*.
+
+### Hard constraints (violating any of these is a bug)
+
+- **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio - never notes.
+Captured audio is deleted after transcription.
+API keys live in the macOS Keychain (`keyring` crate), never in plaintext files.
+- **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
+No subprocesses, no IPC, no sidecar binaries.
+- **No telemetry:** zero phone-home, not even opt-in crash reporting.
+- **Platform:** macOS 13+ only - ScreenCaptureKit is the audio-loopback mechanism and sets the floor.
+- **Distribution:** a single static binary; `web/dist` is embedded via `rust-embed`, SQLite is bundled via `rusqlite`.
+
+### Rejected alternatives
+
+| Rejected | Why | Used instead |
+|---|---|---|
+| Tauri / Electron / wry | Second build target, IPC layer, or a bundled Chromium - all tax the single-binary pitch for zero v1 benefit | axum serving an SPA at `localhost:7878`, opened in the user's browser |
+| BlackHole / virtual audio drivers | Requires users to install kernel-adjacent software | ScreenCaptureKit system-audio loopback (the supported Apple path) |
+| `getUserMedia` in the browser | Would prompt for mic permission separately from the binary's Screen Recording prompt - two confusing permission flows | All audio is captured by the Rust binary; the browser only renders UI |
+| `sqlx` | Compile-time DB connection requirement is awkward inside a static-binary build | `rusqlite` with the `bundled` feature |
+| Next.js / SSR React | Localhost SPA - there is nothing to server-render | React 19 + Vite, client-side only |
+| Rust frontends (yew/leptos) | Debugging a Rust frontend the night before launch is a poor trade for a solo project | React + TypeScript |
+| WhisperKit / CoreML / ANE | Pulls in a Swift toolchain and a model-conversion step | `whisper-rs` with the `metal` feature (GPU is fast enough on Apple Silicon) |
+| Per-provider LLM SDKs | One OpenAI-compatible client covers OpenAI, Ollama, LM Studio, OpenRouter, Groq, vLLM, MiniMax, and friends | `async-openai` with a configurable `base_url` |
+
+### Load-bearing seams
+
+- **`Stt` trait** (`yogurt-stt`): Deepgram and whisper.cpp are interchangeable behind it; swapping or adding an engine is a one-file change.
+- **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
+- **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
