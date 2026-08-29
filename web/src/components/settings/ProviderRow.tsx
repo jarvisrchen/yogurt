@@ -30,10 +30,17 @@ export function ProviderRow({
   provider,
   autoOpenKey = false,
   presetModels = [],
+  docsUrl,
+  presetName,
 }: {
   provider: ProviderView;
   autoOpenKey?: boolean;
   presetModels?: string[];
+  docsUrl?: string;
+  /** Brand name from the matching built-in preset (e.g. "Google Gemini").
+   *  Used as the visible text of the docs link — the user-chosen
+   *  `provider.name` would read badly there. */
+  presetName?: string;
 }) {
   const qc = useQueryClient();
   const [keying, setKeying] = useState(autoOpenKey);
@@ -118,6 +125,16 @@ export function ProviderRow({
           )}
         </Field>
       </div>
+      {docsUrl && (
+        <a
+          href={docsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
+        >
+          See all {presetName ?? provider.name} models →
+        </a>
+      )}
 
       <div className="border-t border-line pt-3 space-y-2">
         <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">

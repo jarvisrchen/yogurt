@@ -81,6 +81,13 @@ export function ApiKeyInput({
   });
 
   const canTest = (!!draft || !!hasStoredKey) && !test.isPending;
+  // Mirror the backend's mask shape (`••••XXXX`, last 4 chars visible) so
+  // the user can confirm they pasted the right key BEFORE clicking Save
+  // — the password field hides the rest, but a key paste where the last
+  // four characters don't match what they copied is a common typo class
+  // (trailing whitespace, accidental caps lock, partial paste).
+  const previewMasked = draft.length >= 4;
+  const previewTail = draft.slice(-4);
 
   return (
     <div className="space-y-2">
@@ -124,6 +131,15 @@ export function ApiKeyInput({
           {setKey.isPending ? "Saving…" : "Save key"}
         </button>
       </div>
+
+      {draft.length > 0 && (
+        <p className="text-[12px] font-mono text-mut">
+          Will save as{" "}
+          <span className="text-ink">
+            {previewMasked ? `••••${previewTail}` : draft}
+          </span>
+        </p>
+      )}
 
       {test.data && (
         <p

@@ -67,6 +67,13 @@ export interface Preset {
    * where the model list is purely local.
    */
   models: string[];
+  /**
+   * Public URL of the provider's model catalog. Rendered as a small
+   * `See all models →` link next to the MODEL field so users have a
+   * discovery surface for preview / regional tiers the static list
+   * doesn't cover, and a fallback when `/v1/models` isn't supported.
+   */
+  docs_url: string;
 }
 
 export interface SettingsView {
