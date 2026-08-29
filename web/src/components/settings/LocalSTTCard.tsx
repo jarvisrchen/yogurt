@@ -181,9 +181,8 @@ export function LocalSTTCard({
       </header>
 
       <p className="text-[13px] text-mut">
-        Fully on-device transcription via Metal-accelerated whisper.cpp.
-        Most users stay on Cloud — Local is the privacy escape hatch when
-        audio can't leave the machine.
+        Whisper.cpp with Metal acceleration. Audio never leaves this Mac.
+        Local is free.
       </p>
 
       {q.isLoading && (
@@ -207,7 +206,7 @@ export function LocalSTTCard({
 
       <p className="text-[11px] font-mono text-mut pt-1">
         Models download on first use · stored in{" "}
-        <code className="text-ink">~/Library/Application Support/com.yogurt.yogurt/models</code>
+        <code className="text-ink">~/.yogurt/models/</code>
       </p>
 
       <ModelDownloadDialog
