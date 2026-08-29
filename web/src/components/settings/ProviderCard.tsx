@@ -35,6 +35,10 @@ export function ProviderCard({
     base_url: provider.base_url,
     model: provider.model,
   });
+  // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
+  // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
+  // See the matching comment in `ProviderRow` for the rationale.
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
 
   const update = useMutation({
     mutationFn: () => settingsApi.updateProvider(provider.id, draft),
@@ -91,6 +95,7 @@ export function ProviderCard({
               onChange={(next) => setDraft({ ...draft, model: next })}
               presetModels={presetModels}
               hasStoredKey={!!provider.api_key_masked}
+              apiKeyDraft={apiKeyDraft}
             />
           ) : (
             <code className="font-mono text-[12.5px] text-ink">
@@ -130,6 +135,7 @@ export function ProviderCard({
             providerId={provider.id}
             providerName={provider.name}
             hasStoredKey={!!provider.api_key_masked}
+            onDraftChange={setApiKeyDraft}
           />
         </div>
       </div>

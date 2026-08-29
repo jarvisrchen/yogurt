@@ -12,7 +12,7 @@
  * URL is api.minimax.io (non-localhost).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import type { SettingsView } from "../lib/api/settings";
@@ -72,6 +72,7 @@ vi.mock("../lib/api/settings", () => ({
     setProviderKey: vi.fn(),
     testProvider: vi.fn(),
     setSttKey: vi.fn(),
+    listProviderModels: vi.fn(),
   },
   audioApi: {
     devices: vi.fn().mockResolvedValue([]),
@@ -297,5 +298,66 @@ describe("preset cloning auto-opens the key input", () => {
     expect(
       screen.getByRole("button", { name: "Add key" }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * REGRESSION: when the saved `model` is the only thing wrong with the
+ * provider (Google's frequent deprecations are the canonical case), the
+ * user must be able to discover what models are actually available
+ * BEFORE saving the key — picking a replacement requires knowing the
+ * replacement exists.
+ *
+ * The flow: paste a draft key → the MODEL `Refresh` button becomes
+ * enabled → click it → the backend receives the draft key in the body
+ * of POST /api/settings/providers/{id}/models. The stored Keychain
+ * entry stays untouched.
+ */
+describe("MODEL Refresh works with a draft API key", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends the draft key in the POST body when refreshing without a stored key", async () => {
+    vi.mocked(settingsApi.listProviderModels).mockResolvedValue([
+      "gemini-2.5-pro",
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+    ]);
+
+    renderSettings();
+
+    // Open the key input on the Minimax card (the fixture has no stored
+    // key, so the Add key button is showing by default). Scope to the
+    // inactive card testid — there is also a `+ Add` chip-button on the
+    // page for adding a brand-new provider, which would otherwise collide
+    // on the same accessible name.
+    const minimaxCard = (
+      await screen.findAllByTestId("inactive-provider-card")
+    )[0];
+    fireEvent.click(
+      within(minimaxCard).getByRole("button", { name: "Add key" }),
+    );
+
+    // Type a draft key. Refresh should be enabled once any non-empty
+    // draft is present, even though no key is stored.
+    fireEvent.change(
+      await screen.findByLabelText("API key for Minimax"),
+      { target: { value: "sk-draft" } },
+    );
+
+    const refresh = await screen.findByRole("button", {
+      name: /refresh model list for Minimax/i,
+    });
+    expect(refresh).toBeEnabled();
+
+    fireEvent.click(refresh);
+
+    await waitFor(() => {
+      expect(settingsApi.listProviderModels).toHaveBeenCalledWith(
+        "01HYYYYYYYYYYYYYYYYYYYYYYY",
+        "sk-draft",
+      );
+    });
   });
 });

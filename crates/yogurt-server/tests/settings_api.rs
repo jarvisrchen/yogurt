@@ -456,3 +456,91 @@ async fn test_provider_404s_for_an_unknown_id() {
     .await;
     assert_eq!(status, 404);
 }
+
+/// REGRESSION: the MODEL `Refresh` button on the Settings page must
+/// work with a draft API key (the user hasn't saved the key yet, but
+/// they want to see what models the provider offers so they can pick
+/// one before clicking `Save key`). The whole point: when the saved
+/// `model` is the only thing wrong with the provider (e.g. Google's
+/// frequent deprecations), the user needs to discover what's available
+/// before they can choose a replacement.
+#[tokio::test]
+async fn list_models_uses_draft_key_when_no_stored_key() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/models"))
+        .and(wiremock::matchers::header(
+            "authorization",
+            "Bearer sk-draft-models",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [
+                { "id": "gemini-2.5-pro",   "object": "model" },
+                { "id": "gemini-2.5-flash", "object": "model" },
+                { "id": "gemini-2.0-flash", "object": "model" }
+            ]
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let (_state, token, base) = boot().await;
+    let id = make_provider(&base, &token, &upstream.uri()).await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers/{id}/models"))
+        .bearer_auth(&token)
+        .json(&json!({ "api_key": "sk-draft-models" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let models: Vec<String> = resp.json().await.unwrap();
+    assert_eq!(
+        models,
+        vec![
+            "gemini-2.5-pro".to_string(),
+            "gemini-2.5-flash".to_string(),
+            "gemini-2.0-flash".to_string()
+        ]
+    );
+
+    // Side-effect-free: probing with a draft must not store the key.
+    let settings: Value = reqwest::Client::new()
+        .get(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let provider = settings["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == id.as_str())
+        .expect("provider present");
+    assert!(
+        provider["api_key_masked"].is_null(),
+        "listing models with a draft key must not store it, got {provider}"
+    );
+}
+
+/// No key at all — neither draft nor stored — must 422 so the UI can
+/// render "paste a key, then refresh" instead of pretending to call.
+#[tokio::test]
+async fn list_models_without_any_key_returns_422() {
+    let (_state, token, base) = boot().await;
+    let id = make_provider(&base, &token, "https://api.example.com/v1").await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers/{id}/models"))
+        .bearer_auth(&token)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 422);
+}

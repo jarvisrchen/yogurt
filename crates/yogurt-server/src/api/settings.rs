@@ -21,7 +21,7 @@
 //! | POST   | `/api/settings/providers/{id}/activate`    | `activate_provider`   |
 //! | POST   | `/api/settings/providers/{id}/key`         | `set_provider_key`    |
 //! | POST   | `/api/settings/providers/{id}/test`        | `test_provider`       |
-//! | GET    | `/api/settings/providers/{id}/models`      | `list_provider_models`|
+//! | POST   | `/api/settings/providers/{id}/models`      | `list_provider_models`|
 //! | GET    | `/api/settings/presets`                    | `list_presets`        |
 //!
 //! ## axum 0.8 path syntax
@@ -64,7 +64,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings/providers/{id}/test", post(test_provider))
         .route(
             "/api/settings/providers/{id}/models",
-            get(list_provider_models),
+            post(list_provider_models),
         )
         .route("/api/settings/stt/key", post(set_stt_key))
         .route("/api/settings/presets", get(list_presets))
@@ -487,36 +487,57 @@ async fn test_provider(
     }))
 }
 
-/// `GET /api/settings/providers/{id}/models` — probe the provider's
-/// `/v1/models` endpoint with the stored Keychain key and return its
-/// model list.
+/// Optional `POST /api/settings/providers/{id}/models` body. When present,
+/// the draft `api_key` is used in place of the stored Keychain entry so
+/// the user can discover what models are available *before* committing
+/// the key — useful when the saved `model` is the only thing wrong with
+/// the provider (e.g. Google's frequent deprecations).
+#[derive(Deserialize)]
+struct ListModelsBody {
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+/// `POST /api/settings/providers/{id}/models` — probe the provider's
+/// `/v1/models` endpoint and return its model list.
 ///
-/// The Settings UI's `Refresh` button hits this once a key is on file;
-/// the response populates the MODEL `<datalist>` so the user sees the
-/// authoritative list (anything the static preset hint doesn't cover,
-/// e.g. preview models or a freshly-released tier).
+/// The Settings UI's `Refresh` button hits this. The handler prefers a
+/// draft `api_key` from the request body over the stored Keychain entry
+/// so the button is useful on a freshly-cloned provider (the whole point:
+/// when the saved `model` is deprecated, the user needs to see what is
+/// actually available before they can pick a replacement). The draft
+/// never reaches the Keychain — it's used once for the probe and
+/// discarded.
 ///
-/// A missing or wrong key surfaces as a normal upstream HTTP error —
+/// A missing-or-wrong key surfaces as a normal upstream HTTP error —
 /// `redact_key` scrubs the raw secret out of the message so a
 /// misconfigured provider can't smuggle it back through the response.
 async fn list_provider_models(
     State(s): State<AppState>,
     Path(id): Path<String>,
+    body: Option<Json<ListModelsBody>>,
 ) -> Result<Json<Vec<String>>, Error> {
     let provider = providers::list(&s.db)?
         .into_iter()
         .find(|p| p.id == id)
         .ok_or(Error::NotFound)?;
 
-    let key = match read_stored_key(&s, &id, &provider.name).await? {
+    let draft = body
+        .and_then(|b| b.api_key.clone())
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty());
+    let key = match draft {
         Some(k) => k,
-        None => {
-            return Err(Error::Unprocessable(
-                "No key stored for this provider yet - paste one above, \
-                 then refresh."
-                    .into(),
-            ));
-        }
+        None => match read_stored_key(&s, &id, &provider.name).await? {
+            Some(k) => k,
+            None => {
+                return Err(Error::Unprocessable(
+                    "No key stored for this provider yet - paste one above, \
+                     then refresh."
+                        .into(),
+                ));
+            }
+        },
     };
 
     use yogurt_llm::LlmClient as _;
