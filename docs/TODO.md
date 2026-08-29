@@ -72,9 +72,8 @@ Example entry:
 
 ## LLM
 
-- [ ] Add Google Gemini as a built-in LLM provider preset
-  Today's presets are Minimax, OpenAI, Ollama, LM Studio, and OpenRouter (`crates/yogurt-db/src/providers.rs:26`), so bringing a Gemini key means hand-typing a base URL that most people will not know.
-  Gemini ships an OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai/`, so this should need no new client code in `yogurt-llm` - just a `Preset` entry with a sensible `default_model` (`gemini-2.5-flash`).
-  Also add the matching `YOGURT_GEMINI_API_KEY` row to `ENV_PRESETS` in `crates/yogurt-server/src/bootstrap.rs:29` so the key seeds into the Keychain on first run like the other three.
-  Verify compatibility before committing to the preset: confirm streaming chat completions and the `enhance` prompt shape both work against the compat endpoint, since Google's OpenAI layer has historically lagged on some fields.
-  Watch the stale-count trap - the doc comment above `PRESETS` says "The five v1 presets", the same kind of drift that broke the STT model registry tests.
+- [x] Add Google Gemini and DeepSeek as built-in LLM provider presets
+  Both speak the OpenAI `/chat/completions` shape, so this needed no new client code in `yogurt-llm` - just `Preset` entries plus the matching `ENV_PRESETS` rows (`YOGURT_GEMINI_API_KEY`, `YOGURT_DEEPSEEK_API_KEY`) so keys seed into the Keychain on first run.
+  Gemini goes through Google's OpenAI-compatible shim at `https://generativelanguage.googleapis.com/v1beta/openai`, not the native `generativeLanguage` REST shape.
+  Neither was strictly blocked before this - "Add provider" already accepts a free-form base URL - so the win is one click instead of a URL nobody remembers.
+  While here: `tests/bootstrap.rs` hand-listed the env vars it cleared, so adding a preset broke it only on machines that exported the new key. It now clears everything `bootstrap::env_key_vars()` reports.

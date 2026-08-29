@@ -22,7 +22,12 @@ pub struct Preset {
     pub default_model: &'static str,
 }
 
-/// The five v1 presets. Order matters: it's the order chips appear in the UI.
+/// Built-in presets. Order matters: it's the order chips appear in the UI.
+/// Cloud majors first, then local runtimes, then the aggregator.
+///
+/// Every entry must speak the OpenAI `/chat/completions` shape, because
+/// `OpenAiCompatClient` is the only client `yogurt-llm` ships — a preset is
+/// purely a saved base URL + model, never a new adapter.
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Minimax",
@@ -33,6 +38,20 @@ pub const PRESETS: &[Preset] = &[
         name: "OpenAI",
         base_url: "https://api.openai.com/v1",
         default_model: "gpt-4o-mini",
+    },
+    // Google exposes Gemini through an OpenAI-compatible shim; the native
+    // `generativeLanguage` REST shape is NOT what we speak. The trailing
+    // slash is load-bearing upstream but harmless here — `OpenAiCompatClient`
+    // trims it before appending `/chat/completions`.
+    Preset {
+        name: "Google Gemini",
+        base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+        default_model: "gemini-2.5-flash",
+    },
+    Preset {
+        name: "DeepSeek",
+        base_url: "https://api.deepseek.com/v1",
+        default_model: "deepseek-chat",
     },
     Preset {
         name: "Ollama (local)",

@@ -93,8 +93,8 @@ export function Settings() {
                 </code>
               </div>
               <p className="text-[13px] text-mut">
-                Paste a base URL and key. Anthropic &amp; Gemini reachable
-                via OpenRouter.
+                Paste a base URL and key, or clone a preset below. Anthropic
+                is reachable via OpenRouter.
               </p>
             </header>
 

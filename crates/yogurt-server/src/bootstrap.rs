@@ -40,12 +40,35 @@ const ENV_PRESETS: &[(&str, &str, &str, &str)] = &[
         "gpt-4o-mini",
     ),
     (
+        "YOGURT_GEMINI_API_KEY",
+        "Google Gemini",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        "gemini-2.5-flash",
+    ),
+    (
+        "YOGURT_DEEPSEEK_API_KEY",
+        "DeepSeek",
+        "https://api.deepseek.com/v1",
+        "deepseek-chat",
+    ),
+    (
         "YOGURT_OPENROUTER_API_KEY",
         "OpenRouter",
         "https://openrouter.ai/api/v1",
         "anthropic/claude-3.5-sonnet",
     ),
 ];
+
+/// The env var names [`ENV_PRESETS`] reads, in order.
+///
+/// Exposed so `tests/bootstrap.rs` can clear ALL of them before asserting on
+/// a single seeded provider. The tests used to hand-list the vars, which
+/// meant adding a preset here silently broke them on any machine that had
+/// the new key exported — the same stale-enumeration trap that bit the STT
+/// model registry.
+pub fn env_key_vars() -> impl Iterator<Item = &'static str> {
+    ENV_PRESETS.iter().map(|&(var, ..)| var)
+}
 
 /// Report of which env-var-backed providers were seeded vs already present.
 #[derive(Debug, Default)]
