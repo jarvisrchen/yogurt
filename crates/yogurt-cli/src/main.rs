@@ -14,6 +14,8 @@ struct Cli {
 enum Cmd {
     /// Launch the local server and open the browser.
     Start(StartArgs),
+    /// Print diagnostic info (rust, macOS, perms, providers, models) + repair actions.
+    Doctor(DoctorArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -27,6 +29,22 @@ struct StartArgs {
     /// Run in dev mode (proxies non-API routes to Vite on :5173).
     #[arg(long)]
     dev: bool,
+}
+
+#[derive(clap::Args, Debug)]
+struct DoctorArgs {
+    /// Emit diagnostics as JSON.
+    #[arg(long)]
+    json: bool,
+    /// Reset Screen Recording TCC permission for ai.yogurt.app (forces re-prompt).
+    #[arg(long)]
+    reset_screen_recording: bool,
+    /// Check whether port 7878 is in use.
+    #[arg(long)]
+    check_port: bool,
+    /// Re-download a whisper.cpp model (e.g. small.en) by deleting the local copy.
+    #[arg(long, value_name = "MODEL")]
+    redownload_model: Option<String>,
 }
 
 #[tokio::main]
@@ -68,6 +86,15 @@ async fn main() -> anyhow::Result<()> {
                 port: args.port,
                 no_open: args.no_open,
                 dev: args.dev,
+            })
+            .await
+        }
+        Cmd::Doctor(args) => {
+            commands::doctor::run(commands::doctor::DoctorArgs {
+                json: args.json,
+                reset_screen_recording: args.reset_screen_recording,
+                check_port: args.check_port,
+                redownload_model: args.redownload_model,
             })
             .await
         }

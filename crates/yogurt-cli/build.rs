@@ -20,4 +20,16 @@ fn main() {
     {
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
     }
+
+    // Phase 9 (Plan 09-03): capture the compiling rustc's version string so
+    // `yogurt doctor` can report it without shelling out to `rustc` at
+    // runtime (which may not even be installed on a brew user's machine).
+    let rustc_version = std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=YOGURT_RUSTC_VERSION={rustc_version}");
 }
