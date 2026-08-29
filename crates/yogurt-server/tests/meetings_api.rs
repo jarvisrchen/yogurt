@@ -262,6 +262,68 @@ async fn it_deletes_and_returns_404() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn it_deletes_the_markdown_only_when_asked() {
+    let (addr, token, handle, notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // Two meetings, each PATCHed so the exporter writes its .md.
+    let mut paths = Vec::new();
+    let mut ids = Vec::new();
+    for title in ["Keep the file", "Nuke the file"] {
+        let created: serde_json::Value = client
+            .post(format!("http://{addr}/api/meetings"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "title": title }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let id = created["id"].as_str().unwrap().to_string();
+        client
+            .patch(format!("http://{addr}/api/meetings/{id}"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "notes": "- a note" }))
+            .send()
+            .await
+            .unwrap();
+        let path = std::fs::read_dir(&notes_dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .find(|p| !paths.contains(p))
+            .expect("exporter wrote a markdown file");
+        paths.push(path);
+        ids.push(id);
+    }
+
+    // No flag -> row goes, file stays (D-10 default).
+    let resp = client
+        .delete(format!("http://{addr}/api/meetings/{}", ids[0]))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+    assert!(paths[0].exists(), "default delete must not unlink the .md");
+
+    // `?delete_file=true` -> both go.
+    let resp = client
+        .delete(format!(
+            "http://{addr}/api/meetings/{}?delete_file=true",
+            ids[1]
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+    assert!(!paths[1].exists(), "delete_file=true must unlink the .md");
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn it_fts_searches_meetings() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
