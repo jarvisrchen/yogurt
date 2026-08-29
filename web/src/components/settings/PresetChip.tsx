@@ -10,8 +10,9 @@ import { settingsApi } from "../../lib/api/settings";
  * `name + base_url + default_model`. Activation is a separate explicit
  * action (UI-SPEC §Interaction 6 — no auto-promote).
  *
- * v1 ships: Minimax, OpenAI, Ollama (local), LM Studio (local),
- * OpenRouter (defined by the Rust-side `PRESETS` const).
+ * The list itself comes from `GET /api/settings` and is owned by the
+ * Rust-side `PRESETS` const (`crates/yogurt-db/src/providers.rs`) — do not
+ * enumerate it here, it drifts.
  */
 
 export function PresetChip({ preset }: { preset: Preset }) {

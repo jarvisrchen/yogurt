@@ -32,6 +32,19 @@ fn env_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+/// Clear EVERY `YOGURT_*_API_KEY` the bootstrap reads, so a leftover from a
+/// sibling test (or the developer's own shell) cannot seed an unintended
+/// provider and break a "single provider seeded" assertion.
+///
+/// Driven off `bootstrap::env_key_vars()` rather than a hand-written list:
+/// adding a preset used to break these tests only on machines that happened
+/// to export the new key.
+fn clear_provider_env() {
+    for var in bootstrap::env_key_vars() {
+        std::env::remove_var(var);
+    }
+}
+
 /// Create an isolated AppState rooted in a tempdir. Returns the state + the
 /// tempdir guard so the caller can drop it at end-of-test to clean up.
 fn test_state() -> (AppState, tempfile::TempDir) {
@@ -47,11 +60,7 @@ fn test_state() -> (AppState, tempfile::TempDir) {
 #[tokio::test]
 async fn it_seeds_minimax_from_env() {
     let _guard = env_lock().lock().await;
-    // Belt-and-braces: clear other YOGURT_*_API_KEY env vars so a leftover
-    // from a sibling test (or the user's shell) doesn't add unintended
-    // providers and break the "single Minimax seeded" assertion.
-    std::env::remove_var("YOGURT_OPENAI_API_KEY");
-    std::env::remove_var("YOGURT_OPENROUTER_API_KEY");
+    clear_provider_env();
 
     std::env::set_var("YOGURT_MINIMAX_API_KEY", "sk-test-minimax-12345");
     let (state, _tmp) = test_state();
@@ -73,8 +82,7 @@ async fn it_seeds_minimax_from_env() {
 #[tokio::test]
 async fn it_is_idempotent() {
     let _guard = env_lock().lock().await;
-    std::env::remove_var("YOGURT_OPENAI_API_KEY");
-    std::env::remove_var("YOGURT_OPENROUTER_API_KEY");
+    clear_provider_env();
 
     std::env::set_var("YOGURT_MINIMAX_API_KEY", "sk-test-minimax-12345");
     let (state, _tmp) = test_state();
@@ -112,9 +120,7 @@ async fn it_is_idempotent() {
 #[tokio::test]
 async fn it_backfills_missing_keychain_key_when_row_exists() {
     let _guard = env_lock().lock().await;
-    std::env::remove_var("YOGURT_OPENAI_API_KEY");
-    std::env::remove_var("YOGURT_OPENROUTER_API_KEY");
-    std::env::remove_var("YOGURT_MINIMAX_API_KEY");
+    clear_provider_env();
 
     let (state, _tmp) = test_state();
 
@@ -168,7 +174,7 @@ async fn it_backfills_missing_keychain_key_when_row_exists() {
 #[tokio::test]
 async fn it_does_not_override_existing_active() {
     let _guard = env_lock().lock().await;
-    std::env::remove_var("YOGURT_OPENROUTER_API_KEY");
+    clear_provider_env();
 
     std::env::set_var("YOGURT_MINIMAX_API_KEY", "sk-test-minimax-12345");
     std::env::set_var("YOGURT_OPENAI_API_KEY", "sk-test-openai-67890");

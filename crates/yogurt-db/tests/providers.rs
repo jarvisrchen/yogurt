@@ -61,6 +61,34 @@ fn it_exposes_presets_as_a_const_slice() {
     assert!(names.contains(&"Ollama (local)"));
     assert!(names.contains(&"LM Studio (local)"));
     assert!(names.contains(&"OpenRouter"));
+    assert!(names.contains(&"Google Gemini"));
+    assert!(names.contains(&"DeepSeek"));
+}
+
+/// Every preset must be a usable base URL for `OpenAiCompatClient`, which
+/// builds its endpoint as `{base_url}/chat/completions`.
+///
+/// The trap this guards: Google documents its OpenAI shim WITH a trailing
+/// slash (`.../v1beta/openai/`). Pasting that verbatim into a preset yields
+/// `.../openai//chat/completions` for anyone reading `base_url` without
+/// going through the client's trimming constructor.
+#[test]
+fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
+    for p in providers::PRESETS {
+        assert!(
+            p.base_url.starts_with("http://") || p.base_url.starts_with("https://"),
+            "{} base_url must be absolute, got {:?}",
+            p.name,
+            p.base_url
+        );
+        assert!(
+            !p.base_url.ends_with('/'),
+            "{} base_url must not end in a slash, got {:?}",
+            p.name,
+            p.base_url
+        );
+        assert!(!p.name.trim().is_empty(), "preset name must not be empty");
+    }
 }
 
 #[test]

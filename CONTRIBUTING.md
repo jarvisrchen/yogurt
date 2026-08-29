@@ -131,7 +131,7 @@ Release builds never read `.env.local`.
 | Variable | Read by | Effect |
 |----------|---------|--------|
 | `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into the Keychain on first run. |
-| `YOGURT_OPENAI_API_KEY`, `YOGURT_OPENROUTER_API_KEY`, `YOGURT_MINIMAX_API_KEY` | bootstrap | Seed the matching LLM provider preset. |
+| `YOGURT_OPENAI_API_KEY`, `YOGURT_OPENROUTER_API_KEY`, `YOGURT_MINIMAX_API_KEY`, `YOGURT_GEMINI_API_KEY`, `YOGURT_DEEPSEEK_API_KEY` | bootstrap | Seed the matching LLM provider preset. One per entry in `ENV_PRESETS` (`crates/yogurt-server/src/bootstrap.rs`). |
 | `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`, `YOGURT_LLM_MODEL` | LLM resolver | Override the active LLM provider for this process without touching Settings or the Keychain. Handy when a rebuilt unsigned binary is waiting on a Keychain prompt. |
 | `YOGURT_DEEPGRAM_MODEL` | cloud STT | Deepgram model name (default `nova-3`). Stamped into each meeting's `stt_engine`. |
 | `YOGURT_VITE_BASE` | `--dev` proxy | Vite origin to proxy to (default `http://127.0.0.1:5173`). |
