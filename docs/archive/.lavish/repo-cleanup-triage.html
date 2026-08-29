@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yogurt - Go-Public Repo Triage</title>
+<style>
+  :root {
+    --paper:#FBF7EF; --card:#FFFFFF; --ink:#211D18; --grey:#A89F90; --line:#EBE3D5;
+    --blue:#5B4FC7; --blsoft:#ECE9FB; --straw:#E07A66; --strsoft:#FBE6E0;
+    --matcha:#5E9E73; --mtsoft:#E7F0E8; --mut:#8A8174;
+    --r-chip:6px; --r-btn:9px; --r-card:14px;
+    --sh-card:0 2px 6px rgba(40,30,15,.08);
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--paper); color:var(--ink); font:15px/1.55 "Hanken Grotesk",ui-sans-serif,system-ui,sans-serif; padding:40px 20px 120px; }
+  .wrap { max-width:880px; margin:0 auto; }
+  h1 { font-family:"Instrument Serif",Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; }
+  h1 em { color:var(--blue); font-style:italic; }
+  .sub { color:var(--mut); margin:10px 0 34px; max-width:64ch; }
+  h2 { font-family:"Instrument Serif",Georgia,serif; font-weight:400; font-size:26px; margin:42px 0 6px; }
+  .h2sub { color:var(--mut); font-size:13.5px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--sh-card); padding:18px 20px; margin-bottom:14px; }
+  .row { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; }
+  .row > .info { flex:1 1 380px; min-width:0; }
+  .name { font-weight:700; font-size:15.5px; }
+  .name code, .why code { background:var(--paper); border:1px solid var(--line); border-radius:var(--r-chip); padding:1px 5px; font:12.5px "JetBrains Mono",ui-monospace,monospace; }
+  .meta { color:var(--mut); font-size:12.5px; margin-top:2px; }
+  .why { color:var(--ink); font-size:13.5px; margin-top:8px; }
+  .rec { display:inline-block; background:var(--blsoft); color:var(--blue); border-radius:999px; padding:2px 10px; font-size:11.5px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin-top:8px; }
+  fieldset { border:0; padding:0; flex:0 0 auto; }
+  .opts { display:flex; flex-direction:column; gap:6px; background:var(--paper); border:1px solid var(--line); border-radius:var(--r-btn); padding:10px 14px; }
+  .opts label { display:flex; gap:8px; align-items:center; font-size:13.5px; cursor:pointer; white-space:nowrap; }
+  .opts input { accent-color:var(--blue); }
+  .keepnote { color:var(--matcha); font-weight:700; }
+  .banner { background:var(--strsoft); border:1px solid #f3cfc5; border-radius:var(--r-card); padding:16px 20px; margin-bottom:26px; font-size:14px; }
+  .banner b { color:var(--straw); }
+  .fine { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:8px; }
+  .fine div { background:var(--mtsoft); border-radius:var(--r-btn); padding:8px 12px; font-size:13px; color:#3d6b4c; }
+  .fine code { font:12px "JetBrains Mono",monospace; }
+  .queuebar { position:fixed; bottom:0; left:0; right:0; background:rgba(251,247,239,.96); border-top:1px solid var(--line); padding:14px 20px; backdrop-filter:blur(6px); }
+  .queuebar .inner { max-width:880px; margin:0 auto; display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+  .qbtn { background:var(--blue); color:#fff; border:0; border-radius:var(--r-btn); padding:11px 22px; font:700 14.5px "Hanken Grotesk",sans-serif; cursor:pointer; box-shadow:0 2px 8px rgba(91,79,199,.3); }
+  .qbtn:hover { filter:brightness(1.08); }
+  .qstate { font-size:13px; color:var(--mut); }
+  .qstate.q { color:var(--matcha); font-weight:700; }
+  textarea { width:100%; border:1px solid var(--line); border-radius:var(--r-btn); padding:10px 12px; font:13.5px "Hanken Grotesk",sans-serif; background:var(--card); resize:vertical; min-height:56px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Go-public <em>repo triage</em></h1>
+  <p class="sub">Everything a public visitor would see, triaged with a recommendation preselected.
+  Change any radio you disagree with, add notes at the bottom, then hit <b>Queue decisions</b> once and send.
+  Nothing is deleted from git history by tree cleanup alone - that is what decision #1 is about.</p>
+
+  <div class="banner"><b>The one decision that changes everything:</b> the full internal history (all 200+ commits, every .planning doc, lavish HTML, design bundles) is already pushed to the private repo. Deleting files now only cleans the <i>tree</i> - history keeps everything forever. While the repo is still private we can rewrite main freely at zero cost.</div>
+
+  <h2>1 - Big decisions</h2>
+  <div class="h2sub">These shape how the cleanup is executed.</div>
+
+  <div class="card" data-q="history">
+    <div class="row">
+      <div class="info">
+        <div class="name">Public git history</div>
+        <div class="why">Option A: at flip-to-public time, reset <code>main</code> to a single clean "v0.1.0" initial commit (full history preserved on a private backup branch + your local clones). Visitors see a pristine repo; you keep everything. Option B: keep the full build-in-public history - transparent, but every internal planning doc and dead-end is permanently browsable.</div>
+        <span class="rec">Recommend: fresh single-commit main</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="history" value="fresh-single-commit" checked> Fresh single-commit main at flip time</label>
+        <label><input type="radio" name="history" value="keep-full-history"> Keep full history public</label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <div class="card" data-q="prd">
+    <div class="row">
+      <div class="info">
+        <div class="name">docs/PRD.md</div>
+        <div class="meta">~250KB, 16 sections - the authoritative v1 design doc. README + ARCHITECTURE link to it.</div>
+        <div class="why">It is genuinely good public material for an OSS project (design transparency, Granola analysis, brand system). But it is written in internal planning voice with phase numbers. Keep, or archive and unlink?</div>
+        <span class="rec">Recommend: keep public</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="prd" value="keep" checked> Keep in docs/</label>
+        <label><input type="radio" name="prd" value="archive"> Remove from tree, unlink from README</label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <div class="card" data-q="claudemd">
+    <div class="row">
+      <div class="info">
+        <div class="name">CLAUDE.md (repo root)</div>
+        <div class="meta">24KB of machine-generated tech-stack tables, GSD enforcement rules, claude-mem activity logs.</div>
+        <div class="why">Public repos increasingly ship a CLAUDE.md, but this one is internal tooling context, not contributor guidance. Replace with a lean ~40-line agent guide (build commands, test commands, conventions, constraints) or drop entirely.</div>
+        <span class="rec">Recommend: replace with lean version</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="claudemd" value="lean" checked> Replace with lean contributor/agent guide</label>
+        <label><input type="radio" name="claudemd" value="remove"> Remove entirely</label>
+        <label><input type="radio" name="claudemd" value="keep"> Keep as-is</label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <h2>2 - Untrack / remove from the public tree</h2>
+  <div class="h2sub">Internal working artifacts. "Untrack" = git rm --cached + gitignore; files stay on disk and tooling keeps working.</div>
+
+  <div class="card" data-q="planning">
+    <div class="row">
+      <div class="info">
+        <div class="name">.planning/ <span class="meta">(125 files, 2.3MB)</span></div>
+        <div class="why">All GSD state: phase plans, quick tasks, debug sessions, research, ROADMAP, STATE. Pure internal process. Untracking + setting GSD <code>commit_docs=false</code> keeps the workflow fully functional locally - it just stops publishing its homework.</div>
+        <span class="rec">Recommend: untrack + gitignore</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="planning" value="untrack" checked> Untrack + gitignore</label>
+        <label><input type="radio" name="planning" value="keep"> <span class="keepnote">Keep public</span></label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <div class="card" data-q="lavish">
+    <div class="row">
+      <div class="info">
+        <div class="name">.lavish/ <span class="meta">(2 tracked HTML files)</span></div>
+        <div class="why"><code>prd-brainstorm.html</code> and <code>prd-review.html</code> were committed before .lavish/ was gitignored. Local review scratch surfaces - no public value.</div>
+        <span class="rec">Recommend: untrack</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="lavish" value="untrack" checked> Untrack</label>
+        <label><input type="radio" name="lavish" value="keep"> <span class="keepnote">Keep public</span></label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <div class="card" data-q="superpowers">
+    <div class="row">
+      <div class="info">
+        <div class="name">docs/superpowers/ <span class="meta">(10 old phase plans + 1 spike note)</span></div>
+        <div class="why">June-era planning docs fully superseded by the shipped code. One exception: <code>notes/2026-06-25-sck-spike-result.md</code> explains the ScreenCaptureKit rpath hack and is referenced from <code>build.rs</code> comments - worth keeping as <code>docs/notes/sck-spike-result.md</code> with the reference updated.</div>
+        <span class="rec">Recommend: remove plans, keep spike note moved to docs/notes/</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="superpowers" value="remove-keep-note" checked> Remove plans, relocate spike note</label>
+        <label><input type="radio" name="superpowers" value="remove-all"> Remove everything</label>
+        <label><input type="radio" name="superpowers" value="keep"> <span class="keepnote">Keep public</span></label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <div class="card" data-q="design">
+    <div class="row">
+      <div class="info">
+        <div class="name">yogurt-app-design/ <span class="meta">(192KB design board bundle)</span></div>
+        <div class="why">The Claude Design board export from day one, including a duplicate copy of the PRD in <code>uploads/</code>. Design intent now lives in PRD §16 + the actual CSS tokens.</div>
+        <span class="rec">Recommend: remove</span>
+      </div>
+      <fieldset><div class="opts">
+        <label><input type="radio" name="design" value="remove" checked> Remove</label>
+        <label><input type="radio" name="design" value="keep"> <span class="keepnote">Keep public</span></label>
+      </div></fieldset>
+    </div>
+  </div>
+
+  <h2>3 - Docs polish pass</h2>
+  <div class="h2sub">All recommended - uncheck anything you want skipped.</div>
+
+  <div class="card" data-q="polish">
+    <fieldset><div class="opts" style="background:var(--card); border:0; padding:4px 0;">
+      <label><input type="checkbox" name="polish" value="readme" checked> <b>README:</b>&nbsp;drop internal phase language, add a 30-second "first meeting" walkthrough, tighten install matrix, leave a screenshot/GIF slot</label>
+      <label><input type="checkbox" name="polish" value="architecture" checked> <b>ARCHITECTURE.md:</b>&nbsp;reconcile the +37-line uncommitted Glossary edit, verify paths/flows current, tighten</label>
+      <label><input type="checkbox" name="polish" value="contributing" checked> <b>CONTRIBUTING.md:</b>&nbsp;final pass - dev setup, test commands, PR expectations</label>
+      <label><input type="checkbox" name="polish" value="security" checked> <b>SECURITY.md:</b>&nbsp;short vulnerability-report policy (fits the privacy-first pitch)</label>
+      <label><input type="checkbox" name="polish" value="thirdparty" checked> <b>THIRD_PARTY_LICENSES.md:</b>&nbsp;generate via cargo-bundle-licenses (courteous for a binary distribution)</label>
+      <label><input type="checkbox" name="polish" value="repometa" checked> <b>GitHub repo metadata:</b>&nbsp;About description, topics (macos, meeting-notes, whisper, rust, local-first), social preview left to you</label>
+      <label><input type="checkbox" name="polish" value="scripts"> <b>scripts/ + justfile audit:</b>&nbsp;verify each dev script still works post-cleanup (skippable - low risk)</label>
+    </div></fieldset>
+  </div>
+
+  <h2>4 - Already fine, no action</h2>
+  <div class="fine">
+    <div><code>LICENSE</code> - MIT, present</div>
+    <div><code>crates/</code> - clean, tested</div>
+    <div><code>web/</code> - no artifacts tracked</div>
+    <div><code>.github/workflows/</code> - CI + release</div>
+    <div><code>scripts/homebrew/</code> - tap seed</div>
+    <div><code>.gitignore</code> - covers env + lavish</div>
+    <div><code>rust-toolchain.toml</code>, <code>justfile</code></div>
+    <div><code>CONTRIBUTING.md</code>, release checklist</div>
+  </div>
+
+  <h2>5 - Anything else?</h2>
+  <div class="card">
+    <textarea id="notes" placeholder="Other cleanup ideas, things to keep, constraints..."></textarea>
+  </div>
+</div>
+
+<div class="queuebar"><div class="inner">
+  <span class="qstate" id="qstate">Selections are local until queued. One click queues the whole triage.</span>
+  <button class="qbtn" data-lavish-action id="queuebtn">Queue decisions</button>
+</div></div>
+
+<script>
+document.getElementById('queuebtn').addEventListener('click', function () {
+  const val = n => (document.querySelector('input[name="'+n+'"]:checked')||{}).value || 'unanswered';
+  const polish = Array.from(document.querySelectorAll('input[name="polish"]:checked')).map(i => i.value);
+  const notes = document.getElementById('notes').value.trim();
+  const answers = {
+    history: val('history'), prd: val('prd'), claudemd: val('claudemd'),
+    planning: val('planning'), lavish: val('lavish'), superpowers: val('superpowers'),
+    design: val('design'), polish_tasks: polish, notes: notes || null
+  };
+  const lines = Object.entries(answers).map(([k,v]) => k + ': ' + (Array.isArray(v) ? v.join(', ') : v));
+  window.lavish.queuePrompt(
+    'Repo cleanup triage decisions:\n' + lines.join('\n') + '\nExecute the cleanup accordingly.',
+    { tag: 'triage', text: 'Go-public triage answers', queueKey: 'repo-triage', data: answers }
+  );
+  const s = document.getElementById('qstate');
+  s.textContent = 'Queued. Press "Send to Agent" in the Lavish bar to deliver.';
+  s.classList.add('q');
+});
+</script>
+</body>
+</html>

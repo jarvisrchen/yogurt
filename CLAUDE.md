@@ -28,6 +28,13 @@ just lint         # clippy -D warnings + fmt --check + web typecheck
 The frontend must be built (`pnpm --dir web build`) before any Rust build that compiles `yogurt-server` - `rust-embed` requires `web/dist` to exist.
 All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token).
 
+## Repo layout
+
+- `docs/ARCHITECTURE.md` is the mechanism doc; `docs/.lavish/` holds its interactive HTML companions - create new Lavish review surfaces there, not at the repo root.
+- `docs/.planning/` is where active GSD planning for the next milestone goes.
+- When a doc, plan, or Lavish surface is no longer relevant, move it into the mirrored `docs/archive/` tree (`archive/.lavish/`, `archive/.planning/v1/`, `archive/PRD.md`, ...) - archive, never delete.
+- Everything under `docs/` is tracked in git, including `.lavish/`.
+
 ## Conventions
 
 - Rust: rustfmt + clippy clean at `-D warnings`; `anyhow` at binary surface, `thiserror` at crate boundaries.
