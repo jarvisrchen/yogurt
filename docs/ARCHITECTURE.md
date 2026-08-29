@@ -3,7 +3,7 @@
 How the system actually works, traced from the code rather than the plan.
 Diagrams are Mermaid, so GitHub renders them inline.
 
-Companion docs: [archive/PRD.md](./archive/PRD.md) for the original product intent, this file for mechanism.
+Companion docs: [archive/PRD.md](./archive/PRD.md) for the original product intent, this file for mechanism, [DEBUGGING-TRANSCRIPTS.md](./DEBUGGING-TRANSCRIPTS.md) for inspecting a live transcript by hand.
 
 - [0. Glossary](#0-glossary)
 - [1. High-level map](#1-high-level-map)
@@ -299,6 +299,8 @@ Details that matter and are easy to get wrong:
 - **Backpressure is visible, not silent.**
   Each cloud channel has a 64-chunk `try_send` buffer. After 50 consecutive drops (about 1 s) the server emits a `[stt overloaded, transcript may be lossy]` status line rather than quietly losing audio.
 - **The frontend reconnects with exponential backoff**, capped at 3 attempts, with `connecting` / `reconnecting` / `offline` surfaced in the UI.
+
+To inspect a live transcript by hand - tail what SQLite has stored, read the raw WS frames, or work out why the dock and the database disagree - see [DEBUGGING-TRANSCRIPTS.md](./DEBUGGING-TRANSCRIPTS.md).
 
 ---
 
