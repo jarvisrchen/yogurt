@@ -79,7 +79,7 @@ echo
 # to sign the binary. A stable `yogurt-dev` code identity makes macOS
 # Keychain "Always Allow" grants survive rebuilds — unsigned debug builds
 # get a new identity every compile, so every rebuild would re-prompt.
-# Optional: see README "Keychain prompts (macOS)" for the one-time cert setup.
+# Optional: see CONTRIBUTING.md "Keychain prompts on every rebuild" for the one-time cert setup.
 if [ -n "$PROFILE_FLAG" ]; then
   cargo build $PROFILE_FLAG -p yogurt
 else
