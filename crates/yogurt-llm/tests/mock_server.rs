@@ -19,6 +19,20 @@ impl wiremock::Match for NoAuthHeader {
     }
 }
 
+struct ReasoningSplit(bool);
+
+impl wiremock::Match for ReasoningSplit {
+    fn matches(&self, request: &Request) -> bool {
+        serde_json::from_slice::<serde_json::Value>(&request.body)
+            .ok()
+            .and_then(|body| {
+                body.get("reasoning_split")
+                    .and_then(|value| value.as_bool())
+            })
+            == Some(self.0)
+    }
+}
+
 #[tokio::test]
 async fn it_sends_messages_and_returns_assistant_content() {
     let server = MockServer::start().await;
@@ -51,6 +65,104 @@ async fn it_sends_messages_and_returns_assistant_content() {
         .expect("client call ok");
     assert_eq!(resp.content, "Hello yogurt.");
     assert_eq!(resp.model, "gpt-4o-mini");
+}
+
+#[tokio::test]
+async fn minimax_requests_separate_reasoning() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(ReasoningSplit(true))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "MiniMax-M3",
+            "choices": [{
+                "message": { "role": "assistant", "content": "## Final" }
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "MiniMax-M3".into());
+    let response = client
+        .complete(ChatRequest {
+            messages: vec![ChatMessage::user("summarize")],
+            stream: false,
+        })
+        .await
+        .expect("client call ok");
+
+    assert_eq!(response.content, "## Final");
+}
+
+/// Regression for the bug where reasoning models leak
+/// `<think>…</think>` inline in `message.content` despite the wire
+/// request carrying `reasoning_split: true`. The model-agnostic backstop
+/// in `complete()` must scrub any leaked reasoning before returning.
+#[tokio::test]
+async fn complete_strips_think_block_when_provider_leaks_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "MiniMax-M3",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "<think>\nlet me think…\n</think>\n\nThey agreed on 25% Monday."
+                }
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "MiniMax-M3".into());
+    let resp = client
+        .complete(ChatRequest {
+            messages: vec![ChatMessage::user("summarize")],
+            stream: false,
+        })
+        .await
+        .expect("client call ok");
+    assert_eq!(
+        resp.content, "They agreed on 25% Monday.",
+        "think block must be stripped"
+    );
+}
+
+/// When the provider splits reasoning into a sibling `reasoning_content`
+/// field (DeepSeek, MiniMax M3 variants that honor `reasoning_split`),
+/// the field is parsed and discarded — never leaked to the caller.
+#[tokio::test]
+async fn complete_discards_separate_reasoning_content_field() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "deepseek-reasoner",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "Visible answer.",
+                    "reasoning_content": "Internal chain-of-thought that must NOT appear."
+                }
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client =
+        OpenAiCompatClient::new(server.uri(), "sk-test".into(), "deepseek-reasoner".into());
+    let resp = client
+        .complete(ChatRequest {
+            messages: vec![ChatMessage::user("hi")],
+            stream: false,
+        })
+        .await
+        .expect("client call ok");
+    assert_eq!(resp.content, "Visible answer.");
 }
 
 #[tokio::test]

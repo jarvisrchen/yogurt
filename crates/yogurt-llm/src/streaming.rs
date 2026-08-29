@@ -16,6 +16,7 @@
 //! 50 LOC of `reqwest + eventsource-stream` keeps the surface narrow and
 //! the dependency list short.
 
+use crate::thinking::ThinkStripper;
 use crate::{types, ChatChunk, ChatRequest, OpenAiCompatClient};
 use anyhow::{anyhow, Result};
 use eventsource_stream::Eventsource;
@@ -64,6 +65,13 @@ pub(crate) async fn stream(
     // `BoxStream<'static, ...>` type regardless of internal pipeline
     // shape (the boxed stream is `Send + 'static` so it can be spawned
     // onto a tokio task, e.g. by Phase 6's chat WebSocket handler).
+    //
+    // A `ThinkStripper` state machine wraps the chunk emission so any
+    // `<think>…</think>` block carried in `delta.content` is elided before
+    // the chunk ever leaves the crate. Reasoning models (DeepSeek R1,
+    // MiniMax M3, Qwen QwQ) leak chain-of-thought into `content` even
+    // when providers honor `reasoning_split: true` — this is the
+    // model-agnostic backstop.
     let mapped = events.map(|ev| -> Result<ChatChunk> {
         let ev = ev.map_err(|e| anyhow!("SSE parse error: {e}"))?;
         // OpenAI terminates streams with `data: [DONE]` — emit a final
@@ -93,5 +101,26 @@ pub(crate) async fn stream(
         Ok(ChatChunk { delta, done })
     });
 
-    Ok(mapped.boxed())
+    // Wrap the stream so each chunk's `delta` passes through the
+    // think-block stripper before reaching the caller. The stripper
+    // holds its own state across chunks so a tag split across the
+    // chunk boundary is handled correctly (see `ThinkStripper` docs).
+    //
+    // On `done=true` we drop any text the stripper was holding back —
+    // typically the partial-tag suffix of a clean response. Malformed
+    // output (stream ends inside an unclosed think block) is also
+    // dropped, matching the `strip_thinking` whole-string behavior for
+    // unterminated blocks. A future "show reasoning" toggle could
+    // surface `stripper.flush()` here instead.
+    let mut stripper = ThinkStripper::new();
+    let stripped = mapped.map(move |chunk_res| {
+        let mut chunk = chunk_res?;
+        if chunk.done {
+            stripper.flush();
+        }
+        chunk.delta = stripper.push(&chunk.delta);
+        Ok(chunk)
+    });
+
+    Ok(stripped.boxed())
 }

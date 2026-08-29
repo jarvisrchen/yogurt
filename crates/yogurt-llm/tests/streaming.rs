@@ -3,6 +3,10 @@
 //! - `LlmClient::stream` opens a stream successfully on 200 + SSE body.
 //! - Mid-stream `content` deltas accumulate to the expected text.
 //! - The terminal `[DONE]` event surfaces as `ChatChunk { done: true }`.
+//! - Embedded `<think>…</think>` blocks are stripped from the stream so
+//!   reasoning models (DeepSeek R1, MiniMax M3, Qwen QwQ, …) don't leak
+//!   chain-of-thought into the chat bubble. Defense in depth on top of
+//!   any provider-specific `reasoning_split` request parameter.
 
 use futures_util::StreamExt;
 use wiremock::matchers::{method, path};
@@ -96,5 +100,142 @@ async fn it_surfaces_non_2xx_stream_open_as_error() {
     assert!(
         msg.contains("429") || msg.contains("rate limited"),
         "expected status or body in error, got: {msg}"
+    );
+}
+
+/// Regression for the chat bug where MiniMax M3 (and any other reasoning
+/// model) leaks `<think>…</think>` into the streamed `delta.content`.
+/// `reasoning_split: true` on the request side is honored by some
+/// providers and ignored by others, so this is the model-agnostic
+/// backstop: every visible delta must arrive at the chat handler with
+/// the think block removed.
+#[tokio::test]
+async fn it_strips_inline_think_blocks_from_streamed_deltas() {
+    // Single chunk carries the full think block followed by the visible
+    // answer — the most common shape when the provider ignores
+    // `reasoning_split` and stuffs the whole response into one delta.
+    let body = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"<think>\\nlet me think...\\n</think>\\n\\n\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"They agreed on 25% Monday.\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n",
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "MiniMax-M3".into());
+    let mut stream = client
+        .stream(ChatRequest {
+            messages: vec![ChatMessage::user("what was decided?")],
+            stream: true,
+        })
+        .await
+        .expect("stream opens");
+
+    let mut accumulated = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.expect("chunk ok");
+        accumulated.push_str(&chunk.delta);
+    }
+    assert_eq!(
+        accumulated, "They agreed on 25% Monday.",
+        "think block + whitespace must be stripped; got: {accumulated:?}"
+    );
+}
+
+/// Regression for the chunk-boundary edge case: a think-tag opening
+/// (`<th` and `ink>…`) is split across two SSE deltas. The stripper must
+/// buffer across chunks so the user never sees the partial tag.
+#[tokio::test]
+async fn it_strips_think_tags_split_across_chunk_boundaries() {
+    let body = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"<think>\\nrea\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"soning</think>\\n\\n\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Final answer.\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n",
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "MiniMax-M3".into());
+    let mut stream = client
+        .stream(ChatRequest {
+            messages: vec![ChatMessage::user("hi")],
+            stream: true,
+        })
+        .await
+        .expect("stream opens");
+
+    let mut accumulated = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.expect("chunk ok");
+        accumulated.push_str(&chunk.delta);
+    }
+    assert_eq!(
+        accumulated, "Final answer.",
+        "split-tag thinking must be elided; got: {accumulated:?}"
+    );
+}
+
+/// `<thinking>…</thinking>` is the alias some providers (Qwen QwQ family)
+/// use instead of `<think>`. Same defense, both shapes must be stripped.
+#[tokio::test]
+async fn it_strips_thinking_alias_block_from_streamed_deltas() {
+    let body = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"<thinking>hidden</thinking>visible\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n",
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = OpenAiCompatClient::new(server.uri(), "sk-test".into(), "qwen-qwq".into());
+    let mut stream = client
+        .stream(ChatRequest {
+            messages: vec![ChatMessage::user("hi")],
+            stream: true,
+        })
+        .await
+        .expect("stream opens");
+
+    let mut accumulated = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.expect("chunk ok");
+        accumulated.push_str(&chunk.delta);
+    }
+    assert_eq!(
+        accumulated, "visible",
+        "<thinking> alias must be stripped; got: {accumulated:?}"
     );
 }
