@@ -488,6 +488,24 @@ impl Registry {
         // mic chunks are dropped on the wire before Deepgram's WS is ready.
         let audio_rx_for_stt = m.audio_tx.subscribe();
 
+        // Continuation-session clock: elapsed wall-clock ms since this
+        // meeting's ORIGINAL started_at, or 0 for a genuine first session.
+        // `routes::start_meeting` preserves the original started_at on a
+        // restart (see `start_stamp_patch`), so this reads the true
+        // session-1 start time even on session 2+. Added to every
+        // TranscriptEvent's ts_ms by `relay_transcript_events` below so a
+        // stop/restart within one meeting keeps producing monotonically
+        // increasing timestamps instead of each session restarting its
+        // clock at 0 and colliding with (or preceding) the prior one.
+        let offset_ms = session_offset_ms(repo.as_ref(), &m.id.to_string()).await;
+
+        // STT publishes onto this private channel rather than
+        // `transcript_tx` directly so `relay_transcript_events` can apply
+        // `offset_ms` in exactly ONE place before either consumer of
+        // `transcript_tx` (WS clients via `Registry::subscribe`, and
+        // `persist_transcript` below) ever sees the event.
+        let (raw_transcript_tx, raw_transcript_rx) = broadcast::channel::<TranscriptEvent>(256);
+
         // Transcript persistence: subscribe before STT starts so no final
         // segment can slip past, then accumulate finals into the meeting's
         // SQLite row as they arrive. This is the source of truth that
@@ -551,6 +569,20 @@ impl Registry {
                 }
             };
 
+            // Relay raw STT output onto the meeting's public `transcript_tx`,
+            // applying `offset_ms` in exactly one place (see the comment
+            // above `session_offset_ms`, above). Guarded by AbortOnDrop the
+            // same way as the STT session below, so aborting this supervisor
+            // tears the relay down too — otherwise it would keep running
+            // (forever awaiting a raw channel whose only sender is about to
+            // be dropped with the STT task) until that drop finally closed
+            // it, an indirect and unnecessarily delayed shutdown.
+            let relay_guard = AbortOnDrop(tokio::spawn(relay_transcript_events(
+                raw_transcript_rx,
+                transcript_tx,
+                offset_ms,
+            )));
+
             // Spawn the STT engine first (so it subscribes before audio
             // flows). The AbortOnDrop guard ties the STT session's lifetime
             // to this supervisor: when `stop()` aborts us, the guard drops
@@ -560,7 +592,7 @@ impl Registry {
             let stt2 = stt.clone();
             let events_tx_for_stt = events_tx.clone();
             let stt_guard = AbortOnDrop(tokio::spawn(async move {
-                if let Err(e) = stt2.start(audio_rx_for_stt, transcript_tx).await {
+                if let Err(e) = stt2.start(audio_rx_for_stt, raw_transcript_tx).await {
                     tracing::error!(?e, "stt session failed");
                     send_stt_error(&events_tx_for_stt, &format!("Transcription stopped: {e:#}"));
                 }
@@ -568,6 +600,7 @@ impl Registry {
 
             pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx).await;
             drop(stt_guard);
+            drop(relay_guard);
         });
 
         *task_slot = Some(task);
@@ -706,6 +739,76 @@ impl Registry {
     }
 }
 
+/// Continuation-session clock: elapsed wall-clock ms since this meeting's
+/// ORIGINAL `started_at`, or `0` for a genuine first session.
+///
+/// Reads the meeting's row via `repo` — best-effort: no repo (Phase-3
+/// in-memory-only callers), a missing row, or any DB/join error all mean
+/// "can't tell, assume a first session" (offset 0), matching the safe
+/// default a brand-new meeting should have anyway.
+///
+/// A row counts as a continuation exactly when `routes::start_stamp_patch`
+/// would treat the upcoming `/start` as a restart: a set `ended_at` (the
+/// meeting has been stopped at least once) paired with a nonzero
+/// `started_at` (the schema's unstarted sentinel — see `V003__meetings.sql`
+/// — is `0`; `MeetingPatch`-driven restarts never leave it there once a
+/// real session has run). This function runs from inside `Registry::start`
+/// BEFORE `routes::start_meeting`'s post-start patch executes, so at the
+/// time this reads the row it still carries the *previous* session's
+/// `started_at` — exactly the value the elapsed-time offset should be
+/// measured from.
+async fn session_offset_ms(repo: Option<&Arc<yogurt_db::MeetingRepo>>, meeting_id: &str) -> u64 {
+    let Some(repo) = repo else {
+        return 0;
+    };
+    let repo = repo.clone();
+    let id = meeting_id.to_string();
+    let row = match tokio::task::spawn_blocking(move || repo.get(&id)).await {
+        Ok(Ok(Some(m))) => m,
+        _ => return 0,
+    };
+    if row.started_at == 0 || row.ended_at.is_none() {
+        return 0;
+    }
+    let now = now_ms() as i64;
+    (now - row.started_at).max(0) as u64
+}
+
+/// Relay raw `TranscriptEvent`s from the STT engine onto the meeting's
+/// public `transcript_tx`, adding `offset_ms` to every `ts_ms` along the
+/// way. This is the ONE place a continuation session's clock gets shifted
+/// forward, so restarting a meeting produces a monotonically increasing
+/// transcript timeline instead of each session restarting at t=0 — which
+/// would collide with (or precede) the prior session's timestamps once
+/// both land in the same persisted `transcript_json` array.
+///
+/// Exits when the raw channel closes (the STT session ended and its sender
+/// dropped) or lags — a lag here would silently skip segments, but the
+/// channel's capacity (256) already gives ample headroom for real speech
+/// cadence, mirroring the same tradeoff `pump_audio_adapter` makes for
+/// audio frames.
+async fn relay_transcript_events(
+    mut raw_rx: broadcast::Receiver<TranscriptEvent>,
+    tx: broadcast::Sender<TranscriptEvent>,
+    offset_ms: u64,
+) {
+    loop {
+        match raw_rx.recv().await {
+            Ok(mut ev) => {
+                ev.ts_ms += offset_ms;
+                if tx.send(ev).is_err() {
+                    tracing::info!("transcript relay: no receivers, terminating");
+                    return;
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!(n, "transcript relay lagged — events dropped");
+            }
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
+}
+
 /// Best-effort broadcast of a fatal STT failure to the meeting's WS
 /// subscribers. Before this, an STT session that died after `/start`
 /// returned 200 was invisible: the user kept "recording" a meeting that
@@ -737,13 +840,22 @@ fn segment_json(ev: &TranscriptEvent) -> serde_json::Value {
 /// under 1 Hz) so a crash mid-meeting loses at most the in-flight segment.
 /// On shutdown: drain whatever is still queued in the broadcast, do one
 /// last write, exit. Partials are never persisted — they're display-only.
+///
+/// Seeds its accumulator from the row's EXISTING `transcript_json` before
+/// consuming any events — `write_segments` PATCHes the whole column, so a
+/// continuation session (stop, then start again on the same meeting) that
+/// started from an empty `Vec` silently destroyed the prior session's
+/// transcript. Reading the seed happens after the broadcast subscription
+/// this task's caller already set up, so no final can slip past while the
+/// (bounded, sub-ms) seed read is in flight — the broadcast channel buffers
+/// it regardless.
 async fn persist_transcript(
     repo: Arc<yogurt_db::MeetingRepo>,
     meeting_id: String,
     mut rx: broadcast::Receiver<TranscriptEvent>,
     mut shutdown_rx: oneshot::Receiver<()>,
 ) {
-    let mut segments: Vec<serde_json::Value> = Vec::new();
+    let mut segments: Vec<serde_json::Value> = load_existing_segments(&repo, &meeting_id).await;
     loop {
         tokio::select! {
             // Shutdown (or the sender being dropped by a failed start) both
@@ -774,6 +886,25 @@ async fn persist_transcript(
     if drained_any {
         write_segments(&repo, &meeting_id, &segments).await;
     }
+}
+
+/// Seed `persist_transcript`'s accumulator from the meeting's current
+/// `transcript_json`. Never panics — a missing row, a DB/join error, or
+/// malformed/empty JSON all fall back to an empty `Vec`, matching a
+/// genuine first session (nothing to preserve).
+async fn load_existing_segments(
+    repo: &Arc<yogurt_db::MeetingRepo>,
+    meeting_id: &str,
+) -> Vec<serde_json::Value> {
+    let repo = repo.clone();
+    let id = meeting_id.to_string();
+    tokio::task::spawn_blocking(move || repo.get(&id))
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .flatten()
+        .and_then(|m| serde_json::from_str::<Vec<serde_json::Value>>(&m.transcript_json).ok())
+        .unwrap_or_default()
 }
 
 async fn write_segments(
@@ -1427,6 +1558,161 @@ mod tests {
         assert_eq!(segments[1]["ts_ms"], 250);
         assert_eq!(segments[1]["channel"], "them");
         assert_eq!(segments[1]["text"], "world");
+    }
+
+    /// THE data-loss bug: `write_segments` PATCHes the whole
+    /// `transcript_json` column, so a second `persist_transcript` session
+    /// on the SAME meeting row must seed its accumulator from what's
+    /// already there — otherwise session 2's first write truncates session
+    /// 1's finals. Runs two full session lifecycles (spawn, send finals,
+    /// shutdown, join) against the same repo row and asserts the row ends
+    /// up with BOTH sessions' finals, in order.
+    #[tokio::test]
+    async fn persist_transcript_accumulates_across_sequential_sessions() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+
+        // Session 1.
+        let (tx1, rx1) = broadcast::channel::<TranscriptEvent>(16);
+        let (shutdown_tx1, shutdown_rx1) = oneshot::channel::<()>();
+        let handle1 = tokio::spawn(persist_transcript(
+            repo.clone(),
+            meeting_id.clone(),
+            rx1,
+            shutdown_rx1,
+        ));
+        tx1.send(ev(100, Channel::Mic, "hello", true)).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let _ = shutdown_tx1.send(());
+        handle1.await.expect("session 1 persist task joins cleanly");
+
+        // Session 2 — fresh broadcast channel (mirrors a real restart:
+        // `Registry::start` mints a new one), SAME repo row.
+        let (tx2, rx2) = broadcast::channel::<TranscriptEvent>(16);
+        let (shutdown_tx2, shutdown_rx2) = oneshot::channel::<()>();
+        let handle2 = tokio::spawn(persist_transcript(
+            repo.clone(),
+            meeting_id.clone(),
+            rx2,
+            shutdown_rx2,
+        ));
+        tx2.send(ev(500, Channel::System, "world", true)).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let _ = shutdown_tx2.send(());
+        handle2.await.expect("session 2 persist task joins cleanly");
+
+        let row = repo.get(&meeting_id).expect("get row").expect("row exists");
+        let segments: Vec<serde_json::Value> =
+            serde_json::from_str(&row.transcript_json).expect("valid JSON");
+        assert_eq!(
+            segments.len(),
+            2,
+            "both sessions' finals must survive; got {segments:?}"
+        );
+        assert_eq!(segments[0]["text"], "hello", "session 1's final first");
+        assert_eq!(segments[1]["text"], "world", "session 2's final appended");
+    }
+
+    /// Malformed / empty existing `transcript_json` must seed an empty
+    /// `Vec` — never panic. Covers a corrupt row (hand-edited DB, a prior
+    /// bug) so a bad seed can't crash the persistence task.
+    #[tokio::test]
+    async fn persist_transcript_seeds_empty_on_malformed_existing_json() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+        repo.patch(
+            &meeting_id,
+            yogurt_db::MeetingPatch {
+                transcript_json: Some("not valid json".into()),
+                ..Default::default()
+            },
+        )
+        .expect("seed malformed transcript_json");
+
+        let (tx, rx) = broadcast::channel::<TranscriptEvent>(16);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let handle = tokio::spawn(persist_transcript(
+            repo.clone(),
+            meeting_id.clone(),
+            rx,
+            shutdown_rx,
+        ));
+        tx.send(ev(10, Channel::Mic, "fresh start", true)).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let _ = shutdown_tx.send(());
+        handle
+            .await
+            .expect("persist task joins cleanly despite bad seed");
+
+        let row = repo.get(&meeting_id).expect("get row").expect("row exists");
+        let segments: Vec<serde_json::Value> =
+            serde_json::from_str(&row.transcript_json).expect("valid JSON");
+        assert_eq!(
+            segments.len(),
+            1,
+            "malformed seed must not panic or leak junk"
+        );
+        assert_eq!(segments[0]["text"], "fresh start");
+    }
+
+    // ─── `session_offset_ms` regression coverage ─────────────────────────
+
+    /// No repo at all (Phase-3 in-memory-only caller) — must default to 0
+    /// rather than panic or block forever.
+    #[tokio::test]
+    async fn session_offset_ms_is_zero_without_a_repo() {
+        assert_eq!(session_offset_ms(None, "whatever").await, 0);
+    }
+
+    /// A genuine first session: fresh row, unstarted sentinel, no
+    /// `ended_at`. Offset must be 0 — there is no prior session to
+    /// continue from.
+    #[tokio::test]
+    async fn session_offset_ms_is_zero_for_a_fresh_meeting() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+        assert_eq!(session_offset_ms(Some(&repo), &meeting_id).await, 0);
+    }
+
+    /// A meeting that has been started but never stopped (`ended_at` still
+    /// `None`) is NOT a continuation by this function's contract — offset
+    /// stays 0. (Whether `Registry::start` can even reach this state is a
+    /// separate question; the function's job is just to read the row.)
+    #[tokio::test]
+    async fn session_offset_ms_is_zero_when_never_stopped() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+        repo.patch(
+            &meeting_id,
+            yogurt_db::MeetingPatch {
+                started_at: Some(1_000),
+                ..Default::default()
+            },
+        )
+        .expect("stamp started_at");
+        assert_eq!(session_offset_ms(Some(&repo), &meeting_id).await, 0);
+    }
+
+    /// A continuation session: `started_at` set from a real prior session
+    /// and `ended_at` set from the stop that followed it. Offset must be
+    /// the elapsed wall-clock ms since that `started_at` — asserted as a
+    /// tight window around `now - started_at` rather than an exact value,
+    /// since the function reads a real wall clock.
+    #[tokio::test]
+    async fn session_offset_ms_is_elapsed_time_for_a_continuation_session() {
+        let (repo, meeting_id) = fresh_repo_with_row();
+        let started_at = now_ms() as i64 - 60_000; // pretend session 1 started 60s ago
+        repo.patch(
+            &meeting_id,
+            yogurt_db::MeetingPatch {
+                started_at: Some(started_at),
+                ended_at: Some(Some(started_at + 30_000)), // stopped 30s in
+                ..Default::default()
+            },
+        )
+        .expect("stamp session-1-completed state");
+
+        let offset = session_offset_ms(Some(&repo), &meeting_id).await;
+        assert!(
+            (59_000..61_000).contains(&offset),
+            "offset should be ~60000ms elapsed since started_at, got {offset}"
+        );
     }
 
     /// Events sent into the broadcast channel BEFORE the task ever polls

@@ -38,6 +38,19 @@ pub mod __test_only_sanitize {
     pub use crate::sanitize::sanitize_enriched_md;
 }
 
+/// Test-only re-export of `routes::start_stamp_patch` — the pure decision
+/// function `start_meeting` uses to compute the `started_at`/`ended_at`
+/// patch after a successful `Registry::start()`. `POST
+/// /api/meetings/:id/start` opens real ScreenCaptureKit + cpal audio
+/// capture, which has no fake/mock mode and cannot succeed in a sandboxed
+/// test runner without Screen Recording permission — so integration tests
+/// exercise this function directly against a real `MeetingRepo` row rather
+/// than driving the audio-gated HTTP handler end-to-end. Hidden from docs.
+#[doc(hidden)]
+pub mod __test_only_start_stamp {
+    pub use crate::routes::start_stamp_patch;
+}
+
 /// Phase 6 (Plan 06-01) test-only re-export of the deterministic mock LLM.
 /// Integration tests that construct `AppState { ... }` directly need to fill
 /// the new `llm` field without taking a dependency on `yogurt-llm`'s real
