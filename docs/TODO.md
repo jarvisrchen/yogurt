@@ -52,6 +52,13 @@ Example entry:
   ![post-meeting delete confirm with check](attachments/2026-08-28-delete-confirm-check-appears.png)
   ![post-meeting delete confirm shifts the topbar](attachments/2026-08-28-delete-confirm-shifts-topbar.png)
 
+- [ ] Live transcript duplicates when audio plays through the machine
+  During a live meeting, audio played on the Mac (system-audio playback, video with speech, etc.) shows up in the live transcript as duplicates rather than once.
+  Root cause likely lives between `crates/yogurt-audio`'s mic and ScreenCaptureKit channels (acoustic echo into the mic plus digital capture, or an internal double-publish) - investigate and de-dupe.
+
+  Visual evidence:
+  ![transcript duplicates on machine audio](attachments/2026-08-28-transcript-duplicates-on-machine-audio.png)
+
 ## Audio
 
 - [ ] Add NVIDIA Parakeet v3 to the local STT model download
