@@ -57,13 +57,6 @@ pub trait LlmClient: Send + Sync {
     /// The model name this client sends on the wire, for provenance
     /// stamps (`meetings.llm_model`). Mocks return a fixed marker.
     fn model_name(&self) -> String;
-
-    /// Probe the provider's `/models` endpoint and return the list of model
-    /// ids it advertises. Used by the Settings page's `Refresh` button to
-    /// populate the MODEL datalist with the live, authoritative list
-    /// (presets ship a static hint; this overrides it once a key is on
-    /// file). Errors are surfaced as-is — the UI shows them inline.
-    async fn list_models(&self) -> Result<Vec<String>>;
 }
 
 /// OpenAI-compatible HTTP adapter. Speaks the `/chat/completions` shape —
@@ -135,6 +128,57 @@ impl OpenAiCompatClient {
     pub fn model_for_streaming(&self) -> &str {
         &self.model
     }
+
+    /// Probe the provider's `/models` endpoint and return the list of model
+    /// ids it advertises. Used by the Settings page's `Refresh` button to
+    /// populate the MODEL datalist with the live, authoritative list
+    /// (presets ship a static hint; this overrides it once a key is on
+    /// file). Errors are surfaced as-is - the UI shows them inline.
+    ///
+    /// Auth is only attached when `api_key` is non-empty: local runtimes
+    /// (Ollama, LM Studio) don't need one and would otherwise get a
+    /// `Bearer ` header with an empty token.
+    ///
+    /// Google's OpenAI-compat shim returns ids like `models/gemini-2.5-flash`;
+    /// the leading `models/` is stripped so ids match the plain form used
+    /// everywhere else (presets, the saved `model` field).
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/models", self.base_url);
+        let mut req = self.http.get(&url);
+        if !self.api_key.is_empty() {
+            req = req.bearer_auth(&self.api_key);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!("LLM call failed: {status} - {}", self.scrub(&body)));
+        }
+        let parsed: types::ModelsResponse = resp.json().await?;
+        Ok(parsed
+            .data
+            .into_iter()
+            .map(|m| {
+                m.id.strip_prefix("models/")
+                    .map(str::to_string)
+                    .unwrap_or(m.id)
+            })
+            .collect())
+    }
+
+    /// Replace every occurrence of this client's API key in `text` with
+    /// `[key redacted]`. Providers routinely quote the offending key back
+    /// in error bodies ("Incorrect API key provided: sk-abc..."); this
+    /// keeps that from smuggling the raw key into an HTTP response.
+    ///
+    /// Keys under 4 chars are skipped - too short to be a real secret, and
+    /// substring-replacing them would shred unrelated error text.
+    fn scrub(&self, text: &str) -> String {
+        if self.api_key.len() < 4 {
+            return text.to_string();
+        }
+        text.replace(&self.api_key, "[key redacted]")
+    }
 }
 
 #[async_trait]
@@ -158,11 +202,11 @@ impl LlmClient for OpenAiCompatClient {
             .await?;
         let status = resp.status();
         if !status.is_success() {
-            // Drain the body for the error message — providers' error
+            // Drain the body for the error message - providers' error
             // payloads usually contain the actionable detail (rate limit
             // window, invalid model name, account suspended).
             let body = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("LLM call failed: {status} — {body}"));
+            return Err(anyhow!("LLM call failed: {status} - {}", self.scrub(&body)));
         }
         let parsed: types::OpenAiResponse = resp.json().await?;
         let model = parsed.model;
@@ -178,22 +222,5 @@ impl LlmClient for OpenAiCompatClient {
 
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
         streaming::stream(self, req).await
-    }
-
-    async fn list_models(&self) -> Result<Vec<String>> {
-        let url = format!("{}/models", self.base_url);
-        let resp = self
-            .http
-            .get(&url)
-            .bearer_auth(&self.api_key)
-            .send()
-            .await?;
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("LLM call failed: {status} — {body}"));
-        }
-        let parsed: types::ModelsResponse = resp.json().await?;
-        Ok(parsed.data.into_iter().map(|m| m.id).collect())
     }
 }

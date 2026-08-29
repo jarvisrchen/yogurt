@@ -1,4 +1,4 @@
-//! `/api/settings*` REST surface — Phase 5 Plan 05-03.
+//! `/api/settings*` REST surface - Phase 5 Plan 05-03.
 //!
 //! Mounts the provider CRUD + activate + key-set + general-settings + presets
 //! endpoints. **Load-bearing security invariant:** API responses NEVER
@@ -6,7 +6,7 @@
 //! chars) is exposed via [`ProviderView::api_key_masked`]. The regression
 //! test that enforces this lives at
 //! `crates/yogurt-server/tests/settings_api.rs::api_responses_never_include_the_raw_api_key`
-//! — never weaken it.
+//! - never weaken it.
 //!
 //! ## Endpoint map
 //!
@@ -28,7 +28,7 @@
 //!
 //! This crate is on axum 0.8 (matches the rest of `routes.rs`), so path
 //! params use `{id}` not `:id`. The plan's superpowers source was written
-//! against 0.7 — the route shapes still match conceptually.
+//! against 0.7 - the route shapes still match conceptually.
 
 use crate::state::AppState;
 use axum::{
@@ -163,7 +163,7 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
 /// model that isn't actually on disk. Settings only take effect at the
 /// *next* recording start (`Registry::start` reads them fresh via
 /// `select_stt`), so persisting an undownloaded model here is a lie the
-/// UI would show immediately, not just a future footgun — exactly the
+/// UI would show immediately, not just a future footgun - exactly the
 /// bug this handler exists to prevent.
 ///
 /// Checks the EFFECTIVE settings (current row with `patch` overlaid), so
@@ -188,7 +188,7 @@ async fn validate_stt_patch(
         .unwrap_or_else(|| current.stt_model.clone());
 
     // `is_downloaded` can fall back to hashing a multi-GB file on a
-    // legacy/stale marker (see yogurt_stt::models docs) — keep it off
+    // legacy/stale marker (see yogurt_stt::models docs) - keep it off
     // the tokio reactor, same as `select_stt` does at meeting start.
     let downloaded = tokio::task::spawn_blocking({
         let model = effective_model.clone();
@@ -252,7 +252,7 @@ async fn create_provider(
 }
 
 /// Body for `PATCH /api/settings/providers/{id}`. All three fields must be
-/// supplied (full replace semantics) — partial updates are a future
+/// supplied (full replace semantics) - partial updates are a future
 /// enhancement once the UI grows per-field "Save" buttons.
 #[derive(Deserialize)]
 struct UpdateProviderBody {
@@ -279,7 +279,7 @@ async fn delete_provider(
     State(s): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Error> {
-    // Clean up the stored key FIRST. This is best-effort — any error is
+    // Clean up the stored key FIRST. This is best-effort - any error is
     // swallowed since the DB row deletion is the canonical "remove
     // provider" intent. A stale key entry without a DB row is harmless.
     let _ = s.keys.delete(&id);
@@ -299,14 +299,14 @@ async fn activate_provider(
 }
 
 /// Body for `POST /api/settings/providers/{id}/key`. The `api_key` field is
-/// the only place a raw secret ever appears in this module — and it is
+/// the only place a raw secret ever appears in this module - and it is
 /// inbound only. It is never echoed back, persisted in SQLite, or logged.
 #[derive(Deserialize)]
 struct SetKeyBody {
     api_key: String,
 }
 
-/// `POST /api/settings/stt/key` — store the Deepgram STT key. The STT key
+/// `POST /api/settings/stt/key` - store the Deepgram STT key. The STT key
 /// has no `providers` table row; the key-file entry under
 /// [`crate::meetings::DEEPGRAM_KEY_ID`] IS the configuration. Cloud
 /// recording reads it at meeting start.
@@ -354,7 +354,7 @@ struct TestProviderBody {
 
 /// Outcome of a live round-trip against the provider.
 ///
-/// A rejected key is a SUCCESSFUL request — it answers the user's question.
+/// A rejected key is a SUCCESSFUL request - it answers the user's question.
 /// So the happy and unhappy paths both return 200 with `ok` discriminating;
 /// non-200 is reserved for "the test itself could not be run" (unknown
 /// provider id).
@@ -373,46 +373,36 @@ struct TestProviderResult {
 /// multi-KB JSON blobs; the actionable part is always at the front.
 const MAX_TEST_ERROR_LEN: usize = 400;
 
-/// `POST /api/settings/providers/{id}/test` — one real chat completion
+/// `POST /api/settings/providers/{id}/test` - one real chat completion
 /// against this provider, reporting whether the key works.
 ///
 /// The draft key travels in the request body and is used to build a
 /// throwaway client. It is NEVER written to the key file, never logged,
-/// and never echoed back: `redact_key` scrubs it out of the provider's own
-/// error text, because providers routinely quote the offending key back at
-/// you ("Incorrect API key provided: sk-abc123"). That would otherwise
-/// smuggle a raw key into an API response and violate the invariant
-/// `api_responses_never_include_the_raw_api_key` enforces.
+/// and never echoed back: `OpenAiCompatClient` scrubs it out of the
+/// provider's own error text, because providers routinely quote the
+/// offending key back at you ("Incorrect API key provided: sk-abc123").
+/// That would otherwise smuggle a raw key into an API response and
+/// violate the invariant `api_responses_never_include_the_raw_api_key`
+/// enforces.
 async fn test_provider(
     State(s): State<AppState>,
     Path(id): Path<String>,
     Json(body): Json<TestProviderBody>,
 ) -> Result<Json<TestProviderResult>, Error> {
-    let provider = providers::list(&s.db)?
-        .into_iter()
-        .find(|p| p.id == id)
-        .ok_or(Error::NotFound)?;
-
-    let draft = body
-        .api_key
-        .map(|k| k.trim().to_string())
-        .filter(|k| !k.is_empty());
-    let key = match draft {
+    let (provider, key) = provider_and_key(&s, &id, body.api_key)?;
+    let key = match key {
         Some(k) => k,
-        None => match read_stored_key(&s, &id)? {
-            Some(k) => k,
-            None => {
-                return Ok(Json(TestProviderResult {
-                    ok: false,
-                    model: None,
-                    error: Some(
-                        "No key stored for this provider yet - paste one above, \
-                         then test."
-                            .into(),
-                    ),
-                }))
-            }
-        },
+        None => {
+            return Ok(Json(TestProviderResult {
+                ok: false,
+                model: None,
+                error: Some(
+                    "No key stored for this provider yet - paste one above, \
+                     then test."
+                        .into(),
+                ),
+            }))
+        }
     };
 
     // ponytail: a plain one-turn completion rather than a `/models` probe.
@@ -425,7 +415,7 @@ async fn test_provider(
     use yogurt_llm::LlmClient as _;
     let client = crate::llm_openai::OpenAiCompatClient::new(
         provider.base_url.clone(),
-        key.clone(),
+        key,
         provider.model.clone(),
     );
     let req = yogurt_llm::ChatRequest {
@@ -442,10 +432,7 @@ async fn test_provider(
         Err(e) => TestProviderResult {
             ok: false,
             model: None,
-            error: Some(truncate(
-                &redact_key(&format!("{e:#}"), &key),
-                MAX_TEST_ERROR_LEN,
-            )),
+            error: Some(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)),
         },
     }))
 }
@@ -453,7 +440,7 @@ async fn test_provider(
 /// Optional `POST /api/settings/providers/{id}/models` body. When present,
 /// the draft `api_key` is used in place of the stored key so
 /// the user can discover what models are available *before* committing
-/// the key — useful when the saved `model` is the only thing wrong with
+/// the key - useful when the saved `model` is the only thing wrong with
 /// the provider (e.g. Google's frequent deprecations).
 #[derive(Deserialize)]
 struct ListModelsBody {
@@ -461,7 +448,7 @@ struct ListModelsBody {
     api_key: Option<String>,
 }
 
-/// `POST /api/settings/providers/{id}/models` — probe the provider's
+/// `POST /api/settings/providers/{id}/models` - probe the provider's
 /// `/v1/models` endpoint and return its model list.
 ///
 /// The Settings UI's `Refresh` button hits this. The handler prefers a
@@ -469,71 +456,70 @@ struct ListModelsBody {
 /// so the button is useful on a freshly-cloned provider (the whole point:
 /// when the saved `model` is deprecated, the user needs to see what is
 /// actually available before they can pick a replacement). The draft
-/// never reaches the key file — it's used once for the probe and
+/// never reaches the key file - it's used once for the probe and
 /// discarded.
 ///
-/// A missing-or-wrong key surfaces as a normal upstream HTTP error —
-/// `redact_key` scrubs the raw secret out of the message so a
+/// No key at all (neither draft nor stored) is not an error here: local
+/// runtimes (Ollama, LM Studio) need no key, so the probe proceeds with an
+/// empty one. A provider that does need a key simply 401s, which surfaces
+/// to the UI as a normal inline error.
+///
+/// A missing-or-wrong key surfaces as a normal upstream HTTP error, mapped
+/// to `Error::BadGateway` since it's the upstream rejecting us, not our own
+/// bug. `OpenAiCompatClient` scrubs the raw secret out of the message so a
 /// misconfigured provider can't smuggle it back through the response.
 async fn list_provider_models(
     State(s): State<AppState>,
     Path(id): Path<String>,
     body: Option<Json<ListModelsBody>>,
 ) -> Result<Json<Vec<String>>, Error> {
+    let draft = body.and_then(|b| b.api_key.clone());
+    let (provider, key) = provider_and_key(&s, &id, draft)?;
+
+    let client = crate::llm_openai::OpenAiCompatClient::new(
+        provider.base_url.clone(),
+        key.unwrap_or_default(),
+        provider.model.clone(),
+    );
+    match client.list_models().await {
+        Ok(models) => Ok(Json(models)),
+        Err(e) => Err(Error::BadGateway(truncate(
+            &format!("{e:#}"),
+            MAX_TEST_ERROR_LEN,
+        ))),
+    }
+}
+
+/// Resolve the provider row for `id` plus the API key a live probe should
+/// use: a trimmed non-empty `draft` wins, otherwise whatever is already in
+/// the key store. `None` means neither is available - callers decide what
+/// that means (`test_provider` reports a friendly "no key stored" result;
+/// `list_provider_models` proceeds keyless, since local runtimes need no
+/// key at all).
+fn provider_and_key(
+    s: &AppState,
+    id: &str,
+    draft: Option<String>,
+) -> Result<(providers::Provider, Option<String>), Error> {
     let provider = providers::list(&s.db)?
         .into_iter()
         .find(|p| p.id == id)
         .ok_or(Error::NotFound)?;
 
-    let draft = body
-        .and_then(|b| b.api_key.clone())
+    let draft = draft
         .map(|k| k.trim().to_string())
         .filter(|k| !k.is_empty());
     let key = match draft {
-        Some(k) => k,
-        None => match read_stored_key(&s, &id)? {
-            Some(k) => k,
-            None => {
-                return Err(Error::Unprocessable(
-                    "No key stored for this provider yet - paste one above, \
-                     then refresh."
-                        .into(),
-                ));
-            }
-        },
+        Some(k) => Some(k),
+        None => read_stored_key(s, id)?,
     };
-
-    use yogurt_llm::LlmClient as _;
-    let client = crate::llm_openai::OpenAiCompatClient::new(
-        provider.base_url.clone(),
-        key.clone(),
-        provider.model.clone(),
-    );
-    match client.list_models().await {
-        Ok(models) => Ok(Json(models)),
-        Err(e) => Err(Error::Internal(truncate(
-            &redact_key(&format!("{e:#}"), &key),
-            MAX_TEST_ERROR_LEN,
-        ))),
-    }
+    Ok((provider, key))
 }
 
 fn read_stored_key(s: &AppState, id: &str) -> Result<Option<String>, Error> {
     s.keys
         .get(id)
         .map_err(|e| Error::Internal(format!("key store read: {e}")))
-}
-
-/// Replace every occurrence of `key` in `text` with a mask.
-///
-/// Guards the case where a provider quotes the rejected key back inside its
-/// error body. Short keys are skipped: a 1-3 char "key" is not a real
-/// secret and substring-replacing it would shred unrelated error text.
-fn redact_key(text: &str, key: &str) -> String {
-    if key.len() < 4 {
-        return text.to_string();
-    }
-    text.replace(key, "[key redacted]")
 }
 
 /// Truncate on a char boundary, appending an ellipsis when cut.
@@ -551,9 +537,14 @@ fn truncate(s: &str, max: usize) -> String {
 enum Error {
     NotFound,
     Internal(String),
-    /// 422 — the patch is well-formed JSON but describes an invalid
+    /// 422 - the patch is well-formed JSON but describes an invalid
     /// configuration (e.g. local STT pointed at an undownloaded model).
     Unprocessable(String),
+    /// 502 - a live probe against the provider's own endpoint failed
+    /// (upstream rejected the key, refused the connection, or timed out).
+    /// This is the *provider's* fault, not ours, so it's distinct from
+    /// `Internal`.
+    BadGateway(String),
 }
 
 impl From<anyhow::Error> for Error {
@@ -575,6 +566,11 @@ impl IntoResponse for Error {
             Error::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, s).into_response(),
             Error::Unprocessable(msg) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({ "error": msg })),
+            )
+                .into_response(),
+            Error::BadGateway(msg) => (
+                StatusCode::BAD_GATEWAY,
                 Json(serde_json::json!({ "error": msg })),
             )
                 .into_response(),
