@@ -1,28 +1,33 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
+import { ComboBox } from "./ComboBox";
 
 /**
- * MODEL field with autocomplete suggestions + a Refresh button.
+ * MODEL field with a click-to-open dropdown of available models + a
+ * Refresh button.
  *
  * Shared by `ProviderCard` (active) and `ProviderRow` (inactive) so they
- * speak the same vocabulary. The input is a regular text input paired with
- * a `<datalist>` — the user can type anything (preview models, custom
- * aliases, etc.) and the datalist is just autocomplete, never a constraint.
+ * speak the same vocabulary. The input is wrapped in a `ComboBox` —
+ * a clickable dropdown trigger that lists every available model — so
+ * the user gets a real "click to see options" affordance (native
+ * `<input list>` + `<datalist>` is famously unreliable on Safari/macOS).
+ * Free text is always allowed; the dropdown is just a picker over
+ * known suggestions.
  *
- * Suggestions come from `presetModels` (the static hint shipped with the
- * preset) and any `refreshedModels` returned by the live `/v1/models`
- * probe. The current model is always in the datalist so a value the user
- * typed earlier still shows up as a suggestion.
+ * Suggestions come from `presetModels` (the static hint shipped with
+ * the preset) and any `refreshedModels` returned by the live
+ * `/v1/models` probe. The current model is always in the list so a
+ * value the user typed earlier still shows up.
  *
- * `Refresh` calls `POST /api/settings/providers/:id/models`. If the parent
- * passes an `apiKeyDraft` (the unmasked key sitting in the API KEY
- * password field), that draft is sent in the request body and used for the
- * probe — the button is useful *before* the key is saved, which matters
- * when the saved `model` is the only thing wrong with the provider
- * (Google deprecates tiers often enough that this is a real flow). With
- * no draft and no stored key, the button is disabled — anything else
- * would 422 server-side.
+ * `Refresh` calls `POST /api/settings/providers/:id/models`. If the
+ * parent passes an `apiKeyDraft` (the unmasked key sitting in the API
+ * KEY password field), that draft is sent in the request body and
+ * used for the probe — the button is useful *before* the key is saved,
+ * which matters when the saved `model` is the only thing wrong with
+ * the provider (Google deprecates tiers often enough that this is a
+ * real flow). With no draft and no stored key, the button is
+ * disabled — anything else would 422 server-side.
  */
 
 interface Props {
@@ -40,9 +45,6 @@ interface Props {
    */
   apiKeyDraft?: string;
   disabled?: boolean;
-  /** Visual label inside the wrapping Field, kept here so callers don't
-   *  have to render their own label around the input. */
-  id?: string;
 }
 
 export function ModelSelect({
@@ -54,11 +56,7 @@ export function ModelSelect({
   hasStoredKey,
   apiKeyDraft = "",
   disabled,
-  id,
 }: Props) {
-  const reactId = useId();
-  const inputId = id ?? `model-${providerId}-${reactId}`;
-  const datalistId = `${inputId}-list`;
   const [refreshedModels, setRefreshedModels] = useState<string[] | null>(
     null,
   );
@@ -89,14 +87,14 @@ export function ModelSelect({
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
-        <input
-          id={inputId}
-          list={datalistId}
-          disabled={disabled}
+        <ComboBox
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={onChange}
+          options={suggestions}
           placeholder="e.g. gpt-4o-mini"
-          className="flex-1 min-w-0 font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1 disabled:opacity-50"
+          ariaLabel={`Model for ${providerName}`}
+          triggerLabel={`Show model list for ${providerName}`}
+          disabled={disabled}
         />
         <button
           type="button"
@@ -113,11 +111,6 @@ export function ModelSelect({
           {refresh.isPending ? "Refreshing…" : "Refresh"}
         </button>
       </div>
-      <datalist id={datalistId}>
-        {suggestions.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
       {refresh.isError && (
         <p role="status" className="text-[11px] text-[var(--color-straw)]">
           ✗ Could not fetch models: {String(refresh.error)}
