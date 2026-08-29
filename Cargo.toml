@@ -24,6 +24,12 @@ authors = ["Jarvis Chen <3chenr@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/jarvisrchen/yogurt"
 rust-version = "1.83"
+description = "Local-first meeting copilot - Granola's UX, your machine."
+homepage = "https://github.com/jarvisrchen/yogurt"
+documentation = "https://github.com/jarvisrchen/yogurt#readme"
+readme = "README.md"
+categories = ["command-line-utilities", "multimedia::audio"]
+keywords = ["meeting", "transcription", "notes", "local-first", "granola"]
 
 [workspace.dependencies]
 # async runtime
@@ -160,3 +166,4 @@ hex = "0.4"
 lto = "thin"
 codegen-units = 1
 strip = true
+panic = "abort"

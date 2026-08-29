@@ -5,7 +5,12 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Local-first meeting copilot — Granola's UX, your machine."
+description.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
 
 [[bin]]
 name = "yogurt"
@@ -17,7 +22,7 @@ clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
-yogurt-server = { path = "../yogurt-server" }
+yogurt-server = { path = "../yogurt-server", version = "0.1.0" }
 open = "5"
 # Phase 5 (Plan 05-02): .env.local dev-mode loader. Gated on the `--dev`
 # flag at the top of main() — release builds NEVER read .env.local
