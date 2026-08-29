@@ -89,10 +89,13 @@ export function LabelPicker({ meetingId, selected, open, onClose, anchorClassNam
     <div
       ref={wrapperRef}
       onClick={stop}
-      onMouseDown={stop}
+      // stopPropagation only (no preventDefault) so the input still gets
+      // focus / text selection on mousedown; Link navigation fires on click,
+      // which `stop` above already cancels.
+      onMouseDown={(e) => e.stopPropagation()}
       className={
         anchorClassName ??
-        "absolute mt-1 bg-card border border-line rounded-card shadow-pop py-1 min-w-[220px] z-20 text-[13px]"
+        "absolute left-0 top-full mt-1 bg-card border border-line rounded-card shadow-pop py-1 min-w-[220px] z-20 text-[13px]"
       }
     >
       <div className="px-2 pb-1">
