@@ -277,7 +277,8 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
     {
         Ok(_) => {
             // Stamp the actual recording start so the library shows a real
-            // duration once the meeting ends. Best-effort: the row exists
+            // duration once the meeting ends — but only on a genuine first
+            // start; see `start_stamp_patch`. Best-effort: the row exists
             // for meetings created via POST /api/meetings; older/direct
             // registry meetings simply skip the stamp.
             let repo = state.meeting_repo.clone();
@@ -293,15 +294,11 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
             } else {
                 format!("local \u{b7} {}", g.stt_model)
             };
-            let _ = tokio::task::spawn_blocking(move || {
-                repo.patch(
-                    &id_str,
-                    yogurt_db::MeetingPatch {
-                        started_at: Some(now_unix_ms()),
-                        stt_engine: Some(stt_engine),
-                        ..Default::default()
-                    },
-                )
+            let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<yogurt_db::Meeting> {
+                let existing = repo.get(&id_str)?;
+                let mut patch = start_stamp_patch(existing.as_ref());
+                patch.stt_engine = Some(stt_engine);
+                repo.patch(&id_str, patch)
             })
             .await;
             (StatusCode::OK, Json(json!({ "status": "started" }))).into_response()
@@ -352,6 +349,46 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
         body["stt"] = json!(engine);
     }
     (StatusCode::OK, Json(body)).into_response()
+}
+
+/// Compute the `MeetingPatch` fields `start_meeting` applies to the SQLite
+/// row after a successful `Registry::start()` call.
+///
+/// `existing` is the row's state read immediately before this call (`None`
+/// only if the row vanished between `Registry::start()` succeeding and this
+/// read — best-effort, falls back to treating it as a first start).
+///
+/// - **Genuine first start** (no prior `ended_at`): stamp `started_at =
+///   now`. This is the only authoritative source of the real recording
+///   start time — the row's placeholder `started_at` from `POST
+///   /api/meetings` is just the row's creation time.
+/// - **Restart** (the meeting has an `ended_at` from a prior stop): leave
+///   `started_at` untouched — overwriting it here IS the data-loss bug
+///   this function exists to prevent, since a corrupted `started_at` also
+///   fed the continuation-session clock (`meetings::session_offset_ms`) —
+///   and clear the stale `ended_at` (`Some(None)`, the tri-state patch's
+///   "explicitly clear" form) so the next `/stop` call stamps a fresh one.
+///
+/// The schema's own "unstarted" sentinel is `started_at = 0` (see
+/// `V003__meetings.sql`), checked here as a belt-and-suspenders condition:
+/// test fixtures (`test_support::seed_meeting`) seed rows exactly this way,
+/// but `MeetingRepo::create` itself currently falls back to "now" rather
+/// than the schema default, so `0` alone is not a reliable signal in real
+/// usage — a set `ended_at` is what actually distinguishes "restarting" a
+/// real meeting.
+pub fn start_stamp_patch(existing: Option<&yogurt_db::Meeting>) -> yogurt_db::MeetingPatch {
+    let is_restart = existing.is_some_and(|m| m.started_at != 0 && m.ended_at.is_some());
+    if is_restart {
+        yogurt_db::MeetingPatch {
+            ended_at: Some(None),
+            ..Default::default()
+        }
+    } else {
+        yogurt_db::MeetingPatch {
+            started_at: Some(now_unix_ms()),
+            ..Default::default()
+        }
+    }
 }
 
 fn now_unix_ms() -> i64 {
