@@ -34,6 +34,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         yogurt_server::__test_only_aux_state(tmp.path().join("notes")).expect("build aux state");
     let db = yogurt_db::Db::open_in_memory().unwrap();
     let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
+    let label_repo = Arc::new(yogurt_db::LabelRepo::new(db.clone()));
     let state = AppState {
         mode: Mode::Release,
         storage,
@@ -50,6 +51,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
+        label_repo,
         // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
         // here but required by the AppState struct.
         app_events_tx: tokio::sync::broadcast::channel(64).0,

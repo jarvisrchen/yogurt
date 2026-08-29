@@ -108,6 +108,7 @@ pub async fn run_with_mock_llm(
 
     let db = yogurt_db::Db::open_in_memory()?;
     let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
+    let label_repo = Arc::new(yogurt_db::LabelRepo::new(db.clone()));
     let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
     let state = AppState {
         mode: Mode::Release,
@@ -121,6 +122,7 @@ pub async fn run_with_mock_llm(
         keys: Arc::new(yogurt_db::keychain::MemoryKeyStore::default()),
         llm_override: Some(Arc::new(MockChunksLlm::new(chunks))),
         meeting_repo,
+        label_repo,
         app_events_tx,
     };
 

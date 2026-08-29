@@ -22,13 +22,12 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
-use serde_json::json;
 
+use crate::api::ApiError;
 use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
 use yogurt_db::{Meeting, MeetingPatch, NewMeeting};
@@ -94,43 +93,10 @@ pub struct PatchBody {
     pub starred: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stt_engine: Option<String>,
-}
-
-/// Centralized error → response mapping. The error message bubbles through
-/// the response body so REST consumers can surface the underlying problem;
-/// the wire shape matches the existing `routes::*` handlers'
-/// `{"error": "<msg>"}` envelope.
-#[derive(Debug)]
-enum ApiError {
-    NotFound,
-    BadRequest(String),
-    Internal(anyhow::Error),
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (code, msg) = match self {
-            ApiError::NotFound => (StatusCode::NOT_FOUND, "meeting not found".to_string()),
-            ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
-            ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")),
-        };
-        (code, Json(json!({ "error": msg }))).into_response()
-    }
-}
-
-impl From<anyhow::Error> for ApiError {
-    fn from(e: anyhow::Error) -> Self {
-        // Map the specific "not found" string the repo bails with into 404
-        // so PATCH / DELETE behave as REST clients expect.
-        let s = e.to_string();
-        if s.contains("not found") {
-            ApiError::NotFound
-        } else if s.contains("empty") {
-            ApiError::BadRequest(s)
-        } else {
-            ApiError::Internal(e)
-        }
-    }
+    /// Replace this meeting's label set with exactly these ids. `None`
+    /// leaves labels alone; `Some(vec![])` clears them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_ids: Option<Vec<String>>,
 }
 
 // ─── Handlers ──────────────────────────────────────────────────────────────
@@ -283,7 +249,7 @@ async fn patch_one(
         ended_at: body.ended_at,
         starred: body.starred,
         stt_engine: body.stt_engine,
-        label_ids: None,
+        label_ids: body.label_ids,
     };
     let state_for_blocking = s.clone();
     let id_for_blocking = id.clone();

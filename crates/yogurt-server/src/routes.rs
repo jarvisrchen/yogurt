@@ -63,6 +63,9 @@ pub fn router(state: AppState) -> Router {
     //     `/chat`) keep their Phase-3-shaped handlers below.
     let meeting_routes = Router::new()
         .merge(crate::api::meetings::router())
+        // Granola-style meeting labels — same auth group as the Library
+        // CRUD surface above.
+        .merge(crate::api::labels::router())
         // Floating "Return to recording" pill (discoverability for
         // navigate-away-while-recording). Static segment — axum 0.8's
         // matchit router prefers literal segments over the `{id}` param

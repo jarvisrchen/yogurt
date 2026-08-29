@@ -27,7 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use yogurt_db::keychain::{ApiKeyStore, KeychainStore, MemoryKeyStore, SessionCacheKeyStore};
-use yogurt_db::{Db, Meeting, MeetingPatch, MeetingRepo};
+use yogurt_db::{Db, LabelRepo, Meeting, MeetingPatch, MeetingRepo};
 use yogurt_llm::LlmClient;
 
 use crate::markdown_exporter::{MarkdownExporter, Meeting as ExpMeeting};
@@ -75,6 +75,9 @@ pub struct AppState {
     /// through `meeting_repo`; the WebSocket and recording pipeline
     /// still uses `meetings`.
     pub meeting_repo: Arc<MeetingRepo>,
+    /// Feature: Granola-style meeting labels — SQLite-backed label
+    /// directory (workspace-level named tags with a color).
+    pub label_repo: Arc<LabelRepo>,
     /// Phase 8 (Plan 08-03): app-wide event broadcaster.  Carries JSON
     /// frames that aren't tied to a specific meeting — currently
     /// `stt_model_download_*` from `api::stt_models`.  The `/ws`
@@ -149,6 +152,7 @@ impl AppState {
             None => Db::open_default()?,
         };
         let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
+        let label_repo = Arc::new(LabelRepo::new(db.clone()));
         let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
         // Keychain-prompt mitigation (see crates/yogurt-db/src/keychain.rs
         // doc comment): integration/CLI tests set `YOGURT_MEMORY_KEYSTORE`
@@ -185,6 +189,7 @@ impl AppState {
             llm_override: None,
             // Phase 7 (Plan 07-01): the new SQLite-backed Library directory.
             meeting_repo,
+            label_repo,
             // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
             app_events_tx,
         })
@@ -220,6 +225,7 @@ impl AppState {
         let prompts = Arc::new(yogurt_prompts::Prompts::load(prompt_mode)?);
         let db = Db::open_in_memory()?;
         let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
+        let label_repo = Arc::new(LabelRepo::new(db.clone()));
         let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
         Ok(Self {
             mode,
@@ -233,6 +239,7 @@ impl AppState {
             keys: Arc::new(MemoryKeyStore::default()),
             llm_override: None,
             meeting_repo,
+            label_repo,
             // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
             app_events_tx,
         })

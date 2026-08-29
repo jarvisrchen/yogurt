@@ -440,7 +440,11 @@ fn labels_for(
     if meeting_ids.is_empty() {
         return Ok(map);
     }
-    let placeholders = meeting_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = meeting_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let sql = format!(
         "SELECT ml.meeting_id, l.id, l.name, l.color \
          FROM meeting_labels ml JOIN labels l ON l.id = ml.label_id \
