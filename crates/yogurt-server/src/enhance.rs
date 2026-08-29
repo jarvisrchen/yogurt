@@ -440,6 +440,7 @@ pub async fn enhance(
                     ended_at: ended_at_patch,
                     starred: None,
                     stt_engine: None,
+                    label_ids: None,
                 },
             )?;
             Ok(())

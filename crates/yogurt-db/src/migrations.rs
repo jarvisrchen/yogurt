@@ -53,6 +53,10 @@ fn migrations() -> Migrations<'static> {
         // rows read back as None; new recordings get stamped in
         // routes.rs::start_meeting.
         M::up(include_str!("../migrations/V006__meetings_stt_engine.sql")),
+        // Feature: Granola-style meeting labels. `labels` (workspace-level
+        // named tags) + `meeting_labels` (many-to-many join, cascades on
+        // either side).
+        M::up(include_str!("../migrations/V007__labels.sql")),
     ])
 }
 

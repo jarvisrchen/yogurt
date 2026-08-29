@@ -29,11 +29,13 @@
 //! enhance handler already uses for the storage writer. The Library REST
 //! handlers in `crates/yogurt-server/src/api/meetings.rs` do exactly that.
 
+use crate::labels::{self, Label};
 use crate::Db;
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use ulid::Ulid;
 
 /// One row in the `meetings` table, projected onto the Library wire shape.
@@ -58,6 +60,11 @@ pub struct Meeting {
     /// Last mutation timestamp (ISO 8601 over the wire). Updated on every
     /// `patch` call so the Library can re-sort on edit.
     pub updated_at: DateTime<Utc>,
+    /// Labels attached to this meeting, sorted by name. Hydrated by a
+    /// second query in `get` / `list` / `search` (see [`labels_for`]) —
+    /// `row_to_meeting` always sets this to an empty `Vec` first.
+    #[serde(default)]
+    pub labels: Vec<Label>,
 }
 
 /// Constructor payload for [`MeetingRepo::create`]. Only the fields a fresh
@@ -116,6 +123,12 @@ pub struct MeetingPatch {
     /// no "clear" use case for provenance, so no tri-state is needed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stt_engine: Option<String>,
+    /// Replace this meeting's label set with exactly these ids. `None`
+    /// leaves labels alone; `Some(vec![])` clears them. Applied via
+    /// `labels::set_for_meeting_conn` inside the same transaction as the
+    /// rest of the patch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_ids: Option<Vec<String>>,
 }
 
 /// CRUD facade over the `meetings` table.
@@ -167,11 +180,14 @@ impl MeetingRepo {
     /// Look up one row by id. `Ok(None)` for missing rows (not an error —
     /// the REST handler maps to 404).
     pub fn get(&self, id: &str) -> Result<Option<Meeting>> {
-        self.db.with_conn(|conn| {
+        self.db.with_conn(|conn| -> Result<Option<Meeting>> {
             let mut stmt = conn.prepare_cached(SELECT_ALL_WHERE_ID)?;
-            stmt.query_row(params![id], row_to_meeting)
-                .optional()
-                .map_err(Into::into)
+            let mut m = stmt.query_row(params![id], row_to_meeting).optional()?;
+            if let Some(m) = m.as_mut() {
+                let mut map = labels_for(conn, std::slice::from_ref(&m.id))?;
+                m.labels = map.remove(&m.id).unwrap_or_default();
+            }
+            Ok(m)
         })
     }
 
@@ -179,13 +195,14 @@ impl MeetingRepo {
     /// uses this as its primary feed; date-bucketing happens client-side
     /// in `DateGroup`.
     pub fn list(&self) -> Result<Vec<Meeting>> {
-        self.db.with_conn(|conn| {
+        self.db.with_conn(|conn| -> Result<Vec<Meeting>> {
             let mut stmt = conn.prepare_cached(SELECT_ALL_ORDER_BY_STARTED_DESC)?;
             let rows = stmt.query_map([], row_to_meeting)?;
             let mut out = Vec::new();
             for r in rows {
                 out.push(r?);
             }
+            hydrate_labels(conn, &mut out)?;
             Ok(out)
         })
     }
@@ -249,7 +266,7 @@ impl MeetingRepo {
                 sets.push("stt_engine = ?");
                 args.push(e.clone().into());
             }
-            if sets.is_empty() {
+            if sets.is_empty() && patch.label_ids.is_none() {
                 // No fields supplied — still touch updated_at? PRD §10
                 // says "PATCH with empty body is a no-op". Match that.
                 return Ok(());
@@ -291,6 +308,10 @@ impl MeetingRepo {
                 params![title, notes_md, transcript_text, id_owned],
             )
             .with_context(|| format!("update meetings_fts id={id_owned}"))?;
+
+            if let Some(label_ids) = patch.label_ids.as_ref() {
+                labels::set_for_meeting_conn(conn, &id_owned, label_ids)?;
+            }
             Ok(())
         })?;
         self.get(id)?
@@ -331,7 +352,7 @@ impl MeetingRepo {
         // impossible because we trimmed above.
         let escaped = trimmed.replace('"', "\"\"");
         let match_expr = format!("\"{escaped}\"*");
-        self.db.with_conn(|conn| {
+        self.db.with_conn(|conn| -> Result<Vec<Meeting>> {
             let mut stmt = conn.prepare_cached(
                 "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
                         m.enriched_md, m.transcript_json, m.starred, \
@@ -347,6 +368,7 @@ impl MeetingRepo {
             for r in rows {
                 out.push(r?);
             }
+            hydrate_labels(conn, &mut out)?;
             Ok(out)
         })
     }
@@ -403,7 +425,57 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
         stt_engine,
         created_at: ms_to_dt(created_at_ms),
         updated_at: ms_to_dt(updated_at_ms),
+        labels: Vec::new(),
     })
+}
+
+/// Run one query hydrating the labels for every meeting id in
+/// `meeting_ids`. Returns an empty map without querying when the slice is
+/// empty (covers `get` on a not-found row upstream, and empty `list`).
+fn labels_for(
+    conn: &Connection,
+    meeting_ids: &[String],
+) -> rusqlite::Result<HashMap<String, Vec<Label>>> {
+    let mut map: HashMap<String, Vec<Label>> = HashMap::new();
+    if meeting_ids.is_empty() {
+        return Ok(map);
+    }
+    let placeholders = meeting_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT ml.meeting_id, l.id, l.name, l.color \
+         FROM meeting_labels ml JOIN labels l ON l.id = ml.label_id \
+         WHERE ml.meeting_id IN ({placeholders}) \
+         ORDER BY l.name COLLATE NOCASE"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params_from_iter(meeting_ids.iter()),
+        |r| -> rusqlite::Result<(String, Label)> {
+            Ok((
+                r.get(0)?,
+                Label {
+                    id: r.get(1)?,
+                    name: r.get(2)?,
+                    color: r.get(3)?,
+                },
+            ))
+        },
+    )?;
+    for r in rows {
+        let (meeting_id, label) = r?;
+        map.entry(meeting_id).or_default().push(label);
+    }
+    Ok(map)
+}
+
+/// Hydrate `labels_for` results onto every `Meeting` in `out`, in place.
+fn hydrate_labels(conn: &Connection, out: &mut [Meeting]) -> rusqlite::Result<()> {
+    let ids: Vec<String> = out.iter().map(|m| m.id.clone()).collect();
+    let mut map = labels_for(conn, &ids)?;
+    for m in out.iter_mut() {
+        m.labels = map.remove(&m.id).unwrap_or_default();
+    }
+    Ok(())
 }
 
 /// Phase 7 Plan 07-02: flatten the `transcript_json` blob into a single
