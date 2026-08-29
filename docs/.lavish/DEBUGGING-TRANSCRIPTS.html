@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Debugging Transcripts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-chip: 6px; --r-btn: 9px; --r-card: 14px; --r-pill: 999px;
+  --sh-card: 0 2px 6px rgba(40, 30, 15, 0.08);
+}
+
+* { box-sizing: border-box; min-width: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+header.top {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(251, 247, 239, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top-inner {
+  max-width: 1180px; margin: 0 auto;
+  padding: 14px 28px;
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+}
+.brand { font-family: var(--font-serif); font-size: 26px; letter-spacing: -0.01em; }
+.brand span { color: var(--blue); }
+.tagline {
+  font-family: var(--font-mono);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--mut);
+}
+nav.top-nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+nav.top-nav a {
+  font-family: var(--font-mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--mut); text-decoration: none;
+  padding: 5px 9px; border-radius: var(--r-chip);
+  transition: background 140ms, color 140ms;
+  white-space: nowrap;
+}
+nav.top-nav a:hover { background: var(--blsoft); color: var(--blue); }
+
+/* ── Layout ─────────────────────────────────────────────── */
+main { max-width: 1180px; margin: 0 auto; padding: 40px 28px 120px; }
+
+.hero { margin-bottom: 44px; }
+.hero h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(38px, 6vw, 60px);
+  line-height: 1.04; margin: 0 0 14px; letter-spacing: -0.02em;
+}
+.hero p.lede { font-size: 18px; color: var(--mut); max-width: 62ch; margin: 0 0 8px; }
+.hero p.sub { font-size: 14px; color: var(--grey); max-width: 62ch; margin: 0; }
+
+.facts {
+  display: grid; gap: 12px; margin: 28px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+}
+.fact {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 16px 18px; box-shadow: var(--sh-card);
+}
+.fact .n {
+  font-family: var(--font-serif); font-size: 30px; line-height: 1.1;
+  color: var(--blue); display: block;
+}
+.fact .n.warn { color: var(--straw); }
+.fact .n.good { color: var(--matcha); }
+.fact .l {
+  font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--mut); margin-top: 4px; display: block;
+}
+
+section.sec { margin: 0 0 64px; scroll-margin-top: 88px; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.sec-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  color: var(--blue); background: var(--blsoft);
+  padding: 3px 8px; border-radius: var(--r-chip); letter-spacing: 0.05em;
+}
+h2 { font-family: var(--font-serif); font-size: 32px; margin: 0; letter-spacing: -0.01em; font-weight: 400; }
+h3 { font-family: var(--font-sans); font-size: 15px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -0.005em; }
+.sec > p, .sec > ul, .sec > ol { max-width: 78ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 14px; padding-left: 20px; }
+li { margin-bottom: 7px; }
+strong { font-weight: 600; }
+code {
+  font-family: var(--font-mono); font-size: 0.875em;
+  background: var(--blsoft); color: #3d349a;
+  padding: 1.5px 5px; border-radius: 4px;
+}
+a { color: var(--blue); }
+
+/* ── Framed blocks: diagrams and code ───────────────────── */
+.frame {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--sh-card);
+  margin: 20px 0 22px; overflow: hidden;
+}
+.frame > .cap {
+  font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--mut);
+  padding: 11px 18px; border-bottom: 1px solid var(--line); background: #FDFBF7;
+  display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+}
+.frame > .cap .rhs { color: var(--grey); text-transform: none; letter-spacing: 0.02em; }
+.frame > .body { overflow-x: auto; padding: 22px 18px; }
+.frame .mermaid { display: flex; justify-content: center; min-width: 0; }
+.frame .mermaid svg { max-width: 100%; height: auto; }
+pre.code {
+  margin: 0; padding: 16px 18px; overflow-x: auto;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+  color: var(--ink); background: var(--card);
+}
+pre.code .c { color: var(--grey); }
+pre.code .p { color: var(--blue); }
+pre.code .s { color: #3f7a53; }
+
+/* ── Tables ─────────────────────────────────────────────── */
+.tablewrap {
+  overflow-x: auto; margin: 16px 0 22px;
+  border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--card); box-shadow: var(--sh-card);
+}
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th {
+  text-align: left; font-family: var(--font-mono);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--mut); font-weight: 500;
+  padding: 11px 16px; border-bottom: 1px solid var(--line);
+  background: #FDFBF7; white-space: nowrap;
+}
+td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+th.lbl, td.lbl { white-space: nowrap; font-family: var(--font-mono); font-size: 11.5px; color: var(--mut); }
+td.ui { background: #FCFAFF; }
+
+/* ── Callouts ───────────────────────────────────────────── */
+.note {
+  border-left: 3px solid var(--blue); background: var(--blsoft);
+  padding: 14px 18px; border-radius: 0 var(--r-btn) var(--r-btn) 0;
+  margin: 18px 0; max-width: 82ch;
+}
+.note.warn { border-left-color: var(--straw); background: var(--strsoft); }
+.note.good { border-left-color: var(--matcha); background: var(--mtsoft); }
+.note .tag {
+  font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--blue); display: block; margin-bottom: 5px;
+}
+.note.warn .tag { color: #b8503a; }
+.note.good .tag { color: #3f7a53; }
+.note p:last-child { margin-bottom: 0; }
+
+/* ── Symptom cards ──────────────────────────────────────── */
+.symptoms { display: grid; gap: 14px; margin: 20px 0 8px; max-width: 92ch; }
+.sym {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--straw);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+  padding: 16px 18px; box-shadow: var(--sh-card);
+}
+.sym.expected { border-left-color: var(--matcha); }
+.sym.info { border-left-color: var(--blue); }
+.sym h4 {
+  margin: 0 0 8px; font-size: 14.5px; font-weight: 600;
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+}
+.sym p { margin: 0 0 8px; font-size: 13.5px; color: var(--mut); line-height: 1.6; }
+.sym p:last-child { margin-bottom: 0; }
+.sym .where {
+  font-family: var(--font-mono); font-size: 11px; color: var(--grey);
+  display: block; margin-top: 8px;
+}
+.badge {
+  font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; padding: 3px 8px; border-radius: var(--r-pill);
+  background: var(--strsoft); color: #b8503a; white-space: nowrap; font-weight: 500;
+}
+.badge.expected { background: var(--mtsoft); color: #3f7a53; }
+.badge.info { background: var(--blsoft); color: var(--blue); }
+
+footer {
+  border-top: 1px solid var(--line); margin-top: 40px; padding-top: 22px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--grey);
+  max-width: 1180px; margin-left: auto; margin-right: auto;
+}
+footer a { color: var(--mut); }
+
+@media (max-width: 720px) {
+  main { padding: 28px 18px 80px; }
+  .top-inner { padding: 12px 18px; }
+  nav.top-nav { width: 100%; margin-left: 0; }
+  h2 { font-size: 26px; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <div class="brand">yogurt<span>.</span></div>
+      <div class="tagline">Debugging transcripts</div>
+    </div>
+    <nav class="top-nav">
+      <a href="#split">The split</a>
+      <a href="#tail">Tail the DB</a>
+      <a href="#ws">Raw WS</a>
+      <a href="#viz">Visualizer</a>
+      <a href="#divergences">Divergences</a>
+      <a href="ARCHITECTURE.html">Architecture &rarr;</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <div class="hero">
+    <h1>Two transcripts, one meeting</h1>
+    <p class="lede">The dock and the database are built by different code from the same broadcast. When they disagree, this is how you find out which one is lying.</p>
+    <p class="sub">Mirrors <code>docs/DEBUGGING-TRANSCRIPTS.md</code> &mdash; for the mechanism itself, see <a href="ARCHITECTURE.html#record">Architecture &sect;4</a>.</p>
+
+    <div class="facts">
+      <div class="fact">
+        <span class="n">2</span>
+        <span class="l">transcripts, not one</span>
+      </div>
+      <div class="fact">
+        <span class="n warn">0</span>
+        <span class="l">partials ever persisted</span>
+      </div>
+      <div class="fact">
+        <span class="n good">1</span>
+        <span class="l">place the offset is applied</span>
+      </div>
+      <div class="fact">
+        <span class="n">6</span>
+        <span class="l">known divergence causes</span>
+      </div>
+    </div>
+  </div>
+
+  <section class="sec" id="split">
+    <div class="sec-head"><span class="sec-num">00</span><h2>Where the stream forks</h2></div>
+    <p>STT publishes onto a private channel. <code>relay_transcript_events</code> stamps the continuation-session offset onto every event in exactly one place, then fans it out to two consumers that treat it very differently.</p>
+
+    <div class="frame">
+      <div class="cap"><span>One broadcast, two consumers</span><span class="rhs">crates/yogurt-server/src/meetings.rs</span></div>
+      <div class="body"><pre class="mermaid">
+flowchart TD
+  subgraph SRV["Server, one Rust process"]
+    direction TB
+    STT["Stt impl<br/>Deepgram or whisper.cpp"]
+    RAW["raw_transcript_tx<br/>broadcast, cap 256"]
+    REL["relay_transcript_events<br/>ts_ms += offset_ms"]
+    TX["transcript_tx"]
+    PER["persist_transcript<br/>finals only, non-empty only"]
+    WSH["handle_meeting_socket<br/>wraps every event"]
+    DB[("meetings.transcript_json<br/>SQLite, source of truth")]
+  end
+  subgraph BRO["Browser"]
+    direction TB
+    HOOK["useTranscriptWs"]
+    MRG["mergeEvent<br/>partial replaces trailing partial"]
+    DOCK["Transcript dock"]
+  end
+
+  STT --> RAW --> REL --> TX
+  TX --> PER --> DB
+  TX --> WSH
+  WSH -->|"{type:transcript, payload}"| HOOK
+  HOOK --> MRG --> DOCK
+  DB -.->|"seed once per meetingId<br/>storedSegmentToEvent"| HOOK
+
+  classDef db fill:#E7F0E8,stroke:#5E9E73,color:#211D18;
+  class DB db;
+      </pre></div>
+    </div>
+
+    <div class="note good">
+      <span class="tag">The load-bearing fact</span>
+      <p>The server owns the transcript. The browser never sends it back, so nothing the UI does can corrupt what is stored &mdash; <strong>a dock bug is always a rendering bug.</strong></p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th></th><th>Transcript dock (UI)</th><th>meetings.transcript_json (SQLite)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="lbl">Contains</td>
+            <td class="ui">Finals <strong>and</strong> the trailing partial per channel</td>
+            <td>Finals only, non-empty only</td>
+          </tr>
+          <tr>
+            <td class="lbl">Built by</td>
+            <td class="ui"><code>mergeEvent</code><br/><span style="font-family:var(--font-mono);font-size:11px;color:var(--grey)">web/src/lib/ws.ts:105</span></td>
+            <td><code>persist_transcript</code><br/><span style="font-family:var(--font-mono);font-size:11px;color:var(--grey)">crates/yogurt-server/src/meetings.rs:852</span></td>
+          </tr>
+          <tr>
+            <td class="lbl">Fed from</td>
+            <td class="ui"><code>/ws/meetings/{id}</code> frames, plus a one-time seed from the DB</td>
+            <td>The <code>transcript_tx</code> broadcast, directly</td>
+          </tr>
+          <tr>
+            <td class="lbl">Write cadence</td>
+            <td class="ui">Every frame, including partials</td>
+            <td>Every final &mdash; whole column PATCHed each time</td>
+          </tr>
+          <tr>
+            <td class="lbl">Survives reload</td>
+            <td class="ui">No, rebuilt from seed plus new frames</td>
+            <td>Yes, it is the source of truth</td>
+          </tr>
+          <tr>
+            <td class="lbl">Timestamps</td>
+            <td class="ui"><code>ts_ms</code> as received</td>
+            <td>Same <code>ts_ms</code> &mdash; the offset is applied upstream of both</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="tail">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Watch the persisted transcript</h2></div>
+    <p>Leave this running during a meeting and open the output file in an editor. It rewrites the file atomically every couple of seconds (temp file plus <code>mv</code>), so an editor that reloads on change never catches a half-written file.</p>
+
+    <div class="frame">
+      <div class="cap"><span>scripts/tail-transcript.sh</span><span class="rhs">ts_ms &nbsp; channel &nbsp; text</span></div>
+      <pre class="code"><span class="c"># newest meeting -&gt; /tmp/yogurt-transcript.json</span>
+scripts/tail-transcript.sh
+
+<span class="c"># a specific meeting</span>
+scripts/tail-transcript.sh <span class="p">&lt;meeting-id&gt;</span>
+
+<span class="c"># somewhere else, faster</span>
+OUT=~/t.txt INTERVAL=1 scripts/tail-transcript.sh</pre>
+    </div>
+
+    <p><code>persist_transcript</code> writes on every final, so the file grows within a second or two of each finished utterance. If a line is in the dock but never lands here, it was a partial that never got finalized.</p>
+  </section>
+
+  <section class="sec" id="ws">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Watch the raw WebSocket</h2></div>
+    <p>Byte-for-byte what the dock receives, partials included. Use this when you need to see partial churn &mdash; the DB tail cannot show it.</p>
+
+    <div class="frame">
+      <div class="cap"><span>websocat</span><span class="rhs">session token from ~/.yogurt/session-token</span></div>
+      <pre class="code">websocat <span class="s">"ws://localhost:7878/ws/meetings/<span class="p">&lt;MEETING_ID&gt;</span>?token=$(cat ~/.yogurt/session-token)"</span></pre>
+    </div>
+
+    <p>Frames are <code>{"type":"transcript","payload":{ts_ms,channel,text,is_final}}</code>. <code>enhance_progress</code> and chat frames ride the same socket, so expect other <code>type</code> values interleaved.</p>
+  </section>
+
+  <section class="sec" id="viz">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Open the DB in a visualizer</h2></div>
+    <p>SQLite, so the "connection string" is just the file path.</p>
+
+    <div class="frame">
+      <div class="cap"><span>Connection strings</span><span class="rhs">open read-only</span></div>
+      <pre class="code"><span class="c"># TablePlus / DBeaver / Beekeeper: choose SQLite, point at</span>
+/Users/<span class="p">&lt;you&gt;</span>/.yogurt/db.sqlite
+
+<span class="c"># JDBC</span>
+jdbc:sqlite:/Users/<span class="p">&lt;you&gt;</span>/.yogurt/db.sqlite
+
+<span class="c"># SQLAlchemy</span>
+sqlite:////Users/<span class="p">&lt;you&gt;</span>/.yogurt/db.sqlite</pre>
+    </div>
+
+    <div class="note warn">
+      <span class="tag">WAL mode</span>
+      <p>The database runs in WAL mode, so most GUI tools will not auto-refresh mid-meeting. Re-run the query to pick up new segments. Open read-only so you are not competing with the running server for the write lock.</p>
+    </div>
+
+    <div class="frame">
+      <div class="cap"><span>Flatten the JSON column into rows</span><span class="rhs">json_each</span></div>
+      <pre class="code">select json_extract(value, <span class="s">'$.ts_ms'</span>)   as ts_ms,
+       json_extract(value, <span class="s">'$.channel'</span>) as channel,
+       json_extract(value, <span class="s">'$.text'</span>)    as text
+from meetings, json_each(meetings.transcript_json)
+where meetings.id = <span class="s">'<span class="p">&lt;meeting-id&gt;</span>'</span>;</pre>
+    </div>
+
+    <p><code>channel</code> is <code>"me"</code> for mic (you) and <code>"them"</code> for system audio (everyone else), set by <code>segment_json</code>.</p>
+  </section>
+
+  <section class="sec" id="divergences">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Known reasons they disagree</h2></div>
+    <p>Work down this list before assuming a new bug. The first two are by design.</p>
+
+    <div class="symptoms">
+
+      <div class="sym expected">
+        <h4>A repeated sentence appears once in the dock but twice in the DB <span class="badge expected">By design</span></h4>
+        <p>When the dock seeds itself from persisted history, it records the <code>(channel, text)</code> of every seeded final and drops any live final that matches. That exists to kill the duplicate you get when the history fetch races the WS subscribe.</p>
+        <p>It cannot tell a genuine verbatim repeat from a redelivery, so the DB keeps both and the dock keeps one.</p>
+        <span class="where">web/src/lib/ws.ts:283</span>
+      </div>
+
+      <div class="sym expected">
+        <h4>A line is in the dock but not in the DB <span class="badge expected">By design</span></h4>
+        <p>Almost always a partial. <code>persist_transcript</code> skips anything where <code>is_final</code> is false or the text trims to empty.</p>
+        <p>Confirm on the raw WS &mdash; if the line never arrives with <code>is_final: true</code>, there is nothing to persist.</p>
+        <span class="where">crates/yogurt-server/src/meetings.rs:866</span>
+      </div>
+
+      <div class="sym">
+        <h4>Lines are missing from both <span class="badge">Real loss</span></h4>
+        <p>Look for <code>transcript persistence lagged</code> or <code>ws/meetings: client lagged</code> in the server log. The broadcast channel holds 256 events; a consumer that falls behind gets a <code>Lagged(n)</code> and those events are gone.</p>
+        <p>Also check for the <code>[stt overloaded, transcript may be lossy]</code> status line, which means audio chunks were dropped upstream of STT entirely.</p>
+        <span class="where">meetings.rs:871 &nbsp;&middot;&nbsp; ws.rs Lagged branch</span>
+      </div>
+
+      <div class="sym">
+        <h4>Timestamps restart at zero mid-meeting <span class="badge">Bug</span></h4>
+        <p>A stop/restart where <code>session_offset_ms</code> failed to resolve the original <code>started_at</code>. The offset is applied in exactly one place, so if the DB has it wrong the dock has it wrong too.</p>
+        <span class="where">relay_transcript_events, meetings.rs:790</span>
+      </div>
+
+      <div class="sym">
+        <h4>The whole prior session vanished after a restart <span class="badge">Regression</span></h4>
+        <p><code>write_segments</code> PATCHes the entire column each time, so <code>persist_transcript</code> seeds its accumulator from the existing column via <code>load_existing_segments</code> precisely to stop this.</p>
+        <p>If it recurs, that seed is the thing to check first.</p>
+        <span class="where">load_existing_segments, meetings.rs:899</span>
+      </div>
+
+      <div class="sym info">
+        <h4>Text renders as mojibake <span class="badge info">Not a dock bug</span></h4>
+        <p>A storage or sanitization bug, not a rendering one. It will be identical in the tail file.</p>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Source of truth: <code>docs/DEBUGGING-TRANSCRIPTS.md</code> &nbsp;&middot;&nbsp; mechanism: <a href="ARCHITECTURE.html#record">ARCHITECTURE.html &sect;4</a> &nbsp;&middot;&nbsp; traced from code
+</footer>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({
+  startOnLoad: true,
+  theme: "base",
+  securityLevel: "loose",
+  fontFamily: '"Hanken Grotesk", ui-sans-serif, system-ui, sans-serif',
+  themeVariables: {
+    background: "#FFFFFF",
+    primaryColor: "#ECE9FB",
+    primaryTextColor: "#211D18",
+    primaryBorderColor: "#5B4FC7",
+    lineColor: "#A89F90",
+    secondaryColor: "#E7F0E8",
+    tertiaryColor: "#FBF7EF",
+    fontSize: "13px",
+    clusterBkg: "#FDFBF7",
+    clusterBorder: "#EBE3D5",
+    edgeLabelBackground: "#FBF7EF"
+  },
+  flowchart: { curve: "basis", useMaxWidth: true, padding: 14 }
+});
+</script>
+
+</body>
+</html>

@@ -31,6 +31,8 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 ## Repo layout
 
 - `docs/ARCHITECTURE.md` is the mechanism doc; `docs/.lavish/` holds its interactive HTML companions - create new Lavish review surfaces there, not at the repo root.
+- `docs/DEBUGGING-TRANSCRIPTS.md` covers inspecting a live transcript: tailing `transcript_json`, reading raw WS frames, and the known UI-vs-DB divergences.
+- `docs/MODEL-EVAL.md` covers A/B-ing STT engines and LLMs: `scripts/eval/` plays a fixed scripted conversation into a recording and grades two resulting summaries with headless Claude.
 - `docs/.planning/` is where active GSD planning for the next milestone goes.
 - When a doc, plan, or Lavish surface is no longer relevant, move it into the mirrored `docs/archive/` tree (`archive/.lavish/`, `archive/.planning/v1/`, `archive/PRD.md`, ...) - archive, never delete.
 - Everything under `docs/` is tracked in git, including `.lavish/`.
