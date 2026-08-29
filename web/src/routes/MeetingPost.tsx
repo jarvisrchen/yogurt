@@ -46,6 +46,7 @@ import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
+import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
@@ -56,36 +57,6 @@ const INK = "#211D18"; // --color-ink
 const LINE = "#EBE3D5"; // --color-line
 const STRAW = "#E07A66"; // --color-straw — error accent
 const STRAW_SOFT = "#FBE6E0"; // --color-strsoft
-
-/**
- * Header task NOTES-08 — "Aug 26 · 2:45 PM · 47 min". Duration is omitted
- * (no trailing dash) while `ended_at` is missing, mirroring
- * `MeetingCard.tsx`'s `formatMeta` — this just also prefixes the date,
- * which the Library card doesn't need (it's already grouped by day).
- */
-export function formatMeetingSubline(
-  startedAtUnixMs: number | undefined,
-  endedAtUnixMs: number | undefined,
-  sttEngine?: string | null,
-): string {
-  if (startedAtUnixMs == null) return "";
-  const d = new Date(startedAtUnixMs);
-  const parts = [
-    d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-    d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
-  ];
-  if (endedAtUnixMs != null && endedAtUnixMs > startedAtUnixMs) {
-    const minutes = Math.max(
-      1,
-      Math.round((endedAtUnixMs - startedAtUnixMs) / 60_000),
-    );
-    parts.push(`${minutes} min`);
-  }
-  // Feature: per-meeting STT engine provenance, e.g. "local · small.en" —
-  // already contains its own "·" separator, so it slots in as one more part.
-  if (sttEngine) parts.push(sttEngine);
-  return parts.join(" · ");
-}
 
 /**
  * Matches `yogurt_db::Meeting`'s actual wire field names (`started_at` /
@@ -465,8 +436,6 @@ export function MeetingPost() {
     return <Navigate to={`/meeting/${meetingId}`} replace />;
   }
 
-  const subline = formatMeetingSubline(startedAtUnixMs, endedAtUnixMs, sttEngine);
-
   return (
     <div
       className="min-h-screen pr-7"
@@ -511,12 +480,14 @@ export function MeetingPost() {
               title={displayTitle ?? "Untitled meeting"}
               className="block font-serif text-[19px] leading-tight text-ink truncate"
             />
-            {subline && (
-              <p className="font-mono text-[11px] text-mut mt-0.5">
-                {subline}
-              </p>
-            )}
-            {meetingId && <MeetingLabels meetingId={meetingId} compact />}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <MeetingMetaPills
+                startedAt={startedAtUnixMs}
+                endedAt={endedAtUnixMs}
+                sttEngine={sttEngine}
+              />
+              {meetingId && <MeetingLabels meetingId={meetingId} />}
+            </div>
           </div>
         </div>
         {token && (

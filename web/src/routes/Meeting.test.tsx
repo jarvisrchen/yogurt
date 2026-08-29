@@ -50,6 +50,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/api/meetings", () => ({
+  meetingKey: (id: string) => ["meetings", id],
   meetingsApi: {
     patch: vi.fn().mockResolvedValue({}),
   },

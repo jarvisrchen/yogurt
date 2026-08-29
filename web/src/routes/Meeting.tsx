@@ -5,10 +5,12 @@ import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
+import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
-import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
+import { meetingKey, meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   storedSegmentToEvent,
   useSttError,
@@ -107,6 +109,7 @@ export function Meeting() {
   // (see the `hydrationSettled` effect further down).
   const meetingQuery = useMeeting(meetingId ?? undefined);
   const meetingRow = meetingQuery.data;
+  const queryClient = useQueryClient();
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
 
   // Live-dock-loses-history-on-remount fix: parse the meeting row's
@@ -272,6 +275,9 @@ export function Meeting() {
         return;
       }
       setRecording(true);
+      // /start stamps started_at + stt_engine on the row; refetch so the
+      // meta pills reflect the real engine instead of the poll fallback.
+      void queryClient.invalidateQueries({ queryKey: meetingKey(id) });
     } catch (e) {
       setErrorMessage(
         e instanceof Error ? e.message : "Failed to start recording",
@@ -294,6 +300,7 @@ export function Meeting() {
         return;
       }
       setRecording(false);
+      void queryClient.invalidateQueries({ queryKey: meetingKey(meetingId) });
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Failed to stop recording");
     }
@@ -460,11 +467,6 @@ export function Meeting() {
                   {title}
                 </h1>
               )}
-              {meetingId && recording && activeRecording.data?.stt && (
-                <span className="shrink-0 px-2 py-1 rounded-button border border-line bg-paper text-[11px] font-mono uppercase text-mut">
-                  {activeRecording.data.stt === "cloud" ? "Cloud STT" : "Local STT"}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {meetingId && !recording && (
@@ -502,7 +504,22 @@ export function Meeting() {
               )}
             </div>
           </div>
-          {/* Row 2: label chips + picker, left-aligned under the title. */}
+          {/* Row 2: meeting metadata pills (date, duration, STT engine).
+              Sourced from the persisted row so the engine pill stays after
+              recording stops; falls back to the active-recording poll's
+              bare provider for the moment between /start and the row
+              refetch. */}
+          {meetingId && (
+            <MeetingMetaPills
+              startedAt={meetingRow?.started_at}
+              endedAt={meetingRow?.ended_at}
+              sttEngine={
+                meetingRow?.stt_engine ??
+                (recording ? activeRecording.data?.stt ?? null : null)
+              }
+            />
+          )}
+          {/* Row 3: label chips + picker, left-aligned under the title. */}
           {meetingId && <MeetingLabels meetingId={meetingId} />}
           {/* Row 3: mic picker, left-aligned under the title, on its own
               (smaller) line instead of crowding row 1. */}
