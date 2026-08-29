@@ -37,6 +37,21 @@ Example entry:
   Visual evidence:
   ![notes AI section shows a thick focus ring](attachments/2026-08-28-notes-ai-section-focus-ring.png)
 
+## Meetings
+
+- [ ] Short / empty post-meeting meetings should say "too short" and return to the library
+  When a meeting ends but has nothing meaningful to transcribe or enhance (very short duration, mostly silence, audio captured but no usable content), the post-meeting view runs enhance on near-empty input today.
+  Detect this case and surface a clear "Meeting too short" state instead of producing augmented notes from nothing.
+  Auto-return to the library (home screen) so the user isn't left in a blank post-meeting view they have to navigate out of manually.
+
+- [x] Delete-confirm check should overlay, not shift the post-meeting topbar
+  In the post-meeting view, clicking the trashcan button shows the confirm checkmark inline, which then pushes the Enhance button and the rest of the top bar around (format/visual layout changes mid-click).
+  Make the confirm step overlay-anchored under the trashcan (floating popover) instead of taking up flow space, so the topbar stays put.
+
+  Visual evidence:
+  ![post-meeting delete confirm with check](attachments/2026-08-28-delete-confirm-check-appears.png)
+  ![post-meeting delete confirm shifts the topbar](attachments/2026-08-28-delete-confirm-shifts-topbar.png)
+
 ## Audio
 
 - [ ] Add NVIDIA Parakeet v3 to the local STT model download
