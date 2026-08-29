@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# yogurt run-release — start the release binary, single process.
+# yogurt run-release - start the release binary, single process.
 #
 # This is the "what a brew user gets" mode: one binary, no Vite, no .env.local
 # (release builds skip dotenvy per SET-11). API keys must be entered via
 # the Settings UI on first run.
+#
+# Equivalent to `target/release/yogurt start` plus: incremental rebuild of
+# the web bundle and binary, port-conflict handling, optional dev codesign.
 #
 # Use this for validation / acceptance testing of the shipped product.
 # For active web-UI development, use run-backend.sh + run-frontend.sh.
@@ -59,12 +62,18 @@ if ! command -v cargo >/dev/null 2>&1; then
   fi
 fi
 
-# Build if needed.
-BIN="target/release/yogurt"
-if [ ! -x "$BIN" ]; then
-  bold "Binary missing at $BIN — building (8-15 min on first run)."
-  cargo build --release
+# Always rebuild: web bundle first (rust-embed compiles web/dist into the
+# binary, so a stale bundle means stale UI with no warning), then the release
+# binary. Both are incremental - seconds when nothing changed, 8-15 min on a
+# fresh clone.
+if ! command -v pnpm >/dev/null 2>&1; then
+  err "pnpm not found. Run ./scripts/setup.sh first."
+  exit 1
 fi
+BIN="target/release/yogurt"
+bold "Building web bundle + release binary (incremental)"
+pnpm --dir web build
+cargo build --release
 
 # Optional dev signing: a stable `yogurt-dev` identity keeps macOS Keychain
 # "Always Allow" grants valid across rebuilds. Shipped releases get real
@@ -72,16 +81,16 @@ fi
 # See README "Keychain prompts (macOS)".
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "yogurt-dev"; then
   if codesign --force --sign "yogurt-dev" "$BIN" 2>/dev/null; then
-    dim "  signed with yogurt-dev identity — Keychain grants persist across rebuilds"
+    dim "  signed with yogurt-dev identity - Keychain grants persist across rebuilds"
   else
-    dim "  yogurt-dev signing failed — continuing unsigned"
+    dim "  yogurt-dev signing failed - continuing unsigned"
   fi
 fi
 
 PORT=$(ensure_port_free "release" "$PORT") || exit 1
 
 bold "Starting yogurt (release mode) at http://localhost:$PORT"
-dim "  Single binary with embedded web bundle — no Vite, no .env.local."
+dim "  Single binary with embedded web bundle - no Vite, no .env.local."
 dim "  Enter API keys via the Settings UI on first run."
 dim "  Ctrl-C to stop."
 echo
