@@ -4,6 +4,7 @@ import { YogurtEditor } from "../editor";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
+import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { postEnhance } from "../lib/api";
@@ -501,7 +502,9 @@ export function Meeting() {
               )}
             </div>
           </div>
-          {/* Row 2: mic picker, left-aligned under the title, on its own
+          {/* Row 2: label chips + picker, left-aligned under the title. */}
+          {meetingId && <MeetingLabels meetingId={meetingId} />}
+          {/* Row 3: mic picker, left-aligned under the title, on its own
               (smaller) line instead of crowding row 1. */}
           {meetingId && recording && (
             <div className="flex items-center">

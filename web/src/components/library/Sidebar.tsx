@@ -19,12 +19,15 @@ import { Link, NavLink, useNavigate } from "react-router";
 import { Plus, Settings as SettingsIcon } from "lucide-react";
 import { Logo } from "../Logo";
 import { useCreateMeeting } from "../../lib/api/meetings";
+import { useLabels } from "../../lib/api/labels";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
+import { SidebarLabelRow } from "./SidebarLabelRow";
 
 export function Sidebar() {
   const navigate = useNavigate();
   const createMeeting = useCreateMeeting();
+  const labels = useLabels();
 
   // Phase 5 settings drive the "Local-only · on" pill — only show it
   // when no `kind === "cloud"` provider is active. The shape is the
@@ -109,6 +112,18 @@ export function Sidebar() {
           Starred
         </NavLink>
       </nav>
+
+      {/* Labels */}
+      <div className="px-5 pt-5 pb-1 text-[11px] font-mono uppercase tracking-wider text-mut">
+        Labels
+      </div>
+      <div className="px-2 flex flex-col gap-0.5 overflow-y-auto">
+        {(labels.data ?? []).length === 0 ? (
+          <p className="px-3 py-1 text-[12px] font-mono text-mut">No labels yet</p>
+        ) : (
+          labels.data!.map((l) => <SidebarLabelRow key={l.id} label={l} />)
+        )}
+      </div>
 
       {/* Footer */}
       <div className="mt-auto px-4 py-4 flex flex-col gap-2">

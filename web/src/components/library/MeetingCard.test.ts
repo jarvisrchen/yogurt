@@ -15,6 +15,7 @@ function meeting(over: Partial<Meeting> = {}): Meeting {
     transcript_json: "[]",
     starred: false,
     stt_engine: null,
+    labels: [],
     created_at: new Date(START).toISOString(),
     updated_at: new Date(START).toISOString(),
     ...over,

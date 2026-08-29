@@ -16,6 +16,16 @@ import { ensureSessionToken } from "../session";
 
 // ─── Types (mirror yogurt_db::Meeting) ─────────────────────────────────────
 
+/** Palette keys understood by `LabelChip` — mirrors Rust `labels::COLORS`. */
+export type LabelColor = "blue" | "matcha" | "straw" | "lilac" | "honey" | "slate";
+
+/** Wire shape of one label row, matching `yogurt_db::Label`. */
+export interface Label {
+  id: string;
+  name: string;
+  color: LabelColor;
+}
+
 /**
  * Wire shape of one meeting row, matching `yogurt_db::Meeting` after serde
  * serialization. The server stamps `created_at` / `updated_at` as ISO 8601
@@ -42,6 +52,8 @@ export interface Meeting {
   created_at: string;
   /** ISO 8601 UTC string. */
   updated_at: string;
+  /** Labels attached to this meeting, sorted by name. */
+  labels: Label[];
 }
 
 /** Patch shape — see Rust `MeetingPatch` for the tri-state semantics. */
@@ -56,6 +68,8 @@ export interface MeetingPatch {
   starred?: boolean;
   /** Plain optional semantics (not tri-state) — mirrors Rust `notes_md`. */
   stt_engine?: string;
+  /** Replace this meeting's label set with exactly these ids. */
+  label_ids?: string[];
 }
 
 // ─── Cache keys ────────────────────────────────────────────────────────────
@@ -72,7 +86,7 @@ export const meetingKey = (id: string) => ["meetings", id] as const;
  * The token is fetched lazily via `ensureSessionToken()` (Phase 0 helper)
  * and cached for the lifetime of the page.
  */
-async function json<T>(input: string, init?: RequestInit): Promise<T> {
+export async function json<T>(input: string, init?: RequestInit): Promise<T> {
   const token = await ensureSessionToken();
   const headers = new Headers(init?.headers ?? {});
   headers.set("Authorization", `Bearer ${token}`);
@@ -204,6 +218,31 @@ export function useToggleStarred(): UseMutationResult<
     mutationFn: ({ id, starred }) => meetingsApi.patch(id, { starred }),
     onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.setQueryData(meetingKey(m.id), m);
+    },
+  });
+}
+
+/**
+ * `PATCH /api/meetings/:id { label_ids }` — replace a meeting's label set.
+ * Invalidates the meetings list (covers search keys via shared prefix) AND
+ * the labels list (label counts change), and primes the individual
+ * meeting cache with the returned row.
+ */
+export function useSetMeetingLabels(): UseMutationResult<
+  Meeting,
+  Error,
+  { id: string; label_ids: string[] }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, label_ids }) => meetingsApi.patch(id, { label_ids }),
+    onSuccess: (m) => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      // Literal (not imported from ./labels) to avoid a meetings.ts <->
+      // labels.ts circular import — TanStack matches query keys
+      // structurally, so this still invalidates `labelsKey` there.
+      qc.invalidateQueries({ queryKey: ["labels"] });
       qc.setQueryData(meetingKey(m.id), m);
     },
   });

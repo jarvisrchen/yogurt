@@ -16,6 +16,7 @@
 import { Link } from "react-router";
 import { Star } from "lucide-react";
 import type { Meeting } from "../../lib/api/meetings";
+import { LabelChip } from "../labels/LabelChip";
 import { InlineTitle } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
 
@@ -131,11 +132,18 @@ export function MeetingCard({ meeting, activeId }: Props) {
             formatMeta(meeting)
           )}
         </div>
+        {meeting.labels.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {meeting.labels.map((l) => (
+              <LabelChip key={l.id} label={l} size="sm" />
+            ))}
+          </div>
+        )}
       </div>
       <span className="text-[11px] font-mono text-mut border border-line rounded-pill px-2 py-0.5">
         {engineLabel(meeting.stt_engine)}
       </span>
-      <MeetingCardActions id={meeting.id} starred={meeting.starred} />
+      <MeetingCardActions id={meeting.id} starred={meeting.starred} labels={meeting.labels} />
     </Link>
   );
 }
