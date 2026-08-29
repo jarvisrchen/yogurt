@@ -83,11 +83,26 @@ Eight crates under `crates/`:
 `web/` is the React + Vite + TipTap frontend, embedded into the binary via
 `rust-embed` at release-build time.
 
+**Build order matters.** `rust-embed`'s `#[folder = "../../web/dist/"]`
+derive in `crates/yogurt-server/src/assets.rs` requires `web/dist/` to
+exist at compile time, and `web/dist/` is gitignored.
+Build the web bundle (`just build-web`, or `pnpm --dir web build` directly)
+before any command that compiles `yogurt-server` -- `cargo build`,
+`just build`, `cargo test`, `cargo clippy`.
+`just setup` and `just release` handle this ordering for you; a bare
+`cargo build --release` on a fresh clone will fail or embed a stale bundle
+if you skip the web build first. CI builds the web bundle before rustfmt/
+clippy/test for the same reason.
+
 ## Code style
 
 - `cargo fmt --all` before every commit; CI enforces `--check`.
 - `cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings` must be clean.
 - Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, ...) for commit messages.
+- No em dash (the long dash some editors auto-insert for "--") anywhere --
+  use a plain hyphen or double hyphen instead, as this file does throughout.
+- In Markdown files, put each full sentence on its own line (semantic
+  linefeeds); wrap at the sentence, not at a fixed column.
 
 ## Adding a new STT or LLM provider
 
@@ -123,6 +138,9 @@ just release
 
 Run `yogurt doctor --json` and paste the output -- it never includes API key
 values or note content, only provider names and presence/absence flags.
+
+Found a security vulnerability instead of a regular bug?
+See [SECURITY.md](SECURITY.md) -- report it privately, not as a public issue.
 
 ## License
 
