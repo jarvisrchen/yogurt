@@ -3,7 +3,7 @@
  * counts and link to `/label/:id`.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -70,6 +70,34 @@ describe("Sidebar — Labels section", () => {
       "href",
       "/label/l1",
     );
+  });
+
+  it("opens the row menu from the kebab without navigating", () => {
+    vi.mocked(useLabels).mockReturnValue({
+      data: [{ id: "l1", name: "Sales", color: "blue", meeting_count: 3 }],
+    } as unknown as ReturnType<typeof useLabels>);
+    vi.mocked(useUpdateLabel).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useUpdateLabel>);
+    vi.mocked(useDeleteLabel).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteLabel>);
+    vi.mocked(useCreateMeeting).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
+
+    renderSidebar();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sales label options" }));
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    // Parent container must not clip the absolutely-positioned menu.
+    const menu = screen.getByRole("menu");
+    expect(menu.parentElement?.parentElement?.className).not.toMatch(/overflow/);
   });
 
   it("shows a muted line when there are no labels", () => {

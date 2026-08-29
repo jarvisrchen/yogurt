@@ -117,7 +117,7 @@ export function Sidebar() {
       <div className="px-5 pt-5 pb-1 text-[11px] font-mono uppercase tracking-wider text-mut">
         Labels
       </div>
-      <div className="px-2 flex flex-col gap-0.5 overflow-y-auto">
+      <div className="px-2 flex flex-col gap-0.5">
         {(labels.data ?? []).length === 0 ? (
           <p className="px-3 py-1 text-[12px] font-mono text-mut">No labels yet</p>
         ) : (

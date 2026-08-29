@@ -88,10 +88,23 @@ impl LabelRepo {
             if let Some(existing) = find_by_name(conn, &name)? {
                 return Ok((existing, false));
             }
-            let count: i64 = conn.query_row("SELECT COUNT(*) FROM labels", [], |r| r.get(0))?;
-            let color = color
-                .map(str::to_string)
-                .unwrap_or_else(|| COLORS[(count as usize) % COLORS.len()].to_string());
+            // Auto-color: first palette entry no existing label uses, so
+            // adjacent labels stay visually distinct even after the user
+            // recolors one; once every color is taken, cycle by count.
+            let color = match color {
+                Some(c) => c.to_string(),
+                None => {
+                    let mut stmt = conn.prepare("SELECT color FROM labels")?;
+                    let used: Vec<String> = stmt
+                        .query_map([], |r| r.get(0))?
+                        .collect::<rusqlite::Result<_>>()?;
+                    COLORS
+                        .iter()
+                        .find(|c| !used.iter().any(|u| u == *c))
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| COLORS[used.len() % COLORS.len()].to_string())
+                }
+            };
             let id = Ulid::new().to_string();
             let now_ms = chrono::Utc::now().timestamp_millis();
             conn.execute(
