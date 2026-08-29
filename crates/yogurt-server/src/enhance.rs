@@ -299,7 +299,8 @@ pub async fn enhance(
     // the stored document isn't permanently ugly. The same model also
     // sometimes echoes the prompt's section scaffolding into the output
     // despite the hard rules — strip that too.
-    let llm_output = strip_prompt_scaffolding(&fix_model_mojibake(&llm_output));
+    let llm_output =
+        strip_prompt_scaffolding(&strip_model_reasoning(&fix_model_mojibake(&llm_output)));
 
     let merged = match merge_notes(&req.notes_md, &llm_output, &transcript_json) {
         Ok(m) => m,
@@ -565,6 +566,20 @@ fn strip_prompt_scaffolding(s: &str) -> String {
         .join("\n")
 }
 
+/// MiniMax reasoning models include chain-of-thought in `content` unless
+/// `reasoning_split` is honored by the endpoint. Keep this backstop at the
+/// persistence boundary for compatible gateways that ignore that extension.
+fn strip_model_reasoning(s: &str) -> String {
+    let mut output = s.trim_start();
+    while let Some(reasoning) = output.strip_prefix("<think>") {
+        let Some(end) = reasoning.find("</think>") else {
+            break;
+        };
+        output = reasoning[end + 8..].trim_start();
+    }
+    output.trim().to_string()
+}
+
 /// Repair mojibake the model emits as literal tokens: UTF-8 bytes of a
 /// character re-decoded as Latin-1/CP1252 somewhere in the model's own
 /// training data (observed live from MiniMax: both the CP1252 form
@@ -651,7 +666,14 @@ fn fix_model_mojibake(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::fix_model_mojibake;
+    use super::{fix_model_mojibake, strip_model_reasoning};
+
+    #[test]
+    fn strips_model_reasoning_from_content() {
+        let output =
+            "<think>\nI should analyze the transcript.\n</think>\n\n## Decisions\n- Ship Monday";
+        assert_eq!(strip_model_reasoning(output), "## Decisions\n- Ship Monday");
+    }
 
     #[test]
     fn scrubs_cp1252_variant() {
