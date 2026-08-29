@@ -254,6 +254,18 @@ html, body {
  * the contenteditable it renders inside `.yogurt-editor`).
  * ========================================================================== */
 
+/* Docs/TODO.md "thick blue/purple ring" bug: the browser's default
+ * text-field focus outline paints on the `.ProseMirror` contenteditable the
+ * instant it's clicked into. Because user notes and AI-grey content share
+ * this one contenteditable (aiGrey is an inline mark, not a separate
+ * wrapper), that outline draws around the whole document - reading as if
+ * the AI content itself got focused. The blinking caret already shows
+ * where typing lands, same as any other doc-style editor, so drop the
+ * native outline rather than replace it with another ring. */
+.yogurt-editor .ProseMirror {
+  outline: none;
+}
+
 .yogurt-editor .ProseMirror p {
   margin: 0.45em 0;
 }
