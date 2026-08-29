@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router";
 import { settingsApi } from "../lib/api/settings";
 import { SidebarNav } from "../components/settings/SidebarNav";
 import type { SettingsSection } from "../components/settings/SidebarNav";
@@ -11,8 +12,14 @@ import { STTPicker } from "../components/settings/STTPicker";
 import { AudioSection } from "../components/settings/AudioSection";
 import { GeneralSection } from "../components/settings/GeneralSection";
 
+const VALID_SECTIONS = ["model", "transcription", "audio", "general"] as const;
+
+function isValidSection(s: unknown): s is SettingsSection {
+  return typeof s === "string" && (VALID_SECTIONS as readonly string[]).includes(s);
+}
+
 /**
- * `/settings` page — Phase 5 (Plan 05-03), satisfies SET-01..SET-06.
+ * `/settings/:section` page — Phase 5 (Plan 05-03), satisfies SET-01..SET-06.
  *
  * Layout: 212px sidebar + flexible main content. The Model section is
  * fully wired to `/api/settings*` in this plan; Transcription / Audio /
@@ -23,11 +30,19 @@ import { GeneralSection } from "../components/settings/GeneralSection";
  *   page. Every mutation (`updateProvider`, `setProviderKey`,
  *   `activateProvider`, `deleteProvider`, `createProvider`) invalidates
  *   that key, triggering a single refetch + cascaded re-render.
- * - Section selection is local UI state (`useState<Section>`) — it doesn't
- *   round-trip the server.
+ * - Section selection is URL-driven (`/settings/:section`). Reading
+ *   `useParams` keeps a refresh on the same surface; clicking a sidebar
+ *   item pushes a new path rather than mutating local state.
+ * - Falls back to "model" when `:section` is missing or invalid so the
+ *   component still renders sensibly if mounted outside the route table
+ *   (e.g. older tests).
  */
 export function Settings() {
-  const [section, setSection] = useState<SettingsSection>("model");
+  const params = useParams<{ section: string }>();
+  const navigate = useNavigate();
+  const section: SettingsSection = isValidSection(params.section)
+    ? params.section
+    : "model";
   const [addingProvider, setAddingProvider] = useState(false);
   const q = useQuery({ queryKey: ["settings"], queryFn: settingsApi.get });
 
@@ -62,7 +77,7 @@ export function Settings() {
     <div className="flex min-h-screen bg-[var(--color-paper)]">
       <SidebarNav
         active={section}
-        onChange={setSection}
+        onChange={(s) => navigate(`/settings/${s}`)}
         providers={data.providers}
       />
       <main className="flex-1 max-w-3xl px-10 py-8 space-y-10">
