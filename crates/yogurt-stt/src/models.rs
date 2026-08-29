@@ -124,23 +124,73 @@ pub fn lookup(name: &str) -> Option<&'static ModelSpec> {
     REGISTRY.iter().find(|m| m.name == name)
 }
 
-/// Resolve `<data_dir>/models/<spec.filename>`.  Creates the directory
+/// Resolve `~/.yogurt/models/<spec.filename>`.  Creates the directory
 /// if it does not exist.
 ///
-/// Phase 5 set the `data_local_dir` base to `~/.yogurt` via the
-/// `("com", "yogurt", "yogurt")` ProjectDirs triple - this function
-/// follows the same convention.  If Phase 5's base ever changes,
-/// update here in lock-step.
+/// Resolution uses `directories::BaseDirs::home_dir()` - the same
+/// pattern as `yogurt-db/src/paths.rs` and `yogurt-server`'s storage /
+/// session modules.  The crates are intentionally independent; keep
+/// them in sync if the base directory ever moves.
+///
+/// Side effect: performs the one-time legacy migration from the old
+/// `~/Library/Application Support/com.yogurt.yogurt/models/` location
+/// via [`migrate_legacy_model`] so previously downloaded models are
+/// not re-downloaded.
 pub fn model_path(spec: &ModelSpec) -> std::io::Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("com", "yogurt", "yogurt").ok_or_else(|| {
+    let base = directories::BaseDirs::new().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "could not resolve user data directory",
+            "could not resolve user home directory",
         )
     })?;
-    let dir = dirs.data_local_dir().join("models");
+    let dir = base.home_dir().join(".yogurt").join("models");
     std::fs::create_dir_all(&dir)?;
+    // One-time migration from the pre-q1x ProjectDirs location.  This is
+    // the ONLY place the legacy triple may appear in the crate.
+    if let Some(project_dirs) = directories::ProjectDirs::from("com", "yogurt", "yogurt") {
+        let old_models_dir = project_dirs.data_local_dir().join("models");
+        migrate_legacy_model(&old_models_dir, &dir, spec.filename);
+    }
     Ok(dir.join(spec.filename))
+}
+
+/// Move `old_dir/filename` (and its `.sha256` sidecar) to `new_dir`,
+/// exactly once, never clobbering.  Path-injectable for tests.
+///
+/// Uses `fs::rename` only - both directories live under `$HOME` on the
+/// same volume, so the move is atomic and instant even for a 3 GB
+/// model.  Never copies, never deletes.  Any failure degrades to the
+/// normal SHA256-verified re-download path: a rename error is logged
+/// and ignored, and a lost sidecar self-heals via `is_downloaded_at`'s
+/// re-hash.
+fn migrate_legacy_model(old_dir: &Path, new_dir: &Path, filename: &str) {
+    let new_path = new_dir.join(filename);
+    if new_path.exists() {
+        return; // never clobber an existing file at the new location
+    }
+    let old_path = old_dir.join(filename);
+    if !old_path.exists() {
+        return; // nothing to migrate
+    }
+    if let Err(e) = std::fs::rename(&old_path, &new_path) {
+        tracing::warn!(
+            ?old_path,
+            ?new_path,
+            %e,
+            "legacy model migration: rename failed (re-download will recover)"
+        );
+        return;
+    }
+    let old_marker = marker_path(&old_path);
+    if old_marker.exists() {
+        if let Err(e) = std::fs::rename(&old_marker, marker_path(&new_path)) {
+            tracing::warn!(
+                ?old_marker,
+                %e,
+                "legacy model migration: sidecar rename failed (is_downloaded re-hashes)"
+            );
+        }
+    }
 }
 
 /// `true` iff the model file exists AND verifies against `spec.sha256`
@@ -585,5 +635,72 @@ mod tests {
                 spec.name
             );
         }
+    }
+
+    // ── Legacy model migration ──────────────────────────────────────────
+
+    #[test]
+    fn migration_moves_model_and_sidecar() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old_dir = tmp.path().join("old");
+        let new_dir = tmp.path().join("new");
+        std::fs::create_dir_all(&old_dir).unwrap();
+        std::fs::create_dir_all(&new_dir).unwrap();
+        std::fs::write(old_dir.join("ggml-test.bin"), b"model bytes").unwrap();
+        std::fs::write(old_dir.join("ggml-test.bin.sha256"), b"abc 11\n").unwrap();
+
+        migrate_legacy_model(&old_dir, &new_dir, "ggml-test.bin");
+
+        assert_eq!(
+            std::fs::read(new_dir.join("ggml-test.bin")).unwrap(),
+            b"model bytes"
+        );
+        assert_eq!(
+            std::fs::read(new_dir.join("ggml-test.bin.sha256")).unwrap(),
+            b"abc 11\n"
+        );
+        assert!(!old_dir.join("ggml-test.bin").exists());
+        assert!(!old_dir.join("ggml-test.bin.sha256").exists());
+    }
+
+    #[test]
+    fn migration_never_clobbers_existing_new_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old_dir = tmp.path().join("old");
+        let new_dir = tmp.path().join("new");
+        std::fs::create_dir_all(&old_dir).unwrap();
+        std::fs::create_dir_all(&new_dir).unwrap();
+        std::fs::write(old_dir.join("ggml-test.bin"), b"old bytes").unwrap();
+        std::fs::write(new_dir.join("ggml-test.bin"), b"new bytes").unwrap();
+
+        migrate_legacy_model(&old_dir, &new_dir, "ggml-test.bin");
+
+        assert_eq!(
+            std::fs::read(new_dir.join("ggml-test.bin")).unwrap(),
+            b"new bytes",
+            "existing file at the new path must never be overwritten"
+        );
+        assert_eq!(
+            std::fs::read(old_dir.join("ggml-test.bin")).unwrap(),
+            b"old bytes",
+            "old file must be left untouched when the new path is occupied"
+        );
+    }
+
+    #[test]
+    fn migration_is_a_noop_when_old_dir_missing_or_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let new_dir = tmp.path().join("new");
+        std::fs::create_dir_all(&new_dir).unwrap();
+
+        // Old dir does not exist at all.
+        migrate_legacy_model(&tmp.path().join("nonexistent"), &new_dir, "ggml-test.bin");
+        assert!(!new_dir.join("ggml-test.bin").exists());
+
+        // Old dir exists but is empty.
+        let empty_old = tmp.path().join("empty-old");
+        std::fs::create_dir_all(&empty_old).unwrap();
+        migrate_legacy_model(&empty_old, &new_dir, "ggml-test.bin");
+        assert!(!new_dir.join("ggml-test.bin").exists());
     }
 }
