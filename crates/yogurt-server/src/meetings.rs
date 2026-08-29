@@ -23,7 +23,7 @@
 //!      onto the transcript broadcast.
 
 use anyhow::{anyhow, Context, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex, RwLock};
 use tokio::task::JoinHandle;
@@ -792,10 +792,31 @@ async fn relay_transcript_events(
     tx: broadcast::Sender<TranscriptEvent>,
     offset_ms: u64,
 ) {
+    let mut dedupe = EchoDeduper::default();
     loop {
         match raw_rx.recv().await {
             Ok(mut ev) => {
                 ev.ts_ms += offset_ms;
+                // ponytail: cross-channel TEXT dedupe, not echo cancellation.
+                // When machine audio plays, SCK captures it digitally
+                // (System) while the mic physically hears the speakers
+                // (Mic), so the same speech transcribes twice. We suppress
+                // the mic copy when it near-duplicates recent system text.
+                // Known ceiling: mic partials pass through untouched (two
+                // dim live lines during playback), and a mic final that
+                // arrives before ANY covering system text (possible with
+                // local whisper, which emits no system-channel partials)
+                // survives. Upgrade path: proper AEC on the mic signal in
+                // yogurt-audio (e.g. a webrtc/speex echo canceller fed the
+                // system stream as its reference).
+                if !dedupe.accept(&ev) {
+                    tracing::debug!(
+                        ts_ms = ev.ts_ms,
+                        text = %ev.text,
+                        "echo dedupe: suppressed mic segment duplicating system audio"
+                    );
+                    continue;
+                }
                 if tx.send(ev).is_err() {
                     tracing::info!("transcript relay: no receivers, terminating");
                     return;
@@ -806,6 +827,142 @@ async fn relay_transcript_events(
             }
             Err(broadcast::error::RecvError::Closed) => return,
         }
+    }
+}
+
+/// Wall-clock retention window for cross-channel echo dedupe: a mic-channel
+/// final is checked against system-channel text seen within the last
+/// `ECHO_DEDUPE_WINDOW_MS` of wall time. Arrival time rather than `ts_ms`
+/// because `ts_ms` marks segment START and a single utterance can run 30 s+,
+/// while the echo pair always ARRIVES within a few seconds of each other
+/// (both engines hear the same audio at the same real moment).
+const ECHO_DEDUPE_WINDOW_MS: u64 = 10_000;
+
+/// Minimum bigram-containment score for a mic final to count as an echo of
+/// recent system audio. Bigrams (adjacent word pairs) rather than single
+/// words so a genuine mic utterance that merely re-uses vocabulary from the
+/// machine audio is not swallowed.
+const ECHO_DEDUPE_SIMILARITY: f64 = 0.8;
+
+/// Mic finals with fewer normalized words than this skip dedupe entirely.
+/// Short interjections ("yeah", "okay") legitimately occur on both channels
+/// close together, and `[stt reconnecting]`-style status lines (which fire
+/// on both channels at once) must stay visible.
+const ECHO_DEDUPE_MIN_WORDS: usize = 3;
+
+/// Lowercase, split on every non-alphanumeric char, drop empties. Both
+/// channels' text passes through the same normalization, so punctuation and
+/// casing differences between the two STT sessions cancel out.
+fn normalize_words(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Suppresses mic-channel finals that are near-duplicates of recent
+/// system-channel text (acoustic echo: the mic hears the speakers while
+/// ScreenCaptureKit captures the same audio digitally).
+///
+/// Direction is deliberately one-way: machine audio only ORIGINATES on the
+/// system channel (SCK captures other apps' output; nothing plays the mic
+/// back out), so the system copy is always the correctly-attributed one
+/// ("Them") and only the mic copy is ever dropped. System events are never
+/// suppressed; they are recorded as comparison material — finals within the
+/// retention window plus the latest partial, so a mic final that beats the
+/// matching system FINAL to arrival still matches the system partial text
+/// already streamed.
+#[derive(Default)]
+struct EchoDeduper {
+    /// (arrival, normalized words) of recent system finals, oldest first.
+    sys_finals: VecDeque<(std::time::Instant, Vec<String>)>,
+    /// Latest system partial — replaced in place on each partial, cleared
+    /// when the covering final arrives.
+    sys_partial: Option<(std::time::Instant, Vec<String>)>,
+}
+
+impl EchoDeduper {
+    /// Returns `true` when the event should be forwarded.
+    fn accept(&mut self, ev: &TranscriptEvent) -> bool {
+        match ev.channel {
+            Channel::System => {
+                let words = normalize_words(&ev.text);
+                let now = std::time::Instant::now();
+                if ev.is_final {
+                    self.sys_partial = None;
+                    if !words.is_empty() {
+                        self.sys_finals.push_back((now, words));
+                    }
+                } else if !words.is_empty() {
+                    self.sys_partial = Some((now, words));
+                }
+                true
+            }
+            Channel::Mic => {
+                if !ev.is_final {
+                    return true;
+                }
+                self.evict();
+                let words = normalize_words(&ev.text);
+                if words.len() < ECHO_DEDUPE_MIN_WORDS {
+                    return true;
+                }
+                self.system_bigram_containment(&words) < ECHO_DEDUPE_SIMILARITY
+            }
+        }
+    }
+
+    /// Drop retained system text older than the window.
+    fn evict(&mut self) {
+        let window = std::time::Duration::from_millis(ECHO_DEDUPE_WINDOW_MS);
+        let now = std::time::Instant::now();
+        while let Some((t, _)) = self.sys_finals.front() {
+            if now.duration_since(*t) > window {
+                self.sys_finals.pop_front();
+            } else {
+                break;
+            }
+        }
+        if let Some((t, _)) = &self.sys_partial {
+            if now.duration_since(*t) > window {
+                self.sys_partial = None;
+            }
+        }
+    }
+
+    /// Fraction of `mic_words`' adjacent-pair bigrams present in the
+    /// retained system text, counted as a multiset so a repeated phrase
+    /// can't over-match. Pooling ALL retained entries (rather than
+    /// comparing entry-by-entry) makes utterance-boundary mismatch a
+    /// non-issue: one long system final vs. two shorter mic finals (or
+    /// vice versa) still scores high.
+    fn system_bigram_containment(&self, mic_words: &[String]) -> f64 {
+        let mic_bigrams = mic_words.len().saturating_sub(1);
+        if mic_bigrams == 0 {
+            return 0.0;
+        }
+        let mut sys: HashMap<(&str, &str), usize> = HashMap::new();
+        let entries = self
+            .sys_finals
+            .iter()
+            .map(|(_, w)| w)
+            .chain(self.sys_partial.iter().map(|(_, w)| w));
+        for words in entries {
+            for pair in words.windows(2) {
+                *sys.entry((pair[0].as_str(), pair[1].as_str())).or_default() += 1;
+            }
+        }
+        let mut hits = 0usize;
+        for pair in mic_words.windows(2) {
+            if let Some(n) = sys.get_mut(&(pair[0].as_str(), pair[1].as_str())) {
+                if *n > 0 {
+                    *n -= 1;
+                    hits += 1;
+                }
+            }
+        }
+        hits as f64 / mic_bigrams as f64
     }
 }
 
@@ -1507,6 +1664,134 @@ mod tests {
             text: text.to_string(),
             is_final,
         }
+    }
+
+    /// Clear duplicate: the mic hears exactly what the speakers played.
+    /// The system final passes; the identical mic final is suppressed.
+    #[test]
+    fn echo_dedupe_suppresses_exact_mic_duplicate_of_system_final() {
+        let mut d = EchoDeduper::default();
+        let text = "welcome back to the channel twenty months ago I got a job at Disney";
+        assert!(d.accept(&ev(100, Channel::System, text, true)));
+        assert!(
+            !d.accept(&ev(150, Channel::Mic, text, true)),
+            "identical mic final must be suppressed as echo"
+        );
+    }
+
+    /// Near-duplicate with minor STT variation (different punctuation,
+    /// casing, and one small word swap between the two engine sessions)
+    /// is still recognized as echo.
+    #[test]
+    fn echo_dedupe_suppresses_mic_near_duplicate_with_stt_variation() {
+        let mut d = EchoDeduper::default();
+        assert!(d.accept(&ev(
+            100,
+            Channel::System,
+            "more about why i quit and a tour of my new apartment later in this video",
+            true,
+        )));
+        assert!(
+            !d.accept(&ev(
+                150,
+                Channel::Mic,
+                "More about why I quit, and the tour of my new apartment later in this video.",
+                true,
+            )),
+            "near-duplicate mic final must be suppressed as echo"
+        );
+    }
+
+    /// Distinct speech in the same window must NOT be deduped: the user
+    /// talking over machine audio is genuine mic content.
+    #[test]
+    fn echo_dedupe_keeps_distinct_mic_speech_in_same_window() {
+        let mut d = EchoDeduper::default();
+        assert!(d.accept(&ev(
+            100,
+            Channel::System,
+            "the quarterly numbers look strong across every region this year",
+            true,
+        )));
+        assert!(
+            d.accept(&ev(
+                150,
+                Channel::Mic,
+                "can you send me the slides after this meeting wraps up",
+                true,
+            )),
+            "distinct mic speech must pass through"
+        );
+    }
+
+    /// Short interjections are exempt (ECHO_DEDUPE_MIN_WORDS): "yeah" from
+    /// the user right after "yeah" from the machine audio is plausible
+    /// genuine speech, not necessarily echo.
+    #[test]
+    fn echo_dedupe_keeps_short_mic_interjections() {
+        let mut d = EchoDeduper::default();
+        assert!(d.accept(&ev(100, Channel::System, "yeah okay", true)));
+        assert!(
+            d.accept(&ev(150, Channel::Mic, "yeah okay", true)),
+            "short mic finals skip dedupe entirely"
+        );
+    }
+
+    /// The mic final may arrive BEFORE the matching system final (per-channel
+    /// STT sessions finalize independently). The system channel's already-
+    /// streamed PARTIAL text must serve as comparison material.
+    #[test]
+    fn echo_dedupe_matches_against_latest_system_partial() {
+        let mut d = EchoDeduper::default();
+        assert!(d.accept(&ev(
+            100,
+            Channel::System,
+            "i put in my two weeks last monday and it's honestly a pretty crazy feeling",
+            false,
+        )));
+        assert!(
+            !d.accept(&ev(
+                150,
+                Channel::Mic,
+                "I put in my two weeks last Monday and it's honestly a pretty crazy feeling.",
+                true,
+            )),
+            "mic final duplicating the live system partial must be suppressed"
+        );
+    }
+
+    /// System text older than ECHO_DEDUPE_WINDOW_MS is evicted — a matching
+    /// mic final long after the machine audio stopped is genuine speech
+    /// (e.g. the user reading the same sentence aloud a minute later).
+    #[test]
+    fn echo_dedupe_forgets_system_text_outside_window() {
+        let mut d = EchoDeduper::default();
+        let text = "twenty months ago i got a job as a software engineer at disney";
+        let stale = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_millis(
+                ECHO_DEDUPE_WINDOW_MS + 1_000,
+            ))
+            .expect("host uptime exceeds the dedupe window");
+        d.sys_finals.push_back((stale, normalize_words(text)));
+        assert!(
+            d.accept(&ev(60_000, Channel::Mic, text, true)),
+            "system text outside the retention window must not suppress mic speech"
+        );
+    }
+
+    /// Mic partials are never suppressed (ponytail ceiling: live partial
+    /// lines during playback are accepted; AEC is the real fix), and system
+    /// events are never suppressed in either direction.
+    #[test]
+    fn echo_dedupe_never_suppresses_partials_or_system_events() {
+        let mut d = EchoDeduper::default();
+        let text = "for now welcome back to the channel and thanks for watching";
+        assert!(d.accept(&ev(100, Channel::System, text, true)));
+        assert!(d.accept(&ev(150, Channel::Mic, text, false)), "mic partial");
+        assert!(
+            d.accept(&ev(200, Channel::System, text, true)),
+            "system final repeating earlier system text"
+        );
     }
 
     /// Drives `persist_transcript` directly against a broadcast channel: a
