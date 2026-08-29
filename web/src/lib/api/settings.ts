@@ -3,7 +3,7 @@
  *
  * **Security invariant (mirrors the Rust side):** `ProviderView.api_key_masked`
  * is the ONLY key-derived value the SPA ever sees. There is no raw-key
- * surface — the `setProviderKey` mutation accepts a plaintext value and
+ * surface - the `setProviderKey` mutation accepts a plaintext value and
  * posts it directly to `POST /api/settings/providers/:id/key`, then the
  * Settings page re-renders from the refetched (masked) shape. The raw
  * key is never held in React state after the mutation resolves.
@@ -14,7 +14,7 @@
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /**
- * Result of `POST /api/settings/providers/:id/test` — one live round-trip
+ * Result of `POST /api/settings/providers/:id/test` - one live round-trip
  * against the provider.
  *
  * A rejected key still comes back HTTP 200 with `ok: false`; the request
@@ -32,13 +32,13 @@ export interface General {
   port: number;
   open_browser_on_start: boolean;
   audio_input_device: string;
-  /** Phase 7 — `true` once the user finishes `/welcome`. Drives the
+  /** Phase 7 - `true` once the user finishes `/welcome`. Drives the
    *  first-run redirect (`useFirstRunRedirect`). */
   first_run_completed: boolean;
-  /** Phase 8 (Plan 08-03) — `"cloud"` (Deepgram) or `"local"` (WhisperLocal).
+  /** Phase 8 (Plan 08-03) - `"cloud"` (Deepgram) or `"local"` (WhisperLocal).
    *  Mirrors `crates/yogurt-db::settings::General::stt_provider`. */
   stt_provider: string;
-  /** Phase 8 (Plan 08-03) — one of the names in `yogurt_stt::models::REGISTRY`
+  /** Phase 8 (Plan 08-03) - one of the names in `yogurt_stt::models::REGISTRY`
    *  (e.g. `"tiny.en"`, `"small.en"`, `"medium.en"`, `"large-v3"`).
    *  Mirrors `crates/yogurt-db::settings::General::stt_model`. */
   stt_model: string;
@@ -96,9 +96,9 @@ export interface UpdateProvider {
   model: string;
 }
 
-/** Phase 2 audio devices shape — re-exported here so the Audio section
+/** Phase 2 audio devices shape - re-exported here so the Audio section
  *  (plan 05-04) can consume the same typed client. Mirrors the backend
- *  `DeviceInfo` struct (`crates/yogurt-audio/src/mic.rs`) — there is no
+ *  `DeviceInfo` struct (`crates/yogurt-audio/src/mic.rs`) - there is no
  *  `id` field, only `name` (the identifier the backend matches on). */
 export interface AudioDevice {
   name: string;
@@ -114,8 +114,14 @@ export interface AudioDevice {
  * no-body response from `set_provider_key` / `delete_provider`), and
  * otherwise parses JSON.
  *
- * Always sets `content-type: application/json` — the Rust handlers reject
+ * Always sets `content-type: application/json` - the Rust handlers reject
  * untagged bodies via axum's `Json<T>` extractor.
+ *
+ * On a non-2xx response the backend returns `{ "error": "…" }` for 422
+ * (validation) and 502 (upstream provider failure) - if the body parses
+ * as JSON with a string `error` field, that string becomes the thrown
+ * message so the UI can show it directly instead of a raw status line.
+ * Anything else falls back to `${status} ${statusText}: ${body}`.
  */
 async function http<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await bearerFetch(input, {
@@ -124,7 +130,14 @@ async function http<T>(input: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    let parsedError: string | undefined;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed.error === "string") parsedError = parsed.error;
+    } catch {
+      // Not JSON - fall through to the raw status line below.
+    }
+    throw new Error(parsedError ?? `${res.status} ${res.statusText}: ${body}`);
   }
   if (res.status === 204) return undefined as unknown as T;
   return res.json() as Promise<T>;
@@ -161,7 +174,7 @@ export const settingsApi = {
       body: JSON.stringify({ api_key }),
     }),
   /**
-   * `POST /api/settings/providers/:id/test` — verify a key actually works
+   * `POST /api/settings/providers/:id/test` - verify a key actually works
    * before committing it. Pass the draft key to test something you have not
    * saved yet; omit it to test whatever is already stored.
    *
@@ -173,7 +186,7 @@ export const settingsApi = {
       method: "POST",
       body: JSON.stringify(api_key ? { api_key } : {}),
     }),
-  /** `POST /api/settings/stt/key` — stores the Deepgram STT key in the
+  /** `POST /api/settings/stt/key` - stores the Deepgram STT key in the
    *  key file. No provider id: the STT key is a singleton, keyed server-side
    *  by `DEEPGRAM_KEY_ID`. */
   setSttKey: (api_key: string) =>
@@ -182,13 +195,15 @@ export const settingsApi = {
       body: JSON.stringify({ api_key }),
     }),
   /**
-   * `POST /api/settings/providers/:id/models` — probe the provider's
+   * `POST /api/settings/providers/:id/models` - probe the provider's
    * `/v1/models` and return the list of model ids it advertises. A draft
    * `apiKey` is preferred over the stored key so the user can
-   * discover what's available *before* saving — useful when the saved
+   * discover what's available *before* saving - useful when the saved
    * model is the only thing wrong (e.g. Google's frequent deprecations).
-   * The draft never reaches the key file. Backend returns 422 if neither
-   * a draft nor a stored key is available.
+   * The draft never reaches the key file. With neither a draft nor a
+   * stored key the probe goes out unauthenticated - local runtimes
+   * (Ollama, LM Studio) answer anyway; a provider that needs a key 401s,
+   * which surfaces as a 502 `{ error }` and renders inline.
    */
   listProviderModels: (id: string, apiKey?: string) =>
     http<string[]>(`/api/settings/providers/${id}/models`, {
@@ -200,12 +215,12 @@ export const settingsApi = {
 // ─── Audio API (Phase 2 endpoint, re-exported for plan 05-04 Audio section)
 //
 // The `/api/audio/devices` endpoint requires a session token (WR-08); the
-// Settings page Audio section will need to attach the bootstrap token —
+// Settings page Audio section will need to attach the bootstrap token -
 // that wiring lands in plan 05-04 when the Audio section is built.
 
 export const audioApi = {
   devices: () => http<AudioDevice[]>("/api/audio/devices"),
-  /** `POST /api/meetings/:id/audio-device` (quick task 260709-wnn) — hot-swap
+  /** `POST /api/meetings/:id/audio-device` (quick task 260709-wnn) - hot-swap
    *  the mic device on an actively-recording meeting. Returns the resolved
    *  device name so the caller can reflect the actual active device. */
   switchMeetingDevice: (meetingId: string, deviceId: string) =>
@@ -223,7 +238,7 @@ export const audioApi = {
 // `useSettings` is a thin shared cache so the Sidebar's `Local-only` pill,
 // the Welcome route's CTA gate, and `useFirstRunRedirect` all share one
 // network round-trip. `useSetFirstRunCompleted` flips the onboarding flag
-// when the user clicks "Take me to my meetings →" — it `PATCH`es and
+// when the user clicks "Take me to my meetings →" - it `PATCH`es and
 // invalidates the cache so the redirect hook re-resolves to `/`.
 
 import {
@@ -235,7 +250,7 @@ import {
 } from "@tanstack/react-query";
 import { bearerFetch } from "../session";
 
-/** Shared cache key — Sidebar, Welcome, and useFirstRunRedirect all read it. */
+/** Shared cache key - Sidebar, Welcome, and useFirstRunRedirect all read it. */
 export const settingsKey = ["settings"] as const;
 
 /** Cached `GET /api/settings`. 30s staleTime matches the Sidebar usage. */
@@ -252,8 +267,8 @@ export function useSettings(): UseQueryResult<SettingsView, Error> {
  *
  * Returns the updated `General` (the backend re-loads after the upsert so
  * the response always reflects the persisted state). Invalidates the
- * shared `settings` cache so any consumer of `useSettings()` — including
- * `useFirstRunRedirect` — picks up the new value immediately.
+ * shared `settings` cache so any consumer of `useSettings()` - including
+ * `useFirstRunRedirect` - picks up the new value immediately.
  */
 export function useSetFirstRunCompleted(): UseMutationResult<
   General,
