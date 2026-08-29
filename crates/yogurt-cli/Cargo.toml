@@ -28,6 +28,17 @@ open = "5"
 # flag at the top of main() — release builds NEVER read .env.local
 # (SET-11). See main.rs and tests/dev_env_local.rs.
 dotenvy = { workspace = true }
+# Phase 9 (Plan 09-03): `yogurt doctor` reads provider names + active STT
+# from the real SQLite settings store, and screen-recording permission
+# from the real TCC check. Both crates are already in the dependency
+# graph via yogurt-server, so this adds no new linkage.
+yogurt-db = { path = "../yogurt-db" }
+yogurt-audio = { path = "../yogurt-audio" }
+# Same `directories` crate yogurt-db/yogurt-stt use for `~/.yogurt`
+# resolution (do NOT use the unmaintained `dirs` crate).
+directories = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
