@@ -47,6 +47,9 @@ cargo build --release
 ```
 
 (Or `cargo install --path crates/yogurt-cli` to put `yogurt` on your `$PATH`.)
+
+If you have [`just`](https://github.com/casey/just) installed (`setup.sh` installs it), `just release` is the same as `./target/release/yogurt start` plus an incremental rebuild of the web bundle and binary first, and a prompt if port 7878 is busy.
+`just` is only a contributor convenience; the shipped product is the `yogurt` binary alone.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev workflow, including
 hot-reload and the `just` task runner.
 
@@ -85,6 +88,7 @@ version that's safe to paste into a bug report.
 ## Command line
 
 `yogurt --help` and `yogurt <command> --help` are the source of truth; this is the same information in one place.
+(`just release` / `just dev` are contributor wrappers around these commands, see [CONTRIBUTING.md](CONTRIBUTING.md#just-vs-yogurt).)
 
 ### `yogurt start`
 

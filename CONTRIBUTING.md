@@ -22,6 +22,26 @@ web bundle, and does a release build. Pass `--no-just` to skip the `just`
 install and use `./scripts/*.sh` directly. Run `just` with no arguments any
 time to list every recipe.
 
+## `just` vs `yogurt`
+
+`yogurt` is the product: one binary with two subcommands, `yogurt start` and `yogurt doctor` (flags in the [README](README.md#command-line)).
+That is all a Homebrew user ever runs.
+
+`just` is the contributor task runner.
+Every `just` recipe is a thin wrapper that builds something and/or execs `yogurt start` with the right flags, plus conveniences the bare binary does not have: an incremental rebuild before launch, a prompt when the port is busy, and optional dev codesigning so Keychain grants survive rebuilds.
+There is nothing you can do with `just` that you cannot do by hand; `just --list` shows every recipe and `scripts/*.sh` are the bodies.
+
+The three ways to run the app:
+
+| Command | Binary | Web assets served from | Reads `.env.local` | Rebuilds first |
+|---------|--------|------------------------|--------------------|----------------|
+| `yogurt start` (or `target/release/yogurt start`) | whatever you point at | the bundle embedded at build time | no | never |
+| `just release` | `target/release/yogurt` | the bundle embedded at build time | no | yes: `pnpm build` + `cargo build --release`, both incremental |
+| `just dev` (or `just backend` + `just frontend`) | `target/debug/yogurt --dev` | Vite on `:5173`, hot reload | yes | yes: `cargo build` (debug) |
+
+The trap: running a binary directly after editing React shows the old UI with no warning, because the bundle lives inside the binary.
+Use `just release` (rebuilds) or `just dev` (proxies to Vite) instead of invoking `target/*/yogurt` by hand.
+
 ## The dev loop
 
 Yogurt has one single-binary release path and a two-process dev path. Both
@@ -53,7 +73,7 @@ the session lives on the backend.
 **Editing only Rust:**
 
 ```bash
-just release      # rebuilds incrementally, then runs
+just release      # incremental web + cargo --release build, then runs
 ```
 
 ## Running tests
@@ -94,7 +114,8 @@ exist at compile time, and `web/dist/` is gitignored.
 Build the web bundle (`just build-web`, or `pnpm --dir web build` directly)
 before any command that compiles `yogurt-server` -- `cargo build`,
 `just build`, `cargo test`, `cargo clippy`.
-`just setup` and `just release` handle this ordering for you; a bare
+`just setup` and `just release` handle this ordering for you (`just dev`
+does not need the bundle because it proxies to Vite); a bare
 `cargo build --release` on a fresh clone will fail or embed a stale bundle
 if you skip the web build first. CI builds the web bundle before rustfmt/
 clippy/test for the same reason.
