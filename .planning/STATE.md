@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 9 of 10 (Distribution Polish) — Not started. Phases 0-8 complete.
 Plan: 09-01/02/03 written but not executed; `.github/` (CI + release workflow) does not exist yet.
 Status: All product features (Phases 0-8) are built and tested — skeleton, design system, audio capture, cloud STT + live transcript dock, augmented-notes hero, LLM client + settings + Keychain, in-meeting chat, library + onboarding, local whisper.cpp STT. Phase 9 packages/signs/ships them: notarized per-arch tarballs, Homebrew tap, `cargo publish`, `yogurt doctor` subcommand, README.
-Last activity: 2026-08-29 - Completed quick task 260828-ogf: Granola-style meeting labels (sidebar, cards, live + post headers), E2E verified in Chrome
+Last activity: 2026-08-29 - Completed quick task 260828-q1x: Whisper model storage moved to ~/.yogurt/models with legacy migration, real 4.8GB migration E2E verified
 
 Progress: [█████████░] 90%
 
@@ -139,6 +139,7 @@ None yet.
 | 260701-x3u | Wire enhance to configured LLM provider (env -> Keychain provider -> mock); was silently MockLlm always | 2026-07-02 | ff84d43, da8f2e0, ca126eb | | [260701-x3u-wire-enhance-endpoint-to-configured-llm-](./quick/260701-x3u-wire-enhance-endpoint-to-configured-llm-/) |
 | 260709-wnn | Add live mic/audio-source switching during an active meeting (true hot-swap, no interruption) + make persisted Settings audio_input_device actually take effect on meeting start | 2026-07-10 | 87a95a4, bafcdc3, 6d92e3b | Needs Review | [260709-wnn-add-live-mic-device-switching-during-mee](./quick/260709-wnn-add-live-mic-device-switching-during-mee/) |
 | 260828-ogf | Add Granola-style meeting labels: labels + meeting_labels tables, /api/labels REST, label_ids on meeting PATCH, sidebar Labels section with /label/:id filter + rename/recolor/delete, LabelPicker on cards + live/post headers | 2026-08-29 | 09008c8, 2f283d2, 4666f85, c4b0a4e | E2E verified | [260828-ogf-add-meeting-labels-granola-style-with-si](./quick/260828-ogf-add-meeting-labels-granola-style-with-si/) |
+| 260828-q1x | Move whisper model storage from Application Support (ProjectDirs) to ~/.yogurt/models so all app data lives under ~/.yogurt; migrate_legacy_model() renames model + .sha256 sidecar, no-clobber | 2026-08-29 | 0e4641b, 0d56f72 | E2E verified | [260828-q1x-move-local-whisper-model-storage-to-yogu](./quick/260828-q1x-move-local-whisper-model-storage-to-yogu/) |
 | (fast) | Library cards open post-meeting read view (/meeting/:id/post) instead of the live-capture view; past meetings showed an empty editor because MeetingCard linked to /meeting/:id which never hydrates saved notes | 2026-08-13 | 853fa3a | | - |
 | (fast) | Apply rustfmt (leftover unformatted hunks from quick task 260701-wjs blocked the `cargo fmt --check` CI gate) | 2026-08-13 | b42896a | | - |
 | (fast) | Hero enhance corruption: render::wrap_ai escaped + double-wrapped model-emitted marker spans (Minimax echoes the prompt's <span data-ai-grey> scaffolding); now strips them before escaping. +regression test (also updated enhance_endpoint assertions that had been matching the escaped garbage) | 2026-08-13 | 247606e, 90ed9ad | | - |
