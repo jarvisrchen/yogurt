@@ -1,0 +1,120 @@
+name: Release
+
+# NOTE ON SIGNING: this pipeline deliberately ships unsigned/ad-hoc-signed
+# binaries. Apple Developer Program enrollment (codesign + notarytool +
+# stapler) is a paid, human-only step (see 09-01-PLAN.md user_setup) and is
+# descoped for the initial release. Homebrew/curl/cargo installs never set
+# the com.apple.quarantine xattr, so Gatekeeper (spctl) never evaluates
+# these binaries -- notarization only matters for browser-downloaded
+# artifacts. Adding codesign + notarize + staple steps back later is a
+# self-contained follow-up: insert them between "strip" and "tarball" below
+# without touching job structure or `needs:` ordering.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run (skip publishing the GitHub Release)"
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.83"
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # rust-embed's #[folder = "../../web/dist/"] derive needs web/dist to
+      # exist at compile time (the folder is gitignored).
+      - name: Build web assets
+        run: |
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web build
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p yogurt
+
+      - name: Strip binary
+        run: strip target/${{ matrix.target }}/release/yogurt
+
+      - name: Package tarball + checksum
+        run: |
+          tar -czf "yogurt-${{ matrix.target }}.tar.gz" -C target/${{ matrix.target }}/release yogurt
+          shasum -a 256 "yogurt-${{ matrix.target }}.tar.gz" > "yogurt-${{ matrix.target }}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yogurt-${{ matrix.target }}
+          path: |
+            yogurt-${{ matrix.target }}.tar.gz
+            yogurt-${{ matrix.target }}.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: yogurt-*
+          path: dist
+          merge-multiple: true
+
+      - name: Build SHA256SUMS
+        run: cat dist/*.sha256 > dist/SHA256SUMS
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.99-rc-dryrun-$(date +%s)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dry-run summary
+        if: github.event_name == 'workflow_dispatch' && inputs.dry-run == true
+        run: |
+          echo "DRY RUN -- would upload the following to a release tagged ${{ steps.version.outputs.version }}:"
+          ls -la dist/
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' || inputs.dry-run == false
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: CHANGELOG.md
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
