@@ -12,7 +12,7 @@
  * URL is api.minimax.io (non-localhost).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import type { SettingsView } from "../lib/api/settings";
@@ -76,6 +76,7 @@ vi.mock("../lib/api/settings", () => {
 
 // Import AFTER vi.mock so the mocked module is wired up
 import { Settings } from "./Settings";
+import { settingsApi } from "../lib/api/settings";
 
 function renderSettings() {
   const qc = new QueryClient({
@@ -114,5 +115,41 @@ describe("Settings page", () => {
 
     // Sanity: the raw "sk-" prefix never appears anywhere in the rendered tree.
     expect(screen.queryByText(/sk-/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * REGRESSION: an inactive provider must be keyable in place.
+ *
+ * Cloning a preset chip creates an INACTIVE row. Originally only the active
+ * `ProviderCard` rendered a key field, so the only route to keying a
+ * freshly-cloned provider was `Set active` first — which swaps the live LLM
+ * over to a provider that cannot answer yet.
+ */
+describe("inactive provider key entry", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reveals a key field on the inactive row and saves without activating", async () => {
+    renderSettings();
+
+    // The keyless inactive row (Minimax in the fixture) offers "Add key".
+    fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
+
+    const field = await screen.findByLabelText("API key for Minimax");
+    fireEvent.change(field, { target: { value: "sk-inactive-provider-key" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save API key for Minimax" }),
+    );
+
+    await waitFor(() => {
+      expect(settingsApi.setProviderKey).toHaveBeenCalledWith(
+        "01HYYYYYYYYYYYYYYYYYYYYYYY",
+        "sk-inactive-provider-key",
+      );
+    });
+    // Keying must NOT have promoted the provider.
+    expect(settingsApi.activateProvider).not.toHaveBeenCalled();
   });
 });
