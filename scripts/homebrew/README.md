@@ -25,7 +25,9 @@ git push origin main
 ## After bootstrap
 
 Once the tap repo exists and `HOMEBREW_TAP_TOKEN` is set as a repo secret on
-`jarvisrchen/yogurt`, the release workflow's `tap` job
+`jarvisrchen/yogurt` (fine-grained PAT scoped to `homebrew-yogurt` with
+Contents *and* Pull requests set to read/write -- see step 4 of
+`scripts/release-checklist.md`), the release workflow's `tap` job
 (`.github/workflows/release.yml`) keeps `Formula/yogurt.rb` up to date
 automatically: on every real (non-dry-run) tag push it rewrites the version
 and per-arch SHA256s and opens a PR against the tap repo's `main`. No manual
