@@ -52,6 +52,10 @@ impl MockChunksLlm {
 
 #[async_trait]
 impl LlmClient for MockChunksLlm {
+    fn model_name(&self) -> String {
+        "mock-chunks".into()
+    }
+
     async fn complete(&self, _req: ChatRequest) -> Result<ChatResponse> {
         Ok(ChatResponse {
             content: self.chunks.join(""),

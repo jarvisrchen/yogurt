@@ -449,6 +449,7 @@ pub async fn enhance(
         let notes_md = req.notes_md.clone();
         let transcript_json = transcript_json.clone();
         let enriched_md_for_repo = enriched_md.clone();
+        let llm_model = llm.model_name();
         let started_at_fallback = started_at_unix_ms;
         // Timestamp tri-state: only touch the repo's timestamps when the
         // REQUEST explicitly carried them. The normal flow stamps
@@ -480,6 +481,7 @@ pub async fn enhance(
                     ended_at: ended_at_patch,
                     starred: None,
                     stt_engine: None,
+                    llm_model: Some(llm_model),
                     label_ids: None,
                 },
             )?;

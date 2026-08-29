@@ -57,6 +57,9 @@ fn migrations() -> Migrations<'static> {
         // named tags) + `meeting_labels` (many-to-many join, cascades on
         // either side).
         M::up(include_str!("../migrations/V007__labels.sql")),
+        // Feature: per-meeting LLM provenance. Nullable TEXT stamped by
+        // enhance.rs with the model that produced `enriched_md`.
+        M::up(include_str!("../migrations/V008__meetings_llm_model.sql")),
     ])
 }
 

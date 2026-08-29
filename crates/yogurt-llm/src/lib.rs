@@ -53,6 +53,10 @@ pub trait LlmClient: Send + Sync {
     /// the wire regardless of `req.stream`. The returned stream is
     /// `Send + 'static` so the caller can spawn it onto a tokio task.
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>>;
+
+    /// The model name this client sends on the wire, for provenance
+    /// stamps (`meetings.llm_model`). Mocks return a fixed marker.
+    fn model_name(&self) -> String;
 }
 
 /// OpenAI-compatible HTTP adapter. Speaks the `/chat/completions` shape —
@@ -128,6 +132,10 @@ impl OpenAiCompatClient {
 
 #[async_trait]
 impl LlmClient for OpenAiCompatClient {
+    fn model_name(&self) -> String {
+        self.model.clone()
+    }
+
     async fn complete(&self, req: ChatRequest) -> Result<ChatResponse> {
         let body = types::OpenAiRequest {
             model: &self.model,

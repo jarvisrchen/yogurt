@@ -1,0 +1,64 @@
+# Fixed-input conversation for model evals. This file is the GROUND TRUTH
+# that compare.sh hands to the judge, so keep it in sync with what play.sh
+# actually speaks.
+#
+# Format:  A: <line>   spoken by voice A (default Samantha)
+#          B: <line>   spoken by voice B (default Daniel)
+#          PAUSE <s>   silence in seconds
+#          # comment
+#
+# Scenario: Sam (product) and Dan (eng lead) - weekly sync on the "Smart
+# Compose" launch. Deliberately covers: small talk, numbers, a decision, a
+# disagreement, a self-correction, an interruption, filler words, a
+# tangent, and explicit action items with owners and dates.
+
+A: Hey Dan, can you hear me okay?
+B: Yeah, loud and clear. Sorry I'm a minute late, the previous call ran over.
+A: No worries. How was the offsite?
+B: Honestly, pretty good. Too many sticky notes, but the team came back with a lot of energy.
+PAUSE 1.5
+A: Okay, so, main thing today is the Smart Compose launch. Where are we on the rollout?
+B: So we shipped to five percent of users on Tuesday. Error rate is sitting at zero point three percent, which is under our one percent threshold.
+A: And latency?
+B: P ninety-five is about four hundred and twenty milliseconds. We were targeting under five hundred, so we're inside the budget, but it's tighter than I'd like.
+PAUSE 1
+A: Hmm. What's driving the latency? Is it the model call or the retrieval step?
+B: Mostly the model call. Um, retrieval is maybe sixty milliseconds. The rest is the completion itself.
+A: Okay. Do we think that gets worse at fifty percent?
+B: It shouldn't, the model endpoint is autoscaled. What I'm more worried about is the cache hit rate dropping as the user mix gets more diverse.
+PAUSE 2
+A: Right. So here's my proposal. I want to go to twenty-five percent on Monday, and then fifty the following week.
+B: I'd rather do ten percent first.
+A: Why ten?
+B: Because we only have three days of data and one of those was a holiday. I don't trust the error rate yet.
+A: I hear you, but marketing already has the blog post scheduled for the ninth, and if we're at ten percent that day it's going to feel like a soft launch.
+B: We could push the post.
+A: We can't, it's tied to the partner announcement.
+PAUSE 1.5
+B: Okay. How about this. Twenty-five percent on Monday, but we add an automatic kill switch if the error rate crosses zero point eight percent for more than fifteen minutes.
+A: I can live with that. So the decision is twenty-five percent Monday, with the kill switch.
+B: Yep. I'll get the kill switch in before Monday. Actually, wait, sorry, Monday is the fifth, not the fourth. Let me double check. Yeah, the fifth.
+A: Got it, Monday the fifth.
+PAUSE 1
+A: Second thing. Support flagged that the suggestions sometimes finish a sentence in a different language than the user was typing.
+B: Oh, the language switching thing. Yeah, we've seen that. It's mostly Spanish and Portuguese users with English keyboards.
+A: How bad is it?
+B: About forty tickets last week. Not huge, but it's embarrassing. I think the fix is to pass the input locale through to the prompt, which is a small change, and then add an eval case for it.
+A: Can that make the Monday release?
+B: The locale fix, yes. The eval case, probably not, that's a Priya thing and she's out until Wednesday.
+A: Okay, let's not block on the eval. Ship the locale fix Monday and Priya adds the eval when she's back.
+PAUSE 2
+B: Oh, unrelated, did you see the thing about the office espresso machine?
+A: The one where somebody put oat milk in the steam wand?
+B: Yes. It was down for two days. Facilities sent a very passive aggressive email.
+A: I saw that. Okay, anyway.
+PAUSE 1
+A: Let me just recap action items so I don't lose them. You're building the kill switch and shipping the locale fix, both by Monday the fifth.
+B: Correct.
+A: I'll tell marketing we're at twenty-five percent on the ninth, not fifty, so they can adjust the copy. And I'll ping Priya about the language eval for when she's back on Wednesday.
+B: One more. Can you ask Jordan for the updated cost numbers? Finance wants a per-user estimate before we go to fifty.
+A: Yes, I'll ask Jordan today. Anything else?
+B: No, I think that's it. Oh, actually, are we still on for the retro on Thursday?
+A: Thursday at two, yeah. I'll send the doc beforehand.
+B: Perfect. Thanks Sam.
+A: Thanks Dan, talk soon.

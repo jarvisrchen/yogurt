@@ -191,6 +191,21 @@ async fn it_enhances_a_meeting_end_to_end() {
         enriched_md_db, enriched_md,
         "SQLite enriched_md matches response",
     );
+    // LLM provenance lives on the Library row (yogurt-db), not Phase 0 storage.
+    let app_conn = rusqlite::Connection::open(tmp.path().join("yogurt-app.sqlite"))
+        .expect("reopen app sqlite");
+    let llm_model_db: Option<String> = app_conn
+        .query_row(
+            "SELECT llm_model FROM meetings WHERE id = ?",
+            [&meeting_id],
+            |row| row.get(0),
+        )
+        .expect("library row should exist after enhance");
+    assert_eq!(
+        llm_model_db.as_deref(),
+        Some("mock"),
+        "enhance stamps the model that produced the summary",
+    );
     assert_eq!(title_db, "Sales sync", "SQLite title persisted");
     let doc: serde_json::Value =
         serde_json::from_str(&enriched_doc_json_db).expect("enriched_doc_json parses");
