@@ -15,10 +15,14 @@ import { settingsApi } from "../../lib/api/settings";
  * probe. The current model is always in the datalist so a value the user
  * typed earlier still shows up as a suggestion.
  *
- * `Refresh` calls `GET /api/settings/providers/:id/models` with the stored
- * Keychain key. Enabled only when `hasStoredKey` is true; otherwise the
- * button is a no-op affordance (the user needs a key before `/models` will
- * answer, since OpenAI-compatible APIs require Bearer auth).
+ * `Refresh` calls `POST /api/settings/providers/:id/models`. If the parent
+ * passes an `apiKeyDraft` (the unmasked key sitting in the API KEY
+ * password field), that draft is sent in the request body and used for the
+ * probe — the button is useful *before* the key is saved, which matters
+ * when the saved `model` is the only thing wrong with the provider
+ * (Google deprecates tiers often enough that this is a real flow). With
+ * no draft and no stored key, the button is disabled — anything else
+ * would 422 server-side.
  */
 
 interface Props {
@@ -29,6 +33,12 @@ interface Props {
   presetModels: string[];
   /** True if there's a key in the Keychain for this provider. */
   hasStoredKey: boolean;
+  /**
+   * Draft key currently typed in the sibling API KEY field. Preferred
+   * over `hasStoredKey` for the `Refresh` call so the user can fetch
+   * available models before committing the key. Never persisted.
+   */
+  apiKeyDraft?: string;
   disabled?: boolean;
   /** Visual label inside the wrapping Field, kept here so callers don't
    *  have to render their own label around the input. */
@@ -42,6 +52,7 @@ export function ModelSelect({
   onChange,
   presetModels,
   hasStoredKey,
+  apiKeyDraft = "",
   disabled,
   id,
 }: Props) {
@@ -53,9 +64,18 @@ export function ModelSelect({
   );
 
   const refresh = useMutation({
-    mutationFn: () => settingsApi.listProviderModels(providerId),
+    mutationFn: () =>
+      settingsApi.listProviderModels(
+        providerId,
+        apiKeyDraft.trim() || undefined,
+      ),
     onSuccess: (models) => setRefreshedModels(models),
   });
+
+  // Either a freshly-pasted key or a stored one lets the user discover
+  // models. The draft wins because the user is mid-edit and we want
+  // their most recent intent to take effect.
+  const canRefresh = hasStoredKey || apiKeyDraft.trim().length > 0;
 
   // Order: live results first (they override the static hint), then the
   // preset list, then the current value as a self-suggestion. Dedup,
@@ -81,12 +101,12 @@ export function ModelSelect({
         <button
           type="button"
           onClick={() => refresh.mutate()}
-          disabled={!hasStoredKey || refresh.isPending}
+          disabled={!canRefresh || refresh.isPending}
           aria-label={`Refresh model list for ${providerName}`}
           title={
-            hasStoredKey
+            canRefresh
               ? "Fetch the latest model list from the provider"
-              : "Save an API key first, then refresh"
+              : "Paste an API key above, then refresh"
           }
           className="text-[12.5px] font-semibold text-mut hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >

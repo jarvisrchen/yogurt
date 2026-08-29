@@ -27,6 +27,7 @@ export function ApiKeyInput({
   hasStoredKey,
   onSaved,
   autoFocus,
+  onDraftChange,
 }: {
   providerId: string;
   /**
@@ -43,15 +44,33 @@ export function ApiKeyInput({
   hasStoredKey?: boolean;
   onSaved?: () => void;
   autoFocus?: boolean;
+  /**
+   * Reports the current draft value (the unmasked key in the password
+   * field) up to the parent on every keystroke. Used by the card to
+   * pass the draft into the MODEL `Refresh` button so the user can
+   * discover available models *before* committing the key — necessary
+   * when the saved `model` is the only thing wrong with the provider
+   * (Google's frequent deprecations being the canonical case).
+   *
+   * The draft never reaches this component's onSaved path without an
+   * explicit `Save key` click, so the parent's read of it stays
+   * read-only from the Keychain's perspective.
+   */
+  onDraftChange?: (draft: string) => void;
 }) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
+
+  function updateDraft(next: string) {
+    setDraft(next);
+    onDraftChange?.(next);
+  }
 
   const setKey = useMutation({
     mutationFn: (k: string) => settingsApi.setProviderKey(providerId, k),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings"] });
-      setDraft("");
+      updateDraft("");
       onSaved?.();
     },
   });
@@ -75,7 +94,7 @@ export function ApiKeyInput({
           className="flex-1 font-mono text-sm border border-line rounded px-2 py-1.5 focus:border-[var(--color-blue)] outline-none"
           value={draft}
           onChange={(e) => {
-            setDraft(e.target.value);
+            updateDraft(e.target.value);
             // A previous verdict describes a key that is no longer in the
             // box — showing a stale green tick next to new text is a lie.
             test.reset();

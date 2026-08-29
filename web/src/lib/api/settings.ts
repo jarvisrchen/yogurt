@@ -175,12 +175,19 @@ export const settingsApi = {
       body: JSON.stringify({ api_key }),
     }),
   /**
-   * `GET /api/settings/providers/:id/models` — probe the provider's
-   * `/v1/models` using the stored Keychain key and return the list of
-   * model ids it advertises. Backend returns 422 if no key is stored.
+   * `POST /api/settings/providers/:id/models` — probe the provider's
+   * `/v1/models` and return the list of model ids it advertises. A draft
+   * `apiKey` is preferred over the stored Keychain entry so the user can
+   * discover what's available *before* saving — useful when the saved
+   * model is the only thing wrong (e.g. Google's frequent deprecations).
+   * The draft never reaches the Keychain. Backend returns 422 if neither
+   * a draft nor a stored key is available.
    */
-  listProviderModels: (id: string) =>
-    http<string[]>(`/api/settings/providers/${id}/models`),
+  listProviderModels: (id: string, apiKey?: string) =>
+    http<string[]>(`/api/settings/providers/${id}/models`, {
+      method: "POST",
+      body: JSON.stringify(apiKey ? { api_key: apiKey } : {}),
+    }),
 };
 
 // ─── Audio API (Phase 2 endpoint, re-exported for plan 05-04 Audio section)

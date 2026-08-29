@@ -38,6 +38,13 @@ export function ProviderRow({
   const qc = useQueryClient();
   const [keying, setKeying] = useState(autoOpenKey);
   const [modelDraft, setModelDraft] = useState(provider.model);
+  // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
+  // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
+  // The whole point: if the saved `model` is the only thing wrong with
+  // the provider (Google's `gemini-2.5-flash` deprecation is the
+  // canonical case), the user needs to see what IS available before
+  // they can pick a replacement.
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
   // Sync the local draft when the cached provider model changes (after a
   // successful PATCH invalidates the query, or when this row is reused for
   // a different provider by some future code path).
@@ -102,6 +109,7 @@ export function ProviderRow({
             }}
             presetModels={presetModels}
             hasStoredKey={!!provider.api_key_masked}
+            apiKeyDraft={apiKeyDraft}
           />
           {updateModel.isError && (
             <p role="status" className="text-[11px] text-[var(--color-straw)]">
@@ -133,6 +141,7 @@ export function ProviderRow({
               hasStoredKey={!!provider.api_key_masked}
               autoFocus
               onSaved={() => setKeying(false)}
+              onDraftChange={setApiKeyDraft}
             />
             <button
               type="button"
