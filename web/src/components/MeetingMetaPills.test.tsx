@@ -45,9 +45,9 @@ describe("MeetingMetaPills", () => {
   it("renders the LLM pill only once the row carries llm_model", () => {
     const start = Date.now();
     const { rerender } = render(<MeetingMetaPills startedAt={start} llmModel={null} />);
-    expect(screen.queryByText(/Enhanced/)).toBeNull();
+    expect(screen.queryByText("gpt-5-mini")).toBeNull();
     rerender(<MeetingMetaPills startedAt={start} llmModel="gpt-5-mini" />);
-    expect(screen.getByText("Enhanced · gpt-5-mini")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5-mini")).toBeInTheDocument();
   });
 
   it("renders nothing when there is no metadata at all", () => {

@@ -9,7 +9,7 @@
  * transcript this route doesn't.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -54,9 +54,20 @@ const MEETING_ID = "019f10a8-861c-7c61-b10f-cdf424b02b4d";
 function mockMeetingFetch(row: Record<string, unknown>) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: RequestInfo | URL) => {
+    vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url);
       if (u.includes(`/api/meetings/${MEETING_ID}`)) {
+        if (init?.method === "POST") {
+          return new Response(
+            JSON.stringify({
+              enriched_md: "## regenerated",
+              notes_file: "/tmp/notes.md",
+              too_short: false,
+              llm_model: "gpt-5-mini",
+            }),
+            { status: 200 },
+          );
+        }
         return new Response(JSON.stringify(row), { status: 200 });
       }
       return new Response("{}", { status: 200 });
@@ -124,7 +135,6 @@ describe("MeetingPost — live-recording redirect", () => {
       notes_md: "- x",
       enriched_md: "## enriched",
       transcript_json: "[]",
-      llm_model: "MiniMax-M3",
     });
 
     renderPost();
@@ -133,8 +143,38 @@ describe("MeetingPost — live-recording redirect", () => {
       expect(screen.getByTestId("meeting-post-route")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("live-view")).toBeNull();
-    // Header pill names the model that produced enriched_md.
-    expect(await screen.findByText("Enhanced · MiniMax-M3")).toBeInTheDocument();
+  });
+
+  it("keeps raw notes separate and sends only them to Re-enhance", async () => {
+    mockMeetingFetch({
+      id: MEETING_ID,
+      title: "Standup",
+      started_at: 1000,
+      ended_at: 2000,
+      notes_md: "- private raw note",
+      enriched_md: "## Enhanced summary",
+      transcript_json: "[]",
+      llm_model: "MiniMax-M3",
+    });
+
+    renderPost();
+    await screen.findByText("Enhanced summary");
+    expect(screen.getByText("MiniMax-M3")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "My notes" }));
+    expect(await screen.findByText(/private raw note/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("re-enhance-button"));
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls;
+      const post = calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+        notes_md: "- private raw note",
+      });
+    });
+    // The header pill follows the model the re-enhance actually used.
+    expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
   });
 
   it("does not redirect when a DIFFERENT meeting is the active recording", async () => {
