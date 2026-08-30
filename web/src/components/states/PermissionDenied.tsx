@@ -76,24 +76,21 @@ export function PermissionDenied() {
           Recording</strong>
         </li>
         <li>
-          Find the app that launched yogurt — that&apos;s{" "}
-          <strong>Terminal</strong> or <strong>iTerm</strong> if you run it
-          with <code className="font-mono text-ink">just dev</code>, or{" "}
-          <strong>yogurt</strong> itself if you open it directly — and
-          toggle it on
+          Find the app that launched yogurt. That is{" "}
+          <strong>Terminal</strong> or <strong>iTerm</strong> if you started
+          it from the command line, or <strong>yogurt</strong> itself if you
+          opened it directly. Toggle it on
         </li>
         <li>
-          macOS will immediately quit that process. That&apos;s expected,
-          not an error
+          macOS will immediately quit that process. That is expected
         </li>
         <li>
-          Relaunch it — <code className="font-mono text-ink">just dev</code>{" "}
-          again, or reopen the app — then come back here and check again
+          Relaunch yogurt, then come back here and check again
         </li>
       </ol>
 
       <p className="text-[12px] font-mono text-mut mb-6">
-        a macOS requirement, not us
+        this is a macOS requirement
       </p>
 
       <div className="flex items-center gap-3">

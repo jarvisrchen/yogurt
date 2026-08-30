@@ -58,8 +58,8 @@ export function MicPermissionDenied() {
       </h2>
 
       <p className="text-[15px] text-mut max-w-lg mb-8">
-        macOS requires Microphone permission so Yogurt can capture what
-        YOU say in the call.
+        macOS requires Microphone permission so Yogurt can capture your
+        own side of the call.
       </p>
 
       <ol className="text-left text-[14px] text-ink space-y-2 mb-3 list-decimal list-inside">
@@ -67,22 +67,23 @@ export function MicPermissionDenied() {
           Open <strong>System Settings → Privacy &amp; Security → Microphone</strong>
         </li>
         <li>
-          Find the app that launched yogurt — <strong>Terminal</strong> or{" "}
-          <strong>iTerm</strong> under{" "}
-          <code className="font-mono text-ink">just dev</code>, or{" "}
-          <strong>yogurt</strong> itself if you open it directly — and
-          toggle it on
+          Find the app that launched yogurt. That is{" "}
+          <strong>Terminal</strong> or <strong>iTerm</strong> if you started
+          it from the command line, or <strong>yogurt</strong> itself if you
+          opened it directly. Toggle it on
         </li>
-        <li>Click "Check again" below — most macOS versions pick this up immediately</li>
         <li>
-          Still stuck? Relaunch it (
-          <code className="font-mono text-ink">just dev</code> again, or
-          reopen the app) — some releases need a fresh process
+          Click "Check again" below. Most macOS versions pick this up
+          immediately
+        </li>
+        <li>
+          Still stuck? Relaunch yogurt, since some macOS releases need a
+          fresh process
         </li>
       </ol>
 
       <p className="text-[12px] font-mono text-mut mb-6">
-        a macOS requirement, not us
+        this is a macOS requirement
       </p>
 
       <div className="flex items-center gap-3">

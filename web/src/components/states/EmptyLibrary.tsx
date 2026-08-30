@@ -45,8 +45,8 @@ export function EmptyLibrary() {
         No meetings yet
       </h2>
       <p className="text-[15px] text-mut max-w-md mb-6">
-        Start one and Yogurt listens to both sides of the call — no bot
-        joins. Your notes and audio stay on this Mac.
+        Start one and Yogurt listens to both sides of the call without
+        joining it as a bot. Your notes and audio stay on this Mac.
       </p>
       <Button onClick={start} disabled={create.isPending}>
         Start your first meeting

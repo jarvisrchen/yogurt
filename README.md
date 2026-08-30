@@ -8,8 +8,8 @@
 [![CI](https://github.com/jarvisrchen/yogurt/actions/workflows/ci.yml/badge.svg)](https://github.com/jarvisrchen/yogurt/actions/workflows/ci.yml)
 
 Yogurt captures your microphone and Mac system audio without joining the call
-as a bot, transcribes live, and produces "augmented notes" -- sparse markdown
-bullets fused in-place with what was actually said.
+as a bot, transcribes live, and produces "augmented notes": sparse markdown
+bullets fused in place with what was actually said.
 A single Rust binary, a browser UI at `localhost:7878`, MIT licensed.
 Bring your own OpenAI-compatible LLM (Minimax, OpenAI, OpenRouter, local
 Ollama, whatever you already pay for).
@@ -72,10 +72,10 @@ xattr -d com.apple.quarantine ./yogurt
 
 ## First meeting
 
-1. `yogurt start` -- opens `http://localhost:7878` in your default browser.
+1. `yogurt start` opens `http://localhost:7878` in your default browser.
 2. Grant Screen Recording and Microphone access when macOS prompts for them.
 3. Start recording in a meeting.
-4. Type sparse notes while you talk -- a few words per point is enough.
+4. Type sparse notes while you talk. A few words per point is enough.
 5. Stop the meeting.
 
 Your notes get enhanced in place: grey, AI-added text fused into what you
