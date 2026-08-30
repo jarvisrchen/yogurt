@@ -54,4 +54,20 @@ describe("MeetingMetaPills", () => {
     const { container } = render(<MeetingMetaPills />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("paints cloud STT as outlined matcha, not filled blueberry", () => {
+    const start = Date.now();
+    render(
+      <MeetingMetaPills
+        startedAt={start}
+        endedAt={null}
+        sttEngine="cloud · nova-3"
+      />,
+    );
+    const pill = screen.getByTestId("engine-pill");
+    expect(pill).toHaveClass("text-matcha");
+    expect(pill).not.toHaveClass("bg-blsoft");
+    expect(pill).not.toHaveClass("text-blue");
+    expect(pill.className).toMatch(/border/);
+  });
 });
