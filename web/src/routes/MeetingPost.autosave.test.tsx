@@ -7,9 +7,8 @@
  * userEdited gate, a stale mount flushed `enriched_md: ""` on unmount and
  * destroyed a real enhanced document.
  *
- * Also covers the empty-string fallback: an empty (not null) enriched_md
- * from the API must fall back to notes_md instead of rendering a blank
- * document.
+ * Also covers the empty-summary state: raw notes remain available in their
+ * own document rather than being presented as generated output.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -116,7 +115,7 @@ describe("MeetingPost enriched autosave data-loss guard", () => {
     expect(enrichedPatches).toEqual([]);
   });
 
-  it("falls back to notes_md when stored enriched_md is an empty string", async () => {
+  it("shows My notes when the generated summary is empty", async () => {
     mockMeetingFetch({
       id: MEETING_ID,
       title: "fallback",
@@ -129,6 +128,9 @@ describe("MeetingPost enriched autosave data-loss guard", () => {
     renderPost();
 
     await waitFor(() => {
+      expect(
+        screen.getByRole("tab", { name: "My notes" }),
+      ).toHaveAttribute("aria-selected", "true");
       expect(screen.getByText(/my raw notes survive/)).toBeInTheDocument();
     });
   });

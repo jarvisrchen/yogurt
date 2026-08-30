@@ -29,7 +29,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Instant};
 use uuid::Uuid;
 
 use crate::markdown_exporter::Meeting as ExpMeeting;
@@ -152,6 +152,8 @@ pub async fn enhance(
         }
     };
 
+    let user_notes = req.notes_md.clone();
+
     // 1b) Resolve the transcript. The server-side STT persistence task
     // (meetings.rs) is the source of truth for what was said; the client
     // no longer carries the transcript in the request body. Prefer the
@@ -186,7 +188,7 @@ pub async fn enhance(
             .iter()
             .map(|seg| seg.text.split_whitespace().count())
             .sum();
-    if req.notes_md.trim().is_empty() && transcript_word_count < TOO_SHORT_TRANSCRIPT_WORDS {
+    if user_notes.trim().is_empty() && transcript_word_count < TOO_SHORT_TRANSCRIPT_WORDS {
         return Ok(Json(EnhanceResponse {
             enriched_md: String::new(),
             notes_file: String::new(),
@@ -199,7 +201,7 @@ pub async fn enhance(
     let user_prompt = state
         .prompts
         .render_enhance(&EnhanceCtx {
-            notes: &req.notes_md,
+            notes: &user_notes,
             transcript: &transcript_json,
         })
         .map_err(|e| {
@@ -240,6 +242,12 @@ pub async fn enhance(
     let llm = match crate::llm_openai::resolve(&state).await {
         Ok(c) => c,
         Err(e) => {
+            tracing::error!(
+                event = "enhance_llm_resolution_failed",
+                meeting_id = %meeting_id,
+                error = %e,
+                "enhance failed to resolve LLM provider"
+            );
             let _ = meeting.events_tx.send(serde_json::json!({
                 "type": "enhance_progress",
                 "phase": "error",
@@ -252,26 +260,40 @@ pub async fn enhance(
         messages: vec![ChatMessage::user(user_prompt.clone())],
         stream: false,
     };
-    let llm_call = async {
-        llm.complete(chat_req)
-            .await
-            .map(|r| r.content)
-            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("llm complete failed: {e}")))
-    };
+    let llm_model = llm.model_name();
+    let llm_started = Instant::now();
+    let llm_call = async { llm.complete(chat_req).await.map(|r| r.content) };
     let llm_output = match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, llm_call).await
     {
         Ok(Ok(out)) => out,
-        Ok(Err((code, msg))) => {
+        Ok(Err(error)) => {
             // LLM returned an error (HTTP non-2xx, parse failure, etc.).
+            let msg = format!("llm complete failed: {error}");
+            tracing::error!(
+                event = "enhance_llm_request_failed",
+                meeting_id = %meeting_id,
+                model = %llm_model,
+                elapsed_ms = llm_started.elapsed().as_millis(),
+                error = ?error,
+                "enhance LLM request failed"
+            );
             let _ = meeting.events_tx.send(serde_json::json!({
                 "type": "enhance_progress",
                 "phase": "error",
                 "message": format!("Enhance failed: {msg}")
             }));
-            return Err((code, msg));
+            return Err((StatusCode::BAD_GATEWAY, msg));
         }
         Err(_elapsed) => {
             // tokio::time::timeout fired.
+            tracing::error!(
+                event = "enhance_llm_request_timed_out",
+                meeting_id = %meeting_id,
+                model = %llm_model,
+                elapsed_ms = llm_started.elapsed().as_millis(),
+                timeout_secs = crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs(),
+                "enhance LLM request timed out"
+            );
             let _ = meeting.events_tx.send(serde_json::json!({
                 "type": "enhance_progress",
                 "phase": "error",
@@ -308,9 +330,16 @@ pub async fn enhance(
     let llm_output =
         strip_prompt_scaffolding(&strip_model_reasoning(&fix_model_mojibake(&llm_output)));
 
-    let merged = match merge_notes(&req.notes_md, &llm_output, &transcript_json) {
+    let merged = match merge_notes(&user_notes, &llm_output, &transcript_json) {
         Ok(m) => m,
         Err(e) => {
+            tracing::error!(
+                event = "enhance_merge_failed",
+                meeting_id = %meeting_id,
+                model = %llm_model,
+                error = %e,
+                "enhance failed to merge notes"
+            );
             let _ = meeting.events_tx.send(serde_json::json!({
                 "type": "enhance_progress",
                 "phase": "error",
@@ -354,7 +383,7 @@ pub async fn enhance(
 
     let storage = state.storage.clone();
     let exporter = state.markdown_exporter.clone();
-    let notes_md_for_blocking = req.notes_md.clone();
+    let notes_md_for_blocking = user_notes.clone();
     let transcript_json_for_blocking = transcript_json.clone();
     let enriched_md_for_blocking = enriched_md.clone();
     let enriched_doc_json_for_blocking = enriched_doc_json.clone();
@@ -423,6 +452,12 @@ pub async fn enhance(
     let notes_path: PathBuf = match notes_path {
         Ok(Ok(p)) => p,
         Ok(Err((code, msg))) => {
+            tracing::error!(
+                event = "enhance_persistence_failed",
+                meeting_id = %meeting_id,
+                error = %msg,
+                "enhance failed to persist output"
+            );
             let _ = meeting.events_tx.send(serde_json::json!({
                 "type": "enhance_progress",
                 "phase": "error",
@@ -431,6 +466,12 @@ pub async fn enhance(
             return Err((code, msg));
         }
         Err(join_err) => {
+            tracing::error!(
+                event = "enhance_persistence_task_failed",
+                meeting_id = %meeting_id,
+                error = %join_err,
+                "enhance persistence task failed"
+            );
             let _ = meeting.events_tx.send(serde_json::json!({
                 "type": "enhance_progress",
                 "phase": "error",
@@ -453,7 +494,7 @@ pub async fn enhance(
     {
         let id = meeting_id_str.clone();
         let title = title.clone();
-        let notes_md = req.notes_md.clone();
+        let notes_md = user_notes.clone();
         let transcript_json = transcript_json.clone();
         let enriched_md_for_repo = enriched_md.clone();
         let llm_model = llm.model_name();
@@ -467,7 +508,7 @@ pub async fn enhance(
         let started_at_patch = req.started_at_unix_ms;
         let ended_at_patch = req.ended_at_unix_ms.map(Some);
         let state2 = state.clone();
-        let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let mirror_result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
             // Ensure the row exists before patching — older meetings
             // pre-date the Library surface entirely.
             if state2.meeting_repo.get(&id)?.is_none() {
@@ -495,6 +536,21 @@ pub async fn enhance(
             Ok(())
         })
         .await;
+        match mirror_result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(
+                event = "enhance_library_mirror_failed",
+                meeting_id = %meeting_id,
+                error = %e,
+                "enhance output persisted but Library mirror failed"
+            ),
+            Err(e) => tracing::warn!(
+                event = "enhance_library_mirror_task_failed",
+                meeting_id = %meeting_id,
+                error = %e,
+                "enhance output persisted but Library mirror task failed"
+            ),
+        }
     }
 
     // 8) Emit `enhance_progress` — done.
@@ -506,7 +562,7 @@ pub async fn enhance(
         enriched_md,
         notes_file: notes_path.to_string_lossy().into_owned(),
         too_short: false,
-        llm_model: Some(llm.model_name()),
+        llm_model: Some(llm_model),
     }))
 }
 

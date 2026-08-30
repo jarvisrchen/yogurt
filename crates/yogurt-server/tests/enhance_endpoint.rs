@@ -220,6 +220,65 @@ async fn it_enhances_a_meeting_end_to_end() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn reenhance_keeps_raw_notes_separate_from_ai_output() {
+    unsafe {
+        std::env::remove_var("YOGURT_LLM_BASE_URL");
+        std::env::remove_var("YOGURT_LLM_API_KEY");
+        std::env::remove_var("YOGURT_LLM_MODEL");
+    }
+
+    let (addr, token, _handle, _tmp, db_path) = spawn_server().await;
+    let client = reqwest::Client::new();
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let meeting_id = created["id"].as_str().unwrap();
+    let transcript = r#"[{"ts_ms":1000,"channel":"mic","text":"We agreed to ship the feature on Monday morning"}]"#;
+
+    client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- My original note",
+            "transcript_json": transcript,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    client
+        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- My original note",
+            "transcript_json": transcript,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    let conn = rusqlite::Connection::open(db_path).unwrap();
+    let notes_md: String = conn
+        .query_row(
+            "SELECT notes_md FROM meetings WHERE id = ?1",
+            [meeting_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(notes_md, "- My original note");
+}
+
 /// Regression: the server-side transcript-persistence task (meetings.rs) is
 /// the source of truth for what was said. When the request body's
 /// `transcript_json` is empty (`""`/`"[]"`) — as it always is once the
