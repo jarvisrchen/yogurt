@@ -275,7 +275,7 @@ describe("MeetingPost — streaming enhance preview", () => {
     expect(prosemirror).toHaveAttribute("contenteditable", "false");
   });
 
-  it("drops the preview and restores editability once done + the enhance response land", async () => {
+  it("drops the preview once done + the enhance response land, keeping Enhanced read-only", async () => {
     // A real server persists `enriched_md` BEFORE emitting the `done` WS
     // frame (BL-5: persistence failure emits `error` instead), so a GET
     // that lands after `done` always sees the new value too — this mock
@@ -346,10 +346,15 @@ describe("MeetingPost — streaming enhance preview", () => {
       );
     });
     expect(await screen.findByText("regenerated")).toBeInTheDocument();
-    const prosemirror = screen
-      .getByTestId("yogurt-editor")
-      .querySelector(".ProseMirror");
-    expect(prosemirror).toHaveAttribute("contenteditable", "true");
+    // The Enhanced document is read-only even after the preview settles;
+    // only My notes takes typing.
+    const prosemirror = () =>
+      screen.getByTestId("yogurt-editor").querySelector(".ProseMirror");
+    expect(prosemirror()).toHaveAttribute("contenteditable", "false");
+    fireEvent.click(screen.getByRole("tab", { name: "My notes" }));
+    await waitFor(() => {
+      expect(prosemirror()).toHaveAttribute("contenteditable", "true");
+    });
   });
 
   it("holds the last streamed preview through the done-to-response gap, so there is no flash to the old/blank document", async () => {

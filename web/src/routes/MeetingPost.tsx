@@ -144,8 +144,7 @@ export function MeetingPost() {
   const ws = useEnhanceProgress(meetingId, token);
   // Phase 5: a raw-markdown preview is available whenever the WS is mid-
   // `streaming` with a non-null snapshot. Display-only - it never writes
-  // into `enrichedMd` / `liveEnrichedMarkdown` and never flips
-  // `enrichedEditedRef`, so it can't reach autosave.
+  // into `enrichedMd` / `liveEnrichedMarkdown`.
   //
   // The server emits `done` (which clears `ws.text`) BEFORE the enhance
   // POST response arrives, so `ws.text` alone would flash back to the old
@@ -378,40 +377,22 @@ export function MeetingPost() {
   // enriched_md. Programmatic document swaps never set either dirty flag.
   const meetingIdForSaveRef = useRef(meetingId);
   meetingIdForSaveRef.current = meetingId;
-  const liveEnrichedRef = useRef(liveEnrichedMarkdown);
-  liveEnrichedRef.current = liveEnrichedMarkdown;
   const notesMdRef = useRef(notesMd);
   notesMdRef.current = notesMd;
-  const lastSavedEnrichedRef = useRef<string | undefined>(undefined);
   const lastSavedNotesRef = useRef<string | undefined>(undefined);
   // Autosave may only persist content the user produced. Loading or toggling
-  // documents must never write either field back to the server.
-  const enrichedEditedRef = useRef(false);
+  // documents must never write notes back to the server. The Enhanced
+  // document is read-only - only Re-enhance replaces `enriched_md`.
   const notesEditedRef = useRef(false);
 
   const flushDocuments = useCallback(async () => {
     const id = meetingIdForSaveRef.current;
     if (!id) return;
-    const patch: { notes_md?: string; enriched_md?: string } = {};
     const notes = notesMdRef.current;
-    const enriched = liveEnrichedRef.current;
-    if (notesEditedRef.current && notes !== lastSavedNotesRef.current) {
-      patch.notes_md = notes;
-    }
-    if (
-      enrichedEditedRef.current &&
-      enriched.trim() !== "" &&
-      enriched !== lastSavedEnrichedRef.current
-    ) {
-      patch.enriched_md = enriched;
-    }
-    if (Object.keys(patch).length === 0) return;
+    if (!notesEditedRef.current || notes === lastSavedNotesRef.current) return;
     try {
-      await meetingsApi.patch(id, patch);
-      if (patch.notes_md !== undefined) lastSavedNotesRef.current = notes;
-      if (patch.enriched_md !== undefined) {
-        lastSavedEnrichedRef.current = enriched;
-      }
+      await meetingsApi.patch(id, { notes_md: notes });
+      lastSavedNotesRef.current = notes;
     } catch {
       // Best-effort — a later autosave tick or the next unmount retries.
     }
@@ -423,7 +404,7 @@ export function MeetingPost() {
       void flushDocuments();
     }, 1000);
     return () => clearTimeout(t);
-  }, [liveEnrichedMarkdown, notesMd, enrichedMd, flushDocuments]);
+  }, [notesMd, enrichedMd, flushDocuments]);
 
   useEffect(() => {
     return () => {
@@ -446,14 +427,9 @@ export function MeetingPost() {
     setPreviewHold(null);
   }, []);
   const handleEditorChange = useCallback((markdown: string) => {
-    if (activeDocument === "notes") {
-      notesEditedRef.current = true;
-      setNotesMd(markdown);
-    } else {
-      enrichedEditedRef.current = true;
-      setLiveEnrichedMarkdown(markdown);
-    }
-  }, [activeDocument]);
+    notesEditedRef.current = true;
+    setNotesMd(markdown);
+  }, []);
   const handleEnhancing = useCallback((busy: boolean) => {
     setEnhancing(busy);
   }, []);
@@ -748,9 +724,9 @@ export function MeetingPost() {
                 (preview != null ? preview : liveEnrichedMarkdown)
               : notesMd
           }
-          editable={activeDocument === "enhanced" ? preview == null : true}
+          editable={activeDocument === "notes"}
           streaming={activeDocument === "enhanced" && preview != null}
-          onChange={handleEditorChange}
+          onChange={activeDocument === "notes" ? handleEditorChange : undefined}
           onTranscriptLinkClick={
             activeDocument === "enhanced"
               ? handleTranscriptLinkClick
