@@ -71,6 +71,12 @@ export const AiGrey = Mark.create<{}, { transcriptTs: number | null }>({
 
           for (const t of transactions) {
             if (!t.docChanged) continue;
+            // TipTap stamps `preventUpdate` on its programmatic
+            // `setContent(html, false)` replace (post-meeting load,
+            // Re-enhance, tab switch). That is a whole-document swap, not
+            // a user edit - without this skip the replaced range "carries
+            // aiGrey" and every grey run gets promoted to ink on load.
+            if (t.getMeta("preventUpdate")) continue;
             t.mapping.maps.forEach((stepMap) => {
               stepMap.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
                 if (newStart === newEnd) return;

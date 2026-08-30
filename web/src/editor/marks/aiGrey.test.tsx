@@ -40,3 +40,26 @@ describe("transcriptLink node", () => {
     expect(link!.textContent).toContain("↳ 11:02");
   });
 });
+
+describe("aiGrey promote-on-edit", () => {
+  it("keeps aiGrey marks when setContent replaces the document", async () => {
+    // Regression: the promote-on-edit plugin saw the programmatic
+    // `setContent` replace as one giant insertion carrying aiGrey and
+    // stripped the mark from the whole document, so an all-AI summary
+    // (empty user notes) rendered ink-black instead of grey.
+    const { act } = await import("@testing-library/react");
+    let editorRef: ReturnType<typeof useEditor> = null;
+    function Host() {
+      editorRef = useEditor({ extensions: yogurtExtensions(), content: "<p></p>" });
+      return <EditorContent editor={editorRef} />;
+    }
+    const { container } = render(<Host />);
+    act(() => {
+      editorRef!.commands.setContent(
+        `<p><span data-ai-grey data-ts="24">from the transcript</span></p>`,
+        false,
+      );
+    });
+    expect(container.querySelector("[data-ai-grey]")).not.toBeNull();
+  });
+});
