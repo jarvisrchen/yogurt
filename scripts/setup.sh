@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+EXPECTED_NODE_VERSION="22.14.0"
+EXPECTED_PNPM_VERSION="9.15.4"
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
+
 # Resolve repo root regardless of where the script is invoked from.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -40,6 +44,19 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 err()  { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
 
+if ! command -v brew >/dev/null 2>&1; then
+  err "Homebrew not found. Install it from https://brew.sh, then rerun setup."
+  exit 1
+fi
+
+brew_install() {
+  local package="$1"
+  if ! brew list --formula "$package" >/dev/null 2>&1; then
+    echo "    Installing '$package' via Homebrew"
+    brew install "$package"
+  fi
+}
+
 # ── 1. Prereqs ────────────────────────────────────────────────────
 bold "[1/5] Checking prerequisites"
 
@@ -52,14 +69,20 @@ if [ "$mac_major" -lt 13 ] 2>/dev/null; then
 fi
 ok "macOS $mac_ver"
 
-# Rust: cargo on PATH OR at the rustup toolchain location.
+# Rust: bootstrap rustup from Homebrew so rust-toolchain.toml controls the
+# exact compiler used by setup and subsequent cargo commands.
+if ! command -v rustup >/dev/null 2>&1; then
+  brew_install rustup-init
+  rustup-init -y --profile minimal --default-toolchain none
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
 if ! command -v cargo >/dev/null 2>&1; then
-  RUSTUP_CARGO="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo"
+  RUSTUP_CARGO="$(rustup which cargo 2>/dev/null || true)"
   if [ -x "$RUSTUP_CARGO" ]; then
     export PATH="$(dirname "$RUSTUP_CARGO"):$PATH"
     warn "added rustup toolchain to PATH for this session"
   else
-    err "cargo not found. Install Rust: https://rustup.rs"
+    err "cargo bootstrap failed. Try: rustup toolchain install 1.96.0"
     exit 1
   fi
 fi
@@ -67,23 +90,50 @@ ok "cargo $(cargo --version | awk '{print $2}')"
 
 # Node and pnpm.
 if ! command -v node >/dev/null 2>&1; then
-  err "node not found. Install Node 20.19+: brew install node"
-  exit 1
+  brew_install node@22
+  export PATH="$(brew --prefix node@22)/bin:$PATH"
 fi
 node_ver=$(node --version | sed 's/^v//')
-ok "node $node_ver"
-
-if ! command -v pnpm >/dev/null 2>&1; then
-  err "pnpm not found. Install: brew install pnpm  (or: npm install -g pnpm)"
+if [ "${node_ver%%.*}" -lt 22 ] 2>/dev/null; then
+  brew_install node@22
+  export PATH="$(brew --prefix node@22)/bin:$PATH"
+  node_ver=$(node --version | sed 's/^v//')
+fi
+if [ "${node_ver%%.*}" -lt 22 ] 2>/dev/null; then
+  err "node $node_ver - yogurt needs Node 22 or newer"
   exit 1
 fi
-ok "pnpm $(pnpm --version)"
+if [ "$node_ver" = "$EXPECTED_NODE_VERSION" ]; then
+  ok "node $node_ver"
+else
+  warn "node $node_ver (CI pins $EXPECTED_NODE_VERSION; compatible for local setup)"
+fi
+
+if ! command -v corepack >/dev/null 2>&1; then
+  npm install --global corepack
+fi
+corepack enable
+if command -v corepack >/dev/null 2>&1; then
+  pnpm_version=$(corepack pnpm --version)
+  pnpm_runner=(corepack pnpm)
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm_version=$(pnpm --version)
+  pnpm_runner=(pnpm)
+else
+  err "pnpm not found. Install Node $EXPECTED_NODE_VERSION, then run: corepack enable"
+  exit 1
+fi
+if [ "$pnpm_version" != "$EXPECTED_PNPM_VERSION" ]; then
+  err "pnpm $pnpm_version - yogurt requires pnpm $EXPECTED_PNPM_VERSION"
+  err "Run: corepack enable && corepack prepare pnpm@$EXPECTED_PNPM_VERSION --activate"
+  exit 1
+fi
+ok "pnpm $pnpm_version"
 
 # cmake: whisper-rs-sys builds whisper.cpp via CMake (local STT is always
 # compiled into the release binary), so the cargo build fails without it.
 if ! command -v cmake >/dev/null 2>&1; then
-  err "cmake not found. Install: brew install cmake  (required to build whisper.cpp for local STT)"
-  exit 1
+  brew_install cmake
 fi
 ok "cmake $(cmake --version | head -1 | awk '{print $3}')"
 
@@ -128,10 +178,16 @@ fi
 # ── 4. Web bundle ─────────────────────────────────────────────────
 bold "[4/5] Installing web dependencies + building bundle"
 
-pnpm --dir web install --silent
+(
+  cd web
+  "${pnpm_runner[@]}" install --frozen-lockfile --silent
+)
 ok "web deps installed"
 
-pnpm --dir web build >/tmp/yogurt-web-build.log 2>&1 || {
+(
+  cd web
+  "${pnpm_runner[@]}" build
+) >/tmp/yogurt-web-build.log 2>&1 || {
   err "web build failed — see /tmp/yogurt-web-build.log"
   tail -20 /tmp/yogurt-web-build.log >&2
   exit 1
@@ -152,7 +208,7 @@ else
     warn "only ${avail_gb}G free on this volume; the build typically needs ~10G. Continuing anyway."
   fi
 
-  cargo build --release
+  cargo build --release --locked
   ok "binary built → target/release/yogurt"
 fi
 

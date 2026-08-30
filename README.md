@@ -29,8 +29,8 @@ yogurt start
 
 ### From source
 
-Prereqs: macOS 13+, and `brew install rust node pnpm cmake` (all four --
-`cmake` builds whisper.cpp for local STT, and `pnpm` does not pull Node).
+Prereqs: macOS 13+ and Homebrew.
+`setup.sh` installs Rust, Node 22, CMake, and the pinned pnpm version through Homebrew and Corepack.
 
 ```bash
 git clone https://github.com/jarvisrchen/yogurt.git

@@ -5,16 +5,15 @@
 One-time:
 
 ```bash
-brew install rust node pnpm cmake
+brew install rust node@22 cmake
 git clone https://github.com/jarvisrchen/yogurt.git   # private repo: `gh auth login` first, or use the SSH URL
 cd yogurt
 ./scripts/setup.sh
 ```
 
-All four brew formulae are required and none pull the others in: `cmake`
-builds whisper.cpp for local STT, and `pnpm` ships as a standalone binary
-that does *not* install Node. `setup.sh` re-checks every one of them and
-stops with the exact install command if something is missing.
+Homebrew is the only prerequisite.
+`setup.sh` installs or bootstraps Rust, Node 22, CMake, Corepack, and the pinned pnpm version.
+It also validates the exact tool versions before building.
 
 `setup.sh` is idempotent: it installs the [`just`](https://github.com/casey/just)
 task runner via Homebrew, writes a `.env.local` stub for API keys, builds the
