@@ -24,7 +24,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
-import { MemoryRouter, Routes, Route } from "react-router";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../components/TranscriptDock", () => ({
@@ -77,12 +77,18 @@ vi.mock("../lib/api/meetings", () => ({
   useSetMeetingLabels: () => ({ mutate: vi.fn() }),
 }));
 
-const postEnhanceMock = vi.fn();
-vi.mock("../lib/api", () => ({
-  postEnhance: (...args: unknown[]) => postEnhanceMock(...args),
-}));
-
 import { Meeting } from "./Meeting";
+
+// Task 2 (End meeting navigates immediately with `state: { autoEnhance }`
+// instead of awaiting a POST first): a plain probe div can't assert on the
+// state passed to `navigate`, so stamp it into a data attribute via
+// `useLocation` for the "End meeting flow" tests below to read.
+function PostViewProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="post-view" data-state={JSON.stringify(location.state)} />
+  );
+}
 
 function renderAt(
   initialPath: string,
@@ -97,10 +103,7 @@ function renderAt(
         <Routes>
           <Route path="/meeting/new" element={<Meeting />} />
           <Route path="/meeting/:id" element={<Meeting />} />
-          <Route
-            path="/meeting/:id/post"
-            element={<div data-testid="post-view" />}
-          />
+          <Route path="/meeting/:id/post" element={<PostViewProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -222,13 +225,9 @@ describe("Meeting — End meeting flow", () => {
     };
     state.activeRecording = null;
     vi.clearAllMocks();
-    postEnhanceMock.mockResolvedValue({
-      enriched_md: "# enriched",
-      notes_file: "/tmp/x.md",
-    });
   });
 
-  it("stops recording before enhancing, sends transcript_json:'[]' with no timestamp fields, and navigates to /post", async () => {
+  it("stops recording, then navigates to /post with autoEnhance state instead of awaiting enhance itself", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/meetings/meeting-3/start") {
@@ -266,21 +265,28 @@ describe("Meeting — End meeting flow", () => {
       expect(screen.getByTestId("post-view")).toBeInTheDocument();
     });
 
-    // stop happened (so the server flushed its transcript) before enhance.
+    // stop happened (so the server flushed its transcript) before navigating.
     expect(
       fetchMock.mock.calls.some(([u]) => String(u) === "/api/meetings/meeting-3/stop"),
     ).toBe(true);
+    // Task 2: Meeting.tsx no longer calls /enhance itself — it hands the raw
+    // notes to MeetingPost via router state so the post view can fire the
+    // POST and stream the preview immediately.
+    expect(
+      fetchMock.mock.calls.some(([u]) => String(u).includes("/enhance")),
+    ).toBe(false);
 
-    expect(postEnhanceMock).toHaveBeenCalledTimes(1);
-    const [, body] = postEnhanceMock.mock.calls[0]!;
-    expect(body).toMatchObject({ transcript_json: "[]" });
-    expect(body).not.toHaveProperty("started_at_unix_ms");
-    expect(body).not.toHaveProperty("ended_at_unix_ms");
+    const navState = JSON.parse(
+      screen.getByTestId("post-view").getAttribute("data-state") ?? "null",
+    );
+    expect(navState).toMatchObject({
+      autoEnhance: { notes_md: "", title: "Weekly sync" },
+    });
 
     vi.unstubAllGlobals();
   });
 
-  it("sends hydrated prior notes_md to enhance, not an empty string, when End is clicked before any new keystroke", async () => {
+  it("sends hydrated prior notes_md via autoEnhance state, not an empty string, when End is clicked before any new keystroke", async () => {
     // Regression coverage for task NOTES-02's hydration bug: YogurtEditor's
     // `enrichedMarkdown` content swap intentionally does NOT fire onChange,
     // so without explicitly syncing `notesMd` state on hydration, a user
@@ -311,10 +317,14 @@ describe("Meeting — End meeting flow", () => {
       screen.getByTestId("end-meeting").click();
     });
 
-    await waitFor(() => expect(postEnhanceMock).toHaveBeenCalledTimes(1));
-    const [, body] = postEnhanceMock.mock.calls[0]!;
-    expect(body).toMatchObject({
-      notes_md: "existing notes from before refresh",
+    await waitFor(() => {
+      expect(screen.getByTestId("post-view")).toBeInTheDocument();
+    });
+    const navState = JSON.parse(
+      screen.getByTestId("post-view").getAttribute("data-state") ?? "null",
+    );
+    expect(navState).toMatchObject({
+      autoEnhance: { notes_md: "existing notes from before refresh" },
     });
 
     vi.unstubAllGlobals();

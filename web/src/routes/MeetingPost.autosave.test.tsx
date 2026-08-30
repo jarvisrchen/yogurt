@@ -27,7 +27,9 @@ vi.mock("../lib/session", () => ({
 vi.mock("../lib/ws", () => ({
   useEnhanceProgress: () => ({
     enhancing: false,
+    phase: null,
     chars: null,
+    text: null,
     errorMessage: null,
   }),
   storedSegmentToEvent: (s: unknown) => s,

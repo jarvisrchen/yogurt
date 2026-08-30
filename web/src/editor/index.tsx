@@ -36,6 +36,12 @@ export interface YogurtEditorProps {
    * the old seeded-content approach did.
    */
   placeholder?: string;
+  /**
+   * Phase 5 (enhance streaming): when true, stamps `data-streaming` on the
+   * outer wrapper so `web/src/index.css` can style the whole preview as AI
+   * text with a blinking caret on the last block.
+   */
+  streaming?: boolean;
 }
 
 export function YogurtEditor(props: YogurtEditorProps) {
@@ -47,6 +53,7 @@ export function YogurtEditor(props: YogurtEditorProps) {
     onTranscriptLinkClick,
     className,
     placeholder,
+    streaming = false,
   } = props;
 
   const onChangeRef = useRef(onChange);
@@ -69,6 +76,19 @@ export function YogurtEditor(props: YogurtEditorProps) {
       }
     },
   });
+
+  // Streaming preview (Phase 5): `editable` can flip false to true / true to
+  // false after mount (read-only while the raw preview streams in, editable
+  // again once the final document lands) - TipTap's `useEditor` only
+  // applies the `editable` option at creation time, so without this the
+  // editor would stay stuck in whatever mode it was created with.
+  useEffect(() => {
+    // `setEditable`'s second arg defaults to `true` (it emits an `onUpdate`
+    // even though the document didn't change) - pass `false` for the same
+    // reason `setContent(html, false)` does below: a programmatic
+    // editable-mode swap must never mark the host's dirty-edit flags.
+    editor?.setEditable(editable, false);
+  }, [editor, editable]);
 
   // Re-enhance / post-meeting load: replace content when enriched markdown
   // arrives. Skipped on first mount (handled by `content` above).
@@ -115,6 +135,7 @@ export function YogurtEditor(props: YogurtEditorProps) {
       className={`yogurt-editor ${className ?? ""}`}
       style={{ maxWidth: "660px", margin: "0 auto" }}
       data-testid="yogurt-editor"
+      {...(streaming ? { "data-streaming": "" } : {})}
     >
       <EditorContent editor={editor} />
     </div>

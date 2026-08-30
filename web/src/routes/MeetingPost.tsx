@@ -51,7 +51,7 @@ import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
-import type { EnhanceResponse } from "../lib/api";
+import { postEnhance, type EnhanceResponse } from "../lib/api";
 
 const PAPER = "#FBF7EF"; // --color-paper
 const INK = "#211D18"; // --color-ink
@@ -83,8 +83,18 @@ interface LocationStateShape {
   /** Set by `Meeting.tsx`'s endMeeting when `EnhanceResponse.too_short` came
    * back true — the server skipped enhancing a meeting with no notes and a
    * trivial transcript. Drives the brief "Meeting too short" state below
-   * instead of rendering a near-empty editor. */
+   * instead of rendering a near-empty editor. Kept for backward
+   * compatibility; the current End-meeting flow instead relies on
+   * `autoEnhance`'s own POST response (see `autoTooShort` state below). */
   tooShort?: boolean;
+  /**
+   * Set by `Meeting.tsx`'s endMeeting (task 2, "start streaming immediately
+   * on End meeting") - the raw notes to enhance. MeetingPost fires the
+   * enhance POST itself as soon as `token` is available, so the streamed
+   * preview starts arriving over the WS the moment this route mounts
+   * instead of after Meeting.tsx's own round-trip.
+   */
+  autoEnhance?: { notes_md: string; title?: string };
 }
 
 /** How long the "Meeting too short" state stays up before bouncing to the
@@ -99,7 +109,12 @@ export function MeetingPost() {
 
   const stateShape = (location.state ?? {}) as LocationStateShape;
   const preloadedEnrichedMd = stateShape.enrichedMd;
-  const tooShort = stateShape.tooShort === true;
+  const autoEnhance = stateShape.autoEnhance;
+  // Legacy `location.state.tooShort` (a caller that still posts /enhance
+  // itself and navigates with the result) OR the new autoEnhance POST's own
+  // `too_short` response, tracked in `autoTooShort` below.
+  const [autoTooShort, setAutoTooShort] = useState(false);
+  const tooShort = stateShape.tooShort === true || autoTooShort;
 
   // Covers deep links, refresh, and the back button landing on the frozen
   // post view for a meeting that's STILL recording server-side — bounce to
@@ -141,6 +156,29 @@ export function MeetingPost() {
   // `enhancing` local state above also reflects the in-flight POST so the
   // banner appears IMMEDIATELY on click (not after the first WS hop).
   const ws = useEnhanceProgress(meetingId, token);
+  // Phase 5: a raw-markdown preview is available whenever the WS is mid-
+  // `streaming` with a non-null snapshot. Display-only - it never writes
+  // into `enrichedMd` / `liveEnrichedMarkdown` and never flips
+  // `enrichedEditedRef`, so it can't reach autosave.
+  //
+  // The server emits `done` (which clears `ws.text`) BEFORE the enhance
+  // POST response arrives, so `ws.text` alone would flash back to the old
+  // `liveEnrichedMarkdown` (Re-enhance) or a blank doc (End meeting) for the
+  // gap between `done` and `handleEnhanced`. `previewHold` keeps the last
+  // streamed snapshot on screen through that gap; `preview` is what the
+  // editor actually renders. Cleared explicitly (not derived from
+  // `enrichedMd` changing, since a re-enhance can produce byte-identical
+  // output) at every point a real final/error state supersedes it:
+  // `handleEnhanced`, `loadMeeting`'s forced/first apply of `enriched_md`,
+  // and here whenever the WS reports an error.
+  const [previewHold, setPreviewHold] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof ws.text === "string") setPreviewHold(ws.text);
+  }, [ws.text]);
+  useEffect(() => {
+    if (ws.errorMessage) setPreviewHold(null);
+  }, [ws.errorMessage]);
+  const preview = ws.text ?? previewHold;
 
   // Task NOTES-08: subscribe to the shared react-query cache purely so a
   // rename via the header's <InlineTitle> (which writes through
@@ -181,65 +219,89 @@ export function MeetingPost() {
   // a Re-enhance completes — without this guard, the GET's notes_md (the
   // pre-enhance state) stomps the just-updated notesMd.
   const generationRef = useRef(0);
+  // `loadMeeting` is memoized on [meetingId, token] only, so its closure
+  // would otherwise capture a stale `enrichedMd` from whenever it was last
+  // (re)created - read the live value through this ref instead.
+  const enrichedMdRef = useRef(enrichedMd);
+  enrichedMdRef.current = enrichedMd;
 
-  // Fallback fetch: if location.state didn't pre-load the enriched markdown,
   // GET /api/meetings/:id and pull enriched_md (falling back to notes_md).
-  useEffect(() => {
-    if (!meetingId || !token) return;
-    // Capture the generation at schedule time.
-    const myGen = ++generationRef.current;
-    const abortCtrl = new AbortController();
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/meetings/${meetingId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortCtrl.signal,
-        });
-        // HI-2: discard if a newer operation has bumped the generation
-        // counter (we're now stale).
-        if (cancelled || generationRef.current !== myGen) return;
-        if (!res.ok) {
-          if (res.status === 404) {
-            setError(`Meeting ${meetingId.slice(0, 8)} not found.`);
+  // Extracted into a callback (rather than inlined in the mount effect
+  // below) so the reload-mid-stream handler further down can re-run the
+  // same generation-guarded fetch after a `done` WS frame arrives with no
+  // local enhance POST in flight - the situation after a page reload mid
+  // stream, where this component never fired the POST itself and so has no
+  // other way to learn the final `enriched_md`.
+  //
+  // `force`: skip the "only apply if enrichedMd is still unset" guard,
+  // which exists to protect a preloaded `location.state.enrichedMd` on the
+  // very first load - a reload-mid-stream re-fetch must always win since
+  // whatever was loaded before is known-stale.
+  const loadMeeting = useCallback(
+    (opts?: { force?: boolean }) => {
+      if (!meetingId || !token) return () => {};
+      // Capture the generation at schedule time.
+      const myGen = ++generationRef.current;
+      const abortCtrl = new AbortController();
+      let cancelled = false;
+      (async () => {
+        try {
+          const res = await fetch(`/api/meetings/${meetingId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: abortCtrl.signal,
+          });
+          // HI-2: discard if a newer operation has bumped the generation
+          // counter (we're now stale).
+          if (cancelled || generationRef.current !== myGen) return;
+          if (!res.ok) {
+            if (res.status === 404) {
+              setError(`Meeting ${meetingId.slice(0, 8)} not found.`);
+              return;
+            }
+            setError(`Failed to load meeting (${res.status})`);
             return;
           }
-          setError(`Failed to load meeting (${res.status})`);
-          return;
+          const json = (await res.json()) as MeetingFetchResponse;
+          if (cancelled || generationRef.current !== myGen) return;
+          // Raw notes and the generated summary are independent documents.
+          if (opts?.force || enrichedMdRef.current === undefined) {
+            const enriched = json.enriched_md;
+            setEnrichedMd(enriched ?? "");
+            if (!enriched || enriched.trim() === "") setActiveDocument("notes");
+            // The final document has landed - stop holding the streamed
+            // preview over it.
+            setPreviewHold(null);
+          }
+          setNotesMd(json.notes_md ?? "");
+          setTranscriptJson(json.transcript_json ?? "[]");
+          setTitle(json.title ?? undefined);
+          setStartedAtUnixMs(json.started_at ?? undefined);
+          setEndedAtUnixMs(json.ended_at ?? undefined);
+          setSttEngine(json.stt_engine ?? undefined);
+          setLlmModel(json.llm_model ?? undefined);
+        } catch (e) {
+          // AbortError from cleanup is expected — ignore.
+          if (cancelled || generationRef.current !== myGen) return;
+          if (e instanceof DOMException && e.name === "AbortError") return;
+          setError(e instanceof Error ? e.message : "Failed to load meeting");
         }
-        const json = (await res.json()) as MeetingFetchResponse;
-        if (cancelled || generationRef.current !== myGen) return;
-        // Raw notes and the generated summary are independent documents.
-        if (enrichedMd === undefined) {
-          const enriched = json.enriched_md;
-          setEnrichedMd(enriched ?? "");
-          if (!enriched || enriched.trim() === "") setActiveDocument("notes");
-        }
-        setNotesMd(json.notes_md ?? "");
-        setTranscriptJson(json.transcript_json ?? "[]");
-        setTitle(json.title ?? undefined);
-        setStartedAtUnixMs(json.started_at ?? undefined);
-        setEndedAtUnixMs(json.ended_at ?? undefined);
-        setSttEngine(json.stt_engine ?? undefined);
-        setLlmModel(json.llm_model ?? undefined);
-      } catch (e) {
-        // AbortError from cleanup is expected — ignore.
-        if (cancelled || generationRef.current !== myGen) return;
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "Failed to load meeting");
-      }
-    })();
-    return () => {
-      cancelled = true;
-      // HI-2: abort in-flight fetch on unmount so dangling responses don't
-      // touch unmounted state and don't waste browser HTTP slots.
-      abortCtrl.abort();
-    };
-    // We intentionally don't depend on `enrichedMd` here — refetching every
-    // time the editor content updates would create a loop. The fetch
-    // should fire once per (meetingId, token) pair.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meetingId, token]);
+      })();
+      return () => {
+        cancelled = true;
+        // HI-2: abort in-flight fetch on unmount so dangling responses don't
+        // touch unmounted state and don't waste browser HTTP slots.
+        abortCtrl.abort();
+      };
+    },
+    [meetingId, token],
+  );
+
+  // Mount fetch: fires once per (meetingId, token) pair. Refetching every
+  // time the editor content updates would create a loop, so `loadMeeting`
+  // is intentionally the only dependency besides the pair itself.
+  useEffect(() => {
+    return loadMeeting();
+  }, [loadMeeting]);
 
   // Click-to-jump: dispatch the scroll event AND open the dock (the dock
   // ignores the event if it's already mounted, but its `open` state is
@@ -392,6 +454,10 @@ export function MeetingPost() {
     setEnrichedMd(response.enriched_md);
     if (response.llm_model) setLlmModel(response.llm_model);
     setActiveDocument("enhanced");
+    // The final document has landed - stop holding the streamed preview
+    // over it (a re-enhance can produce byte-identical enriched_md, so this
+    // can't be derived from `enrichedMd` changing).
+    setPreviewHold(null);
   }, []);
   const handleEditorChange = useCallback((markdown: string) => {
     if (activeDocument === "notes") {
@@ -408,6 +474,66 @@ export function MeetingPost() {
   const handleError = useCallback((message: string) => {
     setError(message);
   }, []);
+
+  // The moment the raw preview starts streaming in, switch to the Enhanced
+  // tab so the user sees it land - mirrors what happens once the final
+  // document arrives via `handleEnhanced`.
+  useEffect(() => {
+    if (preview != null) setActiveDocument("enhanced");
+  }, [preview]);
+
+  // `enhancing` (this component's own in-flight-POST flag) as a ref, read
+  // from the reload-mid-stream effect below without adding it as a
+  // dependency (it would otherwise re-fire on every enhancing toggle, not
+  // just on a `done` transition).
+  const enhancingRef = useRef(enhancing);
+  enhancingRef.current = enhancing;
+
+  // Reload-mid-stream resilience: a `done` frame with no local enhance POST
+  // in flight means this component never fired the enhance itself - the
+  // only way that happens is a page reload (or fresh tab) landing here
+  // while the meeting's enhance was still streaming server-side. Re-run the
+  // GET loader (forced, so it overwrites whatever partial/empty state the
+  // mount fetch saw) so the final `enriched_md` and `llm_model` land.
+  useEffect(() => {
+    if (ws.phase !== "done") return;
+    if (enhancingRef.current) return;
+    loadMeeting({ force: true });
+  }, [ws.phase, loadMeeting]);
+
+  // Auto-enhance on arrival (task 2, "start streaming immediately on End
+  // meeting"): `Meeting.tsx`'s endMeeting navigates here with the raw notes
+  // in `location.state.autoEnhance` instead of awaiting the POST itself, so
+  // fire it here as soon as `token` resolves. StrictMode-safe via a ref,
+  // mirroring `autoStartedRef` in Meeting.tsx.
+  const autoEnhanceStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoEnhance) return;
+    if (!meetingId || !token) return;
+    if (autoEnhanceStartedRef.current) return;
+    autoEnhanceStartedRef.current = true;
+    setEnhancing(true);
+    (async () => {
+      try {
+        const response = await postEnhance(
+          meetingId,
+          {
+            notes_md: autoEnhance.notes_md,
+            transcript_json: "[]",
+            title: autoEnhance.title,
+          },
+          token,
+        );
+        handleEnhanced(response);
+        if (response.too_short) setAutoTooShort(true);
+      } catch (e) {
+        handleError(e instanceof Error ? e.message : "Enhance failed");
+      } finally {
+        setEnhancing(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEnhance, meetingId, token]);
 
   // The banner is visible if EITHER the local fetch is in flight OR the WS
   // has fired a non-`done` event. Local wins on first click; WS keeps it
@@ -627,10 +753,17 @@ export function MeetingPost() {
           }
           enrichedMarkdown={
             activeDocument === "enhanced"
-              ? liveEnrichedMarkdown
+              ? // Phase 5: while streaming (or holding the last streamed
+                // snapshot through the done-to-response gap), show the raw
+                // markdown preview instead of the editable document - never
+                // write it into `liveEnrichedMarkdown`, so it can never reach
+                // autosave. Once the preview is cleared, this falls straight
+                // back to `liveEnrichedMarkdown`.
+                (preview != null ? preview : liveEnrichedMarkdown)
               : notesMd
           }
-          editable={true}
+          editable={activeDocument === "enhanced" ? preview == null : true}
+          streaming={activeDocument === "enhanced" && preview != null}
           onChange={handleEditorChange}
           onTranscriptLinkClick={
             activeDocument === "enhanced"
