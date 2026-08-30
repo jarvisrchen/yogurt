@@ -33,6 +33,24 @@ impl wiremock::Match for ReasoningSplit {
     }
 }
 
+/// Matches a body whose `thinking.type` equals the given value, or - for
+/// `None` - a body with no `thinking` key at all.
+struct Thinking(Option<&'static str>);
+
+impl wiremock::Match for Thinking {
+    fn matches(&self, request: &Request) -> bool {
+        serde_json::from_slice::<serde_json::Value>(&request.body)
+            .ok()
+            .map(|body| {
+                body.get("thinking")
+                    .and_then(|t| t.get("type"))
+                    .and_then(|v| v.as_str())
+                    == self.0
+            })
+            .unwrap_or(false)
+    }
+}
+
 #[tokio::test]
 async fn it_sends_messages_and_returns_assistant_content() {
     let server = MockServer::start().await;
@@ -41,6 +59,7 @@ async fn it_sends_messages_and_returns_assistant_content() {
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
         .and(header("authorization", "Bearer sk-test"))
+        .and(Thinking(None))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "chatcmpl-abc",
             "object": "chat.completion",
@@ -73,6 +92,7 @@ async fn minimax_requests_separate_reasoning() {
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
         .and(ReasoningSplit(true))
+        .and(Thinking(Some("disabled")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "model": "MiniMax-M3",
             "choices": [{

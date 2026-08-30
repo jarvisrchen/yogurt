@@ -136,6 +136,18 @@ impl OpenAiCompatClient {
         self.model.to_ascii_lowercase().starts_with("minimax-")
     }
 
+    /// MiniMax reasoning models (M3 measured 2026-08-29) spend an
+    /// unpredictable 700-5700 hidden reasoning tokens per enhance call,
+    /// which is what pushes the fat tail past the HTTP timeout. Enhance and
+    /// chat are extraction jobs, not reasoning jobs, so switch thinking off:
+    /// same output quality, ~2x faster median, no tail. `reasoning_effort`
+    /// is ignored by their API; only `thinking.type = "disabled"` works.
+    #[doc(hidden)]
+    pub(crate) fn thinking(&self) -> Option<types::Thinking> {
+        self.split_reasoning()
+            .then_some(types::Thinking { r#type: "disabled" })
+    }
+
     /// Probe the provider's `/models` endpoint and return the list of model
     /// ids it advertises. Used by the Settings page's `Refresh` button to
     /// populate the MODEL datalist with the live, authoritative list
@@ -200,6 +212,7 @@ impl LlmClient for OpenAiCompatClient {
             messages: &req.messages,
             stream: false,
             reasoning_split: self.split_reasoning(),
+            thinking: self.thinking(),
         };
         let resp = self
             .http

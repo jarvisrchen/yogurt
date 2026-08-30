@@ -31,6 +31,7 @@ pub(crate) async fn stream(
         messages: &req.messages,
         stream: true,
         reasoning_split: client.split_reasoning(),
+        thinking: client.thinking(),
     };
 
     let resp = client

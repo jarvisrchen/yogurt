@@ -100,6 +100,15 @@ pub(crate) struct OpenAiRequest<'a> {
     pub stream: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub reasoning_split: bool,
+    /// MiniMax-only `thinking` control. `None` omits the field so plain
+    /// OpenAI-compatible providers never see an unknown key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<Thinking>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct Thinking {
+    pub r#type: &'static str,
 }
 
 #[derive(Deserialize)]
