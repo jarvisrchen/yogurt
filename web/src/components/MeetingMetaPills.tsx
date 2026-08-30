@@ -106,7 +106,7 @@ export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
   return (
     <span className={`${PILL} bg-blsoft text-blue`} title={`Enhanced by ${model}`}>
       <Sparkles size={11} aria-hidden />
-      {`Enhanced · ${model}`}
+      {model}
     </span>
   );
 }
