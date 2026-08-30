@@ -306,6 +306,7 @@ To inspect a live transcript by hand - tail what SQLite has stored, read the raw
 The hero flow.
 The browser sends the raw `notes_md` document; the server owns the transcript, the prompt, the merge, and both persistence targets.
 The post-meeting UI keeps `notes_md` and `enriched_md` in separate My notes and Enhanced tabs.
+Only My notes is editable (debounced autosave of `notes_md`); Enhanced is read-only and changes only through Re-enhance.
 Re-enhance always replaces `enriched_md` from the unchanged raw notes plus transcript and never uses the previous generated summary as input.
 
 ```mermaid
