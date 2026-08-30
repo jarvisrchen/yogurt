@@ -59,6 +59,15 @@ pub trait LlmClient: Send + Sync {
     /// The model name this client sends on the wire, for provenance
     /// stamps (`meetings.llm_model`). Mocks return a fixed marker.
     fn model_name(&self) -> String;
+
+    /// The base URL this client connects to, for provenance stamps
+    /// (`meetings.llm_model` locality prefix). Defaults to `""` for mocks
+    /// that have no real upstream — a hostname parsing of an empty string
+    /// falls through to the `cloud` branch, which is the right default
+    /// for first-run / test fixtures where locality is undetermined.
+    fn base_url(&self) -> &str {
+        ""
+    }
 }
 
 /// OpenAI-compatible HTTP adapter. Speaks the `/chat/completions` shape —
@@ -206,6 +215,14 @@ impl LlmClient for OpenAiCompatClient {
         self.model.clone()
     }
 
+    // Override the trait's `base_url() -> &str { "" }` default — the
+    // enhance handler stamps `meetings.llm_model` as `"<local|cloud> ·
+    // <model>"` and the host-in-URL check needs the real upstream URL,
+    // NOT the empty string a missing override would silently return.
+    fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     async fn complete(&self, req: ChatRequest) -> Result<ChatResponse> {
         let body = types::OpenAiRequest {
             model: &self.model,
@@ -244,5 +261,53 @@ impl LlmClient for OpenAiCompatClient {
 
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
         streaming::stream(self, req).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit coverage for the `LlmClient` trait method overrides on
+    //! `OpenAiCompatClient`. Lives here rather than in `tests/` so it runs
+    //! as part of `cargo test -p yogurt-llm` without needing the
+    //! `wiremock`-backed HTTP fixtures the streaming/non-streaming tests
+    //! in `tests/*.rs` use.
+    //!
+    //! `base_url` carries a non-obvious regression risk: the trait
+    //! default is `""`, and the production constructor never reaches into
+    //! a missing override. A future refactor that drops the explicit
+    //! override would silently fall through to the empty string, and the
+    //! `stamp_llm_engine` helper in `crates/yogurt-server/src/enhance.rs`
+    //! would happily classify everything (including a configured Ollama at
+    //! `localhost:11434`) as `cloud`. The two assertions below pin both
+    //! halves of the contract.
+
+    use super::*;
+
+    #[test]
+    fn base_url_returns_the_constructor_argument_for_a_localhost_url() {
+        let c = OpenAiCompatClient::new(
+            "http://localhost:11434/v1".to_string(),
+            "sk".to_string(),
+            "llama3".to_string(),
+        );
+        assert_eq!(
+            c.base_url(),
+            "http://localhost:11434/v1",
+            "OpenAiCompatClient::base_url must mirror its constructor argument"
+        );
+    }
+
+    #[test]
+    fn base_url_returns_the_constructor_argument_for_a_hosted_url() {
+        let c = OpenAiCompatClient::new(
+            "https://api.minimax.io/v1".to_string(),
+            "sk".to_string(),
+            "MiniMax-Text-01".to_string(),
+        );
+        assert_eq!(
+            c.base_url(),
+            "https://api.minimax.io/v1",
+            "OpenAiCompatClient::base_url must mirror its constructor argument"
+        );
     }
 }
