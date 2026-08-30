@@ -333,14 +333,17 @@ sequenceDiagram
 
     E->>E: resolve LLM: 1) YOGURT_LLM_* env  2) active provider + stored key  3) MockLlm
     Note over E: a configured provider whose key cannot be read<br/>is a hard 502, never a silent mock fallback
-    E->>L: chat completion (non-streaming, hard timeout)
-    alt error or timeout
+    E->>L: open chat stream (SSE, hard timeout to open)
+    alt open error or timeout
         E->>WS: enhance_progress { phase: "error", message }
         E-->>B: 502 / 504
-    else ok
-        L-->>E: enriched markdown
+    else stream open
+        loop per SSE chunk (same hard timeout, reused as a per-chunk idle timeout)
+            L-->>E: delta
+            Note over E: a chunk error or idle timeout here<br/>maps to the same error/502/504 path above
+            E->>WS: enhance_progress { phase: "streaming", chars, text }<br/>first delta immediately, then throttled to ~80 ms
+        end
     end
-    E->>WS: enhance_progress { phase: "streaming", chars }
 
     E->>E: fix_model_mojibake + strip_prompt_scaffolding
     E->>N: merge_notes(notes_md, llm_output, transcript_json)
@@ -633,7 +636,7 @@ graph TB
     end
 
     subgraph LLMBox["AI #2 and #3: LLM, billed per TOKEN"]
-        ENH["enhance: 1 call per End-meeting<br/>or Re-enhance, non-streaming"]
+        ENH["enhance: 1 call per End-meeting<br/>or Re-enhance, streaming"]
         CHT["chat: 1 call per user message,<br/>streaming"]
     end
 

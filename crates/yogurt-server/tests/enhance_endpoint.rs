@@ -20,9 +20,16 @@
 //! the mock deterministically emits one AI bullet per transcript segment
 //! using the first 8 words, so the assertions above are stable.
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use yogurt_server::{run_with_config, Mode, RunConfig};
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::HeaderValue;
+use tokio_tungstenite::tungstenite::Message;
+use yogurt_llm::{ChatMessage, ChatRequest, LlmClient};
+use yogurt_prompts::EnhanceCtx;
+use yogurt_server::{run_with_config, AppState, Mode, RunConfig};
 
 async fn spawn_server() -> (
     std::net::SocketAddr,
@@ -702,4 +709,226 @@ async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
         enriched.contains("data-ai-grey"),
         "data-ai-grey spans must survive sanitization. got: {enriched}"
     );
+}
+
+/// Build an `AppState` rooted in a tempdir, wired with `MockLlm` via
+/// `llm_override` (mirrors `meeting_ws.rs::build_test_state`). Gives the
+/// test a handle on the meeting registry (to poll `events_tx.receiver_count`
+/// before POSTing) and on `prompts` (to independently reconstruct the exact
+/// user prompt the handler renders, so the mock's raw output can be
+/// predicted without duplicating the mock's own bullet-formatting logic).
+fn build_mock_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    let db_path = tmp.path().join("yogurt-test.db");
+    let token_path = tmp.path().join("session-token");
+    let storage = Arc::new(yogurt_server::storage::Storage::init_at(&db_path).unwrap());
+    let session_token = yogurt_server::session::load_or_create(&token_path).unwrap();
+    let token_str = session_token.as_str().to_string();
+    let session: Arc<yogurt_server::session::SessionToken> = Arc::new(session_token);
+    let (markdown_exporter, prompts) =
+        yogurt_server::__test_only_aux_state(tmp.path().join("notes")).expect("build aux state");
+    let db = yogurt_db::Db::open_in_memory().unwrap();
+    let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
+    let label_repo = Arc::new(yogurt_db::LabelRepo::new(db.clone()));
+    let state = AppState {
+        mode: Mode::Release,
+        storage,
+        session,
+        bind_port,
+        meetings: yogurt_server::meetings::Registry::new(),
+        markdown_exporter,
+        prompts,
+        db,
+        keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
+        llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
+        meeting_repo,
+        label_repo,
+        app_events_tx: tokio::sync::broadcast::channel(64).0,
+    };
+    (state, token_str, tmp)
+}
+
+/// Task 1 of "enhance streaming" — the enhance handler now streams the
+/// LLM output over the meeting WS instead of emitting one placeholder
+/// `streaming` frame after the whole completion lands.
+///
+/// Asserts, against the deterministic `MockLlm`:
+/// - the WS sees `sending`, then at least one `streaming` frame, then `done`;
+/// - every `streaming` frame carries a non-empty `text` snapshot whose
+///   length equals `chars`;
+/// - the last `streaming` frame's `text` equals the raw MockLlm completion
+///   for this exact request (computed independently below via the same
+///   `Prompts::render_enhance` + `MockLlm::complete` calls the handler
+///   itself makes, so this doesn't just restate the handler's own output);
+/// - the response body / persistence assertions from the non-streaming test
+///   above still hold (`enriched_md`, `too_short`, `llm_model`).
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_streams_progress_over_ws() {
+    let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = probe.local_addr().unwrap();
+    drop(probe);
+    let (state, token, _tmp) = build_mock_test_state(addr.port());
+    let prompts = state.prompts.clone();
+    let app = yogurt_server::__test_router(state.clone());
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    });
+
+    let meeting = state.meetings.create().await;
+    let meeting_id = meeting.id;
+
+    let notes_md = "- pricing\n";
+    let transcript_json = r#"[{"ts_ms":120000,"channel":"mic","text":"We debated the pricing model in detail today"}]"#;
+
+    // Independently reconstruct the exact raw MockLlm output the handler
+    // will produce for this request, by driving the same two building
+    // blocks (`render_enhance` + `MockLlm::complete`) the handler itself
+    // uses — without re-implementing the mock's bullet-formatting rules.
+    let user_prompt = prompts
+        .render_enhance(&EnhanceCtx {
+            notes: notes_md,
+            transcript: transcript_json,
+        })
+        .expect("render enhance prompt");
+    let expected_raw = yogurt_server::__test_only_llm_mock::MockLlm
+        .complete(ChatRequest {
+            messages: vec![ChatMessage::user(user_prompt)],
+            stream: false,
+        })
+        .await
+        .expect("mock complete")
+        .content;
+
+    // Connect the WS BEFORE posting — the handler runs the whole enhance
+    // pipeline (including the `done` frame) inside the POST's response
+    // future, so a subscriber that attaches after the POST returns would
+    // have missed every frame.
+    let ws_url = format!(
+        "ws://127.0.0.1:{}/ws/meetings/{}?token={}",
+        addr.port(),
+        meeting_id,
+        token
+    );
+    let mut req = ws_url.into_client_request().expect("build req");
+    req.headers_mut().insert(
+        "origin",
+        HeaderValue::from_str(&format!("http://127.0.0.1:{}", addr.port())).unwrap(),
+    );
+    let (ws_stream, _) = tokio_tungstenite::connect_async(req)
+        .await
+        .expect("ws connect");
+    let (mut ws_write, mut ws_read) = ws_stream.split();
+
+    // Deterministic subscribe signal instead of a fixed sleep.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while meeting.events_tx.receiver_count() == 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "WS handler never subscribed to events_tx within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/meetings/{meeting_id}/enhance",
+            addr.port()
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": notes_md,
+            "transcript_json": transcript_json,
+            "title": "Streaming test",
+        }))
+        .send()
+        .await
+        .expect("post enhance");
+    assert_eq!(resp.status(), 200, "enhance must return 200");
+    let body: serde_json::Value = resp.json().await.expect("json body");
+    assert_eq!(body["too_short"].as_bool(), Some(false), "got: {body}");
+    assert!(
+        body["enriched_md"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("- pricing"),
+        "got: {body}"
+    );
+
+    // Collect every `enhance_progress` frame — by the time POST returned,
+    // the handler has already broadcast all of them (sending, streaming
+    // x N, done); this just drains what's sitting in the channel.
+    let mut phases: Vec<String> = Vec::new();
+    let mut streaming_frames: Vec<(usize, String)> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let next = tokio::time::timeout(remaining, ws_read.next()).await;
+        let frame = match next {
+            Ok(Some(Ok(f))) => f,
+            _ => break,
+        };
+        let text = match frame {
+            Message::Text(t) => t,
+            _ => continue,
+        };
+        let value: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if value["type"] != "enhance_progress" {
+            continue;
+        }
+        let phase = value["phase"].as_str().unwrap_or("").to_string();
+        if phase == "streaming" {
+            let chars = value["chars"].as_u64().unwrap_or(0) as usize;
+            let snapshot = value["text"].as_str().unwrap_or("").to_string();
+            streaming_frames.push((chars, snapshot));
+        }
+        let done = phase == "done" || phase == "error";
+        phases.push(phase);
+        if done {
+            break;
+        }
+    }
+    let _ = ws_write.send(Message::Close(None)).await;
+
+    assert_eq!(
+        phases.first().map(String::as_str),
+        Some("sending"),
+        "first frame must be sending. got: {phases:?}"
+    );
+    assert_eq!(
+        phases.last().map(String::as_str),
+        Some("done"),
+        "last frame must be done. got: {phases:?}"
+    );
+    assert!(
+        !streaming_frames.is_empty(),
+        "expected at least one streaming frame. got phases: {phases:?}"
+    );
+
+    for (chars, snapshot) in &streaming_frames {
+        assert!(
+            !snapshot.is_empty(),
+            "streaming frame text must be non-empty"
+        );
+        assert_eq!(
+            *chars,
+            snapshot.len(),
+            "chars must equal text.len(). text: {snapshot:?}"
+        );
+    }
+
+    let (_, last_snapshot) = streaming_frames.last().expect("checked non-empty above");
+    assert_eq!(
+        last_snapshot, &expected_raw,
+        "last streaming frame's text must equal the raw MockLlm completion"
+    );
+
+    server.abort();
 }
