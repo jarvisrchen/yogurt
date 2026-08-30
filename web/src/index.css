@@ -171,8 +171,20 @@ html, body {
  * transition on settle.
  * ========================================================================== */
 
-[data-streaming] .ProseMirror {
+[data-streaming] .ProseMirror,
+.yogurt-editor[data-streaming] .ProseMirror :is(h1, h2, h3) {
+  /* The second selector out-specifies the `.yogurt-editor .ProseMirror h1`
+   * ink rule below so headings go grey with the rest of the preview. */
   color: var(--color-grey);
+}
+
+/* The prompt asks for `data-ts` in seconds but models sometimes emit the raw
+ * `ts_ms` (observed live: MiniMax-M3 wrote 27300 for 00:27, rendering as
+ * 455:00). The server-side merge re-derives every timestamp from the
+ * transcript, so hide the deep-links until the merged document lands rather
+ * than show wrong ones. */
+[data-streaming] [data-transcript-link] {
+  display: none;
 }
 
 [data-streaming] .ProseMirror > :last-child::after {
