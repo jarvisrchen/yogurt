@@ -60,6 +60,12 @@ export function YogurtEditor(props: YogurtEditorProps) {
   onChangeRef.current = onChange;
   const onLinkRef = useRef(onTranscriptLinkClick);
   onLinkRef.current = onTranscriptLinkClick;
+  // Markdown this editor last emitted via `onChange`. Hosts keep that
+  // string in state and pass it straight back as `enrichedMarkdown`
+  // (MeetingPost's My notes / Enhanced tabs), so without this guard every
+  // keystroke round-trips doc -> markdown -> setContent, which trims the
+  // trailing space you just typed and resets the caret to the end.
+  const lastEmittedRef = useRef<string | null>(null);
 
   const editor = useEditor({
     extensions: yogurtExtensions({ placeholder }),
@@ -68,7 +74,9 @@ export function YogurtEditor(props: YogurtEditorProps) {
     onUpdate: ({ editor }) => {
       if (!onChangeRef.current) return;
       try {
-        onChangeRef.current(docToMarkdown(editor.state.doc));
+        const md = docToMarkdown(editor.state.doc);
+        lastEmittedRef.current = md;
+        onChangeRef.current(md);
       } catch {
         // Serialization should never throw, but if it does, swallow it —
         // an editor that crashes the host on every keystroke would be
@@ -95,6 +103,8 @@ export function YogurtEditor(props: YogurtEditorProps) {
   useEffect(() => {
     if (!editor) return;
     if (enrichedMarkdown == null) return;
+    if (enrichedMarkdown === lastEmittedRef.current) return;
+    lastEmittedRef.current = null;
     const html = markdownToHtml(enrichedMarkdown);
     // `setContent(html, false)` to NOT emit an `onUpdate` (we don't want
     // the server-sent enriched doc to round-trip back through onChange).
