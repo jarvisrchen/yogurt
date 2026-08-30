@@ -51,6 +51,13 @@ vi.mock("../lib/ws", async (importOriginal) => {
 
 const state = vi.hoisted(() => ({
   meetingRow: undefined as unknown,
+  // Backs the mocked `useSettings` below — the live header reads the
+  // active provider's model for the "will enhance with" LLM pill.
+  providers: [{ id: "p1", is_active: true, model: "gpt-5-mini" }] as Array<{
+    id: string;
+    is_active: boolean;
+    model: string;
+  }>,
   activeRecording: null as {
     id: string;
     title: string;
@@ -75,6 +82,10 @@ vi.mock("../lib/api/meetings", () => ({
   }),
   // MeetingLabels (mounted in the header) needs this hook to exist.
   useSetMeetingLabels: () => ({ mutate: vi.fn() }),
+}));
+
+vi.mock("../lib/api/settings", () => ({
+  useSettings: () => ({ data: { providers: state.providers } }),
 }));
 
 import { Meeting } from "./Meeting";
@@ -392,6 +403,32 @@ describe("Meeting — recovers recording state on return", () => {
       expect(screen.getByText("Local STT")).toBeInTheDocument();
     });
     expect(screen.queryByText("Cloud STT")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the active provider's model as a pending LLM pill on a fresh meeting", async () => {
+    // A brand-new meeting has no `llm_model` stamp yet (enhance.rs writes
+    // it only after a successful enhance), but the header should still say
+    // which model *will* fuse the notes — parity with the STT pill.
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+      stt: "local",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-live");
+
+    const pill = await screen.findByTestId("llm-pill");
+    expect(pill).toHaveTextContent("gpt-5-mini");
+    expect(pill).toHaveAttribute("title", "Will enhance with gpt-5-mini");
 
     vi.unstubAllGlobals();
   });
