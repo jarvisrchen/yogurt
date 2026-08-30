@@ -81,9 +81,15 @@ export function MetaPill({
 export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined }) {
   const engine = parseSttEngine(sttEngine);
   if (!engine) return null;
+  // Option E: STT family is always matcha. Filled = on this Mac,
+  // outlined (#CBE0D2 border per the lavish mockup) = went to a provider.
+  const tone = engine.cloud
+    ? "border border-[#CBE0D2] bg-transparent text-matcha"
+    : "bg-mtsoft text-matcha";
   return (
     <span
-      className={`${PILL} ${engine.cloud ? "bg-blsoft text-blue" : "bg-mtsoft text-matcha"}`}
+      className={`${PILL} ${tone}`}
+      data-testid="engine-pill"
       title={engine.cloud ? "Transcribed by cloud STT" : "Transcribed on this Mac"}
     >
       {engine.cloud ? <Cloud size={11} aria-hidden /> : <HardDrive size={11} aria-hidden />}
