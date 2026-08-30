@@ -75,6 +75,7 @@ interface MeetingFetchResponse {
   started_at?: number | null;
   ended_at?: number | null;
   stt_engine?: string | null;
+  llm_model?: string | null;
 }
 
 interface LocationStateShape {
@@ -132,6 +133,7 @@ export function MeetingPost() {
     undefined,
   );
   const [sttEngine, setSttEngine] = useState<string | undefined>(undefined);
+  const [llmModel, setLlmModel] = useState<string | undefined>(undefined);
   const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -226,6 +228,7 @@ export function MeetingPost() {
         setStartedAtUnixMs(json.started_at ?? undefined);
         setEndedAtUnixMs(json.ended_at ?? undefined);
         setSttEngine(json.stt_engine ?? undefined);
+        setLlmModel(json.llm_model ?? undefined);
       } catch (e) {
         // AbortError from cleanup is expected — ignore.
         if (cancelled || generationRef.current !== myGen) return;
@@ -392,6 +395,7 @@ export function MeetingPost() {
     // the just-enhanced state.
     generationRef.current += 1;
     setEnrichedMd(response.enriched_md);
+    if (response.llm_model) setLlmModel(response.llm_model);
   }, []);
   // BL-3: capture every editor mutation so Re-enhance has the live content.
   const handleEditorChange = useCallback((markdown: string) => {
@@ -526,6 +530,7 @@ export function MeetingPost() {
                 startedAt={startedAtUnixMs}
                 endedAt={endedAtUnixMs}
                 sttEngine={sttEngine}
+                llmModel={llmModel}
               />
               {meetingId && <MeetingLabels meetingId={meetingId} />}
             </div>
