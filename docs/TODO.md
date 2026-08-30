@@ -43,21 +43,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
-- [ ] Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
-  <details>
-  <summary>Details</summary>
-
-  The post-meeting enhanced summary color-tints each block by source: `Source::User` blocks render black ("your notes"), `Source::AiGrey` blocks render grey with a transcript deep-link (`crates/yogurt-notes/src/render.rs` wraps them in `<span data-ai-grey data-ts="N">`).
-  When the user's notes are empty, the expectation is that everything in the enhanced AI summary is grey AI output.
-  Observed instead: the whole summary reads as black "your notes", so the grey/black distinction feels broken or inverted.
-
-  Two things to do:
-  1. Clarify and document how the black-vs-grey split is actually supposed to work (what makes a block `User` vs `AiGrey` - see `crates/yogurt-notes/src/diff.rs` for the user/AI merge rules), and confirm the intended mapping against the frontend styling.
-  2. Fix the mismatch: when the user has no notes (`user_notes` empty), the merged doc should come out all `AiGrey` (all grey) - if it's rendering black instead, find where blocks are being tagged `Source::User` when there was no user input to attribute to them.
-
-  Verify E2E: record a meeting with no notes typed, enhance, and confirm every block in the summary is grey; then type notes and confirm those specific blocks render black while AI additions stay grey.
-  </details>
-
 ## Audio
 
 - [ ] Add NVIDIA Parakeet v3 to the local STT model download
@@ -111,6 +96,26 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### Meetings
 
+- [x] Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
+  <details>
+  <summary>Details</summary>
+
+  The post-meeting enhanced summary color-tints each block by source: `Source::User` blocks render black ("your notes"), `Source::AiGrey` blocks render grey with a transcript deep-link (`crates/yogurt-notes/src/render.rs` wraps them in `<span data-ai-grey data-ts="N">`).
+  When the user's notes are empty, the expectation is that everything in the enhanced AI summary is grey AI output.
+  Observed instead: the whole summary reads as black "your notes", so the grey/black distinction feels broken or inverted.
+
+  Two things to do:
+  1. Clarify and document how the black-vs-grey split is actually supposed to work (what makes a block `User` vs `AiGrey` - see `crates/yogurt-notes/src/diff.rs` for the user/AI merge rules), and confirm the intended mapping against the frontend styling.
+  2. Fix the mismatch: when the user has no notes (`user_notes` empty), the merged doc should come out all `AiGrey` (all grey) - if it's rendering black instead, find where blocks are being tagged `Source::User` when there was no user input to attribute to them.
+
+  Verify E2E: record a meeting with no notes typed, enhance, and confirm every block in the summary is grey; then type notes and confirm those specific blocks render black while AI additions stay grey.
+
+  Resolved 2026-08-30. Two root causes:
+  1. Frontend: the `aiGrey` promote-on-edit plugin (`web/src/editor/marks/aiGrey.ts`) treated TipTap's programmatic `setContent(html, false)` replace as one giant user insertion and stripped the grey mark from the entire document on every post-view load, Re-enhance, and tab switch. It now skips transactions carrying TipTap's `preventUpdate` meta.
+  2. Backend: `crates/yogurt-notes/src/render.rs` never marked AI headings (and h1/h3 fell through to the paragraph branch), so with empty notes the inferred headings always read as ink "your notes". AI headings are now wrapped in `<span data-ai-grey>` (no deep-link).
+  Contract, as documented in `render.rs`: a block is black only when `diff::merge` finds its text in the user's own notes; everything else the LLM produced is grey, headings included.
+  </details>
+
 - [x] Add an "enhanced with" pill next to the existing STT pill on meeting headers
   <details>
   <summary>Details</summary>
@@ -130,6 +135,19 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Reused the existing `meetings.llm_model` column (V008, bare model name stamped by enhance.rs) instead of a new `llm_enhancement` column, and skipped the local/cloud split: the LLM is always a BYO OpenAI-compatible endpoint, so the app has no local-vs-cloud signal to key a tone on.
   `LlmPill` (`Sparkles` glyph, blueberry tone, `Enhanced · <model>`) sits next to `EnginePill` in the live header, post-meeting header, and library card; `POST /enhance` now returns `llm_model` so the post-meeting pill follows a re-enhance without a refetch.
   Verified in the browser against a real MiniMax enhance; a failed enhance keeps the previous stamp.
+  </details>
+
+- [x] LLM pill missing on a live meeting (STT pill shows, LLM pill doesn't)
+  <details>
+  <summary>Details</summary>
+
+  Starting a new meeting showed the STT pill but no LLM pill.
+  Not a bug in the pill: `stt_engine` is stamped on the row at recording start (`routes.rs::start_meeting`), while `llm_model` is only stamped by `enhance.rs` after a successful enhance, so a live meeting has nothing to render and `LlmPill` correctly refuses to guess.
+
+  Fixed 2026-08-30 in the live header only (`web/src/routes/Meeting.tsx`): when the row has no `llm_model`, fall back to the active provider's model from the already-cached `useSettings()`, mirroring the existing `stt_engine ?? activeRecording.stt` fallback.
+  `MeetingMetaPills` grew an `llmPending` flag that flips the pill's tooltip to "Will enhance with <model>" so a pre-enhance pill doesn't claim the meeting was already enhanced.
+  Post-meeting header and library card are untouched - a stored meeting that was never enhanced still shows no pill.
+  Verified E2E against the running backend: "+ New meeting" now renders `[Local · large-v3-turbo] [MiniMax-M3]` while recording.
   </details>
 
 - [x] Short / empty post-meeting meetings should say "too short" and return to the library

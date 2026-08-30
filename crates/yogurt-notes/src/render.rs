@@ -1,18 +1,33 @@
 //! `MergedDoc` -> wire-format markdown with `data-ai-grey` /
 //! `data-transcript-link` marker spans.
 //!
-//! Headings deliberately do NOT get marker spans on the wire — the editor
-//! color-tints them via the parent block's source. List items, paragraphs,
-//! blockquotes, and code blocks tagged AiGrey are wrapped in
-//! `<span data-ai-grey data-ts="N">…</span>` with a trailing
+//! Source contract (the Legend's swatches): a block is `Source::User` only
+//! when `diff::merge` found its text in the user's own notes; everything
+//! else the LLM produced is `Source::AiGrey`. With empty notes the whole
+//! document is AiGrey. Every AiGrey block, headings included, has its text
+//! wrapped in `<span data-ai-grey data-ts="N">…</span>` so the editor
+//! paints it grey; list items, paragraphs, blockquotes, and code blocks
+//! additionally get a trailing
 //! `<span data-transcript-link data-ts="N">↳ HH:MM</span>` deep-link.
+//! Headings get no deep-link - they are inferred topic labels, not
+//! transcript facts.
 
 use crate::ast::{strip_markers, Block};
 use crate::{MergedDoc, Source};
 
 pub fn to_markdown(doc: &MergedDoc) -> String {
     let mut out = String::new();
+    let mut in_list = false;
     for mb in &doc.blocks {
+        // List items are emitted without a trailing blank line so sibling
+        // bullets stay one list. Close the list before any other block, or
+        // a following paragraph is glued onto the last bullet as a lazy
+        // continuation line.
+        let is_item = matches!(mb.block, Block::ListItem { .. });
+        if in_list && !is_item {
+            out.push('\n');
+        }
+        in_list = is_item;
         let rendered = match &mb.block {
             Block::Heading { level, text } => {
                 format!("{} {}\n\n", "#".repeat(*level as usize), text)
@@ -27,9 +42,19 @@ pub fn to_markdown(doc: &MergedDoc) -> String {
             Block::BlockQuote { md } => format!("> {md}\n\n"),
             Block::Hr => "---\n\n".into(),
         };
-        let with_marks = match mb.source {
-            Source::User => rendered,
-            Source::AiGrey { transcript_ts_sec } => wrap_ai(&rendered, transcript_ts_sec),
+        let with_marks = match (&mb.source, &mb.block) {
+            (Source::User, _) => rendered,
+            (Source::AiGrey { transcript_ts_sec }, Block::Heading { level, text }) => {
+                // Match on the block, not the rendered string: the old
+                // `strip_prefix("## ")` check let h1/h3 fall through to the
+                // paragraph branch and come out as a literal "# text" line.
+                format!(
+                    "{} <span data-ai-grey data-ts=\"{transcript_ts_sec}\">{}</span>\n\n",
+                    "#".repeat(*level as usize),
+                    html_escape::encode_safe(&strip_markers(text))
+                )
+            }
+            (Source::AiGrey { transcript_ts_sec }, _) => wrap_ai(&rendered, *transcript_ts_sec),
         };
         out.push_str(&with_marks);
     }
@@ -60,14 +85,80 @@ fn wrap_ai(rendered: &str, ts: u64) -> String {
         // controlled values, so it stays raw.
         let safe_inner = html_escape::encode_safe(inner);
         format!("- <span data-ai-grey data-ts=\"{ts}\">{safe_inner} {suffix_node}</span>\n")
-    } else if let Some(rest) = trim.strip_prefix("## ") {
-        // Headings don't get marker spans on the wire — the editor color-tints
-        // them via the parent block's source. Emit normally. Escape rest so
-        // an LLM cannot inject <script> via a heading.
-        let safe_rest = html_escape::encode_safe(rest);
-        format!("## {safe_rest}\n\n")
     } else {
         let safe_trim = html_escape::encode_safe(trim);
         format!("<span data-ai-grey data-ts=\"{ts}\">{safe_trim} {suffix_node}</span>\n\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::Block;
+    use crate::MergedBlock;
+
+    fn ai(block: Block) -> MergedBlock {
+        MergedBlock {
+            block,
+            source: Source::AiGrey {
+                transcript_ts_sec: 24,
+            },
+        }
+    }
+
+    #[test]
+    fn a_paragraph_after_a_list_does_not_lazy_continue_the_bullet() {
+        let doc = MergedDoc {
+            blocks: vec![
+                ai(Block::ListItem {
+                    md: "from the transcript".into(),
+                    depth: 0,
+                }),
+                MergedBlock {
+                    block: Block::Paragraph {
+                        md: "my own line".into(),
+                    },
+                    source: Source::User,
+                },
+            ],
+        };
+        let md = to_markdown(&doc);
+        assert!(
+            md.contains("</span>\n\nmy own line"),
+            "blank line must close the list, got:\n{md}"
+        );
+    }
+
+    /// Empty notes => every block is AiGrey, and the editor can only paint a
+    /// heading grey if the wire format marks it. h1/h3 previously fell
+    /// through to the paragraph branch and rendered as a literal "# text".
+    #[test]
+    fn ai_headings_are_marked_grey_without_a_deep_link() {
+        let doc = MergedDoc {
+            blocks: vec![
+                ai(Block::Heading {
+                    level: 1,
+                    text: "Team <b>updates</b>".into(),
+                }),
+                ai(Block::Heading {
+                    level: 3,
+                    text: "Launch".into(),
+                }),
+                MergedBlock {
+                    block: Block::Heading {
+                        level: 2,
+                        text: "Mine".into(),
+                    },
+                    source: Source::User,
+                },
+            ],
+        };
+        let md = to_markdown(&doc);
+        assert_eq!(
+            md,
+            "# <span data-ai-grey data-ts=\"24\">Team &lt;b&gt;updates&lt;&#x2F;b&gt;</span>\n\n\
+             ### <span data-ai-grey data-ts=\"24\">Launch</span>\n\n\
+             ## Mine\n\n"
+        );
     }
 }
