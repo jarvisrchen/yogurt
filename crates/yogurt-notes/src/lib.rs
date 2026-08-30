@@ -6,12 +6,16 @@
 //!
 //! The diff is **structural** — computed over the markdown AST at block
 //! granularity (heading / paragraph / list item / code block / blockquote / hr).
-//! It is NOT a character diff. See CONTEXT D-07 .. D-10 for the design.
+//! It is NOT a character diff (CONTEXT D-07 .. D-10). A second, inline pass
+//! (`weave`) then finds the user's note lines *inside* AI blocks - the model
+//! is asked to fold a user line into the bullet that expands on it - and
+//! records those byte ranges so the render paints only the user's words ink.
 
 pub mod ast;
 pub mod diff;
 pub mod render;
 pub mod ts;
+pub mod weave;
 
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +29,11 @@ pub enum Source {
 pub struct MergedBlock {
     pub block: ast::Block,
     pub source: Source,
+    /// Byte ranges of the block's marker-stripped text that are the user's
+    /// own words woven into an AI block (see `weave`). Empty for `User`
+    /// blocks and for AI blocks with none of the user's lines in them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub user_runs: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
