@@ -52,7 +52,13 @@ import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
-import { meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  meetingsApi,
+  meetingsKey,
+  useActiveRecording,
+  useMeeting,
+} from "../lib/api/meetings";
 import { postEnhance, type EnhanceResponse } from "../lib/api";
 
 const PAPER = "#FBF7EF"; // --color-paper
@@ -101,6 +107,7 @@ export function MeetingPost() {
   const navigate = useNavigate();
   const meetingId = params.id ?? null;
 
+  const qc = useQueryClient();
   const stateShape = (location.state ?? {}) as LocationStateShape;
   const autoEnhance = stateShape.autoEnhance;
   // Set true by the autoEnhance POST response's own `too_short` field.
@@ -539,12 +546,15 @@ export function MeetingPost() {
   // editor they'd have to navigate out of manually.
   useEffect(() => {
     if (!tooShort) return;
+    // The server drops the stub row for a too-short meeting, so the cached
+    // library list is stale the moment we land back on it.
+    void qc.invalidateQueries({ queryKey: meetingsKey });
     const t = setTimeout(
       () => navigate("/", { replace: true }),
       TOO_SHORT_REDIRECT_MS,
     );
     return () => clearTimeout(t);
-  }, [tooShort, navigate]);
+  }, [tooShort, navigate, qc]);
 
   if (!meetingId) return null;
 
@@ -611,7 +621,7 @@ export function MeetingPost() {
             <InlineTitle
               id={meetingId}
               title={displayTitle ?? "Untitled meeting"}
-              className="block font-serif text-[19px] leading-tight text-ink truncate"
+              className="block text-[19px] font-bold tracking-tight leading-tight text-ink truncate"
             />
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <MeetingMetaPills

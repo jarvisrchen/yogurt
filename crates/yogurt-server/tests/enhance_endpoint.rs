@@ -415,23 +415,19 @@ async fn enhance_skips_llm_for_a_too_short_meeting() {
     assert_eq!(body["too_short"].as_bool(), Some(true), "got: {body}");
     assert_eq!(body["enriched_md"].as_str(), Some(""), "got: {body}");
 
-    // The LLM/merge/persist pipeline never ran - the Library row
-    // POST /api/meetings created (in yogurt-db, not the Phase-0 storage
-    // enhance itself writes to) stays untouched, so enriched_md is still
-    // NULL.
+    // The LLM/merge/persist pipeline never ran AND the stub row that
+    // POST /api/meetings created is gone - an accidental start/stop must
+    // not leave an "Untitled meeting" behind in the library.
     let app_db_path = tmp.path().join("yogurt-app.sqlite");
     let conn = rusqlite::Connection::open(&app_db_path).expect("reopen yogurt-db");
-    let enriched_md_db: Option<String> = conn
+    let rows: i64 = conn
         .query_row(
-            "SELECT enriched_md FROM meetings WHERE id = ?",
+            "SELECT COUNT(*) FROM meetings WHERE id = ?",
             [&meeting_id],
             |row| row.get(0),
         )
-        .expect("meeting row should exist from POST /api/meetings");
-    assert!(
-        enriched_md_db.is_none(),
-        "too-short meeting must not persist an enriched_md: {enriched_md_db:?}"
-    );
+        .expect("count query");
+    assert_eq!(rows, 0, "too-short meeting row must be deleted");
 }
 
 /// Regression guard for the threshold's notes-gate: real user notes must
