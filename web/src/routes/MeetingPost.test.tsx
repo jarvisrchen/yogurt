@@ -232,42 +232,6 @@ describe("MeetingPost — live-recording redirect", () => {
   });
 });
 
-describe("MeetingPost — too-short meeting", () => {
-  // Reproduces the docs/TODO.md "too short" case: `endMeeting()` navigates
-  // here with `tooShort: true` in router state when the server's enhance
-  // response reported `too_short` (empty notes + trivial transcript, see
-  // `enhance.rs`'s `TOO_SHORT_TRANSCRIPT_WORDS` gate). The route must show
-  // the brief state instead of the editor, then auto-return to the library.
-  beforeEach(() => {
-    state.active = null;
-    patchMock.mockClear();
-  });
-
-  it("shows a 'Meeting too short' state instead of the editor, then returns to the library", async () => {
-    mockMeetingFetch({
-      id: MEETING_ID,
-      title: "Accidental tap",
-      started_at: 1000,
-      ended_at: 1500,
-      notes_md: "",
-      enriched_md: null,
-      transcript_json: "[]",
-    });
-
-    renderPost({ tooShort: true });
-
-    expect(screen.getByTestId("meeting-too-short")).toBeInTheDocument();
-    expect(screen.queryByTestId("meeting-post-route")).toBeNull();
-
-    await waitFor(
-      () => {
-        expect(screen.getByTestId("library-view")).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
-  });
-});
-
 describe("MeetingPost — streaming enhance preview", () => {
   beforeEach(() => {
     state.active = null;
@@ -519,7 +483,12 @@ describe("MeetingPost — auto-enhance on arrival", () => {
     expect(postCalls).toHaveLength(1);
   });
 
-  it("renders the too-short screen when the autoEnhance POST reports too_short", async () => {
+  it("renders the too-short screen when the autoEnhance POST reports too_short, then returns to the library", async () => {
+    // Reproduces the docs/TODO.md "too short" case: the enhance POST
+    // (fired from `location.state.autoEnhance`) reports `too_short` (empty
+    // notes + trivial transcript, see `enhance.rs`'s
+    // `TOO_SHORT_TRANSCRIPT_WORDS` gate). The route must show the brief
+    // state instead of the editor, then auto-return to the library.
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -553,5 +522,13 @@ describe("MeetingPost — auto-enhance on arrival", () => {
     await waitFor(() => {
       expect(screen.getByTestId("meeting-too-short")).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("meeting-post-route")).toBeNull();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("library-view")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
   });
 });
