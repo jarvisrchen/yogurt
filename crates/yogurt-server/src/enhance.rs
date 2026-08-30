@@ -195,6 +195,40 @@ pub async fn enhance(
             .map(|seg| seg.text.split_whitespace().count())
             .sum();
     if user_notes.trim().is_empty() && transcript_word_count < TOO_SHORT_TRANSCRIPT_WORDS {
+        // Drop the row `POST /api/meetings` created up front, so an
+        // accidental start/stop doesn't leave an "Untitled meeting" stub in
+        // the library the user has to clean up by hand. Never touches a
+        // meeting that already carries an enriched body - Re-enhance on a
+        // previously enhanced meeting must not destroy it.
+        let repo = state.meeting_repo.clone();
+        let exporter = state.markdown_exporter.clone();
+        let id = meeting_id.to_string();
+        let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let Some(m) = repo.get(&id)? else {
+                return Ok(());
+            };
+            if m.enriched_md.as_deref().is_some_and(|e| !e.trim().is_empty()) {
+                return Ok(());
+            }
+            let path = exporter.path_for(&ExpMeeting {
+                id: &m.id,
+                title: &m.title,
+                started_at_unix_ms: m.started_at,
+                ended_at_unix_ms: m.ended_at,
+                body_md: &m.notes_md,
+            })?;
+            if repo.delete(&id)? {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => {
+                        tracing::warn!(?e, path = %path.display(), "too-short: could not remove markdown file");
+                    }
+                }
+            }
+            Ok(())
+        })
+        .await;
         return Ok(Json(EnhanceResponse {
             enriched_md: String::new(),
             notes_file: String::new(),

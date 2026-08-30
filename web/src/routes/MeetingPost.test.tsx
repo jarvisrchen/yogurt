@@ -49,6 +49,7 @@ const state = vi.hoisted(() => ({
 const patchMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
 vi.mock("../lib/api/meetings", () => ({
   meetingsApi: { patch: patchMock },
+  meetingsKey: ["meetings"],
   useMeeting: () => ({ data: undefined, isError: false }),
   useUpdateMeetingTitle: () => ({ mutate: vi.fn() }),
   useActiveRecording: () => ({ data: state.active, isLoading: false, error: null }),
