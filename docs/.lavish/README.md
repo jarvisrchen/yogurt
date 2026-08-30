@@ -6,3 +6,4 @@ Superseded surfaces live in [../archive/.lavish/](../archive/.lavish/).
 - [ARCHITECTURE.html](ARCHITECTURE.html) - companion to [../ARCHITECTURE.md](../ARCHITECTURE.md)
 - [DEBUGGING-TRANSCRIPTS.html](DEBUGGING-TRANSCRIPTS.html) - companion to [../DEBUGGING-TRANSCRIPTS.md](../DEBUGGING-TRANSCRIPTS.md)
 - [MODEL-EVAL.html](MODEL-EVAL.html) - companion to [../MODEL-EVAL.md](../MODEL-EVAL.md)
+- [enhance-streaming-design.html](enhance-streaming-design.html) - companion to [../.planning/enhance-streaming-design.md](../.planning/enhance-streaming-design.md)

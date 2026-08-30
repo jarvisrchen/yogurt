@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Enhance streaming design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+  --paper:   #FBF7EF;
+  --card:    #FFFFFF;
+  --ink:     #211D18;
+  --grey:    #A89F90;
+  --line:    #EBE3D5;
+  --blue:    #5B4FC7;
+  --blsoft:  #ECE9FB;
+  --straw:   #E07A66;
+  --strsoft: #FBE6E0;
+  --matcha:  #5E9E73;
+  --mtsoft:  #E7F0E8;
+  --mut:     #8A8174;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-chip: 6px; --r-btn: 9px; --r-card: 14px; --r-pill: 999px;
+  --sh-card: 0 2px 6px rgba(40, 30, 15, 0.08);
+  --sh-btn: 0 2px 8px rgba(91, 79, 199, 0.3);
+}
+* { box-sizing: border-box; min-width: 0; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+.esd-wrap { max-width: 1040px; margin: 0 auto; padding: 48px 28px 120px; }
+h1 { font-family: var(--font-serif); font-weight: 400; font-size: 44px; line-height: 1.1; margin: 0 0 10px; letter-spacing: -0.01em; }
+h2 { font-family: var(--font-serif); font-weight: 400; font-size: 28px; margin: 56px 0 14px; letter-spacing: -0.005em; }
+h3 { font-size: 15px; font-weight: 700; margin: 22px 0 8px; }
+p { margin: 0 0 12px; }
+.esd-kicker { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mut); margin-bottom: 8px; }
+.esd-lede { font-size: 17px; color: var(--mut); max-width: 720px; }
+.esd-lede a { color: var(--blue); }
+code { font-family: var(--font-mono); font-size: 12.5px; background: #F2EBDD; padding: 1px 5px; border-radius: 4px; }
+pre { font-family: var(--font-mono); font-size: 12.5px; background: #211D18; color: #F5EFE3; padding: 14px 16px; border-radius: var(--r-btn); overflow-x: auto; line-height: 1.55; margin: 10px 0 14px; }
+pre code { background: none; padding: 0; color: inherit; }
+.esd-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--sh-card); padding: 22px 24px; }
+.esd-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.esd-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.esd-pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; padding: 3px 10px; border-radius: var(--r-pill); font-weight: 500; letter-spacing: 0.02em; }
+.esd-pill.blue { background: var(--blsoft); color: var(--blue); }
+.esd-pill.matcha { background: var(--mtsoft); color: var(--matcha); }
+.esd-pill.straw { background: var(--strsoft); color: var(--straw); }
+.esd-pill.grey { background: #F2EBDD; color: var(--mut); }
+ul { padding-left: 20px; margin: 0 0 12px; }
+li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mut); font-weight: 500; }
+.esd-tablewrap { overflow-x: auto; }
+
+/* ─── Mock of the post-meeting screen ─── */
+.esd-mock { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; box-shadow: var(--sh-card); }
+.esd-mock-banner { display: flex; align-items: center; gap: 14px; padding: 10px 18px; background: var(--blsoft); border-bottom: 1px solid #D9D4F4; font-size: 13px; font-weight: 600; color: var(--ink); }
+.esd-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); animation: esdpulse 1.4s ease-in-out infinite; }
+.esd-bar { flex: 0 0 120px; height: 6px; border-radius: 3px; background: #D9D4F4; overflow: hidden; position: relative; }
+.esd-bar::after { content: ""; position: absolute; inset: 0; width: 40%; background: var(--blue); border-radius: 3px; animation: esdslide 1.8s ease-in-out infinite; }
+.esd-count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--mut); font-weight: 500; }
+.esd-mock-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.esd-mock-title { font-family: var(--font-serif); font-size: 22px; }
+.esd-btn { padding: 7px 13px; border-radius: var(--r-btn); background: var(--blue); color: #fff; font-size: 12.5px; font-weight: 600; border: 0; box-shadow: var(--sh-btn); opacity: 0.7; cursor: wait; }
+.esd-mock-body { padding: 26px 30px 34px; }
+.esd-tabs { display: inline-flex; gap: 2px; background: #F2EBDD; padding: 4px; border-radius: 11px; margin-bottom: 18px; }
+.esd-tab { padding: 6px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--mut); }
+.esd-tab.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(40,30,15,0.1); }
+.esd-legend { float: right; font-family: var(--font-mono); font-size: 10.5px; color: var(--mut); display: flex; gap: 12px; margin-top: 6px; }
+.esd-legend b { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.esd-doc { clear: both; font-size: 14.5px; line-height: 1.7; min-height: 250px; }
+.esd-doc h4 { font-family: var(--font-serif); font-weight: 400; font-size: 19px; margin: 12px 0 4px; }
+.esd-doc ul { margin: 0 0 8px; }
+.esd-doc .ai { color: var(--grey); }
+.esd-doc .usr { color: var(--ink); }
+.esd-doc .ts { font-family: var(--font-mono); font-size: 10.5px; color: var(--blue); margin-left: 6px; opacity: 0; transition: opacity .35s; }
+.esd-doc.settled .ts { opacity: 1; }
+.esd-doc.streaming * { color: var(--grey); }
+.esd-doc.streaming .caret { display: inline-block; width: 2px; height: 1em; background: var(--blue); vertical-align: -2px; margin-left: 2px; animation: esdpulse 1s steps(2) infinite; }
+.esd-doc .caret { display: none; }
+.esd-demo-ctl { display: flex; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--mut); }
+.esd-demo-ctl button { padding: 6px 12px; border-radius: var(--r-btn); border: 1px solid var(--line); background: #fff; font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; color: var(--ink); }
+.esd-demo-ctl button:hover { background: var(--blsoft); }
+@keyframes esdpulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+@keyframes esdslide { 0% { left: -40% } 100% { left: 100% } }
+
+/* ─── Option cards ─── */
+.esd-opt { position: relative; padding-top: 26px; }
+.esd-opt.rec { border: 2px solid var(--blue); }
+.esd-opt .esd-tag { position: absolute; top: -12px; left: 18px; }
+.esd-opt h3 { margin-top: 0; font-size: 17px; }
+.esd-cost { color: var(--straw); }
+.esd-gain { color: var(--matcha); }
+.esd-opt ul { font-size: 14px; }
+
+/* ─── Change list ─── */
+.esd-file { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.esd-file:last-child { border-bottom: 0; }
+.esd-file code { font-size: 12px; white-space: normal; word-break: break-all; }
+@media (max-width: 640px) { .esd-file { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ─── Decisions (input) ─── */
+.esd-q { margin-top: 18px; }
+.esd-q form { display: flex; flex-direction: column; gap: 8px; }
+.esd-q label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-btn); background: #fff; cursor: pointer; font-size: 14px; }
+.esd-q label:has(input:checked) { border-color: var(--blue); background: var(--blsoft); }
+.esd-q input[type=radio] { margin-top: 4px; accent-color: var(--blue); }
+.esd-q textarea { font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-btn); resize: vertical; min-height: 40px; }
+.esd-q .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.esd-q button { padding: 8px 14px; border-radius: var(--r-btn); background: var(--blue); color: #fff; border: 0; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: var(--sh-btn); }
+.esd-q .queued { font-family: var(--font-mono); font-size: 11px; color: var(--matcha); display: none; }
+.esd-q .queued.on { display: inline; }
+.mermaid { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 14px; overflow-x: auto; }
+.esd-note { font-size: 13.5px; color: var(--mut); }
+</style>
+</head>
+<body>
+<div class="esd-wrap">
+
+<div class="esd-kicker">yogurt · design · approved 2026-08-29</div>
+<h1>Stream the enhanced summary into the editor</h1>
+<p class="esd-lede">End meeting and Re-enhance should paint text as the model produces it instead of showing a banner over a blank page. Markdown source of truth: <a href="../.planning/enhance-streaming-design.md"><code>docs/.planning/enhance-streaming-design.md</code></a>. Every claim about current behavior below was checked against the code on 2026-08-29.</p>
+
+<!-- ───────────────── GOAL / CURRENT ───────────────── -->
+<h2>What changes for the user</h2>
+<div class="esd-grid2">
+  <div class="esd-card">
+    <span class="esd-pill straw">today</span>
+    <h3>Banner, then everything at once</h3>
+    <ul>
+      <li>End meeting awaits the whole LLM call on the in-meeting screen, then navigates. 10 to 40 s of a spinner for a real meeting.</li>
+      <li>Re-enhance keeps the stale summary on screen under the lilac banner until the new one lands.</li>
+      <li>The <code>streaming</code> phase in <code>enhance_progress</code> is emitted exactly once, after the full text has arrived. It is a Phase 4 placeholder that never streamed anything.</li>
+    </ul>
+  </div>
+  <div class="esd-card">
+    <span class="esd-pill matcha">proposed</span>
+    <h3>Text within a second, settles when done</h3>
+    <ul>
+      <li>End meeting navigates to the post view immediately; the post view fires the enhance call.</li>
+      <li>The Enhanced tab fills top-to-bottom in grey with a caret at the growing edge. Banner stays, its character count is live.</li>
+      <li>On done, the merged document replaces the preview in place: the user's own lines turn black and <code>↳ MM:SS</code> links appear. Text does not move.</li>
+      <li>Editor is read-only during the stream. Errors keep today's strawberry banner + Retry.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ───────────────── MOCK ───────────────── -->
+<h2>The experience</h2>
+<p class="esd-note">Live mock of the post-meeting view rendered in yogurt's own tokens. Press Replay to watch the stream and the settle step.</p>
+<div class="esd-mock" id="esd-mock">
+  <div class="esd-mock-banner" id="esd-banner">
+    <span class="esd-dot"></span>
+    <span>Weaving your notes into the transcript…</span>
+    <span class="esd-bar"></span>
+    <span class="esd-count" id="esd-count">0 chars</span>
+  </div>
+  <div class="esd-mock-top">
+    <span class="esd-mock-title">Q3 roadmap sync</span>
+    <button class="esd-btn" id="esd-rebtn">Re-enhancing…</button>
+  </div>
+  <div class="esd-mock-body">
+    <div class="esd-tabs"><span class="esd-tab on">Enhanced</span><span class="esd-tab">My notes</span></div>
+    <div class="esd-legend"><span><b style="background:var(--ink)"></b>Your notes</span><span><b style="background:var(--grey)"></b>AI added</span></div>
+    <div class="esd-doc streaming" id="esd-doc"></div>
+    <div class="esd-demo-ctl">
+      <button type="button" id="esd-replay">Replay</button>
+      <span id="esd-state">streaming</span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── OPTIONS ───────────────── -->
+<h2>Approaches</h2>
+<div class="esd-grid3">
+  <div class="esd-card esd-opt rec">
+    <span class="esd-pill blue esd-tag">recommended</span>
+    <h3>A · Raw preview, settle on done</h3>
+    <p style="font-size:14px">Server streams the accumulated raw markdown. Browser renders it all-grey. The existing merge + sanitize runs once on the full text and the POST response swaps in the final document.</p>
+    <ul>
+      <li class="esd-gain">Reuses <code>LlmClient::stream()</code> and the chat loop shape verbatim.</li>
+      <li class="esd-gain">Merge, sanitizer, persistence, response shape untouched.</li>
+      <li class="esd-gain">The settle step is a legible "your notes were preserved" cue.</li>
+      <li class="esd-cost">Preview shows no black/grey split or transcript links until the end.</li>
+    </ul>
+  </div>
+  <div class="esd-card esd-opt">
+    <span class="esd-pill grey esd-tag">upgrade path</span>
+    <h3>B · Incremental merge per tick</h3>
+    <p style="font-size:14px">Server re-runs mojibake fix + merge + render + sanitize on the partial text every ~80 ms and streams wire-format snapshots, so the preview already has black/grey and links.</p>
+    <ul>
+      <li class="esd-gain">No settle step; best-looking preview.</li>
+      <li class="esd-cost"><code>strip_model_reasoning</code> / <code>strip_prompt_scaffolding</code> expect complete documents and can misfire on a half-written tag.</li>
+      <li class="esd-cost">Trailing partial block gets a bogus timestamp guess on every tick.</li>
+      <li class="esd-cost">Merge runs 100+ times per enhance instead of once. Cheap, but complexity moves into the hot loop for a cosmetic gain.</li>
+      <li>Same frame shape as A; only what <code>text</code> contains changes.</li>
+    </ul>
+  </div>
+  <div class="esd-card esd-opt">
+    <span class="esd-pill straw esd-tag">rejected</span>
+    <h3>C · Fake typing of the final text</h3>
+    <p style="font-size:14px">Keep the non-streaming call and animate the finished text in.</p>
+    <ul>
+      <li class="esd-cost">Time to first paint is unchanged, which is the actual complaint.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ───────────────── FLOW ───────────────── -->
+<h2>Data flow (approach A)</h2>
+<p class="esd-note">Compare with <a href="ARCHITECTURE.html">ARCHITECTURE §5</a>. Only the LLM step and the End-meeting navigation change.</p>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant M as Meeting.tsx
+    participant P as MeetingPost.tsx
+    participant E as enhance.rs
+    participant L as LLM provider
+    participant WS as /ws/meetings/{id}
+
+    M->>M: flushNotes, POST /stop
+    M->>P: navigate /post { state.autoEnhance: { notes_md, title } }
+    P->>WS: open (useEnhanceProgress)
+    P->>E: POST /enhance
+    E->>WS: enhance_progress { phase: "sending" }
+    E->>L: stream(ChatRequest)  (open wrapped in 60 s timeout)
+    loop per SSE chunk, idle timeout 60 s
+        L-->>E: delta
+        E->>E: accumulated += delta
+        E->>WS: enhance_progress { phase: "streaming", chars, text: accumulated }  (first delta, then ≤ every 80 ms)
+        WS-->>P: setContent(text), grey, read-only
+    end
+    E->>E: mojibake → reasoning strip → scaffolding strip → merge_notes → render → sanitize
+    E->>E: persist SQLite + ~/.yogurt/notes/*.md (unchanged)
+    E->>WS: enhance_progress { phase: "done" }
+    E-->>P: { enriched_md, notes_file, llm_model }
+    P->>P: setEnrichedMd(response) → black/grey settle, links appear
+</pre>
+
+<h3>Wire contract</h3>
+<p>One frame type, backward compatible. The <code>streaming</code> frame gains <code>text</code>.</p>
+<pre><code>{ "type": "enhance_progress", "phase": "streaming", "chars": 1234, "text": "# Standup\n\n- ..." }</code></pre>
+<p><strong>Snapshots, not deltas.</strong> <code>events_tx</code> is a <code>tokio::sync::broadcast</code> with no replay. A subscriber that connects late (the post view mounting right after End meeting) or reconnects after a drop would miss deltas and render a corrupted document. With snapshots every frame is self-contained, the client has no accumulator, and the worst case after a hiccup is one stale tick. A 5 KB document at ~12 fps over localhost is ~60 KB/s for the duration of the stream.</p>
+
+<!-- ───────────────── CHANGES ───────────────── -->
+<h2>Changes by file</h2>
+<div class="esd-card">
+  <div class="esd-file"><code>crates/yogurt-server/src/enhance.rs</code><div>Replace step 4's <code>llm.complete()</code> with the chat-style loop from <code>api/chat.rs::run_stream</code>: open inside <code>timeout(LLM_HTTP_TIMEOUT, llm.stream(req))</code>, consume with <code>timeout(LLM_HTTP_TIMEOUT, stream.next())</code> per chunk (idle cap, not wall-clock cap), accumulate, emit a snapshot on the first non-empty delta then at most every 80 ms, plus a final one if the last delta is newer than the last emit. Chunk error → <code>phase: "error"</code> + 502. Delete the placeholder <code>streaming { chars }</code> emit. Steps 6+ unchanged.</div></div>
+  <div class="esd-file"><code>crates/yogurt-server/tests/enhance_endpoint.rs</code><div>Assert the WS sees <code>sending</code>, ≥ 1 <code>streaming</code> frame whose <code>text</code> equals the mock content, then <code>done</code>. Persisted <code>enriched_md</code> expectations unchanged. <code>MockLlm::stream()</code> (single delta) is sufficient.</div></div>
+  <div class="esd-file"><code>web/src/lib/ws.ts</code><div><code>EnhanceProgressEvent.text?: string</code>. <code>useEnhanceProgress</code> exposes <code>text: string | null</code>, set on <code>streaming</code>, cleared on <code>sending</code> / <code>done</code> / <code>error</code>.</div></div>
+  <div class="esd-file"><code>web/src/routes/MeetingPost.tsx</code><div><code>streaming = ws.phase === "streaming" &amp;&amp; ws.text != null</code>. While streaming: force the Enhanced tab on the first frame, pass <code>enrichedMarkdown={ws.text}</code> and <code>editable={false}</code>, set <code>data-streaming</code> on the wrapper. Accept <code>location.state.autoEnhance</code> and fire <code>postEnhance</code> once on mount (mirrors the existing <code>autoStart</code> pattern). <code>too_short</code> now comes from that response. On a <code>done</code> frame with no local POST in flight (reload mid-stream), refetch through the generation-guarded GET.</div></div>
+  <div class="esd-file"><code>web/src/routes/Meeting.tsx</code><div><code>endMeeting</code>: flush + stop as today, then navigate with <code>state.autoEnhance</code> instead of awaiting the POST.</div></div>
+  <div class="esd-file"><code>web/src/index.css</code><div><code>[data-streaming] .ProseMirror { color: var(--color-grey) }</code> plus a 2 px blueberry caret on the last block via <code>::after</code> using the existing <code>recpulse</code> keyframes. No layout animation on settle.</div></div>
+  <div class="esd-file"><code>web/src/components/ReEnhanceButton.tsx</code><div>No change. Still awaits the POST for the final document; the preview arrives over the WS meanwhile.</div></div>
+  <div class="esd-file"><code>docs/ARCHITECTURE.md</code><div>§5 sequence gains the streaming loop; §11 call-count note changes "non-streaming" to "streaming".</div></div>
+</div>
+<p class="esd-note" style="margin-top:10px">Autosave safety: <code>YogurtEditor</code> applies <code>enrichedMarkdown</code> via <code>setContent(html, false)</code>, which never fires <code>onChange</code>, so <code>enrichedEditedRef</code> cannot flip during streaming and preview text is never persisted from the browser.</p>
+
+<!-- ───────────────── FAILURE MODES ───────────────── -->
+<h2>Failure modes</h2>
+<div class="esd-card esd-tablewrap">
+<table>
+<thead><tr><th>Situation</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td>Provider rejects the stream open (bad key, 429)</td><td><code>error</code> frame + 502. Strawberry banner with Retry, old summary untouched. Same as today.</td></tr>
+<tr><td>Provider stalls mid-stream</td><td>Idle timeout after 60 s of silence → <code>error</code> + 504. Grey preview stays visible until retry or navigation.</td></tr>
+<tr><td>Chunk parse error</td><td><code>error</code> + 502. Same as chat's chunk-error branch, minus persisting partial text.</td></tr>
+<tr><td>WS not connected when the first snapshot fires</td><td>Next snapshot repaints the whole document. ≤ 80 ms lost.</td></tr>
+<tr><td>Page reload during the stream</td><td>Post view remounts, WS reconnects, snapshots resume. <code>done</code> triggers a refetch for the final document.</td></tr>
+<tr><td>Two enhances overlap for one meeting</td><td>Already possible today; last <code>done</code> wins. Snapshots would interleave visibly. Out of scope; a per-meeting in-flight guard is a separate ticket.</td></tr>
+<tr><td>Model emits <code>&lt;think&gt;</code> reasoning</td><td><code>ThinkStripper</code> in <code>yogurt-llm</code> already strips it stream-side; <code>strip_model_reasoning</code> runs on the full text as the second layer.</td></tr>
+<tr><td>Model echoes prompt scaffolding tags</td><td>Visible in the preview for the duration, stripped in the final document. Rare and clearly temporary.</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ───────────────── DECISIONS ───────────────── -->
+<h2>Decisions (confirmed 2026-08-29: all proposed defaults accepted)</h2>
+<p class="esd-note">Selecting an option only changes local state. "Queue answer" sends exactly one prompt per question; press Send to Agent when you are done.</p>
+
+<div class="esd-card esd-q" data-lavish-question="frame-shape">
+  <h3>1 · Streaming frame payload</h3>
+  <form onsubmit="esdQueue(event, 'frame-shape')">
+    <label><input type="radio" name="a" value="snapshots (full accumulated text per frame)" checked> <span><strong>Snapshots</strong> (proposed). Every frame carries the full text so far. Late subscribers and reconnects self-heal.</span></label>
+    <label><input type="radio" name="a" value="deltas (browser accumulates)"> <span><strong>Deltas</strong>. Smaller frames, but the browser needs an accumulator and a missed frame corrupts the preview.</span></label>
+    <div class="row"><button type="submit">Queue answer</button><span class="queued">queued ✓</span></div>
+  </form>
+</div>
+
+<div class="esd-card esd-q" data-lavish-question="preview-style">
+  <h3>2 · Preview style</h3>
+  <form onsubmit="esdQueue(event, 'preview-style')">
+    <label><input type="radio" name="a" value="A: all-grey raw preview, settle to merged doc on done" checked> <span><strong>A</strong> (proposed). All grey while streaming, black/grey + links on done.</span></label>
+    <label><input type="radio" name="a" value="B: server-side incremental merge on every tick"> <span><strong>B</strong>. Black/grey and links from the first tick; merge runs per snapshot.</span></label>
+    <div class="row"><button type="submit">Queue answer</button><span class="queued">queued ✓</span></div>
+  </form>
+</div>
+
+<div class="esd-card esd-q" data-lavish-question="end-meeting-flow">
+  <h3>3 · Where End meeting streams</h3>
+  <form onsubmit="esdQueue(event, 'end-meeting-flow')">
+    <label><input type="radio" name="a" value="navigate to the post view immediately and stream there" checked> <span><strong>Post view immediately</strong> (proposed). The post view fires the POST via <code>state.autoEnhance</code>.</span></label>
+    <label><input type="radio" name="a" value="stay on the in-meeting view, stream into the AI panel, navigate on done"> <span><strong>Stay in-meeting</strong>. Stream into the in-meeting AI panel and navigate on done. More surface to touch, and the in-meeting layout was not built for the enhanced doc.</span></label>
+    <div class="row"><button type="submit">Queue answer</button><span class="queued">queued ✓</span></div>
+  </form>
+</div>
+
+<div class="esd-card esd-q" data-lavish-question="banner">
+  <h3>4 · Banner during streaming</h3>
+  <form onsubmit="esdQueue(event, 'banner')">
+    <label><input type="radio" name="a" value="keep the lilac banner with a live char count" checked> <span><strong>Keep the banner</strong> (proposed). Zero UI work; it hosts the error state and its count is finally live.</span></label>
+    <label><input type="radio" name="a" value="replace the banner with a small inline indicator near the tabs"> <span><strong>Slim indicator</strong>. Drop the sticky bar now that the text itself shows progress; keep the error banner.</span></label>
+    <div class="row"><button type="submit">Queue answer</button><span class="queued">queued ✓</span></div>
+  </form>
+</div>
+
+<div class="esd-card esd-q" data-lavish-question="editor-lock">
+  <h3>5 · Editor while streaming</h3>
+  <form onsubmit="esdQueue(event, 'editor-lock')">
+    <label><input type="radio" name="a" value="read-only while streaming" checked> <span><strong>Read-only</strong> (proposed). Snapshots replace the doc every ~80 ms; typing would be clobbered.</span></label>
+    <label><input type="radio" name="a" value="leave editable and accept clobbering"> <span><strong>Editable</strong>. Accept that keystrokes during the stream are lost.</span></label>
+    <div class="row"><button type="submit">Queue answer</button><span class="queued">queued ✓</span></div>
+  </form>
+</div>
+
+<div class="esd-card esd-q" data-lavish-question="other">
+  <h3>Anything else</h3>
+  <form onsubmit="esdQueueText(event, 'other')">
+    <textarea name="t" placeholder="Changes, concerns, or scope cuts before this becomes an implementation plan"></textarea>
+    <div class="row"><button type="submit">Queue note</button><span class="queued">queued ✓</span></div>
+  </form>
+</div>
+
+</div>
+
+<script>
+/* ── Lavish input wiring ── */
+function esdMark(form) { const q = form.querySelector('.queued'); if (q) q.classList.add('on'); }
+function esdQueue(ev, key) {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const v = new FormData(form).get('a');
+  if (!v) return;
+  if (window.lavish) {
+    window.lavish.queuePrompt('Enhance streaming design, decision "' + key + '": ' + v + '. Update the design doc to reflect this and remove it from the open decisions.', { tag: 'choice', text: key + ': ' + v, element: form, queueKey: key, data: { question: key, answer: v } });
+  }
+  esdMark(form);
+}
+function esdQueueText(ev, key) {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const v = (new FormData(form).get('t') || '').toString().trim();
+  if (!v) return;
+  if (window.lavish) {
+    window.lavish.queuePrompt('Enhance streaming design, additional feedback: ' + v, { tag: 'note', text: v, element: form, queueKey: key });
+  }
+  esdMark(form);
+}
+
+/* ── Streaming demo ── */
+const ESD_BLOCKS = [
+  { t: 'h4', src: 'usr', text: 'Q3 roadmap sync' },
+  { t: 'p',  src: 'ai',  text: 'Priya walked through the three candidate themes for Q3 and the team converged on shipping the offline mode before the sharing features.', ts: '02:14' },
+  { t: 'li', src: 'usr', text: 'offline mode first' },
+  { t: 'li', src: 'ai',  text: 'Sharing moves to Q4; design work can still start in September so it is not blocked later.', ts: '05:41' },
+  { t: 'li', src: 'usr', text: 'ask Marco re: sync conflicts' },
+  { t: 'li', src: 'ai',  text: 'Marco owns the conflict-resolution spike and will bring a proposal to next Tuesday\'s sync.', ts: '09:03' },
+  { t: 'h4', src: 'ai',  text: 'Action items', ts: '11:20' },
+  { t: 'li', src: 'ai',  text: 'Priya: write the offline-mode brief by Friday.', ts: '11:32' },
+  { t: 'li', src: 'ai',  text: 'Marco: conflict-resolution spike, proposal next Tuesday.', ts: '11:48' },
+];
+const doc = document.getElementById('esd-doc');
+const countEl = document.getElementById('esd-count');
+const stateEl = document.getElementById('esd-state');
+const bannerEl = document.getElementById('esd-banner');
+const rebtn = document.getElementById('esd-rebtn');
+let esdTimer = null;
+
+function esdRender(upto, partialLen) {
+  let html = '';
+  let chars = 0;
+  let openList = false;
+  for (let i = 0; i <= upto && i < ESD_BLOCKS.length; i++) {
+    const b = ESD_BLOCKS[i];
+    const full = i < upto;
+    const text = full ? b.text : b.text.slice(0, partialLen);
+    chars += text.length;
+    const ts = b.ts ? '<span class="ts">↳ ' + b.ts + '</span>' : '';
+    const caret = full ? '' : '<span class="caret"></span>';
+    const inner = '<span class="' + b.src + '">' + text + '</span>' + (full ? ts : '') + caret;
+    if (b.t === 'li') {
+      if (!openList) { html += '<ul>'; openList = true; }
+      html += '<li>' + inner + '</li>';
+    } else {
+      if (openList) { html += '</ul>'; openList = false; }
+      html += '<' + b.t + '>' + inner + '</' + b.t + '>';
+    }
+  }
+  if (openList) html += '</ul>';
+  doc.innerHTML = html;
+  countEl.textContent = chars.toLocaleString('en-US') + ' chars';
+}
+
+function esdPlay() {
+  clearTimeout(esdTimer);
+  doc.classList.add('streaming');
+  doc.classList.remove('settled');
+  bannerEl.style.display = '';
+  rebtn.textContent = 'Re-enhancing…';
+  rebtn.style.opacity = '0.7';
+  stateEl.textContent = 'streaming · all grey · read-only';
+  let i = 0, p = 0;
+  function tick() {
+    if (i >= ESD_BLOCKS.length) {
+      // settle: final merged doc replaces the preview in place
+      doc.classList.remove('streaming');
+      esdRender(ESD_BLOCKS.length, 0);
+      requestAnimationFrame(() => doc.classList.add('settled'));
+      bannerEl.style.display = 'none';
+      rebtn.textContent = 'Re-enhance';
+      rebtn.style.opacity = '1';
+      stateEl.textContent = 'done · user lines black, AI grey with ↳ links · editable';
+      return;
+    }
+    p += 6;
+    esdRender(i, p);
+    if (p >= ESD_BLOCKS[i].text.length) { i++; p = 0; }
+    esdTimer = setTimeout(tick, 80);
+  }
+  tick();
+}
+document.getElementById('esd-replay').addEventListener('click', esdPlay);
+esdPlay();
+
+/* ── Mermaid ── */
+if (window.mermaid) {
+  mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: {
+    primaryColor: '#ECE9FB', primaryBorderColor: '#5B4FC7', primaryTextColor: '#211D18',
+    lineColor: '#8A8174', actorBkg: '#FFFFFF', actorBorder: '#EBE3D5', actorTextColor: '#211D18',
+    signalColor: '#211D18', signalTextColor: '#211D18', noteBkgColor: '#FBF7EF', noteBorderColor: '#EBE3D5',
+    loopTextColor: '#5B4FC7', fontFamily: 'Hanken Grotesk, sans-serif', fontSize: '13px'
+  }});
+}
+</script>
+</body>
+</html>
