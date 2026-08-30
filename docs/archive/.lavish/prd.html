@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>yogurt — PRD v1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:#FBF7EF; --card:#FFFFFF; --ink:#211D18; --grey:#A89F90; --line:#EBE3D5;
+      --blue:#5B4FC7; --blsoft:#ECE9FB; --straw:#E07A66; --strsoft:#FBEDE9;
+      --matcha:#5E9E73; --mtsoft:#E7F0E8; --mut:#8A8174; --paper2:#F4EEE3; --paper3:#FCFAF5;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .serif { font-family: 'Instrument Serif', serif; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+
+    /* ============== NAVBAR ============== */
+    .navbar {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(251, 247, 239, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 28px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .navbar .brand { display: flex; align-items: center; gap: 10px; }
+    .navbar .brand .word { font-family: 'Instrument Serif', serif; font-size: 22px; line-height: 1; letter-spacing: -0.01em; }
+    .navbar .meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--grey); letter-spacing: 0.05em; text-transform: uppercase; }
+    .navbar .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    /* ============== LAYOUT ============== */
+    .shell { max-width: 1280px; margin: 0 auto; display: flex; gap: 0; }
+    aside.toc {
+      width: 240px; flex: none;
+      position: sticky; top: 73px; align-self: flex-start;
+      height: calc(100vh - 73px); overflow-y: auto;
+      padding: 28px 18px;
+      border-right: 1px solid var(--line);
+    }
+    aside.toc .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--grey); padding: 0 10px; margin-bottom: 10px;
+    }
+    aside.toc nav { display: flex; flex-direction: column; gap: 2px; }
+    aside.toc a {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 7px 10px; border-radius: 7px;
+      color: var(--mut); font-size: 13px; line-height: 1.3;
+    }
+    aside.toc a .n {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: var(--grey); width: 22px; flex: none;
+    }
+    aside.toc a:hover { background: var(--paper2); color: var(--ink); text-decoration: none; }
+    aside.toc a.active { background: var(--blsoft); color: var(--blue); }
+    aside.toc a.active .n { color: var(--blue); }
+    aside.toc .divider { height: 1px; background: var(--line); margin: 14px 4px; }
+
+    main { flex: 1; min-width: 0; padding: 36px 48px 96px; }
+    main section { scroll-margin-top: 90px; margin-bottom: 64px; }
+
+    /* ============== TYPE ============== */
+    h1.hero {
+      font-family: 'Instrument Serif', serif;
+      font-size: 64px; line-height: 1; letter-spacing: -0.02em;
+      margin: 0 0 22px;
+    }
+    h1.hero .accent { color: var(--blue); }
+    p.lede {
+      font-size: 18px; line-height: 1.55; color: var(--mut);
+      max-width: 720px; margin: 0;
+    }
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase;
+      color: var(--grey); margin-bottom: 16px;
+    }
+    .sec-head {
+      display: flex; align-items: baseline; gap: 16px;
+      padding-bottom: 14px; margin-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .sec-head .num { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--blue); letter-spacing: 0.1em; }
+    .sec-head h2 { font-family: 'Instrument Serif', serif; font-size: 32px; line-height: 1; margin: 0; letter-spacing: -0.015em; }
+    h3.subhead {
+      font-size: 17px; font-weight: 700; margin: 0 0 6px;
+    }
+    .caption { font-size: 13px; color: var(--mut); }
+    .mut { color: var(--mut); }
+
+    /* ============== CARD / SURFACES ============== */
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 6px rgba(40,30,15,.04); }
+    .card-soft { background: var(--paper3); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+    /* ============== BUTTONS / PILLS ============== */
+    .btn { font-family: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 16px; border-radius: 9px; cursor: pointer; border: none; }
+    .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(91,79,199,.3); }
+    .btn-outline { background: #fff; color: var(--ink); border: 1px solid #D9D0C0; }
+    .btn-ghost { background: transparent; color: var(--mut); }
+    .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 8px; }
+    .pill-blue { background: var(--blsoft); color: var(--blue); }
+    .pill-matcha { background: var(--mtsoft); color: var(--matcha); }
+    .pill-straw { background: var(--strsoft); color: var(--straw); }
+    .pill-mut { background: var(--paper); border: 1px solid var(--line); color: var(--mut); }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .pill-blue .dot { background: var(--blue); }
+    .pill-matcha .dot { background: var(--matcha); }
+    .pill-straw .dot { background: var(--straw); }
+
+    /* ============== TABLE ============== */
+    table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    th, td { padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: top; }
+    th { background: var(--paper3); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mut); }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: var(--paper3); }
+    td.center { text-align: center; }
+    td.right { text-align: right; }
+    td.qcol { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--blue); width: 50px; }
+
+    /* ============== LOGO MARK ============== */
+    .mark { width: 28px; height: 28px; flex: none; }
+
+    /* ============== PALETTE SWATCHES ============== */
+    .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .swatch { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
+    .swatch .chip { height: 56px; }
+    .swatch .meta { padding: 9px 12px; }
+    .swatch .name { font-size: 13px; font-weight: 600; }
+    .swatch .hex { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--grey); margin-top: 2px; }
+
+    /* ============== TYPE SAMPLES ============== */
+    .typesample { padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .typesample:last-child { border-bottom: none; }
+    .typesample .label { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--grey); margin-top: 6px; letter-spacing: 0.06em; }
+
+    /* ============== ALERT / CALLOUT ============== */
+    .callout { border-radius: 12px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+    .callout-blue { background: var(--blsoft); }
+    .callout-matcha { background: var(--mtsoft); }
+    .callout-straw { background: var(--strsoft); }
+    .callout-paper { background: var(--paper3); border: 1px solid var(--line); }
+    .callout .icon { font-size: 20px; line-height: 1; flex: none; }
+    .callout .body { flex: 1; }
+    .callout .title { font-weight: 700; font-size: 14px; }
+    .callout .desc { font-size: 13px; color: var(--mut); margin-top: 4px; line-height: 1.5; }
+
+    /* ============== FEATURE COLLAPSIBLE ============== */
+    details.feature { background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 14px 18px; margin-bottom: 10px; }
+    details.feature[open] { border-color: var(--blue); }
+    details.feature summary { cursor: pointer; font-weight: 700; font-size: 15px; list-style: none; display: flex; align-items: center; gap: 12px; }
+    details.feature summary::-webkit-details-marker { display: none; }
+    details.feature summary .num { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--blue); width: 30px; }
+    details.feature summary .arrow { margin-left: auto; color: var(--grey); transition: transform .2s; }
+    details.feature[open] summary .arrow { transform: rotate(90deg); }
+    details.feature .body { margin-top: 12px; font-size: 14px; line-height: 1.55; color: var(--ink); }
+    details.feature .done { background: var(--mtsoft); border-left: 3px solid var(--matcha); padding: 9px 12px; margin-top: 12px; border-radius: 0 6px 6px 0; font-size: 13px; color: #3d5e44; }
+
+    /* ============== ARCHITECTURE DIAGRAM ============== */
+    .arch { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 32px; }
+    .arch-grid { display: grid; grid-template-columns: 160px 1fr 180px; gap: 22px; align-items: center; }
+    .arch-box { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; text-align: center; background: var(--paper); }
+    .arch-box.binary { border: 2px dashed var(--blue); background: var(--card); padding: 18px; }
+    .arch-box .lbl { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--grey); margin-bottom: 4px; }
+    .arch-box .nm { font-weight: 700; font-size: 13px; }
+    .arch-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+
+    /* ============== TIMELINE / ROADMAP ============== */
+    .phase-row { display: grid; grid-template-columns: 50px 1fr 70px; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: center; }
+    .phase-row:last-child { border-bottom: none; }
+    .phase-row .badge { font-family: 'JetBrains Mono', monospace; background: var(--blsoft); color: var(--blue); font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 12px; text-align: center; }
+    .phase-row .deliv { font-size: 14px; }
+    .phase-row .deliv b { color: var(--ink); }
+    .phase-row .days { font-family: 'JetBrains Mono', monospace; text-align: right; font-size: 13px; color: var(--mut); }
+
+    /* ============== STAT STRIP ============== */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+    .stat .num { font-family: 'Instrument Serif', serif; font-size: 38px; line-height: 1; color: var(--blue); }
+    .stat .lbl { font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+    .stat .desc { font-size: 12.5px; color: var(--mut); margin-top: 6px; line-height: 1.4; }
+
+    /* ============== SCHEMA ============== */
+    .schema { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .schema .head { background: var(--blsoft); padding: 9px 14px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; color: var(--blue); }
+    .schema .col { padding: 6px 14px; display: flex; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; border-top: 1px solid var(--line); }
+    .schema .ck { width: 26px; color: var(--straw); }
+    .schema .nm { width: 130px; }
+    .schema .ty { color: var(--mut); }
+
+    /* ============== MOCKUP CHROME ============== */
+    .mockwin { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
+    .mockwin .chrome { height: 36px; background: var(--paper2); border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 14px; gap: 10px; }
+    .mockwin .traffic { display: flex; gap: 6px; }
+    .mockwin .traffic span { width: 10px; height: 10px; border-radius: 50%; }
+    .mockwin .url { flex: 1; display: flex; justify-content: center; }
+    .mockwin .url span { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--mut); background: var(--card); border: 1px solid var(--line); padding: 3px 14px; border-radius: 6px; }
+    .mockwin .pad { padding: 16px 20px; }
+
+    /* ============== TERMINAL ============== */
+    .terminal { background: var(--ink); color: #EDEAE2; border-radius: 10px; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.7; }
+    .terminal .prompt { color: var(--grey); }
+    .terminal .ok { color: #7FBE8C; }
+    .terminal .pending { color: #C9B8F0; }
+
+    /* ============== SUBMIT BAR ============== */
+    .submit-bar {
+      background: var(--blsoft); border: 1px solid var(--blue); border-radius: 14px;
+      padding: 20px 24px; margin-top: 24px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .submit-bar .info { flex: 1; }
+    .submit-bar .title { font-weight: 700; font-size: 15px; color: var(--blue); }
+    .submit-bar .sub { font-size: 13px; color: var(--mut); margin-top: 2px; }
+
+    footer { text-align: center; font-size: 12px; color: var(--grey); padding: 40px 0; margin-top: 60px; border-top: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+
+<!-- ============================== NAVBAR ============================== -->
+<div class="navbar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 44 44"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>
+    <span class="word">yogurt</span>
+  </div>
+  <span class="meta">PRD · v1 draft</span>
+  <span class="meta">·</span>
+  <span class="meta">2026-06-24</span>
+  <div class="actions">
+    <a href="../docs/PRD.md" target="_blank" class="btn btn-outline">↗ raw PRD.md</a>
+    <button class="btn btn-primary" data-lavish-action onclick="window.lavish.queuePrompt('PRD approved — proceed to writing-plans skill.', { tag: 'approve', text: 'Approve PRD' });">Approve PRD</button>
+  </div>
+</div>
+
+<!-- ============================== SHELL ============================== -->
+<div class="shell">
+
+  <!-- ============== TOC ============== -->
+  <aside class="toc">
+    <div class="label">Contents</div>
+    <nav>
+      <a href="#s1"><span class="n">01</span>Vision</a>
+      <a href="#s2"><span class="n">02</span>Goals · non · anti</a>
+      <a href="#s3"><span class="n">03</span>Users</a>
+      <a href="#s4"><span class="n">04</span>Locked decisions</a>
+      <a href="#s5"><span class="n">05</span>v1 features (11)</a>
+      <a href="#s6"><span class="n">06</span>v2+ deferred</a>
+      <a href="#s7"><span class="n">07</span>Architecture</a>
+      <a href="#s8"><span class="n">08</span>Components</a>
+      <a href="#s9"><span class="n">09</span>Data model</a>
+      <a href="#s10"><span class="n">10</span>API surface</a>
+      <a href="#s11"><span class="n">11</span>Distribution</a>
+      <a href="#s12"><span class="n">12</span>Roadmap</a>
+      <a href="#s13"><span class="n">13</span>Risks</a>
+      <a href="#s14"><span class="n">14</span>Success criteria</a>
+      <a href="#s15"><span class="n">15</span>Open questions</a>
+      <a href="#s16"><span class="n">16</span>Brand &amp; design</a>
+    </nav>
+    <div class="divider"></div>
+    <div class="label">Designed screens</div>
+    <nav>
+      <a href="#s5">Library home</a>
+      <a href="#s5">Onboarding (3-step)</a>
+      <a href="#s5">Live meeting</a>
+      <a href="#s5">Post-meeting hero</a>
+      <a href="#s5">Settings</a>
+      <a href="#s5">Empty + error states</a>
+    </nav>
+  </aside>
+
+  <!-- ============== MAIN ============== -->
+  <main>
+
+    <!-- ============== HERO ============== -->
+    <section>
+      <div class="eyebrow">Product requirements · v1 · revised 2026-06-24</div>
+      <h1 class="hero">
+        Granola's UX,<br/>
+        <span class="accent">your machine.</span>
+      </h1>
+      <p class="lede">
+        A local-first, open-source meeting copilot. Single Rust binary, browser UI at
+        <span class="mono">localhost:7878</span>. Captures both your mic and your Mac's system audio without
+        joining the call as a bot. Bring your own OpenAI-compatible LLM key. Audio is deleted after transcription;
+        nothing else leaves the machine.
+      </p>
+
+      <div class="stats" style="margin-top: 28px;">
+        <div class="stat">
+          <div class="num">11</div>
+          <div class="lbl">v1 features</div>
+          <div class="desc">9 deferred to v2 — see §6.</div>
+        </div>
+        <div class="stat">
+          <div class="num">8</div>
+          <div class="lbl">Locked decisions</div>
+          <div class="desc">All Q1-Q8 + naming + template-picker closed.</div>
+        </div>
+        <div class="stat">
+          <div class="num">~18d</div>
+          <div class="lbl">Build estimate</div>
+          <div class="desc">10 phases, one focused engineer.</div>
+        </div>
+        <div class="stat">
+          <div class="num">0</div>
+          <div class="lbl">Cloud services</div>
+          <div class="desc">By default. Cloud STT / LLM are opt-in.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 01 VISION ============== -->
+    <section id="s1">
+      <div class="sec-head"><span class="num">§ 01</span><h2>Vision</h2></div>
+      <div class="grid-2">
+        <div>
+          <p>Granola is the best meeting-notes UX shipped in years. Two ideas make it work:</p>
+          <ol style="padding-left: 18px;">
+            <li><b>System-audio capture instead of a meeting bot.</b> No "Granola AI has joined the call." Just turn it on and it hears everything.</li>
+            <li style="margin-top: 8px;"><b>Augmented notes instead of summaries.</b> Your bullets stay <b>ink black</b>; the LLM expands them in-place with <span class="mut"><b>grey</b></span> additions. Editing a grey line promotes it to black. Every grey bullet links back to the transcript moment.</li>
+          </ol>
+        </div>
+        <div>
+          <p>Granola is a commercial SaaS that streams your audio to Deepgram and your transcripts to OpenAI/Anthropic. Anyone under NDA, in compliance-bound roles, or who simply prefers local-first software has no comparable tool — the closest OSS projects (Meetily, Hyprnote) ship summaries, not augmented notes.</p>
+          <p style="color: var(--blue); font-weight: 600; margin-top: 16px;">yogurt is that tool.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 02 GOALS / NON / ANTI ============== -->
+    <section id="s2">
+      <div class="sec-head"><span class="num">§ 02</span><h2>Goals · non-goals · anti-goals</h2></div>
+      <div class="grid-3">
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <span class="pill pill-matcha"><span class="dot"></span>Goals</span>
+            <span class="caption">v1</span>
+          </div>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.65;">
+            <li>Granola-faithful augmented notes UX</li>
+            <li>Mic + system audio capture, no bot</li>
+            <li>Pluggable STT — cloud default, local fallback</li>
+            <li>BYO OpenAI-compatible LLM</li>
+            <li>Privacy-first — audio deleted after STT</li>
+            <li><span class="mono">brew install yogurt</span> end-to-end</li>
+            <li><span class="mono">git clone &amp;&amp; cargo run</span> for devs</li>
+            <li>CLI-launched, browser UI only</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <span class="pill" style="background: #FDF1D8; color: #B8862E;"><span class="dot" style="background:#B8862E;"></span>Non-goals</span>
+            <span class="caption">defer to v2+</span>
+          </div>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.65;">
+            <li>Calendar integration</li>
+            <li>Re-enhance template picker + versions rail <span class="caption">(confirmed v2)</span></li>
+            <li>Cross-meeting chat / search</li>
+            <li>Slack / Notion / CRM exports</li>
+            <li>Mobile / web-hosted</li>
+            <li>Multi-user / auth / sync</li>
+            <li>Per-speaker diarization</li>
+            <li>MCP server / external API</li>
+            <li>Windows / Linux</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <span class="pill pill-straw"><span class="dot"></span>Anti-goals</span>
+            <span class="caption">never</span>
+          </div>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.65;">
+            <li>Joining meetings as a participant bot</li>
+            <li>Sending audio to a yogurt cloud (there is none)</li>
+            <li>Subscription billing or telemetry by default</li>
+          </ul>
+          <p class="caption" style="margin-top: 14px;">Anti-goals are things we commit to <em>never</em> doing, even under pressure.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 03 USERS ============== -->
+    <section id="s3">
+      <div class="sec-head"><span class="num">§ 03</span><h2>Users &amp; use cases</h2></div>
+      <table>
+        <thead><tr><th>Persona</th><th>Use case</th><th>Why yogurt over Granola SaaS</th></tr></thead>
+        <tbody>
+          <tr><td><b>Solo IC, back-to-back meetings</b></td><td>Wants notes without cognitive load.</td><td>Same UX, doesn't trust SaaS with sensitive meeting content.</td></tr>
+          <tr><td><b>Compliance-bound team</b><br/><span class="caption">legal · security · finance</span></td><td>Cannot transmit meeting audio to third parties.</td><td>Local STT + local notes is contractually viable.</td></tr>
+          <tr><td><b>Self-hosted-LLM team</b><br/><span class="caption">Ollama · vLLM</span></td><td>Notes flow through their internal LLM.</td><td>OpenAI-compat config covers it with zero plumbing.</td></tr>
+          <tr><td><b>OSS contributor</b></td><td>Hack on the editor, add an STT backend.</td><td>Single Rust binary + small React app — no Electron.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============== 04 LOCKED DECISIONS ============== -->
+    <section id="s4">
+      <div class="sec-head"><span class="num">§ 04</span><h2>The 8 locked decisions</h2></div>
+      <table>
+        <thead><tr><th>#</th><th>Question</th><th>Decision</th></tr></thead>
+        <tbody>
+          <tr><td class="qcol">Q1</td><td>Core UX</td><td>Granola-style augmented notes + visible live transcript + in-meeting AI chat</td></tr>
+          <tr><td class="qcol">Q2</td><td>Runtime architecture</td><td>Hybrid: localhost backend + browser UI + in-process audio capture</td></tr>
+          <tr><td class="qcol">Q3</td><td>Transcription</td><td>Pluggable. Cloud (Deepgram) default. Local (<span class="mono">whisper.cpp</span>) opt-in.</td></tr>
+          <tr><td class="qcol">Q4</td><td>v1 scope</td><td>11 IN, 9 deferred (8 original + 3 design-driven; template picker cut)</td></tr>
+          <tr><td class="qcol">Q5</td><td>Backend stack</td><td>Rust (axum + tokio), single static binary, embedded web assets</td></tr>
+          <tr><td class="qcol">Q6</td><td>LLM provider</td><td>OpenAI-compat only. Presets: Minimax, OpenAI, Ollama, LM Studio, OpenRouter</td></tr>
+          <tr><td class="qcol">Q7</td><td>Audio retention</td><td>Delete after transcription (Granola model)</td></tr>
+          <tr><td class="qcol">Q8</td><td>Distribution</td><td>Homebrew + Cargo + GH Release binaries. Source build first-class</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============== 05 V1 FEATURES ============== -->
+    <section id="s5">
+      <div class="sec-head"><span class="num">§ 05</span><h2>v1 feature list (11 features)</h2></div>
+      <p class="caption" style="margin-bottom: 18px;">Each with concrete acceptance criteria. Click any card to expand. §§5.9-5.11 added 2026-06-24 from the Claude Design board handoff.</p>
+
+      <details class="feature">
+        <summary><span class="num">5.1</span>Record meeting (mic + system audio)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Click "New meeting" → macOS Screen Recording permission prompt → captures two 16kHz mono PCM streams (mic + system loopback) pushed to STT via Tokio broadcast.</p>
+          <div class="done"><b>Done when:</b> 30-min recording on macOS 13+ captures both channels cleanly; clean stop on "End meeting."</div>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.2</span>Live transcript panel (right-edge dock)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Collapsed by default as a right-edge tab labeled "Live transcript" with a 3-bar animated wave icon. Click expands — docks beside notes (330px wide), slides in from right at 340ms with <span class="mono">cubic-bezier(.2,.7,.2,1)</span>. <b>Notes stay fully editable</b> while the panel is open. Channel labels: "Me" (ink) / "Them" (grey). Mono timestamps. Auto-scroll with pause-on-scroll-up.</p>
+          <div class="done"><b>Done when:</b> < 2s lag with Deepgram, < 3s lag with local <span class="mono">whisper.cpp small.en</span>. Panel open/close animates cleanly without re-flowing notes.</div>
+        </div>
+      </details>
+
+      <details class="feature" open>
+        <summary><span class="num">5.3</span>Augmented notes editor <span class="pill pill-blue" style="margin-left: 8px;">hero</span><span class="arrow">›</span></summary>
+        <div class="body">
+          <p><b>During the meeting:</b> single markdown editor (TipTap), centered, max ~660px. Pure markdown. Lilac pill below reads "✨ AI enhances these when you hit End."</p>
+          <p><b>On End:</b> editor enters <em>enhancing</em> state — progress bar + shimmer skeletons that resolve into grey markdown bullets, staggered (140/340/560/760ms — see §16 motion tokens).</p>
+          <p><b>Post-meeting view = one combined document.</b> User bullets stay ink black, AI bullets grey under the same headings. Reads as one coherent doc.</p>
+          <div class="grid-2" style="margin: 14px 0;">
+            <div class="callout callout-paper">
+              <div class="body">
+                <div class="title">Display contract</div>
+                <div class="desc">User content → <b style="color: var(--ink);">ink black</b><br/>AI content → <b style="color: var(--grey);">grey</b><br/>Diff is structural (markdown AST), not char-by-char.</div>
+              </div>
+            </div>
+            <div class="callout callout-paper">
+              <div class="body">
+                <div class="title">Edit contract</div>
+                <div class="desc">Editing grey → promotes to black (it's "yours" now)<br/>Black ranges never overwritten by re-enhance<br/>Grey bullets carry <span class="mono">data-transcript-ts</span> for deep-links</div>
+              </div>
+            </div>
+          </div>
+          <p><b>Transcript deep-links:</b> each AI bullet ends with <span class="mono" style="color: var(--blue); border-bottom: 1.5px dotted #C9B8F0;">↳ HH:MM</span>. Click → opens transcript panel + scrolls to timestamp.</p>
+          <p><b>Re-enhance button</b> top-right ("Re-enhance"). v1: re-runs the same bundled <span class="mono">enhance.md</span>. No template picker, no versions rail — those are v2.</p>
+          <div class="done"><b>Done when:</b> user types 5 sparse bullets in 30min meeting, hits End, sees clean enriched doc within 30s with black/grey contract intact and ↳ HH:MM links jumping the transcript correctly.</div>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.4</span>In-meeting chat — "Ask this meeting…" (⌘K)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Floating pill, anchored bottom-center of meeting view (480px wide, 24px from bottom). Reads "Ask this meeting…" placeholder + <span class="mono pill pill-mut">⌘K</span> hint. Click or ⌘K expands into chat window (260ms ease-out <span class="mono">popUp</span> animation). <b>Notes stay live behind it</b> — no dim.</p>
+          <p>System prompt from <span class="mono">chat-system.md</span>. Tuned for: "What's the current topic?", "Summarize the last 5 minutes.", "What did we decide on X?"</p>
+          <div class="done"><b>Done when:</b> first chunk streams &lt; 2s after sending; transcript references are accurate; pill/window animations feel snappy.</div>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.5</span>Bundled prompts (internal, 2 files)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p><span class="mono">crates/yogurt-prompts/</span> ships exactly two files in v1:</p>
+          <ul style="font-size: 13.5px;">
+            <li><span class="mono">enhance.md</span> — augmented-notes prompt (§5.3 depends on this)</li>
+            <li><span class="mono">chat-system.md</span> — system prompt for in-meeting chat (§5.4)</li>
+          </ul>
+          <p>Not user-facing templates. No picker, no per-meeting prompt switching. Power users edit either file; binary reload picks up changes.</p>
+          <div class="callout callout-matcha">
+            <span class="icon">✓</span>
+            <div class="body">
+              <div class="title">Template picker decision (closed 2026-06-24)</div>
+              <div class="desc">The design board's Re-enhance popover with Standup / Generic / 1:1 / Interview debrief templates and the v1/v2/v3 versions rail are <b>deferred to v2</b> (see §6 item 2). v1 Re-enhance button simply re-runs <span class="mono">enhance.md</span>.</div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.6</span>Settings UI<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Two-column page: 212px section sidebar (Model · Transcription · Audio · General) + main content. Config in <span class="mono">~/.yogurt/config.toml</span>; API keys in macOS Keychain.</p>
+          <p><b>Model:</b> Active provider rendered as blueberry-bordered card (name + "Active" badge + Edit). Base URL / Model / API-key fields. Inactive providers stack below. "CLONE A PRESET" row with dashed Ollama / LM Studio / OpenRouter chips.</p>
+          <p><b>Transcription:</b> side-by-side cards — Cloud (Deepgram / AssemblyAI / Groq, blueberry border when active) vs Local · whisper.cpp (matcha-soft, model picker tiny.en / small.en / medium.en / large-v3).</p>
+          <p><b>Audio + General</b> stacked at bottom — input device dropdown, port, "Open browser on start" toggle.</p>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.7</span>Local storage (SQLite + markdown export)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>SQLite at <span class="mono">~/.yogurt/db.sqlite</span> + one markdown file per meeting at <span class="mono">~/.yogurt/notes/&lt;ts&gt;-&lt;slug&gt;.md</span>. Markdown is canonical for "grep my meetings"; SQLite is the structured mirror. Schema in §9.</p>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.8</span>macOS only (Apple Silicon primary)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Universal binary (arm64 + x86_64). macOS 13+ required (ScreenCaptureKit). Intel best-effort — <span class="mono">small.en</span> only model that keeps real-time. Windows/Linux: out of scope; platform code lives behind <span class="mono">crates/yogurt-audio</span> trait so ports are additive.</p>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.9</span>Meeting library — home view<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Default page at <span class="mono">localhost:7878</span>. 212px sidebar with yogurt swirl + wordmark, "+ New meeting" primary button, "All meetings"/"Starred" nav, <b>Folders</b> section with color dots (Work blue, Hiring strawberry, 1:1s matcha) + count, bottom "Local-only · on" matcha pill + ⚙ Settings.</p>
+          <p>Main: greeting in Instrument Serif ("Good afternoon, Dana"), search pill top-right, meeting list grouped by date (TODAY / YESTERDAY caption labels). Each card: 42px tinted-square avatar with initials in Serif, title (Hanken 700), meta line ("2:00 PM · 38 min · enhanced"), small badges on right.</p>
+          <div class="done"><b>Done when:</b> user lands on library, sees meetings grouped by day, can click in / create new / "Local-only · on" pill reflects cloud-provider state.</div>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.10</span>Onboarding (first-run, 3 steps)<span class="arrow">›</span></summary>
+        <div class="body">
+          <p>Route <span class="mono">localhost:7878/welcome</span>. Two-column on paper.</p>
+          <p><b>Left:</b> yogurt logo, Serif welcome, one-liner, small terminal mockup:</p>
+          <div class="terminal">
+            <div><span class="prompt">$</span> yogurt start</div>
+            <div class="ok">✓ server live on :7878</div>
+            <div class="ok">✓ opening your browser…</div>
+            <div class="pending">→ waiting for screen-recording grant ▍</div>
+          </div>
+          <p style="margin-top: 12px;"><b>Right:</b> "ONE-TIME SETUP" caption + 3-step vertical cards:</p>
+          <ol style="padding-left: 18px; font-size: 13.5px;">
+            <li><b>Screen Recording</b> — matcha "✓" once granted</li>
+            <li><b>Connect your model</b> — current step, blueberry border, provider chips (Minimax active, OpenAI/Ollama/OpenRouter as presets)</li>
+            <li><b>Pick transcription</b> — pending, "Cloud Deepgram or local whisper.cpp"</li>
+          </ol>
+          <p>Primary button "Take me to my meetings →" (blueberry, full-width). Footer: "Restart once after granting — a macOS quirk, not us."</p>
+        </div>
+      </details>
+
+      <details class="feature">
+        <summary><span class="num">5.11</span>Empty &amp; error states<span class="arrow">›</span></summary>
+        <div class="body">
+          <p><b>Empty library:</b> centered floating swirl logo (3.5s float animation), Serif "No meetings yet" headline, "Start your first meeting" CTA with ⌘N hint, mono caption "notes saved to ~/.yogurt/notes/*.md".</p>
+          <p><b>Permission not granted:</b> full-screen warning. Strawberry-tinted ⚠ icon, Serif "yogurt can't hear the call yet" headline, numbered 3-step recovery (Open System Settings → Toggle yogurt on → Restart once), CTA pair: "Open System Settings" (primary) + "Restart Yogurt" (outline).</p>
+          <p><b>Enhancing state:</b> lilac progress banner with pulse dot ("Weaving your notes into the transcript…"), animated bar, char-streaming count. Existing notes stay; new bullets appear as shimmer skeletons that resolve into grey text.</p>
+          <p><b>First-time whisper.cpp download:</b> modal card. Matcha ↓ icon, "Downloading small.en" / mono caption "whisper.cpp · 487 MB", matcha progress bar with bytes/speed/ETA, "Most users stay on cloud STT and never see this." Button pair: Cancel / Run in background.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============== 06 V2 DEFERRED ============== -->
+    <section id="s6">
+      <div class="sec-head"><span class="num">§ 06</span><h2>v2+ deferred (priority order)</h2></div>
+      <div class="card">
+        <ol style="margin: 0; padding-left: 22px; line-height: 1.85;">
+          <li>Calendar integration (Google + Outlook OAuth, auto-detect upcoming meetings)</li>
+          <li><b>Re-enhance template picker + versions rail</b> — the popover designed in the board (Standup / Generic / 1:1 / Interview debrief + v1/v2/v3 sidebar). <span class="pill pill-mut" style="margin-left: 6px;">cut from v1 2026-06-24</span></li>
+          <li>Cross-meeting chat / semantic search (embeddings + sqlite-vss or LanceDB)</li>
+          <li>Slack / Notion / Linear integration exports</li>
+          <li>Custom-template authoring UI</li>
+          <li>Per-speaker diarization (pyannote sidecar, opt-in)</li>
+          <li>Menu-bar / global-hotkey UI (Tauri wrap of the same backend)</li>
+          <li>Windows + Linux support</li>
+          <li>MCP server</li>
+          <li>Optional encrypted sync (user-hosted only — never a yogurt cloud)</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============== 07 ARCHITECTURE ============== -->
+    <section id="s7">
+      <div class="sec-head"><span class="num">§ 07</span><h2>Architecture</h2></div>
+      <p class="caption" style="margin-bottom: 18px;">One process. No subprocesses, no IPC, no sidecar binaries. Audio, STT, LLM, web serving, and SQLite all in one Rust binary.</p>
+      <div class="arch">
+        <div class="arch-grid">
+          <div class="arch-box" style="border-color: var(--blue);">
+            <div class="lbl">Client</div>
+            <div class="nm">Browser</div>
+            <div class="caption" style="font-size: 10.5px; margin-top: 4px;">Chrome · Safari · any</div>
+          </div>
+          <div class="arch-box binary">
+            <div class="lbl" style="color: var(--blue);">single Rust binary · <span class="mono">yogurt</span></div>
+            <div class="arch-inner">
+              <div class="arch-box"><div class="lbl">HTTP + WS</div><div class="nm">axum</div></div>
+              <div class="arch-box"><div class="lbl">Capture</div><div class="nm">screencapturekit</div></div>
+              <div class="arch-box"><div class="lbl">STT engine</div><div class="nm">trait: cloud | local</div></div>
+              <div class="arch-box"><div class="lbl">LLM client</div><div class="nm">OpenAI-compat</div></div>
+              <div class="arch-box" style="grid-column: 1 / -1;"><div class="lbl">Persistence</div><div class="nm">SQLite · markdown files</div></div>
+            </div>
+          </div>
+          <div class="arch-box">
+            <div class="lbl">Cloud · opt-in</div>
+            <div class="nm">STT · LLM</div>
+            <div class="caption" style="font-size: 10.5px; margin-top: 4px;">Deepgram · Minimax · Ollama-host · …</div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 160px 1fr 180px; gap: 22px; margin-top: 16px; font-size: 11px; color: var(--mut); text-align: center;">
+          <div>HTTP + WS<br/><span class="mono">:7878</span></div>
+          <div style="opacity: 0.5;">↑↓ in-process function calls only</div>
+          <div>HTTPS<br/><span class="caption">(only when cloud STT/LLM selected)</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 08 COMPONENTS ============== -->
+    <section id="s8">
+      <div class="sec-head"><span class="num">§ 08</span><h2>Component breakdown (Cargo workspace)</h2></div>
+      <div class="card" style="background: var(--paper3);">
+<pre style="margin: 0; font-size: 12.5px; line-height: 1.7;"><code>yogurt/
+├── Cargo.toml                      <span class="mut"># workspace root</span>
+├── crates/
+│   ├── yogurt-cli/                 <span class="mut"># binary entrypoint: `yogurt start`, `yogurt config`</span>
+│   ├── yogurt-server/              <span class="mut"># axum HTTP + WS · embeds web/dist</span>
+│   ├── yogurt-audio/               <span class="mut"># ScreenCaptureKit + CoreAudio wrapper</span>
+│   ├── yogurt-stt/                 <span class="mut"># STT trait + Deepgram + AssemblyAI + whisper.cpp</span>
+│   ├── yogurt-llm/                 <span class="mut"># OpenAI-compat client</span>
+│   ├── yogurt-db/                  <span class="mut"># SQLite (rusqlite) · migrations</span>
+│   ├── yogurt-notes/               <span class="mut"># markdown ↔ AST ↔ augmented-merge logic</span>
+│   └── yogurt-prompts/             <span class="mut"># 2 files: enhance.md + chat-system.md</span>
+├── web/                            <span class="mut"># React + Vite + TS + TipTap + Tailwind</span>
+├── docs/PRD.md                     <span class="mut"># this document</span>
+└── .github/workflows/release.yml   <span class="mut"># cross-compile · brew tap · GH Release</span></code></pre>
+      </div>
+      <p class="caption" style="margin-top: 12px;">Each crate independently testable, one clear purpose. Platform code behind a trait so Win/Linux ports are additive, not invasive.</p>
+    </section>
+
+    <!-- ============== 09 DATA MODEL ============== -->
+    <section id="s9">
+      <div class="sec-head"><span class="num">§ 09</span><h2>Data model (SQLite)</h2></div>
+      <div class="grid-2">
+        <div class="schema">
+          <div class="head">meetings</div>
+          <div class="col"><span class="ck">PK</span><span class="nm">id</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">title</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">started_at</span><span class="ty">INTEGER</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">ended_at</span><span class="ty">INTEGER?</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">notes_md</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">enriched_md</span><span class="ty">TEXT?</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">transcript_json</span><span class="ty">TEXT</span></div>
+        </div>
+        <div class="schema">
+          <div class="head">chat_messages</div>
+          <div class="col"><span class="ck">PK</span><span class="nm">id</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck">FK</span><span class="nm">meeting_id</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">role</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">content</span><span class="ty">TEXT</span></div>
+          <div class="col"><span class="ck"></span><span class="nm">created_at</span><span class="ty">INTEGER</span></div>
+        </div>
+      </div>
+      <p class="caption" style="margin-top: 12px;">IDs are ULIDs. <span class="mono">transcript_json</span> stores <span class="mono">[{ts_ms, channel, text}]</span>. Markdown files mirror <span class="mono">meetings</span> rows on every mutation — markdown is canonical for export.</p>
+    </section>
+
+    <!-- ============== 10 API ============== -->
+    <section id="s10">
+      <div class="sec-head"><span class="num">§ 10</span><h2>API surface</h2></div>
+      <h3 class="subhead" style="margin-bottom: 10px;">REST (axum)</h3>
+      <table style="margin-bottom: 24px;">
+        <thead><tr><th style="width:80px;">Method</th><th>Path</th><th>Purpose</th></tr></thead>
+        <tbody class="mono" style="font-size: 12.5px;">
+          <tr><td><span class="pill pill-blue" style="font-size: 10px;">GET</span></td><td>/api/meetings</td><td style="font-family: 'Hanken Grotesk', sans-serif;">List meetings, newest first</td></tr>
+          <tr><td><span class="pill pill-matcha" style="font-size: 10px;">POST</span></td><td>/api/meetings</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Create new meeting</td></tr>
+          <tr><td><span class="pill pill-blue" style="font-size: 10px;">GET</span></td><td>/api/meetings/:id</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Full meeting</td></tr>
+          <tr><td><span class="pill" style="background: #FDF1D8; color: #B8862E; font-size: 10px;">PATCH</span></td><td>/api/meetings/:id</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Update title or notes_md</td></tr>
+          <tr><td><span class="pill pill-matcha" style="font-size: 10px;">POST</span></td><td>/api/meetings/:id/start</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Begin recording + STT</td></tr>
+          <tr><td><span class="pill pill-matcha" style="font-size: 10px;">POST</span></td><td>/api/meetings/:id/stop</td><td style="font-family: 'Hanken Grotesk', sans-serif;">End recording, kick off enhance</td></tr>
+          <tr><td><span class="pill pill-matcha" style="font-size: 10px;">POST</span></td><td>/api/meetings/:id/enhance</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Re-run enhance (single bundled prompt)</td></tr>
+          <tr><td><span class="pill pill-matcha" style="font-size: 10px;">POST</span></td><td>/api/meetings/:id/chat</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Send chat (streaming)</td></tr>
+          <tr><td><span class="pill pill-straw" style="font-size: 10px;">DEL</span></td><td>/api/meetings/:id</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Delete meeting + .md file</td></tr>
+          <tr><td><span class="pill pill-blue" style="font-size: 10px;">GET</span></td><td>/api/settings</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Current config (no keys exposed)</td></tr>
+          <tr><td><span class="pill" style="background: #FDF1D8; color: #B8862E; font-size: 10px;">PATCH</span></td><td>/api/settings</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Update config</td></tr>
+          <tr><td><span class="pill pill-matcha" style="font-size: 10px;">POST</span></td><td>/api/settings/providers</td><td style="font-family: 'Hanken Grotesk', sans-serif;">Add/update LLM or STT provider</td></tr>
+          <tr><td><span class="pill pill-blue" style="font-size: 10px;">GET</span></td><td>/api/audio/devices</td><td style="font-family: 'Hanken Grotesk', sans-serif;">List input devices</td></tr>
+        </tbody>
+      </table>
+      <h3 class="subhead" style="margin-bottom: 10px;">WebSocket — <span class="mono">/ws/meetings/:id</span></h3>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow" style="margin-bottom: 8px;">Server → Client</div>
+          <div class="card-soft" style="font-size: 13px; line-height: 1.8;">
+            <div><span class="mono" style="color: var(--blue);">transcript</span> · <span class="mut">{ts_ms, channel, text, is_final}</span></div>
+            <div><span class="mono" style="color: var(--blue);">notes_synced</span> · <span class="mut">{rev, md}</span></div>
+            <div><span class="mono" style="color: var(--blue);">enhance_progress</span> · <span class="mut">{phase, chars?}</span></div>
+            <div><span class="mono" style="color: var(--blue);">chat_chunk</span> · <span class="mut">{message_id, delta}</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="eyebrow" style="margin-bottom: 8px;">Client → Server</div>
+          <div class="card-soft" style="font-size: 13px; line-height: 1.8;">
+            <div><span class="mono" style="color: var(--matcha);">notes_edit</span> · <span class="mut">{rev, md} (debounced)</span></div>
+            <div><span class="mono" style="color: var(--matcha);">chat_send</span> · <span class="mut">{content}</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 11 DISTRIBUTION ============== -->
+    <section id="s11">
+      <div class="sec-head"><span class="num">§ 11</span><h2>Distribution &amp; dev workflow</h2></div>
+      <div class="callout callout-matcha" style="margin-bottom: 20px;">
+        <span class="icon">✓</span>
+        <div class="body">
+          <div class="title">Yes — <span class="mono">brew install yogurt</span> installs everything as one command.</div>
+          <div class="desc">Single static Rust binary with web assets embedded (rust-embed), <span class="mono">whisper.cpp</span> linked statically, ScreenCaptureKit bindings against the system framework. Homebrew formula downloads the prebuilt binary for the user's arch. No Node, no Python, no separate audio helper.</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow">End-user install</div>
+          <div class="terminal">
+            <div><span class="prompt">$</span> brew install yogurt</div>
+            <div><span class="prompt">$</span> yogurt start</div>
+            <div class="ok">→ http://localhost:7878 opens in your browser</div>
+            <div class="ok">→ macOS prompts for Screen Recording permission</div>
+          </div>
+        </div>
+        <div>
+          <div class="eyebrow">Source / contributor workflow</div>
+          <div class="terminal">
+            <div><span class="prompt">$</span> git clone github.com/&lt;org&gt;/yogurt.git</div>
+            <div><span class="prompt">$</span> brew install rust pnpm</div>
+            <div><span class="prompt">$</span> pnpm --dir web install</div>
+            <div>&nbsp;</div>
+            <div class="prompt"># terminal 1 — backend, auto-rebuild:</div>
+            <div><span class="prompt">$</span> cargo run -p yogurt-cli -- start --dev</div>
+            <div>&nbsp;</div>
+            <div class="prompt"># terminal 2 — frontend HMR:</div>
+            <div><span class="prompt">$</span> pnpm --dir web dev</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 12 ROADMAP ============== -->
+    <section id="s12">
+      <div class="sec-head"><span class="num">§ 12</span><h2>Implementation roadmap</h2></div>
+      <p class="caption" style="margin-bottom: 18px;">Working-day estimates. Phases 0-3 are highest-risk because they validate the audio + transcription path.</p>
+      <div class="card">
+        <div class="phase-row"><span class="badge">0</span><span class="deliv"><b>Skeleton</b> — Cargo workspace, axum hello-world, CLI <span class="mono">start</span>, web scaffold</span><span class="days">1d</span></div>
+        <div class="phase-row"><span class="badge">1</span><span class="deliv"><b>Design system</b> — tokens from §16 + core components (button, badge, card, pill, mockup chrome)</span><span class="days">1-2d</span></div>
+        <div class="phase-row"><span class="badge">2</span><span class="deliv"><b>Audio capture</b> — ScreenCaptureKit init, mic, 2-channel broadcast, permission UX with recovery screen</span><span class="days">2d</span></div>
+        <div class="phase-row"><span class="badge">3</span><span class="deliv"><b>Cloud STT</b> — Deepgram streaming + live transcript dock (340ms slide-in)</span><span class="days">2d</span></div>
+        <div class="phase-row"><span class="badge">4</span><span class="deliv"><b>Augmented notes hero</b> — TipTap marks, enhance endpoint + streaming enhancing state with shimmer skeletons</span><span class="days">3-4d</span></div>
+        <div class="phase-row"><span class="badge">5</span><span class="deliv"><b>LLM client + settings</b> — OpenAI-compat client, full settings UI, Keychain storage</span><span class="days">2d</span></div>
+        <div class="phase-row"><span class="badge">6</span><span class="deliv"><b>In-meeting chat</b> — floating ⌘K Ask pill + chat window (popUp), streaming endpoint</span><span class="days">1d</span></div>
+        <div class="phase-row"><span class="badge">7</span><span class="deliv"><b>Library + onboarding</b> — library home (sidebar, folders, date groups), 3-step welcome, empty/error states</span><span class="days">2d</span></div>
+        <div class="phase-row"><span class="badge">8</span><span class="deliv"><b>Local STT</b> — whisper-rs adapter, model-download UX card, streaming chunked decode with VAD</span><span class="days">2d</span></div>
+        <div class="phase-row"><span class="badge">9</span><span class="deliv"><b>Polish + distribution</b> — markdown export, README, Homebrew tap, GH Actions release workflow</span><span class="days">2-3d</span></div>
+        <div class="phase-row" style="background: var(--blsoft); border-radius: 8px; padding-left: 12px; padding-right: 12px; margin-top: 10px; border-bottom: none;"><span></span><span class="deliv" style="text-align: right; font-weight: 700;">Total</span><span class="days" style="color: var(--blue); font-weight: 700;">~18d</span></div>
+      </div>
+    </section>
+
+    <!-- ============== 13 RISKS ============== -->
+    <section id="s13">
+      <div class="sec-head"><span class="num">§ 13</span><h2>Open risks</h2></div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="callout" style="background: #FDF1D8;">
+          <span class="icon">⚠</span>
+          <div class="body">
+            <div class="title"><span class="mono">screencapturekit</span> crate gaps for audio-only loopback</div>
+            <div class="desc"><b>Mitigation:</b> Phase 2 spike. If crate falls short, ship a thin Swift binary (~150 lines) as subprocess. Pure additive change.</div>
+          </div>
+        </div>
+        <div class="callout callout-straw">
+          <span class="icon">⚠</span>
+          <div class="body">
+            <div class="title">TipTap struggling with structural diff of LLM-rewritten markdown</div>
+            <div class="desc"><b>Mitigation:</b> Phase 4 prototype against 3 real meeting transcripts. Fallback: ProseMirror directly. <em>This is the single highest-risk item.</em></div>
+          </div>
+        </div>
+        <div class="callout callout-paper">
+          <span class="icon">·</span>
+          <div class="body">
+            <div class="title">whisper.cpp streaming partials worse than Deepgram</div>
+            <div class="desc"><b>Mitigation:</b> Acceptable — local is the privacy escape hatch. Document expected lag.</div>
+          </div>
+        </div>
+        <div class="callout callout-blue">
+          <span class="icon">ⓘ</span>
+          <div class="body">
+            <div class="title">Browser <span class="mono">getUserMedia</span> permission collision</div>
+            <div class="desc"><b>Non-issue:</b> we don't use getUserMedia. All audio captured by the Rust binary; browser renders UI only.</div>
+          </div>
+        </div>
+        <div class="callout" style="background: #FDF1D8;">
+          <span class="icon">⚠</span>
+          <div class="body">
+            <div class="title">First-meeting macOS Screen Recording permission friction</div>
+            <div class="desc"><b>Mitigation:</b> §5.11 permission-denied recovery screen with numbered steps + ⌘ to System Settings.</div>
+          </div>
+        </div>
+        <div class="callout callout-paper">
+          <span class="icon">·</span>
+          <div class="body">
+            <div class="title">whisper.cpp model download size (500MB-3GB)</div>
+            <div class="desc"><b>Mitigation:</b> §5.11 model-download card with progress. Default cloud STT means most users never trigger it.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 14 SUCCESS CRITERIA ============== -->
+    <section id="s14">
+      <div class="sec-head"><span class="num">§ 14</span><h2>Success criteria for v1</h2></div>
+      <p class="caption" style="margin-bottom: 18px;">All four must be true for v1 to ship.</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="card" style="display: flex; gap: 16px; align-items: flex-start;">
+          <div class="serif" style="font-size: 28px; color: var(--blue); line-height: 1; flex: none; width: 28px;">①</div>
+          <div><b>End-to-end install on M-series.</b><br/><span class="caption">New user runs <span class="mono">brew install yogurt &amp;&amp; yogurt start</span>, grants Screen Recording, pastes Minimax key, records + transcribes + gets augmented notes for a real meeting.</span></div>
+        </div>
+        <div class="card" style="display: flex; gap: 16px; align-items: flex-start;">
+          <div class="serif" style="font-size: 28px; color: var(--blue); line-height: 1; flex: none; width: 28px;">②</div>
+          <div><b>Black/grey notes feel indistinguishable from Granola.</b><br/><span class="caption">Visual quality of the augmented-notes merge is the headline feature; if this isn't right, nothing else matters.</span></div>
+        </div>
+        <div class="card" style="display: flex; gap: 16px; align-items: flex-start;">
+          <div class="serif" style="font-size: 28px; color: var(--blue); line-height: 1; flex: none; width: 28px;">③</div>
+          <div><b>Fully-local mode works end-to-end.</b><br/><span class="caption">Privacy-focused user can switch to <span class="mono">whisper.cpp</span> + a local Ollama endpoint; pipeline runs with no internet.</span></div>
+        </div>
+        <div class="card" style="display: flex; gap: 16px; align-items: flex-start;">
+          <div class="serif" style="font-size: 28px; color: var(--blue); line-height: 1; flex: none; width: 28px;">④</div>
+          <div><b>Dev environment in 5 minutes.</b><br/><span class="caption">Developer can <span class="mono">git clone &amp;&amp; cargo run</span> and have a working dev environment within 5 minutes from cold.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== 15 OPEN QUESTIONS ============== -->
+    <section id="s15">
+      <div class="sec-head"><span class="num">§ 15</span><h2>Open questions</h2></div>
+      <div class="callout callout-matcha" style="margin-bottom: 18px;">
+        <span class="icon">✓</span>
+        <div class="body">
+          <div class="title">Recently closed (2026-06-24)</div>
+          <div class="desc"><b>Naming</b> — committed to <b>"yogurt"</b> lowercase with the spoon-&amp;-swirl mark. <b>Template picker</b> — deferred to v2 (see §6 item 2); v1 Re-enhance re-runs the single bundled prompt.</div>
+        </div>
+      </div>
+      <form onsubmit="return submitOpen(event)" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="card">
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <span class="pill pill-blue">License</span>
+            <div style="flex: 1;">
+              <div style="font-weight: 600;">Default assumption: MIT (matches Meetily / Hyprnote). Confirm?</div>
+              <div style="display: flex; gap: 16px; margin-top: 10px; font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="license" value="mit" checked /> MIT</label>
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="license" value="apache" /> Apache 2.0</label>
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="license" value="agpl" /> AGPL-3.0</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <span class="pill pill-blue">Org / Repo</span>
+            <div style="flex: 1;">
+              <div style="font-weight: 600;">Personal GitHub or a new org?</div>
+              <input type="text" name="org" placeholder="e.g. 'personal: 3chenr', 'new org: yogurt-meet'" style="margin-top: 10px; width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper3); font: inherit; font-size: 13px;" />
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <span class="pill pill-blue">Telemetry</span>
+            <div style="flex: 1;">
+              <div style="font-weight: 600;">Any phone-home, even opt-in (e.g. self-hosted Sentry for crashes)?</div>
+              <div style="display: flex; gap: 16px; margin-top: 10px; font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="telemetry" value="none" checked /> No phone-home</label>
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="telemetry" value="optin" /> Opt-in only</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <span class="pill pill-blue">Themes</span>
+            <div style="flex: 1;">
+              <div style="font-weight: 600;">Ship just <b>Blueberry</b> (default) in v1, or all three (Blueberry / Strawberry / Matcha-dark)?</div>
+              <div style="display: flex; gap: 16px; margin-top: 10px; font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="themes" value="blueberry" checked /> Blueberry only</label>
+                <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="themes" value="all" /> All three</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="eyebrow">Anything else</div>
+          <textarea id="extra" rows="3" placeholder="Other feedback on the PRD overall" style="width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font: inherit; font-size: 14px; resize: vertical;"></textarea>
+        </div>
+        <div class="submit-bar">
+          <div class="info">
+            <div class="title">Lock the open questions and approve the PRD</div>
+            <div class="sub">After approval I'll invoke the writing-plans skill to break the 10 phases into concrete tasks.</div>
+          </div>
+          <button type="submit" class="btn btn-primary" data-lavish-action style="padding: 12px 22px; font-size: 14px;">Answer all &amp; approve →</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============== 16 BRAND ============== -->
+    <section id="s16">
+      <div class="sec-head"><span class="num">§ 16</span><h2>Brand &amp; visual design system</h2></div>
+      <p class="caption" style="margin-bottom: 22px;">Source of truth: <span class="mono">yogurt-app-design/project/Yogurt Design Board.dc.html</span>. This page is rendered in the brand's own tokens — what you're looking at is the look the product ships with.</p>
+
+      <h3 class="subhead" style="margin: 20px 0 10px;">16.1 — Identity</h3>
+      <div class="card" style="display: flex; align-items: center; gap: 30px;">
+        <svg viewBox="0 0 44 44" width="80" height="80"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>
+        <div>
+          <div class="serif" style="font-size: 42px; line-height: 1;">yogurt</div>
+          <div class="caption" style="margin-top: 6px;"><span class="mono">spoon &amp; swirl mark</span> · blueberry circle, white spoon, strawberry dot</div>
+          <div style="margin-top: 12px; font-size: 13px;">Warm + editorial + dev-tooly. Mono captions set the technical tone; Instrument Serif sets the editorial tone.</div>
+        </div>
+      </div>
+
+      <h3 class="subhead" style="margin: 28px 0 10px;">16.2 — Palette (Blueberry default)</h3>
+      <div class="palette">
+        <div class="swatch"><div class="chip" style="background: #FBF7EF;"></div><div class="meta"><div class="name">Paper</div><div class="hex">#FBF7EF</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #211D18;"></div><div class="meta"><div class="name">Ink — you</div><div class="hex">#211D18</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #A89F90;"></div><div class="meta"><div class="name">Grey — AI</div><div class="hex">#A89F90</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #5B4FC7;"></div><div class="meta"><div class="name">Blueberry</div><div class="hex">#5B4FC7</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #E07A66;"></div><div class="meta"><div class="name">Strawberry</div><div class="hex">#E07A66</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #5E9E73;"></div><div class="meta"><div class="name">Matcha — local</div><div class="hex">#5E9E73</div></div></div>
+      </div>
+
+      <h3 class="subhead" style="margin: 28px 0 10px;">16.3 — Type</h3>
+      <div class="card">
+        <div class="typesample">
+          <div class="serif" style="font-size: 40px; line-height: 1;">Augmented notes</div>
+          <div class="label">Instrument Serif · display, wordmark, screen titles</div>
+        </div>
+        <div class="typesample">
+          <div style="font-size: 21px; font-weight: 700;">Weekly sync, captured cleanly</div>
+          <div style="font-size: 15px; color: var(--mut); margin-top: 4px;">Hanken Grotesk carries every label, button, and note body — warm, legible, neutral.</div>
+          <div class="label">Hanken Grotesk · 400 / 500 / 600 / 700</div>
+        </div>
+        <div class="typesample">
+          <div class="mono" style="font-size: 15px; color: var(--blue);">00:14:02 · Them → action item</div>
+          <div class="label">JetBrains Mono · timestamps, CLI, technical captions</div>
+        </div>
+      </div>
+
+      <h3 class="subhead" style="margin: 28px 0 10px;">16.4 — The signature: black-you / grey-AI</h3>
+      <div class="grid-2">
+        <div class="card-soft">
+          <ul style="margin: 0; padding-left: 18px; list-style: none;">
+            <li style="position: relative; font-size: 15.5px; font-weight: 600; color: var(--ink); margin-bottom: 6px;"><span style="position: absolute; left: -16px;">•</span>Q3 launch — risks?</li>
+            <li style="position: relative; font-size: 14.5px; color: var(--grey); margin: 3px 0 3px 14px;"><span style="position: absolute; left: -14px;">◦</span>Intel Macs limited to <span style="border-bottom: 1.5px dotted #C9B8F0;">small.en real-time</span> — main risk.</li>
+            <li style="position: relative; font-size: 14.5px; color: var(--grey); margin: 3px 0 8px 14px;"><span style="position: absolute; left: -14px;">◦</span>Ship arm64 first; Intel best-effort.</li>
+            <li style="position: relative; font-size: 15.5px; font-weight: 600; color: var(--ink);"><span style="position: absolute; left: -16px;">•</span>Pricing</li>
+          </ul>
+          <div style="display: flex; gap: 18px; margin-top: 14px;">
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 11px; height: 11px; border-radius: 3px; background: var(--ink);"></span><span class="caption">You typed it</span></div>
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 11px; height: 11px; border-radius: 3px; background: var(--grey);"></span><span class="caption">AI added it · edit to keep</span></div>
+          </div>
+        </div>
+        <div>
+          <p style="font-size: 14px;">Three variants were evaluated. <b>Variant A (grey text)</b> was picked: faithful to Granola, reads as one document, quietest.</p>
+          <p style="font-size: 13.5px; color: var(--mut);">Implementation: TipTap mark called <span class="mono">aiGrey</span>, applied to LLM-added runs with <span class="mono">data-transcript-ts</span> attribute. Editing strips the mark (promote-to-black). The <span class="mono">↳ HH:MM</span> deep-link is a separate inline node with dotted-underline.</p>
+        </div>
+      </div>
+
+      <h3 class="subhead" style="margin: 28px 0 10px;">16.5 — Scale &amp; motion</h3>
+      <div class="grid-3">
+        <div class="card">
+          <div class="eyebrow">Spacing · 4-base</div>
+          <div style="display: flex; align-items: flex-end; gap: 8px; height: 56px;">
+            <span style="width: 4px; height: 4px; background: var(--blue); border-radius: 2px;"></span>
+            <span style="width: 8px; height: 8px; background: var(--blue); border-radius: 2px;"></span>
+            <span style="width: 12px; height: 12px; background: var(--blue); border-radius: 2px;"></span>
+            <span style="width: 16px; height: 16px; background: var(--blue); border-radius: 2px;"></span>
+            <span style="width: 24px; height: 24px; background: var(--blue); border-radius: 2px;"></span>
+            <span style="width: 32px; height: 32px; background: var(--blue); border-radius: 2px;"></span>
+            <span style="width: 48px; height: 48px; background: var(--blue); border-radius: 2px;"></span>
+          </div>
+          <div class="caption" style="margin-top: 10px;">4 · 8 · 12 · 16 · 24 · 32 · 48</div>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Radius</div>
+          <div style="display: flex; align-items: flex-end; gap: 10px;">
+            <div style="text-align: center;"><div style="width: 34px; height: 34px; background: var(--paper); border: 1.5px solid var(--blue); border-radius: 6px;"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 5px;">6</div></div>
+            <div style="text-align: center;"><div style="width: 34px; height: 34px; background: var(--paper); border: 1.5px solid var(--blue); border-radius: 9px;"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 5px;">9</div></div>
+            <div style="text-align: center;"><div style="width: 34px; height: 34px; background: var(--paper); border: 1.5px solid var(--blue); border-radius: 14px;"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 5px;">14</div></div>
+            <div style="text-align: center;"><div style="width: 34px; height: 34px; background: var(--paper); border: 1.5px solid var(--blue); border-radius: 999px;"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 5px;">pill</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Elevation</div>
+          <div style="display: flex; gap: 14px;">
+            <div style="text-align: center;"><div style="width: 42px; height: 42px; background: #fff; border-radius: 10px; box-shadow: 0 2px 6px rgba(40,30,15,.08);"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 7px;">card</div></div>
+            <div style="text-align: center;"><div style="width: 42px; height: 42px; background: #fff; border-radius: 10px; box-shadow: 0 12px 30px -10px rgba(40,30,15,.22);"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 7px;">pop</div></div>
+            <div style="text-align: center;"><div style="width: 42px; height: 42px; background: #fff; border-radius: 10px; box-shadow: 0 26px 60px -28px rgba(40,30,15,.4);"></div><div class="mono caption" style="font-size: 9.5px; margin-top: 7px;">window</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 14px;">
+        <div class="eyebrow" style="margin-bottom: 12px;">Motion</div>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+          <div style="display: flex; gap: 12px;"><span class="mono" style="color: var(--blue); width: 60px;">260ms</span><span>chat window pop · ease-out</span></div>
+          <div style="display: flex; gap: 12px;"><span class="mono" style="color: var(--blue); width: 60px;">340ms</span><span>transcript slide-in</span></div>
+          <div style="display: flex; gap: 12px;"><span class="mono" style="color: var(--blue); width: 60px;">600ms</span><span>augmented-notes merge · staggered (140/340/560/760ms)</span></div>
+          <div style="display: flex; gap: 12px;"><span class="mono" style="color: var(--blue); width: 60px;">1.4s</span><span>recording dot pulse · enhancing dot pulse</span></div>
+          <div style="display: flex; gap: 12px;"><span class="mono" style="color: var(--blue); width: 60px;">3.5s</span><span>empty-state logo gentle float</span></div>
+        </div>
+      </div>
+
+      <h3 class="subhead" style="margin: 28px 0 10px;">16.6 — Component primitives</h3>
+      <div class="card" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+        <button class="btn btn-primary">New meeting</button>
+        <button class="btn btn-outline">Re-enhance</button>
+        <button class="btn btn-ghost">Cancel</button>
+        <span class="pill" style="background: #fff; border: 1px solid var(--straw); color: var(--ink);"><span class="dot" style="background: var(--straw);"></span><span class="mono">12:04</span></span>
+        <span class="pill pill-blue"><span class="dot"></span>Minimax · active</span>
+        <span class="pill pill-matcha"><span class="dot"></span>whisper.cpp · local</span>
+        <span class="pill pill-mut">Ollama</span>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  yogurt PRD · v1 draft · 2026-06-24 · rendered in the brand's own design system · source of truth: <span class="mono">docs/PRD.md</span>
+</footer>
+
+<script>
+  // ============== TOC active-section tracking ==============
+  const sections = [...document.querySelectorAll('section[id]')];
+  const links = [...document.querySelectorAll('aside.toc a[href^="#s"]')];
+  const map = new Map();
+  sections.forEach(s => {
+    const link = links.find(l => l.getAttribute('href') === '#' + s.id);
+    if (link) map.set(s.id, link);
+  });
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      const link = map.get(e.target.id);
+      if (!link) return;
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+
+  // ============== Submit ==============
+  function submitOpen(event) {
+    event.preventDefault();
+    const fd = new FormData(event.currentTarget);
+    const license = fd.get('license');
+    const org = (fd.get('org') || '').toString().trim();
+    const telemetry = fd.get('telemetry');
+    const themes = fd.get('themes');
+    const extra = document.getElementById('extra').value.trim();
+
+    const lines = ['PRD approved with these answers:', ''];
+    lines.push(`License: ${license}`);
+    lines.push(`Org/repo: ${org || 'unspecified'}`);
+    lines.push(`Telemetry: ${telemetry === 'none' ? 'No phone-home' : 'Opt-in only (Sentry self-hosted)'}`);
+    lines.push(`Themes: ${themes === 'blueberry' ? 'Blueberry only in v1' : 'Ship all three (Blueberry / Strawberry / Matcha-dark)'}`);
+    if (extra) { lines.push(''); lines.push('Extra:'); lines.push(`  ${extra}`); }
+    lines.push('');
+    lines.push('All decisions locked — proceed to writing-plans skill.');
+
+    window.lavish.queuePrompt(lines.join('\n'), {
+      tag: 'approve',
+      text: `PRD approved · ${license} · themes:${themes}`,
+      data: { license, org, telemetry, themes, extra }
+    });
+    return false;
+  }
+</script>
+
+</body>
+</html>

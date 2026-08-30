@@ -53,7 +53,7 @@ done
 
 # Cargo on PATH (rustup fallback).
 if ! command -v cargo >/dev/null 2>&1; then
-  RUSTUP_CARGO="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo"
+  RUSTUP_CARGO="$(rustup which cargo 2>/dev/null || true)"
   if [ -x "$RUSTUP_CARGO" ]; then
     export PATH="$(dirname "$RUSTUP_CARGO"):$PATH"
   else
@@ -66,14 +66,18 @@ fi
 # binary, so a stale bundle means stale UI with no warning), then the release
 # binary. Both are incremental - seconds when nothing changed, 8-15 min on a
 # fresh clone.
-if ! command -v pnpm >/dev/null 2>&1; then
+if command -v corepack >/dev/null 2>&1; then
+  PNPM=(corepack pnpm)
+elif command -v pnpm >/dev/null 2>&1; then
+  PNPM=(pnpm)
+else
   err "pnpm not found. Run ./scripts/setup.sh first."
   exit 1
 fi
 BIN="target/release/yogurt"
 bold "Building web bundle + release binary (incremental)"
-pnpm --dir web build
-cargo build --release
+(cd web && "${PNPM[@]}" build)
+cargo build --release --locked
 
 PORT=$(ensure_port_free "release" "$PORT") || exit 1
 

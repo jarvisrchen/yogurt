@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meta pill color system - STT & LLM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBF7EF; --card:#FFFFFF; --ink:#211D18; --grey:#A89F90; --line:#EBE3D5;
+    --blue:#5B4FC7; --blsoft:#ECE9FB; --straw:#E07A66; --strsoft:#FBE6E0;
+    --matcha:#5E9E73; --mtsoft:#E7F0E8; --mut:#8A8174;
+    --serif:"Instrument Serif",ui-serif,Georgia,serif;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    --shadow-card:0 2px 6px rgba(40,30,15,.08);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:48px 24px 96px}
+  h1{font-family:var(--serif);font-weight:400;font-size:44px;line-height:1.08;margin:0 0 10px;letter-spacing:-.01em}
+  h2{font-family:var(--serif);font-weight:400;font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
+  h3{font-size:14px;font-weight:700;margin:0 0 8px;letter-spacing:.02em}
+  p{margin:0 0 12px;max-width:68ch}
+  .lede{color:var(--mut);font-size:16.5px;max-width:64ch;margin-bottom:0}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--grey);margin:0 0 10px}
+  section{margin-top:56px}
+  .rule{height:1px;background:var(--line);border:0;margin:0}
+
+  /* ---------- pills: mirrors web/src/components/MeetingMetaPills.tsx ---------- */
+  .pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 8px;
+        font-family:var(--mono);font-size:11px;line-height:1;white-space:nowrap;vertical-align:middle}
+  .pill svg{width:11px;height:11px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .p-neutral{border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .p-neutral-paper{border:1px solid var(--line);background:var(--paper);color:var(--mut)}
+  .p-blue{background:var(--blsoft);color:var(--blue)}
+  .p-matcha{background:var(--mtsoft);color:var(--matcha)}
+  .p-straw{background:var(--strsoft);color:var(--straw)}
+  .p-outline-matcha{border:1px solid #CBE0D2;background:transparent;color:var(--matcha)}
+  .p-outline-blue{border:1px solid #C5BEEF;background:transparent;color:var(--blue)}
+  .p-mtsofter{background:#F4F8F4;color:#7FB091}
+  .p-blsofter{background:#F5F3FE;color:#7C70D6}
+  .p-ghost{border:1px solid var(--line);background:transparent;color:var(--mut)}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+
+  /* ---------- context mocks ---------- */
+  .mock{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow-card)}
+  .mock-title{font-family:var(--serif);font-size:22px;line-height:1.15;margin:0 0 8px}
+  .avatar{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-family:var(--serif);font-size:17px;color:var(--ink);flex:none}
+  .cardrow{display:flex;gap:12px;align-items:flex-start}
+  .cardrow .ttl{font-weight:600;font-size:15px;margin:0 0 6px}
+
+  /* ---------- option cards ---------- */
+  .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px;margin-top:20px}
+  .opt{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+  .opt.rec{border-color:var(--blue);box-shadow:0 0 0 3px var(--blsoft)}
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--grey)}
+  .tag.pick{color:var(--blue)}
+  .opt h3{font-family:var(--serif);font-weight:400;font-size:21px;margin:0}
+  .opt .why{font-size:13.5px;color:var(--mut);margin:0}
+  .cost{font-size:12.5px;color:var(--mut);border-top:1px dashed var(--line);padding-top:10px;margin:auto 0 0}
+  .cost b{color:var(--ink);font-weight:600}
+  .swatches{display:flex;flex-direction:column;gap:6px}
+
+  /* ---------- matrix ---------- */
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{font-size:10.5px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey);font-weight:400;white-space:nowrap}
+  th.pick{color:var(--blue)}
+  td.state{color:var(--mut);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  td.pick{background:rgba(236,233,251,.42)}
+  th.pick{background:rgba(236,233,251,.42)}
+
+  .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--straw);border-radius:10px;padding:14px 16px;font-size:13.5px;color:var(--mut)}
+  .note b{color:var(--ink)}
+  code{font-family:var(--mono);font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  pre{font-family:var(--mono);font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;line-height:1.6}
+  pre .del{color:var(--straw)}
+  pre .add{color:var(--matcha)}
+  pre .dim{color:var(--grey)}
+
+  ul.tight{margin:0;padding-left:18px}
+  ul.tight li{margin-bottom:6px;max-width:66ch}
+
+  form.q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow-card)}
+  form.q label{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;cursor:pointer}
+  form.q label:hover{background:var(--paper)}
+  form.q input[type=radio]{margin-top:3px;accent-color:var(--blue)}
+  form.q .lb{font-weight:600;font-size:14px}
+  form.q .ld{font-size:12.5px;color:var(--mut)}
+  form.q textarea{width:100%;font-family:var(--sans);font-size:13.5px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--paper);resize:vertical;min-height:64px}
+  form.q button{margin-top:12px;font-family:var(--sans);font-weight:600;font-size:13.5px;color:#fff;background:var(--blue);border:0;border-radius:9px;padding:10px 18px;cursor:pointer;box-shadow:0 2px 8px rgba(91,79,199,.3)}
+  form.q button:hover{filter:brightness(1.07)}
+  .sent{font-size:12.5px;color:var(--matcha);margin-top:8px;min-height:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">yogurt · meeting metadata</p>
+<h1>What should the pill colors <em>mean</em>?</h1>
+<p class="lede">Right now the STT pill and the LLM pill both use blueberry, for two different reasons. Picking one rule for the whole row makes each pill readable at a glance instead of decorative.</p>
+
+<section>
+<p class="eyebrow">Where we are</p>
+<h2>Today's row</h2>
+<div class="mock" style="margin-top:14px">
+  <p class="mock-title">Weekly sync with Design</p>
+  <div class="row">
+    <span class="pill p-neutral-paper">Aug 28 · 1:08 PM</span>
+    <span class="pill p-neutral-paper">47 min</span>
+    <span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span>
+    <span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span>
+  </div>
+</div>
+
+<ul class="tight" style="margin-top:20px">
+  <li><b>Blueberry is overloaded.</b> On the STT pill it means "went to the cloud". On the LLM pill it means "AI touched this". Same color, two rules.</li>
+  <li><b>Cloud STT + LLM renders as two identical blue pills</b> side by side, so the row reads as one blob.</li>
+  <li><b>It's the loudest thing in the row</b> - brand blue is otherwise reserved for buttons and the transcript. "It got enhanced" is the normal case, not news. <code>MeetingCard.tsx</code> already states this rule for the sibling flag: <em>"Tagging the normal enhanced case would be noise."</em></li>
+  <li><b>A local LLM reads as cloud.</b> <code>yogurt-llm/src/lib.rs</code> explicitly supports Ollama and LM Studio on localhost - today they get the same blue as an API provider, so the row misreports the one fact yogurt actually promises.</li>
+</ul>
+</section>
+
+<hr class="rule" style="margin-top:48px">
+
+<section>
+<p class="eyebrow">The decision</p>
+<h2>Seven rules the color could follow</h2>
+<p style="margin-top:8px">A through C are the original three: one rule each, applied to both pills. D through G add combinations - two-axis rules (D, E), reframed meanings (F), and pair-aware rules (G). The icon always carries the stage (drive / cloud / sparkles), so color is free to carry something else.</p>
+
+<div class="opts">
+
+  <div class="opt">
+    <span class="tag">Option A</span>
+    <h3>Color = locality</h3>
+    <p class="why">Green stayed on this Mac, blue left it. Same rule for STT and LLM, so scanning the row answers "did anything leave?" without reading a word.</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span></span>
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></span>
+      <span class="row"><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></span>
+      <span class="row"><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> needs the backend to stamp LLM locality (host of <code>base_url</code>). A cloud+cloud meeting is still two blue pills - but now that's true information.</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option B</span>
+    <h3>Color = stage</h3>
+    <p class="why">Matcha is always transcription, blueberry is always enhancement. Fastest to tell the two pills apart; local/cloud demotes to the icon.</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span></span>
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></span>
+      <span class="row"><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> throws away the privacy signal to color-code something the icon already says. Cheapest diff, weakest meaning - green would now mean "audio left the Mac" half the time.</p>
+  </div>
+
+  <div class="opt rec">
+    <span class="tag pick">Option C · recommended</span>
+    <h3>Quiet, color = good news</h3>
+    <p class="why">Metadata is quiet by default. Color is spent only on the two things worth noticing: <b>matcha</b> = it stayed on this Mac, <b>strawberry</b> = something's off. Cloud is the unremarkable default and gets the same neutral chrome as the date.</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span></span>
+      <span class="row"><span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></span>
+      <span class="row"><span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+      <span class="row"><span class="pill p-straw">not enhanced</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> cloud STT loses its blue - you read the cloud icon instead. In exchange brand blue goes back to meaning "this is a control", and the row stops competing with the title.</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option D</span>
+    <h3>Stage × locality matrix</h3>
+    <p class="why">Four states, four looks. STT local = matcha filled, STT cloud = neutral. LLM local = matcha outlined, LLM cloud = blueberry outlined. Every meeting row is visually unique; no two states ever collapse into the same pill.</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span></span>
+      <span class="row"><span class="pill p-outline-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></span>
+      <span class="row"><span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></span>
+      <span class="row"><span class="pill p-outline-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> "matcha" stops meaning one thing - it now carries both "STT" and "local". Mental model becomes "matcha = stayed on this Mac; border = was processed by an LLM". Most expressive option, also the most to read.</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option E</span>
+    <h3>One hue per stage, lightness for locality</h3>
+    <p class="why">Matcha family always means STT, blueberry family always means LLM. Filled = on this Mac, outlined = went to a provider. The brain reads "same stage" first because the two pills sit next to each other, then locality second.</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span></span>
+      <span class="row"><span class="pill p-outline-matcha"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></span>
+      <span class="row"><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></span>
+      <span class="row"><span class="pill p-outline-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> blueberry is back as the loud "AI" cue across the app, which is partly what option C was rebelling against. Wins on visual pairing between the two pills; loses on "blueberry = a control you can press".</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option F</span>
+    <h3>Color = outcome</h3>
+    <p class="why">Matcha = ran cleanly (the normal case). Strawberry = needs attention (failed or never ran). Neutral = hasn't been processed yet. Locality comes from icon + label only. Best if you care more about "is my enhanced summary trustworthy?" than "did anything leave the Mac?".</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span></span>
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></span>
+      <span class="row"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+      <span class="row"><span class="pill p-straw">enhance failed</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> throws away the "local vs cloud" signal that the existing palette is built around - matcha no longer means "stayed on this Mac", it means "worked". Straw gets a new role too, so its current uses (recording dot, error toasts) need to be checked for collisions.</p>
+  </div>
+
+  <div class="opt">
+    <span class="tag">Option G</span>
+    <h3>Matched-pair locality</h3>
+    <p class="why">When both pills agree on locality they share the same soft tint (two soft-matcha or two soft-blueberry). When they disagree, they split visually - one matcha, one neutral. Reads as "this meeting's two processes either agreed on staying local or they didn't." A new signal nothing else in the app produces.</p>
+    <div class="swatches">
+      <span class="row"><span class="pill p-mtsofter"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span> <span class="pill p-mtsofter"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></span>
+      <span class="row"><span class="pill p-blsofter"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span> <span class="pill p-blsofter"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+      <span class="row"><span class="pill p-mtsofter"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span> <span class="pill p-blsofter"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></span>
+    </div>
+    <p class="cost"><b>Cost:</b> the soft tints are new and have to read against the cream background - first version may need a contrast pass. Also adds a third color dimension (tint family) on top of the existing two, so onboarding a new user takes longer.</p>
+  </div>
+
+</div>
+</section>
+
+<hr class="rule" style="margin-top:48px">
+
+<section>
+<p class="eyebrow">Side by side</p>
+<h2>Every state, every rule</h2>
+<div class="scroll" style="margin-top:14px">
+<table>
+  <thead><tr>
+    <th style="width:18%">State</th><th>Today</th><th>A · locality</th><th>B · stage</th><th class="pick">C · quiet</th><th>D · matrix</th><th>E · hue per stage</th><th>F · outcome</th><th>G · matched pair</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="state">STT, on-device</td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td class="pick"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+      <td><span class="pill p-mtsofter"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Local · small.en</span></td>
+    </tr>
+    <tr>
+      <td class="state">STT, cloud provider</td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td class="pick"><span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td><span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td><span class="pill p-outline-matcha"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+      <td><span class="pill p-blsofter"><svg viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>Cloud · nova-3</span></td>
+    </tr>
+    <tr>
+      <td class="state">LLM, hosted API</td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td class="pick"><span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td><span class="pill p-outline-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td><span class="pill p-outline-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+      <td><span class="pill p-blsofter"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span></td>
+    </tr>
+    <tr>
+      <td class="state">LLM, Ollama on localhost</td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span> <span style="color:var(--straw);font-size:11px">wrong</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span> <span style="color:var(--straw);font-size:11px">wrong</span></td>
+      <td class="pick"><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></td>
+      <td><span class="pill p-outline-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></td>
+      <td><span class="pill p-blue"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></td>
+      <td><span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></td>
+      <td><span class="pill p-mtsofter"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span></td>
+    </tr>
+    <tr>
+      <td class="state">Ended, never enhanced</td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+      <td class="pick"><span class="pill p-straw">not enhanced</span></td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+      <td><span class="pill p-straw">not enhanced</span></td>
+    </tr>
+    <tr>
+      <td class="state">Date · duration</td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+      <td class="pick"><span class="pill p-neutral-paper">47 min</span></td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+      <td><span class="pill p-neutral-paper">47 min</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note" style="margin-top:20px"><b>The tell:</b> row 4 (LLM on Ollama). Rules B and the status quo paint a model that never left your Mac the same color as one that did. Every other option (A, C, D, E, F, G) tells the truth there - either by color, by border weight, or by reframing what color means.</div>
+</section>
+
+<hr class="rule" style="margin-top:48px">
+
+<section>
+<p class="eyebrow">In place</p>
+<h2>Option C in the two surfaces that use these pills</h2>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px;margin-top:16px">
+  <div>
+    <p class="tag" style="margin-bottom:8px">Meeting header · all-local meeting</p>
+    <div class="mock">
+      <p class="mock-title">Weekly sync with Design</p>
+      <div class="row">
+        <span class="pill p-neutral-paper">Aug 28 · 1:08 PM</span>
+        <span class="pill p-neutral-paper">47 min</span>
+        <span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span>
+        <span class="pill p-matcha"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>llama3.1</span>
+      </div>
+      <p style="font-size:12.5px;color:var(--mut);margin:12px 0 0">Two greens = nothing left this machine. That reads instantly.</p>
+    </div>
+  </div>
+  <div>
+    <p class="tag" style="margin-bottom:8px">Meeting header · typical setup</p>
+    <div class="mock">
+      <p class="mock-title">Weekly sync with Design</p>
+      <div class="row">
+        <span class="pill p-neutral-paper">Aug 28 · 1:08 PM</span>
+        <span class="pill p-neutral-paper">47 min</span>
+        <span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span>
+        <span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span>
+      </div>
+      <p style="font-size:12.5px;color:var(--mut);margin:12px 0 0">One green: audio stayed local, notes went to a provider. Exactly the truth.</p>
+    </div>
+  </div>
+</div>
+
+<p class="tag" style="margin:24px 0 8px">Library card</p>
+<div class="mock">
+  <div class="cardrow">
+    <div class="avatar" style="background:var(--blsoft)">WS</div>
+    <div style="min-width:0;flex:1">
+      <p class="ttl">Weekly sync with Design</p>
+      <div class="row">
+        <span class="pill p-neutral-paper">1:08 PM</span>
+        <span class="pill p-neutral-paper">47 min</span>
+        <span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span>
+        <span class="pill p-neutral"><svg viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>MiniMax-M3</span>
+      </div>
+    </div>
+  </div>
+  <div class="cardrow" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+    <div class="avatar" style="background:var(--mtsoft)">SR</div>
+    <div style="min-width:0;flex:1">
+      <p class="ttl">Standup recap</p>
+      <div class="row">
+        <span class="pill p-neutral-paper">9:02 AM</span>
+        <span class="pill p-neutral-paper">12 min</span>
+        <span class="pill p-straw">not enhanced</span>
+        <span class="pill p-matcha"><svg viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/></svg>Local · small.en</span>
+      </div>
+    </div>
+  </div>
+</div>
+<p style="font-size:13px;color:var(--mut);margin-top:12px">In a long library list, one accent color per card is legible. Two competing accents per card is wallpaper.</p>
+</section>
+
+<hr class="rule" style="margin-top:48px">
+
+<section>
+<p class="eyebrow">If you pick C</p>
+<h2>What actually changes</h2>
+<pre><span class="dim">web/src/components/MeetingMetaPills.tsx</span>
+
+ export function EnginePill({ sttEngine }) {
+   ...
+<span class="del">-  className={`${PILL} ${engine.cloud ? "bg-blsoft text-blue" : "bg-mtsoft text-matcha"}`}</span>
+<span class="add">+  className={`${PILL} ${engine.cloud</span>
+<span class="add">+    ? "border border-line bg-card text-mut"</span>
+<span class="add">+    : "bg-mtsoft text-matcha"}`}</span>
+
+ export function LlmPill({ llmModel<span class="add">, local</span> }) {
+   ...
+<span class="del">-  className={`${PILL} bg-blsoft text-blue`}</span>
+<span class="add">+  className={`${PILL} ${local</span>
+<span class="add">+    ? "bg-mtsoft text-matcha"</span>
+<span class="add">+    : "border border-line bg-card text-mut"}`}</span>
+
+<span class="dim">Backend, only for the local-LLM case:  stamp llm_model as</span>
+<span class="dim">"local · llama3.1" / "cloud · MiniMax-M3" the way stt_engine</span>
+<span class="dim">already does (host of base_url is localhost/127.0.0.1),</span>
+<span class="dim">and reuse the existing parse helper.</span>
+</pre>
+<p style="margin-top:14px">Front-end only is a ~6-line change and already fixes the overloaded-blue problem. The backend locality stamp is a separate, optional follow-up - without it the LLM pill is simply always neutral, which is still honest.</p>
+</section>
+
+<hr class="rule" style="margin-top:48px">
+
+<section>
+<p class="eyebrow">Your call</p>
+<h2>Pick a rule</h2>
+<form class="q" data-lavish-question="pill-color-rule" style="margin-top:14px"
+  onsubmit="event.preventDefault();
+    var f=new FormData(event.currentTarget);
+    var c=f.get('rule'); var n=(f.get('notes')||'').trim();
+    if(!c) return;
+    window.lavish.queuePrompt('Pill color system: go with ' + c + (n ? ('. Notes: ' + n) : '.'),
+      {tag:'choice', text:'Rule: ' + c + (n ? (' - ' + n) : ''), element:event.currentTarget,
+       queueKey:'pill-color-rule', data:{question:'pill-color-rule', answer:c, notes:n}});
+    document.getElementById('sent').textContent='Queued - press Send to Agent when ready.';">
+  <label><input type="radio" name="rule" value="Option C (quiet by default, matcha only for local, strawberry for problems)" checked>
+    <span><span class="lb">C · Quiet, color = good news</span><br><span class="ld">Recommended. Cloud STT and cloud LLM both go neutral; matcha means it stayed on this Mac.</span></span></label>
+  <label><input type="radio" name="rule" value="Option A (color = locality: matcha local, blueberry cloud, on both pills)">
+    <span><span class="lb">A · Color = locality</span><br><span class="ld">Keeps blueberry for cloud, applies the same rule to the LLM pill.</span></span></label>
+  <label><input type="radio" name="rule" value="Option B (color = pipeline stage: STT matcha, LLM blueberry)">
+    <span><span class="lb">B · Color = stage</span><br><span class="ld">Smallest change, but drops the local/cloud signal from color.</span></span></label>
+  <label><input type="radio" name="rule" value="Option D (stage x locality matrix: matcha filled local, matcha outlined LLM-local, blueberry outlined LLM-cloud, neutral STT-cloud)">
+    <span><span class="lb">D · Stage × locality matrix</span><br><span class="ld">Four distinct pill states. Most expressive; matcha carries both "STT" and "local", border means "LLM".</span></span></label>
+  <label><input type="radio" name="rule" value="Option E (one hue family per stage, lightness for locality: matcha STT, blueberry LLM, filled vs outlined)">
+    <span><span class="lb">E · One hue per stage</span><br><span class="ld">Pair reads as same stage first, locality second. Brings blueberry back as the LLM accent.</span></span></label>
+  <label><input type="radio" name="rule" value="Option F (color = outcome: matcha ran cleanly, strawberry needs attention, neutral not processed yet)">
+    <span><span class="lb">F · Color = outcome</span><br><span class="ld">Throws away locality from color; tells you "is my summary trustworthy?" instead of "did anything leave?".</span></span></label>
+  <label><input type="radio" name="rule" value="Option G (matched-pair locality: same soft tint when both pills agree, split when they disagree)">
+    <span><span class="lb">G · Matched pair</span><br><span class="ld">Reads as "did the two processes agree on staying local?". New signal, new tints to teach.</span></span></label>
+  <label><input type="radio" name="rule" value="none of these - leave the pills as they are today">
+    <span><span class="lb">None · leave it alone</span><br><span class="ld">Today's blue-on-blue stays.</span></span></label>
+  <textarea name="notes" placeholder="Anything to adjust - a different hue, keep the word 'Enhanced', drop an icon..."></textarea>
+  <button type="submit">Queue this answer</button>
+  <div class="sent" id="sent"></div>
+</form>
+</section>
+
+</div>
+</body>
+</html>

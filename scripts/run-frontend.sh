@@ -28,14 +28,18 @@ case "${1:-}" in
     ;;
 esac
 
-if ! command -v pnpm >/dev/null 2>&1; then
+if command -v corepack >/dev/null 2>&1; then
+  PNPM=(corepack pnpm)
+elif command -v pnpm >/dev/null 2>&1; then
+  PNPM=(pnpm)
+else
   err "pnpm not found. Run ./scripts/setup.sh first."
   exit 1
 fi
 
 if [ ! -d web/node_modules ]; then
   bold "web/node_modules missing — running pnpm install"
-  pnpm --dir web install
+  (cd web && "${PNPM[@]}" install --frozen-lockfile)
 fi
 
 # Vite's port is wired into the backend proxy at compile time (5173).
@@ -59,4 +63,4 @@ echo
 
 # Force IPv4 bind: backend proxy hits http://127.0.0.1:5173 (not ::1).
 # Without --host 127.0.0.1 Vite binds IPv6-only on some macs, breaking the proxy.
-exec pnpm --dir web dev --host 127.0.0.1
+exec "${PNPM[@]}" --dir web dev --host 127.0.0.1
