@@ -27,7 +27,6 @@ use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
-use yogurt_db::keys::ApiKeyStore;
 use yogurt_llm::{ChatMessage, ChatRequest, LlmClient};
 use yogurt_prompts::EnhanceCtx;
 use yogurt_server::{run_with_config, AppState, Mode, RunConfig};
@@ -144,13 +143,10 @@ async fn it_enhances_a_meeting_end_to_end() {
         .and_then(|v| v.as_str())
         .expect("notes_file in response")
         .to_string();
-    assert!(
-        response
-            .get("llm_model")
-            .and_then(|v| v.as_str())
-            .is_some_and(|m| m.starts_with("cloud \u{b7} ")),
-        "response names the model that produced enriched_md, got {:?}",
-        response.get("llm_model"),
+    assert_eq!(
+        response.get("llm_model").and_then(|v| v.as_str()),
+        Some("mock"),
+        "response names the model that produced enriched_md"
     );
 
     // 3) Wire-format assertions on the response body. The AI bullet is
@@ -217,11 +213,10 @@ async fn it_enhances_a_meeting_end_to_end() {
             |row| row.get(0),
         )
         .expect("library row should exist after enhance");
-    assert!(
-        llm_model_db
-            .as_deref()
-            .is_some_and(|m| m.starts_with("cloud \u{b7} ")),
-        "enhance stamps the model that produced the summary, got {llm_model_db:?}",
+    assert_eq!(
+        llm_model_db.as_deref(),
+        Some("mock"),
+        "enhance stamps the model that produced the summary",
     );
     assert_eq!(title_db, "Sales sync", "SQLite title persisted");
     let doc: serde_json::Value =
@@ -936,237 +931,4 @@ async fn enhance_streams_progress_over_ws() {
     );
 
     server.abort();
-}
-
-// ─── Task 1 (pill-color Option E): LLM locality stamp ───────────────────────
-//
-// The pill color depends on whether the LLM provider is local (localhost /
-// 127.0.0.1) or cloud (hosted). `enhance.rs` stamps that locality into the
-// response's `llm_model` as `"local · <model>"` / `"cloud · <model>"` so the
-// frontend can pick a class without re-parsing the URL itself.
-//
-// These tests drive the **production resolve path** end-to-end: NO
-// `state.llm_override`, no `BaseUrlMock` shim — `enhance.rs::enhance`
-// resolves the LLM via `llm_openai::resolve` exactly as it would in a real
-// user run. The local case uses a wiremock upstream so the streaming
-// `/chat/completions` POST actually succeeds; the cloud case asserts the
-// same production `OpenAiCompatClient` exposes `base_url()` correctly when
-// constructed with a hosted URL (no real HTTP roundtrip — a wiremock only
-// binds to 127.0.0.1, which the cloud path can't use for an E2E).
-//
-// Regression target: `OpenAiCompatClient` must override the trait's
-// `base_url()` default of `""` so `stamp_llm_engine` parses the real
-// upstream URL. Without the override every configured provider (including
-// an Ollama at `http://localhost:11434/v1`) would stamp `cloud · <model>`.
-
-/// Boot a real axum server bound to 127.0.0.1:0 with a fresh tempdir for
-/// SQLite + notes, and an active provider row at `base_url` with a key
-/// seeded in the `MemoryKeyStore`. `llm_override` is `None` so
-/// `enhance.rs::enhance` resolves through the production
-/// `llm_openai::resolve` chain (`override -> env -> active provider +
-/// stored key -> MockLlm`). The returned `AppState` lets the caller
-/// re-run `resolve(&state)` directly when an actual HTTP roundtrip to
-/// `base_url` would either be redundant (cloud case) or impossible
-/// (wiremock can only bind 127.0.0.1, so the local-test E2E goes
-/// through this helper too, with `base_url` pointed at the mock).
-async fn boot_app_with_provider(
-    base_url: &str,
-    model: &str,
-) -> (
-    std::net::SocketAddr,
-    String,
-    tempfile::TempDir,
-    AppState,
-) {
-    let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = probe.local_addr().unwrap();
-    drop(probe);
-
-    let tmp = tempfile::tempdir().unwrap();
-    let db_path = tmp.path().join("yogurt-test.db");
-    let token_path = tmp.path().join("session-token");
-    let storage = Arc::new(yogurt_server::storage::Storage::init_at(&db_path).unwrap());
-    let session_token = yogurt_server::session::load_or_create(&token_path).unwrap();
-    let token_str = session_token.as_str().to_string();
-    let session: Arc<yogurt_server::session::SessionToken> = Arc::new(session_token);
-    let (markdown_exporter, prompts) =
-        yogurt_server::__test_only_aux_state(tmp.path().join("notes")).expect("build aux state");
-    let db = yogurt_db::Db::open_in_memory().unwrap();
-    let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
-    let label_repo = Arc::new(yogurt_db::LabelRepo::new(db.clone()));
-    let keys: Arc<yogurt_db::keys::MemoryKeyStore> =
-        Arc::new(yogurt_db::keys::MemoryKeyStore::default());
-
-    let provider_id = yogurt_db::providers::insert(
-        &db,
-        yogurt_db::providers::NewProvider {
-            name: "Test".to_string(),
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-        },
-    )
-    .unwrap();
-    yogurt_db::providers::set_active(&db, &provider_id).unwrap();
-    keys.set(&provider_id, "sk-test").unwrap();
-
-    let state = AppState {
-        mode: Mode::Release,
-        storage,
-        session,
-        bind_port: addr.port(),
-        meetings: yogurt_server::meetings::Registry::new(),
-        markdown_exporter,
-        prompts,
-        db,
-        keys,
-        // No llm_override — `resolve()` MUST walk the active-provider path.
-        llm_override: None,
-        meeting_repo,
-        label_repo,
-        app_events_tx: tokio::sync::broadcast::channel(64).0,
-    };
-
-    let app = yogurt_server::__test_router(state.clone());
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.ok();
-    });
-
-    (addr, token_str, tmp, state)
-}
-
-async fn enhance_and_get_llm_model(addr: &std::net::SocketAddr, token: &str) -> String {
-    let client = reqwest::Client::new();
-    let created: serde_json::Value = client
-        .post(format!("http://{addr}/api/meetings"))
-        .bearer_auth(token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let meeting_id = created["id"].as_str().unwrap().to_string();
-    let resp = client
-        .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
-        .bearer_auth(token)
-        .json(&serde_json::json!({
-            "notes_md": "- test\n",
-            "transcript_json": "[]",
-        }))
-        .send()
-        .await
-        .unwrap();
-    let status = resp.status();
-    let body_text = resp.text().await.unwrap_or_default();
-    assert_eq!(
-        status, 200,
-        "enhance must return 200, got {status} body={body_text}"
-    );
-    let body: serde_json::Value = serde_json::from_str(&body_text)
-        .unwrap_or_else(|e| panic!("parse enhance body {body_text:?}: {e}"));
-    body["llm_model"]
-        .as_str()
-        .expect("llm_model in response")
-        .to_string()
-}
-
-/// Drive the FULL production resolve path with a wiremock upstream at
-/// `127.0.0.1:<wiremock_port>`. The provider row's `base_url` is set to
-/// the wiremock URL so `OpenAiCompatClient::stream` can actually complete
-/// a streaming POST; `stamp_llm_engine` parses the `127.0.0.1` host as
-/// `local`, so the response `llm_model` must start with `"local · "`. The
-/// regression that this catches: `OpenAiCompatClient` missing the
-/// `base_url()` override silently stamps every provider (including a real
-/// Ollama at `localhost:11434`) as `"cloud · "` because the trait default
-/// of `""` parses as "no host -> cloud".
-#[tokio::test(flavor = "multi_thread")]
-async fn it_stamps_llm_model_as_local_for_localhost_provider() {
-    unsafe {
-        std::env::remove_var("YOGURT_LLM_BASE_URL");
-        std::env::remove_var("YOGURT_LLM_API_KEY");
-        std::env::remove_var("YOGURT_LLM_MODEL");
-    }
-
-    // Wiremock stands in for the OpenAI-compatible upstream. A single SSE
-    // chat-completion event carrying `"- ai\n"` then the terminal `[DONE]`
-    // — enough for `streaming::stream` to yield one chunk so enhance can
-    // persist `enriched_md` and finalize the response with `too_short=false`.
-    let upstream = wiremock::MockServer::start().await;
-    let body = "data: {\"choices\":[{\"delta\":{\"content\":\"- ai\\n\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/chat/completions"))
-        .and(wiremock::matchers::header("authorization", "Bearer sk-test"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .insert_header("content-type", "text/event-stream")
-                .insert_header("cache-control", "no-cache")
-                .set_body_string(body),
-        )
-        .mount(&upstream)
-        .await;
-
-    // Point the active-provider row at the wiremock. The URL the production
-    // `OpenAiCompatClient` ends up connecting to is `127.0.0.1:<port>` —
-    // what `stamp_llm_engine` reads. Real users see the same shape for
-    // Ollama: `http://localhost:11434/v1`.
-    let (addr, token, _tmp, _state) =
-        boot_app_with_provider(&upstream.uri(), "mock-model").await;
-    let llm_model = enhance_and_get_llm_model(&addr, &token).await;
-    assert!(
-        llm_model.starts_with("local \u{b7} "),
-        "expected 'local \u{b7} <model>' stamp when the active provider's base_url \
-         is 127.0.0.1, got {llm_model:?}",
-    );
-}
-
-/// Drive the production resolve path with a HOSTED base_url. Since
-/// wiremock can only bind `127.0.0.1` (which would parse as `local`),
-/// the hosted case can't go through an E2E HTTP roundtrip in CI. The
-/// contract that matters is `OpenAiCompatClient::base_url()` returning
-/// the constructor argument — verified here by calling
-/// `test_support::resolve(&state)` directly and asserting on the returned
-/// `Arc<dyn LlmClient>`'s `base_url()`. The local-hostname -> `local`
-/// branch is separately covered by the wiremock E2E above; parsing of
-/// any non-`localhost` / non-`127.0.0.1` / non-`[::1]` URL as `cloud` is
-/// a one-line match arm tested structurally by `stamp_llm_engine`'s
-/// existing coverage in `crates/yogurt-llm/src/lib.rs`.
-#[tokio::test(flavor = "multi_thread")]
-async fn it_stamps_llm_model_as_cloud_for_hosted_provider() {
-    unsafe {
-        std::env::remove_var("YOGURT_LLM_BASE_URL");
-        std::env::remove_var("YOGURT_LLM_API_KEY");
-        std::env::remove_var("YOGURT_LLM_MODEL");
-    }
-
-    let hosted_url = "https://api.minimax.io/v1";
-    let (_addr, _token, _tmp, state) =
-        boot_app_with_provider(hosted_url, "MiniMax-Text-01").await;
-
-    let llm = yogurt_server::test_support::resolve(&state)
-        .await
-        .expect("resolve must succeed against an active provider + key");
-    assert_eq!(
-        llm.base_url(),
-        hosted_url,
-        "production OpenAiCompatClient via resolve() must expose its constructor base_url",
-    );
-    assert_eq!(
-        llm.model_name(),
-        "MiniMax-Text-01",
-        "model_name passes through unchanged"
-    );
-    // Combined with `stamp_llm_engine`'s parse contract
-    // (`host != "localhost" | "127.0.0.1" | "[::1]"` -> `cloud`), the
-    // assert above guarantees the response would carry `"cloud \u{b7}
-    // MiniMax-Text-01"` if enhance were driven end-to-end against this
-    // same provider row.
-    assert!(
-        !matches!(
-            llm.base_url().split("://").nth(1).and_then(|s| s.split('/').next()),
-            Some("localhost") | Some("127.0.0.1") | Some("[::1]")
-        ),
-        "hosted URL must not parse as local for stamp_llm_engine: {}",
-        llm.base_url(),
-    );
 }

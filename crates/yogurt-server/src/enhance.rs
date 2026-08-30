@@ -268,7 +268,7 @@ pub async fn enhance(
         messages: vec![ChatMessage::user(user_prompt.clone())],
         stream: true,
     };
-    let llm_model = stamp_llm_engine(llm.base_url(), &llm.model_name());
+    let llm_model = llm.model_name();
     let llm_started = Instant::now();
 
     // The four failure branches below (open-error, open-timeout, chunk-
@@ -570,7 +570,7 @@ pub async fn enhance(
         let notes_md = user_notes.clone();
         let transcript_json = transcript_json.clone();
         let enriched_md_for_repo = enriched_md.clone();
-        let llm_model = stamp_llm_engine(llm.base_url(), &llm.model_name());
+        let llm_model = llm.model_name();
         let started_at_fallback = started_at_unix_ms;
         // Timestamp tri-state: only touch the repo's timestamps when the
         // REQUEST explicitly carried them. The normal flow stamps
@@ -637,23 +637,6 @@ pub async fn enhance(
         too_short: false,
         llm_model: Some(llm_model),
     }))
-}
-
-/// Format the LLM provenance stamp the same way `stt_engine` is stamped in
-/// `routes.rs`: `<provider> · <model>`. Local means the active provider's
-/// `base_url` host is localhost / 127.0.0.1. Kept here (rather than next to
-/// the active-provider resolver) because the only consumer is `enhance`,
-/// and it doesn't need the full provider row.
-fn stamp_llm_engine(base_url: &str, model: &str) -> String {
-    let local = base_url
-        .split("://")
-        .nth(1)
-        .and_then(|s| s.split('/').next())
-        .and_then(|host_port| host_port.split(':').next())
-        .map(|host| matches!(host, "localhost" | "127.0.0.1" | "[::1]"))
-        .unwrap_or(false);
-    let provider = if local { "local" } else { "cloud" };
-    format!("{provider} \u{b7} {model}")
 }
 
 /// Drop lines where the model echoed the enhance prompt's own scaffolding
