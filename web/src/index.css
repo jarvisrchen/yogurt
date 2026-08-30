@@ -160,6 +160,44 @@ html, body {
   margin: 0 auto;
 }
 
+/* === Phase 5: streaming enhance preview ===================================
+ *
+ * `[data-streaming]` is stamped on the YogurtEditor wrapper (see
+ * `web/src/editor/index.tsx`) while the raw markdown preview is being
+ * replaced snapshot-by-snapshot from the WS `enhance_progress` stream. The
+ * whole preview reads as AI text (matching the Legend's grey swatch), and a
+ * pulsing caret on the last block signals "still writing". The swap to the
+ * final merged document (with real `.ai-grey` spans) is instant - no
+ * transition on settle.
+ * ========================================================================== */
+
+[data-streaming] .ProseMirror,
+.yogurt-editor[data-streaming] .ProseMirror :is(h1, h2, h3) {
+  /* The second selector out-specifies the `.yogurt-editor .ProseMirror h1`
+   * ink rule below so headings go grey with the rest of the preview. */
+  color: var(--color-grey);
+}
+
+/* The prompt asks for `data-ts` in seconds but models sometimes emit the raw
+ * `ts_ms` (observed live: MiniMax-M3 wrote 27300 for 00:27, rendering as
+ * 455:00). The server-side merge re-derives every timestamp from the
+ * transcript, so hide the deep-links until the merged document lands rather
+ * than show wrong ones. */
+[data-streaming] [data-transcript-link] {
+  display: none;
+}
+
+[data-streaming] .ProseMirror > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--color-blue);
+  animation: recpulse 1s steps(2) infinite;
+}
+
 /* === Phase 4 Plan 04-04: enhancing-state UI (CONTEXT D-28 / D-29 / D-30) ===
  *
  * The shimmer + dot-pulse + progress-bar durations are LOAD-BEARING per

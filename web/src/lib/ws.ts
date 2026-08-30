@@ -59,12 +59,17 @@ export function storedSegmentToEvent(
  * The browser banner transitions to a recoverable error state with a
  * Retry affordance; Re-enhance is re-enabled.
  *
- * Phase 4 emits `chars` once at completion; Phase 5 will stream per-chunk.
+ * Phase 4 emitted `chars` once at completion; Phase 5 streams per-chunk and
+ * adds `text` - the FULL accumulated raw markdown so far (a snapshot, not a
+ * delta), repeated on every `streaming` frame so each one fully replaces the
+ * previous.
  */
 export interface EnhanceProgressEvent {
   type: "enhance_progress";
   phase: "sending" | "streaming" | "done" | "error";
   chars?: number;
+  /** Full accumulated raw markdown snapshot, present on `streaming` frames. */
+  text?: string;
   /** Human-readable message accompanying `phase: "error"`. */
   message?: string;
 }
@@ -360,12 +365,17 @@ export function useTranscriptWs(
  *     has been seen, else `null`.
  *   - `chars`  is the running character count from the most recent event,
  *     or `null` if absent.
+ *   - `text`   is the full accumulated raw markdown snapshot from the most
+ *     recent `streaming` frame, or `null` on `sending` / `done` / `error`
+ *     (and before any event) - consumers render it as a live preview and
+ *     must clear it once it goes back to `null`.
  *   - `enhancing` is a convenience derived from `phase` —`true` while
  *     `sending` or `streaming`, `false` once `done` (or before any event).
  */
 export interface UseEnhanceProgressResult {
   phase: EnhanceProgressEvent["phase"] | null;
   chars: number | null;
+  text: string | null;
   enhancing: boolean;
   /** BL-5: last error message from a `phase: "error"` event, or null. */
   errorMessage: string | null;
@@ -392,12 +402,14 @@ export function useEnhanceProgress(
   const [phase, setPhase] =
     useState<EnhanceProgressEvent["phase"] | null>(null);
   const [chars, setChars] = useState<number | null>(null);
+  const [text, setText] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!meetingId || !token) {
       setPhase(null);
       setChars(null);
+      setText(null);
       setErrorMessage(null);
       return;
     }
@@ -439,6 +451,14 @@ export function useEnhanceProgress(
             setPhase(frame.phase);
             if (typeof frame.chars === "number") {
               setChars(frame.chars);
+            }
+            // Phase 5: `text` carries the full accumulated raw markdown
+            // snapshot on `streaming` frames - reset it on every other
+            // phase so a stale preview never lingers once streaming ends.
+            if (frame.phase === "streaming" && typeof frame.text === "string") {
+              setText(frame.text);
+            } else {
+              setText(null);
             }
             // BL-5: surface the server-supplied error message so the
             // EnhancingBanner can render a recoverable error pill with
@@ -489,7 +509,7 @@ export function useEnhanceProgress(
 
   const enhancing = phase === "sending" || phase === "streaming";
 
-  return { phase, chars, enhancing, errorMessage };
+  return { phase, chars, text, enhancing, errorMessage };
 }
 
 /** `stt_error` WS frame — see `crates/yogurt-server/src/meetings.rs::send_stt_error`. */

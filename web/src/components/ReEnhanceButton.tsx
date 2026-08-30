@@ -5,12 +5,9 @@
 //
 // On click:
 //   1. setBusy(true) + onEnhancing(true).
-//   2. POST /api/meetings/{id}/enhance with the current notes + transcript.
+//   2. POST /api/meetings/{id}/enhance with raw notes + transcript.
 //   3. On success: onEnhanced(enriched_md, notes_file). The host swaps the
-//      editor content via the YogurtEditor `enrichedMarkdown` prop, which
-//      runs `editor.commands.setContent(html, false)` internally — promoted
-//      user blocks survive because the server-side merge (Plan 04-02 fixtures
-//      04 + 05) re-uses Source::User block text from the request body.
+//      editor content via the YogurtEditor `enrichedMarkdown` prop.
 //   4. setBusy(false) + onEnhancing(false), even on error.
 //
 // Styling: blueberry button matching the existing Meeting.tsx Create /
@@ -27,7 +24,7 @@ const BLUE = "#5B4FC7"; // --color-blue
 
 export interface ReEnhanceButtonProps {
   meetingId: string;
-  /** Current editor markdown — sent verbatim as `notes_md`. */
+  /** Raw user notes, kept separate from the generated summary. */
   notesMd: string;
   /** JSON-serialized transcript segments. Empty array if no transcript. */
   transcriptJson: string;

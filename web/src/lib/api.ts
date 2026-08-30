@@ -124,13 +124,16 @@ export interface EnhanceResponse {
 }
 
 /**
- * Browser-side hard ceiling on a single enhance HTTP round-trip. Slightly
- * longer than the server-side 60s timeout (BL-5) so the server's clean
- * `phase: "error"` event arrives BEFORE the browser gives up — the
- * EnhancingBanner can then show a proper error message instead of a generic
- * client-side AbortError.
+ * Browser-side hard ceiling on a single enhance HTTP round-trip.
+ *
+ * The server owns liveness: a 60s stream-open timeout and a 60s per-chunk
+ * idle timeout (BL-5), both surfaced as `enhance_progress { phase: "error" }`
+ * frames well before this ceiling matters. A healthy long stream can
+ * legitimately run for minutes (a slow local model summarizing a long
+ * meeting), so this is only a last-resort guard against a dead socket that
+ * never got so much as a TCP close - not a cap on stream duration.
  */
-const ENHANCE_FETCH_TIMEOUT_MS = 75_000;
+const ENHANCE_FETCH_TIMEOUT_MS = 15 * 60_000;
 
 /**
  * POST /api/meetings/{meetingId}/enhance.
