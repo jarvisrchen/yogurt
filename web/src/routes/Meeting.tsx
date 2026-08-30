@@ -9,6 +9,7 @@ import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
 import { meetingKey, meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
+import { useSettings } from "../lib/api/settings";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   storedSegmentToEvent,
@@ -110,6 +111,11 @@ export function Meeting() {
   const meetingQuery = useMeeting(meetingId ?? undefined);
   const meetingRow = meetingQuery.data;
   const queryClient = useQueryClient();
+  // The LLM pill in the live header: until enhance runs there is no
+  // `llm_model` stamp, so fall back to the active provider's model - the
+  // one that *will* fuse these notes - the same way the STT pill falls
+  // back to the active-recording poll before the row is refetched.
+  const activeLlmModel = useSettings().data?.providers.find((p) => p.is_active)?.model;
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
 
   // Live-dock-loses-history-on-remount fix: parse the meeting row's
@@ -514,7 +520,8 @@ export function Meeting() {
                 meetingRow?.stt_engine ??
                 (recording ? activeRecording.data?.stt ?? null : null)
               }
-              llmModel={meetingRow?.llm_model}
+              llmModel={meetingRow?.llm_model ?? activeLlmModel}
+              llmPending={!meetingRow?.llm_model}
             />
           )}
           {/* Row 3: label chips, left-aligned under the title. */}

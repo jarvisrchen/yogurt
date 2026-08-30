@@ -23,6 +23,9 @@ interface Props {
   endedAt?: number | null;
   sttEngine?: string | null;
   llmModel?: string | null;
+  /** True while the model has not enhanced this meeting yet (live header),
+   *  so the pill reads as "will enhance with" rather than "enhanced by". */
+  llmPending?: boolean;
 }
 
 export function parseSttEngine(
@@ -101,11 +104,19 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
 /**
  * The LLM pill - which model fused the notes with the transcript. The
  * row's `llm_model` is stamped by enhance.rs after a successful enhance
- * (bare model name, e.g. "gpt-5-mini"), so a recorded-but-never-enhanced
- * meeting renders nothing rather than a guessed model. The LLM is always
- * a BYO OpenAI-compatible endpoint, so there is no local/cloud split.
+ * (bare model name, e.g. "gpt-5-mini"). The live meeting header instead
+ * passes the active provider's model with `pending`, mirroring the STT
+ * pill's "what is running right now" reading; a stored meeting with no
+ * stamp renders nothing rather than a guessed model. The LLM is always a
+ * BYO OpenAI-compatible endpoint, so there is no local/cloud split.
  */
-export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
+export function LlmPill({
+  llmModel,
+  pending = false,
+}: {
+  llmModel: string | null | undefined;
+  pending?: boolean;
+}) {
   const model = llmModel?.trim();
   if (!model) return null;
   // Option E: LLM family is always blueberry. Outlined (#C5BEEF border per
@@ -115,7 +126,7 @@ export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
     <span
       className={`${PILL} border border-[#C5BEEF] bg-transparent text-blue`}
       data-testid="llm-pill"
-      title={`Enhanced by ${model}`}
+      title={pending ? `Will enhance with ${model}` : `Enhanced by ${model}`}
     >
       <Sparkles size={11} aria-hidden />
       {model}
@@ -123,7 +134,13 @@ export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
   );
 }
 
-export function MeetingMetaPills({ startedAt, endedAt, sttEngine, llmModel }: Props) {
+export function MeetingMetaPills({
+  startedAt,
+  endedAt,
+  sttEngine,
+  llmModel,
+  llmPending,
+}: Props) {
   const engine = parseSttEngine(sttEngine);
   const model = llmModel?.trim();
   const duration =
@@ -134,7 +151,7 @@ export function MeetingMetaPills({ startedAt, endedAt, sttEngine, llmModel }: Pr
       {startedAt != null && <MetaPill>{formatStartedAt(startedAt)}</MetaPill>}
       {duration && <MetaPill>{duration}</MetaPill>}
       {engine && <EnginePill sttEngine={sttEngine} />}
-      {model && <LlmPill llmModel={model} />}
+      {model && <LlmPill llmModel={model} pending={llmPending} />}
     </div>
   );
 }
