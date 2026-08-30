@@ -39,6 +39,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { permissionsKey } from "../../lib/api/audio";
+import { Button, buttonClassName } from "../Button";
 
 export function PermissionDenied() {
   const qc = useQueryClient();
@@ -60,7 +61,7 @@ export function PermissionDenied() {
         <span className="sr-only">Warning</span>
       </div>
 
-      <h2 className="font-serif text-[34px] text-ink mb-3">
+      <h2 className="heading-state mb-3">
         Yogurt can&apos;t hear the call yet
       </h2>
 
@@ -98,18 +99,17 @@ export function PermissionDenied() {
       <div className="flex items-center gap-3">
         <a
           href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-          className="bg-blue text-white text-[13.5px] font-semibold rounded-button px-4 py-2 shadow-button-blue hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          className={buttonClassName("primary")}
         >
           Open System Settings
         </a>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={handleCheckAgain}
           disabled={checking}
-          className="border border-line text-ink text-[13.5px] font-semibold rounded-button px-4 py-2 hover:bg-line/30 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           {checking ? "Checking…" : "Check again"}
-        </button>
+        </Button>
       </div>
     </div>
   );

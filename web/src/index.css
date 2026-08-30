@@ -8,7 +8,6 @@
  * The `@theme` directive is Tailwind 4's CSS-first config replacement for
  * tailwind.config.ts. Every variable here becomes a Tailwind utility:
  *   --color-paper   → bg-paper, text-paper, border-paper, etc.
- *   --font-serif    → font-serif
  *   --radius-card   → rounded-card
  *   --shadow-card   → shadow-card
  *   --ease-slide    → ease-slide (used in transition-timing)
@@ -31,7 +30,6 @@
   --color-mut:     #8A8174;  /* muted text on cards                       */
 
   /* ─── Type families (PRD §16.3) ──────────────────────────────────────── */
-  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
   --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
@@ -98,6 +96,19 @@
 
 /* ─── Base resets ─────────────────────────────────────────────────────────── */
 :root { color-scheme: light; }
+
+/* === Heading scale (PRD §16.3: section title 24-30, card title 16-21) ====
+ * Named recipes for the bold Hanken headings that were being re-typed as
+ * `font-bold tracking-tight text-[Npx] ...` at every call site (and drifting:
+ * the 18px card title had two line-heights). One-off display sizes (hero
+ * greeting, meeting title) stay inline - they are not a scale, just a size.
+ * ========================================================================== */
+@utility heading-hero    { @apply font-bold tracking-tight text-[44px] leading-none text-ink; }
+@utility heading-state   { @apply font-bold tracking-tight text-[30px] text-ink; }
+@utility heading-section { @apply font-bold tracking-tight text-[24px] leading-none text-ink; }
+@utility heading-wordmark{ @apply font-bold tracking-tight text-[20px] leading-none text-ink; }
+@utility heading-card    { @apply font-bold tracking-tight text-[18px] leading-tight text-ink; }
+@utility heading-sm      { @apply font-sans font-bold text-[16px] text-ink; }
 
 html, body {
   margin: 0;

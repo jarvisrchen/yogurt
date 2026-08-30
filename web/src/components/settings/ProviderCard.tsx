@@ -65,7 +65,7 @@ export function ProviderCard({
     >
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h3 className="font-serif text-[20px] leading-tight">
+          <h3 className="heading-card">
             {provider.name}
           </h3>
           <span className="text-[10px] font-mono uppercase tracking-[0.06em] bg-[var(--color-blsoft)] text-[var(--color-blue)] px-2 py-0.5 rounded">

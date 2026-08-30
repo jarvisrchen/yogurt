@@ -52,7 +52,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
           <ArrowLeft size={16} aria-hidden />
           <span>Library</span>
         </Link>
-        <h1 className="font-serif text-[22px] leading-none text-ink">
+        <h1 className="heading-wordmark">
           Settings
         </h1>
       </header>

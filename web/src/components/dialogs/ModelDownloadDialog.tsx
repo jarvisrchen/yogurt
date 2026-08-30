@@ -150,7 +150,7 @@ export function ModelDownloadDialog({
             ↓
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-serif text-[22px] leading-tight">
+            <h3 className="font-bold tracking-tight text-[20px] leading-tight">
               {title}
             </h3>
             <p className="text-[11px] font-mono uppercase tracking-wider text-mut">

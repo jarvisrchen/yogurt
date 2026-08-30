@@ -63,7 +63,7 @@ export function StyleGuide() {
         {/* Decorative — adjacent <h1>Yogurt style guide</h1> already names it. */}
         <Logo size={60} />
         <div>
-          <h1 className="font-serif text-[52px] leading-none tracking-tight text-ink">
+          <h1 className="heading-hero">
             Yogurt style guide
           </h1>
           <p className="mt-2 text-[14px] text-mut max-w-xl">
@@ -116,18 +116,18 @@ export function StyleGuide() {
           <div className="space-y-6">
             <div>
               <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
-                Instrument Serif · 52 / 38 / 30
+                Hanken Grotesk 700 · 44 / 32 / 26
               </p>
-              <p className="font-serif text-[52px] leading-none text-ink mt-1">
+              <p className="heading-hero mt-1">
                 yogurt
               </p>
-              <p className="font-serif text-[38px] leading-tight text-ink">
+              <p className="font-bold tracking-tight text-[32px] leading-tight text-ink">
                 Welcome to yogurt.
               </p>
-              <p className="font-serif text-[30px] leading-tight text-ink">
+              <p className="font-bold tracking-tight text-[26px] leading-tight text-ink">
                 Good afternoon, Dana
               </p>
-              <p className="font-serif italic text-[20px] text-mut">
+              <p className="italic text-[18px] text-mut">
                 A local-first, open-source meeting copilot.
               </p>
             </div>
@@ -144,7 +144,7 @@ export function StyleGuide() {
               <p className="font-sans font-semibold text-[15px] text-ink">
                 The quick brown fox jumps over the lazy dog. 600.
               </p>
-              <p className="font-sans font-bold text-[16px] text-ink">
+              <p className="heading-sm">
                 Card title style — 16px Hanken 700.
               </p>
               <p className="font-sans font-extrabold text-[15px] text-ink">
@@ -345,7 +345,7 @@ export function StyleGuide() {
       <Section title="Cards" caption="Three paddings; optional active border.">
         <div className="grid gap-4 md:grid-cols-3">
           <Card padding="sm">
-            <h3 className="font-sans font-bold text-[16px] text-ink">
+            <h3 className="heading-sm">
               Small card
             </h3>
             <p className="mt-1 text-[12px] text-mut">
@@ -353,7 +353,7 @@ export function StyleGuide() {
             </p>
           </Card>
           <Card padding="md">
-            <h3 className="font-sans font-bold text-[16px] text-ink">
+            <h3 className="heading-sm">
               Medium card
             </h3>
             <p className="mt-1 text-[12px] text-mut">
@@ -361,7 +361,7 @@ export function StyleGuide() {
             </p>
           </Card>
           <Card padding="lg" active>
-            <h3 className="font-sans font-bold text-[16px] text-ink">
+            <h3 className="heading-sm">
               Active card
             </h3>
             <p className="mt-1 text-[12px] text-mut">
@@ -380,7 +380,7 @@ export function StyleGuide() {
           <div className="p-10 flex items-center gap-4">
             <Logo size={32} />
             <div>
-              <h3 className="font-serif text-[28px] text-ink leading-none">
+              <h3 className="heading-section">
                 Welcome to yogurt.
               </h3>
               <p className="mt-2 text-[13px] text-mut">
@@ -454,7 +454,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="font-serif text-[30px] text-ink leading-tight">{title}</h2>
+      <h2 className="font-bold tracking-tight text-[26px] text-ink leading-tight">{title}</h2>
       <p className="mt-1 text-[13px] text-mut">{caption}</p>
       <div className="mt-5">{children}</div>
     </section>

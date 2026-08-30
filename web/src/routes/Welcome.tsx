@@ -4,7 +4,7 @@
  * Two-column layout, paper-left / white-right:
  *
  *   ┌──────────────────────────────────┬────────────────────────────────────┐
- *   │  yogurt logo + serif wordmark    │  ONE-TIME SETUP (11px mono caps)   │
+ *   │  yogurt logo + bold wordmark    │  ONE-TIME SETUP (11px mono caps)   │
  *   │                                   │                                    │
  *   │  "Welcome to yogurt." (52px)     │  [Step 1: Screen Recording]        │
  *   │  Two streams, one set of notes…  │  [Step 2: Microphone]              │
@@ -192,16 +192,16 @@ export function Welcome() {
 
   return (
     <div className="grid grid-cols-[1.05fr_0.95fr] min-h-screen">
-      {/* ─── Left: brand + serif headline + terminal mockup ─────────── */}
+      {/* ─── Left: brand + bold headline + terminal mockup ─────────── */}
       <section className="bg-paper px-16 py-16 flex flex-col justify-center">
         <div className="flex items-center gap-3 mb-12">
           <Logo size={36} />
-          <span className="font-serif text-[26px] text-ink leading-none">
+          <span className="font-bold tracking-tight text-[22px] text-ink leading-none">
             yogurt
           </span>
         </div>
 
-        <h1 className="font-serif text-[52px] leading-[1.05] tracking-tight text-ink mb-4">
+        <h1 className="heading-hero mb-4">
           Welcome to yogurt.
         </h1>
         <p className="text-[15px] text-mut max-w-md mb-10">

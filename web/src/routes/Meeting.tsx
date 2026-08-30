@@ -463,10 +463,10 @@ export function Meeting() {
                 <InlineTitle
                   id={meetingId}
                   title={title}
-                  className="font-serif text-[32px] leading-none text-ink"
+                  className="text-[26px] font-bold tracking-tight leading-none text-ink"
                 />
               ) : (
-                <h1 className="font-serif text-[32px] leading-none" style={{ color: INK }}>
+                <h1 className="text-[26px] font-bold tracking-tight leading-none" style={{ color: INK }}>
                   {title}
                 </h1>
               )}

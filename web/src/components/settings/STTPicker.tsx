@@ -91,7 +91,7 @@ export function STTPicker() {
         }
       >
         <header className="flex items-center justify-between">
-          <h3 className="font-serif text-xl">Cloud</h3>
+          <h3 className="heading-card">Cloud</h3>
           <label className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider cursor-pointer">
             <input
               type="radio"
