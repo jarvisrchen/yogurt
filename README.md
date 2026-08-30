@@ -15,16 +15,24 @@ Bring your own OpenAI-compatible LLM (Minimax, OpenAI, OpenRouter, local
 Ollama, whatever you already pay for).
 
 **Status:** pre-1.0.
-A `v0.1.0` release (Homebrew tap + GitHub Releases tarballs) is coming.
-Until then, build from source (see below).
+`v0.1.0` is out, as a Homebrew tap and as GitHub Releases tarballs.
+Building from source still works and is documented below.
 
 ## Install
 
-### Homebrew (once v0.1.0 ships)
+### Homebrew
 
 ```bash
 brew install jarvisrchen/yogurt/yogurt
 yogurt start
+```
+
+Tapping first lets you use the short name from then on, including for
+`brew upgrade` and `brew info`:
+
+```bash
+brew tap jarvisrchen/yogurt
+brew install yogurt
 ```
 
 ### From source
