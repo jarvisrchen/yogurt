@@ -107,8 +107,15 @@ These are not per-release, but every one of them has to hold before the first `b
 
 **`brew install` reports a sha256 mismatch.** The tarball was rebuilt after the formula was written. Recompute with `shasum -a 256` against the actual release asset and commit the correction to the tap.
 
+**arm64 fails to link with `___isPlatformVersionAtLeast` undefined.**
+whisper.cpp's Metal backend guards newer Metal APIs with `@available`, and because the deployment target is macOS 13 while the guards probe macOS 14+, clang cannot fold them and lowers each into a call to `__isPlatformVersionAtLeast`.
+That symbol lives in `libclang_rt.osx.a`, which rustc never puts on the link line because it links with `-nodefaultlibs`.
+`crates/yogurt-stt/build.rs` exists solely to fix this.
+x86_64 is immune because ggml only builds `ggml-metal` for arm64, so a green x86_64 leg tells you nothing about arm64.
+If this resurfaces, check that the build script still resolves a runtime dir - it degrades to a `cargo:warning` rather than failing loudly.
+
 ## Release log
 
 | Version | Date | Notes |
 | --- | --- | --- |
-| (unreleased) | 2026-08-30 | First dry run of the Release workflow, [run 33338166544](https://github.com/jarvisrchen/yogurt/actions/runs/33338166544). The workflow had never executed before this. Repo still private; tap formula still the `0.0.0` placeholder with zeroed shas. |
+| (unreleased) | 2026-08-30 | First dry run of the Release workflow ([33338166544](https://github.com/jarvisrchen/yogurt/actions/runs/33338166544)) - the workflow had never executed before. x86_64 built and packaged; **aarch64 failed at link** on an undefined `___isPlatformVersionAtLeast` out of whisper's `ggml-metal-device.m.o`. Fixed by [PR #1](https://github.com/jarvisrchen/yogurt/pull/1) (`crates/yogurt-stt/build.rs`), which had independently hit the same failure via `setup.sh` on a clean machine. Dry run [33338873469](https://github.com/jarvisrchen/yogurt/actions/runs/33338873469) is green on both arches. Repo still private; tap formula still the `0.0.0` placeholder with zeroed shas. |
