@@ -7,8 +7,10 @@
 //! is configured), runs `yogurt_notes::merge_notes` over
 //! the result, persists `enriched_md` + `enriched_doc_json` to SQLite and
 //! to a per-meeting markdown file under `~/.yogurt/notes/`, and emits
-//! three `enhance_progress` WebSocket events (`sending` → `streaming` →
-//! `done`) on the meeting's events broadcast.
+//! `enhance_progress` WebSocket events on the meeting's events broadcast:
+//! one `sending` frame, then repeated `streaming` frames (each carrying a
+//! `text` snapshot of the accumulated LLM output so far, throttled to
+//! roughly every 80 ms), then one `done` frame.
 //!
 //! ## Why the body carries `notes_md` + `transcript_json`
 //!
@@ -28,8 +30,12 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 use uuid::Uuid;
 
 use crate::markdown_exporter::Meeting as ExpMeeting;
@@ -228,12 +234,14 @@ pub async fn enhance(
     //   3. `MockLlm` only when nothing is configured at all, so first-run
     //      users still get a working hero experience (logged as a warn).
     //
-    // BL-5: wrap with a hard timeout. If reqwest's own timeout fires we
-    // catch it via Err(...). If the future just stalls (e.g. an in-process
-    // mock that .await's forever), tokio::time::timeout brings us back.
-    // On either failure path emit `enhance_progress { phase: "error" }`
-    // so the browser banner transitions to an error state instead of
-    // spinning forever.
+    // BL-5: wrap opening the stream with a hard timeout. If reqwest's own
+    // timeout fires we catch it via Err(...). If the future just stalls
+    // (e.g. an in-process mock that .await's forever), tokio::time::timeout
+    // brings us back. On either failure path emit `enhance_progress { phase:
+    // "error" }` so the browser banner transitions to an error state instead
+    // of spinning forever. Once the stream is open, the SAME constant is
+    // reused per-chunk as an IDLE timeout (BL-5 continued below) — a long
+    // healthy stream must not be cut off at 60s total.
     //
     // System message is intentionally empty here — Phase 4's `enhance.md`
     // prompt is rendered as the whole user payload; introducing a real
@@ -258,64 +266,129 @@ pub async fn enhance(
     };
     let chat_req = ChatRequest {
         messages: vec![ChatMessage::user(user_prompt.clone())],
-        stream: false,
+        stream: true,
     };
     let llm_model = llm.model_name();
     let llm_started = Instant::now();
-    let llm_call = async { llm.complete(chat_req).await.map(|r| r.content) };
-    let llm_output = match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, llm_call).await
-    {
-        Ok(Ok(out)) => out,
-        Ok(Err(error)) => {
-            // LLM returned an error (HTTP non-2xx, parse failure, etc.).
-            let msg = format!("llm complete failed: {error}");
-            tracing::error!(
-                event = "enhance_llm_request_failed",
-                meeting_id = %meeting_id,
-                model = %llm_model,
-                elapsed_ms = llm_started.elapsed().as_millis(),
-                error = ?error,
-                "enhance LLM request failed"
-            );
-            let _ = meeting.events_tx.send(serde_json::json!({
-                "type": "enhance_progress",
-                "phase": "error",
-                "message": format!("Enhance failed: {msg}")
-            }));
-            return Err((StatusCode::BAD_GATEWAY, msg));
-        }
-        Err(_elapsed) => {
-            // tokio::time::timeout fired.
-            tracing::error!(
-                event = "enhance_llm_request_timed_out",
-                meeting_id = %meeting_id,
-                model = %llm_model,
-                elapsed_ms = llm_started.elapsed().as_millis(),
-                timeout_secs = crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs(),
-                "enhance LLM request timed out"
-            );
-            let _ = meeting.events_tx.send(serde_json::json!({
-                "type": "enhance_progress",
-                "phase": "error",
-                "message": "LLM timed out — try Re-enhance"
-            }));
-            return Err((
-                StatusCode::GATEWAY_TIMEOUT,
-                format!(
-                    "llm call exceeded {}s timeout",
-                    crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs()
-                ),
-            ));
-        }
+
+    // The four failure branches below (open-error, open-timeout, chunk-
+    // error, chunk-timeout) all do the same three things - trace, emit an
+    // `enhance_progress { phase: "error" }` frame, build a (StatusCode,
+    // message) pair - differing only in the message/status per failure
+    // kind. Collapsed into two closures so each branch is one line.
+    let llm_failed = |error: &anyhow::Error| -> (StatusCode, String) {
+        let msg = format!("llm stream failed: {error}");
+        tracing::error!(
+            event = "enhance_llm_request_failed",
+            meeting_id = %meeting_id,
+            model = %llm_model,
+            elapsed_ms = llm_started.elapsed().as_millis(),
+            error = ?error,
+            "enhance LLM request failed"
+        );
+        let _ = meeting.events_tx.send(serde_json::json!({
+            "type": "enhance_progress",
+            "phase": "error",
+            "message": format!("Enhance failed: {msg}")
+        }));
+        (StatusCode::BAD_GATEWAY, msg)
+    };
+    let llm_timed_out = || -> (StatusCode, String) {
+        tracing::error!(
+            event = "enhance_llm_request_timed_out",
+            meeting_id = %meeting_id,
+            model = %llm_model,
+            elapsed_ms = llm_started.elapsed().as_millis(),
+            timeout_secs = crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs(),
+            "enhance LLM request timed out"
+        );
+        let _ = meeting.events_tx.send(serde_json::json!({
+            "type": "enhance_progress",
+            "phase": "error",
+            "message": "LLM timed out — try Re-enhance"
+        }));
+        (
+            StatusCode::GATEWAY_TIMEOUT,
+            format!(
+                "llm call exceeded {}s timeout",
+                crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs()
+            ),
+        )
     };
 
-    // 5) Emit `enhance_progress` — streaming. Phase 4 reports the final
-    // character count once; Phase 5 will stream per-chunk.
-    let _ = meeting.events_tx.send(serde_json::json!({
-        "type": "enhance_progress",
-        "phase": "streaming",
-        "chars": llm_output.len(),
-    }));
+    let mut stream =
+        match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, llm.stream(chat_req)).await
+        {
+            Ok(Ok(s)) => s,
+            // LLM returned an error opening the stream (HTTP non-2xx, parse
+            // failure, etc.).
+            Ok(Err(error)) => return Err(llm_failed(&error)),
+            // tokio::time::timeout fired opening the stream.
+            Err(_elapsed) => return Err(llm_timed_out()),
+        };
+
+    // Cap how often a `streaming` snapshot frame goes out. 80ms keeps the
+    // browser-side TipTap `setContent` calls at roughly 12 Hz - fast enough
+    // to feel live, not so fast it thrashes the editor on a token-per-chunk
+    // provider.
+    const STREAM_SNAPSHOT_INTERVAL: Duration = Duration::from_millis(80);
+
+    let mut llm_output = String::new();
+    let mut last_emit: Option<Instant> = None;
+    let mut last_emitted_len: usize = 0;
+
+    loop {
+        let chunk =
+            match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, stream.next()).await {
+                Ok(Some(Ok(c))) => c,
+                // LLM returned an error mid-stream (dropped connection,
+                // malformed SSE frame, etc.) - same 502 path as a failed
+                // stream open.
+                Ok(Some(Err(error))) => return Err(llm_failed(&error)),
+                // Stream ended without a terminal `done` chunk - treat it as
+                // complete with whatever was accumulated so far.
+                Ok(None) => break,
+                // No chunk arrived within the timeout - idle timeout, not a
+                // total-call budget.
+                Err(_elapsed) => return Err(llm_timed_out()),
+            };
+
+        if !chunk.delta.is_empty() {
+            llm_output.push_str(&chunk.delta);
+            let now = Instant::now();
+            let should_emit = match last_emit {
+                None => true,
+                Some(t) => now.duration_since(t) >= STREAM_SNAPSHOT_INTERVAL,
+            };
+            if should_emit {
+                let _ = meeting.events_tx.send(serde_json::json!({
+                    "type": "enhance_progress",
+                    "phase": "streaming",
+                    "chars": llm_output.len(),
+                    "text": llm_output.clone(),
+                }));
+                last_emit = Some(now);
+                last_emitted_len = llm_output.len();
+            }
+        }
+
+        if chunk.done {
+            break;
+        }
+    }
+
+    // Deltas may have arrived after the last throttled emit (or the loop's
+    // very last chunk may itself carry the final delta) - make sure the
+    // last frame a WS subscriber sees always matches the full accumulated
+    // text, since the broadcast channel has no replay for a late joiner.
+    if llm_output.len() != last_emitted_len {
+        let _ = meeting.events_tx.send(serde_json::json!({
+            "type": "enhance_progress",
+            "phase": "streaming",
+            "chars": llm_output.len(),
+            "text": llm_output.clone(),
+        }));
+    }
 
     // 6) Server-side structural diff (Plan 04-02). Returns a MergedDoc
     // tagging each block User vs. AiGrey + timestamp.
