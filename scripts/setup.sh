@@ -70,11 +70,13 @@ fi
 ok "macOS $mac_ver"
 
 # Rust: bootstrap rustup from Homebrew so rust-toolchain.toml controls the
-# exact compiler used by setup and subsequent cargo commands.
+# exact compiler used by setup and subsequent cargo commands. The formula is
+# keg-only (and no longer ships rustup-init), so its bin dir must be on PATH;
+# the cargo shim there auto-installs the pinned toolchain on first use.
 if ! command -v rustup >/dev/null 2>&1; then
-  brew_install rustup-init
-  rustup-init -y --profile minimal --default-toolchain none
-  export PATH="$HOME/.cargo/bin:$PATH"
+  brew_install rustup
+  export PATH="$(brew --prefix rustup)/bin:$PATH"
+  warn "add to your shell profile: export PATH=\"\$(brew --prefix rustup)/bin:\$PATH\""
 fi
 if ! command -v cargo >/dev/null 2>&1; then
   RUSTUP_CARGO="$(rustup which cargo 2>/dev/null || true)"
