@@ -35,9 +35,14 @@ pub enum Block {
 pub fn block_key(b: &Block) -> String {
     let raw = match b {
         Block::Heading { level, text } => format!("h{level}:{text}"),
-        Block::Paragraph { md } => format!("p:{md}"),
+        // Paragraph and ListItem share a key: models routinely re-emit a
+        // user's bare line as a bullet (or vice versa), and without this the
+        // merge tags the model's copy AiGrey AND appends the user's original,
+        // so the same sentence shows up twice. `diff::merge` keeps the
+        // user's own block on a match, so the user's shape wins.
+        Block::Paragraph { md } => format!("t:{md}"),
         // HI-3: depth intentionally omitted from key — see doc comment above.
-        Block::ListItem { md, .. } => format!("li:{md}"),
+        Block::ListItem { md, .. } => format!("t:{md}"),
         Block::CodeBlock { lang, body } => {
             format!("code:{}:{body}", lang.as_deref().unwrap_or(""))
         }
@@ -341,6 +346,18 @@ mod tests {
     /// children must still appear as its own block (it would have been
     /// silently dropped before the parse() fix because the nested
     /// child's `buf.clear()` clobbered the parent's content).
+    #[test]
+    fn block_key_matches_a_paragraph_the_model_turned_into_a_bullet() {
+        let user = Block::Paragraph {
+            md: "Follow up with Sarah".into(),
+        };
+        let llm = Block::ListItem {
+            md: "<span data-ai-grey data-ts=\"24\">Follow up with Sarah</span>".into(),
+            depth: 0,
+        };
+        assert_eq!(block_key(&user), block_key(&llm));
+    }
+
     #[test]
     fn parse_preserves_parent_item_with_nested_children() {
         let md = "- pricing\n  - tiered\n  - discount\n";

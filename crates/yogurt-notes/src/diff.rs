@@ -32,8 +32,21 @@ pub fn merge(
         let k = block_key(b);
         if let Some(user_block) = user_by_key.get(&k) {
             seen_user_keys.insert(k);
+            // The user's exact text always wins. The user's block SHAPE wins
+            // too (HI-3: keep their nesting depth when the model flattens),
+            // with one exception: a bare line the user typed that the model
+            // filed as a bullet stays a bullet, so their note sits in the
+            // list with the AI additions instead of floating beside it as
+            // a lone paragraph.
+            let block = match (*user_block, b) {
+                (Block::Paragraph { md }, Block::ListItem { depth, .. }) => Block::ListItem {
+                    md: md.clone(),
+                    depth: *depth,
+                },
+                _ => (*user_block).clone(),
+            };
             out.push(MergedBlock {
-                block: (*user_block).clone(),
+                block,
                 source: Source::User,
             });
         } else {
@@ -70,5 +83,38 @@ fn block_md_text(b: &Block) -> String {
         }
         Block::CodeBlock { body, .. } => body.clone(),
         Block::Hr => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_paragraph_the_model_bulletized_stays_a_bullet_with_user_text() {
+        let user = vec![Block::Paragraph {
+            md: "5% users on Tuesday".into(),
+        }];
+        let enriched = vec![
+            Block::ListItem {
+                md: "5% users on Tuesday".into(),
+                depth: 0,
+            },
+            Block::ListItem {
+                md: "Error rate at 0.3%".into(),
+                depth: 0,
+            },
+        ];
+        let out = merge(&user, &enriched, &[]);
+        assert_eq!(out.len(), 2, "no duplicate appended: {out:?}");
+        assert_eq!(
+            out[0].block,
+            Block::ListItem {
+                md: "5% users on Tuesday".into(),
+                depth: 0
+            }
+        );
+        assert_eq!(out[0].source, Source::User);
+        assert!(matches!(out[1].source, Source::AiGrey { .. }));
     }
 }
