@@ -18,10 +18,12 @@
 //   └───────────────────────────────────────────────────────────────┘
 //
 // Data flow:
-//   1. location.state.enrichedMd populates the editor immediately if
-//      navigated from End-meeting (no re-fetch).
-//   2. Otherwise GET /api/meetings/:id and use enriched_md (falling back
-//      to notes_md if enriched is empty / null).
+//   1. location.state.autoEnhance (set by Meeting.tsx's endMeeting) fires
+//      the enhance POST here immediately on arrival, streaming the raw
+//      preview in over the WS while it runs (see `preview` state below).
+//   2. GET /api/meetings/:id hydrates enriched_md/notes_md/etc regardless
+//      (falling back to notes_md if enriched is empty / null) - it's the
+//      only path for a direct link, refresh, or Re-enhance's own reload.
 //   3. useEnhanceProgress drives the EnhancingBanner during Re-enhance
 //      bursts (phase + chars from the WS broadcast).
 //   4. ReEnhanceButton triggers a fresh POST /enhance, then onEnhanced
@@ -79,14 +81,6 @@ interface MeetingFetchResponse {
 }
 
 interface LocationStateShape {
-  enrichedMd?: string;
-  /** Set by `Meeting.tsx`'s endMeeting when `EnhanceResponse.too_short` came
-   * back true — the server skipped enhancing a meeting with no notes and a
-   * trivial transcript. Drives the brief "Meeting too short" state below
-   * instead of rendering a near-empty editor. Kept for backward
-   * compatibility; the current End-meeting flow instead relies on
-   * `autoEnhance`'s own POST response (see `autoTooShort` state below). */
-  tooShort?: boolean;
   /**
    * Set by `Meeting.tsx`'s endMeeting (task 2, "start streaming immediately
    * on End meeting") - the raw notes to enhance. MeetingPost fires the
@@ -108,13 +102,9 @@ export function MeetingPost() {
   const meetingId = params.id ?? null;
 
   const stateShape = (location.state ?? {}) as LocationStateShape;
-  const preloadedEnrichedMd = stateShape.enrichedMd;
   const autoEnhance = stateShape.autoEnhance;
-  // Legacy `location.state.tooShort` (a caller that still posts /enhance
-  // itself and navigates with the result) OR the new autoEnhance POST's own
-  // `too_short` response, tracked in `autoTooShort` below.
-  const [autoTooShort, setAutoTooShort] = useState(false);
-  const tooShort = stateShape.tooShort === true || autoTooShort;
+  // Set true by the autoEnhance POST response's own `too_short` field.
+  const [tooShort, setTooShort] = useState(false);
 
   // Covers deep links, refresh, and the back button landing on the frozen
   // post view for a meeting that's STILL recording server-side — bounce to
@@ -127,13 +117,9 @@ export function MeetingPost() {
   // Editor content. `enrichedMd` undefined → editor renders blank until
   // load resolves; null → "loaded but empty" sentinel (rare); string →
   // content to render. We collapse undefined / null into "" for display.
-  const [enrichedMd, setEnrichedMd] = useState<string | undefined>(
-    preloadedEnrichedMd,
-  );
+  const [enrichedMd, setEnrichedMd] = useState<string | undefined>(undefined);
   const [notesMd, setNotesMd] = useState<string>("");
-  const [liveEnrichedMarkdown, setLiveEnrichedMarkdown] = useState<string>(
-    preloadedEnrichedMd ?? "",
-  );
+  const [liveEnrichedMarkdown, setLiveEnrichedMarkdown] = useState<string>("");
   const [activeDocument, setActiveDocument] = useState<"enhanced" | "notes">(
     "enhanced",
   );
@@ -525,7 +511,7 @@ export function MeetingPost() {
           token,
         );
         handleEnhanced(response);
-        if (response.too_short) setAutoTooShort(true);
+        if (response.too_short) setTooShort(true);
       } catch (e) {
         handleError(e instanceof Error ? e.message : "Enhance failed");
       } finally {
