@@ -70,10 +70,10 @@ brew install yogurt
 
 These are not per-release, but every one of them has to hold before the first `brew install` can succeed.
 
-- [ ] **`jarvisrchen/yogurt` is public.** Release assets on a private repo require an auth token to download, so `brew install` 404s for everyone but the owner.
-- [ ] **`jarvisrchen/homebrew-yogurt` exists and is public,** with a `Formula/` directory. Done.
-- [ ] **`HOMEBREW_TAP_TOKEN` is set** as a repo secret on `jarvisrchen/yogurt`, with push + `pull_requests: write` on the tap repo. Check with `gh api repos/jarvisrchen/homebrew-yogurt --jq '.permissions'` using that token.
-- [ ] **Git history carries no real secrets.** `.env.local` is gitignored; the history scan for `sk-` / `AKIA` / `ghp_` / `gsk_` found only a placeholder in an archived `MANUAL_TESTING.md`.
+- [x] **`jarvisrchen/yogurt` is public.** Release assets on a private repo require an auth token to download, so `brew install` 404s for everyone but the owner.
+- [x] **`jarvisrchen/homebrew-yogurt` exists and is public,** with a `Formula/` directory. Done.
+- [x] **`HOMEBREW_TAP_TOKEN` is set** as a repo secret on `jarvisrchen/yogurt`, with push + `pull_requests: write` on the tap repo. Check with `gh api repos/jarvisrchen/homebrew-yogurt --jq '.permissions'` using that token.
+- [x] **Git history carries no real secrets.** `.env.local` is gitignored; the history scan for `sk-` / `AKIA` / `ghp_` / `gsk_` found only a placeholder in an archived `MANUAL_TESTING.md`.
 
 ## Cutting a release
 
@@ -118,4 +118,5 @@ If this resurfaces, check that the build script still resolves a runtime dir - i
 
 | Version | Date | Notes |
 | --- | --- | --- |
-| (unreleased) | 2026-08-30 | First dry run of the Release workflow ([33338166544](https://github.com/jarvisrchen/yogurt/actions/runs/33338166544)) - the workflow had never executed before. x86_64 built and packaged; **aarch64 failed at link** on an undefined `___isPlatformVersionAtLeast` out of whisper's `ggml-metal-device.m.o`. Fixed by [PR #1](https://github.com/jarvisrchen/yogurt/pull/1) (`crates/yogurt-stt/build.rs`), which had independently hit the same failure via `setup.sh` on a clean machine. Dry run [33338873469](https://github.com/jarvisrchen/yogurt/actions/runs/33338873469) is green on both arches. Repo still private; tap formula still the `0.0.0` placeholder with zeroed shas. |
+| v0.1.0 pre-flight | 2026-08-30 | First dry run of the Release workflow ([33338166544](https://github.com/jarvisrchen/yogurt/actions/runs/33338166544)) - the workflow had never executed before. x86_64 built and packaged; **aarch64 failed at link** on an undefined `___isPlatformVersionAtLeast` out of whisper's `ggml-metal-device.m.o`. Fixed by [PR #1](https://github.com/jarvisrchen/yogurt/pull/1) (`crates/yogurt-stt/build.rs`), which had independently hit the same failure via `setup.sh` on a clean machine. Dry run [33338873469](https://github.com/jarvisrchen/yogurt/actions/runs/33338873469) is green on both arches. Repo still private at the time; tap formula still the `0.0.0` placeholder with zeroed shas. |
+| v0.1.0 | 2026-08-30 | First real release. All four jobs green ([33339847685](https://github.com/jarvisrchen/yogurt/actions/runs/33339847685)), including `tap`, so the token scopes were right. Formula shas verified by re-downloading the published tarballs (`ec7c4de3...` arm64, `1ecac01c...` x86_64). Tap PR merged, `brew install jarvisrchen/yogurt/yogurt` installs 11.7 MB into the Cellar and `yogurt --version` prints `yogurt 0.1.0`. The installed binary carries `com.apple.provenance` but no `com.apple.quarantine`, confirming Gatekeeper stays out of the Homebrew path. |
