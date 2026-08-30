@@ -116,13 +116,11 @@ export function MeetingPost() {
     preloadedEnrichedMd,
   );
   const [notesMd, setNotesMd] = useState<string>("");
-  // BL-3: track the LIVE markdown serialization of the editor so Re-enhance
-  // posts the user's current edits, not the stale GET-fetched DB row. Seeded
-  // from `enrichedMd` on mount/swap; updated by YogurtEditor's onChange every
-  // time the user types. Without this, a user who edits a grey bullet
-  // (promotes to black per NOTES-10) then clicks Re-enhance LOSES the edit.
-  const [liveMarkdown, setLiveMarkdown] = useState<string>(
+  const [liveEnrichedMarkdown, setLiveEnrichedMarkdown] = useState<string>(
     preloadedEnrichedMd ?? "",
+  );
+  const [activeDocument, setActiveDocument] = useState<"enhanced" | "notes">(
+    "enhanced",
   );
   const [transcriptJson, setTranscriptJson] = useState<string>("[]");
   const [title, setTitle] = useState<string | undefined>(undefined);
@@ -211,16 +209,11 @@ export function MeetingPost() {
         }
         const json = (await res.json()) as MeetingFetchResponse;
         if (cancelled || generationRef.current !== myGen) return;
-        // Only overwrite preloaded enrichedMd if we don't already have it.
-        // `??` alone is wrong here: an empty-STRING enriched_md must also
-        // fall back to the raw notes, or the reader gets a blank document
-        // for a meeting that has notes but was never (successfully)
-        // enhanced.
+        // Raw notes and the generated summary are independent documents.
         if (enrichedMd === undefined) {
           const enriched = json.enriched_md;
-          setEnrichedMd(
-            enriched && enriched.trim() !== "" ? enriched : (json.notes_md ?? ""),
-          );
+          setEnrichedMd(enriched ?? "");
+          if (!enriched || enriched.trim() === "") setActiveDocument("notes");
         }
         setNotesMd(json.notes_md ?? "");
         setTranscriptJson(json.transcript_json ?? "[]");
@@ -289,7 +282,7 @@ export function MeetingPost() {
   // contract calls for "tooltip showing the transcript excerpt around that
   // timestamp" — plain `title` satisfies it for v1.
   useEffect(() => {
-    if (enrichedMd === undefined) return;
+    if (activeDocument !== "enhanced" || enrichedMd === undefined) return;
     if (segments.length === 0) return;
 
     // The editor mounts asynchronously after `enrichedMd` arrives. Defer
@@ -324,51 +317,53 @@ export function MeetingPost() {
       });
     }, 0);
     return () => clearTimeout(handle);
-  }, [enrichedMd, segments]);
+  }, [activeDocument, enrichedMd, segments]);
 
-  // BL-3: whenever the editor swaps to new enriched content (initial load
-  // from GET, or after a Re-enhance completes), seed `liveMarkdown` so a
-  // subsequent Re-enhance click that fires BEFORE any user keystroke still
-  // posts the server's latest version (not an empty string).
+  // Keep the editable enhanced document in sync with generated output.
   useEffect(() => {
     if (enrichedMd !== undefined) {
-      setLiveMarkdown(enrichedMd);
+      setLiveEnrichedMarkdown(enrichedMd);
     }
   }, [enrichedMd]);
 
-  // Task NOTES-11 — persist post-meeting edits (including grey-to-black
-  // promotions) so a reload doesn't lose them. Debounced 1s PATCH of the
-  // editor's live wire-format markdown, flushed on unmount. Gated on
-  // `enrichedMd !== undefined` (hydration settled — either preloaded via
-  // location.state or the GET resolved) so an empty initial `liveMarkdown`
-  // can't race the fetch and PATCH blank content over real saved notes.
+  // Persist raw-note edits to notes_md and enhanced-summary edits to
+  // enriched_md. Programmatic document swaps never set either dirty flag.
   const meetingIdForSaveRef = useRef(meetingId);
   meetingIdForSaveRef.current = meetingId;
-  const liveMarkdownRef = useRef(liveMarkdown);
-  liveMarkdownRef.current = liveMarkdown;
+  const liveEnrichedRef = useRef(liveEnrichedMarkdown);
+  liveEnrichedRef.current = liveEnrichedMarkdown;
+  const notesMdRef = useRef(notesMd);
+  notesMdRef.current = notesMd;
   const lastSavedEnrichedRef = useRef<string | undefined>(undefined);
-  // DATA-LOSS GUARD: autosave may only persist content the USER produced.
-  // Set exclusively by the editor's onChange (which TipTap fires for user
-  // transactions, never for our programmatic `setContent(html, false)`
-  // hydration). Without this gate, a mount that merely LOADED content —
-  // or failed to — would bulldoze the stored row on unmount/debounce with
-  // whatever it happened to hold (observed live: a stale mount PATCHed
-  // `enriched_md: ""` over a real document).
-  const userEditedRef = useRef(false);
+  const lastSavedNotesRef = useRef<string | undefined>(undefined);
+  // Autosave may only persist content the user produced. Loading or toggling
+  // documents must never write either field back to the server.
+  const enrichedEditedRef = useRef(false);
+  const notesEditedRef = useRef(false);
 
-  const flushEnriched = useCallback(async () => {
+  const flushDocuments = useCallback(async () => {
     const id = meetingIdForSaveRef.current;
     if (!id) return;
-    if (!userEditedRef.current) return;
-    const md = liveMarkdownRef.current;
-    if (md === lastSavedEnrichedRef.current) return;
-    // Never persist an empty serialization: the enriched doc never
-    // legitimately becomes empty in this flow, but a hydration/parse
-    // failure serializes to "" — see the data-loss guard above.
-    if (md.trim() === "") return;
-    lastSavedEnrichedRef.current = md;
+    const patch: { notes_md?: string; enriched_md?: string } = {};
+    const notes = notesMdRef.current;
+    const enriched = liveEnrichedRef.current;
+    if (notesEditedRef.current && notes !== lastSavedNotesRef.current) {
+      patch.notes_md = notes;
+    }
+    if (
+      enrichedEditedRef.current &&
+      enriched.trim() !== "" &&
+      enriched !== lastSavedEnrichedRef.current
+    ) {
+      patch.enriched_md = enriched;
+    }
+    if (Object.keys(patch).length === 0) return;
     try {
-      await meetingsApi.patch(id, { enriched_md: md });
+      await meetingsApi.patch(id, patch);
+      if (patch.notes_md !== undefined) lastSavedNotesRef.current = notes;
+      if (patch.enriched_md !== undefined) {
+        lastSavedEnrichedRef.current = enriched;
+      }
     } catch {
       // Best-effort — a later autosave tick or the next unmount retries.
     }
@@ -377,16 +372,16 @@ export function MeetingPost() {
   useEffect(() => {
     if (enrichedMd === undefined) return;
     const t = setTimeout(() => {
-      void flushEnriched();
+      void flushDocuments();
     }, 1000);
     return () => clearTimeout(t);
-  }, [liveMarkdown, enrichedMd, flushEnriched]);
+  }, [liveEnrichedMarkdown, notesMd, enrichedMd, flushDocuments]);
 
   useEffect(() => {
     return () => {
-      void flushEnriched();
+      void flushDocuments();
     };
-  }, [flushEnriched]);
+  }, [flushDocuments]);
 
   // Re-enhance callbacks.
   const handleEnhanced = useCallback((response: EnhanceResponse) => {
@@ -396,12 +391,17 @@ export function MeetingPost() {
     generationRef.current += 1;
     setEnrichedMd(response.enriched_md);
     if (response.llm_model) setLlmModel(response.llm_model);
+    setActiveDocument("enhanced");
   }, []);
-  // BL-3: capture every editor mutation so Re-enhance has the live content.
   const handleEditorChange = useCallback((markdown: string) => {
-    userEditedRef.current = true;
-    setLiveMarkdown(markdown);
-  }, []);
+    if (activeDocument === "notes") {
+      notesEditedRef.current = true;
+      setNotesMd(markdown);
+    } else {
+      enrichedEditedRef.current = true;
+      setLiveEnrichedMarkdown(markdown);
+    }
+  }, [activeDocument]);
   const handleEnhancing = useCallback((busy: boolean) => {
     setEnhancing(busy);
   }, []);
@@ -540,11 +540,7 @@ export function MeetingPost() {
         {token && (
           <ReEnhanceButton
             meetingId={meetingId}
-            // BL-3: post the LIVE editor markdown (user edits + any
-            // promoted-grey-to-black content), NOT the stale notes_md row
-            // from the DB. Falling back to notesMd keeps the very first
-            // Re-enhance (no edits yet, no enriched_md hydrated) sensible.
-            notesMd={liveMarkdown || notesMd}
+            notesMd={notesMd}
             transcriptJson={transcriptJson}
             title={displayTitle}
             startedAtUnixMs={startedAtUnixMs}
@@ -581,7 +577,33 @@ export function MeetingPost() {
           color: INK,
         }}
       >
-        <Legend />
+        <div
+          role="tablist"
+          aria-label="Meeting document"
+          className="mb-7 inline-flex gap-0.5 rounded-[11px] bg-[#F2EBDD] p-1"
+        >
+          {(["enhanced", "notes"] as const).map((document) => {
+            const selected = activeDocument === document;
+            return (
+              <button
+                key={document}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setActiveDocument(document)}
+                className={`rounded-lg px-4 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
+                  selected
+                    ? "bg-white text-ink shadow-[0_1px_3px_rgba(40,30,15,0.1)]"
+                    : "text-mut hover:text-ink"
+                }`}
+              >
+                {document === "enhanced" ? "Enhanced" : "My notes"}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeDocument === "enhanced" && <Legend />}
 
         {error && (
           <div
@@ -598,11 +620,26 @@ export function MeetingPost() {
         )}
 
         <YogurtEditor
-          initialMarkdown={enrichedMd ?? ""}
-          enrichedMarkdown={enrichedMd}
+          initialMarkdown={
+            activeDocument === "enhanced"
+              ? (enrichedMd ?? "")
+              : notesMd
+          }
+          enrichedMarkdown={
+            activeDocument === "enhanced"
+              ? liveEnrichedMarkdown
+              : notesMd
+          }
           editable={true}
           onChange={handleEditorChange}
-          onTranscriptLinkClick={handleTranscriptLinkClick}
+          onTranscriptLinkClick={
+            activeDocument === "enhanced"
+              ? handleTranscriptLinkClick
+              : undefined
+          }
+          placeholder={
+            activeDocument === "notes" ? "Add your notes…" : undefined
+          }
         />
       </main>
 
