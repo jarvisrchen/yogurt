@@ -116,10 +116,10 @@ if ! command -v corepack >/dev/null 2>&1; then
 fi
 corepack enable
 if command -v corepack >/dev/null 2>&1; then
-  pnpm_version=$(corepack pnpm --version)
+  pnpm_version=$(cd web && corepack pnpm --version)
   pnpm_runner=(corepack pnpm)
 elif command -v pnpm >/dev/null 2>&1; then
-  pnpm_version=$(pnpm --version)
+  pnpm_version=$(cd web && pnpm --version)
   pnpm_runner=(pnpm)
 else
   err "pnpm not found. Install Node $EXPECTED_NODE_VERSION, then run: corepack enable"
