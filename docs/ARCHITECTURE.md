@@ -131,7 +131,7 @@ Crate responsibilities, one line each:
 | `yogurt-server` | axum router, auth, meeting registry, enhance/chat orchestration, WS fan-out, embedded assets. |
 | `yogurt-audio` | Mic (cpal) + system loopback (ScreenCaptureKit), resample to the frame contract, broadcast frames. |
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
-| `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output, render back to wire-format markdown. |
+| `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. |
 | `yogurt-prompts` | Embedded prompt templates and their render context. |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming. |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
