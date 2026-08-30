@@ -15,9 +15,11 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use yogurt_server::{run_with_config, Mode, RunConfig};
 
-/// Minimal OpenAI-compatible chat endpoint: ignores the request, returns
-/// `content` as the single choice. Serves one request per accepted
-/// connection, forever.
+/// Minimal OpenAI-compatible chat endpoint: ignores the request, answers
+/// with an SSE stream carrying `content` as a single `delta` chunk (the
+/// enhance handler now calls `LlmClient::stream`, so a plain non-streaming
+/// JSON body no longer parses as any `ChatChunk`s). Serves one request per
+/// accepted connection, forever.
 async fn spawn_fake_llm(content: String) -> std::net::SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -55,20 +57,21 @@ async fn spawn_fake_llm(content: String) -> std::net::SocketAddr {
                         }
                     }
                 }
-                let body = serde_json::json!({
-                    "id": "fake",
-                    "model": "fake-model",
+                // Single content-bearing chunk (finish_reason set) then the
+                // terminal `[DONE]` — see `yogurt_llm::streaming::stream`
+                // for how these two lines get parsed into `ChatChunk`s.
+                let chunk = serde_json::json!({
                     "choices": [{
-                        "index": 0,
-                        "message": { "role": "assistant", "content": content },
+                        "delta": { "content": content },
                         "finish_reason": "stop"
                     }]
                 })
                 .to_string();
+                let sse_body = format!("data: {chunk}\n\ndata: [DONE]\n\n");
                 let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    sse_body.len(),
+                    sse_body
                 );
                 let _ = sock.write_all(resp.as_bytes()).await;
                 let _ = sock.shutdown().await;
