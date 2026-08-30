@@ -70,4 +70,13 @@ describe("MeetingMetaPills", () => {
     expect(pill).not.toHaveClass("text-blue");
     expect(pill.className).toMatch(/border/);
   });
+
+  it("paints LLM pill as outlined blueberry, not filled", () => {
+    const start = Date.now();
+    render(<MeetingMetaPills startedAt={start} llmModel="gpt-5-mini" />);
+    const pill = screen.getByTestId("llm-pill");
+    expect(pill).toHaveClass("text-blue");
+    expect(pill.className).not.toMatch(/bg-blsoft/);
+    expect(pill.className).toMatch(/border/);
+  });
 });

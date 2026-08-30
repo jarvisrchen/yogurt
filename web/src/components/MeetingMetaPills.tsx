@@ -102,15 +102,21 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
  * The LLM pill - which model fused the notes with the transcript. The
  * row's `llm_model` is stamped by enhance.rs after a successful enhance
  * (bare model name, e.g. "gpt-5-mini"), so a recorded-but-never-enhanced
- * meeting renders nothing rather than a guessed model. Blueberry tone to
- * read as "AI touched this", distinct from the STT pill's local/cloud
- * split - the LLM is always a BYO OpenAI-compatible endpoint.
+ * meeting renders nothing rather than a guessed model. The LLM is always
+ * a BYO OpenAI-compatible endpoint, so there is no local/cloud split.
  */
 export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
   const model = llmModel?.trim();
   if (!model) return null;
+  // Option E: LLM family is always blueberry. Outlined (#C5BEEF border per
+  // the lavish mockup) reads as "AI touched this" without competing with
+  // the brand-blue button chrome.
   return (
-    <span className={`${PILL} bg-blsoft text-blue`} title={`Enhanced by ${model}`}>
+    <span
+      className={`${PILL} border border-[#C5BEEF] bg-transparent text-blue`}
+      data-testid="llm-pill"
+      title={`Enhanced by ${model}`}
+    >
       <Sparkles size={11} aria-hidden />
       {model}
     </span>
