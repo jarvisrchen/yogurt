@@ -26,3 +26,4 @@ web/.playwright/
 
 # GSD planning scratch (v1 archived in docs/archive/.planning/v1; future runs stay local)
 /.planning/
+repomix-output.*
