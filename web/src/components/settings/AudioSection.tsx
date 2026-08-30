@@ -28,7 +28,7 @@ export function AudioSection({ general }: AudioSectionProps) {
 
   return (
     <section className="space-y-4">
-      <h2 className="font-serif text-[28px] leading-none">Audio</h2>
+      <h2 className="heading-section">Audio</h2>
 
       <div className="space-y-1.5">
         <label className="text-[10px] font-mono uppercase tracking-wider text-mut">

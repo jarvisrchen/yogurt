@@ -17,7 +17,7 @@ export function ModelDownloadStub() {
         <span className="sr-only">Download</span>
       </div>
 
-      <h2 className="font-serif text-[30px] text-ink mb-2">
+      <h2 className="font-bold tracking-tight text-[26px] text-ink mb-2">
         Fetching the local model
       </h2>
 

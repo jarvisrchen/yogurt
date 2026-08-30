@@ -109,7 +109,7 @@ export function Settings() {
           <section className="space-y-6">
             <header className="space-y-1">
               <div className="flex items-baseline gap-3">
-                <h2 className="font-serif text-[28px] leading-none">
+                <h2 className="heading-section">
                   Model
                 </h2>
                 <code className="text-[11px] font-mono text-grey">
@@ -131,7 +131,7 @@ export function Settings() {
               />
             ) : data.providers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line bg-white/50 p-6 space-y-1">
-                <p className="font-serif text-[18px] text-ink">
+                <p className="font-bold tracking-tight text-[15px] text-ink">
                   No providers configured yet
                 </p>
                 <p className="text-[13px] text-mut">
@@ -195,7 +195,7 @@ export function Settings() {
 
         {section === "transcription" && (
           <section className="space-y-4">
-            <h2 className="font-serif text-[28px] leading-none">
+            <h2 className="heading-section">
               Transcription
             </h2>
             <STTPicker />

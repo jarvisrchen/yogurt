@@ -2,7 +2,7 @@
  * Phase 7 (Plan 07-01) — Library sidebar (212px, paper bg, blueberry CTA).
  *
  * PRD §5.9 + D-02. Top-to-bottom layout:
- *   1. Yogurt swirl logo + "yogurt" wordmark (Instrument-Serif)
+ *   1. Yogurt swirl logo + "yogurt" wordmark (Hanken 700)
  *   2. Primary "+ New meeting" blueberry button (creates → /meeting/:id)
  *   3. Nav: "All meetings" (lilac active), "Starred"
  *   4. Footer:
@@ -23,6 +23,7 @@ import { useLabels } from "../../lib/api/labels";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { SidebarLabelRow } from "./SidebarLabelRow";
+import { Button } from "../Button";
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -71,22 +72,21 @@ export function Sidebar() {
       {/* Header — logo + wordmark */}
       <div className="px-5 pt-5 pb-4 flex items-center gap-2">
         <Logo size={28} />
-        <span className="font-serif text-[22px] text-ink leading-none">
+        <span className="heading-wordmark">
           yogurt
         </span>
       </div>
 
       {/* Primary CTA */}
       <div className="px-4 pb-3">
-        <button
-          type="button"
+        <Button
           onClick={handleNew}
           disabled={createMeeting.isPending}
-          className="w-full px-3 py-2 rounded-button bg-blue text-white text-[13px] font-semibold shadow-button-blue hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:opacity-50 flex items-center justify-center gap-1.5"
+          className="w-full"
         >
           <Plus size={16} aria-hidden />
           New meeting
-        </button>
+        </Button>
       </div>
 
       {/* Nav */}

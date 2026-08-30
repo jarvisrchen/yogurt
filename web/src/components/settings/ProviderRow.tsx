@@ -94,7 +94,7 @@ export function ProviderRow({
       data-testid="inactive-provider-card"
     >
       <header className="flex items-center justify-between">
-        <h3 className="font-serif text-[20px] leading-tight">
+        <h3 className="heading-card">
           {provider.name}
         </h3>
         <button

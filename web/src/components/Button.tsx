@@ -42,8 +42,7 @@ const VARIANT: Record<Variant, string> = {
   // Blueberry button with branded shadow. Hover darkens via opacity overlay
   // since Tailwind 4 doesn't expose a 'blue-600'-style derived shade without
   // explicit token; opacity-90 on hover is consistent with the design board.
-  primary:
-    "bg-blue text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90 active:opacity-100",
+  primary: "bg-blue text-white shadow-button-blue hover:opacity-90 active:opacity-100",
   // Cream card surface with a slightly warmer line color than --line, per §16.6.
   secondary:
     "bg-card text-ink border border-[#D9D0C0] hover:bg-[#F8F2E5] active:bg-[#F1E9D7]",
@@ -62,6 +61,15 @@ const VARIANT: Record<Variant, string> = {
  * Future variants (deferred to Phase 4): "ink" — ink-on-cream End-meeting
  * style used in the live meeting top bar.
  */
+/**
+ * The full class string for a variant, for the rare element that must be
+ * an `<a>` (e.g. an `x-apple.systempreferences:` link) but should look
+ * exactly like `<Button>`.
+ */
+export function buttonClassName(variant: Variant = "primary", extra = ""): string {
+  return `${BASE} ${VARIANT[variant]} ${extra}`.trim();
+}
+
 export function Button({
   variant = "primary",
   children,
@@ -69,9 +77,8 @@ export function Button({
   type = "button",
   ...rest
 }: ButtonProps) {
-  const cls = `${BASE} ${VARIANT[variant]} ${className}`.trim();
   return (
-    <button type={type} className={cls} {...rest}>
+    <button type={type} className={buttonClassName(variant, className)} {...rest}>
       {children}
     </button>
   );

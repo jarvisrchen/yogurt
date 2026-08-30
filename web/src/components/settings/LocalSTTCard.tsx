@@ -178,7 +178,7 @@ export function LocalSTTCard({
       )}
     >
       <header className="flex items-center justify-between">
-        <h3 className="font-serif text-xl">Local · whisper.cpp</h3>
+        <h3 className="heading-card">Local · whisper.cpp</h3>
         <div className="flex flex-col items-end gap-1">
           <label
             className={clsx(

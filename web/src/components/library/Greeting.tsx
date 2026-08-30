@@ -2,7 +2,7 @@
  * Phase 7 (Plan 07-01) — Library hero greeting + meeting-count caption.
  *
  * PRD §5.9 + D-03:
- *   - "Good morning, you" in Instrument Serif at 40px
+ *   - "Good morning, you" in Hanken 700 at 34px
  *   - "N meeting{s} · all on this Mac" in JetBrains Mono at 13px
  */
 
@@ -18,7 +18,7 @@ export function Greeting({ count }: Props) {
   const plural = count === 1 ? "meeting" : "meetings";
   return (
     <header className="mb-8">
-      <h1 className="font-serif text-[40px] leading-tight text-ink">{greeting}</h1>
+      <h1 className="font-bold tracking-tight text-[34px] leading-tight text-ink">{greeting}</h1>
       <p className="mt-1 text-[13px] font-mono text-mut">
         {count} {plural} · all on this Mac
       </p>

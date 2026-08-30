@@ -2,7 +2,7 @@
  * Phase 7 (Plan 07-01) — Meeting card.
  *
  * Layout (PRD §5.9 + D-06):
- *   [42px tinted avatar with 2-letter serif initials]
+ *   [42px tinted avatar with 2-letter bold initials]
  *   ╎ Title (Hanken-bold 15px)
  *   ╎ [2:45 PM] [47 min]               ← mono 11px pills (MetaPill); duration
  *   ╎                                     omitted while ended_at is null;
@@ -100,7 +100,7 @@ export function MeetingCard({ meeting, activeId }: Props) {
       className="group flex items-center gap-3 py-2 px-2 -mx-2 rounded-button hover:bg-line/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
     >
       <div
-        className="w-[42px] h-[42px] rounded-[10px] flex items-center justify-center font-serif text-[18px] text-ink shrink-0"
+        className="w-[42px] h-[42px] rounded-[10px] flex items-center justify-center font-bold tracking-tight text-[15px] text-ink shrink-0"
         style={{ background: avatarTint(meeting.id) }}
         aria-hidden
       >

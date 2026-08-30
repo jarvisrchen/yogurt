@@ -566,7 +566,7 @@ export function MeetingPost() {
         data-testid="meeting-too-short"
       >
         <div role="status" aria-live="polite" className="text-center space-y-1.5">
-          <p className="font-serif text-[19px] text-ink">Meeting too short</p>
+          <p className="font-bold tracking-tight text-[19px] text-ink">Meeting too short</p>
           <p className="text-[13px] text-mut">
             Nothing to enhance — back to the library…
           </p>

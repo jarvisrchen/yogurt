@@ -20,6 +20,7 @@
 import { useNavigate } from "react-router";
 import { useCreateMeeting } from "../../lib/api/meetings";
 import { Logo } from "../Logo";
+import { Button } from "../Button";
 
 export function EmptyLibrary() {
   const create = useCreateMeeting();
@@ -40,24 +41,19 @@ export function EmptyLibrary() {
       <div className="float-3500 mb-8">
         <Logo size={64} ariaLabel="Yogurt" />
       </div>
-      <h2 className="font-serif text-[34px] text-ink mb-3">
+      <h2 className="heading-state mb-3">
         No meetings yet
       </h2>
       <p className="text-[15px] text-mut max-w-md mb-6">
         Start one and Yogurt listens to both sides of the call — no bot
         joins. Your notes and audio stay on this Mac.
       </p>
-      <button
-        type="button"
-        onClick={start}
-        disabled={create.isPending}
-        className="bg-blue text-white text-[13.5px] font-semibold rounded-button px-4 py-2 shadow-button-blue flex items-center gap-2 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:opacity-50"
-      >
+      <Button onClick={start} disabled={create.isPending}>
         Start your first meeting
         <kbd className="bg-white/20 text-white/90 text-[11px] font-mono px-1.5 py-0.5 rounded">
           ⌘N
         </kbd>
-      </button>
+      </Button>
       <p className="mt-6 text-[11px] font-mono text-mut">
         notes saved to <code>~/.yogurt/notes/*.md</code>
       </p>
