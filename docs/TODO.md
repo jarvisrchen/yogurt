@@ -21,7 +21,66 @@ Example entry:
   </details>
 ```
 
+## Done items
+
+Check off an item (`- [x]`) when the work lands; move it into the matching subsection below to keep the open work above scannable.
+
 ## UI
+
+- [ ] BASE URL and MODEL fields overlap on long URLs in provider cards
+  <details>
+  <summary>Details</summary>
+
+  On the Settings → LLM providers page, the Google Gemini card (active) has its BASE URL value `https://generativelanguage.googleapis.com/v1beta/openai` running straight through the MODEL value `gemini-2.5-flash`. The two are visually overlaid instead of sitting side-by-side in their two grid columns.
+
+  Root cause is in `web/src/components/settings/ProviderRow.tsx:111` — `<div className="grid grid-cols-2 gap-x-6 gap-y-3">`. Grid items default to `min-width: auto`, so a child with non-wrapping content (here the URL wrapped in `break-all` text but the inner `<code>` is still wider than its column at full URL length) refuses to shrink below its intrinsic content size and overflows into the sibling column.
+
+  Fix: add `min-w-0` to each `Field` child inside the grid (and probably `overflow-hidden` + `truncate` or `break-all` on the `<code>` is already there — keep `break-all`, just unblock the column from shrinking). Verify on Gemini (`/v1beta/openai`), OpenAI (`/v1`), Anthropic (`/v1/messages` is different shape so double-check that case too), and any user-added URL.
+
+  Visual evidence:
+  ![BASE URL runs through MODEL field](attachments/2026-08-29-base-url-model-overlap.png)
+  </details>
+
+## Meetings
+
+- [ ] Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
+  <details>
+  <summary>Details</summary>
+
+  The post-meeting enhanced summary color-tints each block by source: `Source::User` blocks render black ("your notes"), `Source::AiGrey` blocks render grey with a transcript deep-link (`crates/yogurt-notes/src/render.rs` wraps them in `<span data-ai-grey data-ts="N">`).
+  When the user's notes are empty, the expectation is that everything in the enhanced AI summary is grey AI output.
+  Observed instead: the whole summary reads as black "your notes", so the grey/black distinction feels broken or inverted.
+
+  Two things to do:
+  1. Clarify and document how the black-vs-grey split is actually supposed to work (what makes a block `User` vs `AiGrey` - see `crates/yogurt-notes/src/diff.rs` for the user/AI merge rules), and confirm the intended mapping against the frontend styling.
+  2. Fix the mismatch: when the user has no notes (`user_notes` empty), the merged doc should come out all `AiGrey` (all grey) - if it's rendering black instead, find where blocks are being tagged `Source::User` when there was no user input to attribute to them.
+
+  Verify E2E: record a meeting with no notes typed, enhance, and confirm every block in the summary is grey; then type notes and confirm those specific blocks render black while AI additions stay grey.
+  </details>
+
+## Audio
+
+- [ ] Add NVIDIA Parakeet v3 to the local STT model download
+  <details>
+  <summary>Details</summary>
+
+  The model registry at `crates/yogurt-stt/src/models.rs` only ships whisper.cpp checkpoints today (tiny.en, small.en, medium.en, large-v3), pulled by `scripts/refresh-model-hashes.sh`.
+  Add Parakeet v3 as a downloadable local model - new `ModelSpec` entry, download URL, SHA256 pin, and the engine adapter if Parakeet can't reuse the whisper.cpp runtime.
+  Heads-up: Parakeet is an NVIDIA NeMo checkpoint, not a ggml/gguf file - decide the engine first (NeMo ONNX export, whisper.cpp's Parakeet backend, or a new `yogurt-stt` engine next to `WhisperLocal`) before scoping this.
+  Scoping research done (2026-08-29), no code yet - engine decision needed first:
+  Recommendation: sherpa-onnx with a new `ParakeetLocal` engine next to `WhisperLocal` (official Rust bindings, statically linkable, ships a tested parakeet-tdt-0.6b-v3 int8 archive with a stable URL).
+  parakeet.cpp is the cleanest ggml/Metal fit but has no Rust bindings and is pre-1.0 - revisit in 6-12 months.
+  Open decisions before scoping: accept Apache-2.0 (sherpa-onnx) alongside MIT; its build.rs downloads a prebuilt static lib at build time; CPU-only inference needs a perf spike on Apple Silicon (no Metal path); Parakeet weights are CC-BY-4.0, so attribution may need surfacing in Settings.
+  </details>
+
+## DONE
+
+Closed-out work, kept here for context. Move a `- [x]` item here when the work lands.
+
+<details>
+<summary>Click to expand</summary>
+
+### UI
 
 - [x] Chat input loses its pill shape on focus
   <details>
@@ -50,7 +109,7 @@ Example entry:
   ![notes AI section shows a thick focus ring](attachments/2026-08-28-notes-ai-section-focus-ring.png)
   </details>
 
-## Meetings
+### Meetings
 
 - [x] Add an "enhanced with" pill next to the existing STT pill on meeting headers
   <details>
@@ -105,20 +164,7 @@ Example entry:
   ![transcript duplicates on machine audio](attachments/2026-08-28-transcript-duplicates-on-machine-audio.png)
   </details>
 
-## Audio
-
-- [ ] Add NVIDIA Parakeet v3 to the local STT model download
-  <details>
-  <summary>Details</summary>
-
-  The model registry at `crates/yogurt-stt/src/models.rs` only ships whisper.cpp checkpoints today (tiny.en, small.en, medium.en, large-v3), pulled by `scripts/refresh-model-hashes.sh`.
-  Add Parakeet v3 as a downloadable local model - new `ModelSpec` entry, download URL, SHA256 pin, and the engine adapter if Parakeet can't reuse the whisper.cpp runtime.
-  Heads-up: Parakeet is an NVIDIA NeMo checkpoint, not a ggml/gguf file - decide the engine first (NeMo ONNX export, whisper.cpp's Parakeet backend, or a new `yogurt-stt` engine next to `WhisperLocal`) before scoping this.
-  Scoping research done (2026-08-29), no code yet - engine decision needed first:
-  Recommendation: sherpa-onnx with a new `ParakeetLocal` engine next to `WhisperLocal` (official Rust bindings, statically linkable, ships a tested parakeet-tdt-0.6b-v3 int8 archive with a stable URL).
-  parakeet.cpp is the cleanest ggml/Metal fit but has no Rust bindings and is pre-1.0 - revisit in 6-12 months.
-  Open decisions before scoping: accept Apache-2.0 (sherpa-onnx) alongside MIT; its build.rs downloads a prebuilt static lib at build time; CPU-only inference needs a perf spike on Apple Silicon (no Metal path); Parakeet weights are CC-BY-4.0, so attribution may need surfacing in Settings.
-  </details>
+### Audio
 
 - [x] Add the ability to delete a downloaded local STT model
   <details>
@@ -135,7 +181,7 @@ Example entry:
   Frontend: trash icon next to every downloaded, non-active pill in `ModelPicker`, inline `Delete? / Cancel` confirm that auto-reverts after 3s, and a transient `Deleted <name> - freed <size>` line under the picker. Verified E2E in a sandboxed `$HOME` against a real `small.en` copy.
   </details>
 
-## LLM
+### LLM
 
 - [x] Test button for the API key should stay available on provider cards with saved models
   <details>
@@ -160,3 +206,5 @@ Example entry:
   While here: `tests/bootstrap.rs` hand-listed the env vars it cleared, so adding a preset broke it only on machines that exported the new key.
   It now clears everything `bootstrap::env_key_vars()` reports.
   </details>
+
+</details>
