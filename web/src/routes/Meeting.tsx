@@ -8,7 +8,6 @@ import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
-import { postEnhance } from "../lib/api";
 import { meetingKey, meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -64,9 +63,10 @@ interface ServerError {
  *   - Notes autosave debounced 800ms via `PATCH {notes_md}`, flushed on
  *     unmount and before End meeting.
  *   - End meeting: stop recording (so the server flushes the transcript)
- *     → enhance (current notes_md + `transcript_json: "[]"` — the server
- *     prefers its own stored transcript when the body's is empty — + the
- *     current title) → navigate to `/meeting/:id/post`.
+ *     → navigate to `/meeting/:id/post` immediately with
+ *     `state: { autoEnhance: { notes_md, title } }` - MeetingPost fires the
+ *     enhance POST itself and renders the streamed preview as it arrives,
+ *     instead of this route blocking on the full round-trip first.
  */
 export function Meeting() {
   const params = useParams<{ id: string }>();
@@ -383,9 +383,11 @@ export function Meeting() {
 
   // End meeting: flush notes, stop any active recording (so the server's
   // transcript accumulator has flushed before enhance reads it), then
-  // POST /enhance with the CURRENT notes + the always-empty transcript
-  // body (the server prefers its own stored transcript), then navigate to
-  // the post-meeting view.
+  // navigate straight to the post-meeting view with the raw notes carried
+  // in router state under `autoEnhance` - MeetingPost fires the enhance
+  // POST itself (task 2, "start streaming immediately on End meeting") so
+  // the user sees the streamed preview instead of staring at a busy button
+  // for the whole round-trip.
   async function endMeeting() {
     if (!meetingId || !token) return;
     setErrorMessage(null);
@@ -396,20 +398,14 @@ export function Meeting() {
         try {
           await stopRecording();
         } catch {
-          // Non-fatal — proceed with enhance.
+          // Non-fatal - proceed to the post view; MeetingPost's enhance
+          // POST doesn't depend on the stop call having succeeded.
         }
       }
-      const response = await postEnhance(
-        meetingId,
-        {
-          notes_md: notesMd,
-          transcript_json: "[]",
-          title: meetingRow?.title,
-        },
-        token,
-      );
       navigate(`/meeting/${meetingId}/post`, {
-        state: { enrichedMd: response.enriched_md, tooShort: response.too_short },
+        state: {
+          autoEnhance: { notes_md: notesMd, title: meetingRow?.title },
+        },
       });
       // Successful navigation unmounts this component — don't touch state
       // afterward (React warns on unmounted-component updates, and there's

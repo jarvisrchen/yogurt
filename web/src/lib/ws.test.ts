@@ -4,6 +4,7 @@ import {
   useTranscriptWs,
   useSttError,
   useAudioLevels,
+  useEnhanceProgress,
   storedSegmentToEvent,
   type TranscriptEvent,
 } from "./ws";
@@ -372,6 +373,69 @@ describe("useSttError", () => {
     });
 
     expect(result.current.message).toBeNull();
+  });
+});
+
+describe("useEnhanceProgress", () => {
+  beforeEach(() => {
+    MockWebSocket.lastInstance = null;
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { protocol: "http:", host: "localhost:5173" },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function emitEnhance(
+    ws: MockWebSocket,
+    payload: Record<string, unknown>,
+  ) {
+    ws.onmessage?.call(
+      ws as unknown as WebSocket,
+      new MessageEvent("message", {
+        data: JSON.stringify({ type: "enhance_progress", ...payload }),
+      }),
+    );
+  }
+
+  it("exposes `text` on a streaming frame and clears it on done", async () => {
+    const { result } = renderHook(() => useEnhanceProgress("meeting-1", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      emitEnhance(ws, { phase: "streaming", chars: 12, text: "# Draft so far" });
+    });
+    expect(result.current.phase).toBe("streaming");
+    expect(result.current.text).toBe("# Draft so far");
+
+    act(() => {
+      emitEnhance(ws, { phase: "done" });
+    });
+    expect(result.current.phase).toBe("done");
+    expect(result.current.text).toBeNull();
+  });
+
+  it("clears `text` on an error frame", async () => {
+    const { result } = renderHook(() => useEnhanceProgress("meeting-2", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    act(() => {
+      emitEnhance(ws, { phase: "streaming", chars: 5, text: "partial" });
+    });
+    expect(result.current.text).toBe("partial");
+
+    act(() => {
+      emitEnhance(ws, { phase: "error", message: "LLM timed out" });
+    });
+    expect(result.current.text).toBeNull();
+    expect(result.current.errorMessage).toBe("LLM timed out");
   });
 });
 
