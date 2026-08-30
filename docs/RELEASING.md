@@ -7,6 +7,26 @@ This doc is the operational companion: what the pipeline does, what has to be tr
 
 ---
 
+## What triggers a release
+
+Pushing a tag that matches `v*`.
+That is the only thing that publishes anything.
+
+Merging a PR into `main` does **not** release.
+Neither does pushing commits to `main` directly.
+Those run `ci.yml` (fmt, clippy, tests, web build) and stop there.
+`release.yml` never looks at branches, only at tags, so `main` can move as much as you like without shipping.
+
+The tag is what selects the code, not the branch.
+`git tag v0.1.0` on whatever commit you are on, then `git push origin v0.1.0`, and that commit is what gets built and published.
+
+The one other trigger is `workflow_dispatch`, which is the dry run.
+It builds both arches and stops before publishing.
+
+There is a PR in the flow, but it runs the other way and lands at the end.
+The pipeline opens it against the **tap** repo, not this one, and by the time it exists the GitHub Release is already public.
+Merging it is the last manual step, and it is what makes `brew install` serve the new version.
+
 ## The shape of a release
 
 Users never compile anything.
@@ -14,7 +34,7 @@ GitHub Actions builds the binary, attaches it to a GitHub Release, and rewrites 
 Homebrew just downloads and untars.
 
 ```
-git push origin v0.1.0
+git push origin v0.1.0        <- the trigger; nothing else starts this
       |
       +-- build      macos-26, matrix aarch64 + x86_64
       |              rust 1.96 + node 22 + pnpm 9.15.4
