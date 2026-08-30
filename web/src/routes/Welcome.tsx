@@ -205,8 +205,8 @@ export function Welcome() {
           Welcome to yogurt.
         </h1>
         <p className="text-[15px] text-mut max-w-md mb-10">
-          Two streams, one set of notes, zero bots in the call. Everything
-          below happens on this Mac.
+          Yogurt hears both sides of the call without joining it, and folds
+          what was said into the notes you type. All of it runs on this Mac.
         </p>
 
         <div className="max-w-md">
@@ -225,7 +225,7 @@ export function Welcome() {
             number={1}
             title="Screen Recording"
             state={step1State}
-            body="This is how yogurt hears the other side of the call — no meeting bot required."
+            body="This is how yogurt hears the other side of the call, without joining it as a bot."
           >
             {!granted ? (
               <>
@@ -254,10 +254,9 @@ export function Welcome() {
                   </button>
                 </div>
                 <p className="mt-2 text-[12px] text-mut">
-                  Granting this quits yogurt immediately — that&apos;s
-                  macOS, not a bug. Relaunch it (<code className="text-ink">just dev</code>
-                  , or reopen the app) and reload this page; the steps
-                  below will pick up where you left off.
+                  Granting this quits yogurt immediately. That is macOS
+                  doing it, not a crash. Relaunch yogurt and reload this
+                  page; the steps below will pick up where you left off.
                 </p>
                 <ErrorNote
                   error={screenRequest.isError ? screenRequest.error : null}
@@ -297,7 +296,7 @@ export function Welcome() {
             number={3}
             title="Connect your model"
             state={step3State}
-            body="Bring your own key — OpenAI-compatible. Nothing is built in."
+            body="Bring your own key for any OpenAI-compatible provider. Nothing is built in."
           >
             <div className="flex flex-wrap gap-2">
               {PROVIDER_CHIPS.map((c) => {
@@ -357,11 +356,11 @@ export function Welcome() {
         </button>
         <ErrorNote
           error={setFirstRun.isError ? setFirstRun.error : null}
-          friendly="Couldn't save that — your permissions and provider are still set, try again."
+          friendly="Couldn't save that. Your permissions and provider are still set, so try again."
         />
 
         <p className="mt-4 text-[12px] font-mono text-mut text-center">
-          Restart once after granting — a macOS quirk, not us.
+          Restart once after granting. That one is a macOS quirk.
         </p>
       </section>
     </div>
