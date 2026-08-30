@@ -16,12 +16,13 @@
  * row refetches) renders as "Local STT" / "Cloud STT".
  */
 
-import { Cloud, HardDrive } from "lucide-react";
+import { Cloud, HardDrive, Sparkles } from "lucide-react";
 
 interface Props {
   startedAt?: number | null;
   endedAt?: number | null;
   sttEngine?: string | null;
+  llmModel?: string | null;
 }
 
 export function parseSttEngine(
@@ -91,16 +92,37 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
   );
 }
 
-export function MeetingMetaPills({ startedAt, endedAt, sttEngine }: Props) {
+/**
+ * The LLM pill - which model fused the notes with the transcript. The
+ * row's `llm_model` is stamped by enhance.rs after a successful enhance
+ * (bare model name, e.g. "gpt-5-mini"), so a recorded-but-never-enhanced
+ * meeting renders nothing rather than a guessed model. Blueberry tone to
+ * read as "AI touched this", distinct from the STT pill's local/cloud
+ * split - the LLM is always a BYO OpenAI-compatible endpoint.
+ */
+export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
+  const model = llmModel?.trim();
+  if (!model) return null;
+  return (
+    <span className={`${PILL} bg-blsoft text-blue`} title={`Enhanced by ${model}`}>
+      <Sparkles size={11} aria-hidden />
+      {`Enhanced · ${model}`}
+    </span>
+  );
+}
+
+export function MeetingMetaPills({ startedAt, endedAt, sttEngine, llmModel }: Props) {
   const engine = parseSttEngine(sttEngine);
+  const model = llmModel?.trim();
   const duration =
     startedAt != null && endedAt != null ? formatDuration(startedAt, endedAt) : null;
-  if (startedAt == null && !engine) return null;
+  if (startedAt == null && !engine && !model) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5" data-testid="meeting-meta">
       {startedAt != null && <MetaPill>{formatStartedAt(startedAt)}</MetaPill>}
       {duration && <MetaPill>{duration}</MetaPill>}
       {engine && <EnginePill sttEngine={sttEngine} />}
+      {model && <LlmPill llmModel={model} />}
     </div>
   );
 }

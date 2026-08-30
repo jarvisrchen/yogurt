@@ -18,7 +18,7 @@ import { Link } from "react-router";
 import { Star } from "lucide-react";
 import type { Meeting } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
-import { EnginePill, MetaPill } from "../MeetingMetaPills";
+import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
 import { InlineTitle } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
 
@@ -151,6 +151,7 @@ export function MeetingCard({ meeting, activeId }: Props) {
           reads "Local · medium.en" identically in the list and in the note.
           Nothing for pre-column rows rather than a guessed "Local". */}
       <EnginePill sttEngine={meeting.stt_engine} />
+      <LlmPill llmModel={meeting.llm_model} />
       <MeetingCardActions id={meeting.id} starred={meeting.starred} labels={meeting.labels} />
     </Link>
   );

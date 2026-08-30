@@ -76,6 +76,11 @@ describe("MeetingCard — live-recording routing", () => {
 });
 
 describe("MeetingCard — engine pill", () => {
+  it("shows the LLM pill once the meeting has been enhanced", () => {
+    renderCard(meeting({ id: "llm-1", llm_model: "gpt-5-mini" }));
+    expect(screen.getByText("Enhanced · gpt-5-mini")).toBeInTheDocument();
+  });
+
   it("shows no engine pill for a null stt_engine (pre-column meetings)", () => {
     renderCard(meeting({ id: "old-1", stt_engine: null }));
     expect(screen.queryByText(/Local|Cloud/)).toBeNull();

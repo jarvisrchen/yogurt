@@ -136,6 +136,11 @@ async fn it_enhances_a_meeting_end_to_end() {
         .and_then(|v| v.as_str())
         .expect("notes_file in response")
         .to_string();
+    assert_eq!(
+        response.get("llm_model").and_then(|v| v.as_str()),
+        Some("mock"),
+        "response names the model that produced enriched_md"
+    );
 
     // 3) Wire-format assertions on the response body. The AI bullet is
     // wrapped in a `data-ai-grey` span; ammonia normalizes the boolean

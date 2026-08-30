@@ -91,6 +91,11 @@ pub struct EnhanceResponse {
     /// rendering a near-empty post-meeting editor.
     #[serde(default)]
     pub too_short: bool,
+    /// Model that produced `enriched_md` (same value stamped on the
+    /// meeting row's `llm_model`), so the post-meeting header can update
+    /// its "Enhanced" pill without refetching. `None` when `too_short`.
+    #[serde(default)]
+    pub llm_model: Option<String>,
 }
 
 /// `POST /api/meetings/{id}/enhance`.
@@ -186,6 +191,7 @@ pub async fn enhance(
             enriched_md: String::new(),
             notes_file: String::new(),
             too_short: true,
+            llm_model: None,
         }));
     }
 
@@ -500,6 +506,7 @@ pub async fn enhance(
         enriched_md,
         notes_file: notes_path.to_string_lossy().into_owned(),
         too_short: false,
+        llm_model: Some(llm.model_name()),
     }))
 }
 

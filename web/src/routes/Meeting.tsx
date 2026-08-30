@@ -518,6 +518,7 @@ export function Meeting() {
                 meetingRow?.stt_engine ??
                 (recording ? activeRecording.data?.stt ?? null : null)
               }
+              llmModel={meetingRow?.llm_model}
             />
           )}
           {/* Row 3: label chips, left-aligned under the title. */}

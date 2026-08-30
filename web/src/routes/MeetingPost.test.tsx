@@ -124,6 +124,7 @@ describe("MeetingPost — live-recording redirect", () => {
       notes_md: "- x",
       enriched_md: "## enriched",
       transcript_json: "[]",
+      llm_model: "MiniMax-M3",
     });
 
     renderPost();
@@ -132,6 +133,8 @@ describe("MeetingPost — live-recording redirect", () => {
       expect(screen.getByTestId("meeting-post-route")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("live-view")).toBeNull();
+    // Header pill names the model that produced enriched_md.
+    expect(await screen.findByText("Enhanced · MiniMax-M3")).toBeInTheDocument();
   });
 
   it("does not redirect when a DIFFERENT meeting is the active recording", async () => {
