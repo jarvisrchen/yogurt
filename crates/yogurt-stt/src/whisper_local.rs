@@ -99,6 +99,19 @@ impl WhisperLocal {
             .to_str()
             .context("model path is not utf-8")?
             .to_string();
+        // whisper.cpp and ggml write straight to stderr through ggml's own log
+        // callback, which `params.set_print_*(false)` in `decode` does NOT
+        // control - those only govern whisper's transcript printing. Left
+        // alone it is 45 lines on model load and another 17 on EVERY decode,
+        // and the partial ticker decodes once a second, so a live meeting
+        // buries the terminal. This redirects that stream into `tracing`,
+        // where the subscriber's filter decides (see `yogurt-cli`'s default:
+        // `whisper_rs=warn`, so warnings and errors still surface and
+        // `RUST_LOG=whisper_rs=debug` brings the rest back).
+        //
+        // Must run before the first ggml call. `Once`-guarded inside
+        // whisper-rs, so calling it per load is free.
+        whisper_rs::install_logging_hooks();
         let ctx = WhisperContext::new_with_params(&path_str, WhisperContextParameters::default())
             .context("loading whisper model")?;
         Ok(Self {

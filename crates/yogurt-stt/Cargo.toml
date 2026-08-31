@@ -47,7 +47,12 @@ serde_json = { workspace = true }
 
 # Phase 8 (Plan 08-01) — gated behind `local-stt`. All four are
 # `optional = true` so the default build genuinely skips them.
-whisper-rs = { workspace = true, features = ["metal"], optional = true }
+# `tracing_backend` is what makes `install_logging_hooks()` (called in
+# `whisper_local::WhisperLocal::load`) route whisper.cpp and ggml's C-side
+# logs into `tracing` rather than swallowing them. Without it the hooks
+# still silence stderr, but the output is gone for good instead of being
+# reachable with `RUST_LOG=whisper_rs=debug`.
+whisper-rs = { workspace = true, features = ["metal", "tracing_backend"], optional = true }
 webrtc-vad = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }

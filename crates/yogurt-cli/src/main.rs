@@ -76,7 +76,17 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "yogurt=info,yogurt_server=info".into()),
+                // EnvFilter matches targets by prefix, so `yogurt=info` already
+                // covers `yogurt_server`, `yogurt_audio`, `yogurt_stt`, and every
+                // other `yogurt_*` crate - no per-crate directive needed.
+                //
+                // `whisper_rs=warn` covers the C-side logs that
+                // `install_logging_hooks()` redirects into `tracing`: ggml and
+                // whisper.cpp emit their backend/model banners at INFO on every
+                // decode, which is noise, but their warnings and errors are the
+                // only signal we get when a decode goes wrong. `RUST_LOG` still
+                // overrides all of this.
+                .unwrap_or_else(|_| "yogurt=info,whisper_rs=warn".into()),
         )
         .init();
 

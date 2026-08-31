@@ -400,7 +400,7 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                         }
                     };
                     if socket.send(Message::Text(frame.into())).await.is_err() {
-                        tracing::info!(meeting=%id, "ws/meetings: client disconnected");
+                        tracing::debug!(meeting=%id, "ws/meetings: client disconnected");
                         return;
                     }
                 }
@@ -409,7 +409,7 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    tracing::info!(meeting=%id, "ws/meetings: transcript stream ended");
+                    tracing::debug!(meeting=%id, "ws/meetings: transcript stream ended");
                     return;
                 }
             },
@@ -426,7 +426,7 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                         }
                     };
                     if socket.send(Message::Text(frame.into())).await.is_err() {
-                        tracing::info!(meeting=%id, "ws/meetings: client disconnected (events)");
+                        tracing::debug!(meeting=%id, "ws/meetings: client disconnected (events)");
                         return;
                     }
                 }
@@ -443,7 +443,7 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
             // Client → Server: drained so the WS stays healthy.
             msg = socket.recv() => match msg {
                 Some(Ok(Message::Close(_))) | None => {
-                    tracing::info!(meeting=%id, "ws/meetings: client closed");
+                    tracing::debug!(meeting=%id, "ws/meetings: client closed");
                     return;
                 }
                 Some(Ok(_)) => {

@@ -361,6 +361,12 @@ impl Registry {
         // select_stt probes the model file on disk (and may pay a
         // one-time legacy hash of a multi-GB file) - keep it off the
         // tokio workers.
+        // Two short strings for the meeting_started line below; the settings
+        // themselves move into the closure on the next line.
+        let (stt_provider, stt_model) = (
+            stt_settings.stt_provider.clone(),
+            stt_settings.stt_model.clone(),
+        );
         let stt_spec = tokio::task::spawn_blocking(move || select_stt(&stt_settings))
             .await
             .context("join select_stt")?
@@ -610,6 +616,13 @@ impl Registry {
         drop(task_slot);
         *m.capture_thread.lock().await = Some(capture_thread);
         *m.audio_cmd_tx.lock().await = Some(cmd_tx);
+        tracing::info!(
+            event = "meeting_started",
+            meeting_id = %id,
+            stt_provider = %stt_provider,
+            stt_model = %stt_model,
+            "meeting started"
+        );
         Ok(())
     }
 
@@ -690,6 +703,7 @@ impl Registry {
             }
         }
 
+        tracing::info!(event = "meeting_stopped", meeting_id = %id, "meeting stopped");
         Ok(())
     }
 
@@ -818,7 +832,7 @@ async fn relay_transcript_events(
                     continue;
                 }
                 if tx.send(ev).is_err() {
-                    tracing::info!("transcript relay: no receivers, terminating");
+                    tracing::debug!("transcript relay: no receivers, terminating");
                     return;
                 }
             }
@@ -1194,7 +1208,7 @@ pub(crate) async fn pump_audio_adapter(
                         ts_ms: frame.monotonic_micros / 1_000,
                     };
                     if audio_tx.send(chunk).is_err() {
-                        tracing::info!("audio adapter: no receivers, terminating");
+                        tracing::debug!("audio adapter: no receivers, terminating");
                         return;
                     }
                 }
@@ -1202,7 +1216,7 @@ pub(crate) async fn pump_audio_adapter(
                     tracing::warn!(n, "audio adapter: mic lagged");
                 }
                 Err(broadcast::error::RecvError::Closed) => {
-                    tracing::info!("audio adapter: mic stream closed — continuing with system only");
+                    tracing::debug!("audio adapter: mic stream closed — continuing with system only");
                     mic_open = false;
                 }
             },
@@ -1215,7 +1229,7 @@ pub(crate) async fn pump_audio_adapter(
                         ts_ms: frame.monotonic_micros / 1_000,
                     };
                     if audio_tx.send(chunk).is_err() {
-                        tracing::info!("audio adapter: no receivers, terminating");
+                        tracing::debug!("audio adapter: no receivers, terminating");
                         return;
                     }
                 }
@@ -1223,13 +1237,13 @@ pub(crate) async fn pump_audio_adapter(
                     tracing::warn!(n, "audio adapter: system lagged");
                 }
                 Err(broadcast::error::RecvError::Closed) => {
-                    tracing::info!("audio adapter: system stream closed — continuing with mic only");
+                    tracing::debug!("audio adapter: system stream closed — continuing with mic only");
                     sys_open = false;
                 }
             },
         }
     }
-    tracing::info!("audio adapter: both channels closed, terminating");
+    tracing::debug!("audio adapter: both channels closed, terminating");
 }
 
 fn now_ms() -> u64 {
