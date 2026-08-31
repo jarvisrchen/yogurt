@@ -152,6 +152,37 @@ async fn api_responses_never_include_the_raw_api_key() {
     let s = serde_json::to_string(&listed).unwrap();
     assert!(!s.contains("sk-supersecret-XYZA"), "raw key leaked in: {s}");
     assert!(s.contains("••••XYZA"), "masked key should be present: {s}");
+
+    // The Deepgram STT key travels a different path to a different field
+    // (`deepgram_key_masked` on `GET /api/settings`, no `providers` row),
+    // so it needs its own proof. Same rule: mask out, raw never.
+    let resp = client
+        .post(format!("{base}/api/settings/stt/key"))
+        .bearer_auth(&token)
+        .json(&json!({ "api_key": "dg-supersecret-WXYZ" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let general: Value = client
+        .get(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let s = serde_json::to_string(&general).unwrap();
+    assert!(
+        !s.contains("dg-supersecret-WXYZ"),
+        "raw STT key leaked in: {s}"
+    );
+    assert!(
+        s.contains("••••WXYZ"),
+        "masked STT key should be present: {s}"
+    );
 }
 
 #[tokio::test]
@@ -572,6 +603,34 @@ async fn list_models_without_any_key_probes_with_no_auth_header() {
     assert_eq!(resp.status(), 200);
     let models: Vec<String> = resp.json().await.unwrap();
     assert_eq!(models, vec!["llama3.2".to_string()]);
+}
+
+// ─── STT key test ────────────────────────────────────────────────────────────
+//
+// `POST /api/settings/stt/test` probes the real `api.deepgram.com`, so
+// unlike `test_provider` (which points at a `wiremock` server via the
+// provider's own `base_url`) there is no way to redirect the 2xx/401 paths
+// to a local mock without adding a mocking dependency this file doesn't
+// already use, or making the probe URL configurable (out of scope - see
+// the task contract). This test covers what's fully local: the
+// no-key-stored path and the route wiring.
+#[tokio::test]
+async fn test_stt_key_says_so_when_no_key_is_stored() {
+    let (_state, token, base) = boot().await;
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/settings/stt/test"))
+        .bearer_auth(&token)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let v: Value = resp.json().await.unwrap();
+    assert_eq!(v["ok"], false);
+    assert_eq!(
+        v["error"],
+        "No Deepgram key stored yet - paste one above, then test."
+    );
 }
 
 /// SECURITY: an upstream 401 must surface as our 502 (the provider is at

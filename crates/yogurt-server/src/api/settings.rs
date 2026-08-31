@@ -22,6 +22,7 @@
 //! | POST   | `/api/settings/providers/{id}/key`         | `set_provider_key`    |
 //! | POST   | `/api/settings/providers/{id}/test`        | `test_provider`       |
 //! | POST   | `/api/settings/providers/{id}/models`      | `list_provider_models`|
+//! | POST   | `/api/settings/stt/test`                   | `test_stt_key`        |
 //! | GET    | `/api/settings/presets`                    | `list_presets`        |
 //!
 //! ## axum 0.8 path syntax
@@ -67,6 +68,7 @@ pub fn router() -> Router<AppState> {
             post(list_provider_models),
         )
         .route("/api/settings/stt/key", post(set_stt_key))
+        .route("/api/settings/stt/test", post(test_stt_key))
         .route("/api/settings/presets", get(list_presets))
 }
 
@@ -322,6 +324,111 @@ async fn set_stt_key(
         .set(crate::meetings::DEEPGRAM_KEY_ID, key)
         .map_err(|e| Error::Internal(format!("key store set: {e}")))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Body for `POST /api/settings/stt/test`. Same shape as
+/// [`TestProviderBody`] - a present `api_key` tests that draft key
+/// without storing it; absent/null tests whatever is already under
+/// [`crate::meetings::DEEPGRAM_KEY_ID`] in the key store.
+#[derive(Deserialize)]
+struct TestSttBody {
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+/// Outcome of a live probe against Deepgram. No `model` field - STT has
+/// nothing to echo back, unlike [`TestProviderResult`]. `error` is
+/// `null` (not omitted) when `ok` is true, matching the fixed
+/// `{ok, error}` wire contract exactly.
+#[derive(Serialize)]
+struct TestSttResult {
+    ok: bool,
+    error: Option<String>,
+}
+
+/// `POST /api/settings/stt/test` - a cheap authenticated liveness check
+/// against Deepgram (`GET /v1/projects`), reporting whether the Deepgram
+/// STT key works. No audio, no transcription cost, and - unlike a real
+/// recording - no streaming websocket.
+///
+/// Mirrors `test_provider`'s semantics: a REJECTED key is still a
+/// successful request, so it's HTTP 200 with `ok: false`. Non-200 is
+/// reserved for "the test itself could not run" (there is none here -
+/// this endpoint takes no path param to get wrong - so in practice it's
+/// always 200).
+async fn test_stt_key(
+    State(s): State<AppState>,
+    Json(body): Json<TestSttBody>,
+) -> Result<Json<TestSttResult>, Error> {
+    let draft = body
+        .api_key
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty());
+    let key = match draft {
+        Some(k) => Some(k),
+        None => s
+            .keys
+            .get(crate::meetings::DEEPGRAM_KEY_ID)
+            .map_err(|e| Error::Internal(format!("key store read: {e}")))?,
+    };
+    let Some(key) = key else {
+        return Ok(Json(TestSttResult {
+            ok: false,
+            error: Some("No Deepgram key stored yet - paste one above, then test.".into()),
+        }));
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| Error::Internal(format!("http client build: {e}")))?;
+
+    let result = match client
+        .get("https://api.deepgram.com/v1/projects")
+        .header("Authorization", format!("Token {key}"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => TestSttResult {
+            ok: true,
+            error: None,
+        },
+        Ok(resp) => {
+            let status = resp.status();
+            // 401/403 bodies are never echoed verbatim: Deepgram's error
+            // JSON is not documented to quote the key back, but the
+            // `api_responses_never_include_the_raw_api_key` invariant is
+            // absolute, so auth failures get a canned message instead of
+            // upstream text.
+            let msg = if status.as_u16() == 401 || status.as_u16() == 403 {
+                "Deepgram rejected this key.".to_string()
+            } else {
+                // Scrub the key out of upstream text before it can reach a
+                // response body. Deepgram is not documented to quote the key
+                // back, but neither are the LLM providers, and they do it
+                // constantly - which is why `OpenAiCompatClient` scrubs on
+                // that path too. Cheaper to redact unconditionally than to
+                // trust an undocumented upstream with the one invariant
+                // `api_responses_never_include_the_raw_api_key` exists to
+                // protect.
+                let body = resp
+                    .text()
+                    .await
+                    .unwrap_or_default()
+                    .replace(&key, "<redacted>");
+                format!("Deepgram returned {status}: {body}")
+            };
+            TestSttResult {
+                ok: false,
+                error: Some(truncate(&msg, MAX_TEST_ERROR_LEN)),
+            }
+        }
+        Err(e) => TestSttResult {
+            ok: false,
+            error: Some(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)),
+        },
+    };
+    Ok(Json(result))
 }
 
 async fn set_provider_key(
