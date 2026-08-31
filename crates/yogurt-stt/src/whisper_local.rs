@@ -400,7 +400,10 @@ impl Stt for WhisperLocal {
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!(?n, "whisper_local audio rx lagged; dropping");
+                    // CLI-2: debug for the same reason as the audio adapter's
+                    // lag in `meetings.rs` - a model-load-time burst, not an
+                    // actionable warning.
+                    tracing::debug!(?n, "whisper_local audio rx lagged; dropping");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
