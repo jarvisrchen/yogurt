@@ -855,3 +855,50 @@ async fn tests_a_cli_provider_without_ever_asking_for_a_key() {
             .contains("claude")),
     }
 }
+
+/// `POST .../test` on a `cli` provider with a `cli_model` override echoes
+/// it back in the verdict's `model` field, so the Settings UI's "answered
+/// as …" text names the specific model that was actually exercised - not
+/// just the CLI program - which is the whole point of letting the user
+/// pin one in the first place.
+#[tokio::test]
+async fn tests_a_cli_provider_echoing_the_model_override_it_was_tested_with() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "Claude Code (local CLI)",
+            "base_url": "",
+            "model": "claude",
+            "adapter": "cli",
+            "cli_model": "haiku"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap();
+
+    let res: Value = client
+        .post(format!("{base}/api/settings/providers/{id}/test"))
+        .bearer_auth(&token)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    match res["ok"].as_bool().unwrap() {
+        true => assert_eq!(res["model"], "cli:claude:haiku"),
+        false => assert!(res["error"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("claude")),
+    }
+}

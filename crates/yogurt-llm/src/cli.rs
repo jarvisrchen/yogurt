@@ -206,8 +206,17 @@ impl CliClient {
 
 #[async_trait]
 impl LlmClient for CliClient {
+    /// `"cli:claude"`, or `"cli:claude:haiku"` when a `--model` override is
+    /// set. The suffix matters here specifically because `test_provider`'s
+    /// cli branch echoes this straight back as the Settings `Test`
+    /// button's verdict ("answered as …") - without it, testing a
+    /// `haiku`-pinned row and a default-model row look identical, and the
+    /// user has no way to tell the override was actually exercised.
     fn model_name(&self) -> String {
-        format!("cli:{}", self.program.binary_name())
+        match &self.model {
+            Some(model) => format!("cli:{}:{model}", self.program.binary_name()),
+            None => format!("cli:{}", self.program.binary_name()),
+        }
     }
 
     async fn complete(&self, req: ChatRequest) -> Result<ChatResponse> {
@@ -407,6 +416,16 @@ mod tests {
             model: None,
         };
         assert_eq!(claude.model_name(), "cli:claude");
+    }
+
+    #[test]
+    fn model_name_includes_the_model_override_when_set() {
+        let claude = CliClient {
+            binary: PathBuf::from("claude"),
+            program: CliProgram::Claude,
+            model: Some("haiku".to_string()),
+        };
+        assert_eq!(claude.model_name(), "cli:claude:haiku");
     }
 
     // ── interpret_output ────────────────────────────────────────────────
