@@ -2,8 +2,9 @@
 # yogurt run-backend — start the Rust binary in dev mode.
 #
 # Pair this with ./scripts/run-frontend.sh in a second terminal.
-# Backend proxies non-API requests to Vite on :5173, so the frontend
-# script must also be running for the browser to render anything.
+# Backend proxies non-API requests to Vite (default :5173, override with
+# YOGURT_VITE_PORT or YOGURT_VITE_BASE), so the frontend script must also
+# be running for the browser to render anything.
 #
 # Usage:
 #   ./scripts/run-backend.sh                # debug build at http://localhost:7878
@@ -70,8 +71,16 @@ fi
 
 PORT=$(ensure_port_free "backend" "$PORT") || exit 1
 
+# Where the dev proxy sends non-API requests. `YOGURT_VITE_BASE` is what the
+# binary actually reads (dev_proxy.rs); `YOGURT_VITE_PORT` is the knob
+# `just dev` and run-frontend.sh share, so honour it when the base is unset.
+if [ -z "${YOGURT_VITE_BASE:-}" ] && [ -n "${YOGURT_VITE_PORT:-}" ]; then
+  export YOGURT_VITE_BASE="http://127.0.0.1:$YOGURT_VITE_PORT"
+fi
+VITE_BASE="${YOGURT_VITE_BASE:-http://127.0.0.1:5173}"
+
 bold "Starting yogurt backend (dev mode) at http://localhost:$PORT"
-dim "  Non-API requests proxy to Vite on :5173 — run ./scripts/run-frontend.sh in another terminal."
+dim "  Non-API requests proxy to Vite at $VITE_BASE — run ./scripts/run-frontend.sh in another terminal."
 dim "  Ctrl-C to stop."
 echo
 

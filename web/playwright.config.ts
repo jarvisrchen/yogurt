@@ -12,6 +12,14 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Run: `pnpm e2e` (or `just test-e2e`). The config starts Vite itself.
  */
+/**
+ * The E2E suite gets its own Vite port, away from the dev range `just dev`
+ * hands out. `reuseExistingServer` is on locally, so sharing :5173 meant a
+ * run could silently exercise whatever worktree happened to be serving
+ * there - a green suite against someone else's code.
+ */
+const E2E_PORT = 5199;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -19,7 +27,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "list" : [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: `http://127.0.0.1:${E2E_PORT}`,
     trace: "on-first-retry",
   },
   projects: [
@@ -30,7 +38,8 @@ export default defineConfig({
     // which the 127.0.0.1 health check below can't reach (matches
     // scripts/run-frontend.sh).
     command: "pnpm dev --host 127.0.0.1",
-    url: "http://127.0.0.1:5173",
+    url: `http://127.0.0.1:${E2E_PORT}`,
+    env: { YOGURT_VITE_PORT: String(E2E_PORT) },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

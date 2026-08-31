@@ -294,17 +294,40 @@ async fn handle_socket(
     }
 }
 
+/// Vite's dev port, for the origin allowlist below. Defaults to 5173 and
+/// follows `YOGURT_VITE_PORT` / `YOGURT_VITE_BASE` so a second worktree,
+/// which `just dev` puts on a different pair, is allowed too.
+fn vite_dev_port() -> u16 {
+    vite_port_from(
+        std::env::var("YOGURT_VITE_PORT").ok(),
+        std::env::var("YOGURT_VITE_BASE").ok(),
+    )
+}
+
+/// The env-reading half of `vite_dev_port`, split out so it is testable
+/// without mutating process-global env.
+fn vite_port_from(port_var: Option<String>, base_var: Option<String>) -> u16 {
+    const DEFAULT: u16 = 5173;
+    if let Some(p) = port_var.and_then(|p| p.trim().parse().ok()) {
+        return p;
+    }
+    base_var
+        .and_then(|base| base.trim_end_matches('/').rsplit(':').next()?.parse().ok())
+        .unwrap_or(DEFAULT)
+}
+
 fn allowed_origins(port: u16, mode: crate::Mode) -> HashSet<String> {
     let mut set = HashSet::new();
     set.insert(format!("http://localhost:{port}"));
     set.insert(format!("http://127.0.0.1:{port}"));
-    // Dev mode: the SPA may be served straight from Vite on :5173 (its
-    // proxy forwards /ws to us but keeps the page's Origin header), so
-    // that origin is legitimate. Release builds serve embedded assets
-    // from our own port only - no extra origins there.
+    // Dev mode: the SPA may be served straight from Vite (its proxy
+    // forwards /ws to us but keeps the page's Origin header), so that
+    // origin is legitimate. Release builds serve embedded assets from our
+    // own port only - no extra origins there.
     if mode == crate::Mode::Dev {
-        set.insert("http://localhost:5173".to_string());
-        set.insert("http://127.0.0.1:5173".to_string());
+        let vite = vite_dev_port();
+        set.insert(format!("http://localhost:{vite}"));
+        set.insert(format!("http://127.0.0.1:{vite}"));
     }
     set
 }
@@ -478,6 +501,33 @@ mod tests {
         assert!(release.contains("http://localhost:7878"));
         assert!(!release.contains("http://localhost:5173"));
         assert!(!release.contains("http://127.0.0.1:5173"));
+    }
+
+    /// CLI-3: `just dev` moves both ports when :5173 / :7878 are busy (a
+    /// second worktree), so the dev allowlist has to follow Vite rather
+    /// than assume 5173.
+    #[test]
+    fn vite_port_follows_env_then_falls_back() {
+        // Neither set: the historical default.
+        assert_eq!(vite_port_from(None, None), 5173);
+        // The explicit knob wins over the base URL.
+        assert_eq!(
+            vite_port_from(Some("5273".into()), Some("http://127.0.0.1:5999".into())),
+            5273
+        );
+        // Base URL alone, with and without a trailing slash.
+        assert_eq!(
+            vite_port_from(None, Some("http://127.0.0.1:5273".into())),
+            5273
+        );
+        assert_eq!(
+            vite_port_from(None, Some("http://127.0.0.1:5273/".into())),
+            5273
+        );
+        // Garbage in either falls back rather than panicking or
+        // misparsing the host as a port.
+        assert_eq!(vite_port_from(Some("nope".into()), None), 5173);
+        assert_eq!(vite_port_from(None, Some("http://127.0.0.1".into())), 5173);
     }
 
     /// Phase 8 (Plan 08-03) wire-shape gate: the browser-side
