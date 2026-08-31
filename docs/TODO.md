@@ -391,6 +391,32 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### CLI
 
+- [x] **CLI-2** Audio lag warnings spam the terminal on a normal meeting; move them behind `RUST_LOG`
+  <details>
+  <summary>Details</summary>
+
+  Left open by CLI-1, which kept them at `warn!` on the theory that dropped audio is signal. In practice every meeting opens with a burst of them and there is nothing to act on:
+
+  ```
+  WARN whisper_rs::ggml_logging_hook: ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+  WARN yogurt_server::meetings: audio adapter: system lagged n=220
+  WARN yogurt_server::meetings: audio adapter: mic lagged n=218
+  WARN yogurt_stt::whisper_local: whisper_local audio rx lagged; dropping n=131
+  ... 10 more in the same millisecond
+  ```
+
+  All of it lands in one burst while the STT engine loads its model and the ring buffers catch up, then nothing for the rest of the meeting.
+
+  Two changes:
+
+  1. The three lag sites (`audio adapter: mic lagged`, `audio adapter: system lagged`, `whisper_local audio rx lagged`) are `debug!` now, so `RUST_LOG=yogurt=debug` still gets them. The transcript relay and persistence lag warnings keep their level - those are dropped *transcript*, not dropped audio frames, and they do not fire routinely.
+  2. Default filter is `yogurt=info,whisper_rs=error` (was `whisper_rs=warn`). The only whisper WARN that ever shows is ggml's `tensor API disabled for pre-M5 and pre-A19 devices`, a hardware-capability note on every model load. Decode failures are ERROR and still surface, plus the UI's `stt_error` banner.
+
+  Verified against a real local-STT meeting (`large-v3-turbo`, mic + system capture, 6 transcript segments): start, record, stop is 6 lines and 0 warnings. The burst itself is load-dependent and did not recur in the verification run (warm model), so what the run proves is the level swap and a quiet terminal, not the burst being caught in the act.
+
+  If lag ever turns sustained rather than a startup artifact, the fix is a periodic count, not a line per event - noted at the call site.
+  </details>
+
 - [x] **CLI-1** Quiet the terminal during a live meeting; keep lifecycle lines and errors, drop the rest
   <details>
   <summary>Details</summary>
