@@ -10,8 +10,24 @@
 //! - [`from_active_provider`] — the production path: active provider row
 //!   from the `providers` table + its API key from the file-backed
 //!   [`yogurt_db::keys::ApiKeyStore`].
+//!
+//! [`resolve`] also wraps an active provider's client in
+//! [`CliFallbackClient`] (LLM-1) when a local agent CLI is on `$PATH`: a
+//! connect-class failure reaching the configured provider's `base_url`
+//! retries once through the CLI instead of failing the request. This
+//! applies only when a provider is actually configured - deliberately not
+//! when none is, so `MockLlm` stays the deterministic, free, no-subprocess
+//! path for first-run users and (just as importantly) for tests. An
+//! earlier draft preferred the CLI over `MockLlm` whenever nothing was
+//! configured; on a machine with `claude` on `$PATH` that made
+//! `cargo test --workspace` silently shell out to the real CLI and spend
+//! real API credits instead of getting deterministic mock output.
 
+use std::sync::Arc;
 use std::time::Duration;
+
+use futures_util::stream::BoxStream;
+use yogurt_llm::{ChatChunk, ChatRequest, ChatResponse, LlmClient};
 
 // Re-export the canonical adapter from `yogurt-llm`.
 pub use yogurt_llm::OpenAiCompatClient;
@@ -31,10 +47,14 @@ pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 /// Priority chain:
 ///   1. `state.llm_override` — test injection, never set in production.
 ///   2. `YOGURT_LLM_*` env vars — developer override.
-///   3. Active provider row + stored key. A configured provider whose
-///      key can't be read is a hard `Err` — never a silent mock fallback.
+///   3. Active provider row + stored key, wrapped in [`CliFallbackClient`]
+///      when a local agent CLI is on `$PATH` (LLM-1). A configured
+///      provider whose key can't be read is still a hard `Err` — that's a
+///      config problem, not an unreachable-endpoint problem, so the CLI
+///      fallback does not apply to it.
 ///   4. `MockLlm` when nothing is configured at all (logged as a warn) so
-///      first-run users still see the hero flow work.
+///      first-run users still see the hero flow work. Deliberately not the
+///      CLI fallback here — see the module doc.
 pub async fn resolve(
     state: &crate::state::AppState,
 ) -> anyhow::Result<std::sync::Arc<dyn yogurt_llm::LlmClient>> {
@@ -45,10 +65,93 @@ pub async fn resolve(
         return Ok(std::sync::Arc::new(c));
     }
     match from_active_provider(&state.db, state.keys.clone()).await? {
-        Some(c) => Ok(std::sync::Arc::new(c)),
+        Some(c) => {
+            let primary: Arc<dyn LlmClient> = Arc::new(c);
+            match yogurt_llm::CliClient::discover() {
+                Some(cli) => Ok(Arc::new(CliFallbackClient {
+                    primary,
+                    cli: Arc::new(cli),
+                })),
+                None => Ok(primary),
+            }
+        }
         None => {
             tracing::warn!("no LLM provider configured; falling back to MockLlm");
-            Ok(std::sync::Arc::new(crate::llm_mock::MockLlm))
+            Ok(Arc::new(crate::llm_mock::MockLlm))
+        }
+    }
+}
+
+/// Wraps the configured provider client with the local agent CLI as a
+/// fallback (LLM-1): when the configured `base_url` can't be reached at
+/// all — corporate egress blocking it is the motivating case, not an auth
+/// or rate-limit error — retry once through whichever CLI
+/// [`yogurt_llm::CliClient::discover`] found on `$PATH`.
+///
+/// Only a *connect*-class failure triggers the fallback. Anything else
+/// (401, 429, a malformed response) is a configuration problem the CLI
+/// can't fix, so it surfaces exactly as it does today.
+///
+/// `model_name()` always reports the configured provider's model, even on
+/// a call that actually fell back — `meetings.llm_model` is already a
+/// best-effort cost-attribution stamp (see `ChatResponse::model`'s doc
+/// comment on providers renaming themselves in responses), and the
+/// `tracing::warn!` at the fallback site is the source of truth for what
+/// actually answered. Threading the real model back into that stamp would
+/// mean querying `model_name()` only after a stream opens instead of
+/// before, in both `enhance.rs` and `chat.rs` — not done here (ponytail:
+/// deferred; revisit if provenance-on-fallback turns out to matter).
+struct CliFallbackClient {
+    primary: Arc<dyn LlmClient>,
+    cli: Arc<dyn LlmClient>,
+}
+
+impl CliFallbackClient {
+    fn is_connect_failure(err: &anyhow::Error) -> bool {
+        err.downcast_ref::<reqwest::Error>()
+            .map(|e| e.is_connect() || e.is_timeout())
+            .unwrap_or(false)
+    }
+
+    fn log_fallback(&self, error: &anyhow::Error) {
+        tracing::warn!(
+            event = "llm_cli_fallback_used",
+            primary_model = %self.primary.model_name(),
+            cli_model = %self.cli.model_name(),
+            error = %error,
+            "primary LLM provider unreachable, falling back to local agent CLI"
+        );
+    }
+}
+
+#[async_trait::async_trait]
+impl LlmClient for CliFallbackClient {
+    fn model_name(&self) -> String {
+        self.primary.model_name()
+    }
+
+    async fn complete(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
+        match self.primary.complete(req.clone()).await {
+            Ok(resp) => Ok(resp),
+            Err(e) if Self::is_connect_failure(&e) => {
+                self.log_fallback(&e);
+                self.cli.complete(req).await
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn stream(
+        &self,
+        req: ChatRequest,
+    ) -> anyhow::Result<BoxStream<'static, anyhow::Result<ChatChunk>>> {
+        match self.primary.stream(req.clone()).await {
+            Ok(s) => Ok(s),
+            Err(e) if Self::is_connect_failure(&e) => {
+                self.log_fallback(&e);
+                self.cli.stream(req).await
+            }
+            Err(e) => Err(e),
         }
     }
 }
@@ -155,5 +258,153 @@ mod tests {
         // T-x3u-01: message must never contain a key value; here just assert
         // it points the user at re-entering the key.
         assert!(msg.to_lowercase().contains("key"), "actionable msg: {msg}");
+    }
+
+    // ── CliFallbackClient ───────────────────────────────────────────────
+
+    use futures_util::stream::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    enum FakeOutcome {
+        Ok(&'static str),
+        ConnectErr,
+        OtherErr,
+    }
+
+    struct FakeClient {
+        name: &'static str,
+        outcome: FakeOutcome,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmClient for FakeClient {
+        fn model_name(&self) -> String {
+            self.name.to_string()
+        }
+
+        async fn complete(&self, _req: ChatRequest) -> anyhow::Result<ChatResponse> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match self.outcome {
+                FakeOutcome::Ok(content) => Ok(ChatResponse {
+                    content: content.to_string(),
+                    model: self.name.to_string(),
+                }),
+                FakeOutcome::ConnectErr => Err(connect_refused_error().await),
+                FakeOutcome::OtherErr => Err(anyhow::anyhow!("401 unauthorized")),
+            }
+        }
+
+        async fn stream(
+            &self,
+            req: ChatRequest,
+        ) -> anyhow::Result<BoxStream<'static, anyhow::Result<ChatChunk>>> {
+            let resp = self.complete(req).await?;
+            Ok(futures_util::stream::iter(vec![Ok(ChatChunk {
+                delta: resp.content,
+                done: true,
+            })])
+            .boxed())
+        }
+    }
+
+    /// A real `reqwest::Error` with `is_connect() == true`: bind an
+    /// ephemeral port, drop the listener so nothing answers on it, then
+    /// try to connect. Deterministic connection-refused, no reliance on
+    /// an unowned port number or DNS behavior.
+    async fn connect_refused_error() -> anyhow::Error {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let err = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .expect_err("nothing should be listening on a just-dropped port");
+        assert!(err.is_connect(), "expected a connect error, got: {err:?}");
+        anyhow::Error::from(err)
+    }
+
+    #[tokio::test]
+    async fn fallback_triggers_on_connect_failure() {
+        let primary = Arc::new(FakeClient {
+            name: "primary",
+            outcome: FakeOutcome::ConnectErr,
+            calls: AtomicUsize::new(0),
+        });
+        let cli = Arc::new(FakeClient {
+            name: "cli",
+            outcome: FakeOutcome::Ok("cli answer"),
+            calls: AtomicUsize::new(0),
+        });
+        let wrapper = CliFallbackClient {
+            primary: primary.clone(),
+            cli: cli.clone(),
+        };
+
+        let resp = wrapper
+            .complete(ChatRequest {
+                messages: vec![],
+                stream: false,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(resp.content, "cli answer");
+        assert_eq!(cli.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn non_connect_failure_does_not_fall_back() {
+        let primary = Arc::new(FakeClient {
+            name: "primary",
+            outcome: FakeOutcome::OtherErr,
+            calls: AtomicUsize::new(0),
+        });
+        let cli = Arc::new(FakeClient {
+            name: "cli",
+            outcome: FakeOutcome::Ok("cli answer"),
+            calls: AtomicUsize::new(0),
+        });
+        let wrapper = CliFallbackClient {
+            primary: primary.clone(),
+            cli: cli.clone(),
+        };
+
+        let err = wrapper
+            .complete(ChatRequest {
+                messages: vec![],
+                stream: false,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("401"));
+        assert_eq!(cli.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn model_name_reports_primary_even_after_a_fallback_call() {
+        let primary = Arc::new(FakeClient {
+            name: "primary-model",
+            outcome: FakeOutcome::ConnectErr,
+            calls: AtomicUsize::new(0),
+        });
+        let cli = Arc::new(FakeClient {
+            name: "cli-model",
+            outcome: FakeOutcome::Ok("cli answer"),
+            calls: AtomicUsize::new(0),
+        });
+        let wrapper = CliFallbackClient { primary, cli };
+
+        let _ = wrapper
+            .complete(ChatRequest {
+                messages: vec![],
+                stream: false,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(wrapper.model_name(), "primary-model");
     }
 }

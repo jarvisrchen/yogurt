@@ -18,10 +18,12 @@
 //! - **D-03:** Tested via `wiremock` against an in-memory HTTP server
 //!   (see `tests/mock_server.rs` and `tests/streaming.rs`).
 
+mod cli;
 mod streaming;
 mod thinking;
 mod types;
 
+pub use cli::CliClient;
 pub use thinking::strip_thinking;
 pub use types::{ChatChunk, ChatMessage, ChatRequest, ChatResponse};
 

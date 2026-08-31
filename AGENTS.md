@@ -10,7 +10,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 
 - Audio never leaves the machine unless the user opted into cloud STT - and then only audio, never notes. Captured audio is deleted after transcription.
 - API keys live only in `~/.yogurt/keys.json` (mode 0600, `FileKeyStore`) - never in SQLite, never in a response body, never logged.
-- One process: no subprocesses, no IPC, no sidecars. The binary embeds `web/dist` (rust-embed) and bundles SQLite (rusqlite `bundled`).
+- One process: no subprocesses, no IPC, no sidecars. The binary embeds `web/dist` (rust-embed) and bundles SQLite (rusqlite `bundled`). Single scoped exception (LLM-1): `yogurt-llm::CliClient` spawns a locally-installed agent CLI (`claude -p`, `cursor-agent -p`) as an LLM fallback when the configured provider's `base_url` is unreachable. It is opt-in by construction - only reached when a provider is already configured and a supported CLI happens to be on `$PATH` - locked down (`--restricted --strict-mcp-config --disable-slash-commands` for `claude`, an isolated scratch cwd) since it feeds untrusted meeting-transcript text to it, and it never fires when no provider is configured (`MockLlm` still owns that path, so tests stay deterministic and free). Do not generalize this into a pattern for other subprocesses without revisiting this constraint again.
 - Zero telemetry of any kind.
 - macOS 13+ only (ScreenCaptureKit).
 - MIT licensed; keep dependencies MIT-compatible.

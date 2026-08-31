@@ -56,7 +56,7 @@ Supporting cast, in rough order of how often they appear:
 
 ## 1. High-level map
 
-One Rust process. No sidecars, no IPC, no subprocesses.
+One Rust process. No sidecars, no IPC, no subprocesses - with one narrow, opt-in exception: `yogurt-llm::CliClient` (LLM-1) can spawn a locally-installed agent CLI as an LLM fallback. See [§7.6](#76-the-cli-fallback-exception-llm-1).
 If any acronym below is unfamiliar, [section 0](#0-glossary) defines them.
 The browser is a dumb-ish render surface: it holds the editor buffer and nothing else authoritative.
 
@@ -133,7 +133,7 @@ Crate responsibilities, one line each:
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
 | `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. |
 | `yogurt-prompts` | Embedded prompt templates and their render context. |
-| `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming. |
+| `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming, and the local agent-CLI fallback (§7.6). |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
 
 ### The one format contract that everything downstream depends on
@@ -534,6 +534,28 @@ Greedy decoding on a 5 s window cannot match a cloud model with a full acoustic 
 What you get in exchange is that no audio and no notes ever leave the machine, and the meeting costs nothing.
 That is a real tradeoff presented as one, not a feature-parity claim.
 
+### 7.6 The CLI fallback exception (LLM-1)
+
+`yogurt-llm::CliClient` is the one place this app spawns a subprocess, and it exists for a narrower problem than "local mode": a configured cloud provider whose `base_url` corporate egress blocks, on a machine where the agent CLI's own traffic is still allowed. Ollama/LM Studio (§7.4) already give true offline for free; this is not that.
+
+```mermaid
+graph LR
+    ENH2["enhance / chat handler"] --> RES["llm_openai::resolve"]
+    RES --> PRIM["Active provider<br/>OpenAiCompatClient"]
+    PRIM -.->|"connect-class failure only"| FB["CliFallbackClient"]
+    FB -.-> CLI["yogurt_llm::CliClient<br/>claude -p / cursor-agent -p<br/>--output-format json"]
+    CLI -.->|"spawns, scratch cwd,<br/>--restricted for claude"| BIN["local claude / cursor-agent binary"]
+```
+
+Mechanics:
+
+- `resolve` only wraps the client this way when a provider **is** configured *and* `CliClient::discover` finds `claude` or `cursor-agent` on `$PATH`. No provider configured still resolves straight to `MockLlm` - deterministic, free, and what the test suite depends on. An earlier draft preferred the CLI here too; on a dev machine with `claude` on `$PATH` that made `cargo test` silently shell out to the real CLI and spend real API credits, which is why the line is drawn where it is now.
+- The fallback triggers only on a *connect*-class failure (`reqwest::Error::is_connect`/`is_timeout`) opening the request - not on a 401, 429, or malformed response, which the CLI can't fix anyway and which should keep failing exactly as they do today.
+- Each call is a fresh process; there is no session to resume, so the full message history is flattened into one `-p` prompt argument the same way `OpenAiCompatClient` re-sends the full history over HTTP.
+- Meeting-transcript text is untrusted - it is whatever the other party on the call said - and it reaches the CLI as plain prompt text, not through a reviewed tool-use loop. `claude` runs with `--restricted --strict-mcp-config --disable-slash-commands` and a throwaway scratch `cwd` so a transcript that reads like an instruction can't do anything but produce text. `cursor-agent`'s equivalent flags are unverified against a live binary, so only `-p --output-format json` is applied there.
+- `v1` scope: no `stream-json` parsing. `CliClient::stream` buffers the one-shot result into a single delta, the same pattern `MockLlm::stream` already uses.
+- `meetings.llm_model` still names the *configured* provider's model on a call that actually fell back - it's already a best-effort cost-attribution stamp, not a hard guarantee (§10 notes providers renaming themselves in responses too). A `tracing::warn!(event = "llm_cli_fallback_used", ...)` at the fallback site is the source of truth for what actually answered a given request.
+
 ## 8. Where state lives
 
 ```mermaid
@@ -761,7 +783,7 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 Captured audio is deleted after transcription.
 API keys live only in `~/.yogurt/keys.json` (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
-No subprocesses, no IPC, no sidecar binaries.
+No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-1, 2026-08-30): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM fallback when the configured provider is unreachable. See [§7.6](#76-the-cli-fallback-exception-llm-1) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
 - **Platform:** macOS 13+ only - ScreenCaptureKit is the audio-loopback mechanism and sets the floor.
 - **Distribution:** a single static binary; `web/dist` is embedded via `rust-embed`, SQLite is bundled via `rusqlite`.
@@ -779,6 +801,8 @@ No subprocesses, no IPC, no sidecar binaries.
 | WhisperKit / CoreML / ANE | Pulls in a Swift toolchain and a model-conversion step | `whisper-rs` with the `metal` feature (GPU is fast enough on Apple Silicon) |
 | Per-provider LLM SDKs | One OpenAI-compatible client covers OpenAI, Ollama, LM Studio, OpenRouter, Groq, vLLM, MiniMax, and friends | `async-openai` with a configurable `base_url` |
 | macOS Keychain for API keys (`keyring` crate, used until 2026-08-29) | Keychain ACLs are bound to the binary's code signature, so every unsigned dev rebuild re-prompted once per stored key; a prompt nobody could answer wedged boot for 30+ minutes and forced 5s/10s/20s timeout scaffolding around every key read; and a machine where the user cannot write to Keychain could not run yogurt at all | `FileKeyStore` over `~/.yogurt/keys.json`: same posture as `~/.aws/credentials`, encrypted at rest by FileVault, no consent dialogs, works everywhere the data directory does |
+| Agent CLI as another `providers` row (LLM-1, 2026-08-30) | Agent CLIs speak stdin/stdout, not `{base_url}/chat/completions`; forcing one into the HTTP-shaped `providers` table would mean faking a `base_url` and lying about the wire protocol | A separate `LlmClient` impl (`yogurt_llm::CliClient`), wrapped around the resolved provider client only at call time (§7.6) |
+| Agent CLI preferred over `MockLlm` when no provider is configured at all (LLM-1, tried 2026-08-30) | On a dev machine with `claude` on `$PATH`, `resolve()` picked it over `MockLlm` even with nothing configured, so `cargo test --workspace` silently shelled out to the real CLI and spent real API credits instead of getting deterministic mock output | CLI fallback only wraps an *already-configured* provider (§7.6); `MockLlm` still owns the nothing-configured path |
 
 ### Load-bearing seams
 
