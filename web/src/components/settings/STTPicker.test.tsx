@@ -33,6 +33,7 @@ const settingsApiMock = vi.hoisted(() => ({
   get: vi.fn(),
   patch: vi.fn(),
   setSttKey: vi.fn(),
+  testSttKey: vi.fn(),
 }));
 
 vi.mock("../../lib/api/settings", () => ({
@@ -84,6 +85,7 @@ describe("STTPicker — Cloud card", () => {
     vi.clearAllMocks();
     settingsApiMock.get.mockResolvedValue(fixture());
     settingsApiMock.setSttKey.mockResolvedValue(undefined);
+    settingsApiMock.testSttKey.mockResolvedValue({ ok: true });
   });
 
   it("does not render the fake AssemblyAI/Groq pills", async () => {
@@ -150,5 +152,41 @@ describe("STTPicker — Cloud card", () => {
     });
     // The raw status-code-prefixed JSON blob must not leak into the UI.
     expect(screen.queryByText(/422 unprocessable/i)).not.toBeInTheDocument();
+  });
+
+  it("tests the stored key via settingsApi.testSttKey when the draft is empty", async () => {
+    settingsApiMock.get.mockResolvedValue(
+      fixture({ deepgram_key_masked: "••••ABCD" }),
+    );
+    renderPicker();
+    await waitFor(() => screen.getByText("••••ABCD"));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /test connection for deepgram/i }),
+    );
+
+    await waitFor(() => {
+      expect(settingsApiMock.testSttKey).toHaveBeenCalledWith(undefined);
+    });
+    expect(await screen.findByText(/✓ connection works/i)).toBeInTheDocument();
+  });
+
+  it("hides the verdict once the draft no longer matches what was tested", async () => {
+    settingsApiMock.get.mockResolvedValue(
+      fixture({ deepgram_key_masked: "••••ABCD" }),
+    );
+    renderPicker();
+    await waitFor(() => screen.getByText("••••ABCD"));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /test connection for deepgram/i }),
+    );
+    expect(await screen.findByText(/✓ connection works/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/paste key…/i), {
+      target: { value: "dg-new-draft" },
+    });
+
+    expect(screen.queryByText(/✓ connection works/i)).not.toBeInTheDocument();
   });
 });
