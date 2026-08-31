@@ -35,6 +35,7 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - `docs/MODEL-EVAL.md` covers A/B-ing STT engines and LLMs: `scripts/eval/` plays a fixed scripted conversation into a recording and grades two resulting summaries with headless Claude.
 - `docs/RELEASING.md` is the release runbook: what the tagged-push pipeline does, the one-time prerequisites, and a log of each release.
 - `.claude/skills/release/SKILL.md` is the same process as an executable checklist; invoke the `release` skill rather than improvising a release.
+- `docs/TODO.md` is the backlog. Every item has a ticket ID (`UI-1`, `MTG-3`, `AUD-2`, ...); reference it in commits and PR titles, and follow the allocation rule at the top of that file when adding one.
 - `docs/.planning/` is where active GSD planning for the next milestone goes.
 - When a doc, plan, or Lavish surface is no longer relevant, move it into the mirrored `docs/archive/` tree (`archive/.lavish/`, `archive/.planning/v1/`, `archive/PRD.md`, ...) - archive, never delete.
 - Everything under `docs/` is tracked in git, including `.lavish/`.
