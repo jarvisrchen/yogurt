@@ -205,25 +205,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## CLI
 
-- [ ] **CLI-1** Quiet the terminal during a live meeting; keep lifecycle lines and errors, drop the rest
-  <details>
-  <summary>Details</summary>
-
-  `yogurt start` should read as a status line, not a firehose. The wanted set is roughly: server up and its URL, meeting started, meeting stopped, enhance started and finished, and anything that actually went wrong. Everything else belongs behind `RUST_LOG`.
-
-  **First step is to capture the real output**, because the tracing config alone does not explain the volume and the fix depends on which source is loudest. Run a meeting with `yogurt start 2>&1 | tee /tmp/yogurt-noise.log`, then `sort | uniq -c | sort -rn` it and attach the top offenders here. What is already known:
-
-  - There is no `TraceLayer`, so HTTP requests are not logged. The frontend's 5 s `/api/meetings/active` poll is not the source.
-  - The whole workspace has ~30 `info!` call sites (16 in `yogurt-server`, 7 in `yogurt-stt`, 6 in `yogurt-audio`, 1 in `yogurt-cli`), and none is per-frame or per-transcript-event. Pure `info!` volume should be low.
-  - Prime suspect is therefore **not tracing at all**: whisper.cpp, ggml, and the Metal backend write straight to stderr through ggml's own log callback, which neither `EnvFilter` nor the `params.set_print_*(false)` calls at `crates/yogurt-stt/src/whisper_local.rs:148` control. `whisper_rs::install_logging_hooks()` redirects that stream into `tracing`, and it is never called anywhere in the workspace. If the noise is local-STT-only, this is almost certainly it, and installing the hook is the whole fix.
-  - Second suspect, if the noise scales with how badly whisper is keeping up: `tracing::warn!(?n, "whisper_local audio rx lagged; dropping")` (`crates/yogurt-stt/src/whisper_local.rs:390`) has no rate limit, and the 1 s partial ticker competing with segment decodes gives it plenty of chances to fire. Same shape for `deepgram pump: audio receiver lagged` (`crates/yogurt-stt/src/deepgram.rs:110`). These are worth keeping but want collapsing - count them and emit once per N seconds rather than once per occurrence.
-
-  While in here, the default filter is `"yogurt=info,yogurt_server=info"` (`crates/yogurt-cli/src/main.rs:79`). `EnvFilter` matches targets by plain `starts_with` (tracing-subscriber 0.3.23, `filter/env/directive.rs:246`), so `yogurt=info` already covers `yogurt_server`, `yogurt_audio`, `yogurt_stt`, and every other `yogurt_*` crate. The second half is redundant and reads as if it were doing something. Drop it, or replace both with per-crate levels once the noisy targets are known.
-
-  Careful not to overshoot: the point is a quiet terminal that still proves the thing is working, so lifecycle lines stay at `info!` and everything currently at `warn!`/`error!` keeps its level. Demote to `debug!` rather than delete, so `RUST_LOG=yogurt=debug` still gets you the detail when something needs diagnosing.
-  </details>
-
-
 ## DONE
 
 Closed-out work, kept here for context. Move a `- [x]` item here when the work lands.
@@ -404,6 +385,31 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Done 2026-08-29.
   Backend: the existing `DELETE /api/stt/models/{name}` now 409s when the model is the active local one, does the fs work on the blocking pool, and returns `200 {freed_bytes}` (idempotent, 0 if already gone).
   Frontend: trash icon next to every downloaded, non-active pill in `ModelPicker`, inline `Delete? / Cancel` confirm that auto-reverts after 3s, and a transient `Deleted <name> - freed <size>` line under the picker. Verified E2E in a sandboxed `$HOME` against a real `small.en` copy.
+  </details>
+
+### CLI
+
+- [x] **CLI-1** Quiet the terminal during a live meeting; keep lifecycle lines and errors, drop the rest
+  <details>
+  <summary>Details</summary>
+
+  `yogurt start` should read as a status line, not a firehose. The wanted set is roughly: server up and its URL, meeting started, meeting stopped, enhance started and finished, and anything that actually went wrong. Everything else belongs behind `RUST_LOG`.
+
+  While in here, the default filter is `"yogurt=info,yogurt_server=info"` (`crates/yogurt-cli/src/main.rs:79`). `EnvFilter` matches targets by plain `starts_with` (tracing-subscriber 0.3.23, `filter/env/directive.rs:246`), so `yogurt=info` already covers `yogurt_server`, `yogurt_audio`, `yogurt_stt`, and every other `yogurt_*` crate. The second half is redundant and reads as if it were doing something. Drop it, or replace both with per-crate levels once the noisy targets are known.
+
+  Careful not to overshoot: the point is a quiet terminal that still proves the thing is working, so lifecycle lines stay at `info!` and everything currently at `warn!`/`error!` keeps its level. Demote to `debug!` rather than delete, so `RUST_LOG=yogurt=debug` still gets you the detail when something needs diagnosing.
+  
+  **Landed.** Measured before fixing: whisper.cpp and ggml write 45 lines to stderr on model load and another 17 on *every* decode, through ggml's own log callback - which `params.set_print_*(false)` does not control, because those only govern whisper's transcript printing. With the partial ticker decoding once a second, a three-minute local-STT meeting emitted roughly 3,000 lines.
+
+  Three changes:
+
+  1. `whisper_rs::install_logging_hooks()` in `WhisperLocal::load`, plus the `tracing_backend` feature on the `whisper-rs` dep, so the C-side stream goes into `tracing` instead of straight to stderr.
+  2. Default filter is now `yogurt=info,whisper_rs=warn` - ggml's INFO banners are dropped, its warnings and errors still surface, and `RUST_LOG=whisper_rs=debug` brings the detail back.
+  3. Added the lifecycle lines that were missing entirely (`meeting_started` with provider and model, `meeting_stopped`, `enhance_complete` with model and elapsed, `enhance_skipped_too_short`) and demoted per-socket and teardown chatter in `meetings.rs`/`ws.rs` to `debug!`.
+
+  Verified end to end against a real local-STT meeting on `large-v3-turbo`: start, record, stop, enhance now produces 13 lines total.
+
+  Not addressed: the `audio adapter: * lagged` / `whisper_local audio rx lagged` warnings still fire un-throttled. In the verification run they came as one 270 ms burst at startup and nothing for the remaining 2.5 minutes, so they are signal about genuinely dropped audio rather than a firehose. Collapsing them to a periodic count is worth doing if they ever turn sustained.
   </details>
 
 ### LLM
