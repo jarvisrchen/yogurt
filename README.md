@@ -131,6 +131,57 @@ Something not working? Run `yogurt doctor` for a rust/macOS/permissions/
 providers/STT/models dump, or `yogurt doctor --json` for a machine-readable
 version that's safe to paste into a bug report.
 
+## Transcription models
+
+Transcription runs one of two ways, switchable under **Settings -> Transcription**:
+
+- **Cloud (default).** Deepgram, needs an API key and sends audio to their API.
+- **Local.** whisper.cpp on your machine. No key, no network, nothing leaves the laptop.
+
+Local needs a model file. Pick one under **Settings -> Transcription -> Local** and yogurt downloads it to `~/.yogurt/models/`, verifying the SHA256 before use.
+
+| Model | Size | Intel Macs | Notes |
+| --- | --- | --- | --- |
+| `tiny.en` | 75 MB | fine | Fastest, roughest. Good for a quick check that local works. |
+| `small.en` | 487 MB | fine | **Default.** The best size-to-quality tradeoff for meetings. |
+| `medium.en` | 1.5 GB | slow | Wants Apple Silicon. |
+| `large-v3-turbo` | 1.6 GB | slow | Wants Apple Silicon. Near `large-v3` quality, much faster. |
+| `large-v3` | 3.0 GB | slow | Wants Apple Silicon. Slowest, best quality. |
+
+The `.en` models are English-only; `large-v3` and `large-v3-turbo` are multilingual.
+The three larger models lean on arm64 Metal kernels, so on an Intel Mac the picker tags them `slow`.
+You can still pick one, it just may not keep up with live speech.
+
+Models live in `~/.yogurt/models/` and are yours to manage:
+
+```bash
+yogurt doctor                            # lists which models are present, and where
+yogurt doctor --redownload-model small.en   # drop the local copy and re-fetch it
+```
+
+You can also drop a `ggml-*.bin` file into `~/.yogurt/models/` yourself.
+yogurt identifies models by hash, not by where they came from, so a file copied in by any means is picked up as long as it matches.
+
+### Workaround: installing models with Homebrew
+
+The download button fetches from `huggingface.co`. If that is blocked on your network, or you would rather not sit through a multi-gigabyte download in a browser tab, the models are also mirrored on this repo's releases and installable through Homebrew - which fetches from `github.com`, already proven reachable, since that is where `brew` got yogurt itself:
+
+```bash
+brew install jarvisrchen/yogurt/yogurt-model-tiny-en          # 75 MB
+brew install jarvisrchen/yogurt/yogurt-model-small-en         # 487 MB, the default
+brew install jarvisrchen/yogurt/yogurt-model-medium-en        # 1.5 GB
+brew install jarvisrchen/yogurt/yogurt-model-large-v3-turbo   # 1.6 GB
+```
+
+yogurt reads these automatically, from `$(brew --prefix)/share/yogurt/models` as well as `~/.yogurt/models`.
+The model shows up in the picker tagged `brew`, with no delete button: remove it with `brew uninstall` instead, so Homebrew stays consistent.
+`yogurt doctor` shows which copy is in use.
+
+The mirrored bytes are identical to HuggingFace's, verified against the same pinned SHA256.
+
+`large-v3` is the one model with no Homebrew option: at 3.0 GB it is over GitHub's 2 GB limit for a release asset, so it can only come from HuggingFace.
+Reach for `large-v3-turbo` instead, which is close in quality and considerably faster.
+
 ## Command line
 
 `yogurt --help` and `yogurt <command> --help` are the source of truth; this is the same information in one place.

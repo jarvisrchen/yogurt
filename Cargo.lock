@@ -3987,6 +3987,7 @@ dependencies = [
  "yogurt-audio",
  "yogurt-db",
  "yogurt-server",
+ "yogurt-stt",
 ]
 
 [[package]]

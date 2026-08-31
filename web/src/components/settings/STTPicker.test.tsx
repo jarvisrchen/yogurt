@@ -41,7 +41,7 @@ vi.mock("../../lib/api/settings", () => ({
 }));
 
 const modelsFixture: ModelView[] = [
-  { name: "small.en", size_mb: 487, downloaded: true, intel_supported: true },
+  { name: "small.en", size_mb: 487, downloaded: true, intel_supported: true, managed_by_homebrew: false },
 ];
 
 vi.mock("../../lib/api/stt", () => ({

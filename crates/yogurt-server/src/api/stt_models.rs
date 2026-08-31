@@ -65,14 +65,21 @@ struct ModelView {
     size_mb: u32,
     downloaded: bool,
     intel_supported: bool,
+    /// `true` when the verified copy lives in a Homebrew prefix rather
+    /// than yogurt's own download dir (AUD-4). The picker swaps the
+    /// trash affordance for a "brew" chip, because `delete_model`
+    /// refuses to reach into another tool's prefix.
+    managed_by_homebrew: bool,
 }
 
 fn to_view(spec: &models::ModelSpec) -> ModelView {
+    let resolved = models::resolve_model(spec);
     ModelView {
         name: spec.name.to_string(),
         size_mb: spec.size_mb,
-        downloaded: models::is_downloaded(spec),
+        downloaded: resolved.is_some(),
         intel_supported: spec.intel_supported,
+        managed_by_homebrew: resolved.is_some_and(|p| !models::is_user_owned(&p)),
     }
 }
 
@@ -157,6 +164,22 @@ async fn delete_model(
     tokio::task::spawn_blocking(move || -> Result<DeleteView, Error> {
         let path = models::model_path(spec)
             .map_err(|e| Error::Internal(format!("resolve model path: {e}")))?;
+        // AUD-4: with nothing of ours to delete, a Homebrew-installed
+        // copy would still satisfy `resolve_model`, so a plain no-op
+        // DELETE would report "freed 0 bytes" and leave the picker
+        // showing the model as downloaded. Say who owns it instead.
+        // (If BOTH copies exist, deleting ours is correct and the
+        // Homebrew one legitimately keeps the model available.)
+        if !path.exists() {
+            if let Some(external) = models::resolve_model(spec) {
+                return Err(Error::Conflict(format!(
+                    "{} is installed by Homebrew at {} - remove it with brew, \
+                     not from Settings",
+                    spec.name,
+                    external.display()
+                )));
+            }
+        }
         // `metadata` before `remove_file` so a model that was already
         // absent reports `freed_bytes: 0` rather than erroring - DELETE
         // stays idempotent.
@@ -237,8 +260,8 @@ mod tests {
     use super::*;
 
     /// Wire-shape gate: the SPA expects `name`, `size_mb`, `downloaded`,
-    /// `intel_supported` — any rename here silently breaks the
-    /// Settings page model picker.
+    /// `intel_supported`, `managed_by_homebrew` - any rename here
+    /// silently breaks the Settings page model picker.
     #[test]
     fn model_view_serializes_with_expected_keys() {
         let spec = models::lookup("small.en").expect("small.en in REGISTRY");
@@ -248,6 +271,7 @@ mod tests {
         assert!(json["size_mb"].as_u64().unwrap() > 0);
         assert!(json["downloaded"].is_boolean());
         assert!(json["intel_supported"].is_boolean());
+        assert!(json["managed_by_homebrew"].is_boolean());
     }
 
     /// A second `start_download` for the same model while one is already

@@ -19,18 +19,21 @@ const MODELS: ModelView[] = [
     size_mb: 39,
     downloaded: true,
     intel_supported: true,
+    managed_by_homebrew: false,
   },
   {
     name: "small.en",
     size_mb: 487,
     downloaded: false,
     intel_supported: true,
+    managed_by_homebrew: false,
   },
   {
     name: "medium.en",
     size_mb: 1500,
     downloaded: true,
     intel_supported: true,
+    managed_by_homebrew: false,
   },
 ];
 
@@ -126,6 +129,30 @@ describe("ModelPicker", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /delete medium\.en/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a brew chip instead of a trash for a Homebrew-managed model", () => {
+    // AUD-4: the server refuses to delete out of Homebrew's prefix, so
+    // the picker must not offer an affordance that can only 409.
+    render(
+      <ModelPicker
+        models={MODELS.map((m) =>
+          m.name === "medium.en" ? { ...m, managed_by_homebrew: true } : m,
+        )}
+        selected="tiny.en"
+        onSelect={vi.fn()}
+        onRequestDownload={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /delete medium\.en/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTitle(/remove it with brew uninstall/i)).toBeInTheDocument();
+    // A normally-downloaded model keeps its trash.
+    expect(
+      screen.getByRole("button", { name: /delete tiny\.en/i }),
     ).toBeInTheDocument();
   });
 

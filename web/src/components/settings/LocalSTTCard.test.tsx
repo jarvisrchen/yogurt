@@ -12,8 +12,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModelView } from "../../lib/api/stt";
 
 const modelsFixture: ModelView[] = [
-  { name: "tiny.en", size_mb: 39, downloaded: true, intel_supported: true },
-  { name: "small.en", size_mb: 487, downloaded: false, intel_supported: true },
+  { name: "tiny.en", size_mb: 39, downloaded: true, intel_supported: true, managed_by_homebrew: false },
+  { name: "small.en", size_mb: 487, downloaded: false, intel_supported: true, managed_by_homebrew: false },
 ];
 
 interface DeleteModelResult {
