@@ -8,7 +8,7 @@
  * |--------|---------------------------------------|-------------------------------------|
  * | GET    | `/api/stt/models`                     | `ModelView[]`                       |
  * | POST   | `/api/stt/models/:name/download`      | 202 Accepted (no body)              |
- * | DELETE | `/api/stt/models/:name`               | 200 `{ freed_bytes }` (idempotent - 0 if already gone); 404 unknown name; 409 plain-text if it's the active local model |
+ * | DELETE | `/api/stt/models/:name`               | 200 `{ freed_bytes }` (idempotent - 0 if already gone); 404 unknown name; 409 plain-text if it's the active local model, or if the only copy is Homebrew-installed |
  *
  * The download endpoint is fire-and-forget — progress + terminal state
  * arrive over the app-wide `/ws` WebSocket as
@@ -49,6 +49,10 @@ export interface ModelView {
   size_mb: number;
   downloaded: boolean;
   intel_supported: boolean;
+  /** The verified copy lives in a Homebrew prefix, not yogurt's own
+   *  download dir (AUD-4). DELETE refuses these - the picker shows a
+   *  "brew" chip where the trash icon would be. */
+  managed_by_homebrew: boolean;
 }
 
 // ─── HTTP helper ────────────────────────────────────────────────────────────

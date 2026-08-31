@@ -157,7 +157,53 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   <details>
   <summary>Details</summary>
 
-  Every entry in `REGISTRY` (`crates/yogurt-stt/src/models.rs:74`) points at `huggingface.co/ggerganov/whisper.cpp`, so first-run local STT needs HF reachable. Same class of problem as the CLI-LLM item under ## LLM: a locked-down machine can install yogurt and still not transcribe.
+  Every entry in `REGISTRY` (`crates/yogurt-stt/src/models.rs`) points at `huggingface.co/ggerganov/whisper.cpp`, so first-run local STT needs HF reachable.
+  Same class of problem as LLM-1: a locked-down machine can install yogurt and still not transcribe.
+
+  Licensing is not the blocker.
+  The HF repo's card reports `license: mit` and the upstream OpenAI weights are MIT, so redistribution is fine.
+  Attribution needs its own hand-written section in `THIRD_PARTY_LICENSES.md` - that file is generated from `Cargo.lock` and model weights are not crates.
+
+  ### Sizes decide everything
+
+  GitHub caps a release asset at 2 GiB. Exact upstream sizes:
+
+  | model | bytes | size | mirrorable |
+  | --- | --- | --- | --- |
+  | tiny.en | 77,704,715 | 74 MiB | yes |
+  | small.en | 487,614,201 | 465 MiB | yes |
+  | medium.en | 1,533,774,781 | 1.43 GiB | yes |
+  | large-v3-turbo | 1,624,555,275 | 1.51 GiB | yes |
+  | large-v3 | 3,095,033,483 | 2.88 GiB | **no - over the cap** |
+
+  Embedding in the binary and committing to the repo are both out: rust-embed would make every cloud-STT user carry the weights, and GitHub hard-blocks any file over 100 MB, leaving only Git LFS with its metered bandwidth burned by every clone.
+
+  ### Decisions
+
+  - **Mirror `small.en` first, not `tiny.en`.** The shipped default is `small.en` (`V005__stt_provider_model.sql` seeds it, `settings.rs` falls back to it). Mirroring only `tiny.en` leaves the default path broken on the exact machine this ticket is about.
+  - **One immutable `models-v1` release tag, not a per-release asset.** Pinning the URL to each app tag means CI re-fetches the weights from HuggingFace on every release - re-introducing the dependency being removed - and every release page carries a duplicate copy. The bytes are already pinned by SHA256 (`download_to` hard-fails on mismatch), so per-tag URLs buy nothing that the hash does not already guarantee. A tag that never moves keeps old binaries resolving.
+  - **Delivery is a companion Homebrew formula, not a bigger main formula.** `brew install yogurt` must stay 11.7 MB for cloud-STT users. Homebrew dropped per-formula options, so opt-in means a second formula: `brew install jarvisrchen/yogurt/yogurt-model-<name>`. Its download comes from github.com, which is already proven reachable - that is where `brew` got the binary.
+  - **Keep HuggingFace as a fallback source, ordered second.** The mirror is a mirror, not a new source of truth. GitHub release assets answer `Range` requests with 206 (verified), so `download_to`'s resume path works against either host unchanged.
+
+  ### Landed
+
+  The app-side half is done: `resolve_model` searches `~/.yogurt/models` first, then `$HOMEBREW_PREFIX` / `/opt/homebrew` / `/usr/local` under `share/yogurt/models`, taking the first copy that verifies.
+  `is_downloaded` and `meetings::select_stt` both route through it, so a Homebrew-installed model shows as downloaded and actually loads.
+  `delete_model` refuses when the only copy is outside `~/.yogurt/models`, and the picker renders a `brew` chip instead of a trash icon.
+
+  ### Remaining
+
+  - Upload `ggml-small.en.bin` + `ggml-tiny.en.bin` (and their `.sha256` sidecars) to a `models-v1` release. The sidecar matters: an unwritable Homebrew prefix would otherwise make every `list_models` call re-hash a multi-GB file.
+  - Add `mirror_url: Option<&'static str>` to `ModelSpec` and have `download` try it before `spec.url`.
+  - Add the `yogurt-model-*` formulae to the tap, installing into `share/yogurt/models`.
+  - Not solved by any of this: air-gapped machines, and `large-v3` on an HF-blocked network. Both already have a workaround worth documenting - `is_downloaded_at` only checks the hash, so a model copied into `~/.yogurt/models/` by any means is accepted.
+
+  Side finding: `scripts/refresh-model-hashes.sh` downloads 5.2 GB to learn hashes that HuggingFace serves as text.
+  `GET /<repo>/raw/main/<file>` returns the Git LFS pointer, whose `oid sha256` is the blob's hash.
+  All five pinned values verified correct against upstream on 2026-08-31 this way, for about 5 KB of traffic.
+  </details>
+
+## LLM: a locked-down machine can install yogurt and still not transcribe.
 
   Licensing is not the blocker. The ggml checkpoints in `ggerganov/whisper.cpp` are MIT, as are the upstream OpenAI weights, so redistribution is fine with attribution added to `THIRD_PARTY_LICENSES.md`.
 

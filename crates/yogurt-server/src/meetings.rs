@@ -96,15 +96,17 @@ pub fn select_stt(s: &SttSettings) -> Result<SttSpec> {
         "local" => {
             let spec = yogurt_stt::models::lookup(&s.stt_model)
                 .ok_or_else(|| anyhow!("unknown local stt model: {}", s.stt_model))?;
-            if !yogurt_stt::models::is_downloaded(spec) {
-                return Err(anyhow!(
+            // One resolution for both questions - "is it here?" and
+            // "where?" - so the two can't disagree, and so a model
+            // installed by the Homebrew companion formula (AUD-4) loads
+            // from its prefix instead of reading as not-downloaded.
+            let model_path = yogurt_stt::models::resolve_model(spec).ok_or_else(|| {
+                anyhow!(
                     "local stt model {} is not downloaded; \
                      download it from Settings → Transcription → Local",
                     s.stt_model
-                ));
-            }
-            let model_path = yogurt_stt::models::model_path(spec)
-                .map_err(|e| anyhow!("resolve model path: {e}"))?;
+                )
+            })?;
             Ok(SttSpec::Local { model_path })
         }
         other => Err(anyhow!("unknown stt_provider: {other}")),
