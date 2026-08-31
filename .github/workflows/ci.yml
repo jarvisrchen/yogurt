@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: &docs-only
+      - "**/*.md"
+      - "docs/**"
+      - LICENSE
   pull_request:
     branches: [main]
+    paths-ignore: *docs-only
 
 env:
   CARGO_TERM_COLOR: always
