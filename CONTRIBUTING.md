@@ -58,9 +58,10 @@ There is nothing you can do with `just` that you cannot do by hand; `just --list
 | `just backend [args]` | `./scripts/run-backend.sh [args]` |
 | `just frontend` | `./scripts/run-frontend.sh` |
 | `just release [args]` | `./scripts/run-release.sh [args]` |
-| `just dev` | `run-frontend.sh` in the background, wait until Vite answers on `:5173` (so the backend proxy does not 502 on first request), then `run-backend.sh` in the foreground; Ctrl-C kills both |
+| `just dev` | `just bootstrap`, then `run-frontend.sh` in the background, wait until Vite answers on `:5173` (so the backend proxy does not 502 on first request), then `run-backend.sh` in the foreground; Ctrl-C kills both |
+| `just bootstrap` | Restores the gitignored files a checkout needs in order to run: `.env.local` (copied from the main checkout), `web/node_modules`, `web/dist`. No-ops once they are present |
 
-`just dev` is the only recipe with logic of its own: the readiness wait and the paired shutdown.
+`just dev` and `just bootstrap` are the only recipes with logic of their own: the readiness wait and paired shutdown in one, the what-is-missing checks in the other.
 Call the scripts directly when you want one process with its own log stream; use `just dev` for the everyday loop.
 
 ## Running tests
@@ -158,13 +159,29 @@ just release
 Work on a branch and open a PR. Do not push to `main`.
 
 The repo is public and releases are cut from `main`, so an unreviewed commit there is something strangers can build.
-CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck and tests); let it gate the merge.
+CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck, web tests, and the Playwright E2E smoke); let it gate the merge.
 
 ```bash
 git checkout -b feat/my-change
 # ... commit ...
 gh pr create --base main
 ```
+
+### Working in a git worktree
+
+A worktree gives a branch its own directory, so you can run two branches side by side without stashing:
+
+```bash
+git worktree add ../yogurt-worktrees/my-change -b feat/my-change origin/main
+cd ../yogurt-worktrees/my-change
+just dev
+```
+
+A fresh worktree contains only tracked files, and everything needed to *run* is gitignored: `.env.local`, `web/node_modules`, `web/dist` (whose absence fails the build at `#[derive(RustEmbed)] folder ... does not exist`).
+`just dev` calls `just bootstrap` first, which restores all three from the main checkout, so there is no separate setup step.
+`just dev` still wants `:5173` and `:7878`, so stop the instance in your other worktree first.
+
+Delete the worktree once its PR merges: `git worktree remove ../yogurt-worktrees/my-change`.
 
 ## Releasing
 

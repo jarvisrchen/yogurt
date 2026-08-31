@@ -305,6 +305,50 @@ describe("useTranscriptWs", () => {
       { ts_ms: 3000, channel: "mic", text: "hello there", is_final: false },
     ]);
   });
+
+  it("keeps the seeded history when the token arrives after mount (MTG-1)", async () => {
+    // Client-side nav back into a live meeting: React Query's cache is warm
+    // so `seedHistory` is ready on the first render, but `ensureSessionToken`
+    // has not resolved yet so `token` is null. The seed must survive the
+    // token flipping to a real value one tick later.
+    const seed: TranscriptEvent[] = [
+      { ts_ms: 500, channel: "mic", text: "said before the nav", is_final: true },
+    ];
+    const { result, rerender } = renderHook(
+      ({ token }: { token: string | null }) =>
+        useTranscriptWs("meeting-token-race", token, seed),
+      { initialProps: { token: null as string | null } },
+    );
+    expect(result.current.events).toEqual(seed);
+    expect(MockWebSocket.lastInstance).toBeNull();
+
+    rerender({ token: "test-token" });
+    expect(result.current.events).toEqual(seed);
+
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    expect(result.current.events).toEqual(seed);
+  });
+
+  it("clears events when the meetingId changes", async () => {
+    const seedA: TranscriptEvent[] = [
+      { ts_ms: 100, channel: "mic", text: "meeting A line", is_final: true },
+    ];
+    const { result, rerender } = renderHook(
+      ({ meetingId, seed }: { meetingId: string; seed: TranscriptEvent[] }) =>
+        useTranscriptWs(meetingId, "test-token", seed),
+      { initialProps: { meetingId: "meeting-a", seed: seedA } },
+    );
+    expect(result.current.events).toEqual(seedA);
+
+    const seedB: TranscriptEvent[] = [
+      { ts_ms: 200, channel: "mic", text: "meeting B line", is_final: true },
+    ];
+    rerender({ meetingId: "meeting-b", seed: seedB });
+    expect(result.current.events).toEqual(seedB);
+    // Let the new socket finish opening inside the test so its state
+    // update doesn't land after teardown.
+    await waitFor(() => expect(result.current.connected).toBe(true));
+  });
 });
 
 // mergeEvent is exercised through the hook in the merge test above; this is

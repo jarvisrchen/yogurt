@@ -11,8 +11,8 @@ default:
 release *args:
     ./scripts/run-release.sh {{args}}
 
-# Start backend + Vite together in this terminal — reads .env.local, Ctrl-C stops both cleanly.
-dev:
+# Start backend + Vite together in this terminal — bootstraps the worktree first, reads .env.local, Ctrl-C stops both cleanly.
+dev: bootstrap
     #!/usr/bin/env bash
     set -euo pipefail
     # Ctrl-C in the foreground process group should kill both children.
@@ -35,6 +35,33 @@ frontend:
     ./scripts/run-frontend.sh
 
 # ── Setup + build ────────────────────────────────────────────────────
+
+# Make a fresh worktree runnable — restores .env.local, node_modules and web/dist (all gitignored, so they don't come across). No-ops once present; `just dev` depends on it.
+bootstrap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The main checkout, from any worktree: .git/ lives there, linked
+    # worktrees only get a .git file pointing into it.
+    MAIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    if [ ! -f .env.local ]; then
+        if [ -f "$MAIN/.env.local" ]; then
+            cp "$MAIN/.env.local" .env.local
+            echo "bootstrap: copied .env.local from $MAIN"
+        else
+            echo "bootstrap: no .env.local here or in $MAIN — run ./scripts/setup.sh to write a stub" >&2
+            exit 1
+        fi
+    fi
+    if [ ! -d web/node_modules ]; then
+        echo "bootstrap: installing web deps"
+        pnpm --dir web install --frozen-lockfile
+    fi
+    # rust-embed's #[folder = "../../web/dist/"] derive needs this to exist
+    # before anything compiles yogurt-server.
+    if [ ! -d web/dist ]; then
+        echo "bootstrap: building web bundle (rust-embed needs web/dist)"
+        pnpm --dir web build
+    fi
 
 # One-time prereq check + .env.local stub + web build + release build (idempotent).
 setup:

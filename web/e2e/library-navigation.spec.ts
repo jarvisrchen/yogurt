@@ -25,6 +25,9 @@ const MEETING = {
     '## Budget\n\n- budget\n<span data-ai-grey="" data-ts="5">The team agreed the Q3 budget lands at 1.2 million <span data-transcript-link="" data-ts="5">↳ 00:05</span></span>\n',
   transcript_json: "[]",
   starred: false,
+  // Required by the wire type; MeetingCard reads `labels.length` and
+  // throws without it (this mock predates labels).
+  labels: [],
   created_at: "2026-08-13T00:00:00.000Z",
   updated_at: "2026-08-13T00:00:00.000Z",
 };

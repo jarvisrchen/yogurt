@@ -45,49 +45,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
-- [ ] **MTG-1** Live transcript comes back empty after navigating to Library and back, but a refresh restores it
-  <details>
-  <summary>Details</summary>
-
-  Root-caused. The seed-on-remount machinery already exists and is correct; a token race wipes it immediately after it runs.
-
-  `useTranscriptWs` has two effects, in this declaration order (`web/src/lib/ws.ts:209` and `:224`):
-
-  ```ts
-  // 1. seed from persisted history, guarded to fire ONCE per meetingId
-  if (seededMeetingIdRef.current === meetingId) return;
-  if (!seedHistory || seedHistory.length === 0) return;
-  seededMeetingIdRef.current = meetingId;
-  setEvents((prev) => [...seedHistory, ...prev]);
-
-  // 2. open the WS
-  if (!meetingId || !token) {
-    setEvents([]);          // <- ws.ts:232
-    ...
-  }
-  ```
-
-  `token` is fetched asynchronously in `Meeting.tsx` (`ensureSessionToken().then(...)`), so it is `null` on the first render of every mount. Effect 2 therefore always runs its `setEvents([])` branch first time through.
-
-  Whether that matters depends on whether `seedHistory` was ready on that same first render, and that is exactly what differs between the two paths:
-
-  - **Client-side nav (broken).** React Query's cache is warm from the Library, so `meetingRow.transcript_json` is available on the very first render. Effect 1 seeds *and latches* `seededMeetingIdRef`. Effect 2 then runs and clears `events`. When `token` resolves a tick later, only effect 2 re-runs; effect 1's deps (`meetingId`, `seedHistory`) are unchanged, and the latched ref would short-circuit it anyway. The seed is gone for good and the dock only fills with lines that arrive after connect - the lone `Me 00:00:00 Thank you.` in the second screenshot.
-  - **Hard refresh (works).** The cache is cold, so `seedHistory` is `undefined` on first render and effect 1 returns early *without* latching the ref. Effect 2 clears an already-empty list. The query resolves later, by which point the token has too, effect 1 finally fires, and the history lands.
-
-  So the bug is not "seeding is missing", it is "seeding is destroyed by a clear that fires for the wrong reason". The clear exists to stop a previous meeting's lines bleeding into the next one, which is a `meetingId` concern, not a `token` concern. Fix: move `setEvents([])` into its own effect keyed on `meetingId` alone, and let the token gate only skip connecting. Guard against reintroducing it by asserting the ordering directly - mount the hook with `seedHistory` populated and `token` null, then supply the token, and assert the seeded events survive.
-
-  Worth checking `MeetingPost` for the same shape while in here; it takes the same token-after-mount path.
-
-  Live meeting before navigating away:
-  ![live dock populated](attachments/2026-08-30-live-dock-before-nav.png)
-
-  Back from Library, dock empty except for lines that arrived after reconnect:
-  ![live dock empty after client-side nav](attachments/2026-08-30-live-dock-empty-after-nav.png)
-
-  Same meeting, still recording, after a hard refresh:
-  ![live dock restored by refresh](attachments/2026-08-30-live-dock-restored-by-refresh.png)
-  </details>
-
 ## Audio
 
 - [ ] **AUD-1** Live partials shrink mid-sentence on local STT, and never appear at all for system audio
@@ -258,6 +215,51 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
 ### Meetings
+
+- [x] **MTG-1** Live transcript comes back empty after navigating to Library and back, but a refresh restores it
+  <details>
+  <summary>Details</summary>
+
+  Root-caused. The seed-on-remount machinery already exists and is correct; a token race wipes it immediately after it runs.
+
+  `useTranscriptWs` has two effects, in this declaration order (`web/src/lib/ws.ts:209` and `:224`):
+
+  ```ts
+  // 1. seed from persisted history, guarded to fire ONCE per meetingId
+  if (seededMeetingIdRef.current === meetingId) return;
+  if (!seedHistory || seedHistory.length === 0) return;
+  seededMeetingIdRef.current = meetingId;
+  setEvents((prev) => [...seedHistory, ...prev]);
+
+  // 2. open the WS
+  if (!meetingId || !token) {
+    setEvents([]);          // <- ws.ts:232
+    ...
+  }
+  ```
+
+  `token` is fetched asynchronously in `Meeting.tsx` (`ensureSessionToken().then(...)`), so it is `null` on the first render of every mount. Effect 2 therefore always runs its `setEvents([])` branch first time through.
+
+  Whether that matters depends on whether `seedHistory` was ready on that same first render, and that is exactly what differs between the two paths:
+
+  - **Client-side nav (broken).** React Query's cache is warm from the Library, so `meetingRow.transcript_json` is available on the very first render. Effect 1 seeds *and latches* `seededMeetingIdRef`. Effect 2 then runs and clears `events`. When `token` resolves a tick later, only effect 2 re-runs; effect 1's deps (`meetingId`, `seedHistory`) are unchanged, and the latched ref would short-circuit it anyway. The seed is gone for good and the dock only fills with lines that arrive after connect - the lone `Me 00:00:00 Thank you.` in the second screenshot.
+  - **Hard refresh (works).** The cache is cold, so `seedHistory` is `undefined` on first render and effect 1 returns early *without* latching the ref. Effect 2 clears an already-empty list. The query resolves later, by which point the token has too, effect 1 finally fires, and the history lands.
+
+  So the bug is not "seeding is missing", it is "seeding is destroyed by a clear that fires for the wrong reason". The clear exists to stop a previous meeting's lines bleeding into the next one, which is a `meetingId` concern, not a `token` concern. Fix: move `setEvents([])` into its own effect keyed on `meetingId` alone, and let the token gate only skip connecting. Guard against reintroducing it by asserting the ordering directly - mount the hook with `seedHistory` populated and `token` null, then supply the token, and assert the seeded events survive.
+
+  Worth checking `MeetingPost` for the same shape while in here; it takes the same token-after-mount path.
+
+  Live meeting before navigating away:
+  ![live dock populated](attachments/2026-08-30-live-dock-before-nav.png)
+
+  Back from Library, dock empty except for lines that arrived after reconnect:
+  ![live dock empty after client-side nav](attachments/2026-08-30-live-dock-empty-after-nav.png)
+
+  Same meeting, still recording, after a hard refresh:
+  ![live dock restored by refresh](attachments/2026-08-30-live-dock-restored-by-refresh.png)
+
+  Fixed: the clear moved out of the connect effect and into the seed effect, keyed on `meetingId` alone (`web/src/lib/ws.ts`), so a token arriving after mount no longer wipes the seed. Covered by a unit test on the effect ordering and by `web/e2e/live-transcript-history.spec.ts`, which drives the real Library round trip.
+  </details>
 
 - [x] **MTG-2** First "End meeting" click is a no-op while still recording; it takes two clicks to reach enhance
   <details>

@@ -205,12 +205,25 @@ export function useTranscriptWs(
   // these (Deepgram/the server can redeliver the same final between the
   // history fetch and the WS subscribe completing).
   const seededFinalsRef = useRef<Set<string>>(new Set());
+  // Which meetingId the current `events` list belongs to, so the reset
+  // below fires on a meeting switch and nothing else (MTG-1).
+  const eventsMeetingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!meetingId) {
+    // A previous meeting's lines must not bleed into the next one, which
+    // is a `meetingId` concern only. MTG-1: this reset used to live in the
+    // connect effect below, behind the `!token` guard - and `token` is
+    // fetched after mount, so on every client-side nav it fired one tick
+    // AFTER this effect had already seeded from persisted history and
+    // latched `seededMeetingIdRef`, wiping the seed for good. Keep the
+    // reset here, ahead of the seed, in the one effect that owns `events`.
+    if (eventsMeetingIdRef.current !== meetingId) {
+      eventsMeetingIdRef.current = meetingId;
       seededMeetingIdRef.current = null;
-      return;
+      seededFinalsRef.current = new Set();
+      setEvents([]);
     }
+    if (!meetingId) return;
     if (seededMeetingIdRef.current === meetingId) return;
     if (!seedHistory || seedHistory.length === 0) return;
     seededMeetingIdRef.current = meetingId;
@@ -226,9 +239,10 @@ export function useTranscriptWs(
     // WR-06 + BL-01: the per-meeting WS handler now requires the session
     // token (Origin alone is insufficient). Wait until both meetingId AND
     // token are available before attempting to connect — otherwise the
-    // first connect would 403 and burn a reconnect attempt.
+    // first connect would 403 and burn a reconnect attempt. MTG-1: this
+    // branch must not touch `events` - clearing on a missing token wiped
+    // the history seeded above during the token-fetch window.
     if (!meetingId || !token) {
-      setEvents([]);
       setConnectionStatus("idle");
       return;
     }
