@@ -47,4 +47,6 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - Never use an em dash in prose; use a plain "-".
 - `main` is protected by convention: branch, then open a PR. Never commit or push directly to `main`. The repo is public and `v0.1.0` ships from it, so an unreviewed commit on `main` is a published mistake rather than a local one.
 - Do not hand-edit CHANGELOG files; release notes are generated.
+- No agent attribution in git history or on GitHub: no "Generated with Claude Code" footer, no session link, no `Co-Authored-By` for an agent, in commit messages or PR bodies.
+- Squash and merge PRs. GitHub appends `(#N)` to the squashed commit subject, which is the only thing that back-links a commit on `main` to its PR. Rebase-and-merge replays your original commits verbatim and leaves no PR reference, so `main` loses the trail (see `1656270`, merged from #6).
 - Tests accompany non-trivial logic; E2E behavior is verified against the real binary, not just unit tests.
