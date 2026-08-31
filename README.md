@@ -78,6 +78,44 @@ xattr -d com.apple.quarantine ./yogurt
 
 (or right-click the binary in Finder and choose Open).
 
+## Updating
+
+Stop the running server first (Ctrl-C in the terminal running `yogurt start`); a
+replaced binary does not take effect until the process restarts.
+
+Your data lives in `~/.yogurt/` and is never touched by an update.
+Migrations run automatically on the next `yogurt start`.
+
+**Homebrew**
+
+```bash
+brew update && brew upgrade yogurt   # short name works once you've tapped
+yogurt --version
+```
+
+Without the tap, the fully-qualified name works too:
+`brew upgrade jarvisrchen/yogurt/yogurt`.
+If `brew upgrade` says you're already on the latest but
+[Releases](https://github.com/jarvisrchen/yogurt/releases) shows something
+newer, the tap formula hasn't been merged yet; there is nothing to do but wait.
+
+**From source**
+
+```bash
+git pull
+./scripts/setup.sh          # rebuilds the web bundle and the release binary
+./target/release/yogurt start
+```
+
+Skipping the web build leaves the old UI embedded in the new binary, so use
+`setup.sh` (or `just release`) rather than `cargo build` alone.
+
+**Direct download**
+
+Re-run the `curl` from [Direct download](#direct-download-github-releases) over
+the old binary, then clear quarantine again.
+The flag is set per download, so it comes back on every update.
+
 ## First meeting
 
 1. `yogurt start` opens `http://localhost:7878` in your default browser.
