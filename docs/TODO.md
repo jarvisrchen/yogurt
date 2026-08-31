@@ -43,20 +43,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## UI
 
-- [ ] **UI-1** BASE URL and MODEL fields overlap on long URLs in provider cards
-  <details>
-  <summary>Details</summary>
-
-  On the Settings → LLM providers page, the Google Gemini card (active) has its BASE URL value `https://generativelanguage.googleapis.com/v1beta/openai` running straight through the MODEL value `gemini-2.5-flash`. The two are visually overlaid instead of sitting side-by-side in their two grid columns.
-
-  Root cause is in `web/src/components/settings/ProviderRow.tsx:111` — `<div className="grid grid-cols-2 gap-x-6 gap-y-3">`. Grid items default to `min-width: auto`, so a child with non-wrapping content (here the URL wrapped in `break-all` text but the inner `<code>` is still wider than its column at full URL length) refuses to shrink below its intrinsic content size and overflows into the sibling column.
-
-  Fix: add `min-w-0` to each `Field` child inside the grid (and probably `overflow-hidden` + `truncate` or `break-all` on the `<code>` is already there — keep `break-all`, just unblock the column from shrinking). Verify on Gemini (`/v1beta/openai`), OpenAI (`/v1`), Anthropic (`/v1/messages` is different shape so double-check that case too), and any user-added URL.
-
-  Visual evidence:
-  ![BASE URL runs through MODEL field](attachments/2026-08-29-base-url-model-overlap.png)
-  </details>
-
 ## Meetings
 
 - [ ] **MTG-1** Live transcript comes back empty after navigating to Library and back, but a refresh restores it
@@ -213,6 +199,20 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 <summary>Click to expand</summary>
 
 ### UI
+
+- [x] **UI-1** BASE URL and MODEL fields overlap on long URLs in provider cards
+  <details>
+  <summary>Details</summary>
+
+  On the Settings → LLM providers page, the Google Gemini card (active) has its BASE URL value `https://generativelanguage.googleapis.com/v1beta/openai` running straight through the MODEL value `gemini-2.5-flash`. The two are visually overlaid instead of sitting side-by-side in their two grid columns.
+
+  Root cause is in `web/src/components/settings/ProviderRow.tsx:111` — `<div className="grid grid-cols-2 gap-x-6 gap-y-3">`. Grid items default to `min-width: auto`, so a child with non-wrapping content (here the URL wrapped in `break-all` text but the inner `<code>` is still wider than its column at full URL length) refuses to shrink below its intrinsic content size and overflows into the sibling column.
+
+  Visual evidence:
+  ![BASE URL runs through MODEL field](attachments/2026-08-29-base-url-model-overlap.png)
+  </details>
+
+  Landed in #9. `min-w-0` added to each `Field` child in the grid, in both `ProviderRow.tsx` (inactive card) and `ProviderCard.tsx` (active/edit card, whose BASE URL `<code>` was also missing `break-all`).
 
 - [x] **UI-2** Add a "Test" button for the Deepgram key in Settings → Transcription
   <details>
