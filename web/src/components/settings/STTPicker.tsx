@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
 import { LocalSTTCard } from "./LocalSTTCard";
+import { TestKeyButton } from "./TestKeyButton";
 
 /** `http()` throws `Error("<status> <statusText>: <raw body>")`. The server's
  *  422 body is `{"error": "<msg>"}` (see settings.rs's `Error::Unprocessable`)
@@ -122,7 +123,7 @@ export function STTPicker() {
           ) : (
             <div className="text-sm text-mut">No key stored yet.</div>
           )}
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <input
               type="password"
               placeholder="Paste key…"
@@ -138,6 +139,12 @@ export function STTPicker() {
             >
               {setSttKey.isPending ? "Saving…" : "Save key"}
             </button>
+            <TestKeyButton
+              providerName="Deepgram"
+              draft={keyDraft}
+              hasStoredKey={!!q.data.deepgram_key_masked}
+              testFn={settingsApi.testSttKey}
+            />
           </div>
         </div>
       </article>

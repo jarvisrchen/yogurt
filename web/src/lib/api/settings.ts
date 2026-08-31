@@ -195,6 +195,17 @@ export const settingsApi = {
       body: JSON.stringify({ api_key }),
     }),
   /**
+   * `POST /api/settings/stt/test` - verify the Deepgram key actually works
+   * before committing it. Pass the draft key to test something you have not
+   * saved yet; omit it to test whatever is already stored. No `model` field
+   * in the response - STT has nothing to echo back.
+   */
+  testSttKey: (api_key?: string) =>
+    http<TestConnectionResult>("/api/settings/stt/test", {
+      method: "POST",
+      body: JSON.stringify(api_key ? { api_key } : {}),
+    }),
+  /**
    * `POST /api/settings/providers/:id/models` - probe the provider's
    * `/v1/models` and return the list of model ids it advertises. A draft
    * `apiKey` is preferred over the stored key so the user can

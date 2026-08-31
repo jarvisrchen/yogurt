@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { settingsApi } from "../../lib/api/settings";
+import { settingsApi, type TestConnectionResult } from "../../lib/api/settings";
 
 /**
  * "Test" button + its verdict line for one provider's key.
@@ -15,21 +15,25 @@ import { settingsApi } from "../../lib/api/settings";
  * instead of squeezing it into the button row.
  */
 export function TestKeyButton({
-  providerId,
+  providerId = "",
   providerName,
   /** Unsaved key from the password field. Empty → test the stored key. */
   draft = "",
   /** Without a stored key and without a draft there is nothing to test. */
   hasStoredKey,
+  /** Override for non-provider callers (e.g. the Deepgram STT key), which
+   *  hit a different endpoint with no provider id. Defaults to testing
+   *  `providerId` against the LLM provider endpoint. */
+  testFn = (key?: string) => settingsApi.testProvider(providerId, key),
 }: {
-  providerId: string;
+  providerId?: string;
   providerName: string;
   draft?: string;
   hasStoredKey?: boolean;
+  testFn?: (key?: string) => Promise<TestConnectionResult>;
 }) {
   const test = useMutation({
-    mutationFn: (key: string) =>
-      settingsApi.testProvider(providerId, key || undefined),
+    mutationFn: (key: string) => testFn(key || undefined),
   });
 
   // A verdict describes the key that was in the box when it ran; a green
