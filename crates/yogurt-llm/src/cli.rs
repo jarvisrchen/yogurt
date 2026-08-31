@@ -1,12 +1,16 @@
-//! Local agent-CLI fallback adapter (`docs/TODO.md` LLM-1).
+//! Local agent-CLI adapter (`docs/TODO.md` LLM-4).
 //!
 //! Spawns a locally-installed coding-agent CLI (`claude -p` or
-//! `cursor-agent -p`) as a one-shot text-completion backend, for the one
-//! case an HTTP provider can't cover: corporate egress that allows the
-//! agent CLI's own traffic but blocks the configured LLM provider's
-//! `base_url`. `yogurt-server::llm_openai::resolve` wires this in as a
-//! fallback behind the configured provider, never as a provider row in
-//! its own right - see AGENTS.md's amended "one process" constraint.
+//! `cursor-agent -p`) as a one-shot text-completion backend, for a user who
+//! wants to run an agent CLI they already have installed as their LLM
+//! provider instead of any cloud provider at all. `yogurt-server` reaches
+//! this only when the active `providers` row is explicitly `adapter:
+//! "cli"` - see AGENTS.md's amended "one process" constraint. There is
+//! deliberately no automatic fallback from an unreachable HTTP provider to
+//! this: an earlier draft (LLM-1) did that and was reverted, because
+//! silently rerouting a meeting's real content to a different backend on a
+//! network hiccup is a behavior change a user should opt into, not one
+//! that happens to them.
 //!
 //! Both CLIs are treated as opaque `-p --output-format json` binaries that
 //! print one JSON object with a `result` string and an `is_error` bool.
@@ -59,10 +63,8 @@ impl CliProgram {
     }
 }
 
-/// Local agent-CLI adapter. Constructed only via [`CliClient::discover`]
-/// (LLM-1: try any available CLI, in a fixed preference order) or
-/// [`CliClient::locate`] (LLM-4: the user explicitly picked this one in
-/// Settings) - both resolve the binary path once so a request never has to
+/// Local agent-CLI adapter. Constructed only via [`CliClient::locate`],
+/// which resolves the binary path once so a request never has to
 /// distinguish "not installed" from "installed but erroring".
 pub struct CliClient {
     binary: PathBuf,
@@ -70,23 +72,10 @@ pub struct CliClient {
 }
 
 impl CliClient {
-    /// Search `$PATH` for `claude`, then `cursor-agent`; return the first
-    /// one found. Order is a preference, not a correctness requirement -
-    /// only one fallback client is ever constructed per resolution, and
-    /// either beats `MockLlm` or a hard failure when the configured
-    /// provider is unreachable.
-    pub fn discover() -> Option<Self> {
-        [CliProgram::Claude, CliProgram::CursorAgent]
-            .into_iter()
-            .find_map(|program| {
-                find_on_path(program.binary_name()).map(|binary| Self { binary, program })
-            })
-    }
-
-    /// Resolve exactly `program` on `$PATH`, or a clear `Err` naming it if
-    /// it isn't there. Unlike `discover`, this never silently substitutes
-    /// the other CLI - the caller (LLM-4: an explicit `cli`-adapter
-    /// provider row) asked for this one specifically.
+    /// Resolve `program` on `$PATH`, or a clear `Err` naming it if it
+    /// isn't there. Never silently substitutes the other CLI - the caller
+    /// (LLM-4: the active `cli`-adapter provider row) asked for this one
+    /// specifically.
     pub fn locate(program: CliProgram) -> Result<Self> {
         find_on_path(program.binary_name())
             .map(|binary| Self { binary, program })
@@ -179,7 +168,7 @@ impl LlmClient for CliClient {
     }
 
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
-        // v1 scope (LLM-1): no `--output-format stream-json` parsing yet.
+        // v1 scope (LLM-4): no `--output-format stream-json` parsing yet.
         // Buffer the one-shot result into a single delta, same pattern as
         // `MockLlm::stream` in yogurt-server.
         let full = self.complete(req).await?.content;
