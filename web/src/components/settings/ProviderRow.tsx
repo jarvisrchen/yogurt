@@ -225,7 +225,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 min-w-0">
       <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
         {label}
       </div>
