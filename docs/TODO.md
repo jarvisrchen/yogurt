@@ -43,7 +43,106 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
+- [ ] First "End meeting" click is a no-op while still recording; it takes two clicks to reach enhance
+  <details>
+  <summary>Details</summary>
+
+  Root-caused, one-line fix. `MeetingPost` bounces straight back to the live route whenever the cached active-recording poll still names this meeting:
+
+  ```tsx
+  // web/src/routes/MeetingPost.tsx:578
+  if (activeRecording.data?.id === meetingId) {
+    return <Navigate to={`/meeting/${meetingId}`} replace />;
+  }
+  ```
+
+  That guard exists for deep links, refresh, and the back button landing on the frozen post view for a meeting that is genuinely still recording. It cannot tell those apart from a legitimate `endMeeting` navigation, because the value it reads is stale by up to five seconds: `useActiveRecording` (`web/src/lib/api/meetings.ts:347`) polls `/api/meetings/active` on `refetchInterval: 5_000`, and `stopRecording` (`web/src/routes/Meeting.tsx:295`) invalidates only `meetingKey(meetingId)` - never `activeRecordingKey`.
+
+  So the sequence is: `endMeeting` flushes notes, awaits `stopRecording`, navigates to `/post`, `MeetingPost` mounts against a cache that still says "recording", and `<Navigate replace>` sends the user right back. Nothing errors, nothing logs, the button just flashes.
+
+  Both workarounds in the report follow from the same cause. A second click works because the 5 s poll has returned `null` by then; "Stop recording, then End meeting" works because the gap between the two clicks covers the staleness.
+
+  Fix in `stopRecording`, not in the guard, so every caller is covered: `qc.setQueryData(activeRecordingKey, null)` (or invalidate it) alongside the existing `meetingKey` invalidation. Setting it directly beats invalidating, since invalidation still races the in-flight refetch. Regression test: stop, navigate to `/post` with the active-recording cache still populated, assert the route renders rather than redirecting.
+  </details>
+
+
+- [ ] Live transcript comes back empty after navigating to Library and back, but a refresh restores it
+  <details>
+  <summary>Details</summary>
+
+  Root-caused. The seed-on-remount machinery already exists and is correct; a token race wipes it immediately after it runs.
+
+  `useTranscriptWs` has two effects, in this declaration order (`web/src/lib/ws.ts:209` and `:224`):
+
+  ```ts
+  // 1. seed from persisted history, guarded to fire ONCE per meetingId
+  if (seededMeetingIdRef.current === meetingId) return;
+  if (!seedHistory || seedHistory.length === 0) return;
+  seededMeetingIdRef.current = meetingId;
+  setEvents((prev) => [...seedHistory, ...prev]);
+
+  // 2. open the WS
+  if (!meetingId || !token) {
+    setEvents([]);          // <- ws.ts:232
+    ...
+  }
+  ```
+
+  `token` is fetched asynchronously in `Meeting.tsx` (`ensureSessionToken().then(...)`), so it is `null` on the first render of every mount. Effect 2 therefore always runs its `setEvents([])` branch first time through.
+
+  Whether that matters depends on whether `seedHistory` was ready on that same first render, and that is exactly what differs between the two paths:
+
+  - **Client-side nav (broken).** React Query's cache is warm from the Library, so `meetingRow.transcript_json` is available on the very first render. Effect 1 seeds *and latches* `seededMeetingIdRef`. Effect 2 then runs and clears `events`. When `token` resolves a tick later, only effect 2 re-runs; effect 1's deps (`meetingId`, `seedHistory`) are unchanged, and the latched ref would short-circuit it anyway. The seed is gone for good and the dock only fills with lines that arrive after connect - the lone `Me 00:00:00 Thank you.` in the second screenshot.
+  - **Hard refresh (works).** The cache is cold, so `seedHistory` is `undefined` on first render and effect 1 returns early *without* latching the ref. Effect 2 clears an already-empty list. The query resolves later, by which point the token has too, effect 1 finally fires, and the history lands.
+
+  So the bug is not "seeding is missing", it is "seeding is destroyed by a clear that fires for the wrong reason". The clear exists to stop a previous meeting's lines bleeding into the next one, which is a `meetingId` concern, not a `token` concern. Fix: move `setEvents([])` into its own effect keyed on `meetingId` alone, and let the token gate only skip connecting. Guard against reintroducing it by asserting the ordering directly - mount the hook with `seedHistory` populated and `token` null, then supply the token, and assert the seeded events survive.
+
+  Worth checking `MeetingPost` for the same shape while in here; it takes the same token-after-mount path.
+
+  Live meeting before navigating away:
+  ![live dock populated](attachments/2026-08-30-live-dock-before-nav.png)
+
+  Back from Library, dock empty except for lines that arrived after reconnect:
+  ![live dock empty after client-side nav](attachments/2026-08-30-live-dock-empty-after-nav.png)
+
+  Same meeting, still recording, after a hard refresh:
+  ![live dock restored by refresh](attachments/2026-08-30-live-dock-restored-by-refresh.png)
+  </details>
+
 ## Audio
+
+- [ ] Live partials shrink mid-sentence on local STT, and never appear at all for system audio
+  <details>
+  <summary>Details</summary>
+
+  Two symptoms, one cause each, both in the local whisper.cpp partial ticker (`crates/yogurt-stt/src/whisper_local.rs:261`). Deepgram is not involved; `ts_ms 00:00:00` on the in-flight line in the first screenshot is the local ticker's hardcoded `ts_ms: 0`, which is how you tell which engine produced a partial.
+
+  **Partials shrink as you keep talking.** The ticker decodes a *rolling 5-second* buffer:
+
+  ```rust
+  // crates/yogurt-stt/src/whisper_local.rs:348
+  let max = 16_000 * 5;
+  if buf.len() > max {
+      let excess = buf.len() - max;
+      buf.drain(..excess);
+  }
+  ```
+
+  Every 1 s tick re-decodes only the last 5 s of audio and emits the result as a whole-line replacement, so once an utterance passes five seconds the earliest words scroll out of the window and the displayed partial gets *shorter*. It reads as the transcript eating itself. The final is unaffected because it comes from a different path - the VAD segmenter, good for up to `MAX_SEGMENT_MS = 25_000` (`crates/yogurt-stt/src/vad.rs:63`) - which is why the full sentence reappears the moment you pause.
+
+  Deepgram does not have this bug: `fold_deepgram_event` accumulates window-finals in `UtteranceState.buf` and emits `join_words(&st.buf, &transcript)`, so its partials only ever grow. The local ticker keeps no equivalent buffer.
+
+  Fix direction: make the partial cumulative within the current VAD segment rather than a fixed rolling window - clear `partial_buf` on segment emit and let it grow to `MAX_SEGMENT_MS` - and cap decode cost by re-decoding at a coarser interval as the buffer grows, rather than by dropping audio. Confirm the decode stays inside the 1 s tick budget at 25 s of audio before committing to it; if it does not, the fallback is to keep the rolling window but emit an append-only delta rather than replacing the line.
+
+  ![partial wipes mid-utterance](attachments/2026-08-30-live-transcript-partial-wipe.png)
+  ![the same utterance, complete, once the final lands](attachments/2026-08-30-live-transcript-final-catchup.png)
+
+  **No partials at all on headphones.** The ticker is mic-only by design: *"Skipped for system audio in v1 to halve whisper.cpp pressure - PRD §13 only requires the still-listening indicator on the user's own voice."* `Channel::System` therefore has no partial path and only ever renders VAD-segment finals, which is the reported "shows in chunks after each sentence".
+
+  This also explains why the report says the bug only happens on the Mac speaker. On speakers the mic re-captures the speaker output, so the meeting audio lands on `Channel::Mic` *as well* and picks up the ticker - visible in the first screenshot as `Me` and `Them` carrying identical text at `00:01:51`. On headphones there is no bleed, the far end exists only on `Channel::System`, and the streaming indicator disappears. The mystery in the report ("I don't know how it's getting the audio at all") is just system loopback: SCK capture is independent of the output device.
+
+  Decide whether the v1 mic-only tradeoff still holds now that the asymmetry is user-visible. Enabling the ticker for `Channel::System` doubles whisper.cpp pressure, so it needs a perf spike on the smaller models first. The echo-bleed duplicate lines are a separate issue - worth its own entry if it bothers you beyond this bug.
+  </details>
 
 - [ ] Add NVIDIA Parakeet v3 to the local STT model download
   <details>
@@ -57,6 +156,80 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   parakeet.cpp is the cleanest ggml/Metal fit but has no Rust bindings and is pre-1.0 - revisit in 6-12 months.
   Open decisions before scoping: accept Apache-2.0 (sherpa-onnx) alongside MIT; its build.rs downloads a prebuilt static lib at build time; CPU-only inference needs a perf spike on Apple Silicon (no Metal path); Parakeet weights are CC-BY-4.0, so attribution may need surfacing in Settings.
   </details>
+
+- [ ] Capture more than one audio input at a time (multiple mics, or a mic plus one specific app)
+  <details>
+  <summary>Details</summary>
+
+  Capture is exactly two fixed channels today: one mic device and whole-system loopback.
+  `Channel` (`crates/yogurt-audio/src/frame.rs:19`) has precisely `Mic` and `System`, `spawn_mic_capture` (`crates/yogurt-audio/src/mic.rs:175`) takes a single `Option<&str>` device name, and the mid-recording hot-swap (`Registry::switch_mic_device`, `crates/yogurt-server/src/meetings.rs:709`) changes *which* single device is live, never adds a second.
+
+  The headphones-plus-Zoom case in the ask is already covered, though: the SCK content filter is display-rooted with no window exclusions (`crates/yogurt-audio/src/system.rs:165`), so Zoom, Chrome, and everything else already land on `Channel::System` while the headphone mic lands on `Channel::Mic`. What is genuinely missing is N mics (two people at one laptop, or a USB interface alongside the built-in) and per-app system audio instead of all-or-nothing.
+
+  Two independent halves, scope them separately:
+
+  1. **N mic devices.** `Channel` becomes indexed rather than a two-variant enum, which ripples into the `tokio::select!` fan-in, the broadcast-sender-per-channel model, and speaker attribution in the transcript. Cheaper alternative: keep two channels and mix N devices down into `Channel::Mic` before the ring, which costs nothing downstream but throws away per-device separation. Decide which before writing code.
+  2. **Per-app system audio.** `SCContentFilter` can be built app-rooted instead of display-rooted, so "just Zoom" is a filter change rather than an architecture change. Check the app-filter API is available at the macOS 13 deployment target.
+
+  Zero-code answer that exists today: a macOS aggregate device (Audio MIDI Setup) presents N inputs to cpal as one device. Worth documenting in the README before building anything.
+  </details>
+
+- [ ] Ship a local STT model with the release instead of downloading from HuggingFace on first run
+  <details>
+  <summary>Details</summary>
+
+  Every entry in `REGISTRY` (`crates/yogurt-stt/src/models.rs:74`) points at `huggingface.co/ggerganov/whisper.cpp`, so first-run local STT needs HF reachable. Same class of problem as the CLI-LLM item under ## LLM: a locked-down machine can install yogurt and still not transcribe.
+
+  Licensing is not the blocker. The ggml checkpoints in `ggerganov/whisper.cpp` are MIT, as are the upstream OpenAI weights, so redistribution is fine with attribution added to `THIRD_PARTY_LICENSES.md`.
+
+  Size is the blocker, and it decides between the three options:
+
+  - **Embed in the binary: no.** tiny.en is 75 MB against an 11.7 MB binary, and rust-embed puts it in the Mach-O, so every user pays for it whether they use local STT or not. Cloud-STT users would carry a 7x binary for nothing.
+  - **Commit to the repo: no.** GitHub warns at 50 MB and hard-blocks pushes over 100 MB, so only tiny.en fits at all, and only through Git LFS, whose bandwidth quota is billed and burned by every clone. It also bloats the repo permanently for contributors.
+  - **Attach to the GitHub Release: yes.** 2 GB per asset, no LFS, no repo bloat, and `release.yml:119` already uploads a `files:` list. `ggml-tiny.en.bin` becomes one more asset plus a `REGISTRY` URL change.
+
+  Scoping notes: pin the asset URL to its tag rather than `latest`, so an old binary keeps resolving the model it was built against. Keep HF as a fallback rather than replacing it, since the release asset is a mirror and not a new source of truth. The SHA256 pins are unchanged because it is byte-identical, which also means `scripts/refresh-model-hashes.sh` stays the verification path.
+  </details>
+
+## LLM
+
+- [ ] Route LLM calls through a local agent CLI (`claude -p`, `cursor-agent`) when no API endpoint is reachable
+  <details>
+  <summary>Details</summary>
+
+  `LlmClient` (`crates/yogurt-llm/src/lib.rs:49`) is already the right seam: two methods, `complete` and `stream`, and the crate doc at line 12 anticipates a second implementation. A `CliClient` that spawns the agent CLI and implements the same trait needs no changes above it.
+
+  It cannot be just another provider row with a different base URL. `OpenAiClient::new` (`crates/yogurt-llm/src/lib.rs:90`) assumes HTTP at `{base_url}/chat/completions`; agent CLIs speak stdin/stdout. Streaming maps onto `--output-format stream-json` on both CLIs, so `stream()` would parse that into `ChatChunk` the way `streaming.rs` parses SSE today.
+
+  Open decisions before scoping:
+
+  - **Terms of service.** Both CLIs authenticate against a coding subscription. Driving one as a general-purpose completion backend for meeting notes is a gray area, and it is the user's account that gets suspended if the read is wrong. Settle this before writing code, not after.
+  - **Which problem this actually solves.** Not offline: both CLIs still call the cloud. It solves "corporate egress allows Claude Code but not `api.minimax.io`" and "user has no separate API key to pay for". Real, but narrower than it first sounds. True-offline is already covered by Ollama, which is an OpenAI-compatible base URL and works today with no code at all.
+  - **Cost shape.** Process spawn per call, no connection reuse, cold start in the hundreds of ms. Fine for note enhancement at meeting end, likely not for anything per-utterance.
+  - **Discovery and failure UX.** Settings would need to detect which CLIs are on `$PATH` and fail legibly when one is installed but not logged in. That failure is a non-zero exit with text on stderr, not an HTTP status, so the Test button plumbing needs a verdict path that is not `test_provider`'s.
+  </details>
+
+
+## CLI
+
+- [ ] Quiet the terminal during a live meeting; keep lifecycle lines and errors, drop the rest
+  <details>
+  <summary>Details</summary>
+
+  `yogurt start` should read as a status line, not a firehose. The wanted set is roughly: server up and its URL, meeting started, meeting stopped, enhance started and finished, and anything that actually went wrong. Everything else belongs behind `RUST_LOG`.
+
+  **First step is to capture the real output**, because the tracing config alone does not explain the volume and the fix depends on which source is loudest. Run a meeting with `yogurt start 2>&1 | tee /tmp/yogurt-noise.log`, then `sort | uniq -c | sort -rn` it and attach the top offenders here. What is already known:
+
+  - There is no `TraceLayer`, so HTTP requests are not logged. The frontend's 5 s `/api/meetings/active` poll is not the source.
+  - The whole workspace has ~30 `info!` call sites (16 in `yogurt-server`, 7 in `yogurt-stt`, 6 in `yogurt-audio`, 1 in `yogurt-cli`), and none is per-frame or per-transcript-event. Pure `info!` volume should be low.
+  - Prime suspect is therefore **not tracing at all**: whisper.cpp, ggml, and the Metal backend write straight to stderr through ggml's own log callback, which neither `EnvFilter` nor the `params.set_print_*(false)` calls at `crates/yogurt-stt/src/whisper_local.rs:148` control. `whisper_rs::install_logging_hooks()` redirects that stream into `tracing`, and it is never called anywhere in the workspace. If the noise is local-STT-only, this is almost certainly it, and installing the hook is the whole fix.
+  - Second suspect, if the noise scales with how badly whisper is keeping up: `tracing::warn!(?n, "whisper_local audio rx lagged; dropping")` (`crates/yogurt-stt/src/whisper_local.rs:390`) has no rate limit, and the 1 s partial ticker competing with segment decodes gives it plenty of chances to fire. Same shape for `deepgram pump: audio receiver lagged` (`crates/yogurt-stt/src/deepgram.rs:110`). These are worth keeping but want collapsing - count them and emit once per N seconds rather than once per occurrence.
+
+  While in here, the default filter is `"yogurt=info,yogurt_server=info"` (`crates/yogurt-cli/src/main.rs:79`). `EnvFilter` matches targets by plain `starts_with` (tracing-subscriber 0.3.23, `filter/env/directive.rs:246`), so `yogurt=info` already covers `yogurt_server`, `yogurt_audio`, `yogurt_stt`, and every other `yogurt_*` crate. The second half is redundant and reads as if it were doing something. Drop it, or replace both with per-crate levels once the noisy targets are known.
+
+  Careful not to overshoot: the point is a quiet terminal that still proves the thing is working, so lifecycle lines stay at `info!` and everything currently at `warn!`/`error!` keeps its level. Demote to `debug!` rather than delete, so `RUST_LOG=yogurt=debug` still gets you the detail when something needs diagnosing.
+  </details>
+
 
 ## DONE
 
@@ -111,6 +284,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
 ### Meetings
+
 
 - [x] Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
   <details>
