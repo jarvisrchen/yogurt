@@ -44,5 +44,6 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - Rust: rustfmt + clippy clean at `-D warnings`; `anyhow` at binary surface, `thiserror` at crate boundaries.
 - Frontend: React 19 + Vite + Tailwind 4 (tokens in `web/src/index.css` `@theme`, PRD §16 Blueberry) + zustand + TanStack Query.
 - Never use an em dash in prose; use a plain "-".
+- `main` is protected by convention: branch, then open a PR. Never commit or push directly to `main`. The repo is public and `v0.1.0` ships from it, so an unreviewed commit on `main` is a published mistake rather than a local one.
 - Do not hand-edit CHANGELOG files; release notes are generated.
 - Tests accompany non-trivial logic; E2E behavior is verified against the real binary, not just unit tests.
