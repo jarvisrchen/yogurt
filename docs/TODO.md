@@ -172,23 +172,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## LLM
 
-- [ ] **LLM-1** Route LLM calls through a local agent CLI (`claude -p`, `cursor-agent`) when no API endpoint is reachable
-  <details>
-  <summary>Details</summary>
-
-  `LlmClient` (`crates/yogurt-llm/src/lib.rs:49`) is already the right seam: two methods, `complete` and `stream`, and the crate doc at line 12 anticipates a second implementation. A `CliClient` that spawns the agent CLI and implements the same trait needs no changes above it.
-
-  It cannot be just another provider row with a different base URL. `OpenAiClient::new` (`crates/yogurt-llm/src/lib.rs:90`) assumes HTTP at `{base_url}/chat/completions`; agent CLIs speak stdin/stdout. Streaming maps onto `--output-format stream-json` on both CLIs, so `stream()` would parse that into `ChatChunk` the way `streaming.rs` parses SSE today.
-
-  Open decisions before scoping:
-
-  - **Terms of service.** Both CLIs authenticate against a coding subscription. Driving one as a general-purpose completion backend for meeting notes is a gray area, and it is the user's account that gets suspended if the read is wrong. Settle this before writing code, not after.
-  - **Which problem this actually solves.** Not offline: both CLIs still call the cloud. It solves "corporate egress allows Claude Code but not `api.minimax.io`" and "user has no separate API key to pay for". Real, but narrower than it first sounds. True-offline is already covered by Ollama, which is an OpenAI-compatible base URL and works today with no code at all.
-  - **Cost shape.** Process spawn per call, no connection reuse, cold start in the hundreds of ms. Fine for note enhancement at meeting end, likely not for anything per-utterance.
-  - **Discovery and failure UX.** Settings would need to detect which CLIs are on `$PATH` and fail legibly when one is installed but not logged in. That failure is a non-zero exit with text on stderr, not an HTTP status, so the Test button plumbing needs a verdict path that is not `test_provider`'s.
-  </details>
-
-
 ## CLI
 
 ## DONE
@@ -413,6 +396,24 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
 ### LLM
+
+- [x] **LLM-1** Route LLM calls through a local agent CLI (`claude -p`, `cursor-agent`) when no API endpoint is reachable
+  <details>
+  <summary>Details</summary>
+
+  `LlmClient` (`crates/yogurt-llm/src/lib.rs:49`) is already the right seam: two methods, `complete` and `stream`, and the crate doc at line 12 anticipates a second implementation. A `CliClient` that spawns the agent CLI and implements the same trait needs no changes above it.
+
+  It cannot be just another provider row with a different base URL. `OpenAiClient::new` (`crates/yogurt-llm/src/lib.rs:90`) assumes HTTP at `{base_url}/chat/completions`; agent CLIs speak stdin/stdout. Streaming maps onto `--output-format stream-json` on both CLIs, so `stream()` would parse that into `ChatChunk` the way `streaming.rs` parses SSE today.
+
+  Open decisions before scoping:
+
+  - **Terms of service.** Both CLIs authenticate against a coding subscription. Driving one as a general-purpose completion backend for meeting notes is a gray area, and it is the user's account that gets suspended if the read is wrong. Settle this before writing code, not after.
+  - **Which problem this actually solves.** Not offline: both CLIs still call the cloud. It solves "corporate egress allows Claude Code but not `api.minimax.io`" and "user has no separate API key to pay for". Real, but narrower than it first sounds. True-offline is already covered by Ollama, which is an OpenAI-compatible base URL and works today with no code at all.
+  - **Cost shape.** Process spawn per call, no connection reuse, cold start in the hundreds of ms. Fine for note enhancement at meeting end, likely not for anything per-utterance.
+  - **Discovery and failure UX.** Settings would need to detect which CLIs are on `$PATH` and fail legibly when one is installed but not logged in. That failure is a non-zero exit with text on stderr, not an HTTP status, so the Test button plumbing needs a verdict path that is not `test_provider`'s.
+  </details>
+
+  Landed in #TODO-PR. ToS risk accepted for both CLIs. `yogurt_llm::CliClient` implements `LlmClient` directly (not a provider row) and wraps only an already-configured provider via `CliFallbackClient` in `llm_openai::resolve`, retrying just once on a connect-class failure to the provider's `base_url`. Scoped down from the open questions above: `complete()` only for v1 (`stream()` buffers into one chunk); no provider configured still resolves to `MockLlm`, never the CLI, after an earlier draft that preferred the CLI there made `cargo test` shell out to the real binary and spend real API credits on a machine with `claude` on `$PATH`. `claude` runs `--restricted --strict-mcp-config --disable-slash-commands` in a scratch cwd since transcript text reaches it untrusted; `cursor-agent`'s equivalent flags are unverified against a live binary so only the bare `-p --output-format json` is applied there. AGENTS.md's "no subprocesses" constraint carries a scoped exception for this one call site; see `docs/ARCHITECTURE.md` §7.6.
 
 - [x] **LLM-2** Test button for the API key should stay available on provider cards with saved models
   <details>
