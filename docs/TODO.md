@@ -4,6 +4,22 @@ Open work for yogurt.
 Add new items at the bottom of the relevant section, or create a new section.
 Keep one item per `- [ ]` line so it's easy to check off.
 
+## Ticket IDs
+
+Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be referenced in conversation, commits, and PR titles.
+
+| Prefix | Section |
+| --- | --- |
+| `UI` | UI |
+| `MTG` | Meetings |
+| `AUD` | Audio |
+| `LLM` | LLM |
+| `CLI` | CLI |
+
+Numbers are per prefix and allocated once: the next ID is the highest existing number for that prefix plus one, counting the DONE section too.
+Never reuse or renumber an ID, including when an item moves to DONE.
+A new section gets a new short prefix added to the table above.
+
 ## Referencing attachments
 
 Drop screenshots and photos in `attachments/`, then reference them inline in the TODO entry.
@@ -13,7 +29,7 @@ When the user sends a photo, save it into `attachments/` with a `YYYY-MM-DD-<slu
 Example entry:
 
 ```
-- [ ] Settings modal cuts off the API key field on small windows
+- [ ] **UI-5** Settings modal cuts off the API key field on small windows
   <details>
   <summary>Details</summary>
 
@@ -27,7 +43,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## UI
 
-- [ ] BASE URL and MODEL fields overlap on long URLs in provider cards
+- [ ] **UI-1** BASE URL and MODEL fields overlap on long URLs in provider cards
   <details>
   <summary>Details</summary>
 
@@ -43,7 +59,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
-- [ ] Live transcript comes back empty after navigating to Library and back, but a refresh restores it
+- [ ] **MTG-1** Live transcript comes back empty after navigating to Library and back, but a refresh restores it
   <details>
   <summary>Details</summary>
 
@@ -88,7 +104,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Audio
 
-- [ ] Live partials shrink mid-sentence on local STT, and never appear at all for system audio
+- [ ] **AUD-1** Live partials shrink mid-sentence on local STT, and never appear at all for system audio
   <details>
   <summary>Details</summary>
 
@@ -121,7 +137,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Decide whether the v1 mic-only tradeoff still holds now that the asymmetry is user-visible. Enabling the ticker for `Channel::System` doubles whisper.cpp pressure, so it needs a perf spike on the smaller models first. The echo-bleed duplicate lines are a separate issue - worth its own entry if it bothers you beyond this bug.
   </details>
 
-- [ ] Add NVIDIA Parakeet v3 to the local STT model download
+- [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
   <details>
   <summary>Details</summary>
 
@@ -134,7 +150,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Open decisions before scoping: accept Apache-2.0 (sherpa-onnx) alongside MIT; its build.rs downloads a prebuilt static lib at build time; CPU-only inference needs a perf spike on Apple Silicon (no Metal path); Parakeet weights are CC-BY-4.0, so attribution may need surfacing in Settings.
   </details>
 
-- [ ] Capture more than one audio input at a time (multiple mics, or a mic plus one specific app)
+- [ ] **AUD-3** Capture more than one audio input at a time (multiple mics, or a mic plus one specific app)
   <details>
   <summary>Details</summary>
 
@@ -151,7 +167,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Zero-code answer that exists today: a macOS aggregate device (Audio MIDI Setup) presents N inputs to cpal as one device. Worth documenting in the README before building anything.
   </details>
 
-- [ ] Ship a local STT model with the release instead of downloading from HuggingFace on first run
+- [ ] **AUD-4** Ship a local STT model with the release instead of downloading from HuggingFace on first run
   <details>
   <summary>Details</summary>
 
@@ -170,7 +186,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## LLM
 
-- [ ] Route LLM calls through a local agent CLI (`claude -p`, `cursor-agent`) when no API endpoint is reachable
+- [ ] **LLM-1** Route LLM calls through a local agent CLI (`claude -p`, `cursor-agent`) when no API endpoint is reachable
   <details>
   <summary>Details</summary>
 
@@ -189,7 +205,7 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## CLI
 
-- [ ] Quiet the terminal during a live meeting; keep lifecycle lines and errors, drop the rest
+- [ ] **CLI-1** Quiet the terminal during a live meeting; keep lifecycle lines and errors, drop the rest
   <details>
   <summary>Details</summary>
 
@@ -217,7 +233,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### UI
 
-- [x] Add a "Test" button for the Deepgram key in Settings → Transcription
+- [x] **UI-2** Add a "Test" button for the Deepgram key in Settings → Transcription
   <details>
   <summary>Details</summary>
 
@@ -233,7 +249,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
   Landed in PRs #2 and #3 (v0.2.0). The 2xx and 401 probe paths remain untested: the Deepgram URL is hardcoded, so it cannot be pointed at wiremock the way a provider's `base_url` can.
 
-- [x] Chat input loses its pill shape on focus
+- [x] **UI-3** Chat input loses its pill shape on focus
   <details>
   <summary>Details</summary>
 
@@ -247,7 +263,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   ![chat input focused, pill lost](attachments/2026-08-28-chat-input-focused-no-pill.png)
   </details>
 
-- [x] Thick blue ring around the AI notes section when interacting
+- [x] **UI-4** Thick blue ring around the AI notes section when interacting
   <details>
   <summary>Details</summary>
 
@@ -262,7 +278,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### Meetings
 
-- [x] First "End meeting" click is a no-op while still recording; it takes two clicks to reach enhance
+- [x] **MTG-2** First "End meeting" click is a no-op while still recording; it takes two clicks to reach enhance
   <details>
   <summary>Details</summary>
 
@@ -287,7 +303,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   **Landed.** `stopRecording` now writes `null` into `activeRecordingKey` itself rather than waiting for the poll (`web/src/routes/Meeting.tsx:322`). Regression test in `Meeting.test.tsx` seeds the cache the way the poll would, ends the meeting, and asserts the cache is cleared; it fails with `expected { id: 'meeting-3', … } to be null` if the line is removed.
 
 
-- [x] Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
+- [x] **MTG-3** Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
   <details>
   <summary>Details</summary>
 
@@ -307,7 +323,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Contract, as documented in `render.rs`: a block is black only when `diff::merge` finds its text in the user's own notes; everything else the LLM produced is grey, headings included.
   </details>
 
-- [x] Add an "enhanced with" pill next to the existing STT pill on meeting headers
+- [x] **MTG-4** Add an "enhanced with" pill next to the existing STT pill on meeting headers
   <details>
   <summary>Details</summary>
 
@@ -328,7 +344,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Verified in the browser against a real MiniMax enhance; a failed enhance keeps the previous stamp.
   </details>
 
-- [x] LLM pill missing on a live meeting (STT pill shows, LLM pill doesn't)
+- [x] **MTG-5** LLM pill missing on a live meeting (STT pill shows, LLM pill doesn't)
   <details>
   <summary>Details</summary>
 
@@ -341,7 +357,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Verified E2E against the running backend: "+ New meeting" now renders `[Local · large-v3-turbo] [MiniMax-M3]` while recording.
   </details>
 
-- [x] Short / empty post-meeting meetings should say "too short" and return to the library
+- [x] **MTG-6** Short / empty post-meeting meetings should say "too short" and return to the library
   <details>
   <summary>Details</summary>
 
@@ -350,7 +366,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Auto-return to the library (home screen) so the user isn't left in a blank post-meeting view they have to navigate out of manually.
   </details>
 
-- [x] Delete-confirm check should overlay, not shift the post-meeting topbar
+- [x] **MTG-7** Delete-confirm check should overlay, not shift the post-meeting topbar
   <details>
   <summary>Details</summary>
 
@@ -362,7 +378,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   ![post-meeting delete confirm shifts the topbar](attachments/2026-08-28-delete-confirm-shifts-topbar.png)
   </details>
 
-- [x] Live transcript duplicates when audio plays through the machine
+- [x] **MTG-8** Live transcript duplicates when audio plays through the machine
   <details>
   <summary>Details</summary>
 
@@ -375,7 +391,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### Audio
 
-- [x] Add the ability to delete a downloaded local STT model
+- [x] **AUD-5** Add the ability to delete a downloaded local STT model
   <details>
   <summary>Details</summary>
 
@@ -392,7 +408,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### LLM
 
-- [x] Test button for the API key should stay available on provider cards with saved models
+- [x] **LLM-2** Test button for the API key should stay available on provider cards with saved models
   <details>
   <summary>Details</summary>
 
@@ -405,7 +421,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Fixed by extracting `TestKeyButton` from `ApiKeyInput` and rendering it next to `Replace key` in the collapsed state, where it tests the stored key.
   </details>
 
-- [x] Add Google Gemini and DeepSeek as built-in LLM provider presets
+- [x] **LLM-3** Add Google Gemini and DeepSeek as built-in LLM provider presets
   <details>
   <summary>Details</summary>
 

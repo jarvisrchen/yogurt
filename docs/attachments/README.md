@@ -13,4 +13,4 @@ Examples:
 ## Workflow
 
 When the user sends a photo, save it here with a descriptive slug.
-Then add a TODO entry to `../TODO.md` that references it inline.
+Then add a TODO entry to `../TODO.md` that references it inline, with a fresh ticket ID (see the Ticket IDs section there).
