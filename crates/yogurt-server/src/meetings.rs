@@ -149,7 +149,7 @@ pub struct Meeting {
     pub created_at_ms: u64,
     /// Audio broadcast — populated by the Frame-→-AudioChunk adapter task
     /// inside the supervisor while recording is live. Capacity 256 is ~5
-    /// seconds of 20ms chunks; lagged subscribers warn and drop frames.
+    /// seconds of 20ms chunks; lagged subscribers drop frames (logged at debug).
     pub audio_tx: broadcast::Sender<AudioChunk>,
     /// Transcript broadcast — populated by the STT engine, consumed by WS
     /// clients. Capacity 256 is plenty (transcripts arrive < 10 Hz).
@@ -1213,7 +1213,14 @@ pub(crate) async fn pump_audio_adapter(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!(n, "audio adapter: mic lagged");
+                    // CLI-2: debug, not warn. This fires as a burst while the
+                    // STT engine loads its model and the ring buffer catches
+                    // up, which is every single meeting - a warning nobody can
+                    // act on is noise. `RUST_LOG=yogurt=debug` brings it back.
+                    // Revisit if lag ever turns sustained rather than a
+                    // startup artifact: the fix then is a periodic count, not
+                    // a line per event.
+                    tracing::debug!(n, "audio adapter: mic lagged");
                 }
                 Err(broadcast::error::RecvError::Closed) => {
                     tracing::debug!("audio adapter: mic stream closed — continuing with system only");
@@ -1234,7 +1241,7 @@ pub(crate) async fn pump_audio_adapter(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!(n, "audio adapter: system lagged");
+                    tracing::debug!(n, "audio adapter: system lagged");
                 }
                 Err(broadcast::error::RecvError::Closed) => {
                     tracing::debug!("audio adapter: system stream closed — continuing with mic only");
