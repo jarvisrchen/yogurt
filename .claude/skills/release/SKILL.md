@@ -32,6 +32,8 @@ The tag selects the commit that gets built, so `main` can move freely without sh
    grep -n '^version' Cargo.toml                       # [workspace.package]
    ```
    `Cargo.toml` carries the tag minus the leading `v`.
+   Bump it with `cargo update --workspace` afterwards so `Cargo.lock` moves too; `cargo metadata --no-deps` does NOT write the lock, and a stale lock otherwise rides into the tagged tree.
+   If that command fails with `failed to select a version for the requirement <crate>`, an intra-workspace path dep has a hand-pinned `version =` that needs removing or bumping.
    A mismatch is silent and ugly: the formula installs a binary whose `yogurt --version` disagrees with the version Homebrew thinks it installed, and the formula's `test do` block can still pass because it only greps for the string `yogurt`.
    Bump and commit this before tagging, never after.
 
