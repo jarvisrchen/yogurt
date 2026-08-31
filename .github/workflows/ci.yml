@@ -69,5 +69,13 @@ jobs:
         run: pnpm --dir web typecheck
       - name: test
         run: pnpm --dir web test
+      # The Playwright specs mock the backend at the browser layer, so they
+      # need no keychain, keys, or audio - only a browser. They were never
+      # wired in here, and `library-navigation.spec.ts` silently rotted for
+      # it (its meeting fixture lost `labels`, and MeetingCard threw).
+      - name: install playwright chromium
+        run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: e2e
+        run: pnpm --dir web e2e
       - name: build
         run: pnpm --dir web build
