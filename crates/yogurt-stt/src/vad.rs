@@ -140,6 +140,28 @@ impl Segmenter {
         }
     }
 
+    /// PCM of the utterance currently in flight, plus the `cursor_ms` at
+    /// which it started, or `None` when we are between utterances.
+    ///
+    /// This is the *same* buffer the eventual `Segment` event carries, and
+    /// that is the point.  The partial-preview decoder in `whisper_local`
+    /// reads this instead of keeping a rolling window of its own.  A rolling
+    /// window makes the displayed partial *shrink* once an utterance outruns
+    /// it (AUD-1): every re-decode replaces the whole line, and past the
+    /// window each replacement is a decode of less audio than the one
+    /// before, so the transcript appears to eat itself.  Reading the live
+    /// utterance buffer makes growth structural - it only ever gains samples
+    /// until the segment is emitted, and `MAX_SEGMENT_MS` bounds it.
+    ///
+    /// The `None` between utterances is load-bearing too: it is what stops
+    /// the ticker spending a decode on a channel that is silent.
+    pub fn pending(&self) -> Option<(&[i16], u64)> {
+        if !self.in_speech || self.buffer.is_empty() {
+            return None;
+        }
+        Some((&self.buffer, self.speech_start_ms))
+    }
+
     /// Feed PCM samples.  Frames are sliced internally to 480 samples
     /// (30 ms @ 16 kHz); any trailing partial frame is retained for
     /// the next call.  The closure is invoked once per emitted event.

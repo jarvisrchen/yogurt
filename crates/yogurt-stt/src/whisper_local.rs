@@ -14,7 +14,9 @@
 //! We run TWO sampling configurations against the same context:
 //!
 //! 1. **Greedy / fast — preview** (`fast=true`): `SamplingStrategy::Greedy
-//!    { best_of: 1 }` on a rolling 5 s mic buffer, fired every 1 s. Used
+//!    { best_of: 1 }` on the utterance currently in flight, fired every
+//!    1 s. The audio comes straight from `Segmenter::pending` rather than
+//!    from a buffer the ticker keeps itself — see AUD-1 below. Used
 //!    for the "still listening" indicator (`is_final: false` events). Per
 //!    PRD §13 the partial quality is openly worse than Deepgram — it's the
 //!    privacy escape hatch, not the daily driver. `set_no_context(true)`
@@ -42,6 +44,31 @@
 //! WILL deadlock the WS broadcast pump under load. The invariant is
 //! covered in Plan 08-03's bench acceptance — don't regress it.
 //!
+//! ## Why the partial ticker has no buffer of its own (AUD-1)
+//!
+//! It used to. The ticker kept a rolling 5 s window over the raw mic
+//! stream, re-decoded it every second, and emitted the result as a
+//! whole-line replacement. Once an utterance ran past five seconds the
+//! earliest words scrolled out of the window, so each replacement decoded
+//! *less* audio than the one before and the on-screen partial visibly
+//! shrank mid-sentence. The window was also fed only from the
+//! `Channel::Mic` arm of the pump, so system audio never got a partial at
+//! all.
+//!
+//! Both were the same mistake: a second, worse notion of "the audio to
+//! preview", parallel to the one `Segmenter` already maintains.
+//! `Segmenter::buffer` *is* the in-flight utterance — it only grows while
+//! in speech, it is cleared the instant a `Segment` is emitted, and
+//! `MAX_SEGMENT_MS` bounds it. The ticker now reads it through
+//! `Segmenter::pending`, which makes "partials only ever grow" structural
+//! rather than something this file has to remember to do.
+//!
+//! The segmenters therefore live behind `Arc<Mutex<_>>`, shared with the
+//! pump. `std::sync::Mutex`, deliberately, not the tokio one: nothing
+//! awaits while holding it, and with the std guard an accidental
+//! await-while-held is a *compile* error (the future stops being `Send`)
+//! instead of a 600 ms stall of the audio pump.
+//!
 //! ## Why the segmenter is a placeholder in 08-01
 //!
 //! Plan 08-02 lands the real `vad.rs`. Plan 08-01 ships the adapter
@@ -54,9 +81,9 @@ use crate::{AudioChunk, AudioRx, Channel, Stt, TranscriptEvent, TranscriptTx};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// Whisper.cpp adapter — owns the model context and drives a dual-state
@@ -197,8 +224,9 @@ impl Stt for WhisperLocal {
     /// 1. **Mic final decoder** — drains `mic_seg_rx`, runs
     ///    `decode(.., fast=false)` per VAD segment, emits Final.
     /// 2. **System final decoder** — same but for the system-audio side.
-    /// 3. **Partial ticker** — every 1 s snapshots the last 5 s of mic
-    ///    audio, runs `decode(.., fast=true)`, emits Partial.
+    /// 3. **Partial ticker** — every 1 s snapshots the utterance in
+    ///    flight on ONE channel (round-robin, skipping channels with
+    ///    nothing pending), runs `decode(.., fast=true)`, emits Partial.
     /// 4. **Audio pump** — `audio_rx.recv()` → split by `Channel` →
     ///    `Segmenter::push` (which fires `SegmenterEvent::Segment` once
     ///    Plan 08-02 lands the real VAD).
@@ -208,6 +236,12 @@ impl Stt for WhisperLocal {
         let ctx_mic = self.ctx.clone();
         let ctx_sys = self.ctx.clone();
         let ctx_partial = self.ctx.clone();
+
+        // Shared with the partial ticker, which reads each segmenter's
+        // in-flight utterance via `Segmenter::pending`. See the AUD-1 note
+        // in the module docs for why the ticker has no buffer of its own.
+        let mic_seg = Arc::new(Mutex::new(Segmenter::new(16_000)));
+        let sys_seg = Arc::new(Mutex::new(Segmenter::new(16_000)));
 
         // Per-channel segment queue. Sized small (8) — under sustained
         // overload `try_send` drops; that's deliberate vs blocking the
@@ -271,11 +305,29 @@ impl Stt for WhisperLocal {
         });
 
         // ------------------------------------------------------------------
-        // Worker 3: partial-window ticker (greedy, is_final = false)
+        // Worker 3: partial ticker (greedy, is_final = false)
         //
-        // Rolling 5 s mic buffer. Tick every 1 s. Skipped for system
-        // audio in v1 to halve whisper.cpp pressure — PRD §13 only
-        // requires the still-listening indicator on the user's own voice.
+        // Tick every 1 s; decode the in-flight utterance on ONE channel,
+        // chosen round-robin among the channels that actually have one.
+        //
+        // v1 ran this mic-only "to halve whisper.cpp pressure", which left
+        // the far end with no still-listening indicator at all (AUD-1).
+        // Round-robin covers both channels without paying that price:
+        // pressure is unchanged at one greedy decode per tick. What gives
+        // instead is refresh *rate*, and only while both people are
+        // mid-utterance simultaneously — then each side refreshes every 2 s
+        // rather than every 1 s. One person talking, the common case, still
+        // refreshes at 1 s, because the idle channel's `pending()` is `None`
+        // and costs nothing to skip.
+        //
+        // Decoding both channels every tick was the alternative and does not
+        // fit: measured on large-v3-turbo, a full 25 s `MAX_SEGMENT_MS`
+        // buffer decodes in ~585 ms, so two would be ~1.17 s against a 1 s
+        // tick — and `interval`'s default `MissedTickBehavior::Burst` would
+        // then spin trying to catch up. `examples/partial_decode_cost.rs`
+        // re-measures that on your machine and model; if a future model
+        // pushes the 25 s row past ~1 s, the knob is this interval, not a
+        // smaller buffer (that is the shrinking bug all over again).
         // ------------------------------------------------------------------
         // The ticker loops forever on its own — tie its lifetime to this
         // `start()` future (which the meeting supervisor aborts on stop) or
@@ -290,29 +342,54 @@ impl Stt for WhisperLocal {
             }
         }
 
-        let partial_buf: Arc<Mutex<Vec<i16>>> =
-            Arc::new(Mutex::new(Vec::with_capacity(16_000 * 5)));
-        let partial_buf_writer = partial_buf.clone();
+        let sources = [
+            (mic_seg.clone(), Channel::Mic),
+            (sys_seg.clone(), Channel::System),
+        ];
         let txn_partial = txn.clone();
         let _ticker_guard = AbortOnDrop(tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_millis(1000));
             // Skip the immediate first tick — we want to fire AFTER 1 s
             // of buffered audio, not at t=0 with an empty buffer.
             ticker.tick().await;
+            let mut next_source = 0usize;
             loop {
                 ticker.tick().await;
-                let snapshot = {
-                    let buf = partial_buf.lock().await;
-                    // Need at least 1 s of audio to bother decoding.
-                    if buf.len() < 16_000 {
-                        continue;
+
+                // Probe each channel once, starting where the last tick left
+                // off, and take the first with an utterance long enough to be
+                // worth a decode. `next_source` advances on every probe, not
+                // just on a hit, so two active channels alternate rather than
+                // one starving the other.
+                let mut picked = None;
+                for _ in 0..sources.len() {
+                    let (seg, channel) = &sources[next_source];
+                    next_source = (next_source + 1) % sources.len();
+                    // Scoped so the guard is released before the decode
+                    // below — and it is a std guard, so holding it across
+                    // that `.await` would not compile in the first place.
+                    let snapshot = {
+                        let seg = seg.lock().unwrap_or_else(|e| e.into_inner());
+                        seg.pending()
+                            // Need at least 1 s of audio to bother decoding.
+                            .filter(|(pcm, _)| pcm.len() >= 16_000)
+                            .map(|(pcm, start_ms)| (pcm.to_vec(), start_ms))
+                    };
+                    if let Some((pcm, start_ms)) = snapshot {
+                        picked = Some((pcm, start_ms, *channel));
+                        break;
                     }
-                    buf.clone()
+                }
+                // Nothing in flight on either channel — everyone is between
+                // utterances. Skip the decode entirely.
+                let Some((pcm, start_ms, channel)) = picked else {
+                    continue;
                 };
+
                 let ctx = ctx_partial.clone();
                 // LOCAL-05 invariant.
                 let text = tokio::task::spawn_blocking(move || {
-                    Self::decode(&ctx, &snapshot, /* fast */ true)
+                    Self::decode(&ctx, &pcm, /* fast */ true)
                 })
                 .await
                 .ok()
@@ -322,12 +399,17 @@ impl Stt for WhisperLocal {
                     continue;
                 }
                 let _ = txn_partial.send(TranscriptEvent {
-                    // ts_ms = 0 for partials: the dock keys partials by
-                    // (channel, is_final=false) and replaces in place;
-                    // a precise timestamp would falsely suggest each
-                    // re-decode is a new event.
-                    ts_ms: 0,
-                    channel: Channel::Mic,
+                    // The utterance's own start, matching what the final for
+                    // this same segment will carry — so the timestamp does
+                    // not jump when the final replaces the partial in place.
+                    // This mirrors the deepgram adapter, which stamps its
+                    // partials with `UtteranceState.start_ms`. (It used to be
+                    // a hardcoded 0, which rendered every in-flight line as
+                    // `00:00:00`; `mergeEvent` on the frontend keys off
+                    // channel and is_final, never ts_ms, so nothing depended
+                    // on the zero.)
+                    ts_ms: start_ms,
+                    channel,
                     text,
                     is_final: false,
                 });
@@ -335,13 +417,11 @@ impl Stt for WhisperLocal {
         }));
 
         // ------------------------------------------------------------------
-        // Main pump: split incoming AudioChunk by channel, feed mic
-        // segmenter + partial buffer, feed system segmenter. Mirror the
-        // deepgram pump's Lagged/Closed semantics.
+        // Main pump: split incoming AudioChunk by channel and feed the
+        // matching segmenter. Mirror the deepgram pump's Lagged/Closed
+        // semantics. The partial ticker reads the same segmenters, so there
+        // is nothing extra to maintain here.
         // ------------------------------------------------------------------
-        let mut mic_seg = Segmenter::new(16_000);
-        let mut sys_seg = Segmenter::new(16_000);
-
         loop {
             match audio_rx.recv().await {
                 Ok(chunk) => {
@@ -352,20 +432,9 @@ impl Stt for WhisperLocal {
                     } = chunk;
                     match channel {
                         Channel::Mic => {
-                            // Update the rolling partial buffer (last 5 s).
-                            // Drain the head if it exceeds the cap rather
-                            // than reallocating.
-                            {
-                                let mut buf = partial_buf_writer.lock().await;
-                                buf.extend_from_slice(&samples);
-                                let max = 16_000 * 5;
-                                if buf.len() > max {
-                                    let excess = buf.len() - max;
-                                    buf.drain(..excess);
-                                }
-                            }
                             let tx_seg = mic_seg_tx.clone();
-                            mic_seg.push(&samples, |e| {
+                            let mut seg = mic_seg.lock().unwrap_or_else(|e| e.into_inner());
+                            seg.push(&samples, |e| {
                                 // Plan 08-02 added SpeechStart for UI
                                 // indicators; the decoder pump only
                                 // cares about Segment.  Using `match`
@@ -386,7 +455,8 @@ impl Stt for WhisperLocal {
                         }
                         Channel::System => {
                             let tx_seg = sys_seg_tx.clone();
-                            sys_seg.push(&samples, |e| match e {
+                            let mut seg = sys_seg.lock().unwrap_or_else(|e| e.into_inner());
+                            seg.push(&samples, |e| match e {
                                 SegmenterEvent::Segment {
                                     pcm,
                                     start_ms,
