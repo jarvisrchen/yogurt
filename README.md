@@ -162,22 +162,25 @@ yogurt doctor --redownload-model small.en   # drop the local copy and re-fetch i
 You can also drop a `ggml-*.bin` file into `~/.yogurt/models/` yourself.
 yogurt identifies models by hash, not by where they came from, so a file copied in by any means is picked up as long as it matches.
 
-### If HuggingFace is blocked
+### Workaround: installing models with Homebrew
 
-The download button fetches from `huggingface.co`, which some corporate networks block.
-The two most useful models are also mirrored on this repo's releases and installable through Homebrew, which fetches from `github.com` - already proven reachable, since that is where `brew` got yogurt itself:
+The download button fetches from `huggingface.co`. If that is blocked on your network, or you would rather not sit through a multi-gigabyte download in a browser tab, the models are also mirrored on this repo's releases and installable through Homebrew - which fetches from `github.com`, already proven reachable, since that is where `brew` got yogurt itself:
 
 ```bash
-brew install jarvisrchen/yogurt/yogurt-model-small-en   # 487 MB, the default
-brew install jarvisrchen/yogurt/yogurt-model-tiny-en    # 75 MB
+brew install jarvisrchen/yogurt/yogurt-model-tiny-en          # 75 MB
+brew install jarvisrchen/yogurt/yogurt-model-small-en         # 487 MB, the default
+brew install jarvisrchen/yogurt/yogurt-model-medium-en        # 1.5 GB
+brew install jarvisrchen/yogurt/yogurt-model-large-v3-turbo   # 1.6 GB
 ```
 
 yogurt reads these automatically, from `$(brew --prefix)/share/yogurt/models` as well as `~/.yogurt/models`.
 The model shows up in the picker tagged `brew`, with no delete button: remove it with `brew uninstall` instead, so Homebrew stays consistent.
 `yogurt doctor` shows which copy is in use.
 
-The bytes are byte-identical to HuggingFace's and verified against the same pinned SHA256.
-`large-v3` is not mirrored: at 3.0 GB it is over GitHub's 2 GB limit on a release asset.
+The mirrored bytes are identical to HuggingFace's, verified against the same pinned SHA256.
+
+`large-v3` is the one model with no Homebrew option: at 3.0 GB it is over GitHub's 2 GB limit for a release asset, so it can only come from HuggingFace.
+Reach for `large-v3-turbo` instead, which is close in quality and considerably faster.
 
 ## Command line
 

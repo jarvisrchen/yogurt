@@ -31,13 +31,14 @@ MODELS_RS="$REPO_ROOT/crates/yogurt-stt/src/models.rs"
 TAG="models-v1"
 REPO="jarvisrchen/yogurt"
 
-# Default set: small.en because it is what a fresh install actually selects
-# (V005 seeds `stt.model = small.en`), tiny.en as the cheap fallback. Mirror
-# more by passing names. large-v3 CANNOT be mirrored — 2.88 GiB is over
-# GitHub's 2 GiB per-asset cap.
+# Default set: every model that fits. small.en matters most - it is the
+# seeded default (V005), so without it a machine that cannot reach
+# HuggingFace has no working out-of-the-box local model. Pass names to
+# mirror a subset. large-v3 CANNOT be mirrored: 2.88 GiB is over GitHub's
+# 2 GiB per-asset cap, and it is the only model with no Homebrew path.
 MODELS=("${@:-}")
 if [ "${#MODELS[@]}" -eq 0 ] || [ -z "${MODELS[0]}" ]; then
-  MODELS=(tiny.en small.en)
+  MODELS=(tiny.en small.en medium.en large-v3-turbo)
 fi
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -71,26 +72,46 @@ ASSETS=()
 for name in "${MODELS[@]}"; do
   file="ggml-$name.bin"
   expected=$(pinned_sha "$name")
-  [ -n "$expected" ] || die "no sha256 pinned for '$name' in models.rs — is that a real model name?"
+  [ -n "$expected" ] || die "no sha256 pinned for '$name' in models.rs - is that a real model name?"
 
   bold "$name"
-  mut "expected: $expected"
+
+  # Check BEFORE downloading, not after. HuggingFace serves the Git LFS
+  # pointer at `raw/`, and its `oid sha256` IS the blob's hash while `size`
+  # is the blob's byte count - about 130 bytes of traffic to learn both.
+  # Doing this after the transfer means burning 3 GB to discover the file
+  # is too large to upload, which is exactly what large-v3 does.
+  pointer=$(curl -fsL --max-time 30 \
+    "https://huggingface.co/ggerganov/whisper.cpp/raw/main/$file") \
+    || die "could not read the LFS pointer for $name - is that a real model?"
+  upstream_sha=$(awk '/^oid sha256:/ { print substr($2, 8) }' <<<"$pointer")
+  bytes=$(awk '/^size / { print $2 }' <<<"$pointer")
+  [ -n "$upstream_sha" ] && [ -n "$bytes" ] || die "unparseable LFS pointer for $name:
+$pointer"
+
+  [ "$upstream_sha" = "$expected" ] || die "$name hash drift
+  pinned   $expected (models.rs)
+  upstream $upstream_sha (huggingface.co)
+Fix REGISTRY first - publishing this would mirror bytes the app refuses to load."
+
+  # GitHub rejects a release asset over 2 GiB.
+  [ "$bytes" -le 2147483648 ] || die "$name is $bytes bytes, over GitHub's 2 GiB \
+asset cap - it cannot be mirrored this way. Use large-v3-turbo instead."
+
+  mut "sha256 $expected"
+  mut "$bytes bytes, matches models.rs"
   curl -fL --progress-bar \
     -o "$TMPDIR/$file" \
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$file"
 
+  # Re-hash what actually landed: the pointer proves what upstream intends
+  # to serve, not what survived the transfer.
   actual=$(shasum -a 256 "$TMPDIR/$file" | awk '{print $1}')
-  [ "$actual" = "$expected" ] || die "$name hash mismatch
-  expected $expected (models.rs)
-  actual   $actual (huggingface.co)
-Upstream drifted. Fix REGISTRY first — publishing this would mirror bytes
-the app will refuse to load."
+  [ "$actual" = "$expected" ] || die "$name downloaded corrupt
+  expected $expected
+  actual   $actual"
 
-  bytes=$(wc -c < "$TMPDIR/$file" | tr -d ' ')
-  # GitHub rejects a release asset over 2 GiB.
-  [ "$bytes" -le 2147483648 ] || die "$name is $bytes bytes, over GitHub's 2 GiB asset cap"
-
-  ok "verified  $bytes bytes"
+  ok "verified"
   ASSETS+=("$TMPDIR/$file")
   echo
 done
