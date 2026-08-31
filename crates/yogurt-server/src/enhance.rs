@@ -229,6 +229,11 @@ pub async fn enhance(
             Ok(())
         })
         .await;
+        tracing::info!(
+            event = "enhance_skipped_too_short",
+            meeting_id = %meeting_id,
+            "enhance skipped: meeting too short"
+        );
         return Ok(Json(EnhanceResponse {
             enriched_md: String::new(),
             notes_file: String::new(),
@@ -664,6 +669,14 @@ pub async fn enhance(
     let _ = meeting
         .events_tx
         .send(serde_json::json!({"type": "enhance_progress", "phase": "done"}));
+
+    tracing::info!(
+        event = "enhance_complete",
+        meeting_id = %meeting_id,
+        model = %llm_model,
+        elapsed_ms = llm_started.elapsed().as_millis(),
+        "enhance complete"
+    );
 
     Ok(Json(EnhanceResponse {
         enriched_md,
