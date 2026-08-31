@@ -11,26 +11,39 @@ default:
 release *args:
     ./scripts/run-release.sh {{args}}
 
-# Start backend + Vite together in this terminal — bootstraps the worktree first, reads .env.local, Ctrl-C stops both cleanly.
+# Start backend + Vite together in this terminal — picks a free port pair so a second worktree can run alongside, bootstraps first, Ctrl-C stops both cleanly.
 dev: bootstrap
     #!/usr/bin/env bash
     set -euo pipefail
+    source ./scripts/lib/port-guard.sh
+    # Resolve BOTH ports here, once, and hand them to the two scripts. The
+    # pair has to agree: the backend proxies non-API requests to Vite, and
+    # Vite proxies /api and /ws back to the backend. Default policy is
+    # `next` rather than `ask` - the common reason :7878 is busy is another
+    # worktree, and moving over is what you wanted anyway.
+    export YOGURT_PORT_POLICY="${YOGURT_PORT_POLICY:-next}"
+    VITE_PORT=$(ensure_port_free "vite" "${YOGURT_VITE_PORT:-5173}")
+    BACKEND_PORT=$(ensure_port_free "backend" "${YOGURT_BACKEND_PORT:-7878}")
+    export YOGURT_VITE_PORT="$VITE_PORT"
+    export YOGURT_BACKEND_PORT="$BACKEND_PORT"
+    export YOGURT_VITE_BASE="http://127.0.0.1:$VITE_PORT"
+    # Both ports are already free, so the scripts' own guards pass through.
     # Ctrl-C in the foreground process group should kill both children.
     # Belt + suspenders: on EXIT, kill any remaining jobs.
     trap 'kill $(jobs -p) 2>/dev/null; wait 2>/dev/null; true' EXIT INT TERM
     ./scripts/run-frontend.sh &
     # Wait for Vite to bind so the backend proxy doesn't 502 on first request.
     for _ in {1..20}; do
-        if curl -sf -o /dev/null http://127.0.0.1:5173/; then break; fi
+        if curl -sf -o /dev/null "http://127.0.0.1:$VITE_PORT/"; then break; fi
         sleep 0.5
     done
-    ./scripts/run-backend.sh
+    ./scripts/run-backend.sh --port "$BACKEND_PORT"
 
-# Backend only — debug binary in dev mode, expects Vite already on :5173.
+# Backend only — debug binary in dev mode, expects Vite already up (:5173, or $YOGURT_VITE_PORT).
 backend *args:
     ./scripts/run-backend.sh {{args}}
 
-# Vite dev server only — :5173, paired with `just backend`.
+# Vite dev server only — :5173 (or $YOGURT_VITE_PORT), paired with `just backend`.
 frontend:
     ./scripts/run-frontend.sh
 

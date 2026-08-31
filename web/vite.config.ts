@@ -8,25 +8,34 @@ import tailwindcss from "@tailwindcss/vite";
 // still letting Vitest pick the `test:` block up at runtime. The triple-slash
 // reference above pulls vitest/config's TestUserConfig type into the project
 // so `globals: true` enables `describe`/`it`/`expect` ambient globals.
+// Dev-server port. `just dev` resolves a free (vite, backend) pair and
+// passes the vite half down as YOGURT_VITE_PORT, so two worktrees can run
+// side by side; the backend proxy is pointed at the same number via
+// YOGURT_VITE_BASE. 5173 stays the default for a bare `pnpm dev`.
+const PORT = Number(process.env.YOGURT_VITE_PORT ?? 5173);
+// Where /api and /ws go when the page is opened on Vite directly. Follows
+// the backend the same way, so a worktree pair stays self-consistent.
+const BACKEND = Number(process.env.YOGURT_BACKEND_PORT ?? 7878);
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: PORT,
     strictPort: true,
-    // Pin HMR client to :5173 so it doesn't try the page-origin (:7878
-    // when served via the yogurt backend proxy). Without this, Vite's
-    // HMR client guesses `window.location.host`, opens WS to :7878,
+    // Pin the HMR client to Vite's own port so it doesn't try the
+    // page-origin (the backend's port, when served via the yogurt proxy).
+    // Without this, Vite's HMR client guesses `window.location.host`,
     // yogurt's dev_proxy rejects it ("vite proxy: refusing websocket
-    // upgrade -- use http://localhost:5173 for HMR"), Vite falls back
+    // upgrade -- use the Vite URL for HMR"), Vite falls back
     // — and the user sees a noisy `WebSocket connection failed` plus
     // a "Direct websocket connection fallback" warning in the console.
     hmr: {
       host: "127.0.0.1",
-      clientPort: 5173,
+      clientPort: PORT,
     },
     proxy: {
-      "/api": "http://localhost:7878",
-      "/ws": { target: "ws://localhost:7878", ws: true },
+      "/api": `http://localhost:${BACKEND}`,
+      "/ws": { target: `ws://localhost:${BACKEND}`, ws: true },
     },
   },
   test: {
