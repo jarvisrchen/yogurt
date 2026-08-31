@@ -153,6 +153,19 @@ just reset-db     # wipes ~/.yogurt/db.sqlite; next launch shows /welcome (~/.yo
 just release
 ```
 
+## Branching
+
+Work on a branch and open a PR. Do not push to `main`.
+
+The repo is public and releases are cut from `main`, so an unreviewed commit there is something strangers can build.
+CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck and tests); let it gate the merge.
+
+```bash
+git checkout -b feat/my-change
+# ... commit ...
+gh pr create --base main
+```
+
 ## Releasing
 
 Pushing a tag matching `v*` is the only thing that publishes a release.

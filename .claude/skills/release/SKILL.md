@@ -20,6 +20,7 @@ The tag selects the commit that gets built, so `main` can move freely without sh
 ## Checklist
 
 1. **Working tree clean, CI green on `main`.**
+   Changes reach `main` by PR, never a direct push, so this should already be true.
    ```bash
    git status --porcelain                              # must be empty
    gh run list -R jarvisrchen/yogurt -w CI -L 1 --json headSha,conclusion
