@@ -59,7 +59,7 @@
 //! preview", parallel to the one `Segmenter` already maintains.
 //! `Segmenter::buffer` *is* the in-flight utterance — it only grows while
 //! in speech, it is cleared the instant a `Segment` is emitted, and
-//! `MAX_SEGMENT_MS` bounds it. The ticker now reads it through
+//! `MAX_SEGMENT_SAMPLES` bounds it. The ticker now reads it through
 //! `Segmenter::pending`, which makes "partials only ever grow" structural
 //! rather than something this file has to remember to do.
 //!

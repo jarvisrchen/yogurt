@@ -254,3 +254,23 @@ fn pending_start_ms_matches_the_final_segment() {
         "partial and final must agree on where the utterance started",
     );
 }
+#[test]
+fn buffer_is_bounded_in_wall_clock_not_just_voice_time() {
+    let mut seg = Segmenter::new(SR);
+    let mut max_pending = 0usize;
+    // Speech with pauses just under SILENCE_HANG_MS: 300 ms voice, 500 ms
+    // silence, repeated. Every voice frame resets silence_ms, so the
+    // segmenter never flushes on silence, and speech_ms advances at only
+    // 37.5% of wall-clock - so MAX_SEGMENT_MS takes 66 s of audio to trip.
+    for _ in 0..100 {
+        seg.push(&tone(0.3), |_| {});
+        seg.push(&silence(0.5), |_| {});
+        max_pending = max_pending.max(seg.pending().map(|(p, _)| p.len()).unwrap_or(0));
+    }
+    assert!(
+        max_pending <= SR * 26,
+        "pending grew to {:.1} s of audio; whisper re-encodes past 30 s, \
+         so the 1 s partial tick budget is blown",
+        max_pending as f32 / SR as f32,
+    );
+}

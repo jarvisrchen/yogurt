@@ -31,8 +31,14 @@ Both reported symptoms fall out of that single design choice:
 | **No partial at all** on system audio | The buffer is fed only from the `Channel::Mic` arm of the pump; `Channel::System` has no equivalent, so it only ever renders VAD finals |
 
 Meanwhile `Segmenter` already maintains exactly the buffer the ticker wants.
-`Segmenter::buffer` is the in-flight utterance: it only ever grows while `in_speech`, it is cleared the moment a `Segment` is emitted, and `MAX_SEGMENT_MS` (25 s) bounds it.
+`Segmenter::buffer` is the in-flight utterance: it only ever grows while `in_speech`, it is cleared the moment a `Segment` is emitted, and it is bounded.
 It is the same PCM the eventual final is decoded from.
+
+One correction found while verifying: it was *not* actually bounded at 25 s.
+`MAX_SEGMENT_MS` gates on `speech_ms`, which counts only voice frames, while the buffer collects every frame we are in speech for.
+Speech with pauses shorter than `SILENCE_HANG_MS` never flushes on silence and advances `speech_ms` at well under wall-clock rate - measured at a 37% duty cycle the buffer reaches **46 s** before `speech_ms` reaches 25 s.
+That already broke `MAX_SEGMENT_MS`'s own stated promise ("so Whisper sees bounded input") for finals on `main`; exposing the buffer to the ticker would have extended it to partials, where a >30 s input costs a second whisper encoder pass and lands the decode outside the 1 s tick.
+So `MAX_SEGMENT_SAMPLES` now caps the buffer directly, and a test pins it.
 
 **The fix is to delete the duplicate and read the segmenter's buffer.**
 Growth then becomes structural rather than something the ticker has to remember to do, and the reset-on-final is free.
@@ -132,5 +138,6 @@ That is the separate echo-bleed issue, not fixed here, but it gets meaningfully 
 - `pending()` **grows monotonically** across successive pushes inside one utterance - this is AUD-1's shrink symptom, stated as an assertion.
 - `pending()` keeps growing past 5 s, the old window size, up to `MAX_SEGMENT_MS`.
 - `pending()` reports the same `start_ms` the emitted `Segment` carries, which is what makes the partial-to-final timestamp continuous.
+- The buffer is bounded in **wall-clock** samples, not just voice time: speech with sub-`SILENCE_HANG_MS` pauses must not grow it past `MAX_SEGMENT_SAMPLES`. Verified to fail at 46.4 s before the cap was added.
 
 End-to-end verification is the manual handover (see the PR body): play audio through the speakers so both channels go live at once, and watch that `Me` and `Them` both stream a growing dim line.
