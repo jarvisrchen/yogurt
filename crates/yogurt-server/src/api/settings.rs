@@ -94,6 +94,9 @@ struct ProviderView {
     /// The frontend uses this to decide whether to render the BASE URL /
     /// API KEY / model-catalog UI at all; a `cli` row has none of those.
     adapter: String,
+    /// `cli`-adapter only: the `--model` value passed to the CLI. Empty
+    /// means "use the CLI's own default". Meaningless for `http`.
+    cli_model: String,
 }
 
 /// Convert a DB row + its masked key into the wire view.
@@ -107,6 +110,7 @@ fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
         created_at: p.created_at,
         api_key_masked: masked,
         adapter: p.adapter,
+        cli_model: p.cli_model,
     }
 }
 
@@ -127,6 +131,7 @@ struct PresetView {
     models: &'static [&'static str],
     docs_url: &'static str,
     adapter: &'static str,
+    default_cli_model: &'static str,
 }
 
 #[derive(Serialize)]
@@ -239,6 +244,7 @@ fn preset_views() -> Vec<PresetView> {
             models: p.models,
             docs_url: p.docs_url,
             adapter: p.adapter,
+            default_cli_model: p.default_cli_model,
         })
         .collect()
 }
@@ -281,14 +287,18 @@ async fn create_provider(
     Ok(Json(view))
 }
 
-/// Body for `PATCH /api/settings/providers/{id}`. All three fields must be
+/// Body for `PATCH /api/settings/providers/{id}`. All fields must be
 /// supplied (full replace semantics) - partial updates are a future
-/// enhancement once the UI grows per-field "Save" buttons.
+/// enhancement once the UI grows per-field "Save" buttons. `cli_model` is
+/// meaningless for an `http` row; the frontend always sends the current
+/// value back unchanged for those.
 #[derive(Deserialize)]
 struct UpdateProviderBody {
     name: String,
     base_url: String,
     model: String,
+    #[serde(default)]
+    cli_model: String,
 }
 
 async fn update_provider(
@@ -296,7 +306,14 @@ async fn update_provider(
     Path(id): Path<String>,
     Json(body): Json<UpdateProviderBody>,
 ) -> Result<Json<ProviderView>, Error> {
-    providers::update(&s.db, &id, &body.name, &body.base_url, &body.model)?;
+    providers::update(
+        &s.db,
+        &id,
+        &body.name,
+        &body.base_url,
+        &body.model,
+        &body.cli_model,
+    )?;
     let p = providers::list(&s.db)?
         .into_iter()
         .find(|p| p.id == id)
@@ -533,9 +550,10 @@ async fn test_provider(
     // finds the program on `$PATH` or it doesn't, so the "no key stored"
     // early-return below (which only makes sense for `http`) doesn't apply.
     if provider.adapter == providers::adapter::CLI {
+        let cli_model = (!provider.cli_model.is_empty()).then_some(provider.cli_model.clone());
         let client = match yogurt_llm::CliProgram::parse(&provider.model)
             .ok_or_else(|| anyhow::anyhow!("unrecognized CLI program '{}'", provider.model))
-            .and_then(yogurt_llm::CliClient::locate)
+            .and_then(|program| yogurt_llm::CliClient::locate(program, cli_model))
         {
             Ok(c) => c,
             Err(e) => {

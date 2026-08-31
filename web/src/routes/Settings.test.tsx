@@ -38,6 +38,7 @@ const { baseFixture } = vi.hoisted(() => {
         created_at: 1719360000,
         api_key_masked: "••••WXYZ",
         adapter: "http",
+        cli_model: "",
       },
       {
         id: "01HYYYYYYYYYYYYYYYYYYYYYYY",
@@ -48,6 +49,7 @@ const { baseFixture } = vi.hoisted(() => {
         created_at: 1719360000,
         api_key_masked: null,
         adapter: "http",
+        cli_model: "",
       },
     ],
     presets: [
@@ -58,6 +60,7 @@ const { baseFixture } = vi.hoisted(() => {
         models: ["llama3.1:8b", "mistral"],
         docs_url: "https://ollama.com/library",
         adapter: "http",
+        default_cli_model: "",
       },
     ],
     deepgram_key_masked: null,
@@ -332,6 +335,7 @@ describe("preset cloning auto-opens the key input", () => {
       created_at: 1719360000,
       api_key_masked: null,
       adapter: "http" as const,
+      cli_model: "",
     };
 
     // The factory's `get` returns a static fixture, so the cloned row

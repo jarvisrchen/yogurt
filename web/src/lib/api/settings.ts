@@ -64,6 +64,9 @@ export interface ProviderView {
    *  Always null for a `cli`-adapter provider - it never has a key. */
   api_key_masked: string | null;
   adapter: ProviderAdapter;
+  /** `cli`-adapter only: the `--model` value passed to the CLI. Empty
+   *  means "use the CLI's own default". Meaningless for `http`. */
+  cli_model: string;
 }
 
 export interface Preset {
@@ -72,11 +75,13 @@ export interface Preset {
   default_model: string;
   /**
    * Static list of popular model ids for this preset, used to seed the
-   * MODEL `<datalist>` on a freshly-cloned provider. The Settings page's
-   * `Refresh` button replaces this with the live `/v1/models` response
-   * once a key is on file. Empty for runtimes like Ollama / LM Studio
-   * where the model list is purely local, and for `adapter: "cli"`
-   * presets, which have no model catalog at all.
+   * MODEL `<datalist>` on a freshly-cloned `http` provider, or the
+   * `--model` picker's suggestions on a `cli` provider. The Settings
+   * page's `Refresh` button replaces this with the live `/v1/models`
+   * response once a key is on file, for `http` providers only - there is
+   * no live refresh for `cli`. Empty for runtimes like Ollama / LM Studio
+   * where the model list is purely local, and for `cli` presets whose
+   * valid `--model` values are unverified (e.g. Cursor Agent).
    */
   models: string[];
   /**
@@ -88,6 +93,11 @@ export interface Preset {
    */
   docs_url: string;
   adapter: ProviderAdapter;
+  /** `cli`-adapter only: default `--model` suggestion (e.g. "haiku"),
+   *  seeded into a freshly-cloned provider's `cli_model`. Empty for
+   *  presets with no sensible default (cursor-agent's model list is
+   *  unverified). */
+  default_cli_model: string;
 }
 
 export interface SettingsView {
@@ -105,12 +115,19 @@ export interface NewProvider {
   /** Defaults to `"http"` server-side if omitted - only `PresetChip`
    *  sends `"cli"`, and only for the two built-in local-CLI presets. */
   adapter?: ProviderAdapter;
+  /** `cli`-adapter only: the `--model` value to seed on the new row.
+   *  Defaults to `""` server-side if omitted. */
+  cli_model?: string;
 }
 
 export interface UpdateProvider {
   name: string;
   base_url: string;
   model: string;
+  /** `cli`-adapter only: the `--model` value to persist. Defaults to
+   *  `""` server-side if omitted; `http` rows should send the current
+   *  value back unchanged. */
+  cli_model?: string;
 }
 
 /** Phase 2 audio devices shape - re-exported here so the Audio section

@@ -219,6 +219,7 @@ pub async fn seed_from_env(state: &AppState) -> Result<SeedReport> {
                 base_url: base_url.to_string(),
                 model: model.to_string(),
                 adapter: providers::adapter::HTTP.to_string(),
+                cli_model: String::new(),
             },
         )?;
 

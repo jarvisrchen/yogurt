@@ -34,6 +34,7 @@ export function PresetChip({
         base_url: preset.base_url,
         model: preset.default_model,
         adapter: preset.adapter,
+        cli_model: preset.default_cli_model,
       }),
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["settings"] });

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ProviderView } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { ComboBox } from "./ComboBox";
 import { ModelSelect } from "./ModelSelect";
 import { TestKeyButton } from "./TestKeyButton";
 
@@ -56,6 +57,7 @@ export function ProviderRow({
   // ever applies to a freshly-cloned `http` provider.
   const [keying, setKeying] = useState(autoOpenKey && !isCli);
   const [modelDraft, setModelDraft] = useState(provider.model);
+  const [cliModelDraft, setCliModelDraft] = useState(provider.cli_model);
   // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
   // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
   // The whole point: if the saved `model` is the only thing wrong with
@@ -69,6 +71,9 @@ export function ProviderRow({
   useEffect(() => {
     setModelDraft(provider.model);
   }, [provider.model]);
+  useEffect(() => {
+    setCliModelDraft(provider.cli_model);
+  }, [provider.cli_model]);
   const activate = useMutation({
     mutationFn: () => settingsApi.activateProvider(provider.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
@@ -87,6 +92,19 @@ export function ProviderRow({
         name: provider.name,
         base_url: provider.base_url,
         model: next,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+  // Same PATCH-on-commit shape as `updateModel`, but for the CLI's
+  // `--model` override. `model` is sent back unchanged - it holds the
+  // CLI program id ("claude"/"cursor-agent"), never user-edited.
+  const updateCliModel = useMutation({
+    mutationFn: (next: string) =>
+      settingsApi.updateProvider(provider.id, {
+        name: provider.name,
+        base_url: provider.base_url,
+        model: provider.model,
+        cli_model: next,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
@@ -112,10 +130,30 @@ export function ProviderRow({
       </header>
 
       {isCli ? (
-        <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
-          Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
-          locally via your existing CLI login. No API key or base URL to
-          configure.
+        <div className="space-y-3">
+          <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
+            Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
+            locally via your existing CLI login. No API key or base URL to
+            configure.
+          </div>
+          <Field label="MODEL">
+            <ComboBox
+              value={cliModelDraft}
+              onChange={setCliModelDraft}
+              onCommit={(next) => {
+                if (next !== provider.cli_model) updateCliModel.mutate(next);
+              }}
+              options={presetModels}
+              placeholder="CLI default"
+              ariaLabel={`Model for ${provider.name}`}
+              triggerLabel={`Show model list for ${provider.name}`}
+            />
+            {updateCliModel.isError && (
+              <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                ✗ Could not save model: {String(updateCliModel.error)}
+              </p>
+            )}
+          </Field>
         </div>
       ) : (
         <>

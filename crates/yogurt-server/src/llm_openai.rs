@@ -108,7 +108,8 @@ async fn from_active_provider(
                 provider.model
             )
         })?;
-        let client = yogurt_llm::CliClient::locate(program).map_err(|e| {
+        let cli_model = (!provider.cli_model.is_empty()).then_some(provider.cli_model.clone());
+        let client = yogurt_llm::CliClient::locate(program, cli_model).map_err(|e| {
             anyhow::anyhow!(
                 "provider '{}' ({}) is active but its CLI could not be found: {e} \
                  - install it and make sure it's on $PATH",
@@ -157,6 +158,7 @@ mod tests {
                 base_url: "https://api.minimax.io/v1".to_string(),
                 model: "MiniMax-Text-01".to_string(),
                 adapter: yogurt_db::providers::adapter::HTTP.to_string(),
+                cli_model: String::new(),
             },
         )
         .unwrap();
@@ -172,6 +174,7 @@ mod tests {
                 base_url: String::new(),
                 model: model.to_string(),
                 adapter: yogurt_db::providers::adapter::CLI.to_string(),
+                cli_model: String::new(),
             },
         )
         .unwrap();

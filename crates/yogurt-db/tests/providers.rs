@@ -10,6 +10,7 @@ fn it_inserts_and_lists_a_provider() {
             base_url: "https://api.minimax.io/v1".into(),
             model: "MiniMax-Text-01".into(),
             adapter: providers::adapter::HTTP.into(),
+            cli_model: String::new(),
         },
     )
     .unwrap();
@@ -30,6 +31,7 @@ fn it_sets_only_one_active_provider() {
             base_url: "https://a/v1".into(),
             model: "m".into(),
             adapter: providers::adapter::HTTP.into(),
+            cli_model: String::new(),
         },
     )
     .unwrap();
@@ -40,6 +42,7 @@ fn it_sets_only_one_active_provider() {
             base_url: "https://b/v1".into(),
             model: "m".into(),
             adapter: providers::adapter::HTTP.into(),
+            cli_model: String::new(),
         },
     )
     .unwrap();
@@ -111,17 +114,23 @@ fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
 /// into the providers table on clone, so it MUST appear in the preset's
 /// `models` datalist - otherwise the initial state of the dropdown
 /// wouldn't match what was saved and the user would see "Saved as X,
-/// suggested Y" confusion. `adapter: "cli"` presets have no model list at
-/// all (`default_model` is a `CliProgram` id, not a model name).
+/// suggested Y" confusion. For an `adapter: "cli"` preset, `models` means
+/// something different (suggested `cli_model` aliases, not a model
+/// catalog) - the same "what gets saved must appear in the list" rule
+/// applies to `default_cli_model` there instead.
 #[test]
 fn preset_default_model_appears_in_its_models_list() {
     for p in providers::PRESETS {
         if p.adapter == providers::adapter::CLI {
-            assert!(
-                p.models.is_empty(),
-                "{}: cli preset must not have a model list",
-                p.name
-            );
+            if !p.default_cli_model.is_empty() {
+                assert!(
+                    p.models.contains(&p.default_cli_model),
+                    "{}: default_cli_model {:?} must be in models {:?}",
+                    p.name,
+                    p.default_cli_model,
+                    p.models
+                );
+            }
             continue;
         }
         if p.default_model.is_empty() {
@@ -173,6 +182,7 @@ fn list_names_returns_creation_order() {
             base_url: "https://x/v1".into(),
             model: "m".into(),
             adapter: providers::adapter::HTTP.into(),
+            cli_model: String::new(),
         },
     )
     .unwrap();
@@ -183,6 +193,7 @@ fn list_names_returns_creation_order() {
             base_url: "https://y/v1".into(),
             model: "m".into(),
             adapter: providers::adapter::HTTP.into(),
+            cli_model: String::new(),
         },
     )
     .unwrap();

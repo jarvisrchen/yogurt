@@ -34,6 +34,7 @@ const provider: ProviderView = {
   created_at: 0,
   api_key_masked: null,
   adapter: "http",
+  cli_model: "",
 };
 
 function renderRow(opts: { onKeyClosed?: () => void } = {}) {
@@ -135,11 +136,11 @@ describe("ProviderRow - cli adapter (LLM-4)", () => {
     adapter: "cli",
   };
 
-  function renderCliRow() {
+  function renderCliRow(presetModels: string[] = []) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <ProviderRow provider={cliProvider} presetModels={[]} />
+        <ProviderRow provider={cliProvider} presetModels={presetModels} />
       </QueryClientProvider>,
     );
   }
@@ -148,14 +149,13 @@ describe("ProviderRow - cli adapter (LLM-4)", () => {
     vi.clearAllMocks();
   });
 
-  it("has no BASE URL / MODEL fields, no key controls, and a reachable Test button", () => {
+  it("has no BASE URL field, no key controls, a model override picker, and a reachable Test button", () => {
     renderCliRow();
 
     expect(screen.queryByText("BASE URL")).not.toBeInTheDocument();
-    expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
     expect(
-      screen.queryByLabelText(`Model for ${cliProvider.name}`),
-    ).not.toBeInTheDocument();
+      screen.getByLabelText(`Model for ${cliProvider.name}`),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /add key|replace key/i }),
     ).not.toBeInTheDocument();
@@ -166,6 +166,30 @@ describe("ProviderRow - cli adapter (LLM-4)", () => {
       name: `Test connection for ${cliProvider.name}`,
     });
     expect(testButton).toBeEnabled();
+  });
+
+  it("commits a typed --model override via PATCH, leaving name/base_url/model untouched", async () => {
+    settingsApiMock.updateProvider.mockResolvedValue({
+      ...cliProvider,
+      cli_model: "sonnet",
+    });
+    renderCliRow(["haiku", "sonnet", "opus", "fable"]);
+
+    const input = screen.getByLabelText(`Model for ${cliProvider.name}`);
+    fireEvent.change(input, { target: { value: "sonnet" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(settingsApiMock.updateProvider).toHaveBeenCalledWith(
+        cliProvider.id,
+        {
+          name: cliProvider.name,
+          base_url: cliProvider.base_url,
+          model: cliProvider.model,
+          cli_model: "sonnet",
+        },
+      ),
+    );
   });
 
   it("Test hits the provider endpoint with no key argument", async () => {

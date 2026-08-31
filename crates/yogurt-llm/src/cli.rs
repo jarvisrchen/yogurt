@@ -69,16 +69,31 @@ impl CliProgram {
 pub struct CliClient {
     binary: PathBuf,
     program: CliProgram,
+    /// `--model` value, e.g. `"sonnet"` / `"opus"` / `"haiku"` for
+    /// `claude`. `None` uses the CLI's own default model (whatever a bare
+    /// `claude -p ...` would pick). The Settings UI exposes this as a free-
+    /// text field with static suggestions per program - enhance/chat are
+    /// simple extraction calls, not reasoning-heavy, so the cheaper tiers
+    /// are usually the right choice, not whatever the CLI defaults to.
+    model: Option<String>,
 }
 
 impl CliClient {
     /// Resolve `program` on `$PATH`, or a clear `Err` naming it if it
     /// isn't there. Never silently substitutes the other CLI - the caller
     /// (LLM-4: the active `cli`-adapter provider row) asked for this one
-    /// specifically.
-    pub fn locate(program: CliProgram) -> Result<Self> {
+    /// specifically. `model` is the provider row's `cli_model` column,
+    /// verbatim - not validated here, since neither CLI exposes a static
+    /// list to validate against (`cursor-agent --list-models` requires its
+    /// own process spawn); an invalid value just surfaces as a normal CLI
+    /// error on the next call.
+    pub fn locate(program: CliProgram, model: Option<String>) -> Result<Self> {
         find_on_path(program.binary_name())
-            .map(|binary| Self { binary, program })
+            .map(|binary| Self {
+                binary,
+                program,
+                model,
+            })
             .ok_or_else(|| anyhow!("{} not found on $PATH", program.binary_name()))
     }
 
@@ -96,22 +111,56 @@ impl CliClient {
             "--output-format".to_string(),
             "json".to_string(),
         ];
-        if self.program == CliProgram::Claude {
-            // Meeting-transcript content is untrusted - whatever the other
-            // party on the call said - and it reaches this CLI as plain
-            // prompt text, not through a reviewed tool-use loop. Lock it
-            // down so a transcript that looks like an instruction can't do
-            // anything but produce text: no shell/code tools or WebFetch,
-            // no MCP servers, no skills, and this repo's own `.claude/`
-            // settings are ignored so a permissive local Bash rule can't
-            // leak into a subprocess whose input we don't trust.
-            args.push("--restricted".to_string());
-            args.push("--strict-mcp-config".to_string());
-            args.push("--disable-slash-commands".to_string());
+        match self.program {
+            CliProgram::Claude => {
+                // Meeting-transcript content is untrusted - whatever the
+                // other party on the call said - and it reaches this CLI
+                // as plain prompt text, not through a reviewed tool-use
+                // loop. Lock it down so a transcript that looks like an
+                // instruction can't do anything but produce text: no
+                // shell/code tools or WebFetch, no MCP servers, no skills,
+                // and this repo's own `.claude/` settings are ignored so a
+                // permissive local Bash rule can't leak into a subprocess
+                // whose input we don't trust.
+                args.push("--restricted".to_string());
+                args.push("--strict-mcp-config".to_string());
+                args.push("--disable-slash-commands".to_string());
+                // Enhance/chat are extraction calls, not reasoning tasks -
+                // low effort is faster and cheaper with no real quality
+                // loss for "merge these notes with this transcript"-shaped
+                // prompts. Unconditional, not user-configurable (unlike
+                // `--model`): there's no scenario here that benefits from
+                // spending more.
+                args.push("--effort".to_string());
+                args.push("low".to_string());
+            }
+            CliProgram::CursorAgent => {
+                // `--trust` clears the one-time "trust this workspace?"
+                // prompt every call would otherwise hit (each call gets a
+                // fresh, never-seen-before scratch cwd, so there is no
+                // "already trusted" state to carry over). `--sandbox
+                // enabled` is the closest documented equivalent to
+                // claude's `--restricted` - cursor-agent's docs don't list
+                // a per-tool restriction flag, so this is the containment
+                // available for the same untrusted-transcript-input
+                // reasoning as claude above. Deliberately NOT `--force` /
+                // `--yolo` ("force allow commands unless explicitly
+                // denied") - that is the broad auto-approval flag, the
+                // cursor-agent analogue of `--dangerously-skip-
+                // permissions`, and granting it here would remove exactly
+                // the protection `--sandbox enabled` provides. Unverified
+                // against a live binary (see module doc) - if `--sandbox`
+                // turns out not to exist on some version, the whole call
+                // fails loudly rather than silently running unsandboxed.
+                args.push("--trust".to_string());
+                args.push("--sandbox".to_string());
+                args.push("enabled".to_string());
+            }
         }
-        // Not applied to `cursor-agent`: these three flags are unverified
-        // against a live binary (see module doc), and passing a flag that
-        // doesn't exist fails the whole call rather than degrading safely.
+        if let Some(model) = &self.model {
+            args.push("--model".to_string());
+            args.push(model.clone());
+        }
         args
     }
 
@@ -291,23 +340,51 @@ mod tests {
     }
 
     #[test]
-    fn build_args_restricts_claude_but_not_cursor_agent() {
+    fn build_args_restricts_claude_and_sandboxes_cursor_agent() {
         let claude = CliClient {
             binary: PathBuf::from("claude"),
             program: CliProgram::Claude,
+            model: None,
         };
         let args = claude.build_args("prompt");
         assert!(args.contains(&"--restricted".to_string()));
         assert!(args.contains(&"--strict-mcp-config".to_string()));
         assert!(args.contains(&"--disable-slash-commands".to_string()));
+        assert!(!args.contains(&"--model".to_string()));
 
         let cursor = CliClient {
             binary: PathBuf::from("cursor-agent"),
             program: CliProgram::CursorAgent,
+            model: None,
         };
         let args = cursor.build_args("prompt");
         assert!(!args.contains(&"--restricted".to_string()));
-        assert_eq!(args, vec!["-p", "prompt", "--output-format", "json"]);
+        assert!(!args.contains(&"--force".to_string()));
+        assert!(!args.contains(&"--yolo".to_string()));
+        assert_eq!(
+            args,
+            vec![
+                "-p",
+                "prompt",
+                "--output-format",
+                "json",
+                "--trust",
+                "--sandbox",
+                "enabled"
+            ]
+        );
+    }
+
+    #[test]
+    fn build_args_appends_model_when_set() {
+        let claude = CliClient {
+            binary: PathBuf::from("claude"),
+            program: CliProgram::Claude,
+            model: Some("haiku".to_string()),
+        };
+        let args = claude.build_args("prompt");
+        let model_idx = args.iter().position(|a| a == "--model").unwrap();
+        assert_eq!(args[model_idx + 1], "haiku");
     }
 
     #[test]
@@ -327,6 +404,7 @@ mod tests {
         let claude = CliClient {
             binary: PathBuf::from("claude"),
             program: CliProgram::Claude,
+            model: None,
         };
         assert_eq!(claude.model_name(), "cli:claude");
     }
@@ -404,7 +482,7 @@ mod tests {
         // dependent, so that branch is exercised in `CliClient::run`'s
         // error path instead (`{program} not found on $PATH`), not here.
         if let Some(binary) = find_on_path(CliProgram::Claude.binary_name()) {
-            let client = CliClient::locate(CliProgram::Claude).expect("claude is on PATH");
+            let client = CliClient::locate(CliProgram::Claude, None).expect("claude is on PATH");
             assert_eq!(client.binary, binary);
             assert_eq!(client.program(), CliProgram::Claude);
         }
@@ -419,7 +497,7 @@ mod tests {
         if find_on_path(CliProgram::CursorAgent.binary_name()).is_none() {
             // `CliClient` isn't `Debug`, so match explicitly rather than
             // `Result::unwrap_err` (which requires `T: Debug`).
-            match CliClient::locate(CliProgram::CursorAgent) {
+            match CliClient::locate(CliProgram::CursorAgent, None) {
                 Err(e) => assert!(e.to_string().contains("cursor-agent")),
                 Ok(_) => panic!("expected an error when cursor-agent isn't on PATH"),
             }
