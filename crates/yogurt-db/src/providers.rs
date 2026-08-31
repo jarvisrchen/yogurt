@@ -43,13 +43,16 @@ pub struct Preset {
     /// or `"cli"` (`yogurt_llm::CliClient`, no key or base URL - see
     /// [`Adapter::CLI`]). Added for LLM-4.
     pub adapter: &'static str,
-    /// `cli`-adapter only: the suggested default `--model` value seeded
-    /// into a freshly-cloned row's `cli_model` column (e.g. `"haiku"` -
-    /// enhance/chat are simple extraction calls, not reasoning-heavy, so a
-    /// cheap/fast tier is the sensible default rather than whatever the
-    /// CLI's own interactive default happens to be). Empty for `http`
-    /// presets and for `cli` presets with no known-good default (an
-    /// unverified model list, e.g. cursor-agent's).
+    /// `cli`-adapter only: the suggested default `--model` value. The
+    /// Settings UI seeds this into `cli_model` the first time a `Test`
+    /// proves the CLI connects (not on clone - there's nothing to default
+    /// until connectivity is proven). `"haiku"` for claude: enhance/chat
+    /// are simple extraction calls, not reasoning-heavy, so a cheap/fast
+    /// tier is the sensible default rather than whatever the CLI's own
+    /// interactive default happens to be. `"auto"` for cursor-agent: the
+    /// one model guaranteed to work on every plan (a free-tier account
+    /// naming anything else gets `ActionRequiredError: Named models
+    /// unavailable`, confirmed live). Empty only for `http` presets.
     pub default_cli_model: &'static str,
 }
 
@@ -198,14 +201,18 @@ pub const PRESETS: &[Preset] = &[
         name: "Cursor Agent (local CLI)",
         base_url: "",
         default_model: "cursor-agent",
-        // Empty, unlike claude: cursor-agent's valid `--model` values are
-        // multi-vendor and unverified against a live binary (not installed
-        // where this was written) - `cursor-agent --list-models` is the
-        // authoritative source, not a static guess here.
-        models: &[],
+        // `cursor-agent --list-models` returns 50+ account- and
+        // plan-dependent entries (verified live) - too many, and too
+        // likely to include names a given account can't actually use, to
+        // hardcode as suggestions. "auto" is the one entry guaranteed to
+        // work on every plan (confirmed live: naming any other model on a
+        // free-tier account fails with "ActionRequiredError: Named models
+        // unavailable, Free plans can only use Auto"), so it's the only
+        // static suggestion offered.
+        models: &["auto"],
         docs_url: "",
         adapter: adapter::CLI,
-        default_cli_model: "",
+        default_cli_model: "auto",
     },
 ];
 

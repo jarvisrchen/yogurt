@@ -14,10 +14,10 @@
 //!
 //! Both CLIs are treated as opaque `-p --output-format json` binaries that
 //! print one JSON object with a `result` string and an `is_error` bool.
-//! Verified against a live `claude` binary; `cursor-agent` support is
-//! inferred from its documented Claude-Code-compatible interface and not
-//! verified against a live binary here - a wrong assumption fails as a
-//! clear "invalid CLI output" error, not silent corruption.
+//! Verified against live `claude` and `cursor-agent` binaries, including
+//! the full flag set each gets (see `build_args`) - a wrong assumption
+//! would fail as a clear "invalid CLI output" error, not silent
+//! corruption, but there wasn't one to hit.
 
 use crate::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, LlmClient};
 use anyhow::{anyhow, bail, Context, Result};
@@ -148,10 +148,10 @@ impl CliClient {
                 // denied") - that is the broad auto-approval flag, the
                 // cursor-agent analogue of `--dangerously-skip-
                 // permissions`, and granting it here would remove exactly
-                // the protection `--sandbox enabled` provides. Unverified
-                // against a live binary (see module doc) - if `--sandbox`
-                // turns out not to exist on some version, the whole call
-                // fails loudly rather than silently running unsandboxed.
+                // the protection `--sandbox enabled` provides. Verified
+                // against a live binary (see module doc) - `--trust
+                // --sandbox enabled -p ... --output-format json` returns a
+                // clean success result.
                 args.push("--trust".to_string());
                 args.push("--sandbox".to_string());
                 args.push("enabled".to_string());
