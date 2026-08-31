@@ -4,6 +4,7 @@ import type { ProviderView } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelSelect } from "./ModelSelect";
+import { TestKeyButton } from "./TestKeyButton";
 
 /**
  * Active provider card — Phase 5 (Plan 05-03), SET-04.
@@ -39,6 +40,7 @@ export function ProviderCard({
    */
   presetName?: string;
 }) {
+  const isCli = provider.adapter === "cli";
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({
@@ -72,92 +74,114 @@ export function ProviderCard({
             Active
           </span>
         </div>
-        <button
-          type="button"
-          className="text-[12.5px] font-semibold text-mut hover:text-ink"
-          onClick={() => setEditing((e) => !e)}
-        >
-          {editing ? "Cancel" : "Edit"}
-        </button>
+        {!isCli && (
+          <button
+            type="button"
+            className="text-[12.5px] font-semibold text-mut hover:text-ink"
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </button>
+        )}
       </header>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-        <Field label="BASE URL">
-          {editing ? (
-            <input
-              className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
-              value={draft.base_url}
-              onChange={(e) =>
-                setDraft({ ...draft, base_url: e.target.value })
-              }
-            />
-          ) : (
-            <code className="font-mono text-[12.5px] text-ink break-all">
-              {provider.base_url}
-            </code>
+      {isCli ? (
+        <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
+          Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
+          locally via your existing CLI login. No API key or base URL to
+          configure.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <Field label="BASE URL">
+              {editing ? (
+                <input
+                  className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
+                  value={draft.base_url}
+                  onChange={(e) =>
+                    setDraft({ ...draft, base_url: e.target.value })
+                  }
+                />
+              ) : (
+                <code className="font-mono text-[12.5px] text-ink break-all">
+                  {provider.base_url}
+                </code>
+              )}
+            </Field>
+            <Field label="MODEL">
+              {editing ? (
+                <ModelSelect
+                  providerId={provider.id}
+                  providerName={provider.name}
+                  value={draft.model}
+                  onChange={(next) => setDraft({ ...draft, model: next })}
+                  presetModels={presetModels}
+                  apiKeyDraft={apiKeyDraft}
+                />
+              ) : (
+                <code className="font-mono text-[12.5px] text-ink">
+                  {provider.model || "—"}
+                </code>
+              )}
+            </Field>
+          </div>
+          {docsUrl && (
+            <a
+              href={docsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
+            >
+              See all {presetName ?? provider.name} models →
+            </a>
           )}
-        </Field>
-        <Field label="MODEL">
+
           {editing ? (
-            <ModelSelect
-              providerId={provider.id}
-              providerName={provider.name}
-              value={draft.model}
-              onChange={(next) => setDraft({ ...draft, model: next })}
-              presetModels={presetModels}
-              apiKeyDraft={apiKeyDraft}
-            />
-          ) : (
-            <code className="font-mono text-[12.5px] text-ink">
-              {provider.model || "—"}
-            </code>
-          )}
-        </Field>
-      </div>
-      {docsUrl && (
-        <a
-          href={docsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
-        >
-          See all {presetName ?? provider.name} models →
-        </a>
+            <button
+              type="button"
+              className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+              disabled={update.isPending}
+              onClick={() => update.mutate()}
+            >
+              {update.isPending ? "Saving…" : "Save"}
+            </button>
+          ) : null}
+        </>
       )}
 
-      {editing ? (
-        <button
-          type="button"
-          className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
-          disabled={update.isPending}
-          onClick={() => update.mutate()}
-        >
-          {update.isPending ? "Saving…" : "Save"}
-        </button>
-      ) : null}
-
       <div className="border-t border-line pt-3 space-y-2">
-        <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-          API KEY · stored locally
-        </div>
-        {provider.api_key_masked ? (
-          <div className="flex items-center gap-2 text-[12.5px] font-mono">
-            <span className="text-ink">{provider.api_key_masked}</span>
-            <span className="text-[var(--color-matcha)] font-semibold">
-              ✓ stored
-            </span>
-          </div>
-        ) : (
-          <div className="text-sm text-mut">No key stored yet.</div>
-        )}
-        <div className="pt-1">
-          <ApiKeyInput
+        {isCli ? (
+          <TestKeyButton
             providerId={provider.id}
             providerName={provider.name}
-            hasStoredKey={!!provider.api_key_masked}
-            onDraftChange={setApiKeyDraft}
+            alwaysTestable
           />
-        </div>
+        ) : (
+          <>
+            <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
+              API KEY · stored locally
+            </div>
+            {provider.api_key_masked ? (
+              <div className="flex items-center gap-2 text-[12.5px] font-mono">
+                <span className="text-ink">{provider.api_key_masked}</span>
+                <span className="text-[var(--color-matcha)] font-semibold">
+                  ✓ stored
+                </span>
+              </div>
+            ) : (
+              <div className="text-sm text-mut">No key stored yet.</div>
+            )}
+            <div className="pt-1">
+              <ApiKeyInput
+                providerId={provider.id}
+                providerName={provider.name}
+                hasStoredKey={!!provider.api_key_masked}
+                onDraftChange={setApiKeyDraft}
+              />
+            </div>
+          </>
+        )}
       </div>
     </article>
   );

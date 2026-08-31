@@ -23,7 +23,7 @@ mod streaming;
 mod thinking;
 mod types;
 
-pub use cli::CliClient;
+pub use cli::{CliClient, CliProgram};
 pub use thinking::strip_thinking;
 pub use types::{ChatChunk, ChatMessage, ChatRequest, ChatResponse};
 

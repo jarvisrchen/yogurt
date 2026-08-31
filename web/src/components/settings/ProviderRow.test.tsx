@@ -16,6 +16,7 @@ import type { ProviderView } from "../../lib/api/settings";
 const settingsApiMock = vi.hoisted(() => ({
   updateProvider: vi.fn(),
   listProviderModels: vi.fn(),
+  testProvider: vi.fn(),
 }));
 
 vi.mock("../../lib/api/settings", () => ({
@@ -32,6 +33,7 @@ const provider: ProviderView = {
   is_active: false,
   created_at: 0,
   api_key_masked: null,
+  adapter: "http",
 };
 
 function renderRow(opts: { onKeyClosed?: () => void } = {}) {
@@ -117,6 +119,68 @@ describe("ProviderRow - API key Cancel clears the draft", () => {
     await waitFor(() =>
       expect(settingsApiMock.listProviderModels).toHaveBeenCalledWith(
         provider.id,
+        undefined,
+      ),
+    );
+  });
+});
+
+describe("ProviderRow - cli adapter (LLM-4)", () => {
+  const cliProvider: ProviderView = {
+    ...provider,
+    id: "01CLI",
+    name: "Claude Code (local CLI)",
+    base_url: "",
+    model: "claude",
+    adapter: "cli",
+  };
+
+  function renderCliRow() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ProviderRow provider={cliProvider} presetModels={[]} />
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("has no BASE URL / MODEL fields, no key controls, and a reachable Test button", () => {
+    renderCliRow();
+
+    expect(screen.queryByText("BASE URL")).not.toBeInTheDocument();
+    expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Model for ${cliProvider.name}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /add key|replace key/i }),
+    ).not.toBeInTheDocument();
+
+    // No key exists at all, so the normal "draft or stored key" gate must
+    // not apply - Test is reachable immediately.
+    const testButton = screen.getByRole("button", {
+      name: `Test connection for ${cliProvider.name}`,
+    });
+    expect(testButton).toBeEnabled();
+  });
+
+  it("Test hits the provider endpoint with no key argument", async () => {
+    settingsApiMock.testProvider.mockResolvedValue({ ok: true, model: "cli:claude" });
+    renderCliRow();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Test connection for ${cliProvider.name}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(settingsApiMock.testProvider).toHaveBeenCalledWith(
+        cliProvider.id,
         undefined,
       ),
     );

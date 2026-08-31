@@ -44,6 +44,15 @@ export interface General {
   stt_model: string;
 }
 
+/**
+ * `"http"` (`OpenAiCompatClient` against `base_url` + a stored API key) or
+ * `"cli"` (LLM-4: a local agent CLI, `yogurt_llm::CliClient` - no base URL
+ * or key involved; `model` holds the CLI program id "claude" |
+ * "cursor-agent" instead of a model name). Mirrors
+ * `yogurt_db::providers::adapter`.
+ */
+export type ProviderAdapter = "http" | "cli";
+
 export interface ProviderView {
   id: string;
   name: string;
@@ -51,8 +60,10 @@ export interface ProviderView {
   model: string;
   is_active: boolean;
   created_at: number;
-  /** "••••XXXX" if a key is stored, null otherwise. Never the raw key. */
+  /** "••••XXXX" if a key is stored, null otherwise. Never the raw key.
+   *  Always null for a `cli`-adapter provider - it never has a key. */
   api_key_masked: string | null;
+  adapter: ProviderAdapter;
 }
 
 export interface Preset {
@@ -64,7 +75,8 @@ export interface Preset {
    * MODEL `<datalist>` on a freshly-cloned provider. The Settings page's
    * `Refresh` button replaces this with the live `/v1/models` response
    * once a key is on file. Empty for runtimes like Ollama / LM Studio
-   * where the model list is purely local.
+   * where the model list is purely local, and for `adapter: "cli"`
+   * presets, which have no model catalog at all.
    */
   models: string[];
   /**
@@ -72,8 +84,10 @@ export interface Preset {
    * `See all models →` link next to the MODEL field so users have a
    * discovery surface for preview / regional tiers the static list
    * doesn't cover, and a fallback when `/v1/models` isn't supported.
+   * Empty for `adapter: "cli"` presets - there is no catalog page.
    */
   docs_url: string;
+  adapter: ProviderAdapter;
 }
 
 export interface SettingsView {
@@ -88,6 +102,9 @@ export interface NewProvider {
   name: string;
   base_url: string;
   model: string;
+  /** Defaults to `"http"` server-side if omitted - only `PresetChip`
+   *  sends `"cli"`, and only for the two built-in local-CLI presets. */
+  adapter?: ProviderAdapter;
 }
 
 export interface UpdateProvider {

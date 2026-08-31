@@ -90,6 +90,10 @@ struct ProviderView {
     created_at: i64,
     /// `Some("••••XXXX")` when a key is stored, `None` otherwise. Never the raw key.
     api_key_masked: Option<String>,
+    /// `"http"` or `"cli"` (LLM-4) - see `yogurt_db::providers::adapter`.
+    /// The frontend uses this to decide whether to render the BASE URL /
+    /// API KEY / model-catalog UI at all; a `cli` row has none of those.
+    adapter: String,
 }
 
 /// Convert a DB row + its masked key into the wire view.
@@ -102,6 +106,7 @@ fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
         is_active: p.is_active,
         created_at: p.created_at,
         api_key_masked: masked,
+        adapter: p.adapter,
     }
 }
 
@@ -121,6 +126,7 @@ struct PresetView {
     default_model: &'static str,
     models: &'static [&'static str],
     docs_url: &'static str,
+    adapter: &'static str,
 }
 
 #[derive(Serialize)]
@@ -137,16 +143,7 @@ struct SettingsView {
 
 async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, Error> {
     let general = settings::load_general(&s.db)?;
-    let presets = providers::PRESETS
-        .iter()
-        .map(|p| PresetView {
-            name: p.name,
-            base_url: p.base_url,
-            default_model: p.default_model,
-            models: p.models,
-            docs_url: p.docs_url,
-        })
-        .collect();
+    let presets = preset_views();
     let providers = masked_views(&s, providers::list(&s.db)?);
     let deepgram_key_masked = s
         .keys
@@ -226,24 +223,55 @@ async fn list_providers(State(s): State<AppState>) -> Result<Json<Vec<ProviderVi
 }
 
 async fn list_presets() -> Json<Vec<PresetView>> {
-    Json(
-        providers::PRESETS
-            .iter()
-            .map(|p| PresetView {
-                name: p.name,
-                base_url: p.base_url,
-                default_model: p.default_model,
-                models: p.models,
-                docs_url: p.docs_url,
-            })
-            .collect(),
-    )
+    Json(preset_views())
+}
+
+/// Shared `providers::PRESETS` -> `PresetView` mapping. `get_settings` and
+/// `list_presets` both need the full preset list; a second inline copy is
+/// exactly how the `adapter` field went missing from one of them above.
+fn preset_views() -> Vec<PresetView> {
+    providers::PRESETS
+        .iter()
+        .map(|p| PresetView {
+            name: p.name,
+            base_url: p.base_url,
+            default_model: p.default_model,
+            models: p.models,
+            docs_url: p.docs_url,
+            adapter: p.adapter,
+        })
+        .collect()
+}
+
+/// Reject a malformed `adapter` value before it ever reaches a DB row.
+/// Only `PresetChip` sends `adapter: "cli"` today (there is no manual
+/// "add a CLI provider" form - see `AddProviderForm`), so this mainly
+/// guards a direct API call rather than anything the UI can trigger; it's
+/// still worth a clear 422 over a row `from_active_provider` would later
+/// reject with a confusing "unrecognized CLI program" error.
+fn validate_new_provider(body: &providers::NewProvider) -> Result<(), Error> {
+    match body.adapter.as_str() {
+        providers::adapter::HTTP => Ok(()),
+        providers::adapter::CLI => {
+            if yogurt_llm::CliProgram::parse(&body.model).is_none() {
+                return Err(Error::Unprocessable(format!(
+                    "'{}' is not a recognized CLI program (expected \"claude\" or \"cursor-agent\")",
+                    body.model
+                )));
+            }
+            Ok(())
+        }
+        other => Err(Error::Unprocessable(format!(
+            "'{other}' is not a recognized provider adapter (expected \"http\" or \"cli\")"
+        ))),
+    }
 }
 
 async fn create_provider(
     State(s): State<AppState>,
     Json(body): Json<providers::NewProvider>,
 ) -> Result<Json<ProviderView>, Error> {
+    validate_new_provider(&body)?;
     let id = providers::insert(&s.db, body)?;
     let p = providers::list(&s.db)?
         .into_iter()
@@ -496,7 +524,47 @@ async fn test_provider(
     Path(id): Path<String>,
     Json(body): Json<TestProviderBody>,
 ) -> Result<Json<TestProviderResult>, Error> {
-    let (provider, key) = provider_and_key(&s, &id, body.api_key)?;
+    let provider = find_provider(&s, &id)?;
+
+    // `complete` lives on the LlmClient trait, not the concrete type.
+    use yogurt_llm::LlmClient as _;
+
+    // LLM-4: a `cli`-adapter provider has no key at all - `locate` either
+    // finds the program on `$PATH` or it doesn't, so the "no key stored"
+    // early-return below (which only makes sense for `http`) doesn't apply.
+    if provider.adapter == providers::adapter::CLI {
+        let client = match yogurt_llm::CliProgram::parse(&provider.model)
+            .ok_or_else(|| anyhow::anyhow!("unrecognized CLI program '{}'", provider.model))
+            .and_then(yogurt_llm::CliClient::locate)
+        {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(Json(TestProviderResult {
+                    ok: false,
+                    model: None,
+                    error: Some(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)),
+                }))
+            }
+        };
+        let req = yogurt_llm::ChatRequest {
+            messages: vec![yogurt_llm::ChatMessage::user("Reply with: ok")],
+            stream: false,
+        };
+        return Ok(Json(match client.complete(req).await {
+            Ok(resp) => TestProviderResult {
+                ok: true,
+                model: Some(resp.model),
+                error: None,
+            },
+            Err(e) => TestProviderResult {
+                ok: false,
+                model: None,
+                error: Some(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)),
+            },
+        }));
+    }
+
+    let key = provider_key(&s, &provider.id, body.api_key)?;
     let key = match key {
         Some(k) => k,
         None => {
@@ -518,8 +586,6 @@ async fn test_provider(
     // - which `/models` would both miss. No `max_tokens` cap: some reasoning
     // models reject a tiny budget outright, and a false failure here is
     // worse than a handful of tokens.
-    // `complete` lives on the LlmClient trait, not the concrete type.
-    use yogurt_llm::LlmClient as _;
     let client = crate::llm_openai::OpenAiCompatClient::new(
         provider.base_url.clone(),
         key,
@@ -583,6 +649,15 @@ async fn list_provider_models(
     let draft = body.and_then(|b| b.api_key.clone());
     let (provider, key) = provider_and_key(&s, &id, draft)?;
 
+    // LLM-4: a `cli`-adapter provider has no `/v1/models` endpoint to
+    // probe - the Settings UI never shows a Refresh button for one, so
+    // reaching this is only possible via a direct API call.
+    if provider.adapter == providers::adapter::CLI {
+        return Err(Error::Unprocessable(
+            "this provider has no model catalog to refresh".into(),
+        ));
+    }
+
     let client = crate::llm_openai::OpenAiCompatClient::new(
         provider.base_url.clone(),
         key.unwrap_or_default(),
@@ -603,24 +678,41 @@ async fn list_provider_models(
 /// that means (`test_provider` reports a friendly "no key stored" result;
 /// `list_provider_models` proceeds keyless, since local runtimes need no
 /// key at all).
+/// Resolve just the provider row for `id`, with no key involved - the
+/// LLM-4 `cli` branches of `test_provider`/`list_provider_models` need the
+/// row (to read `adapter`/`model`) but never a key, so they call this
+/// directly instead of `provider_and_key`.
+fn find_provider(s: &AppState, id: &str) -> Result<providers::Provider, Error> {
+    providers::list(&s.db)?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or(Error::NotFound)
+}
+
 fn provider_and_key(
     s: &AppState,
     id: &str,
     draft: Option<String>,
 ) -> Result<(providers::Provider, Option<String>), Error> {
-    let provider = providers::list(&s.db)?
-        .into_iter()
-        .find(|p| p.id == id)
-        .ok_or(Error::NotFound)?;
+    let provider = find_provider(s, id)?;
+    let key = provider_key(s, id, draft)?;
+    Ok((provider, key))
+}
 
+/// The API key a live probe against provider `id` should use: a trimmed
+/// non-empty `draft` wins, otherwise whatever is already in the key store.
+/// `None` means neither is available - callers decide what that means
+/// (`test_provider` reports a friendly "no key stored" result;
+/// `list_provider_models` proceeds keyless, since local runtimes need no
+/// key at all).
+fn provider_key(s: &AppState, id: &str, draft: Option<String>) -> Result<Option<String>, Error> {
     let draft = draft
         .map(|k| k.trim().to_string())
         .filter(|k| !k.is_empty());
-    let key = match draft {
-        Some(k) => Some(k),
-        None => read_stored_key(s, id)?,
-    };
-    Ok((provider, key))
+    match draft {
+        Some(k) => Ok(Some(k)),
+        None => read_stored_key(s, id),
+    }
 }
 
 fn read_stored_key(s: &AppState, id: &str) -> Result<Option<String>, Error> {

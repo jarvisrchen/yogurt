@@ -21,6 +21,10 @@ export function TestKeyButton({
   draft = "",
   /** Without a stored key and without a draft there is nothing to test. */
   hasStoredKey,
+  /** LLM-4: a `cli`-adapter provider has no key at all, so the normal
+   *  "needs a draft or a stored key" gate never applies to it - `Test`
+   *  is always reachable (it just resolves the CLI on `$PATH`). */
+  alwaysTestable = false,
   /** Override for non-provider callers (e.g. the Deepgram STT key), which
    *  hit a different endpoint with no provider id. Defaults to testing
    *  `providerId` against the LLM provider endpoint. */
@@ -30,6 +34,7 @@ export function TestKeyButton({
   providerName: string;
   draft?: string;
   hasStoredKey?: boolean;
+  alwaysTestable?: boolean;
   testFn?: (key?: string) => Promise<TestConnectionResult>;
 }) {
   const test = useMutation({
@@ -40,7 +45,7 @@ export function TestKeyButton({
   // tick sitting next to text the user has since edited is a lie, so the
   // verdict is only shown while the draft still matches what was tested.
   const fresh = test.variables === draft;
-  const canTest = (!!draft || !!hasStoredKey) && !test.isPending;
+  const canTest = (alwaysTestable || !!draft || !!hasStoredKey) && !test.isPending;
 
   return (
     <>

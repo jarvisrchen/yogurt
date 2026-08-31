@@ -9,6 +9,7 @@ fn it_inserts_and_lists_a_provider() {
             name: "Minimax".into(),
             base_url: "https://api.minimax.io/v1".into(),
             model: "MiniMax-Text-01".into(),
+            adapter: providers::adapter::HTTP.into(),
         },
     )
     .unwrap();
@@ -28,6 +29,7 @@ fn it_sets_only_one_active_provider() {
             name: "A".into(),
             base_url: "https://a/v1".into(),
             model: "m".into(),
+            adapter: providers::adapter::HTTP.into(),
         },
     )
     .unwrap();
@@ -37,6 +39,7 @@ fn it_sets_only_one_active_provider() {
             name: "B".into(),
             base_url: "https://b/v1".into(),
             model: "m".into(),
+            adapter: providers::adapter::HTTP.into(),
         },
     )
     .unwrap();
@@ -63,10 +66,14 @@ fn it_exposes_presets_as_a_const_slice() {
     assert!(names.contains(&"OpenRouter"));
     assert!(names.contains(&"Google Gemini"));
     assert!(names.contains(&"DeepSeek"));
+    assert!(names.contains(&"Claude Code (local CLI)"));
+    assert!(names.contains(&"Cursor Agent (local CLI)"));
 }
 
-/// Every preset must be a usable base URL for `OpenAiCompatClient`, which
-/// builds its endpoint as `{base_url}/chat/completions`.
+/// Every `adapter: "http"` preset must be a usable base URL for
+/// `OpenAiCompatClient`, which builds its endpoint as
+/// `{base_url}/chat/completions`. `adapter: "cli"` presets are exempt -
+/// `base_url` is unused for them (see `providers::adapter`).
 ///
 /// The trap this guards: Google documents its OpenAI shim WITH a trailing
 /// slash (`.../v1beta/openai/`). Pasting that verbatim into a preset yields
@@ -75,6 +82,16 @@ fn it_exposes_presets_as_a_const_slice() {
 #[test]
 fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
     for p in providers::PRESETS {
+        assert!(!p.name.trim().is_empty(), "preset name must not be empty");
+        if p.adapter == providers::adapter::CLI {
+            assert!(
+                p.base_url.is_empty(),
+                "{}: cli preset must leave base_url empty, got {:?}",
+                p.name,
+                p.base_url
+            );
+            continue;
+        }
         assert!(
             p.base_url.starts_with("http://") || p.base_url.starts_with("https://"),
             "{} base_url must be absolute, got {:?}",
@@ -87,17 +104,26 @@ fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
             p.name,
             p.base_url
         );
-        assert!(!p.name.trim().is_empty(), "preset name must not be empty");
     }
 }
 
-/// Each preset's `default_model` is what gets written into the providers
-/// table on clone, so it MUST appear in the preset's `models` datalist —
-/// otherwise the initial state of the dropdown wouldn't match what was
-/// saved and the user would see "Saved as X, suggested Y" confusion.
+/// Each `adapter: "http"` preset's `default_model` is what gets written
+/// into the providers table on clone, so it MUST appear in the preset's
+/// `models` datalist - otherwise the initial state of the dropdown
+/// wouldn't match what was saved and the user would see "Saved as X,
+/// suggested Y" confusion. `adapter: "cli"` presets have no model list at
+/// all (`default_model` is a `CliProgram` id, not a model name).
 #[test]
 fn preset_default_model_appears_in_its_models_list() {
     for p in providers::PRESETS {
+        if p.adapter == providers::adapter::CLI {
+            assert!(
+                p.models.is_empty(),
+                "{}: cli preset must not have a model list",
+                p.name
+            );
+            continue;
+        }
         if p.default_model.is_empty() {
             // LM Studio starts blank; nothing to assert.
             continue;
@@ -112,6 +138,31 @@ fn preset_default_model_appears_in_its_models_list() {
     }
 }
 
+/// Every `adapter: "cli"` preset's `default_model` must be a program id
+/// `yogurt_llm::CliProgram::parse` recognizes - if it doesn't,
+/// `from_active_provider` would reject a freshly-cloned, never-edited
+/// provider row as having an "unrecognized CLI program", which should be
+/// impossible. Spelled out as a literal list rather than depending on
+/// `yogurt_llm` from this crate just to call `parse` - `yogurt-db` sits
+/// below the LLM-client layer in the dependency graph and should stay
+/// there; keep this list in sync with `CliProgram::parse` by hand.
+#[test]
+fn cli_preset_default_models_parse_as_a_known_cli_program() {
+    const KNOWN_CLI_PROGRAM_IDS: &[&str] = &["claude", "cursor-agent"];
+    for p in providers::PRESETS {
+        if p.adapter != providers::adapter::CLI {
+            continue;
+        }
+        assert!(
+            KNOWN_CLI_PROGRAM_IDS.contains(&p.default_model),
+            "{}: default_model {:?} must be one of {:?}",
+            p.name,
+            p.default_model,
+            KNOWN_CLI_PROGRAM_IDS
+        );
+    }
+}
+
 #[test]
 fn list_names_returns_creation_order() {
     let db = Db::open_in_memory().unwrap();
@@ -121,6 +172,7 @@ fn list_names_returns_creation_order() {
             name: "First".into(),
             base_url: "https://x/v1".into(),
             model: "m".into(),
+            adapter: providers::adapter::HTTP.into(),
         },
     )
     .unwrap();
@@ -130,6 +182,7 @@ fn list_names_returns_creation_order() {
             name: "Second".into(),
             base_url: "https://y/v1".into(),
             model: "m".into(),
+            adapter: providers::adapter::HTTP.into(),
         },
     )
     .unwrap();

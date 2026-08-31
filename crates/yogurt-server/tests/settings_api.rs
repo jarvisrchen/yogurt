@@ -666,3 +666,192 @@ async fn list_models_upstream_401_surfaces_as_502_without_the_key() {
         "raw key leaked in 502 body: {msg}"
     );
 }
+
+// ── LLM-4: explicit CLI provider selection ──────────────────────────────
+
+#[tokio::test]
+async fn creates_a_cli_provider_and_round_trips_its_adapter() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "Claude Code (local CLI)",
+            "base_url": "",
+            "model": "claude",
+            "adapter": "cli"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(created["adapter"], "cli");
+    assert_eq!(created["model"], "claude");
+    // A `cli` provider never has a key - the row must round-trip with no
+    // masked value even though nothing was ever posted to `/key`.
+    assert_eq!(created["api_key_masked"], Value::Null);
+
+    let listed: Value = client
+        .get(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(listed[0]["adapter"], "cli");
+}
+
+/// The two built-in CLI presets round-trip through `GET /api/settings` and
+/// `GET /api/settings/presets` with `adapter: "cli"` - the exact bug that
+/// briefly existed when `get_settings` and `list_presets` each built their
+/// own `PresetView` mapping and only one of them got the field added.
+#[tokio::test]
+async fn cli_presets_are_advertised_with_their_adapter() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+
+    for path in ["/api/settings", "/api/settings/presets"] {
+        let v: Value = client
+            .get(format!("{base}{path}"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let presets = if path == "/api/settings" {
+            v["presets"].as_array().unwrap().clone()
+        } else {
+            v.as_array().unwrap().clone()
+        };
+        let cli_presets: Vec<&Value> = presets.iter().filter(|p| p["adapter"] == "cli").collect();
+        assert_eq!(cli_presets.len(), 2, "{path}: expected 2 cli presets");
+        for p in cli_presets {
+            assert_eq!(p["base_url"], "");
+        }
+    }
+}
+
+#[tokio::test]
+async fn rejects_a_cli_provider_with_an_unrecognized_program() {
+    let (_state, token, base) = boot().await;
+    let res = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "Bogus",
+            "base_url": "",
+            "model": "not-a-real-cli-program",
+            "adapter": "cli"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+    let body: Value = res.json().await.unwrap();
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("not-a-real-cli-program"));
+}
+
+#[tokio::test]
+async fn rejects_an_unrecognized_adapter_value() {
+    let (_state, token, base) = boot().await;
+    let res = reqwest::Client::new()
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "Bogus",
+            "base_url": "https://x/v1",
+            "model": "m",
+            "adapter": "ssh"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+}
+
+#[tokio::test]
+async fn cli_provider_has_no_model_catalog_to_refresh() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "Claude Code (local CLI)",
+            "base_url": "",
+            "model": "claude",
+            "adapter": "cli"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap();
+
+    let res = client
+        .post(format!("{base}/api/settings/providers/{id}/models"))
+        .bearer_auth(&token)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+}
+
+/// `POST .../test` on a `cli` provider never asks for a key - it either
+/// finds the named program on `$PATH` and reports a real completion, or
+/// reports `ok: false` naming the program. Both are asserted so the test
+/// is meaningful whether or not `claude` happens to be installed on the
+/// machine running it (mine has it; CI does not).
+#[tokio::test]
+async fn tests_a_cli_provider_without_ever_asking_for_a_key() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post(format!("{base}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "Claude Code (local CLI)",
+            "base_url": "",
+            "model": "claude",
+            "adapter": "cli"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap();
+
+    let res: Value = client
+        .post(format!("{base}/api/settings/providers/{id}/test"))
+        .bearer_auth(&token)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    match res["ok"].as_bool().unwrap() {
+        true => assert_eq!(res["model"], "cli:claude"),
+        false => assert!(res["error"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("claude")),
+    }
+}

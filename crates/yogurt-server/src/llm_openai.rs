@@ -7,21 +7,27 @@
 //!
 //! - [`from_env`] — developer override via `YOGURT_LLM_*` env vars
 //!   (highest priority, checked first).
-//! - [`from_active_provider`] — the production path: active provider row
-//!   from the `providers` table + its API key from the file-backed
-//!   [`yogurt_db::keys::ApiKeyStore`].
+//! - `from_active_provider` (private) — the production path: active
+//!   provider row from the `providers` table, branching on its `adapter`
+//!   (LLM-4). An `http` row builds `OpenAiCompatClient` from its stored API
+//!   key; a `cli` row `yogurt_llm::CliClient::locate`s the named program
+//!   (`claude` | `cursor-agent`) and needs no key at all.
 //!
-//! [`resolve`] also wraps an active provider's client in
+//! [`resolve`] also wraps an `http`-adapter active provider's client in
 //! [`CliFallbackClient`] (LLM-1) when a local agent CLI is on `$PATH`: a
 //! connect-class failure reaching the configured provider's `base_url`
 //! retries once through the CLI instead of failing the request. This
-//! applies only when a provider is actually configured - deliberately not
-//! when none is, so `MockLlm` stays the deterministic, free, no-subprocess
-//! path for first-run users and (just as importantly) for tests. An
-//! earlier draft preferred the CLI over `MockLlm` whenever nothing was
-//! configured; on a machine with `claude` on `$PATH` that made
-//! `cargo test --workspace` silently shell out to the real CLI and spend
-//! real API credits instead of getting deterministic mock output.
+//! applies only when an `http` provider is actually configured -
+//! deliberately not when none is (so `MockLlm` stays the deterministic,
+//! free, no-subprocess path for first-run users and, just as importantly,
+//! for tests - an earlier draft preferred the CLI over `MockLlm` whenever
+//! nothing was configured, and on a machine with `claude` on `$PATH` that
+//! made `cargo test --workspace` silently shell out to the real CLI and
+//! spend real API credits instead of getting deterministic mock output)
+//! and not when the active provider is already `cli`-adapter (LLM-4) -
+//! wrapping a CLI client's own fallback in another CLI client is a no-op
+//! at best, since its errors are never the `reqwest::Error` connect
+//! failures the wrapper looks for.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,11 +53,16 @@ pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 /// Priority chain:
 ///   1. `state.llm_override` — test injection, never set in production.
 ///   2. `YOGURT_LLM_*` env vars — developer override.
-///   3. Active provider row + stored key, wrapped in [`CliFallbackClient`]
-///      when a local agent CLI is on `$PATH` (LLM-1). A configured
-///      provider whose key can't be read is still a hard `Err` — that's a
-///      config problem, not an unreachable-endpoint problem, so the CLI
-///      fallback does not apply to it.
+///   3. Active provider row, branching on `adapter` (LLM-4):
+///      - `http`: `OpenAiCompatClient` + stored key, wrapped in
+///        [`CliFallbackClient`] when a local agent CLI is on `$PATH`
+///        (LLM-1). A configured provider whose key can't be read is still
+///        a hard `Err` — that's a config problem, not an
+///        unreachable-endpoint problem, so the CLI fallback does not apply
+///        to it.
+///      - `cli`: the located `CliClient` directly, no fallback wrapper —
+///        it IS what the user picked. Its program not being on `$PATH` is
+///        the same hard-`Err` contract as a missing HTTP key.
 ///   4. `MockLlm` when nothing is configured at all (logged as a warn) so
 ///      first-run users still see the hero flow work. Deliberately not the
 ///      CLI fallback here — see the module doc.
@@ -65,16 +76,17 @@ pub async fn resolve(
         return Ok(std::sync::Arc::new(c));
     }
     match from_active_provider(&state.db, state.keys.clone()).await? {
-        Some(c) => {
-            let primary: Arc<dyn LlmClient> = Arc::new(c);
-            match yogurt_llm::CliClient::discover() {
-                Some(cli) => Ok(Arc::new(CliFallbackClient {
-                    primary,
-                    cli: Arc::new(cli),
-                })),
-                None => Ok(primary),
-            }
-        }
+        Some(ResolvedProvider::Http(primary)) => match yogurt_llm::CliClient::discover() {
+            Some(cli) => Ok(Arc::new(CliFallbackClient {
+                primary,
+                cli: Arc::new(cli),
+            })),
+            None => Ok(primary),
+        },
+        // LLM-4: the user explicitly picked this CLI as their provider -
+        // it IS the primary, not a fallback behind one, so no
+        // `CliFallbackClient` wrapping.
+        Some(ResolvedProvider::Cli(client)) => Ok(client),
         None => {
             tracing::warn!("no LLM provider configured; falling back to MockLlm");
             Ok(Arc::new(crate::llm_mock::MockLlm))
@@ -168,29 +180,59 @@ pub fn from_env() -> Option<OpenAiCompatClient> {
     Some(OpenAiCompatClient::new(base_url, api_key, model))
 }
 
+/// The active provider row resolved into a working client, tagged by which
+/// adapter it came from - `resolve` needs to know this to decide whether
+/// [`CliFallbackClient`] (LLM-1) applies: wrapping an already-CLI client in
+/// another CLI fallback would be pointless (its errors are never the
+/// `reqwest::Error` connect failures the wrapper looks for) and would cost
+/// an extra `CliClient::discover` on every single resolution.
+enum ResolvedProvider {
+    Http(Arc<dyn LlmClient>),
+    Cli(Arc<dyn LlmClient>),
+}
+
 /// Production resolution path: build a client from the active provider row
-/// (`providers` table) + its stored API key.
+/// (`providers` table), branching on its `adapter` (LLM-4).
 ///
 /// Contract (the enhance handler maps each arm directly):
 /// - `Ok(None)` — no active provider configured; caller falls back to mock.
-/// - `Ok(Some(client))` — active provider with a readable key.
-/// - `Err(_)` — active provider exists but its key could not be read;
-///   caller must surface this (502), never silently fall back to mock.
-pub async fn from_active_provider(
+/// - `Ok(Some(_))` — active provider ready to use.
+/// - `Err(_)` — active provider exists but isn't usable right now (an
+///   `http` provider whose key can't be read, or a `cli` provider whose
+///   program isn't on `$PATH`); caller must surface this (502), never
+///   silently fall back to mock.
+async fn from_active_provider(
     db: &yogurt_db::Db,
     keys: std::sync::Arc<dyn yogurt_db::keys::ApiKeyStore>,
-) -> anyhow::Result<Option<OpenAiCompatClient>> {
+) -> anyhow::Result<Option<ResolvedProvider>> {
     let Some(provider) = yogurt_db::providers::active(db)? else {
         return Ok(None);
     };
+    if provider.adapter == yogurt_db::providers::adapter::CLI {
+        let program = yogurt_llm::CliProgram::parse(&provider.model).ok_or_else(|| {
+            anyhow::anyhow!(
+                "provider '{}' ({}) has an unrecognized CLI program '{}'",
+                provider.name,
+                provider.id,
+                provider.model
+            )
+        })?;
+        let client = yogurt_llm::CliClient::locate(program).map_err(|e| {
+            anyhow::anyhow!(
+                "provider '{}' ({}) is active but its CLI could not be found: {e} \
+                 - install it and make sure it's on $PATH",
+                provider.name,
+                provider.id
+            )
+        })?;
+        return Ok(Some(ResolvedProvider::Cli(Arc::new(client))));
+    }
     let key = keys.get(&provider.id)?;
     // T-x3u-01: error names the provider only — never the key value.
     match key {
-        Some(key) => Ok(Some(OpenAiCompatClient::new(
-            provider.base_url,
-            key,
-            provider.model,
-        ))),
+        Some(key) => Ok(Some(ResolvedProvider::Http(Arc::new(
+            OpenAiCompatClient::new(provider.base_url, key, provider.model),
+        )))),
         None => anyhow::bail!(
             "provider '{}' ({}) is active but its API key could not be read \
              from the key store - re-enter it in Settings",
@@ -221,6 +263,22 @@ mod tests {
                 name: "Minimax".to_string(),
                 base_url: "https://api.minimax.io/v1".to_string(),
                 model: "MiniMax-Text-01".to_string(),
+                adapter: yogurt_db::providers::adapter::HTTP.to_string(),
+            },
+        )
+        .unwrap();
+        set_active(db, &id).unwrap();
+        id
+    }
+
+    fn insert_active_cli_provider(db: &Db, model: &str) -> String {
+        let id = insert(
+            db,
+            NewProvider {
+                name: "Claude Code (local CLI)".to_string(),
+                base_url: String::new(),
+                model: model.to_string(),
+                adapter: yogurt_db::providers::adapter::CLI.to_string(),
             },
         )
         .unwrap();
@@ -240,9 +298,16 @@ mod tests {
         let (db, keys) = fixture();
         let id = insert_active_provider(&db);
         keys.set(&id, "sk-test").unwrap();
-        let client = from_active_provider(&db, keys).await.unwrap().unwrap();
-        assert_eq!(client.base_url_for_streaming(), "https://api.minimax.io/v1");
-        assert_eq!(client.model_for_streaming(), "MiniMax-Text-01");
+        // `ResolvedProvider` isn't `Debug`, so match explicitly rather than
+        // `Result::unwrap` chains that would require it.
+        let resolved = match from_active_provider(&db, keys).await {
+            Ok(Some(r)) => r,
+            other => panic!("expected Ok(Some(_)), got {}", other.is_ok()),
+        };
+        let ResolvedProvider::Http(client) = resolved else {
+            panic!("expected an Http-adapter resolution");
+        };
+        assert_eq!(client.model_name(), "MiniMax-Text-01");
     }
 
     #[tokio::test]
@@ -258,6 +323,61 @@ mod tests {
         // T-x3u-01: message must never contain a key value; here just assert
         // it points the user at re-entering the key.
         assert!(msg.to_lowercase().contains("key"), "actionable msg: {msg}");
+    }
+
+    // ── LLM-4: explicit CLI provider selection ─────────────────────────
+
+    /// Deterministic regardless of whether `claude`/`cursor-agent` happen
+    /// to be installed on the machine running this test - an unrecognized
+    /// `model` value on a `cli`-adapter row can never resolve, on any
+    /// machine, so this doesn't fall into the same trap that made an
+    /// earlier draft of LLM-1 shell out to a real CLI during `cargo test`.
+    #[tokio::test]
+    async fn cli_provider_with_unrecognized_program_errors_naming_provider() {
+        let (db, keys) = fixture();
+        insert_active_cli_provider(&db, "not-a-real-cli-program");
+        let err = match from_active_provider(&db, keys).await {
+            Err(e) => e,
+            Ok(_) => panic!("expected Err for an unrecognized CLI program"),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Claude Code (local CLI)"),
+            "error should name the provider: {msg}"
+        );
+        assert!(
+            msg.contains("not-a-real-cli-program"),
+            "error should name the bad program value: {msg}"
+        );
+    }
+
+    /// A `cli`-adapter row with a recognized program (`claude` |
+    /// `cursor-agent`) either resolves `Ok(Some(ResolvedProvider::Cli(_)))`
+    /// when that binary happens to be on this machine's `$PATH`, or a hard
+    /// `Err` naming the provider when it isn't - never a silent `Ok(None)`
+    /// mock fallback, matching the missing-HTTP-key contract. Both
+    /// branches are asserted so the test is meaningful on a machine with
+    /// `claude` installed (mine) and one without (CI).
+    #[tokio::test]
+    async fn cli_provider_with_recognized_program_resolves_or_errors_naming_provider() {
+        let (db, keys) = fixture();
+        insert_active_cli_provider(&db, "claude");
+        match from_active_provider(&db, keys).await {
+            Ok(Some(ResolvedProvider::Cli(client))) => {
+                assert_eq!(client.model_name(), "cli:claude");
+            }
+            Ok(other) => panic!(
+                "expected None or a Cli resolution, got Some(Http): {}",
+                other.is_some()
+            ),
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("Claude Code (local CLI)"),
+                    "error should name the provider: {msg}"
+                );
+            }
+        }
     }
 
     // ── CliFallbackClient ───────────────────────────────────────────────

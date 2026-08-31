@@ -50,8 +50,11 @@ export function ProviderRow({
    *  this provider. */
   onKeyClosed?: () => void;
 }) {
+  const isCli = provider.adapter === "cli";
   const qc = useQueryClient();
-  const [keying, setKeying] = useState(autoOpenKey);
+  // A `cli` provider has no key section to auto-open - `autoOpenKey` only
+  // ever applies to a freshly-cloned `http` provider.
+  const [keying, setKeying] = useState(autoOpenKey && !isCli);
   const [modelDraft, setModelDraft] = useState(provider.model);
   // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
   // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
@@ -108,98 +111,122 @@ export function ProviderRow({
         </button>
       </header>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-        <Field label="BASE URL">
-          <code className="font-mono text-[12.5px] text-ink break-all">
-            {provider.base_url}
-          </code>
-        </Field>
-        <Field label="MODEL">
-          <ModelSelect
-            providerId={provider.id}
-            providerName={provider.name}
-            value={modelDraft}
-            onChange={setModelDraft}
-            onCommit={(next) => {
-              if (next !== provider.model) updateModel.mutate(next);
-            }}
-            presetModels={presetModels}
-            apiKeyDraft={apiKeyDraft}
-          />
-          {updateModel.isError && (
-            <p role="status" className="text-[11px] text-[var(--color-straw)]">
-              ✗ Could not save model: {String(updateModel.error)}
-            </p>
+      {isCli ? (
+        <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
+          Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
+          locally via your existing CLI login. No API key or base URL to
+          configure.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <Field label="BASE URL">
+              <code className="font-mono text-[12.5px] text-ink break-all">
+                {provider.base_url}
+              </code>
+            </Field>
+            <Field label="MODEL">
+              <ModelSelect
+                providerId={provider.id}
+                providerName={provider.name}
+                value={modelDraft}
+                onChange={setModelDraft}
+                onCommit={(next) => {
+                  if (next !== provider.model) updateModel.mutate(next);
+                }}
+                presetModels={presetModels}
+                apiKeyDraft={apiKeyDraft}
+              />
+              {updateModel.isError && (
+                <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                  ✗ Could not save model: {String(updateModel.error)}
+                </p>
+              )}
+            </Field>
+          </div>
+          {docsUrl && (
+            <a
+              href={docsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
+            >
+              See all {presetName ?? provider.name} models →
+            </a>
           )}
-        </Field>
-      </div>
-      {docsUrl && (
-        <a
-          href={docsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
-        >
-          See all {presetName ?? provider.name} models →
-        </a>
+        </>
       )}
 
       <div className="border-t border-line pt-3 space-y-2">
-        <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-          API KEY · stored locally
-        </div>
-        {provider.api_key_masked ? (
-          <div className="flex items-center gap-2 text-[12.5px] font-mono">
-            <span className="text-ink">{provider.api_key_masked}</span>
-            <span className="text-[var(--color-matcha)] font-semibold">
-              ✓ stored
-            </span>
-          </div>
-        ) : (
-          <div className="text-sm text-mut">No key stored yet.</div>
-        )}
-        {keying ? (
-          <div className="pt-1 space-y-2">
-            <ApiKeyInput
-              providerId={provider.id}
-              providerName={provider.name}
-              hasStoredKey={!!provider.api_key_masked}
-              autoFocus
-              onSaved={() => {
-                setKeying(false);
-                onKeyClosed?.();
-              }}
-              onDraftChange={setApiKeyDraft}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setKeying(false);
-                setApiKeyDraft("");
-                onKeyClosed?.();
-              }}
-              className="text-[12.5px] font-semibold text-mut hover:text-ink"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          // Collapsed: `Test` stays reachable so a provider that is fully
-          // set up can be probed without pretending to replace its key.
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => setKeying(true)}
-              className="text-[12.5px] font-semibold text-mut hover:text-ink"
-            >
-              {provider.api_key_masked ? "Replace key" : "Add key"}
-            </button>
+        {isCli ? (
+          // No key concept at all - `Test` just confirms the CLI resolves
+          // and answers.
+          <div className="flex flex-wrap items-center gap-3">
             <TestKeyButton
               providerId={provider.id}
               providerName={provider.name}
-              hasStoredKey={!!provider.api_key_masked}
+              alwaysTestable
             />
           </div>
+        ) : (
+          <>
+            <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
+              API KEY · stored locally
+            </div>
+            {provider.api_key_masked ? (
+              <div className="flex items-center gap-2 text-[12.5px] font-mono">
+                <span className="text-ink">{provider.api_key_masked}</span>
+                <span className="text-[var(--color-matcha)] font-semibold">
+                  ✓ stored
+                </span>
+              </div>
+            ) : (
+              <div className="text-sm text-mut">No key stored yet.</div>
+            )}
+            {keying ? (
+              <div className="pt-1 space-y-2">
+                <ApiKeyInput
+                  providerId={provider.id}
+                  providerName={provider.name}
+                  hasStoredKey={!!provider.api_key_masked}
+                  autoFocus
+                  onSaved={() => {
+                    setKeying(false);
+                    onKeyClosed?.();
+                  }}
+                  onDraftChange={setApiKeyDraft}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKeying(false);
+                    setApiKeyDraft("");
+                    onKeyClosed?.();
+                  }}
+                  className="text-[12.5px] font-semibold text-mut hover:text-ink"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              // Collapsed: `Test` stays reachable so a provider that is fully
+              // set up can be probed without pretending to replace its key.
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setKeying(true)}
+                  className="text-[12.5px] font-semibold text-mut hover:text-ink"
+                >
+                  {provider.api_key_masked ? "Replace key" : "Add key"}
+                </button>
+                <TestKeyButton
+                  providerId={provider.id}
+                  providerName={provider.name}
+                  hasStoredKey={!!provider.api_key_masked}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 

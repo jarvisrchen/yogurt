@@ -439,4 +439,12 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   It now clears everything `bootstrap::env_key_vars()` reports.
   </details>
 
+- [x] **LLM-4** Let a user pick a local agent CLI as their LLM provider outright, not just a fallback
+
+  Follow-up to LLM-1's fallback: "I can't use any cloud model at all, I want to explicitly run `claude` (or `cursor-agent`) as my LLM" is a different shape than "retry via CLI if my configured provider goes unreachable". Landed in #17 (same PR as LLM-1). Two new provider presets, "Claude Code (local CLI)" and "Cursor Agent (local CLI)", appear in the same Settings → Model provider list as MiniMax/OpenAI/Ollama/etc. and can be set active like any other provider - no cloud provider needs to be configured at all.
+
+  Needed a `providers.adapter` column (`'http' | 'cli'`, migration V009) since the existing table assumed every row was HTTP-shaped (`base_url` + `model` + a stored API key). A `cli` row repurposes `model` to hold the `yogurt_llm::CliProgram` id instead of a model name, leaves `base_url` empty, and never has a key - `llm_openai::resolve` branches on `adapter` and calls `yogurt_llm::CliClient::locate` directly (no `CliFallbackClient` wrapper - it IS the chosen provider, not a fallback behind one). Settings API (`create_provider`, `test_provider`, `list_provider_models`) and the provider card/row components (`ProviderCard.tsx`, `ProviderRow.tsx`) branch the same way: no BASE URL / MODEL / API KEY UI for a `cli` row, just a one-line note and a `Test` button reachable with no key.
+
+  Manual browser verification against an isolated `HOME` (never the real `~/.yogurt/`) caught a real bug in `CliClient::run`: `claude --output-format json` writes a structured, actionable error to stdout even on a non-zero exit (confirmed live against a real "not logged in" account - `{"is_error":true,"result":"Not logged in · Please run /login"}`), but the code checked `status.success()` first and only looked at stderr, so the Settings `Test` button showed a useless "claude CLI exited with exit status: 1: " instead of the real reason. Fixed by extracting `interpret_output` (pure, parses stdout as JSON before checking exit status) with a unit-test regression covering exactly this shape.
+
 </details>

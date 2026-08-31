@@ -133,6 +133,7 @@ async fn it_backfills_missing_key_when_row_exists() {
             name: "Minimax".to_string(),
             base_url: "https://api.minimax.io/v1".to_string(),
             model: "MiniMax-Text-01".to_string(),
+            adapter: yogurt_db::providers::adapter::HTTP.to_string(),
         },
     )
     .unwrap();

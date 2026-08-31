@@ -28,27 +28,45 @@ use std::time::Duration;
 /// not hang the enhance/chat handler indefinitely.
 const CLI_TIMEOUT: Duration = crate::HTTP_TIMEOUT;
 
+/// Which agent CLI backs a [`CliClient`]. Public so `yogurt-db`'s
+/// `providers` table (LLM-4: explicit CLI provider selection) and
+/// `yogurt-server` can name a program without either crate hardcoding its
+/// binary name string.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Program {
+pub enum CliProgram {
     Claude,
     CursorAgent,
 }
 
-impl Program {
-    fn binary_name(self) -> &'static str {
+impl CliProgram {
+    pub fn binary_name(self) -> &'static str {
         match self {
-            Program::Claude => "claude",
-            Program::CursorAgent => "cursor-agent",
+            CliProgram::Claude => "claude",
+            CliProgram::CursorAgent => "cursor-agent",
+        }
+    }
+
+    /// Parse the id a `providers.model` row stores for a `cli`-adapter
+    /// provider (see `yogurt_db::providers::adapter::CLI`) back into a
+    /// `CliProgram`. Currently identical to `binary_name`, kept as a
+    /// separate round-trip pair rather than assuming that stays true.
+    pub fn parse(id: &str) -> Option<Self> {
+        match id {
+            "claude" => Some(CliProgram::Claude),
+            "cursor-agent" => Some(CliProgram::CursorAgent),
+            _ => None,
         }
     }
 }
 
-/// Local agent-CLI adapter. Constructed only via [`CliClient::discover`],
-/// which resolves the binary path once so a request never has to
+/// Local agent-CLI adapter. Constructed only via [`CliClient::discover`]
+/// (LLM-1: try any available CLI, in a fixed preference order) or
+/// [`CliClient::locate`] (LLM-4: the user explicitly picked this one in
+/// Settings) - both resolve the binary path once so a request never has to
 /// distinguish "not installed" from "installed but erroring".
 pub struct CliClient {
     binary: PathBuf,
-    program: Program,
+    program: CliProgram,
 }
 
 impl CliClient {
@@ -58,11 +76,25 @@ impl CliClient {
     /// either beats `MockLlm` or a hard failure when the configured
     /// provider is unreachable.
     pub fn discover() -> Option<Self> {
-        [Program::Claude, Program::CursorAgent]
+        [CliProgram::Claude, CliProgram::CursorAgent]
             .into_iter()
             .find_map(|program| {
                 find_on_path(program.binary_name()).map(|binary| Self { binary, program })
             })
+    }
+
+    /// Resolve exactly `program` on `$PATH`, or a clear `Err` naming it if
+    /// it isn't there. Unlike `discover`, this never silently substitutes
+    /// the other CLI - the caller (LLM-4: an explicit `cli`-adapter
+    /// provider row) asked for this one specifically.
+    pub fn locate(program: CliProgram) -> Result<Self> {
+        find_on_path(program.binary_name())
+            .map(|binary| Self { binary, program })
+            .ok_or_else(|| anyhow!("{} not found on $PATH", program.binary_name()))
+    }
+
+    pub fn program(&self) -> CliProgram {
+        self.program
     }
 
     /// Build the argv (excluding the binary itself) for one completion
@@ -75,7 +107,7 @@ impl CliClient {
             "--output-format".to_string(),
             "json".to_string(),
         ];
-        if self.program == Program::Claude {
+        if self.program == CliProgram::Claude {
             // Meeting-transcript content is untrusted - whatever the other
             // party on the call said - and it reaches this CLI as plain
             // prompt text, not through a reviewed tool-use loop. Lock it
@@ -125,32 +157,12 @@ impl CliClient {
             })?
             .with_context(|| format!("failed to spawn {} CLI", self.program.binary_name()))?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!(
-                "{} CLI exited with {}: {}",
-                self.program.binary_name(),
-                output.status,
-                stderr.trim()
-            );
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed: CliResult = serde_json::from_str(stdout.trim()).with_context(|| {
-            format!(
-                "invalid {} CLI JSON output: {}",
-                self.program.binary_name(),
-                stdout.trim()
-            )
-        })?;
-        if parsed.is_error {
-            bail!(
-                "{} CLI reported an error: {}",
-                self.program.binary_name(),
-                parsed.result
-            );
-        }
-        Ok(parsed.result)
+        interpret_output(
+            self.program.binary_name(),
+            &output.stdout,
+            &output.stderr,
+            output.status,
+        )
     }
 }
 
@@ -191,6 +203,38 @@ struct CliResult {
     is_error: bool,
     #[serde(default)]
     result: String,
+}
+
+/// Turn a finished process's stdout/stderr/exit status into either the
+/// completion text or a clear error. Pure and synchronous so the exact bug
+/// this was written to fix - checking `status.success()` before ever
+/// looking at stdout - has a deterministic regression test that doesn't
+/// need a real subprocess.
+///
+/// `claude --output-format json` still writes a structured result to
+/// stdout on many failures (confirmed live: "not logged in" exits 1 with
+/// `{"is_error":true,"result":"Not logged in · Please run /login"}` on
+/// stdout, empty stderr) - the whole point of asking for JSON output is a
+/// machine-readable error, not just a success payload. So stdout is parsed
+/// FIRST regardless of exit status, and the raw exit-status/stderr message
+/// is only the fallback for when stdout isn't parseable JSON at all (the
+/// CLI crashed before ever reaching its own output formatting - a bad
+/// flag, a missing binary dependency, etc.).
+fn interpret_output(
+    program_name: &str,
+    stdout: &[u8],
+    stderr: &[u8],
+    status: std::process::ExitStatus,
+) -> Result<String> {
+    let stdout = String::from_utf8_lossy(stdout);
+    let Ok(parsed) = serde_json::from_str::<CliResult>(stdout.trim()) else {
+        let stderr = String::from_utf8_lossy(stderr);
+        bail!("{program_name} CLI exited with {status}: {}", stderr.trim());
+    };
+    if parsed.is_error {
+        bail!("{program_name} CLI reported an error: {}", parsed.result);
+    }
+    Ok(parsed.result)
 }
 
 /// Flatten a chat history into the single positional prompt argument both
@@ -261,7 +305,7 @@ mod tests {
     fn build_args_restricts_claude_but_not_cursor_agent() {
         let claude = CliClient {
             binary: PathBuf::from("claude"),
-            program: Program::Claude,
+            program: CliProgram::Claude,
         };
         let args = claude.build_args("prompt");
         assert!(args.contains(&"--restricted".to_string()));
@@ -270,7 +314,7 @@ mod tests {
 
         let cursor = CliClient {
             binary: PathBuf::from("cursor-agent"),
-            program: Program::CursorAgent,
+            program: CliProgram::CursorAgent,
         };
         let args = cursor.build_args("prompt");
         assert!(!args.contains(&"--restricted".to_string()));
@@ -293,8 +337,103 @@ mod tests {
     fn model_name_is_prefixed_by_cli() {
         let claude = CliClient {
             binary: PathBuf::from("claude"),
-            program: Program::Claude,
+            program: CliProgram::Claude,
         };
         assert_eq!(claude.model_name(), "cli:claude");
+    }
+
+    // ── interpret_output ────────────────────────────────────────────────
+    // Regression coverage for a bug caught by manually running the real
+    // `claude` CLI against a "not logged in" account: it exits 1 but still
+    // writes a structured, actionable error to stdout as valid JSON. The
+    // first cut of this function checked `status.success()` before ever
+    // looking at stdout, so the UI showed a useless "exited with status 1:
+    // " instead of "Not logged in - please run /login".
+
+    use std::os::unix::process::ExitStatusExt;
+
+    fn exit_status(code: i32) -> std::process::ExitStatus {
+        std::process::ExitStatus::from_raw(code)
+    }
+
+    #[test]
+    fn interpret_output_surfaces_the_json_error_even_on_nonzero_exit() {
+        let stdout = r#"{"is_error":true,"result":"Not logged in · Please run /login"}"#;
+        let err = match interpret_output("claude", stdout.as_bytes(), b"", exit_status(1)) {
+            Err(e) => e,
+            Ok(_) => panic!("expected an error"),
+        };
+        assert_eq!(
+            err.to_string(),
+            "claude CLI reported an error: Not logged in · Please run /login"
+        );
+    }
+
+    #[test]
+    fn interpret_output_returns_the_result_on_success() {
+        let stdout = br#"{"is_error":false,"result":"PONG"}"#;
+        let got = interpret_output("claude", stdout, b"", exit_status(0)).unwrap();
+        assert_eq!(got, "PONG");
+    }
+
+    #[test]
+    fn interpret_output_falls_back_to_exit_status_when_stdout_is_not_json() {
+        // A crash before the CLI's own output formatting ever ran - a bad
+        // flag, a missing shared library, etc. - has no JSON to parse, so
+        // this is the one case that should still use stderr + exit status.
+        let err = match interpret_output(
+            "claude",
+            b"",
+            b"error: unknown option '--not-a-real-flag'\n",
+            exit_status(1),
+        ) {
+            Err(e) => e,
+            Ok(_) => panic!("expected an error"),
+        };
+        assert!(err.to_string().contains("unknown option"));
+        assert!(err.to_string().contains("claude CLI exited with"));
+    }
+
+    #[test]
+    fn cli_program_parse_round_trips_binary_name() {
+        assert_eq!(CliProgram::parse("claude"), Some(CliProgram::Claude));
+        assert_eq!(
+            CliProgram::parse("cursor-agent"),
+            Some(CliProgram::CursorAgent)
+        );
+        assert_eq!(CliProgram::parse("gpt-4o"), None);
+        assert_eq!(CliProgram::parse(""), None);
+    }
+
+    #[test]
+    fn locate_finds_a_program_actually_on_path() {
+        // Reuse the same "sh is always present on macOS" trick as
+        // `find_on_path_locates_a_known_binary` by locating the real
+        // `binary_name` and just asserting `locate` returns a matching
+        // path when it exists, without asserting on the not-found branch -
+        // whether `claude`/`cursor-agent` are installed is environment-
+        // dependent, so that branch is exercised in `CliClient::run`'s
+        // error path instead (`{program} not found on $PATH`), not here.
+        if let Some(binary) = find_on_path(CliProgram::Claude.binary_name()) {
+            let client = CliClient::locate(CliProgram::Claude).expect("claude is on PATH");
+            assert_eq!(client.binary, binary);
+            assert_eq!(client.program(), CliProgram::Claude);
+        }
+    }
+
+    #[test]
+    fn locate_names_the_program_when_not_found() {
+        // `binary_name` can't be swapped out (only two real variants
+        // exist), so this only proves something when the machine running
+        // the test doesn't have cursor-agent installed - true in CI and on
+        // most dev machines, but not asserted as a hard requirement.
+        if find_on_path(CliProgram::CursorAgent.binary_name()).is_none() {
+            // `CliClient` isn't `Debug`, so match explicitly rather than
+            // `Result::unwrap_err` (which requires `T: Debug`).
+            match CliClient::locate(CliProgram::CursorAgent) {
+                Err(e) => assert!(e.to_string().contains("cursor-agent")),
+                Ok(_) => panic!("expected an error when cursor-agent isn't on PATH"),
+            }
+        }
     }
 }
