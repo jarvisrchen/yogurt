@@ -193,9 +193,9 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
   ### Remaining
 
-  - Upload `ggml-small.en.bin` + `ggml-tiny.en.bin` (and their `.sha256` sidecars) to a `models-v1` release. The sidecar matters: an unwritable Homebrew prefix would otherwise make every `list_models` call re-hash a multi-GB file.
-  - Add `mirror_url: Option<&'static str>` to `ModelSpec` and have `download` try it before `spec.url`.
-  - Add the `yogurt-model-*` formulae to the tap, installing into `share/yogurt/models`.
+  - Run `./scripts/publish-model-mirror.sh` to upload `ggml-small.en.bin` + `ggml-tiny.en.bin` to a `models-v1` release. It verifies each download against the hash pinned in `models.rs` before publishing, so upstream drift is caught rather than mirrored. Needs `gh auth` and about 540 MB of upload.
+  - Add the `yogurt-model-*` formulae to the tap: `./scripts/render-model-formula.sh small.en > Formula/yogurt-model-small-en.rb`. The formula writes the `.sha256` sidecar itself at install time, so nothing extra is uploaded and the hash keeps one source of truth. The sidecar is not cosmetic: a Homebrew prefix is not writable at runtime, so without it every `list_models` call re-hashes the whole model.
+  - Add `mirror_url: Option<&'static str>` to `ModelSpec` and have `download` try it before `spec.url`, so the in-app download button stops depending on HuggingFace too.
   - Not solved by any of this: air-gapped machines, and `large-v3` on an HF-blocked network. Both already have a workaround worth documenting - `is_downloaded_at` only checks the hash, so a model copied into `~/.yogurt/models/` by any means is accepted.
 
   Side finding: `scripts/refresh-model-hashes.sh` downloads 5.2 GB to learn hashes that HuggingFace serves as text.
