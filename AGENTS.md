@@ -34,6 +34,7 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - `docs/DEBUGGING-TRANSCRIPTS.md` covers inspecting a live transcript: tailing `transcript_json`, reading raw WS frames, and the known UI-vs-DB divergences.
 - `docs/MODEL-EVAL.md` covers A/B-ing STT engines and LLMs: `scripts/eval/` plays a fixed scripted conversation into a recording and grades two resulting summaries with headless Claude.
 - `docs/RELEASING.md` is the release runbook: what the tagged-push pipeline does, the one-time prerequisites, and a log of each release.
+- `docs/AI-INTEGRATION.md` covers driving yogurt from an outside agent: the REST endpoints for starting/stopping a meeting and reading back notes/transcript, and where the session token lives.
 - `.claude/skills/release/SKILL.md` is the same process as an executable checklist; invoke the `release` skill rather than improvising a release.
 - `docs/TODO.md` is the backlog. Every item has a ticket ID (`UI-1`, `MTG-3`, `AUD-2`, ...); reference it in commits and PR titles, and follow the allocation rule at the top of that file when adding one.
 - `docs/.planning/` is where active GSD planning for the next milestone goes.
