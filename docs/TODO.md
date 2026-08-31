@@ -43,29 +43,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
-- [ ] First "End meeting" click is a no-op while still recording; it takes two clicks to reach enhance
-  <details>
-  <summary>Details</summary>
-
-  Root-caused, one-line fix. `MeetingPost` bounces straight back to the live route whenever the cached active-recording poll still names this meeting:
-
-  ```tsx
-  // web/src/routes/MeetingPost.tsx:578
-  if (activeRecording.data?.id === meetingId) {
-    return <Navigate to={`/meeting/${meetingId}`} replace />;
-  }
-  ```
-
-  That guard exists for deep links, refresh, and the back button landing on the frozen post view for a meeting that is genuinely still recording. It cannot tell those apart from a legitimate `endMeeting` navigation, because the value it reads is stale by up to five seconds: `useActiveRecording` (`web/src/lib/api/meetings.ts:347`) polls `/api/meetings/active` on `refetchInterval: 5_000`, and `stopRecording` (`web/src/routes/Meeting.tsx:295`) invalidates only `meetingKey(meetingId)` - never `activeRecordingKey`.
-
-  So the sequence is: `endMeeting` flushes notes, awaits `stopRecording`, navigates to `/post`, `MeetingPost` mounts against a cache that still says "recording", and `<Navigate replace>` sends the user right back. Nothing errors, nothing logs, the button just flashes.
-
-  Both workarounds in the report follow from the same cause. A second click works because the 5 s poll has returned `null` by then; "Stop recording, then End meeting" works because the gap between the two clicks covers the staleness.
-
-  Fix in `stopRecording`, not in the guard, so every caller is covered: `qc.setQueryData(activeRecordingKey, null)` (or invalidate it) alongside the existing `meetingKey` invalidation. Setting it directly beats invalidating, since invalidation still races the in-flight refetch. Regression test: stop, navigate to `/post` with the active-recording cache still populated, assert the route renders rather than redirecting.
-  </details>
-
-
 - [ ] Live transcript comes back empty after navigating to Library and back, but a refresh restores it
   <details>
   <summary>Details</summary>
@@ -284,6 +261,30 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
 ### Meetings
+
+- [x] First "End meeting" click is a no-op while still recording; it takes two clicks to reach enhance
+  <details>
+  <summary>Details</summary>
+
+  Root-caused, one-line fix. `MeetingPost` bounces straight back to the live route whenever the cached active-recording poll still names this meeting:
+
+  ```tsx
+  // web/src/routes/MeetingPost.tsx:578
+  if (activeRecording.data?.id === meetingId) {
+    return <Navigate to={`/meeting/${meetingId}`} replace />;
+  }
+  ```
+
+  That guard exists for deep links, refresh, and the back button landing on the frozen post view for a meeting that is genuinely still recording. It cannot tell those apart from a legitimate `endMeeting` navigation, because the value it reads is stale by up to five seconds: `useActiveRecording` (`web/src/lib/api/meetings.ts:347`) polls `/api/meetings/active` on `refetchInterval: 5_000`, and `stopRecording` (`web/src/routes/Meeting.tsx:295`) invalidates only `meetingKey(meetingId)` - never `activeRecordingKey`.
+
+  So the sequence is: `endMeeting` flushes notes, awaits `stopRecording`, navigates to `/post`, `MeetingPost` mounts against a cache that still says "recording", and `<Navigate replace>` sends the user right back. Nothing errors, nothing logs, the button just flashes.
+
+  Both workarounds in the report follow from the same cause. A second click works because the 5 s poll has returned `null` by then; "Stop recording, then End meeting" works because the gap between the two clicks covers the staleness.
+
+  Fix in `stopRecording`, not in the guard, so every caller is covered: `qc.setQueryData(activeRecordingKey, null)` (or invalidate it) alongside the existing `meetingKey` invalidation. Setting it directly beats invalidating, since invalidation still races the in-flight refetch. Regression test: stop, navigate to `/post` with the active-recording cache still populated, assert the route renders rather than redirecting.
+  </details>
+
+  **Landed.** `stopRecording` now writes `null` into `activeRecordingKey` itself rather than waiting for the poll (`web/src/routes/Meeting.tsx:322`). Regression test in `Meeting.test.tsx` seeds the cache the way the poll would, ends the meeting, and asserts the cache is cleared; it fails with `expected { id: 'meeting-3', … } to be null` if the line is removed.
 
 
 - [x] Black "your notes" vs grey AI blocks in the enhanced summary is confusing and misapplies when notes are empty
