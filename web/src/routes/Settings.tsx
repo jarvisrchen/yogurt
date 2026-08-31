@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { settingsApi } from "../lib/api/settings";
-import type { Preset } from "../lib/api/settings";
+import type { Preset, ProviderView } from "../lib/api/settings";
 import { SidebarNav } from "../components/settings/SidebarNav";
 import type { SettingsSection } from "../components/settings/SidebarNav";
 import { ProviderCard } from "../components/settings/ProviderCard";
@@ -90,12 +90,20 @@ export function Settings() {
   const data = q.data!;
   const active = data.providers.find((p) => p.is_active);
   const inactive = data.providers.filter((p) => !p.is_active);
-  // Match a saved provider to its built-in preset by base_url so the card
-  // can show the preset's model hint and docs link. The match is by URL
-  // only - if the user pastes a custom URL we just don't show the hint,
-  // which is the same behavior as before the preset metadata existed.
-  const findPreset = (baseUrl: string): Preset | undefined =>
-    data.presets.find((p) => p.base_url === baseUrl);
+  // Match a saved provider to its built-in preset so the card can show the
+  // preset's model hint and docs link. `http` providers match by base_url
+  // - if the user pastes a custom URL we just don't show the hint, same
+  // behavior as before the preset metadata existed. `cli` providers have
+  // no base_url to match on (it's always empty), so they match by `model`
+  // instead, which holds the CLI program id and is never user-edited.
+  const findPreset = (provider: ProviderView): Preset | undefined =>
+    provider.adapter === "cli"
+      ? data.presets.find(
+          (p) => p.adapter === "cli" && p.default_model === provider.model,
+        )
+      : data.presets.find(
+          (p) => p.adapter === "http" && p.base_url === provider.base_url,
+        );
 
   return (
     <div className="flex min-h-screen bg-[var(--color-paper)]">
@@ -117,17 +125,19 @@ export function Settings() {
                 </code>
               </div>
               <p className="text-[13px] text-mut">
-                Paste a base URL and key, or clone a preset below. Anthropic
-                is reachable via OpenRouter.
+                Paste a base URL and key, clone a preset below, or run a
+                local agent CLI you already have installed. Anthropic is
+                also reachable via OpenRouter.
               </p>
             </header>
 
             {active ? (
               <ProviderCard
                 provider={active}
-                presetModels={findPreset(active.base_url)?.models ?? []}
-                docsUrl={findPreset(active.base_url)?.docs_url}
-                presetName={findPreset(active.base_url)?.name}
+                presetModels={findPreset(active)?.models ?? []}
+                docsUrl={findPreset(active)?.docs_url}
+                presetName={findPreset(active)?.name}
+                defaultCliModel={findPreset(active)?.default_cli_model ?? ""}
               />
             ) : data.providers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line bg-white/50 p-6 space-y-1">
@@ -152,9 +162,10 @@ export function Settings() {
                     key={p.id}
                     provider={p}
                     autoOpenKey={p.id === newlyCreatedProviderId}
-                    presetModels={findPreset(p.base_url)?.models ?? []}
-                    docsUrl={findPreset(p.base_url)?.docs_url}
-                    presetName={findPreset(p.base_url)?.name}
+                    presetModels={findPreset(p)?.models ?? []}
+                    docsUrl={findPreset(p)?.docs_url}
+                    presetName={findPreset(p)?.name}
+                    defaultCliModel={findPreset(p)?.default_cli_model ?? ""}
                     onKeyClosed={() => setNewlyCreatedProviderId(null)}
                   />
                 ))}

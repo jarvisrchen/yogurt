@@ -60,6 +60,12 @@ fn migrations() -> Migrations<'static> {
         // Feature: per-meeting LLM provenance. Nullable TEXT stamped by
         // enhance.rs with the model that produced `enriched_md`.
         M::up(include_str!("../migrations/V008__meetings_llm_model.sql")),
+        // Feature (LLM-4): `providers.adapter` ('http' | 'cli') so a row
+        // can be driven by a local agent CLI instead of an HTTP endpoint.
+        M::up(include_str!("../migrations/V009__providers_adapter.sql")),
+        // Feature (LLM-4 follow-up): `providers.cli_model`, the `--model`
+        // override for a `cli`-adapter row's agent CLI.
+        M::up(include_str!("../migrations/V010__providers_cli_model.sql")),
     ])
 }
 

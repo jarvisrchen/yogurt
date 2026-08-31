@@ -10,7 +10,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 
 - Audio never leaves the machine unless the user opted into cloud STT - and then only audio, never notes. Captured audio is deleted after transcription.
 - API keys live only in `~/.yogurt/keys.json` (mode 0600, `FileKeyStore`) - never in SQLite, never in a response body, never logged.
-- One process: no subprocesses, no IPC, no sidecars. The binary embeds `web/dist` (rust-embed) and bundles SQLite (rusqlite `bundled`).
+- One process: no subprocesses, no IPC, no sidecars. The binary embeds `web/dist` (rust-embed) and bundles SQLite (rusqlite `bundled`). Single scoped exception (LLM-4): `yogurt-llm::CliClient` spawns a locally-installed agent CLI (`claude -p`, `cursor-agent -p`) as an LLM provider, but only when the user has explicitly picked it in Settings - the "Claude Code (local CLI)" / "Cursor Agent (local CLI)" provider presets. Locked down (`--restricted --strict-mcp-config --disable-slash-commands` for `claude`, an isolated scratch cwd) since untrusted meeting-transcript text reaches the CLI as plain prompt text. There is no automatic fallback from an unreachable HTTP provider to a CLI - an earlier draft did that and was reverted, since silently rerouting a meeting's real content to a different backend on a network hiccup is a behavior change a user should opt into, not one that happens to them. Do not generalize this into a pattern for other subprocesses without revisiting this constraint again.
 - Zero telemetry of any kind.
 - macOS 13+ only (ScreenCaptureKit).
 - MIT licensed; keep dependencies MIT-compatible.
