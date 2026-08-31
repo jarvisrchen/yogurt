@@ -41,20 +41,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   ![BASE URL runs through MODEL field](attachments/2026-08-29-base-url-model-overlap.png)
   </details>
 
-- [ ] Add a "Test" button for the Deepgram key in Settings → Transcription
-  <details>
-  <summary>Details</summary>
-
-  The LLM providers section has a Test button that does one live round-trip and reports a verdict inline (`web/src/components/settings/TestKeyButton.tsx`, backed by `POST /api/settings/providers/{id}/test`). The Transcription section's Cloud card has no equivalent, so a wrong or expired Deepgram key stays silent until a meeting produces no transcript, which is the worst possible time to find out.
-
-  Two halves:
-
-  1. Backend: a test endpoint for the STT key, alongside the existing `POST /api/settings/stt/key` in `crates/yogurt-server/src/api/settings.rs`. There is no STT equivalent of `test_provider` today. Deepgram's cheapest liveness check is probably a short authenticated request rather than opening a streaming socket; pick one that fails fast on a bad key without burning quota.
-  2. Frontend: render the button on `CloudSTTCard` in `web/src/components/settings/STTPicker.tsx`. `TestKeyButton` is close to reusable as-is, but it is currently hardcoded to `settingsApi.testProvider(providerId, ...)`, so it needs the mutation passed in or a sibling component. Keep its two good behaviors: test the stored key when the input is empty, and hide the verdict once the draft no longer matches what was tested, so a green tick never sits next to edited text.
-
-  Match the LLM card's verdict styling (matcha for ok, straw for failure) so the two sections read as one system.
-  </details>
-
 ## Meetings
 
 ## Audio
@@ -80,6 +66,22 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 <summary>Click to expand</summary>
 
 ### UI
+
+- [x] Add a "Test" button for the Deepgram key in Settings → Transcription
+  <details>
+  <summary>Details</summary>
+
+  The LLM providers section has a Test button that does one live round-trip and reports a verdict inline (`web/src/components/settings/TestKeyButton.tsx`, backed by `POST /api/settings/providers/{id}/test`). The Transcription section's Cloud card has no equivalent, so a wrong or expired Deepgram key stays silent until a meeting produces no transcript, which is the worst possible time to find out.
+
+  Two halves:
+
+  1. Backend: a test endpoint for the STT key, alongside the existing `POST /api/settings/stt/key` in `crates/yogurt-server/src/api/settings.rs`. There is no STT equivalent of `test_provider` today. Deepgram's cheapest liveness check is probably a short authenticated request rather than opening a streaming socket; pick one that fails fast on a bad key without burning quota.
+  2. Frontend: render the button on `CloudSTTCard` in `web/src/components/settings/STTPicker.tsx`. `TestKeyButton` is close to reusable as-is, but it is currently hardcoded to `settingsApi.testProvider(providerId, ...)`, so it needs the mutation passed in or a sibling component. Keep its two good behaviors: test the stored key when the input is empty, and hide the verdict once the draft no longer matches what was tested, so a green tick never sits next to edited text.
+
+  Match the LLM card's verdict styling (matcha for ok, straw for failure) so the two sections read as one system.
+  </details>
+
+  Landed in PRs #2 and #3 (v0.2.0). The 2xx and 401 probe paths remain untested: the Deepgram URL is hardcoded, so it cannot be pointed at wiremock the way a provider's `base_url` can.
 
 - [x] Chat input loses its pill shape on focus
   <details>

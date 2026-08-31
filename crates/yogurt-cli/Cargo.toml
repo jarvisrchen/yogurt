@@ -22,7 +22,13 @@ clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
-yogurt-server = { path = "../yogurt-server", version = "0.1.0" }
+# No `version =` on this path dep on purpose. It would have to be bumped by
+# hand every release, and forgetting breaks `cargo update --workspace` with
+# "failed to select a version for the requirement yogurt-server". A version
+# is only required here to publish to crates.io, which is descoped (see the
+# note at the bottom of .github/workflows/release.yml). Restore it if that
+# ever comes back.
+yogurt-server = { path = "../yogurt-server" }
 open = "5"
 # Phase 5 (Plan 05-02): .env.local dev-mode loader. Gated on the `--dev`
 # flag at the top of main() — release builds NEVER read .env.local

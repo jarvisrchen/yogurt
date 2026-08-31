@@ -15,7 +15,7 @@ Bring your own OpenAI-compatible LLM (Minimax, OpenAI, OpenRouter, local
 Ollama, whatever you already pay for).
 
 **Status:** pre-1.0.
-`v0.1.0` is out, as a Homebrew tap and as GitHub Releases tarballs.
+Released as a Homebrew tap and as GitHub Releases tarballs; see [docs/RELEASING.md](docs/RELEASING.md) for the release log.
 Building from source still works and is documented below.
 
 ## Install
