@@ -80,13 +80,17 @@ async fn main() -> anyhow::Result<()> {
                 // covers `yogurt_server`, `yogurt_audio`, `yogurt_stt`, and every
                 // other `yogurt_*` crate - no per-crate directive needed.
                 //
-                // `whisper_rs=warn` covers the C-side logs that
+                // `whisper_rs=error` covers the C-side logs that
                 // `install_logging_hooks()` redirects into `tracing`: ggml and
                 // whisper.cpp emit their backend/model banners at INFO on every
-                // decode, which is noise, but their warnings and errors are the
-                // only signal we get when a decode goes wrong. `RUST_LOG` still
-                // overrides all of this.
-                .unwrap_or_else(|_| "yogurt=info,whisper_rs=warn".into()),
+                // decode, which is noise. CLI-2 dropped their WARN level too -
+                // the one that actually shows up is ggml's
+                // `tensor API disabled for pre-M5 and pre-A19 devices`, a
+                // hardware-capability note on every load of every model on
+                // this machine. A real decode failure still surfaces as an
+                // ERROR here, and as an `stt_error` frame in the UI.
+                // `RUST_LOG=whisper_rs=debug` brings the whole stream back.
+                .unwrap_or_else(|_| "yogurt=info,whisper_rs=error".into()),
         )
         .init();
 
