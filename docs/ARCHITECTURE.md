@@ -56,7 +56,7 @@ Supporting cast, in rough order of how often they appear:
 
 ## 1. High-level map
 
-One Rust process. No sidecars, no IPC, no subprocesses.
+One Rust process. No sidecars, no IPC, no subprocesses - with one narrow, opt-in exception: `yogurt-llm::CliClient` (LLM-4) can spawn a locally-installed agent CLI as an LLM provider, but only when the user explicitly picks it in Settings. See [§7.6](#76-the-cli-provider-exception-llm-4).
 If any acronym below is unfamiliar, [section 0](#0-glossary) defines them.
 The browser is a dumb-ish render surface: it holds the editor buffer and nothing else authoritative.
 
@@ -133,7 +133,7 @@ Crate responsibilities, one line each:
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
 | `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. |
 | `yogurt-prompts` | Embedded prompt templates and their render context. |
-| `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming. |
+| `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming, and the local agent-CLI provider adapter (§7.6). |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
 
 ### The one format contract that everything downstream depends on
@@ -534,6 +534,35 @@ Greedy decoding on a 5 s window cannot match a cloud model with a full acoustic 
 What you get in exchange is that no audio and no notes ever leave the machine, and the meeting costs nothing.
 That is a real tradeoff presented as one, not a feature-parity claim.
 
+### 7.6 The CLI provider exception (LLM-4)
+
+`yogurt-llm::CliClient` is the one place this app spawns a subprocess, and it exists for a narrower problem than "local mode": a user who wants to run a coding-agent CLI they already have installed as their LLM provider, with no cloud provider configured at all. Ollama/LM Studio (§7.4) already give true offline for free; this is not that.
+
+```mermaid
+graph LR
+    ENH2["enhance / chat handler"] --> RES["llm_openai::resolve"]
+    RES --> ROW{"active providers<br/>row.adapter"}
+    ROW -->|"http"| PRIM["OpenAiCompatClient"]
+    ROW -->|"cli"| DIRECT["CliClient::locate(program, cli_model)"]
+    DIRECT --> CLI["yogurt_llm::CliClient<br/>claude -p / cursor-agent -p<br/>--output-format json [--model]"]
+    CLI -.->|"spawns, scratch cwd,<br/>--restricted --effort low for claude,<br/>--trust --sandbox enabled for cursor-agent"| BIN["local claude / cursor-agent binary"]
+```
+
+`resolve` reaches a `CliClient` only when the active provider row is itself `cli`-adapter - the Settings page's "Claude Code (local CLI)" / "Cursor Agent (local CLI)" presets, cloned like any other provider. It calls `CliClient::locate(CliProgram::parse(row.model), row.cli_model)` directly. The program not being on `$PATH` is a hard `Err`, the same contract as an `http` provider whose key can't be read - never a silent `MockLlm` substitution. `providers.base_url` is unused for a `cli` row (empty string); `providers.model` is repurposed to hold the `CliProgram` id ("claude" | "cursor-agent") instead of a model name, and the Settings UI hides the BASE URL / API KEY fields entirely for it - just a one-line "runs `<program>` locally" note, a `Test` button that needs no key, and a MODEL field bound to the separate `providers.cli_model` column (the `--model` alias passed through, e.g. "haiku"/"sonnet"/"opus"/"fable" for claude; empty means "use the CLI's own default"). These are deliberately "simple AI calls" (enhance/chat extraction, not open-ended reasoning), which is why the smallest model and the lowest effort setting are the defaults.
+
+The MODEL field itself is gated behind proof the CLI actually connects: a freshly-cloned row has `cli_model` empty and shows only the note and `Test`, not the picker - there is nothing to override yet on a row that might not even resolve on `$PATH`. Once `Test` comes back `ok`, `ProviderRow`/`ProviderCard` reveal a `ComboBox` seeded from the preset's `models` list and, if `cli_model` is still empty, PATCH it to the preset's `default_cli_model` so the picker opens on a sane starting point instead of blank. `!!provider.cli_model` alone (no client-side "was it tested" flag needed beyond the current session) is enough to keep the picker visible on every later visit, since the only way `cli_model` becomes non-empty is through that same successful-test path or a subsequent user pick - both already proved the CLI works. Picking a different model PATCHes on commit exactly like the `http` MODEL field; re-running `Test` after that tests whatever is currently saved, since `test_provider`'s `cli` branch reads `provider.cli_model` straight from the DB rather than any client-side draft.
+
+**There is deliberately no automatic fallback from an unreachable HTTP provider to a CLI.** An earlier draft (LLM-1) wrapped the active `http` provider's client in a combinator that retried through whichever CLI happened to be on `$PATH` on a connect-class failure, and it was reverted: silently rerouting a meeting's real content to a different, unvetted backend because of a network hiccup is a behavior change a user should opt into by picking the CLI provider explicitly, not one that happens to them mid-meeting. The CLI is reachable only through the explicit LLM-4 path above.
+
+Mechanics:
+
+- Each call is a fresh process; there is no session to resume, so the full message history is flattened into one `-p` prompt argument the same way `OpenAiCompatClient` re-sends the full history over HTTP.
+- Meeting-transcript text is untrusted - it is whatever the other party on the call said - and it reaches the CLI as plain prompt text, not through a reviewed tool-use loop. `claude` runs with `--restricted --strict-mcp-config --disable-slash-commands --effort low` (plus `--model <alias>` when `cli_model` is set) and a throwaway scratch `cwd` so a transcript that reads like an instruction can't do anything but produce text. `cursor-agent` runs with `--trust --sandbox enabled` (plus `--model` when set) - `--trust` clears the "Workspace Trust Required" wall the CLI otherwise throws up for a fresh scratch `cwd`, and `--sandbox enabled` keeps command execution contained; deliberately not `--yolo`/`--force` (cursor-agent's broad auto-approve-commands flag), same reasoning as never passing `--dangerously-skip-permissions` to `claude`. Both programs' exact flag sets are verified against live binaries.
+- `cursor-agent --list-models` returns 50+ account- and plan-dependent model ids - too many, and too likely to name something a given account can't use, to hardcode as MODEL suggestions. `"auto"` is the one confirmed to work on every plan (a free-tier account naming anything else gets `ActionRequiredError: Named models unavailable, Free plans can only use Auto`), so it's the preset's only suggestion and its `default_cli_model`.
+- `v1` scope: no `stream-json` parsing. `CliClient::stream` buffers the one-shot result into a single delta, the same pattern `MockLlm::stream` already uses.
+- **Parse stdout before checking the exit code, not after.** `claude --output-format json` still writes a structured, actionable result to stdout on many failures - caught live against a real "not logged in" account: exit status 1, empty stderr, and `{"is_error":true,"result":"Not logged in · Please run /login"}` on stdout. A first cut of `CliClient` checked `status.success()` first and only looked at stderr on failure, so the Settings `Test` button showed a useless "claude CLI exited with exit status: 1: " instead of the actual reason. `interpret_output` (pure, unit-tested with a synthetic `ExitStatus` - no process needed) now parses stdout as JSON first regardless of exit status, and only falls back to raw exit-status/stderr when stdout isn't parseable JSON at all (a crash before the CLI's own output formatting ever ran).
+- `meetings.llm_model` (`"cli:claude"`, or `"cli:claude:haiku"` when a `--model` override is set) is accurate by construction - the active provider IS the CLI, not a fallback standing in for something else.
+
 ## 8. Where state lives
 
 ```mermaid
@@ -761,7 +790,7 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 Captured audio is deleted after transcription.
 API keys live only in `~/.yogurt/keys.json` (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
-No subprocesses, no IPC, no sidecar binaries.
+No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-4, 2026-08-31): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM provider, but only when the user has explicitly picked it in Settings - never as an automatic fallback behind another provider. See [§7.6](#76-the-cli-provider-exception-llm-4) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
 - **Platform:** macOS 13+ only - ScreenCaptureKit is the audio-loopback mechanism and sets the floor.
 - **Distribution:** a single static binary; `web/dist` is embedded via `rust-embed`, SQLite is bundled via `rusqlite`.
@@ -779,6 +808,8 @@ No subprocesses, no IPC, no sidecar binaries.
 | WhisperKit / CoreML / ANE | Pulls in a Swift toolchain and a model-conversion step | `whisper-rs` with the `metal` feature (GPU is fast enough on Apple Silicon) |
 | Per-provider LLM SDKs | One OpenAI-compatible client covers OpenAI, Ollama, LM Studio, OpenRouter, Groq, vLLM, MiniMax, and friends | `async-openai` with a configurable `base_url` |
 | macOS Keychain for API keys (`keyring` crate, used until 2026-08-29) | Keychain ACLs are bound to the binary's code signature, so every unsigned dev rebuild re-prompted once per stored key; a prompt nobody could answer wedged boot for 30+ minutes and forced 5s/10s/20s timeout scaffolding around every key read; and a machine where the user cannot write to Keychain could not run yogurt at all | `FileKeyStore` over `~/.yogurt/keys.json`: same posture as `~/.aws/credentials`, encrypted at rest by FileVault, no consent dialogs, works everywhere the data directory does |
+| Agent CLI as an unmodified `providers` row (tried 2026-08-30) | Agent CLIs speak stdin/stdout, not `{base_url}/chat/completions`; forcing one into the existing HTTP-shaped `providers` columns would mean faking a `base_url` and lying about the wire protocol | A separate `LlmClient` impl (`yogurt_llm::CliClient`), reached via a real `providers` row (LLM-4) behind a new `adapter` column (`'http' \| 'cli'`) that changes what the other columns mean for a `cli` row, not by pretending it's another HTTP endpoint |
+| Automatic CLI fallback when the active HTTP provider is unreachable (LLM-1, built and reverted 2026-08-30/31) | Two problems, one fatal: (1) silently rerouting a meeting's real content to a different, unvetted backend on a network hiccup is a behavior change a user should choose, not one that happens to them mid-meeting; (2) a first cut also preferred the CLI over `MockLlm` whenever no provider was configured at all, so on a dev machine with `claude` on `$PATH`, `cargo test --workspace` silently shelled out to the real CLI and spent real API credits instead of getting deterministic mock output | CLI access is explicit-only: the two "local CLI" provider presets (LLM-4, §7.6) are the sole way to reach `CliClient` - pick one and it's now your provider, nothing implicit ever substitutes it in |
 
 ### Load-bearing seams
 

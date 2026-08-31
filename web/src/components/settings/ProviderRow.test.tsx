@@ -16,6 +16,7 @@ import type { ProviderView } from "../../lib/api/settings";
 const settingsApiMock = vi.hoisted(() => ({
   updateProvider: vi.fn(),
   listProviderModels: vi.fn(),
+  testProvider: vi.fn(),
 }));
 
 vi.mock("../../lib/api/settings", () => ({
@@ -32,6 +33,8 @@ const provider: ProviderView = {
   is_active: false,
   created_at: 0,
   api_key_masked: null,
+  adapter: "http",
+  cli_model: "",
 };
 
 function renderRow(opts: { onKeyClosed?: () => void } = {}) {
@@ -117,6 +120,152 @@ describe("ProviderRow - API key Cancel clears the draft", () => {
     await waitFor(() =>
       expect(settingsApiMock.listProviderModels).toHaveBeenCalledWith(
         provider.id,
+        undefined,
+      ),
+    );
+  });
+});
+
+describe("ProviderRow - cli adapter (LLM-4)", () => {
+  const cliProvider: ProviderView = {
+    ...provider,
+    id: "01CLI",
+    name: "Claude Code (local CLI)",
+    base_url: "",
+    model: "claude",
+    adapter: "cli",
+    cli_model: "",
+  };
+
+  function renderCliRow(
+    presetModels: string[] = [],
+    row: ProviderView = cliProvider,
+    defaultCliModel = "",
+  ) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ProviderRow
+          provider={row}
+          presetModels={presetModels}
+          defaultCliModel={defaultCliModel}
+        />
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("has no BASE URL field, no key controls, no model picker before a Test passes, and a reachable Test button", () => {
+    renderCliRow();
+
+    expect(screen.queryByText("BASE URL")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Model for ${cliProvider.name}`),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/click test below/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /add key|replace key/i }),
+    ).not.toBeInTheDocument();
+
+    // No key exists at all, so the normal "draft or stored key" gate must
+    // not apply - Test is reachable immediately.
+    const testButton = screen.getByRole("button", {
+      name: `Test connection for ${cliProvider.name}`,
+    });
+    expect(testButton).toBeEnabled();
+  });
+
+  it("reveals the model picker and seeds the preset default once Test passes", async () => {
+    settingsApiMock.testProvider.mockResolvedValue({ ok: true, model: "cli:claude" });
+    settingsApiMock.updateProvider.mockResolvedValue({
+      ...cliProvider,
+      cli_model: "haiku",
+    });
+    renderCliRow(["haiku", "sonnet", "opus", "fable"], cliProvider, "haiku");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Test connection for ${cliProvider.name}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText(`Model for ${cliProvider.name}`),
+      ).toBeInTheDocument(),
+    );
+    expect(settingsApiMock.updateProvider).toHaveBeenCalledWith(
+      cliProvider.id,
+      {
+        name: cliProvider.name,
+        base_url: cliProvider.base_url,
+        model: cliProvider.model,
+        cli_model: "haiku",
+      },
+    );
+  });
+
+  it("a failed Test does not reveal the model picker", async () => {
+    settingsApiMock.testProvider.mockResolvedValue({
+      ok: false,
+      error: "not logged in",
+    });
+    renderCliRow(["haiku"], cliProvider, "haiku");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Test connection for ${cliProvider.name}`,
+      }),
+    );
+
+    await waitFor(() => expect(settingsApiMock.testProvider).toHaveBeenCalled());
+    expect(
+      screen.queryByLabelText(`Model for ${cliProvider.name}`),
+    ).not.toBeInTheDocument();
+    expect(settingsApiMock.updateProvider).not.toHaveBeenCalled();
+  });
+
+  it("commits a typed --model override via PATCH on an already-configured row, leaving name/base_url/model untouched", async () => {
+    const verified: ProviderView = { ...cliProvider, cli_model: "sonnet" };
+    settingsApiMock.updateProvider.mockResolvedValue({
+      ...verified,
+      cli_model: "opus",
+    });
+    renderCliRow(["haiku", "sonnet", "opus", "fable"], verified);
+
+    const input = screen.getByLabelText(`Model for ${verified.name}`);
+    fireEvent.change(input, { target: { value: "opus" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(settingsApiMock.updateProvider).toHaveBeenCalledWith(
+        verified.id,
+        {
+          name: verified.name,
+          base_url: verified.base_url,
+          model: verified.model,
+          cli_model: "opus",
+        },
+      ),
+    );
+  });
+
+  it("Test hits the provider endpoint with no key argument", async () => {
+    settingsApiMock.testProvider.mockResolvedValue({ ok: true, model: "cli:claude" });
+    renderCliRow();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Test connection for ${cliProvider.name}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(settingsApiMock.testProvider).toHaveBeenCalledWith(
+        cliProvider.id,
         undefined,
       ),
     );

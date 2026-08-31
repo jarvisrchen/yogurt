@@ -36,16 +36,46 @@ pub struct Preset {
     /// the Settings page as a small `See all models →` link next to the
     /// MODEL field - useful both as a Refresh fallback (some providers
     /// don't expose `/v1/models`) and as a discovery surface for preview /
-    /// regional models the static list will never have.
+    /// regional models the static list will never have. Empty for a `cli`
+    /// preset - there is no model catalog page to link to.
     pub docs_url: &'static str,
+    /// `"http"` (`OpenAiCompatClient` against `base_url`, a stored API key)
+    /// or `"cli"` (`yogurt_llm::CliClient`, no key or base URL - see
+    /// [`Adapter::CLI`]). Added for LLM-4.
+    pub adapter: &'static str,
+    /// `cli`-adapter only: the suggested default `--model` value. The
+    /// Settings UI seeds this into `cli_model` the first time a `Test`
+    /// proves the CLI connects (not on clone - there's nothing to default
+    /// until connectivity is proven). `"haiku"` for claude: enhance/chat
+    /// are simple extraction calls, not reasoning-heavy, so a cheap/fast
+    /// tier is the sensible default rather than whatever the CLI's own
+    /// interactive default happens to be. `"auto"` for cursor-agent: the
+    /// one model guaranteed to work on every plan (a free-tier account
+    /// naming anything else gets `ActionRequiredError: Named models
+    /// unavailable`, confirmed live). Empty only for `http` presets.
+    pub default_cli_model: &'static str,
+}
+
+/// `Preset::adapter` / `Provider::adapter` values. Not an `enum` on the
+/// wire (SQLite has no enum type, and the two REST DTOs already pass
+/// `adapter` as a plain string) - these consts are the single place the
+/// literal strings are spelled, so a typo fails to compile everywhere else.
+pub mod adapter {
+    pub const HTTP: &str = "http";
+    pub const CLI: &str = "cli";
 }
 
 /// Built-in presets. Order matters: it's the order chips appear in the UI.
-/// Cloud majors first, then local runtimes, then the aggregator.
+/// Cloud majors first, then local runtimes, then the aggregator, then the
+/// local agent CLIs (LLM-4).
 ///
-/// Every entry must speak the OpenAI `/chat/completions` shape, because
-/// `OpenAiCompatClient` is the only client `yogurt-llm` ships - a preset is
-/// purely a saved base URL + model, never a new adapter.
+/// Every `adapter: "http"` entry must speak the OpenAI `/chat/completions`
+/// shape, because `OpenAiCompatClient` is the only HTTP client `yogurt-llm`
+/// ships - a preset like that is purely a saved base URL + model, never a
+/// new adapter. An `adapter: "cli"` entry is different: `base_url` is
+/// unused (empty) and `default_model` is repurposed to hold the CLI
+/// program id `yogurt_llm::CliProgram::parse` expects ("claude" |
+/// "cursor-agent"), not a model name.
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Minimax",
@@ -58,6 +88,8 @@ pub const PRESETS: &[Preset] = &[
             "abab6.5-chat",
         ],
         docs_url: "https://platform.MiniMax.io/docs/api-reference",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
     },
     Preset {
         name: "OpenAI",
@@ -72,6 +104,8 @@ pub const PRESETS: &[Preset] = &[
             "o3",
         ],
         docs_url: "https://platform.openai.com/docs/models",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
     },
     // Google exposes Gemini through an OpenAI-compatible shim; the native
     // `generativeLanguage` REST shape is NOT what we speak. The trailing
@@ -90,6 +124,8 @@ pub const PRESETS: &[Preset] = &[
             "gemini-1.5-flash",
         ],
         docs_url: "https://ai.google.dev/gemini/docs/models",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
     },
     Preset {
         name: "DeepSeek",
@@ -97,6 +133,8 @@ pub const PRESETS: &[Preset] = &[
         default_model: "deepseek-chat",
         models: &["deepseek-chat", "deepseek-reasoner"],
         docs_url: "https://api-docs.deepseek.com/quick_start/pricing",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
     },
     Preset {
         name: "Ollama (local)",
@@ -110,6 +148,8 @@ pub const PRESETS: &[Preset] = &[
         // there's a real local list to show.
         models: &["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2"],
         docs_url: "https://ollama.com/library",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
     },
     Preset {
         name: "LM Studio (local)",
@@ -121,6 +161,8 @@ pub const PRESETS: &[Preset] = &[
         // gets populated.
         models: &[],
         docs_url: "https://lmstudio.ai/models",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
     },
     Preset {
         name: "OpenRouter",
@@ -134,6 +176,43 @@ pub const PRESETS: &[Preset] = &[
             "meta-llama/llama-3.1-70b-instruct",
         ],
         docs_url: "https://openrouter.ai/models",
+        adapter: adapter::HTTP,
+        default_cli_model: "",
+    },
+    // LLM-4: explicit local-agent-CLI providers. `default_model` is the
+    // `yogurt_llm::CliProgram` id, not a model name. `models` is repurposed
+    // too: for a `cli` preset it lists suggested `cli_model` (`--model`)
+    // aliases, not a model catalog - no Refresh/datalist live-probe applies
+    // either way, since there is no `/models` endpoint.
+    Preset {
+        name: "Claude Code (local CLI)",
+        base_url: "",
+        default_model: "claude",
+        // Documented aliases (`claude --help`): 'fable', 'opus', 'sonnet' -
+        // plus 'haiku', confirmed live (`claude --model haiku` resolves to
+        // claude-haiku-4-5). Cheapest/fastest first: enhance/chat are
+        // extraction calls, not reasoning-heavy.
+        models: &["haiku", "sonnet", "opus", "fable"],
+        docs_url: "",
+        adapter: adapter::CLI,
+        default_cli_model: "haiku",
+    },
+    Preset {
+        name: "Cursor Agent (local CLI)",
+        base_url: "",
+        default_model: "cursor-agent",
+        // `cursor-agent --list-models` returns 50+ account- and
+        // plan-dependent entries (verified live) - too many, and too
+        // likely to include names a given account can't actually use, to
+        // hardcode as suggestions. "auto" is the one entry guaranteed to
+        // work on every plan (confirmed live: naming any other model on a
+        // free-tier account fails with "ActionRequiredError: Named models
+        // unavailable, Free plans can only use Auto"), so it's the only
+        // static suggestion offered.
+        models: &["auto"],
+        docs_url: "",
+        adapter: adapter::CLI,
+        default_cli_model: "auto",
     },
 ];
 
@@ -145,6 +224,11 @@ pub struct Provider {
     pub model: String,
     pub is_active: bool,
     pub created_at: i64,
+    /// `"http"` or `"cli"` - see [`adapter`].
+    pub adapter: String,
+    /// `cli`-adapter only: the `--model` value to pass to the CLI. Empty
+    /// means "use the CLI's own default model". Meaningless for `http`.
+    pub cli_model: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -152,6 +236,16 @@ pub struct NewProvider {
     pub name: String,
     pub base_url: String,
     pub model: String,
+    /// `"http"` or `"cli"`. Defaults to `"http"` so any caller that still
+    /// sends the pre-LLM-4 three-field body keeps working unchanged.
+    #[serde(default = "default_adapter")]
+    pub adapter: String,
+    #[serde(default)]
+    pub cli_model: String,
+}
+
+fn default_adapter() -> String {
+    adapter::HTTP.to_string()
 }
 
 /// Insert a new provider (kind='llm', is_active=0) and return its ULID.
@@ -160,9 +254,9 @@ pub fn insert(db: &Db, p: NewProvider) -> Result<String> {
     let now = unix_millis();
     db.with_conn(|conn| {
         conn.execute(
-            "INSERT INTO providers (id, name, base_url, model, kind, is_active, created_at) \
-             VALUES (?1, ?2, ?3, ?4, 'llm', 0, ?5)",
-            params![id, p.name, p.base_url, p.model, now],
+            "INSERT INTO providers (id, name, base_url, model, kind, is_active, created_at, adapter, cli_model) \
+             VALUES (?1, ?2, ?3, ?4, 'llm', 0, ?5, ?6, ?7)",
+            params![id, p.name, p.base_url, p.model, now, p.adapter, p.cli_model],
         )
     })?;
     Ok(id)
@@ -172,7 +266,7 @@ pub fn insert(db: &Db, p: NewProvider) -> Result<String> {
 pub fn list(db: &Db) -> Result<Vec<Provider>> {
     db.with_conn(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, name, base_url, model, is_active, created_at \
+            "SELECT id, name, base_url, model, is_active, created_at, adapter, cli_model \
              FROM providers WHERE kind='llm' ORDER BY created_at ASC",
         )?;
         let rows = stmt
@@ -184,6 +278,8 @@ pub fn list(db: &Db) -> Result<Vec<Provider>> {
                     model: r.get(3)?,
                     is_active: r.get::<_, i64>(4)? != 0,
                     created_at: r.get(5)?,
+                    adapter: r.get(6)?,
+                    cli_model: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -210,7 +306,7 @@ pub fn list_names(db: &Db) -> Result<Vec<String>> {
 pub fn active(db: &Db) -> Result<Option<Provider>> {
     db.with_conn(|conn| {
         conn.query_row(
-            "SELECT id, name, base_url, model, is_active, created_at \
+            "SELECT id, name, base_url, model, is_active, created_at, adapter, cli_model \
              FROM providers WHERE kind='llm' AND is_active=1",
             [],
             |r| {
@@ -221,6 +317,8 @@ pub fn active(db: &Db) -> Result<Option<Provider>> {
                     model: r.get(3)?,
                     is_active: true,
                     created_at: r.get(5)?,
+                    adapter: r.get(6)?,
+                    cli_model: r.get(7)?,
                 })
             },
         )
@@ -263,11 +361,18 @@ pub fn set_active(db: &Db, id: &str) -> Result<()> {
 }
 
 /// Update a provider's mutable fields. Does NOT touch `is_active`.
-pub fn update(db: &Db, id: &str, name: &str, base_url: &str, model: &str) -> Result<()> {
+pub fn update(
+    db: &Db,
+    id: &str,
+    name: &str,
+    base_url: &str,
+    model: &str,
+    cli_model: &str,
+) -> Result<()> {
     db.with_conn(|conn| {
         conn.execute(
-            "UPDATE providers SET name=?2, base_url=?3, model=?4 WHERE id=?1",
-            params![id, name, base_url, model],
+            "UPDATE providers SET name=?2, base_url=?3, model=?4, cli_model=?5 WHERE id=?1",
+            params![id, name, base_url, model, cli_model],
         )
     })?;
     Ok(())
