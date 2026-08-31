@@ -10,6 +10,9 @@
  *   - On Intel hardware (detected via `navigator.userAgent`) a model
  *     with `intel_supported: false` renders an additional "slow"
  *     straw warning chip per PRD §5.8.
+ *   - A model whose only copy came from the Homebrew companion formula
+ *     (`managed_by_homebrew`) shows a "brew" chip instead of the trash:
+ *     the server refuses to delete out of another tool's prefix.
  *   - A downloaded, non-active model also gets a compact trash affordance
  *     (`onDelete`) next to its pill, following `DeleteMeetingConfirm`'s
  *     icon variant: click the trash, an inline `Delete?` / `Cancel` pair
@@ -154,7 +157,11 @@ export function ModelPicker({
               <span
                 aria-hidden
                 className="text-[10px] font-mono normal-case tracking-normal"
-                title={`${m.size_mb} MB on huggingface.co`}
+                title={
+                  m.managed_by_homebrew
+                    ? `${m.size_mb} MB installed by Homebrew`
+                    : `${m.size_mb} MB on huggingface.co`
+                }
               >
                 {m.size_mb < 1000
                   ? `${m.size_mb} MB`
@@ -178,7 +185,14 @@ export function ModelPicker({
                 slow
               </span>
             )}
-            {m.downloaded && onDelete && m.name !== activeModelName ? (
+            {m.downloaded && m.managed_by_homebrew ? (
+              <span
+                title="Installed by Homebrew - remove it with brew uninstall"
+                className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-line/40 text-mut border border-line"
+              >
+                brew
+              </span>
+            ) : m.downloaded && onDelete && m.name !== activeModelName ? (
               confirming === m.name ? (
                 <span className="inline-flex items-center gap-1">
                   <button

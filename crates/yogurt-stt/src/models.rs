@@ -167,6 +167,71 @@ pub fn model_path(spec: &ModelSpec) -> std::io::Result<PathBuf> {
     Ok(dir.join(spec.filename))
 }
 
+/// Read-only locations a model may ALSO live in, checked after the
+/// user's own `~/.yogurt/models` download dir.
+///
+/// This is the Homebrew companion-formula path (AUD-4): a locked-down
+/// machine that cannot reach huggingface.co can still `brew install`
+/// the model, because the bottle comes from github.com - the same host
+/// that served the binary. Homebrew's install sandbox refuses writes
+/// outside its own prefix, so it cannot place the file in `$HOME`;
+/// yogurt reads from the prefix instead of the file being moved.
+///
+/// `HOMEBREW_PREFIX` (exported by `brew shellenv`) covers a custom
+/// prefix; the two literals are the Apple Silicon and Intel defaults.
+/// `brew --prefix` would be authoritative but is a subprocess, which
+/// the one-process constraint forbids.
+fn homebrew_model_dirs() -> Vec<PathBuf> {
+    let mut prefixes: Vec<PathBuf> = Vec::with_capacity(3);
+    if let Some(p) = std::env::var_os("HOMEBREW_PREFIX") {
+        prefixes.push(PathBuf::from(p));
+    }
+    prefixes.push(PathBuf::from("/opt/homebrew"));
+    prefixes.push(PathBuf::from("/usr/local"));
+    prefixes
+        .into_iter()
+        .map(|p| p.join("share").join("yogurt").join("models"))
+        .collect()
+}
+
+/// Where a VERIFIED copy of `spec` actually is, or `None` if there
+/// isn't one.
+///
+/// Search order is the user's own download dir first, then every
+/// [`homebrew_model_dirs`] candidate. "Verified" means
+/// [`is_downloaded_at`], so a truncated or corrupt file in the first
+/// location does not shadow a good copy in the second.
+///
+/// This is the single source of truth for both "is it available?"
+/// (`is_downloaded`) and "what path do I hand whisper?"
+/// (`meetings::select_stt`) - they used to answer those separately and
+/// could disagree.
+pub fn resolve_model(spec: &ModelSpec) -> Option<PathBuf> {
+    let owned = model_path(spec).ok()?;
+    let mut dirs = vec![owned.parent()?.to_path_buf()];
+    dirs.extend(homebrew_model_dirs());
+    resolve_in(&dirs, spec.filename, spec.sha256)
+}
+
+/// Path-injectable core of [`resolve_model`]: first directory holding a
+/// file that verifies against `expected_sha256` wins.
+fn resolve_in(dirs: &[PathBuf], filename: &str, expected_sha256: &str) -> Option<PathBuf> {
+    dirs.iter()
+        .map(|d| d.join(filename))
+        .find(|p| is_downloaded_at(p, expected_sha256))
+}
+
+/// `true` if `path` is yogurt's own download destination - i.e. yogurt
+/// put it there and yogurt may delete it. A model resolved anywhere
+/// else is managed by whatever installed it (Homebrew), and the DELETE
+/// handler must refuse rather than reach into another tool's prefix.
+pub fn is_user_owned(path: &Path) -> bool {
+    match directories::BaseDirs::new() {
+        Some(base) => path.starts_with(base.home_dir().join(".yogurt").join("models")),
+        None => false,
+    }
+}
+
 /// Move `old_dir/filename` (and its `.sha256` sidecar) to `new_dir`,
 /// exactly once, never clobbering.  Path-injectable for tests.
 ///
@@ -206,9 +271,12 @@ fn migrate_legacy_model(old_dir: &Path, new_dir: &Path, filename: &str) {
     }
 }
 
-/// `true` iff the model file exists AND verifies against `spec.sha256`
-/// (case-insensitive).  A file that exists but does not verify counts
-/// as not-downloaded - callers should re-download.
+/// `true` iff a copy of the model exists AND verifies against
+/// `spec.sha256` (case-insensitive), in EITHER the user's own
+/// `~/.yogurt/models` dir or a Homebrew prefix (see
+/// [`resolve_model`], which this delegates to).  A file that exists
+/// but does not verify counts as not-downloaded - callers should
+/// re-download.
 ///
 /// Verification is CHEAP on the happy path: a sidecar
 /// `<filename>.sha256` marker (single line `<hash> <len>`, written by
@@ -222,11 +290,7 @@ fn migrate_legacy_model(old_dir: &Path, new_dir: &Path, filename: &str) {
 /// vs "Download" in the model picker.  Any IO error (e.g., permission
 /// denied) is treated as not-downloaded.
 pub fn is_downloaded(spec: &ModelSpec) -> bool {
-    let path = match model_path(spec) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    is_downloaded_at(&path, spec.sha256)
+    resolve_model(spec).is_some()
 }
 
 /// Path-injectable core of `is_downloaded` - see that fn's doc comment.
@@ -269,6 +333,13 @@ pub fn marker_path(model: &Path) -> PathBuf {
 /// Best-effort: record `<lowercase-hash> <len>` next to the model so
 /// future `is_downloaded` calls skip hashing.  Failures are non-fatal -
 /// the worst case is re-hashing on the next check.
+///
+/// "Worst case" is worse in a Homebrew prefix (AUD-4): if that prefix
+/// is not user-writable, every `list_models` call re-hashes a
+/// multi-GB file, which is the runtime-starving cost `list_models`
+/// spawn_blocks to contain.  The model formula therefore installs the
+/// `.sha256` sidecar alongside the `.bin`, so the fast path works
+/// from the first check and this write is never needed there.
 fn write_marker(model: &Path, hash: &str) {
     let len = match std::fs::metadata(model) {
         Ok(m) => m.len(),
@@ -531,6 +602,89 @@ mod tests {
         assert!(lookup("small.en").unwrap().intel_supported);
         assert!(!lookup("medium.en").unwrap().intel_supported);
         assert!(!lookup("large-v3").unwrap().intel_supported);
+    }
+
+    // ── Fallback search path (AUD-4: Homebrew-installed models) ─────────
+
+    #[test]
+    fn resolve_in_prefers_the_users_own_dir() {
+        let own = tempfile::tempdir().unwrap();
+        let brew = tempfile::tempdir().unwrap();
+        let payload = b"the model bytes the registry pins";
+        let expected = sha256::hash_bytes(payload);
+        std::fs::write(own.path().join("ggml-test.bin"), payload).unwrap();
+        std::fs::write(brew.path().join("ggml-test.bin"), payload).unwrap();
+        let dirs = vec![own.path().to_path_buf(), brew.path().to_path_buf()];
+        assert_eq!(
+            resolve_in(&dirs, "ggml-test.bin", &expected),
+            Some(own.path().join("ggml-test.bin")),
+            "a copy in the user's own dir must win over a Homebrew copy"
+        );
+    }
+
+    #[test]
+    fn resolve_in_falls_through_to_homebrew() {
+        let own = tempfile::tempdir().unwrap();
+        let brew = tempfile::tempdir().unwrap();
+        let payload = b"the model bytes the registry pins";
+        let expected = sha256::hash_bytes(payload);
+        std::fs::write(brew.path().join("ggml-test.bin"), payload).unwrap();
+        let dirs = vec![own.path().to_path_buf(), brew.path().to_path_buf()];
+        assert_eq!(
+            resolve_in(&dirs, "ggml-test.bin", &expected),
+            Some(brew.path().join("ggml-test.bin")),
+            "with nothing downloaded, a Homebrew copy must resolve"
+        );
+    }
+
+    #[test]
+    fn resolve_in_skips_a_corrupt_copy_for_a_good_one() {
+        let own = tempfile::tempdir().unwrap();
+        let brew = tempfile::tempdir().unwrap();
+        let payload = b"the model bytes the registry pins";
+        let expected = sha256::hash_bytes(payload);
+        // Truncated download in the user's dir must not shadow the
+        // Homebrew copy - this is why the search verifies rather than
+        // taking the first path that merely exists.
+        std::fs::write(own.path().join("ggml-test.bin"), b"half a fi").unwrap();
+        std::fs::write(brew.path().join("ggml-test.bin"), payload).unwrap();
+        let dirs = vec![own.path().to_path_buf(), brew.path().to_path_buf()];
+        assert_eq!(
+            resolve_in(&dirs, "ggml-test.bin", &expected),
+            Some(brew.path().join("ggml-test.bin")),
+            "a corrupt file must not shadow a verified copy further down"
+        );
+    }
+
+    #[test]
+    fn resolve_in_returns_none_when_nothing_verifies() {
+        let own = tempfile::tempdir().unwrap();
+        let dirs = vec![own.path().to_path_buf()];
+        assert_eq!(
+            resolve_in(&dirs, "ggml-test.bin", &sha256::hash_bytes(b"anything")),
+            None
+        );
+    }
+
+    #[test]
+    fn homebrew_dirs_cover_both_default_prefixes() {
+        let dirs = homebrew_model_dirs();
+        assert!(dirs.contains(&PathBuf::from("/opt/homebrew/share/yogurt/models")));
+        assert!(dirs.contains(&PathBuf::from("/usr/local/share/yogurt/models")));
+    }
+
+    #[test]
+    fn homebrew_paths_are_not_user_owned() {
+        assert!(!is_user_owned(Path::new(
+            "/opt/homebrew/share/yogurt/models/ggml-tiny.en.bin"
+        )));
+        let own = directories::BaseDirs::new()
+            .unwrap()
+            .home_dir()
+            .join(".yogurt")
+            .join("models")
+            .join("ggml-tiny.en.bin");
+        assert!(is_user_owned(&own));
     }
 
     // ── Sidecar `.sha256` marker behavior ───────────────────────────────
