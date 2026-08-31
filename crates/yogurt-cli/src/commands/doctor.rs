@@ -113,28 +113,32 @@ fn redownload_model(name: &str) -> Result<()> {
         anyhow::bail!("could not resolve home directory");
     };
     let path = home.join("models").join(format!("ggml-{name}.bin"));
-    println!("removing {} (will re-download on next use)", path.display());
-    match std::fs::remove_file(&path) {
-        Ok(()) => {}
+    println!("removing {}", path.display());
+    let removed = match std::fs::remove_file(&path) {
+        Ok(()) => true,
         Err(e) if e.kind() == ErrorKind::NotFound => {
             println!("no local file for model '{name}' -- nothing to remove");
+            false
         }
         Err(e) => return Err(e).context("removing model file"),
-    }
+    };
     // The sidecar marker must go with the file. Left behind, it makes the
     // next `is_downloaded_at` fast-path answer for bytes that are gone.
     let _ = std::fs::remove_file(format!("{}.sha256", path.display()));
-    // AUD-4: deleting our copy does not necessarily force a re-download -
-    // a Homebrew-installed copy still resolves, so the promise printed
-    // above would be a lie. Say what will actually happen.
-    if let Some(spec) = yogurt_stt::models::lookup(name) {
-        if let Some(other) = yogurt_stt::models::resolve_model(spec) {
-            println!(
-                "note: {name} is still available from {} -- yogurt will load that \
-                 instead of re-downloading. Remove it with brew to force a fresh copy.",
-                other.display()
-            );
-        }
+
+    // AUD-4: removing our copy does not necessarily force a re-download -
+    // a Homebrew-installed one still resolves. Announcing the outcome
+    // AFTER the removal, rather than promising it before, is the only way
+    // these lines cannot contradict each other.
+    let elsewhere = yogurt_stt::models::lookup(name).and_then(yogurt_stt::models::resolve_model);
+    match elsewhere {
+        Some(other) => println!(
+            "note: {name} is still available from {} -- yogurt will load that \
+             instead of re-downloading. Remove it with brew to force a fresh copy.",
+            other.display()
+        ),
+        None if removed => println!("{name} will re-download on next use"),
+        None => {}
     }
     Ok(())
 }
