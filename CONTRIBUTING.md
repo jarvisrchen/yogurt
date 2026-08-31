@@ -58,7 +58,7 @@ There is nothing you can do with `just` that you cannot do by hand; `just --list
 | `just backend [args]` | `./scripts/run-backend.sh [args]` |
 | `just frontend` | `./scripts/run-frontend.sh` |
 | `just release [args]` | `./scripts/run-release.sh [args]` |
-| `just dev` | `just bootstrap`, then `run-frontend.sh` in the background, wait until Vite answers on `:5173` (so the backend proxy does not 502 on first request), then `run-backend.sh` in the foreground; Ctrl-C kills both |
+| `just dev` | `just bootstrap`, resolve a free (Vite, backend) port pair, then `run-frontend.sh` in the background, wait until Vite answers (so the backend proxy does not 502 on first request), then `run-backend.sh` in the foreground; Ctrl-C kills both |
 | `just bootstrap` | Restores the gitignored files a checkout needs in order to run: `.env.local` (copied from the main checkout), `web/node_modules`, `web/dist`. No-ops once they are present |
 
 `just dev` and `just bootstrap` are the only recipes with logic of their own: the readiness wait and paired shutdown in one, the what-is-missing checks in the other.
@@ -179,7 +179,9 @@ just dev
 
 A fresh worktree contains only tracked files, and everything needed to *run* is gitignored: `.env.local`, `web/node_modules`, `web/dist` (whose absence fails the build at `#[derive(RustEmbed)] folder ... does not exist`).
 `just dev` calls `just bootstrap` first, which restores all three from the main checkout, so there is no separate setup step.
-`just dev` still wants `:5173` and `:7878`, so stop the instance in your other worktree first.
+`just dev` prefers `:5173` and `:7878` but moves to the next free pair when they are taken, so a second worktree runs alongside the first - it prints the ports it picked, and the two instances are independent (`/api`, `/ws`, HMR, and the WS origin allowlist all follow the pair).
+They do share `~/.yogurt/`, so both see the same meetings and the same keys; only one of them should be recording at a time.
+Pin the pair yourself with `YOGURT_VITE_PORT` and `YOGURT_BACKEND_PORT`, or force the old behaviour with `YOGURT_PORT_POLICY=ask`.
 
 Delete the worktree once its PR merges: `git worktree remove ../yogurt-worktrees/my-change`.
 

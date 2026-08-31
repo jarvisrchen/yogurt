@@ -391,6 +391,25 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### CLI
 
+- [x] **CLI-3** `just dev` should pick a free port pair so two worktrees can run at once
+  <details>
+  <summary>Details</summary>
+
+  Everything about the dev loop assumed one instance: `vite.config.ts` hard-coded `5173` (server port, HMR client port, and the `/api` + `/ws` proxy targets to `7878`), `run-frontend.sh` refused to start on any other port ("the backend proxy is hard-coded to 5173"), and `allowed_origins` in `ws.rs` hard-coded the `5173` dev origin. Running a branch therefore meant stopping whatever was already running, which is exactly backwards when the point of a worktree is to have two branches side by side.
+
+  Only the *port* was hard-coded, not the plumbing - the binary already read `YOGURT_VITE_BASE` for its proxy target and already took `--port`. So the fix is to thread one pair of numbers through:
+
+  - `just dev` resolves both ports up front (default policy `next` rather than `ask`: the usual reason `:7878` is busy is another worktree) and exports `YOGURT_VITE_PORT`, `YOGURT_BACKEND_PORT`, `YOGURT_VITE_BASE` for both scripts.
+  - `vite.config.ts` reads both, for its own port, its HMR client port, and its `/api` + `/ws` proxy targets.
+  - `run-frontend.sh` lost the 5173-only bail; `run-backend.sh` derives `YOGURT_VITE_BASE` from the port when it is not set and prints the target it will proxy to.
+  - `allowed_origins` follows Vite's actual port, so the WS handshake works on the moved pair and still rejects the *other* worktree's origin.
+  - Playwright got its own port (5199) - `reuseExistingServer` is on locally, so sharing 5173 meant a run could silently pass against whatever worktree was serving there.
+
+  Verified with two instances at once: an existing `just dev` on 5173/7878, then `just dev` from a second worktree, which took 5174/7879 with no prompt. Both served their SPA, and the WS handshake against 7879 returned 101 for `localhost:7879` and `localhost:5174`, 403 for `localhost:5173` (the other worktree) and for a junk origin.
+
+  Not addressed: both instances still share `~/.yogurt/` (one SQLite, one keys file, one models dir), so they see the same meetings and only one should record at a time. A `YOGURT_DATA_DIR` override is the fix if that ever bites.
+  </details>
+
 - [x] **CLI-2** Audio lag warnings spam the terminal on a normal meeting; move them behind `RUST_LOG`
   <details>
   <summary>Details</summary>

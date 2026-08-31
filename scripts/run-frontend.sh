@@ -42,25 +42,23 @@ if [ ! -d web/node_modules ]; then
   (cd web && "${PNPM[@]}" install --frozen-lockfile)
 fi
 
-# Vite's port is wired into the backend proxy at compile time (5173).
-# If 5173 is busy we cannot pick a different port — the backend proxy
-# would still send to 5173 and 502. So we ask to kill/abort, not "next port".
-YOGURT_PORT_POLICY="${YOGURT_PORT_POLICY:-ask}"
-if [ "$YOGURT_PORT_POLICY" = "next" ]; then
-  err "vite must run on 5173 (hardcoded in backend proxy) — YOGURT_PORT_POLICY=next is unsupported here."
-  exit 1
-fi
-VITE_PORT=$(ensure_port_free "vite" 5173) || exit 1
-if [ "$VITE_PORT" != "5173" ]; then
-  err "vite must run on 5173 — got $VITE_PORT. The backend proxy is hard-coded to 5173."
-  exit 1
-fi
+# Vite's port is no longer fixed: the backend proxy target is
+# `YOGURT_VITE_BASE` and vite.config.ts reads `YOGURT_VITE_PORT`, so a
+# second worktree can run its own pair. `just dev` resolves the pair and
+# passes both down; a bare run of this script falls back to 5173/7878.
+WANTED_VITE_PORT="${YOGURT_VITE_PORT:-5173}"
+VITE_PORT=$(ensure_port_free "vite" "$WANTED_VITE_PORT") || exit 1
+export YOGURT_VITE_PORT="$VITE_PORT"
+BACKEND_PORT="${YOGURT_BACKEND_PORT:-7878}"
 
-bold "Starting Vite dev server at http://127.0.0.1:5173"
-dim "  Open http://localhost:7878 in the browser — backend proxies to here."
+bold "Starting Vite dev server at http://127.0.0.1:$VITE_PORT"
+dim "  Open http://localhost:$BACKEND_PORT in the browser — backend proxies to here."
+if [ "$VITE_PORT" != "5173" ]; then
+  dim "  Pair it with: YOGURT_VITE_BASE=http://127.0.0.1:$VITE_PORT ./scripts/run-backend.sh --port $BACKEND_PORT"
+fi
 dim "  Ctrl-C to stop."
 echo
 
-# Force IPv4 bind: backend proxy hits http://127.0.0.1:5173 (not ::1).
+# Force IPv4 bind: the backend proxy hits http://127.0.0.1:<port> (not ::1).
 # Without --host 127.0.0.1 Vite binds IPv6-only on some macs, breaking the proxy.
 exec "${PNPM[@]}" --dir web dev --host 127.0.0.1
