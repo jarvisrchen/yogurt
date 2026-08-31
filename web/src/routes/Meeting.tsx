@@ -8,7 +8,13 @@ import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { ensureSessionToken } from "../lib/session";
-import { meetingKey, meetingsApi, useActiveRecording, useMeeting } from "../lib/api/meetings";
+import {
+  activeRecordingKey,
+  meetingKey,
+  meetingsApi,
+  useActiveRecording,
+  useMeeting,
+} from "../lib/api/meetings";
 import { useSettings } from "../lib/api/settings";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -306,6 +312,14 @@ export function Meeting() {
         return;
       }
       setRecording(false);
+      // Clear the active-recording cache HERE, not just on the next poll.
+      // `MeetingPost` bounces back to this route while that cached value
+      // still names this meeting, and `useActiveRecording` only refetches
+      // every 5 s — so `endMeeting`'s navigate would land on /post and be
+      // redirected straight back, reading as a dead "End meeting" click.
+      // `setQueryData` rather than `invalidateQueries`: an invalidation
+      // still races the in-flight refetch that caused the staleness.
+      queryClient.setQueryData(activeRecordingKey, null);
       void queryClient.invalidateQueries({ queryKey: meetingKey(meetingId) });
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Failed to stop recording");

@@ -68,6 +68,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../lib/api/meetings", () => ({
   meetingKey: (id: string) => ["meetings", id],
+  activeRecordingKey: ["meetings", "active"],
   meetingsApi: {
     patch: vi.fn().mockResolvedValue({}),
   },
@@ -106,7 +107,9 @@ function renderAt(
   routerState?: Record<string, unknown>,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  return {
+    qc,
+    ...render(
     <QueryClientProvider client={qc}>
       <MemoryRouter
         initialEntries={[{ pathname: initialPath, state: routerState }]}
@@ -118,7 +121,8 @@ function renderAt(
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
-  );
+    ),
+  };
 }
 
 describe("Meeting — auto-start on '+ New meeting'", () => {
@@ -293,6 +297,60 @@ describe("Meeting — End meeting flow", () => {
     expect(navState).toMatchObject({
       autoEnhance: { notes_md: "", title: "Weekly sync" },
     });
+
+    vi.unstubAllGlobals();
+  });
+
+  // Regression: the first "End meeting" click used to be a dead click while
+  // still recording. `MeetingPost` bounces back to this route whenever the
+  // cached active-recording value still names this meeting, and that query
+  // is on a 5 s `refetchInterval` — so navigating to /post immediately
+  // after /stop landed on a stale cache and got redirected right back. The
+  // user had to click End a second time (or Stop first) to get through.
+  // Stopping must therefore clear the cache itself rather than wait for the
+  // poll. Asserting the cache write is what makes this fail if the line
+  // goes away; the mocked `useActiveRecording` reads module state, not the
+  // client, so the bounce itself can't be exercised from this file.
+  it("clears the cached active recording on stop, so End meeting doesn't bounce off a stale poll", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/meetings/meeting-3/start") {
+        return new Response(JSON.stringify({ status: "started" }), { status: 200 });
+      }
+      if (url === "/api/meetings/meeting-3/stop") {
+        return new Response(JSON.stringify({ status: "stopped" }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { qc } = renderAt("/meeting/meeting-3");
+
+    // Seed the cache the way the 5 s poll would have while recording.
+    qc.setQueryData(["meetings", "active"], { id: "meeting-3", title: "Weekly sync", started_at: 1000 });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^start recording$/i }),
+      ).toBeInTheDocument();
+    });
+    act(() => {
+      screen.getByRole("button", { name: /^start recording$/i }).click();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTestId("end-meeting").click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("post-view")).toBeInTheDocument();
+    });
+    expect(qc.getQueryData(["meetings", "active"])).toBeNull();
 
     vi.unstubAllGlobals();
   });
