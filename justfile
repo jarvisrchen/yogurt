@@ -11,7 +11,7 @@ default:
 release *args:
     ./scripts/run-release.sh {{args}}
 
-# Start backend + Vite together in this terminal — reads .env.local, Ctrl-C stops both cleanly.
+# Start backend + Vite together in this terminal — bootstraps the worktree first, reads .env.local, Ctrl-C stops both cleanly.
 dev: bootstrap
     #!/usr/bin/env bash
     set -euo pipefail
