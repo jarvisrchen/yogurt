@@ -34,7 +34,10 @@ export function PresetChip({
         base_url: preset.base_url,
         model: preset.default_model,
         adapter: preset.adapter,
-        cli_model: preset.default_cli_model,
+        // A `cli` row starts unverified - `cli_model` stays empty until a
+        // successful Test proves the CLI actually connects (ProviderRow /
+        // ProviderCard seed the preset's default only then). Sending it
+        // here would let the MODEL picker appear before that proof exists.
       }),
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["settings"] });

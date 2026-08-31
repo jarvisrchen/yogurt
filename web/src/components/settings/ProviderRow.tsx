@@ -36,6 +36,7 @@ export function ProviderRow({
   presetModels = [],
   docsUrl,
   presetName,
+  defaultCliModel = "",
   onKeyClosed,
 }: {
   provider: ProviderView;
@@ -46,6 +47,10 @@ export function ProviderRow({
    *  Used as the visible text of the docs link — the user-chosen
    *  `provider.name` would read badly there. */
   presetName?: string;
+  /** `cli`-adapter only: the preset's suggested `--model` (e.g. "haiku"),
+   *  seeded into `cli_model` the first time a Test proves the CLI
+   *  connects. Empty for a preset with no sensible default. */
+  defaultCliModel?: string;
   /** Called whenever the API key section collapses (Save or Cancel), so
    *  the page can drop its one-shot auto-open hint (`autoOpenKey`) for
    *  this provider. */
@@ -58,6 +63,13 @@ export function ProviderRow({
   const [keying, setKeying] = useState(autoOpenKey && !isCli);
   const [modelDraft, setModelDraft] = useState(provider.model);
   const [cliModelDraft, setCliModelDraft] = useState(provider.cli_model);
+  // The MODEL picker is gated behind proof the CLI actually connects - a
+  // freshly-cloned row has no `cli_model` yet, and it stays hidden until a
+  // Test comes back `ok`. `!!provider.cli_model` alone would cover a row
+  // that already picked a model in an earlier session; the local flag
+  // covers the same session's just-passed Test before that PATCH lands.
+  const [cliTestedOk, setCliTestedOk] = useState(false);
+  const cliVerified = !!provider.cli_model || cliTestedOk;
   // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
   // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
   // The whole point: if the saved `model` is the only thing wrong with
@@ -136,24 +148,31 @@ export function ProviderRow({
             locally via your existing CLI login. No API key or base URL to
             configure.
           </div>
-          <Field label="MODEL">
-            <ComboBox
-              value={cliModelDraft}
-              onChange={setCliModelDraft}
-              onCommit={(next) => {
-                if (next !== provider.cli_model) updateCliModel.mutate(next);
-              }}
-              options={presetModels}
-              placeholder="CLI default"
-              ariaLabel={`Model for ${provider.name}`}
-              triggerLabel={`Show model list for ${provider.name}`}
-            />
-            {updateCliModel.isError && (
-              <p role="status" className="text-[11px] text-[var(--color-straw)]">
-                ✗ Could not save model: {String(updateCliModel.error)}
-              </p>
-            )}
-          </Field>
+          {cliVerified ? (
+            <Field label="MODEL">
+              <ComboBox
+                value={cliModelDraft}
+                onChange={setCliModelDraft}
+                onCommit={(next) => {
+                  if (next !== provider.cli_model) updateCliModel.mutate(next);
+                }}
+                options={presetModels}
+                placeholder="CLI default"
+                ariaLabel={`Model for ${provider.name}`}
+                triggerLabel={`Show model list for ${provider.name}`}
+              />
+              {updateCliModel.isError && (
+                <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                  ✗ Could not save model: {String(updateCliModel.error)}
+                </p>
+              )}
+            </Field>
+          ) : (
+            <p className="text-[11px] text-mut">
+              Click Test below to confirm the CLI connects - the model
+              picker appears once it does.
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -204,6 +223,13 @@ export function ProviderRow({
               providerId={provider.id}
               providerName={provider.name}
               alwaysTestable
+              onResult={(result) => {
+                if (!result.ok) return;
+                setCliTestedOk(true);
+                if (!provider.cli_model && defaultCliModel) {
+                  updateCliModel.mutate(defaultCliModel);
+                }
+              }}
             />
           </div>
         ) : (

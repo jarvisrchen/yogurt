@@ -137,6 +137,7 @@ export function Settings() {
                 presetModels={findPreset(active)?.models ?? []}
                 docsUrl={findPreset(active)?.docs_url}
                 presetName={findPreset(active)?.name}
+                defaultCliModel={findPreset(active)?.default_cli_model ?? ""}
               />
             ) : data.providers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line bg-white/50 p-6 space-y-1">
@@ -164,6 +165,7 @@ export function Settings() {
                     presetModels={findPreset(p)?.models ?? []}
                     docsUrl={findPreset(p)?.docs_url}
                     presetName={findPreset(p)?.name}
+                    defaultCliModel={findPreset(p)?.default_cli_model ?? ""}
                     onKeyClosed={() => setNewlyCreatedProviderId(null)}
                   />
                 ))}

@@ -31,6 +31,7 @@ export function ProviderCard({
   presetModels = [],
   docsUrl,
   presetName,
+  defaultCliModel = "",
 }: Props & {
   presetModels?: string[];
   docsUrl?: string;
@@ -40,6 +41,10 @@ export function ProviderCard({
    * `provider.name` ("My workspace") would read badly there.
    */
   presetName?: string;
+  /** `cli`-adapter only: the preset's suggested `--model` (e.g. "haiku"),
+   *  seeded into `cli_model` the first time a Test proves the CLI
+   *  connects. Empty for a preset with no sensible default. */
+  defaultCliModel?: string;
 }) {
   const isCli = provider.adapter === "cli";
   const qc = useQueryClient();
@@ -60,6 +65,10 @@ export function ProviderCard({
   useEffect(() => {
     setCliModelDraft(provider.cli_model);
   }, [provider.cli_model]);
+  // Same gating as `ProviderRow`: no MODEL picker until a Test proves the
+  // CLI connects. See the matching comment there for the rationale.
+  const [cliTestedOk, setCliTestedOk] = useState(false);
+  const cliVerified = !!provider.cli_model || cliTestedOk;
 
   const update = useMutation({
     mutationFn: () => settingsApi.updateProvider(provider.id, draft),
@@ -110,24 +119,31 @@ export function ProviderCard({
             locally via your existing CLI login. No API key or base URL to
             configure.
           </div>
-          <Field label="MODEL">
-            <ComboBox
-              value={cliModelDraft}
-              onChange={setCliModelDraft}
-              onCommit={(next) => {
-                if (next !== provider.cli_model) updateCliModel.mutate(next);
-              }}
-              options={presetModels}
-              placeholder="CLI default"
-              ariaLabel={`Model for ${provider.name}`}
-              triggerLabel={`Show model list for ${provider.name}`}
-            />
-            {updateCliModel.isError && (
-              <p role="status" className="text-[11px] text-[var(--color-straw)]">
-                ✗ Could not save model: {String(updateCliModel.error)}
-              </p>
-            )}
-          </Field>
+          {cliVerified ? (
+            <Field label="MODEL">
+              <ComboBox
+                value={cliModelDraft}
+                onChange={setCliModelDraft}
+                onCommit={(next) => {
+                  if (next !== provider.cli_model) updateCliModel.mutate(next);
+                }}
+                options={presetModels}
+                placeholder="CLI default"
+                ariaLabel={`Model for ${provider.name}`}
+                triggerLabel={`Show model list for ${provider.name}`}
+              />
+              {updateCliModel.isError && (
+                <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                  ✗ Could not save model: {String(updateCliModel.error)}
+                </p>
+              )}
+            </Field>
+          ) : (
+            <p className="text-[11px] text-mut">
+              Click Test below to confirm the CLI connects - the model
+              picker appears once it does.
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -194,6 +210,13 @@ export function ProviderCard({
             providerId={provider.id}
             providerName={provider.name}
             alwaysTestable
+            onResult={(result) => {
+              if (!result.ok) return;
+              setCliTestedOk(true);
+              if (!provider.cli_model && defaultCliModel) {
+                updateCliModel.mutate(defaultCliModel);
+              }
+            }}
           />
         ) : (
           <>

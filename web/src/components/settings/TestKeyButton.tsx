@@ -29,6 +29,10 @@ export function TestKeyButton({
    *  hit a different endpoint with no provider id. Defaults to testing
    *  `providerId` against the LLM provider endpoint. */
   testFn = (key?: string) => settingsApi.testProvider(providerId, key),
+  /** Fires with every test verdict (ok or not) - LLM-4's cli rows use this
+   *  to reveal the MODEL picker once a test actually proves the CLI
+   *  connects, instead of showing it unconditionally. */
+  onResult,
 }: {
   providerId?: string;
   providerName: string;
@@ -36,9 +40,11 @@ export function TestKeyButton({
   hasStoredKey?: boolean;
   alwaysTestable?: boolean;
   testFn?: (key?: string) => Promise<TestConnectionResult>;
+  onResult?: (result: TestConnectionResult) => void;
 }) {
   const test = useMutation({
     mutationFn: (key: string) => testFn(key || undefined),
+    onSuccess: (result) => onResult?.(result),
   });
 
   // A verdict describes the key that was in the box when it ran; a green

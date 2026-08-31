@@ -5,8 +5,8 @@
  * `Settings.test.tsx` (its fixture's active provider is http-adapter
  * Ollama). This file covers the new cli-adapter branch specifically: no
  * BASE URL field, no Edit button (nothing editable there), no API KEY
- * section, a `--model` override picker, and a Test button reachable with
- * no key at all.
+ * section, a Test button reachable with no key at all, and a `--model`
+ * override picker gated behind a successful Test.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -24,7 +24,7 @@ vi.mock("../../lib/api/settings", () => ({
 
 import { ProviderCard } from "./ProviderCard";
 
-const cliProvider: ProviderView = {
+const freshCliProvider: ProviderView = {
   id: "01CLICARD",
   name: "Claude Code (local CLI)",
   base_url: "",
@@ -36,11 +36,14 @@ const cliProvider: ProviderView = {
   cli_model: "",
 };
 
-function renderCard() {
+function renderCard(
+  provider: ProviderView = freshCliProvider,
+  defaultCliModel = "",
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <ProviderCard provider={cliProvider} />
+      <ProviderCard provider={provider} defaultCliModel={defaultCliModel} />
     </QueryClientProvider>,
   );
 }
@@ -50,7 +53,7 @@ describe("ProviderCard - cli adapter", () => {
     vi.clearAllMocks();
   });
 
-  it("has no Edit button, no BASE URL field, no API KEY section, and a model override picker", () => {
+  it("has no Edit button, no BASE URL field, no API KEY section, and no model picker before a Test passes", () => {
     renderCard();
 
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
@@ -58,8 +61,9 @@ describe("ProviderCard - cli adapter", () => {
     expect(screen.queryByText("API KEY · stored locally")).not.toBeInTheDocument();
     expect(screen.getByText("claude")).toBeInTheDocument();
     expect(
-      screen.getByLabelText(`Model for ${cliProvider.name}`),
-    ).toBeInTheDocument();
+      screen.queryByLabelText(`Model for ${freshCliProvider.name}`),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/click test below/i)).toBeInTheDocument();
   });
 
   it("Test is reachable immediately and hits the provider endpoint with no key", async () => {
@@ -67,7 +71,7 @@ describe("ProviderCard - cli adapter", () => {
     renderCard();
 
     const testButton = screen.getByRole("button", {
-      name: `Test connection for ${cliProvider.name}`,
+      name: `Test connection for ${freshCliProvider.name}`,
     });
     expect(testButton).toBeEnabled();
 
@@ -75,31 +79,92 @@ describe("ProviderCard - cli adapter", () => {
 
     await waitFor(() =>
       expect(settingsApiMock.testProvider).toHaveBeenCalledWith(
-        cliProvider.id,
+        freshCliProvider.id,
         undefined,
       ),
     );
   });
 
-  it("commits a typed --model override via PATCH, leaving name/base_url/model untouched", async () => {
+  it("reveals the model picker and seeds the preset default once Test passes", async () => {
+    settingsApiMock.testProvider.mockResolvedValue({ ok: true, model: "cli:claude" });
     settingsApiMock.updateProvider.mockResolvedValue({
-      ...cliProvider,
-      cli_model: "sonnet",
+      ...freshCliProvider,
+      cli_model: "haiku",
     });
-    renderCard();
+    renderCard(freshCliProvider, "haiku");
 
-    const input = screen.getByLabelText(`Model for ${cliProvider.name}`);
-    fireEvent.change(input, { target: { value: "sonnet" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Test connection for ${freshCliProvider.name}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText(`Model for ${freshCliProvider.name}`),
+      ).toBeInTheDocument(),
+    );
+    expect(settingsApiMock.updateProvider).toHaveBeenCalledWith(
+      freshCliProvider.id,
+      {
+        name: freshCliProvider.name,
+        base_url: freshCliProvider.base_url,
+        model: freshCliProvider.model,
+        cli_model: "haiku",
+      },
+    );
+  });
+
+  it("a failed Test does not reveal the model picker", async () => {
+    settingsApiMock.testProvider.mockResolvedValue({
+      ok: false,
+      error: "not logged in",
+    });
+    renderCard(freshCliProvider, "haiku");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Test connection for ${freshCliProvider.name}`,
+      }),
+    );
+
+    await waitFor(() => expect(settingsApiMock.testProvider).toHaveBeenCalled());
+    expect(
+      screen.queryByLabelText(`Model for ${freshCliProvider.name}`),
+    ).not.toBeInTheDocument();
+    expect(settingsApiMock.updateProvider).not.toHaveBeenCalled();
+  });
+
+  it("an already-configured provider shows the model picker immediately, no Test required", () => {
+    const verified: ProviderView = { ...freshCliProvider, cli_model: "sonnet" };
+    renderCard(verified);
+
+    expect(
+      screen.getByLabelText(`Model for ${verified.name}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/click test below/i)).not.toBeInTheDocument();
+  });
+
+  it("commits a typed --model override via PATCH, leaving name/base_url/model untouched", async () => {
+    const verified: ProviderView = { ...freshCliProvider, cli_model: "sonnet" };
+    settingsApiMock.updateProvider.mockResolvedValue({
+      ...verified,
+      cli_model: "opus",
+    });
+    renderCard(verified);
+
+    const input = screen.getByLabelText(`Model for ${verified.name}`);
+    fireEvent.change(input, { target: { value: "opus" } });
     fireEvent.blur(input);
 
     await waitFor(() =>
       expect(settingsApiMock.updateProvider).toHaveBeenCalledWith(
-        cliProvider.id,
+        verified.id,
         {
-          name: cliProvider.name,
-          base_url: cliProvider.base_url,
-          model: cliProvider.model,
-          cli_model: "sonnet",
+          name: verified.name,
+          base_url: verified.base_url,
+          model: verified.model,
+          cli_model: "opus",
         },
       ),
     );
