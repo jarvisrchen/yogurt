@@ -131,6 +131,37 @@ Something not working? Run `yogurt doctor` for a rust/macOS/permissions/
 providers/STT/models dump, or `yogurt doctor --json` for a machine-readable
 version that's safe to paste into a bug report.
 
+## Transcription models
+
+Transcription runs one of two ways, switchable under **Settings -> Transcription**:
+
+- **Cloud (default).** Deepgram, needs an API key and sends audio to their API.
+- **Local.** whisper.cpp on your machine. No key, no network, nothing leaves the laptop.
+
+Local needs a model file. Pick one under **Settings -> Transcription -> Local** and yogurt downloads it to `~/.yogurt/models/`, verifying the SHA256 before use.
+
+| Model | Size | Intel Macs | Notes |
+| --- | --- | --- | --- |
+| `tiny.en` | 75 MB | fine | Fastest, roughest. Good for a quick check that local works. |
+| `small.en` | 487 MB | fine | **Default.** The best size-to-quality tradeoff for meetings. |
+| `medium.en` | 1.5 GB | slow | Wants Apple Silicon. |
+| `large-v3-turbo` | 1.6 GB | slow | Wants Apple Silicon. Near `large-v3` quality, much faster. |
+| `large-v3` | 3.0 GB | slow | Wants Apple Silicon. Slowest, best quality. |
+
+The `.en` models are English-only; `large-v3` and `large-v3-turbo` are multilingual.
+The three larger models lean on arm64 Metal kernels, so on an Intel Mac the picker tags them `slow`.
+You can still pick one, it just may not keep up with live speech.
+
+Models live in `~/.yogurt/models/` and are yours to manage:
+
+```bash
+yogurt doctor                            # lists which models are present, and where
+yogurt doctor --redownload-model small.en   # drop the local copy and re-fetch it
+```
+
+You can also drop a `ggml-*.bin` file into `~/.yogurt/models/` yourself.
+yogurt identifies models by hash, not by where they came from, so a file copied in by any means is picked up as long as it matches.
+
 ## Command line
 
 `yogurt --help` and `yogurt <command> --help` are the source of truth; this is the same information in one place.

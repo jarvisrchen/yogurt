@@ -40,6 +40,11 @@ dotenvy = { workspace = true }
 # graph via yogurt-server, so this adds no new linkage.
 yogurt-db = { path = "../yogurt-db" }
 yogurt-audio = { path = "../yogurt-audio" }
+# AUD-4: `doctor` must resolve models the same way the app does, or it
+# reports "none downloaded" for a Homebrew-installed model the app is
+# happily transcribing with. `local-stt` is already in the graph via
+# yogurt-server, so this adds no compile cost.
+yogurt-stt = { path = "../yogurt-stt", features = ["local-stt"] }
 # Same `directories` crate yogurt-db/yogurt-stt use for `~/.yogurt`
 # resolution (do NOT use the unmaintained `dirs` crate).
 directories = { workspace = true }

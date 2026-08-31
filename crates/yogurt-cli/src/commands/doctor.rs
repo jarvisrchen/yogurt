@@ -45,7 +45,19 @@ struct Report {
     db_exists: bool,
     providers: Vec<String>,
     stt: String,
-    models: Vec<String>,
+    models: Vec<ModelReport>,
+}
+
+/// One locally-available whisper.cpp model.
+///
+/// `path` is load-bearing in a bug report: AUD-4 lets a model come from
+/// a Homebrew prefix as well as `~/.yogurt/models`, and "which copy is
+/// it actually loading" is the first question when a model misbehaves.
+#[derive(Debug, Serialize)]
+struct ModelReport {
+    name: &'static str,
+    path: String,
+    homebrew: bool,
 }
 
 pub async fn run(args: DoctorArgs) -> Result<()> {
@@ -109,6 +121,21 @@ fn redownload_model(name: &str) -> Result<()> {
         }
         Err(e) => return Err(e).context("removing model file"),
     }
+    // The sidecar marker must go with the file. Left behind, it makes the
+    // next `is_downloaded_at` fast-path answer for bytes that are gone.
+    let _ = std::fs::remove_file(format!("{}.sha256", path.display()));
+    // AUD-4: deleting our copy does not necessarily force a re-download -
+    // a Homebrew-installed copy still resolves, so the promise printed
+    // above would be a lie. Say what will actually happen.
+    if let Some(spec) = yogurt_stt::models::lookup(name) {
+        if let Some(other) = yogurt_stt::models::resolve_model(spec) {
+            println!(
+                "note: {name} is still available from {} -- yogurt will load that \
+                 instead of re-downloading. Remove it with brew to force a fresh copy.",
+                other.display()
+            );
+        }
+    }
     Ok(())
 }
 
@@ -145,20 +172,22 @@ fn build_report() -> Report {
         )
     };
 
-    let models = home
-        .as_ref()
-        .map(|h| h.join("models"))
-        .and_then(|dir| std::fs::read_dir(dir).ok())
-        .map(|entries| {
-            let mut names: Vec<String> = entries
-                .filter_map(|e| e.ok())
-                .filter_map(|e| e.file_name().into_string().ok())
-                .filter(|name| name.starts_with("ggml-") && name.ends_with(".bin"))
-                .collect();
-            names.sort();
-            names
+    // Resolve through the same function the server uses, so doctor can
+    // never disagree with what `yogurt start` will actually load. A raw
+    // `read_dir` of `~/.yogurt/models` used to do this, and it both
+    // missed Homebrew-installed copies and counted corrupt files as
+    // present, since it matched on filename alone.
+    let models: Vec<ModelReport> = yogurt_stt::models::REGISTRY
+        .iter()
+        .filter_map(|spec| {
+            let path = yogurt_stt::models::resolve_model(spec)?;
+            Some(ModelReport {
+                name: spec.name,
+                homebrew: !yogurt_stt::models::is_user_owned(&path),
+                path: path.display().to_string(),
+            })
         })
-        .unwrap_or_default();
+        .collect();
 
     Report {
         service: "yogurt-doctor",
@@ -216,7 +245,18 @@ fn print_human(r: &Report) {
     if r.models.is_empty() {
         println!("models: none downloaded");
     } else {
-        println!("models: {}", r.models.join(", "));
+        let listed: Vec<String> = r
+            .models
+            .iter()
+            .map(|m| {
+                if m.homebrew {
+                    format!("{} (homebrew)", m.name)
+                } else {
+                    m.name.to_string()
+                }
+            })
+            .collect();
+        println!("models: {}", listed.join(", "));
     }
     println!("config: {}", r.db_path);
     println!("notes: use --json for a machine-readable dump; --reset-screen-recording,");

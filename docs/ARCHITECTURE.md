@@ -456,6 +456,15 @@ At meeting start, `select_stt` checks the `.sha256` sidecar rather than rehashin
 The one-time legacy migration path *can* hash, which is why the whole check runs on `spawn_blocking`.
 `WhisperLocal::load` then reads the model (up to 3 GB) and runs ggml init, also on `spawn_blocking`.
 
+A model may also arrive from Homebrew rather than the download button (AUD-4).
+`models::resolve_model` is the single answer to both "is it here?" and "where?", searching `~/.yogurt/models` first, then `$HOMEBREW_PREFIX`, `/opt/homebrew` and `/usr/local` under `share/yogurt/models`.
+It returns the first copy that *verifies*, not the first that exists, so a truncated download cannot shadow a good copy further down the list.
+`is_downloaded`, `select_stt`, and `yogurt doctor` all route through it; they used to answer those two questions separately and could disagree.
+
+The reason it reads a foreign prefix instead of copying into `~/.yogurt/models`: Homebrew's install sandbox refuses writes outside its own prefix, so a formula cannot put the file where yogurt would otherwise look.
+That also constrains deletion. `DELETE /api/stt/models/{name}` refuses when the only copy is outside `~/.yogurt/models`, because removing it would either no-op while the picker still showed the model as present, or reach into another tool's prefix and break `brew uninstall`.
+`brew --prefix` would be authoritative for locating the prefix, but it is a subprocess, so the two defaults are hardcoded alongside `HOMEBREW_PREFIX`.
+
 ### 7.2 How local decoding actually works
 
 The cloud adapter hands audio to Deepgram and gets lines back. The local adapter has to build that behavior itself, and it does so with a **VAD gate plus two different decoders against one shared model**.
@@ -501,11 +510,12 @@ The pieces, and why each is shaped that way:
 |---|---|---|---|
 | `tiny.en` | 75 MB | yes | Fastest, roughest. Fine for a smoke test. |
 | `small.en` | 487 MB | yes | **The seeded default** (`V005`). The intended balance point. |
-| `medium.en` | 1.5 GB | no | Apple Silicon only. |
-| `large-v3` | 3.1 GB | no | Apple Silicon only. Beam-search finals on this are slow enough to feel it. |
+| `medium.en` | 1.5 GB | slow | Wants Apple Silicon. |
+| `large-v3-turbo` | 1.6 GB | slow | Near `large-v3` quality at roughly medium's cost. |
+| `large-v3` | 3.0 GB | slow | Beam-search finals on this are slow enough to feel it. |
 
-All four are English-only or English-first, matching the app's single-language v1 scope.
-`intel_supported` is a real gate, not a hint: the two larger models are marked unsupported on x86 Macs because Metal acceleration is not there to carry them.
+`intel_supported` is a hint, not a gate: the picker tags the affected models `slow` on an x86 Mac, and nothing stops the user selecting or downloading one.
+The flag exists because Metal acceleration is not there to carry them, not because they cannot run.
 
 Build-side, local STT is behind a Cargo feature:
 
