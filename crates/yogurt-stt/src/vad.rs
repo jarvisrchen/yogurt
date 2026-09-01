@@ -62,6 +62,22 @@ pub const SILENCE_HANG_MS: u64 = 600;
 /// without a pause, we cut anyway so Whisper sees bounded input.
 pub const MAX_SEGMENT_MS: u64 = 25_000;
 
+/// The same cap expressed in samples, applied to the buffer itself.
+///
+/// `MAX_SEGMENT_MS` alone does not bound how much audio a segment holds,
+/// because `speech_ms` counts only *voice* frames while `buffer` collects
+/// every frame we are in speech for.  Speech with pauses shorter than
+/// `SILENCE_HANG_MS` never flushes on silence and advances `speech_ms` at
+/// well under wall-clock rate: at a 37% voice duty cycle the buffer reaches
+/// 46 s before `speech_ms` reaches 25 s.
+///
+/// That breaks the promise above.  whisper.cpp encodes in 30 s windows, so
+/// anything past 30 s costs a second encoder pass - which lands a partial
+/// decode outside the ticker's 1 s budget, and makes a final cost double
+/// what the bench says.  Cap the buffer directly so "bounded input" is
+/// actually bounded.
+pub const MAX_SEGMENT_SAMPLES: usize = SAMPLE_RATE_HZ * MAX_SEGMENT_MS as usize / 1000;
+
 /// Segmenter event surfaced to the WhisperLocal pump.
 #[derive(Debug, Clone)]
 pub enum SegmenterEvent {
@@ -140,6 +156,28 @@ impl Segmenter {
         }
     }
 
+    /// PCM of the utterance currently in flight, plus the `cursor_ms` at
+    /// which it started, or `None` when we are between utterances.
+    ///
+    /// This is the *same* buffer the eventual `Segment` event carries, and
+    /// that is the point.  The partial-preview decoder in `whisper_local`
+    /// reads this instead of keeping a rolling window of its own.  A rolling
+    /// window makes the displayed partial *shrink* once an utterance outruns
+    /// it (AUD-1): every re-decode replaces the whole line, and past the
+    /// window each replacement is a decode of less audio than the one
+    /// before, so the transcript appears to eat itself.  Reading the live
+    /// utterance buffer makes growth structural - it only ever gains samples
+    /// until the segment is emitted, and `MAX_SEGMENT_SAMPLES` bounds it.
+    ///
+    /// The `None` between utterances is load-bearing too: it is what stops
+    /// the ticker spending a decode on a channel that is silent.
+    pub fn pending(&self) -> Option<(&[i16], u64)> {
+        if !self.in_speech || self.buffer.is_empty() {
+            return None;
+        }
+        Some((&self.buffer, self.speech_start_ms))
+    }
+
     /// Feed PCM samples.  Frames are sliced internally to 480 samples
     /// (30 ms @ 16 kHz); any trailing partial frame is retained for
     /// the next call.  The closure is invoked once per emitted event.
@@ -203,8 +241,10 @@ impl Segmenter {
 
             let silence_long_enough = self.silence_ms >= SILENCE_HANG_MS;
             let speech_too_long = self.speech_ms >= MAX_SEGMENT_MS;
+            // Wall-clock cap, not just voice-time - see MAX_SEGMENT_SAMPLES.
+            let buffer_too_long = self.buffer.len() >= MAX_SEGMENT_SAMPLES;
 
-            if silence_long_enough || speech_too_long {
+            if silence_long_enough || speech_too_long || buffer_too_long {
                 if self.speech_ms >= MIN_SPEECH_MS {
                     // Flush a real segment.
                     let pcm = std::mem::take(&mut self.buffer);

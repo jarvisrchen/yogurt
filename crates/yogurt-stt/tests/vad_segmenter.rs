@@ -137,3 +137,140 @@ fn very_short_speech_blips_are_ignored() {
         events
     );
 }
+
+// ---------------------------------------------------------------------------
+// `pending()` - the in-flight utterance the partial ticker previews (AUD-1).
+//
+// The bug these pin: the whisper partial ticker used to keep its own rolling
+// 5 s window instead of reading the segmenter, so once an utterance ran past
+// five seconds each re-decode saw *less* audio than the one before and the
+// on-screen partial shrank mid-sentence. Reading `pending()` makes growth a
+// property of the segmenter rather than a rule the ticker has to follow, so
+// that is where the assertions live.
+// ---------------------------------------------------------------------------
+
+/// Length of `pending()`'s PCM, or 0 when nothing is in flight.
+fn pending_len(seg: &Segmenter) -> usize {
+    seg.pending().map(|(pcm, _)| pcm.len()).unwrap_or(0)
+}
+
+#[test]
+fn pending_is_none_between_utterances() {
+    let mut seg = Segmenter::new(SR);
+
+    // Before any audio at all.
+    assert!(seg.pending().is_none(), "pending before any push");
+
+    // Silence only - never entered speech.
+    seg.push(&silence(1.0), |_| {});
+    assert!(seg.pending().is_none(), "pending during opening silence");
+
+    // Speech - now in flight.
+    seg.push(&tone(1.0), |_| {});
+    assert!(seg.pending().is_some(), "pending mid-utterance");
+
+    // Trailing silence past SILENCE_HANG_MS flushes the segment, which must
+    // hand the buffer off and leave nothing pending. This is what stops the
+    // next utterance's partial from starting out carrying the previous one,
+    // and what stops the ticker burning a decode on silence.
+    let mut segments = 0;
+    seg.push(&silence(1.0), |e| {
+        if matches!(e, SegmenterEvent::Segment { .. }) {
+            segments += 1;
+        }
+    });
+    assert_eq!(segments, 1, "expected the utterance to flush");
+    assert!(
+        seg.pending().is_none(),
+        "pending after the segment was emitted"
+    );
+}
+
+#[test]
+fn pending_grows_monotonically_and_past_the_old_five_second_window() {
+    let mut seg = Segmenter::new(SR);
+
+    // 12 s of continuous speech, fed in 0.5 s pushes so we can watch the
+    // buffer between them. Well under MAX_SEGMENT_MS (25 s), so the segmenter
+    // stays in one utterance throughout and emits nothing.
+    let mut last = 0usize;
+    let mut samples = Vec::new();
+    for _ in 0..24 {
+        seg.push(&tone(0.5), |e| samples.push(e));
+        let now = pending_len(&seg);
+        assert!(
+            now >= last,
+            "pending shrank mid-utterance: {last} -> {now} samples (AUD-1)",
+        );
+        last = now;
+    }
+    assert!(
+        samples
+            .iter()
+            .all(|e| !matches!(e, SegmenterEvent::Segment { .. })),
+        "12 s of unbroken speech should not flush a segment",
+    );
+
+    // The old ticker capped at 5 s and dropped everything older. Past that
+    // point it started shrinking; `pending()` must not.
+    assert!(
+        last > SR * 5,
+        "pending capped at {last} samples, expected > {} (5 s)",
+        SR * 5,
+    );
+    assert!(
+        last >= SR * 11,
+        "pending held only {last} samples after 12 s of speech",
+    );
+}
+
+#[test]
+fn pending_start_ms_matches_the_final_segment() {
+    let mut seg = Segmenter::new(SR);
+
+    // Lead with silence so a correct start_ms is distinguishable from 0 -
+    // the value the ticker used to hardcode into every partial.
+    seg.push(&silence(1.0), |_| {});
+    seg.push(&tone(1.5), |_| {});
+
+    let (_, pending_start) = seg.pending().expect("utterance in flight");
+    assert!(
+        pending_start > 0,
+        "start_ms should be the utterance's own start, not 0",
+    );
+
+    let mut final_start = None;
+    seg.push(&silence(1.0), |e| {
+        if let SegmenterEvent::Segment { start_ms, .. } = e {
+            final_start = Some(start_ms);
+        }
+    });
+
+    // Same utterance, same timestamp: this is what keeps the transcript line
+    // from jumping when the final replaces the partial in place.
+    assert_eq!(
+        final_start,
+        Some(pending_start),
+        "partial and final must agree on where the utterance started",
+    );
+}
+#[test]
+fn buffer_is_bounded_in_wall_clock_not_just_voice_time() {
+    let mut seg = Segmenter::new(SR);
+    let mut max_pending = 0usize;
+    // Speech with pauses just under SILENCE_HANG_MS: 300 ms voice, 500 ms
+    // silence, repeated. Every voice frame resets silence_ms, so the
+    // segmenter never flushes on silence, and speech_ms advances at only
+    // 37.5% of wall-clock - so MAX_SEGMENT_MS takes 66 s of audio to trip.
+    for _ in 0..100 {
+        seg.push(&tone(0.3), |_| {});
+        seg.push(&silence(0.5), |_| {});
+        max_pending = max_pending.max(seg.pending().map(|(p, _)| p.len()).unwrap_or(0));
+    }
+    assert!(
+        max_pending <= SR * 26,
+        "pending grew to {:.1} s of audio; whisper re-encodes past 30 s, \
+         so the 1 s partial tick budget is blown",
+        max_pending as f32 / SR as f32,
+    );
+}
