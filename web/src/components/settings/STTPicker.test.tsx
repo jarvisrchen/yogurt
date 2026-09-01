@@ -21,6 +21,7 @@ function fixture(overrides: Partial<SettingsView> = {}): SettingsView {
       first_run_completed: true,
       stt_provider: "cloud",
       stt_model: "small.en",
+      meeting_detection: true,
     },
     providers: [],
     presets: [],

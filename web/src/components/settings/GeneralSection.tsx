@@ -107,6 +107,24 @@ export function GeneralSection({ general }: GeneralSectionProps) {
         <span>Open browser on start</span>
       </label>
 
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          defaultChecked={general.meeting_detection}
+          onChange={(e) => patch.mutate({ meeting_detection: e.target.checked })}
+          className="h-4 w-4 accent-blue"
+        />
+        <span>Offer to record when a meeting is detected</span>
+      </label>
+
+      <p className="text-xs text-mut">
+        Detection reads on-screen window titles for known meeting apps
+        (Zoom, Google Meet, Teams, Slack huddles). It never starts a
+        recording on its own - it offers, you click. Nothing leaves your
+        machine, and titles are never saved. While it is on, a recording
+        also stops once the meeting window closes.
+      </p>
+
       <p className="text-xs font-mono text-mut">
         Port change applies on next `yogurt start`.
       </p>

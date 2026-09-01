@@ -12,6 +12,7 @@ import { Library } from "./routes/Library";
 import { Welcome } from "./routes/Welcome";
 import { useFirstRunRedirect } from "./hooks/useFirstRunRedirect";
 import { RecordingPill } from "./components/RecordingPill";
+import { MeetingDetectedBanner } from "./components/MeetingDetectedBanner";
 
 /**
  * Top-level route table.
@@ -41,6 +42,10 @@ import { RecordingPill } from "./components/RecordingPill";
  * `<Shell>` also mounts `<RecordingPill>` alongside `<Outlet>` so the
  * "return to recording" affordance is available on every route (it hides
  * itself on the live meeting view — see `RecordingPill.tsx`).
+ *
+ * `<MeetingDetectedBanner>` (MTG-11) shares that slot: the server returns
+ * no detection while a recording is live, so exactly one of the two can
+ * be on screen at a time.
  */
 
 function Shell() {
@@ -48,6 +53,7 @@ function Shell() {
   return (
     <>
       <RecordingPill />
+      <MeetingDetectedBanner />
       <Outlet />
     </>
   );

@@ -128,6 +128,7 @@ pub async fn run_with_mock_llm(
         meeting_repo,
         label_repo,
         app_events_tx,
+        detect: Default::default(),
     };
 
     let app = crate::__test_router(state.clone());
