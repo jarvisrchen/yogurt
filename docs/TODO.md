@@ -52,6 +52,8 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   ![see all models link crowds the Save button](attachments/2026-08-31-provider-card-link-save-overlap.png)
   </details>
 
+- [ ] **UI-6** Add a dark mode toggle
+
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
