@@ -4,6 +4,7 @@ import { YogurtEditor } from "../editor";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
+import { MicMuteToggle } from "../components/MicMuteToggle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
@@ -548,8 +549,13 @@ export function Meeting() {
               reads, so picking a mic on a stopped-but-open meeting takes
               effect the next time recording starts. */}
           {meetingId && (
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <MicDevicePicker meetingId={meetingId} recording={recording} />
+              {/* AUD-6: pause/resume the mic without stopping the recording.
+                  Only meaningful while recording — muting a stopped meeting
+                  is a no-op, so it's gated the same way the Stop/Enhance
+                  buttons above are. */}
+              {recording && <MicMuteToggle meetingId={meetingId} />}
             </div>
           )}
         </header>

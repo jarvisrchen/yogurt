@@ -38,6 +38,14 @@ vi.mock("../components/MicDevicePicker", () => ({
     <div data-testid="mic-picker" data-recording={String(recording)} />
   ),
 }));
+// AUD-6: stubbed the same way as MicDevicePicker above — this file only
+// needs to assert Meeting.tsx mounts/unmounts it with `recording`, not its
+// own `audioApi.setMicMuted` wiring (covered by MicMuteToggle.test.tsx).
+vi.mock("../components/MicMuteToggle", () => ({
+  MicMuteToggle: ({ meetingId }: { meetingId: string }) => (
+    <div data-testid="mic-mute-toggle" data-meeting-id={meetingId} />
+  ),
+}));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
 }));
@@ -587,6 +595,9 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
         "true",
       );
     });
+    // AUD-6: mounted only while recording — muting a stopped meeting is a
+    // no-op, so it shares the picker's `recording` gate rather than its own.
+    expect(screen.getByTestId("mic-mute-toggle")).toBeInTheDocument();
 
     await act(async () => {
       screen.getByRole("button", { name: /stop recording/i }).click();
@@ -602,6 +613,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
       "data-recording",
       "false",
     );
+    expect(screen.queryByTestId("mic-mute-toggle")).not.toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });
@@ -626,6 +638,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
       "data-recording",
       "false",
     );
+    expect(screen.queryByTestId("mic-mute-toggle")).not.toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });
