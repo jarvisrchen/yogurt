@@ -59,15 +59,44 @@ Idempotent-ish: stopping twice doesn't error, but only the first call stamps `en
 
 ## Read what got captured
 
-```bash
-# Raw notes + transcript fields as JSON
-curl -s "http://localhost:7878/api/meetings/$ID" -H "Authorization: Bearer $TOKEN"
+If you were handed a URL like `http://127.0.0.1:7878/meeting/<id>/post`, that is all you need - the origin and the meeting id are both in it. Take the port from the URL rather than assuming 7878, since `just dev` moves the backend when a second worktree is already running.
 
-# The canonical markdown file (front-matter + body), same bytes as ~/.yogurt/notes/*.md
-curl -s "http://localhost:7878/api/meetings/$ID/markdown" -H "Authorization: Bearer $TOKEN"
+```bash
+BASE=$(echo "$URL" | sed -E 's#(https?://[^/]+)/.*#\1#')
+ID=$(echo "$URL" | sed -E 's#.*/meeting/([^/?#]+).*#\1#')
 ```
 
+**Summary first.** `GET /:id/markdown` returns the canonical `~/.yogurt/notes/*.md` bytes - YAML front-matter plus the enhanced summary, and no transcript:
+
+```bash
+curl -s "$BASE/api/meetings/$ID/markdown" -H "Authorization: Bearer $TOKEN" | sed -E 's/<[^>]+>//g'
+```
+
+The `sed` strips the `<span data-ai-grey …>` wrappers `yogurt-notes`' renderer emits so the editor can tint AI-authored blocks (see MTG-3). They mean nothing outside the browser and roughly double the byte count; stripping them leaves the `↳ 02:24` transcript deep-links readable. On a representative meeting that is 849 bytes against 7,864 for the full row - so prefer this endpoint over `GET /api/meetings/:id` whenever the question is about what was *said*, not about the row's metadata.
+
+An empty body under the front-matter means the meeting was never enhanced (`enriched_md` is null and the user typed no notes), not that the meeting was empty.
+
+**Transcript only when the summary is not enough.** It ships inside the meeting row, so filter it out of the response rather than reading the row:
+
+```bash
+curl -s "$BASE/api/meetings/$ID" -H "Authorization: Bearer $TOKEN" \
+  | jq -r '.transcript_json | fromjson | .[]
+           | "\((.ts_ms/1000|floor|tostring)) \(.channel): \(.text)"'
+```
+
+`channel` is `me` (mic) or `them` (system audio); `ts_ms` is milliseconds from recording start, which is what the summary's `↳ mm:ss` links point at.
+
 The JSON form's `transcript_json` and `notes_md` fields are live during recording; `enriched_md` is only populated after the meeting has been enhanced (`POST /api/meetings/:id/enhance`) or the user has hit that button in the UI.
+
+### With the server down
+
+The markdown export is on disk whether or not yogurt is running. Match the front-matter id, not the filename - meeting ids are UUIDv7 and therefore time-ordered, so the `-<id6>` suffix in `<date>-<slug>-<id6>.md` collides between meetings recorded minutes apart:
+
+```bash
+grep -l "^id: $ID$" ~/.yogurt/notes/*.md
+```
+
+There is no on-disk transcript; that lives only in `~/.yogurt/db.sqlite`.
 
 Full CRUD (`GET /api/meetings` list, `PATCH`/`DELETE /api/meetings/:id`, `GET /api/meetings/search?q=`) exists too - see `crates/yogurt-server/src/api/meetings.rs` for the complete surface if you need more than start/stop/read.
 
