@@ -639,8 +639,9 @@ struct ListModelsBody {
     api_key: Option<String>,
 }
 
-/// `POST /api/settings/providers/{id}/models` - probe the provider's
-/// `/v1/models` endpoint and return its model list.
+/// `POST /api/settings/providers/{id}/models` - probe the provider for its
+/// model list: `/v1/models` for an `http` provider, `--list-models` on the
+/// binary for a `cli` one.
 ///
 /// The Settings UI's `Refresh` button hits this. The handler prefers a
 /// draft `api_key` from the request body over the stored key
@@ -665,16 +666,35 @@ async fn list_provider_models(
     body: Option<Json<ListModelsBody>>,
 ) -> Result<Json<Vec<String>>, Error> {
     let draft = body.and_then(|b| b.api_key.clone());
-    let (provider, key) = provider_and_key(&s, &id, draft)?;
 
-    // LLM-4: a `cli`-adapter provider has no `/v1/models` endpoint to
-    // probe - the Settings UI never shows a Refresh button for one, so
-    // reaching this is only possible via a direct API call.
+    // A `cli`-adapter provider has no `/v1/models` endpoint and no key at
+    // all, so it resolves before `provider_and_key`: the catalog comes
+    // from asking the CLI binary itself (`cursor-agent --list-models`).
+    // `claude` has no such flag and falls out of `list_cli_models` as a
+    // plain error, which the UI shows inline while keeping the static
+    // preset suggestions it already had.
+    let provider = find_provider(&s, &id)?;
     if provider.adapter == providers::adapter::CLI {
-        return Err(Error::Unprocessable(
-            "this provider has no model catalog to refresh".into(),
-        ));
+        let program = yogurt_llm::CliProgram::parse(&provider.model).ok_or_else(|| {
+            Error::Unprocessable(format!("unrecognized CLI program '{}'", provider.model))
+        })?;
+        // "No catalog at all" (`claude`) is a property of the provider,
+        // not a failed probe, so it's a 422 like the pre-CLI-catalog
+        // behavior - the UI keeps showing that preset's static aliases.
+        // Only an actual spawn/auth/parse failure is a 502.
+        if program.list_models_flag().is_none() {
+            return Err(Error::Unprocessable(format!(
+                "{} has no model catalog to refresh",
+                provider.model
+            )));
+        }
+        return yogurt_llm::list_cli_models(program)
+            .await
+            .map(Json)
+            .map_err(|e| Error::BadGateway(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)));
     }
+
+    let (provider, key) = provider_and_key(&s, &id, draft)?;
 
     let client = crate::llm_openai::OpenAiCompatClient::new(
         provider.base_url.clone(),

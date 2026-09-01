@@ -513,6 +513,19 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### LLM
 
+- [x] **LLM-6** Fetch the model list for a CLI provider instead of shipping one static suggestion
+  <details>
+  <summary>Details</summary>
+
+  The Cursor Agent CLI provider only ever suggested `auto`, so a paid-plan user had no way to discover the ~200 model ids `--model` actually accepts without leaving Settings and running the CLI themselves. `claude`'s four aliases are the whole catalog and stay static; `cursor-agent` has a `--list-models` flag and needs asking.
+
+  `POST /api/settings/providers/{id}/models` now handles `cli` rows by spawning `<binary> --list-models` and parsing its `<id> - <label>` lines, and the CLI branch of `ProviderCard`/`ProviderRow` renders the shared `ModelSelect` (dropdown + `Refresh`) instead of a bare `ComboBox`, so it gets the same affordance the HTTP rows have had.
+
+  A listing does NOT prove entitlement, and the UI deliberately does not pretend otherwise. Verified live: a free-tier Cursor account lists all 204 ids and then refuses every named one at call time with `ActionRequiredError: Named models unavailable Free plans can only use Auto. Switch to Auto or upgrade plans to continue.` So `Test` stays the only signal for "can this account actually use this model", and its error text already tells the user to go back to `auto`. Pre-filtering the dropdown would have meant spending a real completion per Refresh to learn something `Test` reports for free.
+
+  `claude` has no such flag, so Refresh on it returns 422 ("no model catalog to refresh") - distinct from the 502 a real probe failure (not logged in, binary gone) produces, so the UI can keep showing the static aliases in the first case.
+  </details>
+
 - [x] **LLM-5** Enhance times out on CLI providers whose model ignores `--effort low`
   <details>
   <summary>Details</summary>

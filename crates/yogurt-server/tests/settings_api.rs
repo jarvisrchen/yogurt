@@ -779,8 +779,13 @@ async fn rejects_an_unrecognized_adapter_value() {
     assert_eq!(res.status(), 422);
 }
 
+/// `claude` is the CLI with no `--list-models` flag - its four aliases are
+/// the whole catalog and ship as static preset suggestions. Refresh on one
+/// is 422 ("nothing to refresh"), never 502, so the UI can tell that apart
+/// from `cursor-agent --list-models` genuinely failing (not logged in,
+/// binary missing) and keep showing the static list.
 #[tokio::test]
-async fn cli_provider_has_no_model_catalog_to_refresh() {
+async fn claude_cli_provider_has_no_model_catalog_to_refresh() {
     let (_state, token, base) = boot().await;
     let client = reqwest::Client::new();
     let created: Value = client

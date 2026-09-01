@@ -16,9 +16,16 @@ import { ComboBox } from "./ComboBox";
  * known suggestions.
  *
  * Suggestions come from `presetModels` (the static hint shipped with
- * the preset) and any `refreshedModels` returned by the live
- * `/v1/models` probe. The current model is always in the list so a
- * value the user typed earlier still shows up.
+ * the preset) and any `refreshedModels` returned by the live probe. The
+ * current model is always in the list so a value the user typed earlier
+ * still shows up.
+ *
+ * Shared with `cli`-adapter rows, where the same `Refresh` asks the
+ * local binary (`cursor-agent --list-models`) instead of an HTTP
+ * endpoint. That catalog is not entitlement-filtered - a free Cursor
+ * plan lists every model and then refuses each named one at call time -
+ * so Refresh deliberately shows the whole list and lets `Test` be the
+ * thing that says whether a pick actually works.
  *
  * `Refresh` calls `POST /api/settings/providers/:id/models`. If the
  * parent passes an `apiKeyDraft` (the unmasked key sitting in the API
@@ -48,6 +55,9 @@ interface Props {
    */
   apiKeyDraft?: string;
   disabled?: boolean;
+  /** Empty-field hint. `cli` rows say "CLI default" - leaving it blank
+   *  there means "whatever a bare `claude -p` picks", not "unset". */
+  placeholder?: string;
 }
 
 export function ModelSelect({
@@ -59,6 +69,7 @@ export function ModelSelect({
   presetModels,
   apiKeyDraft = "",
   disabled,
+  placeholder = "e.g. gpt-4o-mini",
 }: Props) {
   const [refreshedModels, setRefreshedModels] = useState<string[] | null>(
     null,
@@ -94,7 +105,7 @@ export function ModelSelect({
           onChange={onChange}
           onCommit={onCommit}
           options={suggestions}
-          placeholder="e.g. gpt-4o-mini"
+          placeholder={placeholder}
           ariaLabel={`Model for ${providerName}`}
           triggerLabel={`Show model list for ${providerName}`}
           disabled={disabled}
