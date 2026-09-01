@@ -1,23 +1,27 @@
-//! Local agent-CLI adapter (`docs/TODO.md` LLM-4).
+//! Local agent-CLI adapter (`docs/TODO.md` LLM-4, LLM-7).
 //!
-//! Spawns a locally-installed coding-agent CLI (`claude -p` or
-//! `cursor-agent -p`) as a one-shot text-completion backend, for a user who
-//! wants to run an agent CLI they already have installed as their LLM
-//! provider instead of any cloud provider at all. `yogurt-server` reaches
-//! this only when the active `providers` row is explicitly `adapter:
-//! "cli"` - see AGENTS.md's amended "one process" constraint. There is
-//! deliberately no automatic fallback from an unreachable HTTP provider to
-//! this: an earlier draft (LLM-1) did that and was reverted, because
-//! silently rerouting a meeting's real content to a different backend on a
-//! network hiccup is a behavior change a user should opt into, not one
-//! that happens to them.
+//! Spawns a locally-installed coding-agent CLI (`claude -p`,
+//! `cursor-agent -p` or `opencode run`) as a one-shot text-completion
+//! backend, for a user who wants to run an agent CLI they already have
+//! installed as their LLM provider instead of any cloud provider at all.
+//! `yogurt-server` reaches this only when the active `providers` row is
+//! explicitly `adapter: "cli"` - see AGENTS.md's amended "one process"
+//! constraint. There is deliberately no automatic fallback from an
+//! unreachable HTTP provider to this: an earlier draft (LLM-1) did that
+//! and was reverted, because silently rerouting a meeting's real content
+//! to a different backend on a network hiccup is a behavior change a user
+//! should opt into, not one that happens to them.
 //!
-//! Both CLIs are treated as opaque `-p --output-format json` binaries that
-//! print one JSON object with a `result` string and an `is_error` bool.
-//! Verified against live `claude` and `cursor-agent` binaries, including
-//! the full flag set each gets (see `build_args`) - a wrong assumption
-//! would fail as a clear "invalid CLI output" error, not silent
-//! corruption, but there wasn't one to hit.
+//! Each CLI is treated as an opaque JSON-emitting binary, but they do not
+//! agree on the shape. `claude` and `cursor-agent` take `-p
+//! --output-format json` and print ONE object with a `result` string and
+//! an `is_error` bool. `opencode run --format json` prints JSON LINES
+//! instead - one event per line, the answer arriving as `type: "text"`
+//! parts and a failure as a `type: "error"` line - so [`interpret_output`]
+//! dispatches on the program rather than assuming one format. Verified
+//! against all three live binaries, including the full flag set each gets
+//! (see `build_args`) - a wrong assumption would fail as a clear "invalid
+//! CLI output" error, not silent corruption, but there wasn't one to hit.
 
 use crate::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, LlmClient};
 use anyhow::{anyhow, bail, Context, Result};
@@ -50,13 +54,25 @@ const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(30);
 pub enum CliProgram {
     Claude,
     CursorAgent,
+    OpenCode,
 }
 
 impl CliProgram {
+    /// Every variant, in preset order. The single place the set is
+    /// enumerated, so a new CLI can't be added to the enum and then
+    /// silently missed by a caller that needs to name them all (the
+    /// `create_provider` 422 message is the one that kept rotting).
+    pub const ALL: &'static [CliProgram] = &[
+        CliProgram::Claude,
+        CliProgram::CursorAgent,
+        CliProgram::OpenCode,
+    ];
+
     pub fn binary_name(self) -> &'static str {
         match self {
             CliProgram::Claude => "claude",
             CliProgram::CursorAgent => "cursor-agent",
+            CliProgram::OpenCode => "opencode",
         }
     }
 
@@ -65,24 +81,26 @@ impl CliProgram {
     /// `CliProgram`. Currently identical to `binary_name`, kept as a
     /// separate round-trip pair rather than assuming that stays true.
     pub fn parse(id: &str) -> Option<Self> {
-        match id {
-            "claude" => Some(CliProgram::Claude),
-            "cursor-agent" => Some(CliProgram::CursorAgent),
-            _ => None,
-        }
+        CliProgram::ALL
+            .iter()
+            .copied()
+            .find(|p| p.binary_name() == id)
     }
 
-    /// The flag that makes this CLI print its `--model` catalog and exit,
-    /// or `None` for one that has no such flag.
+    /// The argument that makes this CLI print its `--model` catalog and
+    /// exit, or `None` for one that has no such mode.
     ///
-    /// `claude` has none: its four documented aliases (`haiku`, `sonnet`,
-    /// `opus`, `fable`) ship as static preset suggestions instead, which
-    /// is the whole list. `cursor-agent` has 200+ ids that vary by
-    /// account, so it must be asked.
-    pub fn list_models_flag(self) -> Option<&'static str> {
+    /// A flag on `cursor-agent` and a subcommand on `opencode` - argv-wise
+    /// the same single token either way, which is why one accessor covers
+    /// both. `claude` has neither: its four documented aliases (`haiku`,
+    /// `sonnet`, `opus`, `fable`) ship as static preset suggestions
+    /// instead, which is the whole list. The other two have hundreds of
+    /// ids that vary by account and plan, so they must be asked.
+    pub fn list_models_arg(self) -> Option<&'static str> {
         match self {
             CliProgram::Claude => None,
             CliProgram::CursorAgent => Some("--list-models"),
+            CliProgram::OpenCode => Some("models"),
         }
     }
 }
@@ -100,11 +118,13 @@ impl CliProgram {
 /// Free plans can only use Auto`. So this can't be used to infer
 /// entitlement; `test_provider`'s real completion is the only signal for
 /// that, and its error text already tells the user to switch back to
-/// `auto`.
+/// `auto`. `opencode models` has the same property in a milder form: it
+/// lists every model of every configured provider (370 on a live account),
+/// including ones whose provider has no credit left.
 pub async fn list_models(program: CliProgram) -> Result<Vec<String>> {
     let flag = program
-        .list_models_flag()
-        .ok_or_else(|| anyhow!("{} has no model-list flag", program.binary_name()))?;
+        .list_models_arg()
+        .ok_or_else(|| anyhow!("{} has no model-list command", program.binary_name()))?;
     let binary = find_on_path(program.binary_name())
         .ok_or_else(|| anyhow!("{} not found on $PATH", program.binary_name()))?;
 
@@ -151,19 +171,29 @@ pub async fn list_models(program: CliProgram) -> Result<Vec<String>> {
     Ok(models)
 }
 
-/// Pull model ids out of `cursor-agent --list-models` stdout.
+/// Pull model ids out of a catalog listing's stdout. Neither CLI offers a
+/// JSON form of this output to parse instead, so lines it is - and the two
+/// print different lines, so this handles both rather than branching:
 ///
-/// The format is an `Available models` header, a blank line, then one
-/// `<id> - <human label>` per line (`auto - Auto (default)`). There is no
-/// JSON form of this output to parse instead, so lines it is: anything
-/// without a ` - ` separator (the header, blanks, any future footer) is
-/// skipped, and so is any "id" carrying whitespace, which would mean a
-/// prose line that happened to contain a dash rather than a real id.
+/// - `cursor-agent --list-models`: an `Available models` header, a blank
+///   line, then one `<id> - <human label>` per line (`auto - Auto
+///   (default)`).
+/// - `opencode models`: one bare `<provider>/<model>` per line, no header
+///   and no label (`minimax-coding-plan/MiniMax-M3`).
+///
+/// So a ` - ` separator, when present, marks the end of the id, and the
+/// whole line is the id when it isn't. The single filter that makes this
+/// safe for both is the whitespace check: it drops cursor's header and any
+/// prose footer (`Some note - about something else` reduces to `Some
+/// note`, which has a space, so it goes) without needing to know which
+/// format produced the line.
 fn parse_model_list(stdout: &str) -> Vec<String> {
     stdout
         .lines()
-        .filter_map(|line| line.split_once(" - "))
-        .map(|(id, _label)| id.trim())
+        .map(|line| match line.split_once(" - ") {
+            Some((id, _label)) => id.trim(),
+            None => line.trim(),
+        })
         .filter(|id| !id.is_empty() && !id.contains(char::is_whitespace))
         .map(str::to_string)
         .collect()
@@ -212,15 +242,19 @@ impl CliClient {
     /// Build the argv (excluding the binary itself) for one completion
     /// call. Split out from `run` so the containment flags are unit-
     /// testable without spawning a process.
+    ///
+    /// Fully per-program rather than a shared prefix plus a match: the
+    /// three CLIs agree on nothing here. `claude`/`cursor-agent` take
+    /// `-p <prompt> --output-format json`; `opencode` takes a `run`
+    /// subcommand with `--format json` and the prompt as a trailing
+    /// positional.
     fn build_args(&self, prompt: &str) -> Vec<String> {
-        let mut args = vec![
-            "-p".to_string(),
-            prompt.to_string(),
-            "--output-format".to_string(),
-            "json".to_string(),
-        ];
-        match self.program {
-            CliProgram::Claude => {
+        let mut args: Vec<String> = match self.program {
+            CliProgram::Claude => vec![
+                "-p".to_string(),
+                prompt.to_string(),
+                "--output-format".to_string(),
+                "json".to_string(),
                 // Meeting-transcript content is untrusted - whatever the
                 // other party on the call said - and it reaches this CLI
                 // as plain prompt text, not through a reviewed tool-use
@@ -230,9 +264,9 @@ impl CliClient {
                 // and this repo's own `.claude/` settings are ignored so a
                 // permissive local Bash rule can't leak into a subprocess
                 // whose input we don't trust.
-                args.push("--restricted".to_string());
-                args.push("--strict-mcp-config".to_string());
-                args.push("--disable-slash-commands".to_string());
+                "--restricted".to_string(),
+                "--strict-mcp-config".to_string(),
+                "--disable-slash-commands".to_string(),
                 // Enhance/chat are extraction calls, not reasoning tasks -
                 // low effort is faster and cheaper with no real quality
                 // loss for "merge these notes with this transcript"-shaped
@@ -252,10 +286,14 @@ impl CliClient {
                 // model that ignores this rather than assume it was
                 // honoured - which is why `response_timeout` is sized for
                 // generation.
-                args.push("--effort".to_string());
-                args.push("low".to_string());
-            }
-            CliProgram::CursorAgent => {
+                "--effort".to_string(),
+                "low".to_string(),
+            ],
+            CliProgram::CursorAgent => vec![
+                "-p".to_string(),
+                prompt.to_string(),
+                "--output-format".to_string(),
+                "json".to_string(),
                 // `--trust` clears the one-time "trust this workspace?"
                 // prompt every call would otherwise hit (each call gets a
                 // fresh, never-seen-before scratch cwd, so there is no
@@ -273,16 +311,68 @@ impl CliClient {
                 // against a live binary (see module doc) - `--trust
                 // --sandbox enabled -p ... --output-format json` returns a
                 // clean success result.
-                args.push("--trust".to_string());
-                args.push("--sandbox".to_string());
-                args.push("enabled".to_string());
-            }
-        }
+                "--trust".to_string(),
+                "--sandbox".to_string(),
+                "enabled".to_string(),
+            ],
+            CliProgram::OpenCode => vec![
+                "run".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+                // Drops the user's third-party opencode plugins. The
+                // tool-level containment is `OPENCODE_PERMISSION` in
+                // [`Self::env`], which this pairs with; `--pure` covers
+                // the plugin loader, which no permission entry does.
+                //
+                // Deliberately NOT `--auto` ("auto-approve permissions
+                // that are not explicitly denied (dangerous!)"), which is
+                // opencode's `--dangerously-skip-permissions`. It is the
+                // flag a user reaches for to make `run` non-interactive,
+                // and it is exactly wrong here: the input is untrusted.
+                "--pure".to_string(),
+            ],
+        };
         if let Some(model) = &self.model {
             args.push("--model".to_string());
             args.push(model.clone());
         }
+        // opencode takes the prompt as a trailing positional, so it has to
+        // come after every flag - unlike the other two, where `-p` carries
+        // it. Safe against a prompt that looks like a flag because
+        // `flatten` always prefixes a `[role]` line, so it can never begin
+        // with a dash.
+        if self.program == CliProgram::OpenCode {
+            args.push(prompt.to_string());
+        }
         args
+    }
+
+    /// Environment overrides for one completion call, on top of the
+    /// inherited environment.
+    ///
+    /// Only `opencode` needs any, and it needs them badly. Unlike the
+    /// other two, its containment is not expressible in argv: a bare
+    /// `opencode run` loads the user's global config, which on a real
+    /// machine means their MCP servers and skills. Verified live on this
+    /// one - the model was offered `google-workspace_send_gmail_message`,
+    /// `google-workspace_search_gmail_messages` and Drive writes, i.e. a
+    /// working exfiltration path for a transcript that says "email
+    /// yourself the following". `OPENCODE_CONFIG_CONTENT={}` does NOT
+    /// close it; the global MCP block loads anyway.
+    ///
+    /// `OPENCODE_PERMISSION` does. `{"*":"deny"}` removes every tool from
+    /// the model's schema rather than prompting about it, which is the
+    /// right shape here anyway: enhance and chat are text-in/text-out
+    /// extraction calls that have never needed a tool. Measured on a live
+    /// run, it takes the request from 35k input tokens (all tools, all
+    /// skills, all MCP servers) to 2.2k, and a prompt ordering the model to
+    /// run `echo` gets a fabricated transcript of the command in prose
+    /// instead of a `tool_use` event - there is nothing left to call.
+    fn env(&self) -> &'static [(&'static str, &'static str)] {
+        match self.program {
+            CliProgram::OpenCode => &[("OPENCODE_PERMISSION", r#"{"*":"deny"}"#)],
+            CliProgram::Claude | CliProgram::CursorAgent => &[],
+        }
     }
 
     async fn run(&self, req: &ChatRequest) -> Result<String> {
@@ -299,6 +389,7 @@ impl CliClient {
         cmd.kill_on_drop(true)
             .current_dir(&scratch)
             .args(self.build_args(&prompt))
+            .envs(self.env().iter().copied())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -316,12 +407,7 @@ impl CliClient {
             })?
             .with_context(|| format!("failed to spawn {} CLI", self.program.binary_name()))?;
 
-        interpret_output(
-            self.program.binary_name(),
-            &output.stdout,
-            &output.stderr,
-            output.status,
-        )
+        interpret_output(self.program, &output.stdout, &output.stderr, output.status)
     }
 }
 
@@ -379,14 +465,69 @@ struct CliResult {
     result: String,
 }
 
+/// One line of `opencode run --format json` output. Every line carries a
+/// `type`; the two that matter are `"text"` (a chunk of the answer, in
+/// `part`) and `"error"` (the run failed, in `error`). Everything else -
+/// `step_start`, `step_finish`, `reasoning`, `tool_use` - is deliberately
+/// ignored rather than rejected, since opencode is free to add event types
+/// and none of them change what the answer is. `reasoning` in particular
+/// must NOT be concatenated into the result: it is the model's thinking,
+/// not its reply.
+#[derive(Deserialize)]
+struct OpenCodeEvent {
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    part: Option<OpenCodePart>,
+    #[serde(default)]
+    error: Option<OpenCodeError>,
+}
+
+#[derive(Deserialize)]
+struct OpenCodePart {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct OpenCodeError {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    data: OpenCodeErrorData,
+}
+
+#[derive(Deserialize, Default)]
+struct OpenCodeErrorData {
+    #[serde(default)]
+    message: String,
+}
+
 /// Turn a finished process's stdout/stderr/exit status into either the
-/// completion text or a clear error. Pure and synchronous so the exact bug
-/// this was written to fix - checking `status.success()` before ever
-/// looking at stdout - has a deterministic regression test that doesn't
-/// need a real subprocess.
+/// completion text or a clear error, in whichever output format `program`
+/// speaks. Pure and synchronous so the exact bug this was written to fix -
+/// checking `status.success()` before ever looking at stdout - has a
+/// deterministic regression test that doesn't need a real subprocess.
+fn interpret_output(
+    program: CliProgram,
+    stdout: &[u8],
+    stderr: &[u8],
+    status: std::process::ExitStatus,
+) -> Result<String> {
+    match program {
+        CliProgram::OpenCode => interpret_jsonl(stdout, stderr, status),
+        CliProgram::Claude | CliProgram::CursorAgent => {
+            interpret_single_json(program.binary_name(), stdout, stderr, status)
+        }
+    }
+}
+
+/// `claude` / `cursor-agent`: one JSON object on stdout.
 ///
-/// `claude --output-format json` still writes a structured result to
-/// stdout on many failures (confirmed live: "not logged in" exits 1 with
+/// `--output-format json` still writes a structured result to stdout on
+/// many failures (confirmed live: "not logged in" exits 1 with
 /// `{"is_error":true,"result":"Not logged in · Please run /login"}` on
 /// stdout, empty stderr) - the whole point of asking for JSON output is a
 /// machine-readable error, not just a success payload. So stdout is parsed
@@ -394,7 +535,7 @@ struct CliResult {
 /// is only the fallback for when stdout isn't parseable JSON at all (the
 /// CLI crashed before ever reaching its own output formatting - a bad
 /// flag, a missing binary dependency, etc.).
-fn interpret_output(
+fn interpret_single_json(
     program_name: &str,
     stdout: &[u8],
     stderr: &[u8],
@@ -409,6 +550,80 @@ fn interpret_output(
         bail!("{program_name} CLI reported an error: {}", parsed.result);
     }
     Ok(parsed.result)
+}
+
+/// `opencode run --format json`: JSON lines, one event per line.
+///
+/// Same stdout-before-exit-status rule as [`interpret_single_json`], and
+/// for the same reason - a failed run exits 1 having printed a structured
+/// `{"type":"error",...}` line, which is far more useful than the status
+/// (confirmed live with an unroutable model id: exit 1, one `error` line,
+/// empty stderr).
+///
+/// Text parts are keyed by `part.id` and joined in first-appearance order.
+/// A live run emits exactly one `text` event holding the whole answer, so
+/// today this is a one-element map - the keying is what makes it also
+/// correct if opencode ever streams a part as growing snapshots, where
+/// blind concatenation would repeat the answer's prefix once per event.
+/// Multiple distinct ids (an answer split across steps) still concatenate.
+fn interpret_jsonl(
+    stdout: &[u8],
+    stderr: &[u8],
+    status: std::process::ExitStatus,
+) -> Result<String> {
+    let stdout = String::from_utf8_lossy(stdout);
+    let mut order: Vec<String> = Vec::new();
+    let mut parts: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut saw_event = false;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        let Ok(event) = serde_json::from_str::<OpenCodeEvent>(line) else {
+            // Not every line is JSON - opencode writes ANSI/banner noise to
+            // stdout too. Skipping is right: a real failure still arrives as
+            // an `error` event, and an all-noise stdout falls through to the
+            // "no output" bail below.
+            continue;
+        };
+        saw_event = true;
+        match event.r#type.as_str() {
+            "error" => {
+                let e = event.error.unwrap_or(OpenCodeError {
+                    name: String::new(),
+                    data: OpenCodeErrorData::default(),
+                });
+                let detail = if e.data.message.is_empty() {
+                    e.name
+                } else {
+                    e.data.message
+                };
+                bail!("opencode CLI reported an error: {}", detail.trim());
+            }
+            "text" => {
+                if let Some(part) = event.part {
+                    if parts.insert(part.id.clone(), part.text).is_none() {
+                        order.push(part.id);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !saw_event {
+        let stderr = String::from_utf8_lossy(stderr);
+        bail!("opencode CLI exited with {status}: {}", stderr.trim());
+    }
+
+    let text: String = order
+        .iter()
+        .filter_map(|id| parts.get(id))
+        .map(String::as_str)
+        .collect();
+    if text.is_empty() {
+        bail!("opencode CLI returned no text output");
+    }
+    Ok(text)
 }
 
 /// Flatten a chat history into the single positional prompt argument both
@@ -479,19 +694,20 @@ mod tests {
     }
 
     #[test]
-    fn only_cursor_agent_has_a_model_list_flag() {
-        assert_eq!(CliProgram::Claude.list_models_flag(), None);
+    fn only_claude_lacks_a_model_list_arg() {
+        assert_eq!(CliProgram::Claude.list_models_arg(), None);
         assert_eq!(
-            CliProgram::CursorAgent.list_models_flag(),
+            CliProgram::CursorAgent.list_models_arg(),
             Some("--list-models")
         );
+        assert_eq!(CliProgram::OpenCode.list_models_arg(), Some("models"));
     }
 
     #[tokio::test]
-    async fn list_models_rejects_a_program_without_the_flag() {
+    async fn list_models_rejects_a_program_without_the_arg() {
         let err = list_models(CliProgram::Claude).await.unwrap_err();
         assert!(
-            err.to_string().contains("no model-list flag"),
+            err.to_string().contains("no model-list command"),
             "unexpected error: {err}"
         );
     }
@@ -551,6 +767,174 @@ mod tests {
                 "enabled"
             ]
         );
+    }
+
+    /// LLM-7. opencode's argv shares nothing with the other two: a `run`
+    /// subcommand, `--format` not `--output-format`, and the prompt as a
+    /// trailing positional that must land after every flag.
+    #[test]
+    fn build_args_uses_opencodes_own_shape() {
+        let oc = CliClient {
+            binary: PathBuf::from("opencode"),
+            program: CliProgram::OpenCode,
+            model: Some("minimax-coding-plan/MiniMax-M3".to_string()),
+        };
+        assert_eq!(
+            oc.build_args("say hi"),
+            vec![
+                "run",
+                "--format",
+                "json",
+                "--pure",
+                "--model",
+                "minimax-coding-plan/MiniMax-M3",
+                "say hi",
+            ]
+        );
+    }
+
+    /// `--auto` is opencode's "auto-approve permissions that are not
+    /// explicitly denied (dangerous!)" flag - its `--dangerously-skip-
+    /// permissions`. It is the obvious way to make `run` non-interactive
+    /// and it must never be how this adapter gets there, because the
+    /// prompt carries untrusted meeting-transcript text.
+    #[test]
+    fn build_args_never_auto_approves_opencode() {
+        let oc = CliClient {
+            binary: PathBuf::from("opencode"),
+            program: CliProgram::OpenCode,
+            model: None,
+        };
+        let args = oc.build_args("prompt");
+        assert!(!args.contains(&"--auto".to_string()));
+        assert!(args.contains(&"--pure".to_string()));
+    }
+
+    /// The containment that argv can't express: without this, a live run
+    /// offers the model the user's global MCP servers - Gmail send/search
+    /// and Drive writes on this machine - to a prompt built out of
+    /// untrusted transcript text. Verified live (see `CliClient::env`).
+    #[test]
+    fn opencode_denies_every_tool_through_the_environment() {
+        let oc = CliClient {
+            binary: PathBuf::from("opencode"),
+            program: CliProgram::OpenCode,
+            model: None,
+        };
+        assert_eq!(oc.env(), &[("OPENCODE_PERMISSION", r#"{"*":"deny"}"#)]);
+
+        // The other two carry their containment in argv and must not
+        // inherit an opencode-shaped override.
+        for program in [CliProgram::Claude, CliProgram::CursorAgent] {
+            let c = CliClient {
+                binary: PathBuf::from(program.binary_name()),
+                program,
+                model: None,
+            };
+            assert!(c.env().is_empty(), "{program:?} should need no env");
+        }
+    }
+
+    /// Verbatim shape of a live `opencode models` run: bare
+    /// `<provider>/<model>` lines, no header and no ` - ` label. The same
+    /// parser has to keep taking cursor-agent's labelled lines.
+    #[test]
+    fn parse_model_list_takes_bare_opencode_ids() {
+        let stdout = "minimax-coding-plan/MiniMax-M3\n\
+                      openrouter/anthropic/claude-sonnet-4.5\n\
+                      \n\
+                      deepseek/deepseek-v4-pro\n";
+        assert_eq!(
+            parse_model_list(stdout),
+            vec![
+                "minimax-coding-plan/MiniMax-M3",
+                "openrouter/anthropic/claude-sonnet-4.5",
+                "deepseek/deepseek-v4-pro",
+            ]
+        );
+    }
+
+    // ── interpret_jsonl (opencode) ──────────────────────────────────────
+
+    #[test]
+    fn interpret_jsonl_returns_the_text_parts() {
+        let stdout = concat!(
+            r#"{"type":"step_start","part":{"id":"prt_1","type":"step-start"}}"#,
+            "\n",
+            r#"{"type":"reasoning","part":{"id":"prt_2","type":"reasoning","text":"thinking out loud"}}"#,
+            "\n",
+            r#"{"type":"text","part":{"id":"prt_3","type":"text","text":"391"}}"#,
+            "\n",
+            r#"{"type":"step_finish","part":{"id":"prt_4","type":"step-finish"}}"#,
+            "\n",
+        );
+        let got =
+            interpret_output(CliProgram::OpenCode, stdout.as_bytes(), b"", exit_status(0)).unwrap();
+        // Reasoning is the model's thinking, not its reply - including it
+        // would put the scratchpad into a user's augmented notes.
+        assert_eq!(got, "391");
+    }
+
+    /// A failed run exits non-zero having printed a structured error line
+    /// and nothing on stderr - verified live by naming an unroutable
+    /// model. Same stdout-before-exit-status rule as the single-JSON CLIs.
+    #[test]
+    fn interpret_jsonl_surfaces_the_error_event_even_on_nonzero_exit() {
+        let stdout = r#"{"type":"error","error":{"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details."}}}"#;
+        let err =
+            match interpret_output(CliProgram::OpenCode, stdout.as_bytes(), b"", exit_status(1)) {
+                Err(e) => e,
+                Ok(_) => panic!("expected an error"),
+            };
+        assert_eq!(
+            err.to_string(),
+            "opencode CLI reported an error: Unexpected server error. Check server logs for details."
+        );
+    }
+
+    /// Growing-snapshot insurance: today opencode emits one `text` event
+    /// per part, but if it ever streams a part as successive snapshots,
+    /// concatenating them blindly would repeat the prefix. Keyed by
+    /// `part.id`, the last snapshot wins and distinct ids still join.
+    #[test]
+    fn interpret_jsonl_keys_text_by_part_id() {
+        let stdout = concat!(
+            r#"{"type":"text","part":{"id":"prt_1","type":"text","text":"Hel"}}"#,
+            "\n",
+            r#"{"type":"text","part":{"id":"prt_1","type":"text","text":"Hello"}}"#,
+            "\n",
+            r#"{"type":"text","part":{"id":"prt_2","type":"text","text":" world"}}"#,
+            "\n",
+        );
+        let got =
+            interpret_output(CliProgram::OpenCode, stdout.as_bytes(), b"", exit_status(0)).unwrap();
+        assert_eq!(got, "Hello world");
+    }
+
+    #[test]
+    fn interpret_jsonl_falls_back_to_exit_status_when_stdout_has_no_events() {
+        let err = match interpret_output(
+            CliProgram::OpenCode,
+            b"",
+            b"error: unknown option '--not-a-real-flag'\n",
+            exit_status(1),
+        ) {
+            Err(e) => e,
+            Ok(_) => panic!("expected an error"),
+        };
+        assert!(err.to_string().contains("unknown option"));
+        assert!(err.to_string().contains("opencode CLI exited with"));
+    }
+
+    #[test]
+    fn interpret_jsonl_rejects_a_run_that_produced_no_text() {
+        let stdout = r#"{"type":"step_finish","part":{"id":"prt_1","type":"step-finish"}}"#;
+        let err =
+            match interpret_output(CliProgram::OpenCode, stdout.as_bytes(), b"", exit_status(0)) {
+                Err(e) => e,
+                Ok(_) => panic!("expected an error"),
+            };
+        assert!(err.to_string().contains("no text output"), "{err}");
     }
 
     #[test]
@@ -660,7 +1044,8 @@ mod tests {
     #[test]
     fn interpret_output_surfaces_the_json_error_even_on_nonzero_exit() {
         let stdout = r#"{"is_error":true,"result":"Not logged in · Please run /login"}"#;
-        let err = match interpret_output("claude", stdout.as_bytes(), b"", exit_status(1)) {
+        let err = match interpret_output(CliProgram::Claude, stdout.as_bytes(), b"", exit_status(1))
+        {
             Err(e) => e,
             Ok(_) => panic!("expected an error"),
         };
@@ -673,7 +1058,7 @@ mod tests {
     #[test]
     fn interpret_output_returns_the_result_on_success() {
         let stdout = br#"{"is_error":false,"result":"PONG"}"#;
-        let got = interpret_output("claude", stdout, b"", exit_status(0)).unwrap();
+        let got = interpret_output(CliProgram::Claude, stdout, b"", exit_status(0)).unwrap();
         assert_eq!(got, "PONG");
     }
 
@@ -683,7 +1068,7 @@ mod tests {
         // flag, a missing shared library, etc. - has no JSON to parse, so
         // this is the one case that should still use stderr + exit status.
         let err = match interpret_output(
-            "claude",
+            CliProgram::Claude,
             b"",
             b"error: unknown option '--not-a-real-flag'\n",
             exit_status(1),
@@ -697,11 +1082,9 @@ mod tests {
 
     #[test]
     fn cli_program_parse_round_trips_binary_name() {
-        assert_eq!(CliProgram::parse("claude"), Some(CliProgram::Claude));
-        assert_eq!(
-            CliProgram::parse("cursor-agent"),
-            Some(CliProgram::CursorAgent)
-        );
+        for program in CliProgram::ALL {
+            assert_eq!(CliProgram::parse(program.binary_name()), Some(*program));
+        }
         assert_eq!(CliProgram::parse("gpt-4o"), None);
         assert_eq!(CliProgram::parse(""), None);
     }
