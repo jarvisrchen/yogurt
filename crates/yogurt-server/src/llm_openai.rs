@@ -24,17 +24,9 @@
 //! provider (LLM-4).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 // Re-export the canonical adapter from `yogurt-llm`.
 pub use yogurt_llm::OpenAiCompatClient;
-
-/// BL-5 (Phase 4 carry-over): hard ceiling on a single LLM HTTP
-/// round-trip. Re-exported as a `const Duration` so the enhance handler
-/// can wrap calls in `tokio::time::timeout(LLM_HTTP_TIMEOUT, …)`. The
-/// `yogurt-llm` adapter itself also configures `reqwest::Client::timeout`
-/// to the same value — defense-in-depth.
-pub const LLM_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Resolve the LLM client for a request. Single source of truth shared by
 /// the enhance handler AND the chat handler so they can never disagree
