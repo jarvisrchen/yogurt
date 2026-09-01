@@ -199,7 +199,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 - [x] **UI-7** AI text in augmented notes is too low-contrast
 
-  Landed in #PR. AI-added runs shared `--color-grey` with 10px captions and transcript speaker labels, which put body prose at 2.45:1 on paper in light mode. They now use their own `--color-ai` token (`#7A7264` light, 4.5:1; `#A69D90` dark, 6.6:1), still well below `--color-ink` so user notes remain the higher-contrast layer. `--color-grey` is unchanged for captions.
+  Landed in #47. AI-added runs shared `--color-grey` with 10px captions and transcript speaker labels, which put body prose at 2.45:1 on paper in light mode. They now use their own `--color-ai` token (`#7A7264` light, 4.5:1; `#A69D90` dark, 6.6:1), still well below `--color-ink` so user notes remain the higher-contrast layer. `--color-grey` is unchanged for captions.
 
 ### Meetings
 
