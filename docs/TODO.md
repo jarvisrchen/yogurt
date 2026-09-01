@@ -93,69 +93,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Zero-code answer that exists today: a macOS aggregate device (Audio MIDI Setup) presents N inputs to cpal as one device. Worth documenting in the README before building anything.
   </details>
 
-- [ ] **AUD-4** Ship a local STT model with the release instead of downloading from HuggingFace on first run
-  <details>
-  <summary>Details</summary>
-
-  Every entry in `REGISTRY` (`crates/yogurt-stt/src/models.rs`) points at `huggingface.co/ggerganov/whisper.cpp`, so first-run local STT needs HF reachable.
-  Same class of problem as LLM-1: a locked-down machine can install yogurt and still not transcribe.
-
-  Licensing is not the blocker.
-  The HF repo's card reports `license: mit` and the upstream OpenAI weights are MIT, so redistribution is fine.
-  Attribution needs its own hand-written section in `THIRD_PARTY_LICENSES.md` - that file is generated from `Cargo.lock` and model weights are not crates.
-
-  ### Sizes decide everything
-
-  GitHub caps a release asset at 2 GiB. Exact upstream sizes:
-
-  | model | bytes | size | mirrorable |
-  | --- | --- | --- | --- |
-  | tiny.en | 77,704,715 | 74 MiB | yes |
-  | small.en | 487,614,201 | 465 MiB | yes |
-  | medium.en | 1,533,774,781 | 1.43 GiB | yes |
-  | large-v3-turbo | 1,624,555,275 | 1.51 GiB | yes |
-  | large-v3 | 3,095,033,483 | 2.88 GiB | **no - over the cap** |
-
-  Embedding in the binary and committing to the repo are both out: rust-embed would make every cloud-STT user carry the weights, and GitHub hard-blocks any file over 100 MB, leaving only Git LFS with its metered bandwidth burned by every clone.
-
-  ### Decisions
-
-  - **Mirror `small.en` first, not `tiny.en`.** The shipped default is `small.en` (`V005__stt_provider_model.sql` seeds it, `settings.rs` falls back to it). Mirroring only `tiny.en` leaves the default path broken on the exact machine this ticket is about.
-  - **One immutable `models-v1` release tag, not a per-release asset.** Pinning the URL to each app tag means CI re-fetches the weights from HuggingFace on every release - re-introducing the dependency being removed - and every release page carries a duplicate copy. The bytes are already pinned by SHA256 (`download_to` hard-fails on mismatch), so per-tag URLs buy nothing that the hash does not already guarantee. A tag that never moves keeps old binaries resolving.
-  - **Delivery is a companion Homebrew formula, not a bigger main formula.** `brew install yogurt` must stay 11.7 MB for cloud-STT users. Homebrew dropped per-formula options, so opt-in means a second formula: `brew install jarvisrchen/yogurt/yogurt-model-<name>`. Its download comes from github.com, which is already proven reachable - that is where `brew` got the binary.
-  - **Keep HuggingFace as a fallback source, ordered second.** The mirror is a mirror, not a new source of truth. GitHub release assets answer `Range` requests with 206 (verified), so `download_to`'s resume path works against either host unchanged.
-
-  ### Landed
-
-  The app-side half is done: `resolve_model` searches `~/.yogurt/models` first, then `$HOMEBREW_PREFIX` / `/opt/homebrew` / `/usr/local` under `share/yogurt/models`, taking the first copy that verifies.
-  `is_downloaded` and `meetings::select_stt` both route through it, so a Homebrew-installed model shows as downloaded and actually loads.
-  `delete_model` refuses when the only copy is outside `~/.yogurt/models`, and the picker renders a `brew` chip instead of a trash icon.
-
-  ### Remaining
-
-  - Run `./scripts/publish-model-mirror.sh` to upload all four mirrorable models to a `models-v1` release. It verifies each download against the hash pinned in `models.rs` before publishing, so upstream drift is caught rather than mirrored. Needs `gh auth` and about 3.7 GB of upload.
-  - Add the four `yogurt-model-*` formulae to the tap: `./scripts/render-model-formula.sh <name> > Formula/yogurt-model-<slug>.rb`. The formula writes the `.sha256` sidecar itself at install time, so nothing extra is uploaded and the hash keeps one source of truth. The sidecar is not cosmetic: a Homebrew prefix is not writable at runtime, so without it every `list_models` call re-hashes the whole model.
-  - Add `mirror_url: Option<&'static str>` to `ModelSpec` and have `download` try it before `spec.url`, so the in-app download button stops depending on HuggingFace too.
-  - Not solved by any of this: air-gapped machines, and `large-v3` on an HF-blocked network. Both already have a workaround worth documenting - `is_downloaded_at` only checks the hash, so a model copied into `~/.yogurt/models/` by any means is accepted.
-
-  Side finding: `scripts/refresh-model-hashes.sh` downloads 5.2 GB to learn hashes that HuggingFace serves as text.
-  `GET /<repo>/raw/main/<file>` returns the Git LFS pointer, whose `oid sha256` is the blob's hash.
-  All five pinned values verified correct against upstream on 2026-08-31 this way, for about 5 KB of traffic.
-  </details>
-
-## LLM: a locked-down machine can install yogurt and still not transcribe.
-
-  Licensing is not the blocker. The ggml checkpoints in `ggerganov/whisper.cpp` are MIT, as are the upstream OpenAI weights, so redistribution is fine with attribution added to `THIRD_PARTY_LICENSES.md`.
-
-  Size is the blocker, and it decides between the three options:
-
-  - **Embed in the binary: no.** tiny.en is 75 MB against an 11.7 MB binary, and rust-embed puts it in the Mach-O, so every user pays for it whether they use local STT or not. Cloud-STT users would carry a 7x binary for nothing.
-  - **Commit to the repo: no.** GitHub warns at 50 MB and hard-blocks pushes over 100 MB, so only tiny.en fits at all, and only through Git LFS, whose bandwidth quota is billed and burned by every clone. It also bloats the repo permanently for contributors.
-  - **Attach to the GitHub Release: yes.** 2 GB per asset, no LFS, no repo bloat, and `release.yml:119` already uploads a `files:` list. `ggml-tiny.en.bin` becomes one more asset plus a `REGISTRY` URL change.
-
-  Scoping notes: pin the asset URL to its tag rather than `latest`, so an old binary keeps resolving the model it was built against. Keep HF as a fallback rather than replacing it, since the release asset is a mirror and not a new source of truth. The SHA256 pins are unchanged because it is byte-identical, which also means `scripts/refresh-model-hashes.sh` stays the verification path.
-  </details>
-
 ## LLM
 
 ## CLI
@@ -425,6 +362,33 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   The perf spike the entry asked for is committed as `crates/yogurt-stt/examples/partial_decode_cost.rs`: on large-v3-turbo a full 25 s buffer decodes in ~585 ms, against a 1 s tick, because whisper.cpp pads every input to a 30 s mel window and the encoder cost therefore does not scale with buffer length.
   Partials also carry the utterance's real `start_ms` now, matching what the deepgram adapter already did, so the in-flight line stops rendering as `00:00:00` and the timestamp no longer jumps when the final replaces it.
   Design: `docs/.planning/aud1-live-partials-design.md`. Verified before/after by driving the real `WhisperLocal::start` with 45 s of speech on both channels: on `main` the partial peaked at 95 chars then shrank to 60 as leading words fell out of the window, with no system partials at all; after, both channels grow monotonically to 400+ chars and reset cleanly on each final.
+  </details>
+
+- [x] **AUD-4** Ship a local STT model with the release instead of downloading from HuggingFace on first run
+  <details>
+  <summary>Details</summary>
+
+  Every entry in `REGISTRY` (`crates/yogurt-stt/src/models.rs`) pointed at `huggingface.co/ggerganov/whisper.cpp`, so first-run local STT needed HF reachable - a locked-down machine could install yogurt and still not transcribe.
+
+  Licensing was not the blocker: the HF repo's card reports `license: mit` and the upstream OpenAI weights are MIT, so redistribution is fine (attribution lives in `THIRD_PARTY_LICENSES.md`, hand-written since model weights aren't crates).
+
+  ### Decisions
+
+  - **Mirror `small.en` first, not `tiny.en`.** The shipped default is `small.en` (`V005__stt_provider_model.sql` seeds it, `settings.rs` falls back to it).
+  - **One immutable `models-v1` release tag, not a per-release asset.** The bytes are pinned by SHA256 (`download_to` hard-fails on mismatch), so per-tag URLs would buy nothing the hash doesn't already guarantee. A tag that never moves keeps old binaries resolving.
+  - **Delivery is a companion Homebrew formula, not a bigger main formula.** `brew install yogurt` stays 11.7 MB for cloud-STT users; opt-in is a second formula per model, `brew install jarvisrchen/yogurt/yogurt-model-<name>`.
+  - **HuggingFace stays as a fallback, ordered second.** The mirror is a mirror, not a new source of truth.
+  - **`large-v3` is not mirrored.** At 2.88 GiB it's over GitHub's 2 GiB release asset cap; the other four (tiny.en, small.en, medium.en, large-v3-turbo) all fit.
+
+  Done 2026-08-31.
+  All three remaining pieces landed:
+  - `./scripts/publish-model-mirror.sh` uploaded the four mirrorable models to the `models-v1` GitHub release, each verified against the `models.rs`-pinned SHA256 before publishing.
+  - The tap (`jarvisrchen/homebrew-yogurt` PR #4) gained the four `yogurt-model-*` formulae via `./scripts/render-model-formula.sh <name>`, each writing its own `.sha256` sidecar at install time so `list_models` never re-hashes a Homebrew-owned copy.
+  - `ModelSpec` gained `mirror_url: Option<&'static str>`, pinned to the GitHub release asset for the four mirrorable models (`None` for `large-v3`). `download()` now tries `mirror_url` before `url`, so the in-app download button also stops depending on HuggingFace reachability. Fallback-order behavior is covered by unit tests against an in-process mock server (`crates/yogurt-stt/src/models.rs`, `mod tests`).
+
+  Not solved by any of this: air-gapped machines, and `large-v3` on an HF-blocked network. Both already have a workaround - `is_downloaded_at` only checks the hash, so a model copied into `~/.yogurt/models/` by any means is accepted.
+
+  Side finding from scoping: `scripts/refresh-model-hashes.sh` used to download 5.2 GB to learn hashes that HuggingFace serves as text - `GET /<repo>/raw/main/<file>` returns the Git LFS pointer, whose `oid sha256` is the blob's hash, for about 5 KB of traffic instead.
   </details>
 
 - [x] **AUD-5** Add the ability to delete a downloaded local STT model

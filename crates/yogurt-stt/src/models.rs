@@ -60,6 +60,13 @@ pub struct ModelSpec {
     /// Canonical HuggingFace URL - `download_to` GETs this and
     /// supports `Range:` resume.
     pub url: &'static str,
+    /// GitHub release asset URL for this model under the `models-v1`
+    /// tag (AUD-4), or `None` if the model is too large to mirror
+    /// (only `large-v3`, at 2.88 GiB against GitHub's 2 GiB asset cap).
+    /// `download` tries this first so the in-app download button works
+    /// on a network that blocks huggingface.co but reaches github.com -
+    /// the same host that served the `yogurt` binary itself.
+    pub mirror_url: Option<&'static str>,
     /// Lowercase hex SHA256 of the downloaded file.  See
     /// module-level WARNING - re-verify before merge.
     pub sha256: &'static str,
@@ -77,6 +84,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-tiny.en.bin",
         size_mb: 75,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
+        mirror_url: Some(
+            "https://github.com/jarvisrchen/yogurt/releases/download/models-v1/ggml-tiny.en.bin",
+        ),
         // Verified against HuggingFace blob on 2026-06-28 via
         // `curl -L <url> | shasum -a 256` (74 MB download).
         sha256: "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
@@ -87,6 +97,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-small.en.bin",
         size_mb: 487,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
+        mirror_url: Some(
+            "https://github.com/jarvisrchen/yogurt/releases/download/models-v1/ggml-small.en.bin",
+        ),
         // Verified against HuggingFace blob on 2026-06-28 via a user-driven
         // download that surfaced the placeholder mismatch (Plan 08-02's
         // HashMismatch path deleted the file and the dialog showed the
@@ -99,6 +112,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-medium.en.bin",
         size_mb: 1_530,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin",
+        mirror_url: Some(
+            "https://github.com/jarvisrchen/yogurt/releases/download/models-v1/ggml-medium.en.bin",
+        ),
         // Verified against HuggingFace blob on 2026-06-28 via
         // `./scripts/refresh-model-hashes.sh medium.en` (1.5 GB download).
         sha256: "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
@@ -109,6 +125,9 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-large-v3-turbo.bin",
         size_mb: 1_620,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        mirror_url: Some(
+            "https://github.com/jarvisrchen/yogurt/releases/download/models-v1/ggml-large-v3-turbo.bin",
+        ),
         // Verified against the HuggingFace LFS pointer on 2026-08-29
         // (`raw/main/ggml-large-v3-turbo.bin` -> oid sha256, size
         // 1624555275 bytes). Same value the blob download must hash to.
@@ -121,6 +140,8 @@ pub const REGISTRY: &[ModelSpec] = &[
         filename: "ggml-large-v3.bin",
         size_mb: 3_094,
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+        // Not mirrored: 2.88 GiB is over GitHub's 2 GiB release asset cap.
+        mirror_url: None,
         // Verified against HuggingFace blob on 2026-06-28 via a user-driven
         // 3 GB download that surfaced the placeholder mismatch (HashMismatch
         // path deleted the file and the dialog showed expected/actual pair,
@@ -551,14 +572,65 @@ where
     Ok(())
 }
 
-/// Convenience wrapper: resolve `model_path(spec)` and call
-/// `download_to(spec.url, path, spec.sha256, ...)`.
+/// Try `mirror_url` (if any) against `dest`, then fall back to `url`.
+///
+/// Path-injectable core of [`download`] (same split as
+/// [`resolve_model`]/[`resolve_in`]), so the mirror-then-fallback
+/// behavior is testable against a mock server without a real `$HOME`.
+///
+/// The mirror is byte-identical, so `download_to`'s SHA256 check is the
+/// only correctness requirement either way; the ordering exists purely
+/// so a network that reaches github.com but not huggingface.co still
+/// works. A mirror failure (network, or a 404 for `large-v3`, which
+/// isn't mirrored) falls through to `url` against the same `dest`. Any
+/// partial bytes the mirror attempt wrote are still valid prefix bytes
+/// of the identical file, so the fallback attempt's Range-resume picks
+/// up where the mirror left off rather than restarting.
+async fn download_trying_mirror_first<F>(
+    mirror_url: Option<&str>,
+    url: &str,
+    dest: &Path,
+    expected_sha256: &str,
+    on_progress: F,
+) -> Result<(), DownloadError>
+where
+    F: FnMut(DownloadProgress) + Send + 'static,
+{
+    // `download_to` requires its callback to be `Send + 'static`, so the
+    // caller's single `on_progress` (needed for up to two attempts below)
+    // is shared via `Arc<Mutex<_>>` rather than reused by reference.
+    let progress = std::sync::Arc::new(std::sync::Mutex::new(on_progress));
+    if let Some(mirror_url) = mirror_url {
+        let p = progress.clone();
+        let cb = move |tick: DownloadProgress| {
+            if let Ok(mut g) = p.lock() {
+                g(tick);
+            }
+        };
+        if download_to(mirror_url, dest, expected_sha256, cb)
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+    }
+    let cb = move |tick: DownloadProgress| {
+        if let Ok(mut g) = progress.lock() {
+            g(tick);
+        }
+    };
+    download_to(url, dest, expected_sha256, cb).await
+}
+
+/// Resolve `model_path(spec)` and download it, trying `spec.mirror_url`
+/// (GitHub, AUD-4) before falling back to `spec.url` (HuggingFace). See
+/// [`download_trying_mirror_first`] for the fallback behavior.
 pub async fn download<F>(spec: &ModelSpec, on_progress: F) -> Result<(), DownloadError>
 where
     F: FnMut(DownloadProgress) + Send + 'static,
 {
     let path = model_path(spec)?;
-    download_to(spec.url, &path, spec.sha256, on_progress).await
+    download_trying_mirror_first(spec.mirror_url, spec.url, &path, spec.sha256, on_progress).await
 }
 
 #[cfg(test)]
@@ -870,5 +942,105 @@ mod tests {
         std::fs::create_dir_all(&empty_old).unwrap();
         migrate_legacy_model(&empty_old, &new_dir, "ggml-test.bin");
         assert!(!new_dir.join("ggml-test.bin").exists());
+    }
+
+    // ── Mirror-then-fallback download order (AUD-4) ─────────────────────
+
+    /// Spawn a tiny axum server serving `payload` at `/ok` (200) and a
+    /// 404 at `/missing` - just enough for `download_to` to succeed or
+    /// hard-fail without needing Range-header behavior (already covered
+    /// by `tests/models_download.rs`).
+    async fn spawn_mirror_test_server(payload: Vec<u8>) -> String {
+        use axum::{http::StatusCode, routing::get, Router};
+        let app = Router::new()
+            .route(
+                "/ok",
+                get(move || {
+                    let payload = payload.clone();
+                    async move { payload }
+                }),
+            )
+            .route("/missing", get(|| async { StatusCode::NOT_FOUND }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn mirror_success_never_touches_the_fallback_url() {
+        let payload = b"mirror bytes".to_vec();
+        let expected = sha256::hash_bytes(&payload);
+        let base = spawn_mirror_test_server(payload).await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("ggml-test.bin");
+
+        download_trying_mirror_first(
+            Some(&format!("{base}/ok")),
+            // A URL nothing is listening on - if the fallback were ever
+            // hit, the connection error would fail the test.
+            "http://127.0.0.1:1/unreachable",
+            &dest,
+            &expected,
+            |_| {},
+        )
+        .await
+        .expect("mirror-only download should succeed");
+        assert_eq!(sha256::hash_file(&dest).unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn mirror_404_falls_back_to_the_second_url() {
+        let payload = b"fallback bytes".to_vec();
+        let expected = sha256::hash_bytes(&payload);
+        let base = spawn_mirror_test_server(payload).await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("ggml-test.bin");
+
+        download_trying_mirror_first(
+            Some(&format!("{base}/missing")),
+            &format!("{base}/ok"),
+            &dest,
+            &expected,
+            |_| {},
+        )
+        .await
+        .expect("fallback download should succeed after mirror 404s");
+        assert_eq!(sha256::hash_file(&dest).unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn no_mirror_goes_straight_to_the_url() {
+        let payload = b"only one source".to_vec();
+        let expected = sha256::hash_bytes(&payload);
+        let base = spawn_mirror_test_server(payload).await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("ggml-test.bin");
+
+        download_trying_mirror_first(None, &format!("{base}/ok"), &dest, &expected, |_| {})
+            .await
+            .expect("download should succeed with no mirror configured");
+        assert_eq!(sha256::hash_file(&dest).unwrap(), expected);
+    }
+
+    #[test]
+    fn large_v3_has_no_mirror_url() {
+        // Over GitHub's 2 GiB release asset cap - see the REGISTRY
+        // comment. If this ever flips, drop this assertion along with
+        // the "not mirrored" note there.
+        assert_eq!(lookup("large-v3").unwrap().mirror_url, None);
+    }
+
+    #[test]
+    fn mirrorable_models_have_a_mirror_url() {
+        for name in ["tiny.en", "small.en", "medium.en", "large-v3-turbo"] {
+            let spec = lookup(name).unwrap();
+            assert!(
+                spec.mirror_url.is_some(),
+                "{name} should have a mirror_url pinned"
+            );
+        }
     }
 }
