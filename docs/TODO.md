@@ -54,22 +54,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
-- [ ] **MTG-9** Make a meeting's summary/transcript discoverable by an agent from just its URL
-  <details>
-  <summary>Details</summary>
-
-  Richard wants to hand an agent (Claude Code or otherwise) a link like `http://127.0.0.1:7878/meeting/<id>/post` and have it know where to look: pull the summary first since it's cheap, then fetch the full transcript only if it needs more detail.
-
-  Today that requires knowing the internal shape - `GET /api/meetings/{id}` for the row (`enriched_md` is the AI summary, `transcript_json` the raw transcript) or `GET /api/meetings/{id}/markdown` for the on-disk export - and both sit behind `routes::require_session_token`.
-
-  No auth story needed for this, though: everything here is local reads against `localhost:7878` / `~/.yogurt/`, nothing leaves the machine, so this is a read tool, not an API client. Two ways to build it, both skip the session token entirely:
-
-  1. A skill (`.claude/skills/`) that knows the URL pattern, extracts the meeting ID, and reads the on-disk markdown export directly - already positioned as the "grep-able source of truth" per the doc comment in `crates/yogurt-server/src/api/meetings.rs:16-22` - falling back to `transcript_json` in SQLite for the raw transcript when the markdown summary isn't enough.
-  2. A `yogurt meeting <id> --summary` / `--transcript` CLI subcommand doing the same lookup, useful for non-Claude agents too.
-
-  Either way: parse the ID out of the URL, summary first, transcript only on request.
-  </details>
-
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
   <details>
   <summary>Details</summary>
@@ -364,6 +348,43 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Visual evidence:
   ![transcript duplicates on machine audio](attachments/2026-08-28-transcript-duplicates-on-machine-audio.png)
   </details>
+
+- [x] **MTG-9** Make a meeting's summary/transcript discoverable by an agent from just its URL
+  <details>
+  <summary>Details</summary>
+
+  Richard wants to hand an agent (Claude Code or otherwise) a link like `http://127.0.0.1:7878/meeting/<id>/post` and have it know where to look: pull the summary first since it's cheap, then fetch the full transcript only if it needs more detail.
+
+  Today that requires knowing the internal shape - `GET /api/meetings/{id}` for the row (`enriched_md` is the AI summary, `transcript_json` the raw transcript) or `GET /api/meetings/{id}/markdown` for the on-disk export - and both sit behind `routes::require_session_token`.
+
+  No auth story needed for this, though: everything here is local reads against `localhost:7878` / `~/.yogurt/`, nothing leaves the machine, so this is a read tool, not an API client. Two ways to build it, both skip the session token entirely:
+
+  1. A skill (`.claude/skills/`) that knows the URL pattern, extracts the meeting ID, and reads the on-disk markdown export directly - already positioned as the "grep-able source of truth" per the doc comment in `crates/yogurt-server/src/api/meetings.rs:16-22` - falling back to `transcript_json` in SQLite for the raw transcript when the markdown summary isn't enough.
+  2. A `yogurt meeting <id> --summary` / `--transcript` CLI subcommand doing the same lookup, useful for non-Claude agents too.
+
+  Either way: parse the ID out of the URL, summary first, transcript only on request.
+  </details>
+
+  Done 2026-08-31. No server code: every mechanism the ticket asks for already existed, so this was a discoverability fix in the two places an agent actually looks.
+
+  The "summary first, cheap" endpoint is `GET /:id/markdown` - it serves the canonical `~/.yogurt/notes/*.md` bytes, whose body is `enriched_md ?? notes_md` and carries no transcript. Measured on a real meeting: 849 bytes against 7,864 for `GET /api/meetings/:id`, which bundles the summary and the raw transcript in one payload and so cannot answer "summary only" at all. The transcript stays on the row and gets filtered out client-side with `jq`, so only the transcript reaches the agent's context.
+
+  Option 2 (a `yogurt meeting <id>` subcommand) was not built. It would be new Rust re-deriving what one `curl` already returns, and `yogurt-cli` has only `start` and `doctor` today. Worth revisiting only for a non-Claude agent that cannot shell out to `curl`.
+
+  Two things the scoping turned up that the entry did not anticipate:
+  - The markdown export is wrapped in `<span data-ai-grey …>` tags from the MTG-3 grey-tinting renderer. They mean nothing outside the browser and roughly double the byte count, so the documented recipe pipes through `sed -E 's/<[^>]+>//g'`, which leaves the `↳ mm:ss` transcript deep-links readable.
+  - The on-disk fallback must match the front-matter `id:`, not the filename. Meeting ids are UUIDv7 and therefore time-ordered, so the `-<id6>` suffix in `<date>-<slug>-<id6>.md` is not unique - three files in the local notes dir share `01a05a`.
+
+  Landed as: `docs/AI-INTEGRATION.md` "Read what got captured" rewritten around URL -> id parsing and summary-first ordering, and `.claude/skills/yogurt-control/SKILL.md` extended to cover reading (its description now triggers on a pasted meeting URL, not just start/stop). Both take the port from the URL rather than hardcoding 7878, since `just dev` moves the backend for a second worktree (CLI-3).
+
+  `README.md` gained an "Ask an agent about a meeting" section, because the skill lives at `.claude/skills/` and yogurt ships as a brew binary - so the people MTG-9 was written for never clone the repo and would never see it.
+
+  Install is `npx skills add jarvisrchen/yogurt --skill yogurt-control --global` (`skills`, from `vercel-labs/skills`). This needs **no repo changes at all**: `.claude/skills` is already in that CLI's `AGENT_PROJECT_SKILL_DIRS`, so it discovers yogurt's skills straight out of the existing layout with no manifest. Verified against the real repo before writing the docs - `--list` on `main` found both `release` and `yogurt-control`, and a sandboxed-`HOME` install put one copy at `~/.agents/skills/yogurt-control` with `~/.claude/skills/yogurt-control` symlinked at it, so all 77 supported agents share a single source of truth.
+
+  The README pins `--skill yogurt-control` on purpose: the repo also ships the contributor-only `release` skill (tags a version, merges the Homebrew tap PR), and an unpinned install would hand every yogurt user a release-cutting skill they cannot use. A hand `curl` into `~/.claude/skills/` or `~/.codex/skills/` is kept as the no-Node fallback; Codex uses the identical `SKILL.md` frontmatter, so it is one file for both, and `curl -fsSL -o` exits non-zero and writes nothing on a 404 so a bad URL cannot half-install a broken skill.
+
+  Deliberately not built: per-agent plugin manifests. Claude Code reads `.claude-plugin/marketplace.json` and Codex reads `.agents/plugins/marketplace.json` (different schema), and Cursor/Windsurf/Gemini/opencode each want their own wrapper - ponytail ships eight such copies of one skill's text. The `skills` CLI makes all of that unnecessary here.
+
 
 ### Audio
 
