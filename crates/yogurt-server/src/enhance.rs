@@ -278,9 +278,17 @@ pub async fn enhance(
     // (e.g. an in-process mock that .await's forever), tokio::time::timeout
     // brings us back. On either failure path emit `enhance_progress { phase:
     // "error" }` so the browser banner transitions to an error state instead
-    // of spinning forever. Once the stream is open, the SAME constant is
+    // of spinning forever. Once the stream is open, the SAME budget is
     // reused per-chunk as an IDLE timeout (BL-5 continued below) — a long
-    // healthy stream must not be cut off at 60s total.
+    // healthy stream must not be cut off at that total.
+    //
+    // LLM-5: the budget comes from the client, not from a constant here.
+    // These two await points mean different things per adapter: for an HTTP
+    // provider `stream()` resolves at the response headers, but a CLI
+    // provider finishes generating first, so one number cannot be right for
+    // both. Hardcoding the HTTP figure is what made a merely-slow model
+    // (`claude --model haiku`, which ignores `--effort low` and thinks for
+    // ~90s) report as a hang at exactly 60s.
     //
     // System message is intentionally empty here — Phase 4's `enhance.md`
     // prompt is rendered as the whole user payload; introducing a real
@@ -308,6 +316,7 @@ pub async fn enhance(
         stream: true,
     };
     let llm_model = llm.model_name();
+    let llm_timeout = llm.response_timeout();
     let llm_started = Instant::now();
 
     // The four failure branches below (open-error, open-timeout, chunk-
@@ -338,33 +347,39 @@ pub async fn enhance(
             meeting_id = %meeting_id,
             model = %llm_model,
             elapsed_ms = llm_started.elapsed().as_millis(),
-            timeout_secs = crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs(),
+            timeout_secs = llm_timeout.as_secs(),
             "enhance LLM request timed out"
         );
+        // Name the model. A timeout here is far more often "this model is
+        // slow for this prompt" than "the provider is down", and the old
+        // wording ("LLM timed out — try Re-enhance") pointed at neither -
+        // it invited a retry that would fail identically, with nothing to
+        // suggest that the model choice was the variable worth changing.
         let _ = meeting.events_tx.send(serde_json::json!({
             "type": "enhance_progress",
             "phase": "error",
-            "message": "LLM timed out — try Re-enhance"
+            "message": format!(
+                "{llm_model} did not respond within {}s - try a faster model in Settings",
+                llm_timeout.as_secs()
+            )
         }));
         (
             StatusCode::GATEWAY_TIMEOUT,
             format!(
-                "llm call exceeded {}s timeout",
-                crate::llm_openai::LLM_HTTP_TIMEOUT.as_secs()
+                "llm call to {llm_model} exceeded {}s timeout",
+                llm_timeout.as_secs()
             ),
         )
     };
 
-    let mut stream =
-        match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, llm.stream(chat_req)).await
-        {
-            Ok(Ok(s)) => s,
-            // LLM returned an error opening the stream (HTTP non-2xx, parse
-            // failure, etc.).
-            Ok(Err(error)) => return Err(llm_failed(&error)),
-            // tokio::time::timeout fired opening the stream.
-            Err(_elapsed) => return Err(llm_timed_out()),
-        };
+    let mut stream = match tokio::time::timeout(llm_timeout, llm.stream(chat_req)).await {
+        Ok(Ok(s)) => s,
+        // LLM returned an error opening the stream (HTTP non-2xx, parse
+        // failure, etc.).
+        Ok(Err(error)) => return Err(llm_failed(&error)),
+        // tokio::time::timeout fired opening the stream.
+        Err(_elapsed) => return Err(llm_timed_out()),
+    };
 
     // Cap how often a `streaming` snapshot frame goes out. 80ms keeps the
     // browser-side TipTap `setContent` calls at roughly 12 Hz - fast enough
@@ -377,20 +392,19 @@ pub async fn enhance(
     let mut last_emitted_len: usize = 0;
 
     loop {
-        let chunk =
-            match tokio::time::timeout(crate::llm_openai::LLM_HTTP_TIMEOUT, stream.next()).await {
-                Ok(Some(Ok(c))) => c,
-                // LLM returned an error mid-stream (dropped connection,
-                // malformed SSE frame, etc.) - same 502 path as a failed
-                // stream open.
-                Ok(Some(Err(error))) => return Err(llm_failed(&error)),
-                // Stream ended without a terminal `done` chunk - treat it as
-                // complete with whatever was accumulated so far.
-                Ok(None) => break,
-                // No chunk arrived within the timeout - idle timeout, not a
-                // total-call budget.
-                Err(_elapsed) => return Err(llm_timed_out()),
-            };
+        let chunk = match tokio::time::timeout(llm_timeout, stream.next()).await {
+            Ok(Some(Ok(c))) => c,
+            // LLM returned an error mid-stream (dropped connection,
+            // malformed SSE frame, etc.) - same 502 path as a failed
+            // stream open.
+            Ok(Some(Err(error))) => return Err(llm_failed(&error)),
+            // Stream ended without a terminal `done` chunk - treat it as
+            // complete with whatever was accumulated so far.
+            Ok(None) => break,
+            // No chunk arrived within the timeout - idle timeout, not a
+            // total-call budget.
+            Err(_elapsed) => return Err(llm_timed_out()),
+        };
 
         if !chunk.delta.is_empty() {
             llm_output.push_str(&chunk.delta);

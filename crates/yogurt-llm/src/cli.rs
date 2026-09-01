@@ -27,10 +27,15 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Same ceiling as `OpenAiCompatClient`'s HTTP timeout - a wedged CLI
-/// process (auth prompt with no TTY to answer it, a huge transcript) must
-/// not hang the enhance/chat handler indefinitely.
-const CLI_TIMEOUT: Duration = crate::HTTP_TIMEOUT;
+/// Hard ceiling on one CLI subprocess - a wedged process (auth prompt with
+/// no TTY to answer it, a huge transcript) must not hang the enhance/chat
+/// handler indefinitely.
+///
+/// Sized off `GENERATION_TIMEOUT`, not `HTTP_TIMEOUT`: this bounds a whole
+/// generation, not an HTTP handshake, and it used to alias the latter. See
+/// `GENERATION_TIMEOUT` for the LLM-5 failure that distinction caused.
+/// This is the inner guard; `response_timeout` is what the caller waits.
+const CLI_TIMEOUT: Duration = crate::GENERATION_TIMEOUT;
 
 /// Which agent CLI backs a [`CliClient`]. Public so `yogurt-db`'s
 /// `providers` table (LLM-4: explicit CLI provider selection) and
@@ -131,6 +136,19 @@ impl CliClient {
                 // prompts. Unconditional, not user-configurable (unlike
                 // `--model`): there's no scenario here that benefits from
                 // spending more.
+                //
+                // ADVISORY, NOT A CAP (LLM-5). Some models ignore it and
+                // think anyway: measured on the same prompt, sonnet emits 0
+                // thinking tokens and finishes in 4 s, while haiku spends
+                // ~10k thinking tokens over 94 s for an equivalent
+                // 300-character answer - and dropping the flag entirely
+                // changes haiku's behaviour not at all. The CLI exposes no
+                // thinking-token budget to cap it with (`--effort` and
+                // `--max-budget-usd` are the only knobs), so nothing here
+                // can force the issue. Callers must therefore tolerate a
+                // model that ignores this rather than assume it was
+                // honoured - which is why `response_timeout` is sized for
+                // generation.
                 args.push("--effort".to_string());
                 args.push("low".to_string());
             }
@@ -223,6 +241,12 @@ impl LlmClient for CliClient {
         let content = self.run(&req).await?;
         let model = self.model_name();
         Ok(ChatResponse { content, model })
+    }
+
+    fn response_timeout(&self) -> Duration {
+        // `stream` below finishes the whole generation before yielding, so
+        // the caller must budget for generation, not for a handshake.
+        crate::GENERATION_TIMEOUT
     }
 
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
@@ -406,6 +430,52 @@ mod tests {
             serde_json::from_str(r#"{"is_error":true,"result":"not logged in"}"#).unwrap();
         assert!(err.is_error);
         assert_eq!(err.result, "not logged in");
+    }
+
+    /// LLM-5. `CliClient::stream` finishes generating before it yields, so
+    /// the caller's budget has to cover generation - not the HTTP
+    /// handshake figure it used to inherit. A model that ignores
+    /// `--effort low` and thinks for ~90 s (measured: `claude --model
+    /// haiku`) has to come back as a slow success, not a 60 s timeout.
+    #[test]
+    fn cli_budgets_for_generation_not_a_handshake() {
+        let claude = CliClient {
+            binary: PathBuf::from("claude"),
+            program: CliProgram::Claude,
+            model: Some("haiku".to_string()),
+        };
+        let budget = claude.response_timeout();
+        assert!(
+            budget > crate::HTTP_TIMEOUT,
+            "CLI budget {budget:?} must exceed the HTTP handshake budget {:?}",
+            crate::HTTP_TIMEOUT,
+        );
+        // The observed 94 s haiku run is the floor this has to clear, with
+        // room for a longer transcript than the 1.5 min meeting it came from.
+        assert!(
+            budget >= Duration::from_secs(180),
+            "CLI budget {budget:?} is under the measured 94 s worst case",
+        );
+        // The inner subprocess guard must not fire before the caller gives
+        // up, or the caller's budget is unreachable and a wedged process
+        // still reports as the caller's timeout rather than the CLI's.
+        assert!(
+            CLI_TIMEOUT >= budget,
+            "subprocess guard {CLI_TIMEOUT:?} must not preempt the caller's {budget:?}",
+        );
+    }
+
+    /// The HTTP adapter must keep the tighter budget: for it, `stream()`
+    /// resolves at the response headers and the per-chunk idle timeout
+    /// covers the rest, so generation length is not what it is bounding.
+    #[test]
+    fn http_keeps_the_handshake_budget() {
+        let http = crate::OpenAiCompatClient::new(
+            "https://example.test/v1".to_string(),
+            "k".to_string(),
+            "m".to_string(),
+        );
+        assert_eq!(http.response_timeout(), crate::HTTP_TIMEOUT);
     }
 
     #[test]
