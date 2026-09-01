@@ -33,7 +33,18 @@
 //! Matching is a deliberately small allow-list of (bundle id, title
 //! shape) pairs, because "Zoom is running" is not "you are in a call".
 //! The title shapes are the part that distinguishes the two, and they
-//! are vendor UI strings that can change without notice. A miss means
+//! are vendor UI strings that can change without notice.
+//!
+//! **Only the Google Meet rule has been checked against a live call**
+//! (2026-09-01). The Zoom, Teams, and Slack shapes below are inferred
+//! from their documented window naming and have not been observed
+//! firing. An earlier Meet rule was written the same way and was wrong
+//! twice over - it assumed the `com.google.Chrome` bundle id (an
+//! installed Chrome app reports `com.google.Chrome.app.<hash>`) and a
+//! `"Meet - "` title prefix (the real one is
+//! `"Google Meet - Meet - <code>"`). Treat the unverified rules with
+//! that in mind, and capture the real title with the
+//! `meeting_windows` example before trusting any of them. A miss means
 //! the user clicks "+ New meeting" like they do today; a false positive
 //! means a dismissable prompt. Neither starts a recording on its own —
 //! see `yogurt_server::detect`.
@@ -63,15 +74,28 @@ pub struct DetectedMeeting {
 /// One entry in the allow-list: which app, and what its window title
 /// looks like *while a call is live* (as opposed to merely open).
 struct AppRule {
-    bundle_id: &'static str,
-    /// Display name for the prompt — the SCK application name is used
-    /// when this is `None`.
+    /// Matched exactly, or against `<bundle>.app.<hash>` — a site
+    /// installed as a Chrome app ("PWA") runs under its own generated
+    /// bundle id, so a plain `com.google.Chrome` comparison misses the
+    /// installed Google Meet entirely. That is not an exotic setup; it
+    /// is what the "Install Google Meet" button produces.
+    bundle: &'static str,
+    /// Display name for the prompt.
     label: &'static str,
     matches: fn(&str) -> bool,
 }
 
-/// Case-insensitive `starts_with` over the ASCII prefix, tolerant of the
-/// en dash vendors like to use in place of a hyphen.
+/// Does `actual` name this rule's browser, whether it is the browser
+/// proper or one of its installed-app profiles?
+fn bundle_matches(rule: &str, actual: &str) -> bool {
+    actual == rule
+        || (actual.len() > rule.len()
+            && actual.starts_with(rule)
+            && actual[rule.len()..].starts_with(".app."))
+}
+
+/// Vendors write these titles with an en dash as often as a hyphen;
+/// normalize so one pattern covers both.
 fn norm(title: &str) -> String {
     title.replace(['\u{2013}', '\u{2014}'], "-")
 }
@@ -80,59 +104,84 @@ const RULES: &[AppRule] = &[
     // Zoom's idle window is "Zoom Workplace" / "Zoom"; the in-call
     // window is titled "Zoom Meeting" (or "Zoom Webinar").
     AppRule {
-        bundle_id: "us.zoom.xos",
+        bundle: "us.zoom.xos",
         label: "Zoom",
         matches: |t| t.starts_with("Zoom Meeting") || t.starts_with("Zoom Webinar"),
     },
-    // Browser tabs. A Chrome/Safari/Arc window title IS the tab title
-    // (verified against the live SCK window list), so the Google Meet
-    // in-call title "Meet - abc-defg-hij" is visible. The bare landing
-    // page is titled "Google Meet", which deliberately does NOT match.
+    // Browsers, including their installed-app profiles. Verified
+    // against a live call on 2026-09-01: the installed Google Meet app
+    // reports bundle `com.google.Chrome.app.kjgfgld…` and title
+    // "Google Meet - Meet - wbj-wqgz-pju 🔊", while the landing page is
+    // "Google Meet" and the join-in-progress state is
+    // "Google Meet - Meet". Matching a prefix like "Meet - " gets all
+    // three wrong; matching the meeting *code* separates "in a call"
+    // from "Meet is open" regardless of which of those title shapes a
+    // given Chrome version emits.
     AppRule {
-        bundle_id: "com.google.Chrome",
+        bundle: "com.google.Chrome",
         label: "Google Meet",
-        matches: is_browser_meeting_title,
+        matches: has_meet_code,
     },
     AppRule {
-        bundle_id: "com.apple.Safari",
+        bundle: "com.apple.Safari",
         label: "Google Meet",
-        matches: is_browser_meeting_title,
+        matches: has_meet_code,
     },
     AppRule {
-        bundle_id: "company.thebrowser.Browser",
+        bundle: "company.thebrowser.Browser",
         label: "Google Meet",
-        matches: is_browser_meeting_title,
+        matches: has_meet_code,
     },
     AppRule {
-        bundle_id: "com.microsoft.edgemac",
+        bundle: "com.microsoft.edgemac",
         label: "Google Meet",
-        matches: is_browser_meeting_title,
+        matches: has_meet_code,
     },
     // Teams (new client and classic). The idle window is
     // "Chat | Microsoft Teams"; a call window leads with the meeting
     // subject and the "Meeting" / "Call" noun.
     AppRule {
-        bundle_id: "com.microsoft.teams2",
+        bundle: "com.microsoft.teams2",
         label: "Microsoft Teams",
         matches: is_teams_meeting_title,
     },
     AppRule {
-        bundle_id: "com.microsoft.teams",
+        bundle: "com.microsoft.teams",
         label: "Microsoft Teams",
         matches: is_teams_meeting_title,
     },
     // Slack huddles open their own window titled "Huddle …".
     AppRule {
-        bundle_id: "com.tinyspeck.slackmacgap",
+        bundle: "com.tinyspeck.slackmacgap",
         label: "Slack huddle",
         matches: |t| t.starts_with("Huddle"),
     },
 ];
 
-fn is_browser_meeting_title(t: &str) -> bool {
-    // "Meet - abc-defg-hij" / "Meet - Weekly sync". Requires the
-    // separator so the plain "Google Meet" landing page is not a hit.
-    t.starts_with("Meet - ")
+/// Is `tok` a Google Meet meeting code — three, four, then three
+/// lowercase letters (`wbj-wqgz-pju`)?
+fn is_meet_code(tok: &str) -> bool {
+    let mut parts = tok.split('-');
+    let (Some(a), Some(b), Some(c), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    (a.len(), b.len(), c.len()) == (3, 4, 3)
+        && [a, b, c]
+            .iter()
+            .all(|s| s.bytes().all(|ch| ch.is_ascii_lowercase()))
+}
+
+/// A meeting code in the title is the signal that a Meet call is
+/// actually joined. Meet only puts one there once you are in the call,
+/// so this distinguishes a live call from an open tab without depending
+/// on the surrounding title text, which differs between a plain tab, an
+/// installed app, and Chrome versions.
+fn has_meet_code(title: &str) -> bool {
+    title
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+        .any(is_meet_code)
 }
 
 fn is_teams_meeting_title(t: &str) -> bool {
@@ -145,7 +194,7 @@ pub fn match_window(bundle_id: &str, title: &str) -> Option<&'static str> {
     let title = norm(title);
     RULES
         .iter()
-        .find(|r| r.bundle_id == bundle_id && (r.matches)(&title))
+        .find(|r| bundle_matches(r.bundle, bundle_id) && (r.matches)(&title))
         .map(|r| r.label)
 }
 
@@ -197,19 +246,29 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
 mod tests {
     use super::match_window;
 
+    /// Bundle id of Google Meet installed as a Chrome app, as captured
+    /// from a live call. The hash is Chrome's, derived from the app, so
+    /// it is stable — but nothing here depends on that: `bundle_matches`
+    /// keys off the `com.google.Chrome.app.` prefix, so any installed
+    /// app under any Chrome profile is covered.
+    const MEET_PWA: &str = "com.google.Chrome.app.kjgfgldnnfoeklkmfkjfagphfepbbdan";
+
     #[test]
     fn live_call_titles_match() {
         for (bundle, title, want) in [
             ("us.zoom.xos", "Zoom Meeting", "Zoom"),
             ("us.zoom.xos", "Zoom Meeting ID: 123", "Zoom"),
-            ("com.google.Chrome", "Meet - abc-defg-hij", "Google Meet"),
-            // Chrome renders Meet titles with an en dash.
+            // Captured from a real joined call on 2026-09-01. The
+            // trailing speaker glyph appears while audio is playing.
             (
-                "com.google.Chrome",
-                "Meet \u{2013} abc-defg-hij",
+                MEET_PWA,
+                "Google Meet - Meet - wbj-wqgz-pju \u{1f50a}",
                 "Google Meet",
             ),
-            ("com.apple.Safari", "Meet - Weekly sync", "Google Meet"),
+            (MEET_PWA, "Google Meet - Meet - wbj-wqgz-pju", "Google Meet"),
+            // Same call in a plain tab rather than the installed app.
+            ("com.google.Chrome", "Meet - wbj-wqgz-pju", "Google Meet"),
+            ("com.apple.Safari", "Meet - abc-defg-hij", "Google Meet"),
             (
                 "com.microsoft.teams2",
                 "Weekly sync | Microsoft Teams Meeting",
@@ -237,13 +296,39 @@ mod tests {
         for (bundle, title) in [
             ("us.zoom.xos", "Zoom Workplace"),
             ("us.zoom.xos", "Zoom"),
+            // The two pre-join states of the installed Meet app, both
+            // captured live. Neither carries a meeting code.
+            (MEET_PWA, "Google Meet"),
+            (MEET_PWA, "Google Meet - Meet"),
             ("com.google.Chrome", "Google Meet"),
             ("com.google.Chrome", "Inbox (12) - Gmail"),
+            // A different Chrome installed app must not inherit Meet's
+            // rule just by sharing the `.app.` prefix.
+            (
+                "com.google.Chrome.app.kjbdgfilnfhdoflbpgamdcdgpehopbep",
+                "Google Calendar - Week of August 31, 2026",
+            ),
             ("com.microsoft.teams2", "Chat | Microsoft Teams"),
             ("com.tinyspeck.slackmacgap", "yogurt - Slack"),
             ("com.apple.finder", "Downloads"),
         ] {
             assert_eq!(match_window(bundle, title), None, "{bundle} / {title}");
+        }
+    }
+
+    #[test]
+    fn meeting_code_shape_is_specific() {
+        // A hyphenated word in an unrelated page title must not read as
+        // a meeting code, or every blog post becomes a meeting.
+        for title in [
+            "abc-defg-hi",      // wrong last segment length
+            "abcd-defg-hij",    // wrong first segment length
+            "abc-defg-hij-klm", // too many segments
+            "ABC-DEFG-HIJ",     // codes are lowercase
+            "abc-def1-hij",     // codes are letters only
+            "how-to-cook",
+        ] {
+            assert_eq!(match_window("com.google.Chrome", title), None, "{title}");
         }
     }
 }
