@@ -1,6 +1,6 @@
 # Design: stream the enhanced summary into the editor
 
-Status: approved 2026-08-29, implementation on branch `feat/enhance-streaming`.
+Status: shipped 2026-08-29 (`0b0d606`, `1139911`), archived. Was on branch `feat/enhance-streaming`.
 Interactive companion: [../.lavish/enhance-streaming-design.html](../.lavish/enhance-streaming-design.html).
 
 ## Goal
