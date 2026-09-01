@@ -37,6 +37,11 @@ use std::time::Duration;
 /// This is the inner guard; `response_timeout` is what the caller waits.
 const CLI_TIMEOUT: Duration = crate::GENERATION_TIMEOUT;
 
+/// Hard ceiling on a [`list_models`] probe. Far shorter than
+/// [`CLI_TIMEOUT`]: this is one catalog fetch with no generation behind
+/// it, and a user is watching the Settings `Refresh` button spin.
+const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Which agent CLI backs a [`CliClient`]. Public so `yogurt-db`'s
 /// `providers` table (LLM-4: explicit CLI provider selection) and
 /// `yogurt-server` can name a program without either crate hardcoding its
@@ -66,6 +71,102 @@ impl CliProgram {
             _ => None,
         }
     }
+
+    /// The flag that makes this CLI print its `--model` catalog and exit,
+    /// or `None` for one that has no such flag.
+    ///
+    /// `claude` has none: its four documented aliases (`haiku`, `sonnet`,
+    /// `opus`, `fable`) ship as static preset suggestions instead, which
+    /// is the whole list. `cursor-agent` has 200+ ids that vary by
+    /// account, so it must be asked.
+    pub fn list_models_flag(self) -> Option<&'static str> {
+        match self {
+            CliProgram::Claude => None,
+            CliProgram::CursorAgent => Some("--list-models"),
+        }
+    }
+}
+
+/// Ask `program` for the model ids its `--model` flag accepts.
+///
+/// A free function rather than a [`CliClient`] method: this is a catalog
+/// probe with no prompt, no scratch dir and no model pinned, so none of
+/// `CliClient`'s state applies.
+///
+/// **A successful listing does not mean those models are usable.** The
+/// catalog is not plan-filtered - verified live against a free-tier
+/// cursor account, which lists all 200+ ids and then rejects every named
+/// one at call time with `ActionRequiredError: Named models unavailable
+/// Free plans can only use Auto`. So this can't be used to infer
+/// entitlement; `test_provider`'s real completion is the only signal for
+/// that, and its error text already tells the user to switch back to
+/// `auto`.
+pub async fn list_models(program: CliProgram) -> Result<Vec<String>> {
+    let flag = program
+        .list_models_flag()
+        .ok_or_else(|| anyhow!("{} has no model-list flag", program.binary_name()))?;
+    let binary = find_on_path(program.binary_name())
+        .ok_or_else(|| anyhow!("{} not found on $PATH", program.binary_name()))?;
+
+    let mut cmd = tokio::process::Command::new(&binary);
+    cmd.kill_on_drop(true)
+        .arg(flag)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let output = tokio::time::timeout(LIST_MODELS_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| {
+            anyhow!(
+                "{} {flag} timed out after {}s",
+                program.binary_name(),
+                LIST_MODELS_TIMEOUT.as_secs()
+            )
+        })?
+        .with_context(|| format!("failed to spawn {} CLI", program.binary_name()))?;
+
+    if !output.status.success() {
+        // Unlike `-p --output-format json`, this flag has no structured
+        // output to parse an error out of (there is no
+        // `--output-format` for it), so stderr is all there is. A
+        // not-logged-in CLI lands here.
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        bail!(
+            "{} {flag} failed{}",
+            program.binary_name(),
+            if detail.is_empty() {
+                String::new()
+            } else {
+                format!(": {detail}")
+            }
+        );
+    }
+
+    let models = parse_model_list(&String::from_utf8_lossy(&output.stdout));
+    if models.is_empty() {
+        bail!("{} {flag} returned no models", program.binary_name());
+    }
+    Ok(models)
+}
+
+/// Pull model ids out of `cursor-agent --list-models` stdout.
+///
+/// The format is an `Available models` header, a blank line, then one
+/// `<id> - <human label>` per line (`auto - Auto (default)`). There is no
+/// JSON form of this output to parse instead, so lines it is: anything
+/// without a ` - ` separator (the header, blanks, any future footer) is
+/// skipped, and so is any "id" carrying whitespace, which would mean a
+/// prose line that happened to contain a dash rather than a real id.
+fn parse_model_list(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .filter_map(|line| line.split_once(" - "))
+        .map(|(id, _label)| id.trim())
+        .filter(|id| !id.is_empty() && !id.contains(char::is_whitespace))
+        .map(str::to_string)
+        .collect()
 }
 
 /// Local agent-CLI adapter. Constructed only via [`CliClient::locate`],
@@ -88,10 +189,12 @@ impl CliClient {
     /// isn't there. Never silently substitutes the other CLI - the caller
     /// (LLM-4: the active `cli`-adapter provider row) asked for this one
     /// specifically. `model` is the provider row's `cli_model` column,
-    /// verbatim - not validated here, since neither CLI exposes a static
-    /// list to validate against (`cursor-agent --list-models` requires its
-    /// own process spawn); an invalid value just surfaces as a normal CLI
-    /// error on the next call.
+    /// verbatim - deliberately not validated here. [`list_models`] can
+    /// fetch a catalog for `cursor-agent`, but membership in it does not
+    /// mean the account may use the model (see that fn), so validating
+    /// against it would reject nothing real while rejecting anything the
+    /// catalog lags behind on. An invalid value surfaces as a normal CLI
+    /// error on the next call instead.
     pub fn locate(program: CliProgram, model: Option<String>) -> Result<Self> {
         find_on_path(program.binary_name())
             .map(|binary| Self {
@@ -350,6 +453,48 @@ fn uuid_v4_ish() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verbatim head of a live `cursor-agent --list-models` run, plus a
+    /// hypothetical prose footer - the parser must take the four ids and
+    /// nothing else.
+    #[test]
+    fn parse_model_list_takes_ids_only() {
+        let stdout = "Available models\n\
+                      \n\
+                      auto - Auto (default)\n\
+                      gpt-5.3-codex-low - Codex 5.3 Low\n\
+                      composer-2.5-fast - Composer 2.5 Fast\n\
+                      claude-opus-5-thinking-high - Claude Opus 5 1M Thinking\n\
+                      \n\
+                      Some note - about something else\n";
+        assert_eq!(
+            parse_model_list(stdout),
+            vec![
+                "auto",
+                "gpt-5.3-codex-low",
+                "composer-2.5-fast",
+                "claude-opus-5-thinking-high",
+            ]
+        );
+    }
+
+    #[test]
+    fn only_cursor_agent_has_a_model_list_flag() {
+        assert_eq!(CliProgram::Claude.list_models_flag(), None);
+        assert_eq!(
+            CliProgram::CursorAgent.list_models_flag(),
+            Some("--list-models")
+        );
+    }
+
+    #[tokio::test]
+    async fn list_models_rejects_a_program_without_the_flag() {
+        let err = list_models(CliProgram::Claude).await.unwrap_err();
+        assert!(
+            err.to_string().contains("no model-list flag"),
+            "unexpected error: {err}"
+        );
+    }
 
     #[test]
     fn find_on_path_locates_a_known_binary() {
