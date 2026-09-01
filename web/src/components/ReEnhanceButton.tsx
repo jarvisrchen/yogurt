@@ -20,7 +20,7 @@ import {
   type EnhanceResponse,
 } from "../lib/api";
 
-const BLUE = "#5B4FC7"; // --color-blue
+const BLUE = "var(--color-blue)";
 
 export interface ReEnhanceButtonProps {
   meetingId: string;

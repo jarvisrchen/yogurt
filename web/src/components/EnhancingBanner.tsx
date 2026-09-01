@@ -20,12 +20,14 @@
 // below stay self-documenting. The actual blue is consumed via CSS (the
 // `.enhancing-dot` and `.enhancing-bar-fill` rules in index.css), so no JS
 // constant for it is needed here.
-const LILAC = "#ECE9FB"; // --color-blsoft
-const TRACK = "#D9D4F4"; // soft lilac track for the animated bar (CONTEXT D-28)
-const INK = "#211D18"; // --color-ink
-const MUT = "#8A8174"; // --color-mut
-const STRAW = "#E07A66"; // --color-straw (error accent — PRD §16)
-const STRAW_SOFT = "#FBE6E0"; // --color-strsoft
+const LILAC = "var(--color-blsoft)";
+// Soft lilac track for the animated bar (CONTEXT D-28); mixed from the
+// accent so it sits right on both light and dark surfaces (UI-6).
+const TRACK = "color-mix(in srgb, var(--color-blue) 22%, transparent)";
+const INK = "var(--color-ink)";
+const MUT = "var(--color-mut)";
+const STRAW = "var(--color-straw)"; // error accent (PRD §16)
+const STRAW_SOFT = "var(--color-strsoft)";
 
 export interface EnhancingBannerProps {
   /** When false, the banner is unmounted (no empty container in the DOM). */

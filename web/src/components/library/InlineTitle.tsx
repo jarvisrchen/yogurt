@@ -86,7 +86,7 @@ export function InlineTitle({ id, title, className }: Props) {
           setEditing(false);
         }
       }}
-      className={`${className ?? ""} bg-white border border-blue rounded-button px-1 -mx-1 outline-none`}
+      className={`${className ?? ""} bg-card border border-blue rounded-button px-1 -mx-1 outline-none`}
     />
   );
 }

@@ -87,7 +87,7 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
   // Option E: STT family is always matcha. Filled = on this Mac,
   // outlined (#CBE0D2 border per the lavish mockup) = went to a provider.
   const tone = engine.cloud
-    ? "border border-[#CBE0D2] bg-transparent text-matcha"
+    ? "border border-matcha/40 bg-transparent text-matcha"
     : "bg-mtsoft text-matcha";
   return (
     <span
@@ -124,7 +124,7 @@ export function LlmPill({
   // the brand-blue button chrome.
   return (
     <span
-      className={`${PILL} border border-[#C5BEEF] bg-transparent text-blue`}
+      className={`${PILL} border border-blue/40 bg-transparent text-blue`}
       data-testid="llm-pill"
       title={pending ? `Will enhance with ${model}` : `Enhanced by ${model}`}
     >

@@ -25,11 +25,11 @@ import {
   type TranscriptEvent,
 } from "../lib/ws";
 
-const INK = "#211D18";
-const LINE = "#EBE3D5";
-const BLUE = "#5B4FC7";
-const STRAW_SOFT = "#FBE6E0";
-const STRAW = "#E07A66";
+const INK = "var(--color-ink)";
+const LINE = "var(--color-line)";
+const BLUE = "var(--color-blue)";
+const STRAW_SOFT = "var(--color-strsoft)";
+const STRAW = "var(--color-straw)";
 
 const NOTES_PLACEHOLDER =
   "Take sparse notes during the meeting — AI enhances on End.";
@@ -443,7 +443,7 @@ export function Meeting() {
   return (
     <div
       className="min-h-screen pr-7"
-      style={{ backgroundColor: "#FBF7EF" }}
+      style={{ backgroundColor: "var(--color-paper)" }}
     >
       <main className="max-w-[660px] mx-auto px-10 py-12 space-y-6">
         <Link
@@ -604,7 +604,7 @@ export function Meeting() {
         )}
 
         <section
-          className="rounded-card bg-white p-6"
+          className="rounded-card bg-card p-6"
           style={{ border: `1px solid ${LINE}` }}
         >
           <YogurtEditor

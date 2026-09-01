@@ -35,7 +35,7 @@ export function AudioSection({ general }: AudioSectionProps) {
           Input device
         </label>
         <select
-          className="block w-full rounded-md border border-line bg-white px-3 py-2 text-sm focus:border-blue focus:outline-none"
+          className="block w-full rounded-md border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
           defaultValue={general.audio_input_device}
           onChange={(e) => patch.mutate(e.target.value)}
           disabled={devices.isLoading || patch.isPending}

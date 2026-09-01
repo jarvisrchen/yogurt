@@ -7,7 +7,7 @@ import { settingsApi } from "../../lib/api/settings";
  * (fast task: the `+ Add` button in Settings.tsx used to be dead).
  *
  * No modal library — this renders as an inline card in the same spot the
- * button sat, matching `ProviderCard`'s rounded-xl/border-line/bg-white
+ * button sat, matching `ProviderCard`'s rounded-xl/border-line/bg-card
  * chrome. `POST /api/settings/providers` inserts the row inactive
  * (`is_active=0`, same as `PresetChip`), so on success it shows up as an
  * inactive `ProviderRow` card in the list — the footer `Set active`
@@ -51,7 +51,7 @@ export function AddProviderForm({ onDone, onCreated }: Props) {
   return (
     <form
       data-testid="add-provider-form"
-      className="rounded-xl border border-line bg-white p-4 space-y-3"
+      className="rounded-xl border border-line bg-card p-4 space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         if (valid && !create.isPending) create.mutate();

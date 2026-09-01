@@ -61,11 +61,11 @@ import {
 } from "../lib/api/meetings";
 import { postEnhance, type EnhanceResponse } from "../lib/api";
 
-const PAPER = "#FBF7EF"; // --color-paper
-const INK = "#211D18"; // --color-ink
-const LINE = "#EBE3D5"; // --color-line
-const STRAW = "#E07A66"; // --color-straw — error accent
-const STRAW_SOFT = "#FBE6E0"; // --color-strsoft
+const PAPER = "var(--color-paper)";
+const INK = "var(--color-ink)";
+const LINE = "var(--color-line)";
+const STRAW = "var(--color-straw)"; // error accent
+const STRAW_SOFT = "var(--color-strsoft)";
 
 /**
  * Matches `yogurt_db::Meeting`'s actual wire field names (`started_at` /
@@ -678,7 +678,7 @@ export function MeetingPost() {
         <div
           role="tablist"
           aria-label="Meeting document"
-          className="mb-7 inline-flex gap-0.5 rounded-[11px] bg-[#F2EBDD] p-1"
+          className="mb-7 inline-flex gap-0.5 rounded-[11px] bg-line/60 p-1"
         >
           {(["enhanced", "notes"] as const).map((document) => {
             const selected = activeDocument === document;
@@ -691,7 +691,7 @@ export function MeetingPost() {
                 onClick={() => setActiveDocument(document)}
                 className={`rounded-lg px-4 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
                   selected
-                    ? "bg-white text-ink shadow-[0_1px_3px_rgba(40,30,15,0.1)]"
+                    ? "bg-card text-ink shadow-[0_1px_3px_rgba(40,30,15,0.1)]"
                     : "text-mut hover:text-ink"
                 }`}
               >

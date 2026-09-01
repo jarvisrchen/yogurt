@@ -148,10 +148,9 @@ describe("TranscriptDock", () => {
     expect(firstLabel.textContent).toBe("Me");
     expect(secondLabel.textContent).toBe("Them");
 
-    // Browser normalizes hex colors to rgb() — assert the computed inline
-    // style (jsdom resolves `style.color` to rgb form).
-    expect(firstLabel.style.color).toBe("rgb(33, 29, 24)");
-    expect(secondLabel.style.color).toBe("rgb(168, 159, 144)");
+    // Tokens, not hex, so the labels follow dark mode (UI-6).
+    expect(firstLabel.style.color).toBe("var(--color-ink)");
+    expect(secondLabel.style.color).toBe("var(--color-grey)");
   });
 
   it("keeps the header icon-free and shows the shortened 'Transcript' label on the collapsed tab in live mode", async () => {

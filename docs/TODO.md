@@ -43,7 +43,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## UI
 
-- [ ] **UI-6** Add a dark mode toggle
 
 ## Meetings
 
@@ -193,6 +192,10 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
   Landed in #41. `ProviderCard.tsx`: the docs link and `Save` now share one `flex … gap-3` row. They were bare siblings of the card's `space-y-4` container, which only sets `margin-top` - and since both are inline-level, they shared a line box and rendered flush.
+
+- [x] **UI-6** Add a dark mode toggle
+
+  Landed in #45. Settings > General has an Appearance control (System / Light / Dark). The preference is browser-local: an inline script in `web/index.html` stamps `data-theme` on `<html>` before first paint, `web/src/lib/theme.ts` keeps it current, and `index.css` re-points the `@theme` color tokens under `:root[data-theme="dark"]`. Components that hardcoded palette hex values were moved onto the tokens so they follow the theme; new UI must use tokens (`bg-card`, `text-ink`, `var(--color-*)`), never `bg-white` or a hex.
 
 ### Meetings
 

@@ -13,9 +13,9 @@ export const LABEL_COLORS: Record<LabelColor, { bg: string; fg: string }> = {
   blue: { bg: "var(--color-blsoft)", fg: "var(--color-blue)" },
   matcha: { bg: "var(--color-mtsoft)", fg: "var(--color-matcha)" },
   straw: { bg: "var(--color-strsoft)", fg: "var(--color-straw)" },
-  lilac: { bg: "#F3E8FB", fg: "#8A5BB8" },
-  honey: { bg: "#FBF0D6", fg: "#A67C1B" },
-  slate: { bg: "#E8ECF0", fg: "#4E5D6B" },
+  lilac: { bg: "var(--color-lilacsoft)", fg: "var(--color-lilac)" },
+  honey: { bg: "var(--color-honeysoft)", fg: "var(--color-honey)" },
+  slate: { bg: "var(--color-slatesoft)", fg: "var(--color-slate)" },
 };
 
 /** Fallback for an unrecognized color key (e.g. a future palette addition

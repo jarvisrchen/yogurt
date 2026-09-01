@@ -144,10 +144,10 @@ export function ModelPicker({
                 isSelected
                   ? "border-[1.5px] border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)]"
                   : m.downloaded
-                    ? "border border-line bg-white text-ink hover:border-[var(--color-matcha)]"
+                    ? "border border-line bg-card text-ink hover:border-[var(--color-matcha)]"
                     : isDownloading
                       ? "border border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)] hover:opacity-90"
-                      : "border border-dashed border-line bg-white text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
+                      : "border border-dashed border-line bg-card text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
               )}
             >
               <span aria-hidden>{m.name}</span>
