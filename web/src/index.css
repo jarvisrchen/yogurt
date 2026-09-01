@@ -20,7 +20,8 @@
   --color-paper:   #FBF7EF;  /* app background, hero surfaces             */
   --color-card:    #FFFFFF;  /* cards, surfaces over paper                */
   --color-ink:     #211D18;  /* user notes, headings, primary text        */
-  --color-grey:    #A89F90;  /* AI-added text, secondary captions         */
+  --color-grey:    #A89F90;  /* secondary captions, transcript "Them"     */
+  --color-ai:      #7A7264;  /* AI-added text (UI-7: 4.5:1 on paper)      */
   --color-line:    #EBE3D5;  /* borders, dividers                         */
   --color-blue:    #5B4FC7;  /* primary blueberry — buttons, transcript   */
   --color-blsoft:  #ECE9FB;  /* soft blueberry — active-nav, pill bg      */
@@ -117,6 +118,7 @@
   --color-card:    #26221D;
   --color-ink:     #EDEAE2;
   --color-grey:    #8F877B;
+  --color-ai:      #A69D90;
   --color-line:    #3A342C;
   --color-blue:    #7D72DE;
   --color-blsoft:  #2C2846;
@@ -179,15 +181,17 @@ html, body {
 
 /* === Phase 4: hero augmented-notes swatch contract (PRD §16.7 / CONTEXT D-31)
  *
- * `.ai-grey` is the LLM-added run color (computed `rgb(168, 159, 144)` =
- *   `#A89F90`, the `--color-grey` Tailwind 4 token).
+ * `.ai-grey` is the LLM-added run color: the `--color-ai` token (`#7A7264`
+ *   light / `#A69D90` dark). It was `--color-grey` until UI-7; that token is
+ *   now captions only, so AI prose can sit higher-contrast than a caption
+ *   while staying clearly lighter than `--color-ink` user notes.
  * `.transcript-link` is the `↳ HH:MM` deep-link affordance: blueberry text
  *   (`--color-blue` = `#5B4FC7`) with a 1.5px dotted lilac underline.
  * `.yogurt-editor` enforces the 660px hero column width (NOTES-01).
  * ========================================================================== */
 
 .ai-grey {
-  color: var(--color-grey);
+  color: var(--color-ai);
 }
 
 .transcript-link {

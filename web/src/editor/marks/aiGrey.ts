@@ -2,9 +2,9 @@
 //
 // Wire format (CONTEXT D-06): `<span data-ai-grey data-ts="N" class="ai-grey">…</span>`
 //
-// CSS contract: `.ai-grey { color: var(--color-grey); }` — rendered as
-// `#A89F90` (Tailwind 4 `--color-grey` token), DevTools verified
-// `rgb(168, 159, 144)` per CONTEXT D-31.
+// CSS contract: `.ai-grey { color: var(--color-ai); }` - the `--color-ai`
+// token (`#7A7264` light / `#A69D90` dark, UI-7). The mark and class keep
+// their "grey" name; only the token behind them moved.
 //
 // Promote-on-edit (CONTEXT D-04 / NOTES-10): an `appendTransaction` plugin
 // watches every transaction; for each text-insertion range that lands
