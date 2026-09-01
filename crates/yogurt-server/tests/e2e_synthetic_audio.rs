@@ -55,6 +55,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
         // here but required by the AppState struct.
         app_events_tx: tokio::sync::broadcast::channel(64).0,
+        detect: Default::default(),
     };
     (state, token_str, tmp)
 }

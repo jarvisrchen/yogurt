@@ -355,3 +355,50 @@ export function useActiveRecording(): UseQueryResult<ActiveRecording | null, Err
     refetchOnWindowFocus: true,
   });
 }
+
+// ─── "Meeting detected" prompt (MTG-11) ────────────────────────────────────
+
+/** Wire shape of `GET /api/meetings/detected`'s non-null body — mirrors
+ *  `yogurt_audio::detect::DetectedMeeting`. */
+export interface DetectedMeeting {
+  /** `CGWindowID` of the matched window. Identity for "same call". */
+  window_id: number;
+  /** App label for the prompt, e.g. `"Zoom"` / `"Google Meet"`. */
+  app: string;
+  /** The matched window title, e.g. `"Meet - abc-defg-hij"`. */
+  title: string;
+}
+
+export const detectedMeetingKey = ["meetings", "detected"] as const;
+
+/**
+ * `GET /api/meetings/detected` — the meeting-app window the server's
+ * detection watcher last saw, or `null` when there is nothing to offer.
+ *
+ * The server already returns `null` while a recording is running and while
+ * the current window is dismissed, so the component has no "should this
+ * show" logic of its own. Same 5s cadence as `useActiveRecording` — it is
+ * bounded by the watcher's own poll interval anyway.
+ */
+export function useDetectedMeeting(): UseQueryResult<DetectedMeeting | null, Error> {
+  return useQuery({
+    queryKey: detectedMeetingKey,
+    queryFn: () => json<DetectedMeeting | null>("/api/meetings/detected"),
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** `POST /api/meetings/detected/dismiss` — silence the prompt for the call
+ *  currently on screen. The next different meeting window prompts again. */
+export function useDismissDetectedMeeting(): UseMutationResult<void, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await json<{ status: string }>("/api/meetings/detected/dismiss", {
+        method: "POST",
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: detectedMeetingKey }),
+  });
+}

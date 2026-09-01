@@ -63,14 +63,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
-- [ ] **MTG-11** Auto-start recording when yogurt detects a meeting has begun
-  <details>
-  <summary>Details</summary>
-
-  Today a meeting only starts when the user clicks "+ New meeting" - nothing watches for a meeting actually starting (calendar event, a Zoom/Meet/Slack window opening, system audio suddenly carrying a call) and kicks off recording on its own.
-  Needs a detection signal to key off before this can be scoped: a local calendar read, active-window/app detection for known meeting apps, or a system-audio heuristic - each has different privacy and false-positive tradeoffs worth weighing against the "no telemetry, audio never leaves the machine" constraints in AGENTS.md.
-  </details>
-
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
@@ -122,6 +114,27 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 <details>
 <summary>Click to expand</summary>
+
+### Meetings
+
+- [x] **MTG-11** Auto-start recording when yogurt detects a meeting has begun
+  <details>
+  <summary>Details</summary>
+
+  Shipped as **detect-and-prompt**, not auto-record.
+  `yogurt_audio::detect` polls `SCShareableContent` every 5s for an on-screen window matching a small allow-list of (bundle id, in-call window title) pairs - Zoom, Google Meet in a browser, Teams, Slack huddles.
+  Only the Google Meet rule is verified against a live call; the other three are inferred from documented window naming and should be confirmed with `cargo run -p yogurt-audio --example meeting_windows` during a real call before being trusted.
+  That reuses the `screencapturekit` dependency and the Screen Recording grant system-audio loopback already requires, so detection costs no new dependency and no new TCC prompt.
+  The two alternatives in the original scoping note were both worse: a calendar read needs a new permission and fires on events you skip, and a system-audio heuristic means holding a capture stream open around the clock, which is the thing the privacy constraint exists to prevent.
+
+  The prompt is a floating banner (`MeetingDetectedBanner`) offering "Start recording" / "Not now"; Start runs the same create-then-`autoStart` path as "+ New meeting".
+  Detection never starts a recording on its own - a false positive costs a dismissable banner, not a recorded room.
+  It does auto-*stop*: while the setting is on, a recording running alongside a detected meeting window is linked to it and stops once that window has been gone for three polls.
+
+  Settings -> General carries an on-by-default toggle.
+  Known blind spot: a browser window's title is its active tab's title, so a Meet call in a background tab is invisible; seeing it would need Accessibility permission.
+  `cargo run -p yogurt-audio --example meeting_windows` dumps the live window list with each row's verdict, for retuning the title patterns when a vendor renames a window.
+  </details>
 
 ### UI
 

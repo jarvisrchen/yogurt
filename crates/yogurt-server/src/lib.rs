@@ -4,6 +4,7 @@
 mod api;
 mod assets;
 pub mod audio;
+mod detect;
 mod dev_proxy;
 // Phase 4 (Plan 04-03) augmented-notes enhance endpoint handler. Wires
 // prompts → LLM → merge → persistence → WS progress events end-to-end.
@@ -208,6 +209,10 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     if let Err(e) = bootstrap::repair_escaped_span_rows(&state) {
         tracing::warn!(error = %e, "escaped-span repair failed; continuing");
     }
+
+    // MTG-11: meeting detection watcher. Reads its own enable flag every
+    // tick, so it is cheap and instantly togglable when disabled.
+    detect::spawn(state.clone());
 
     let app = routes::router(state);
     tracing::info!(addr = ?cfg.addr, mode = ?cfg.mode, "yogurt-server starting");

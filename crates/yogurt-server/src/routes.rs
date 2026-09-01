@@ -74,6 +74,13 @@ pub fn router(state: AppState) -> Router {
         // relies on), so `active` can never be swallowed as an id.
         // `route_order_guard` in tests/meetings_api.rs asserts this holds.
         .route("/api/meetings/active", get(active_recording))
+        // MTG-11: the meeting-detection prompt. Literal segments beat
+        // `{id}` in axum 0.8's matcher, same guarantee `active` relies on.
+        .route("/api/meetings/detected", get(detected_meeting))
+        .route(
+            "/api/meetings/detected/dismiss",
+            post(dismiss_detected_meeting),
+        )
         // axum 0.8 path syntax: `{id}` (not `:id`).
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
@@ -311,6 +318,32 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
 /// UI needs a global way back). Polled every 5s by the frontend, so this
 /// always returns `200` — `null` when nothing is recording, never `404`
 /// (a 404 would just be constant background noise in the network log).
+/// `GET /api/meetings/detected` — MTG-11. The meeting-looking window the
+/// watcher last saw, or `null`.
+///
+/// Returns `null` while a recording is already running: the prompt asks
+/// "start recording?", which is noise once the answer is obviously yes.
+/// Deciding that here rather than in the component keeps one source of
+/// truth for "should the prompt show".
+async fn detected_meeting(State(state): State<AppState>) -> impl IntoResponse {
+    if state.meetings.active_recording().await.is_some() {
+        return (StatusCode::OK, Json(Value::Null)).into_response();
+    }
+    let st = state.detect.lock().await;
+    match st.prompt() {
+        Some(m) => (StatusCode::OK, Json(json!(m))).into_response(),
+        None => (StatusCode::OK, Json(Value::Null)).into_response(),
+    }
+}
+
+/// `POST /api/meetings/detected/dismiss` — MTG-11. Suppress the prompt
+/// for the call currently on screen. The next *different* meeting window
+/// prompts again (see `DetectState::dismissed`).
+async fn dismiss_detected_meeting(State(state): State<AppState>) -> impl IntoResponse {
+    state.detect.lock().await.dismiss_current();
+    (StatusCode::OK, Json(json!({ "status": "dismissed" })))
+}
+
 async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
     let Some(id) = state.meetings.active_recording().await else {
         return (StatusCode::OK, Json(Value::Null)).into_response();

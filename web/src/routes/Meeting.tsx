@@ -82,7 +82,14 @@ export function Meeting() {
   const navigate = useNavigate();
 
   // `id` is either the routed UUID, or `"new"` (the bootstrap shape).
-  const routeId = params.id ?? null;
+  //
+  // `/meeting/new` is its own route entry with no `:id` segment, so
+  // `params.id` is undefined there and the pathname is the only thing
+  // that identifies the bootstrap shape. Reading it off `params` alone
+  // left `/meeting/new` inert: the bootstrap effect below never fired,
+  // and a direct visit sat on an empty "New meeting" page forever.
+  const routeId =
+    params.id ?? (location.pathname === "/meeting/new" ? "new" : null);
   const [meetingId, setMeetingId] = useState<string | null>(
     routeId && routeId !== "new" ? routeId : null,
   );

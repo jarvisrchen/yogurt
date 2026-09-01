@@ -68,6 +68,10 @@ pub struct AppState {
     /// handler subscribes once per upgrade and fans frames to its
     /// browser client.  Capacity 64 absorbs the ~2 Hz progress tick.
     pub app_events_tx: crate::ws::AppEventTx,
+    /// MTG-11: live meeting-detection state, written by the
+    /// `crate::detect` watcher task and read by
+    /// `GET /api/meetings/detected`.
+    pub detect: crate::detect::SharedDetectState,
 }
 
 impl AppState {
@@ -160,6 +164,7 @@ impl AppState {
             label_repo,
             // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
             app_events_tx,
+            detect: Default::default(),
         })
     }
 
@@ -199,6 +204,7 @@ impl AppState {
             label_repo,
             // Phase 8 (Plan 08-03): app-wide event broadcaster — see field doc.
             app_events_tx,
+            detect: Default::default(),
         })
     }
 }
