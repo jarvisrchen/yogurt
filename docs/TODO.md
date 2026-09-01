@@ -368,6 +368,10 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
   Landed as: `docs/AI-INTEGRATION.md` "Read what got captured" rewritten around URL -> id parsing and summary-first ordering, and `.claude/skills/yogurt-control/SKILL.md` extended to cover reading (its description now triggers on a pasted meeting URL, not just start/stop). Both take the port from the URL rather than hardcoding 7878, since `just dev` moves the backend for a second worktree (CLI-3).
 
+  `README.md` gained an "Ask an agent about a meeting" section, because the skill lives at `.claude/skills/` and yogurt ships as a brew binary - so the people MTG-9 was written for never clone the repo and would never see it. Install is a two-line `curl` into `~/.claude/skills/` or `~/.codex/skills/`; Codex uses the identical `SKILL.md` frontmatter format, so it is the same file for both. `curl -fsSL -o` exits non-zero and writes nothing on a 404, so a bad URL cannot half-install a broken skill.
+
+  Deliberately not built: per-agent plugin manifests. Claude Code reads `.claude-plugin/marketplace.json` and Codex reads `.agents/plugins/marketplace.json` (different schema), and Cursor/Windsurf/Gemini/opencode each want their own wrapper - ponytail ships eight such copies of one skill's text. That is a lot of sync surface to save a `curl`. Revisit if someone actually asks for `plugin install`.
+
 
 ### Audio
 
