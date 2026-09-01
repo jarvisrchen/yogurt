@@ -121,12 +121,18 @@ pub const DEEPGRAM_KEY_ID: &str = "stt-deepgram";
 pub type MeetingId = Uuid;
 
 /// Command sent across the tokio → capture-`std::thread` bridge to hot-swap
-/// the mic device mid-recording. Serviced by `run_capture_control_loop`
-/// alongside the existing shutdown `oneshot`.
+/// the mic device or pause/resume it mid-recording. Serviced by
+/// `run_capture_control_loop` alongside the existing shutdown `oneshot`.
 pub enum AudioCommand {
     SwitchMicDevice {
         device_name: String,
         reply: oneshot::Sender<std::result::Result<String, String>>,
+    },
+    /// AUD-6: pause (`true`) or resume (`false`) mic audio reaching the STT
+    /// pipeline, without touching system audio or restarting capture.
+    SetMicMuted {
+        muted: bool,
+        reply: oneshot::Sender<std::result::Result<(), String>>,
     },
 }
 
@@ -192,6 +198,13 @@ pub struct Meeting {
     /// *next* start — see settings.rs's PATCH validation). Read by the
     /// `GET /api/meetings/active` route for the live engine badge.
     pub stt_engine: Mutex<Option<&'static str>>,
+    /// AUD-6: whether the mic is currently paused. `false` before the first
+    /// start and reset to `false` on every new start (mirrors `MicCapture`
+    /// itself never carrying mute state across a stop/start). Set by
+    /// `Registry::set_mic_muted` after the capture thread confirms the
+    /// change; read by the `GET /api/meetings/active` route so a reload or
+    /// second tab reflects the true state without new WS plumbing.
+    pub mic_muted: Mutex<bool>,
 }
 
 /// Abort a spawned task when the owner is dropped. Used so the STT session
@@ -223,6 +236,7 @@ impl Meeting {
             audio_cmd_tx: Mutex::new(None),
             persist: Mutex::new(None),
             stt_engine: Mutex::new(None),
+            mic_muted: Mutex::new(false),
         }
     }
 }
@@ -450,11 +464,25 @@ impl Registry {
                     return;
                 }
                 // Block until the supervisor drops `shutdown_tx`, servicing
-                // hot-swap commands from `Registry::switch_mic_device` in
-                // the meantime.
-                run_capture_control_loop(&rt_handle, shutdown_rx, cmd_rx, |name| {
-                    let opt = if name.is_empty() { None } else { Some(name) };
-                    stream.switch_mic_device(opt).map_err(|e| e.to_string())
+                // hot-swap / mute commands from `Registry::switch_mic_device`
+                // and `Registry::set_mic_muted` in the meantime. One dispatch
+                // closure (rather than one per command) because both variants
+                // need `stream` and two closures can't each hold their own
+                // borrow of it at once.
+                run_capture_control_loop(&rt_handle, shutdown_rx, cmd_rx, |cmd| match cmd {
+                    AudioCommand::SwitchMicDevice { device_name, reply } => {
+                        let opt = if device_name.is_empty() {
+                            None
+                        } else {
+                            Some(device_name.as_str())
+                        };
+                        let _ =
+                            reply.send(stream.switch_mic_device(opt).map_err(|e| e.to_string()));
+                    }
+                    AudioCommand::SetMicMuted { muted, reply } => {
+                        stream.set_mic_muted(muted);
+                        let _ = reply.send(Ok(()));
+                    }
                 });
                 // Dropping `stream` here stops both mic + system capture via RAII.
                 drop(stream);
@@ -750,6 +778,46 @@ impl Registry {
             Ok(Err(_)) => Err(SwitchDeviceError::NotRecording),
             Err(_) => Err(SwitchDeviceError::Device(
                 "timed out waiting for capture thread to switch device".into(),
+            )),
+        }
+    }
+
+    /// AUD-6: pause or resume the mic on an actively-recording meeting.
+    /// Same shape as `switch_mic_device` — forwards an
+    /// `AudioCommand::SetMicMuted` into the capture thread and awaits the
+    /// reply with a 5s timeout — plus stamps `Meeting::mic_muted` on
+    /// success so `GET /api/meetings/active` reflects the true state.
+    pub async fn set_mic_muted(
+        &self,
+        id: &MeetingId,
+        muted: bool,
+    ) -> std::result::Result<(), SwitchDeviceError> {
+        let m = self.get(id).await.ok_or(SwitchDeviceError::NotFound)?;
+
+        let tx = m
+            .audio_cmd_tx
+            .lock()
+            .await
+            .clone()
+            .ok_or(SwitchDeviceError::NotRecording)?;
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(AudioCommand::SetMicMuted {
+            muted,
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SwitchDeviceError::NotRecording)?;
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await {
+            Ok(Ok(Ok(()))) => {
+                *m.mic_muted.lock().await = muted;
+                Ok(())
+            }
+            Ok(Ok(Err(msg))) => Err(SwitchDeviceError::Device(msg)),
+            Ok(Err(_)) => Err(SwitchDeviceError::NotRecording),
+            Err(_) => Err(SwitchDeviceError::Device(
+                "timed out waiting for capture thread to set mic mute".into(),
             )),
         }
     }
@@ -1105,7 +1173,7 @@ async fn write_segments(
     }
 }
 
-/// Service `AudioCommand`s (currently just `SwitchMicDevice`) from the
+/// Service `AudioCommand`s (`SwitchMicDevice`, `SetMicMuted`) from the
 /// tokio side while blocking the capture `std::thread` until the supervisor
 /// drops `shutdown_rx`. Runs on `rt_handle` (the same `Handle` the capture
 /// thread already carries so `start_capture`'s internal `tokio::spawn`
@@ -1119,16 +1187,14 @@ fn run_capture_control_loop(
     rt_handle: &tokio::runtime::Handle,
     mut shutdown_rx: oneshot::Receiver<()>,
     mut cmd_rx: mpsc::Receiver<AudioCommand>,
-    mut switch: impl FnMut(&str) -> std::result::Result<String, String>,
+    mut on_command: impl FnMut(AudioCommand),
 ) {
     rt_handle.block_on(async {
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => break,
                 cmd = cmd_rx.recv() => match cmd {
-                    Some(AudioCommand::SwitchMicDevice { device_name, reply }) => {
-                        let _ = reply.send(switch(&device_name));
-                    }
+                    Some(cmd) => on_command(cmd),
                     None => break,
                 }
             }
@@ -1351,11 +1417,12 @@ mod tests {
     }
 
     /// Proves the real `tokio::select!` capture-thread control loop
-    /// services multiple hot-swap commands in order and exits cleanly on
-    /// shutdown, with no deadlock — entirely independent of real audio
-    /// hardware (mirrors how `pump_audio_adapter` is tested). A `1s`
-    /// timeout on each reply means a deadlock fails the test loudly rather
-    /// than hanging the test run.
+    /// services both `SwitchMicDevice` (AUD-3) and `SetMicMuted` (AUD-6)
+    /// commands, interleaved, in order, and exits cleanly on shutdown, with
+    /// no deadlock — entirely independent of real audio hardware (mirrors
+    /// how `pump_audio_adapter` is tested). A `1s` timeout on each reply
+    /// means a deadlock fails the test loudly rather than hanging the test
+    /// run.
     #[test]
     fn run_capture_control_loop_services_commands_then_exits_cleanly() {
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -1372,16 +1439,30 @@ mod tests {
 
         // Mirrors how `Registry::start` runs the loop: a plain
         // std::thread::spawn body that block_on's the loop on the
-        // captured `Handle`.
+        // captured `Handle`, with one dispatch closure servicing every
+        // command variant (see the real call site's comment for why this
+        // can't be one closure per variant).
         let worker = std::thread::spawn(move || {
-            run_capture_control_loop(&handle, shutdown_rx, cmd_rx, move |name: &str| {
-                seen_for_worker.lock().unwrap().push(name.to_string());
-                Ok(format!("resolved:{name}"))
+            run_capture_control_loop(&handle, shutdown_rx, cmd_rx, move |cmd| match cmd {
+                AudioCommand::SwitchMicDevice { device_name, reply } => {
+                    seen_for_worker
+                        .lock()
+                        .unwrap()
+                        .push(format!("switch:{device_name}"));
+                    let _ = reply.send(Ok(format!("resolved:{device_name}")));
+                }
+                AudioCommand::SetMicMuted { muted, reply } => {
+                    seen_for_worker
+                        .lock()
+                        .unwrap()
+                        .push(format!("mute:{muted}"));
+                    let _ = reply.send(Ok(()));
+                }
             });
         });
 
         rt.block_on(async {
-            for name in ["mic-a", "mic-b", "mic-c"] {
+            for name in ["mic-a", "mic-b"] {
                 let (reply_tx, reply_rx) = oneshot::channel();
                 cmd_tx
                     .send(AudioCommand::SwitchMicDevice {
@@ -1396,6 +1477,22 @@ mod tests {
                     .expect("reply sender dropped unexpectedly");
                 assert_eq!(reply, Ok(format!("resolved:{name}")));
             }
+
+            for muted in [true, false] {
+                let (reply_tx, reply_rx) = oneshot::channel();
+                cmd_tx
+                    .send(AudioCommand::SetMicMuted {
+                        muted,
+                        reply: reply_tx,
+                    })
+                    .await
+                    .expect("send command");
+                let reply = tokio::time::timeout(std::time::Duration::from_secs(1), reply_rx)
+                    .await
+                    .expect("reply within 1s — a timeout means the select loop deadlocked")
+                    .expect("reply sender dropped unexpectedly");
+                assert_eq!(reply, Ok(()));
+            }
         });
 
         // Signal shutdown and join — a hang here means the loop can't
@@ -1406,9 +1503,10 @@ mod tests {
         assert_eq!(
             *seen.lock().unwrap(),
             vec![
-                "mic-a".to_string(),
-                "mic-b".to_string(),
-                "mic-c".to_string()
+                "switch:mic-a".to_string(),
+                "switch:mic-b".to_string(),
+                "mute:true".to_string(),
+                "mute:false".to_string(),
             ]
         );
     }
