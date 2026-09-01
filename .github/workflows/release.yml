@@ -32,7 +32,7 @@ jobs:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -43,11 +43,11 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.14.0
           cache: pnpm
@@ -71,7 +71,7 @@ jobs:
           tar -czf "yogurt-${{ matrix.target }}.tar.gz" -C target/${{ matrix.target }}/release yogurt
           shasum -a 256 "yogurt-${{ matrix.target }}.tar.gz" > "yogurt-${{ matrix.target }}.tar.gz.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: yogurt-${{ matrix.target }}
           path: |
@@ -84,9 +84,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: yogurt-*
           path: dist
@@ -112,7 +112,7 @@ jobs:
 
       - name: Create GitHub Release
         if: github.event_name == 'push' || inputs.dry-run == false
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
@@ -125,7 +125,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: yogurt-*
           path: dist
@@ -142,7 +142,7 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout tap repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: jarvisrchen/homebrew-yogurt
           path: tap
