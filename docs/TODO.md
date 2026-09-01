@@ -197,6 +197,10 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
   Landed in #45. Settings > General has an Appearance control (System / Light / Dark). The preference is browser-local: an inline script in `web/index.html` stamps `data-theme` on `<html>` before first paint, `web/src/lib/theme.ts` keeps it current, and `index.css` re-points the `@theme` color tokens under `:root[data-theme="dark"]`. Components that hardcoded palette hex values were moved onto the tokens so they follow the theme; new UI must use tokens (`bg-card`, `text-ink`, `var(--color-*)`), never `bg-white` or a hex.
 
+- [x] **UI-7** AI text in augmented notes is too low-contrast
+
+  Landed in #47. AI-added runs shared `--color-grey` with 10px captions and transcript speaker labels, which put body prose at 2.45:1 on paper in light mode. They now use their own `--color-ai` token (`#7A7264` light, 4.5:1; `#A69D90` dark, 6.6:1), still well below `--color-ink` so user notes remain the higher-contrast layer. `--color-grey` is unchanged for captions.
+
 ### Meetings
 
 - [x] **MTG-1** Live transcript comes back empty after navigating to Library and back, but a refresh restores it
