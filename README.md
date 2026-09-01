@@ -219,22 +219,26 @@ full transcript, and answer questions about it.
 This ships as an optional skill. Install it once:
 
 ```bash
-# Claude Code
+npx skills add jarvisrchen/yogurt --skill yogurt-control --global
+```
+
+That installs one copy at `~/.agents/skills/yogurt-control` and symlinks
+every agent you have at it, so Claude Code, Codex, Cursor, and the rest all
+read the same file. Drop `--global` to install into the current project
+instead, `--agent claude-code` to pick just one, and `npx skills update` to
+pull a newer version later.
+
+No Node? It is one file, so fetching it by hand works too. Use
+`~/.claude/skills/` for Claude Code or `~/.codex/skills/` for Codex:
+
+```bash
 mkdir -p ~/.claude/skills/yogurt-control
 curl -fsSL https://raw.githubusercontent.com/jarvisrchen/yogurt/main/.claude/skills/yogurt-control/SKILL.md \
   -o ~/.claude/skills/yogurt-control/SKILL.md
 ```
 
-```bash
-# Codex
-mkdir -p ~/.codex/skills/yogurt-control
-curl -fsSL https://raw.githubusercontent.com/jarvisrchen/yogurt/main/.claude/skills/yogurt-control/SKILL.md \
-  -o ~/.codex/skills/yogurt-control/SKILL.md
-```
-
-Both agents read the same `SKILL.md` format, so it is the same file either
-way. Nothing to uninstall but the directory. If you cloned this repo you
-already have it, at `.claude/skills/yogurt-control/`, with no install step.
+If you cloned this repo you already have it, at
+`.claude/skills/yogurt-control/`, with no install step.
 
 Then just paste a URL:
 

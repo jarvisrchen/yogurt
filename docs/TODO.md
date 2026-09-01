@@ -368,9 +368,13 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
   Landed as: `docs/AI-INTEGRATION.md` "Read what got captured" rewritten around URL -> id parsing and summary-first ordering, and `.claude/skills/yogurt-control/SKILL.md` extended to cover reading (its description now triggers on a pasted meeting URL, not just start/stop). Both take the port from the URL rather than hardcoding 7878, since `just dev` moves the backend for a second worktree (CLI-3).
 
-  `README.md` gained an "Ask an agent about a meeting" section, because the skill lives at `.claude/skills/` and yogurt ships as a brew binary - so the people MTG-9 was written for never clone the repo and would never see it. Install is a two-line `curl` into `~/.claude/skills/` or `~/.codex/skills/`; Codex uses the identical `SKILL.md` frontmatter format, so it is the same file for both. `curl -fsSL -o` exits non-zero and writes nothing on a 404, so a bad URL cannot half-install a broken skill.
+  `README.md` gained an "Ask an agent about a meeting" section, because the skill lives at `.claude/skills/` and yogurt ships as a brew binary - so the people MTG-9 was written for never clone the repo and would never see it.
 
-  Deliberately not built: per-agent plugin manifests. Claude Code reads `.claude-plugin/marketplace.json` and Codex reads `.agents/plugins/marketplace.json` (different schema), and Cursor/Windsurf/Gemini/opencode each want their own wrapper - ponytail ships eight such copies of one skill's text. That is a lot of sync surface to save a `curl`. Revisit if someone actually asks for `plugin install`.
+  Install is `npx skills add jarvisrchen/yogurt --skill yogurt-control --global` (`skills`, from `vercel-labs/skills`). This needs **no repo changes at all**: `.claude/skills` is already in that CLI's `AGENT_PROJECT_SKILL_DIRS`, so it discovers yogurt's skills straight out of the existing layout with no manifest. Verified against the real repo before writing the docs - `--list` on `main` found both `release` and `yogurt-control`, and a sandboxed-`HOME` install put one copy at `~/.agents/skills/yogurt-control` with `~/.claude/skills/yogurt-control` symlinked at it, so all 77 supported agents share a single source of truth.
+
+  The README pins `--skill yogurt-control` on purpose: the repo also ships the contributor-only `release` skill (tags a version, merges the Homebrew tap PR), and an unpinned install would hand every yogurt user a release-cutting skill they cannot use. A hand `curl` into `~/.claude/skills/` or `~/.codex/skills/` is kept as the no-Node fallback; Codex uses the identical `SKILL.md` frontmatter, so it is one file for both, and `curl -fsSL -o` exits non-zero and writes nothing on a 404 so a bad URL cannot half-install a broken skill.
+
+  Deliberately not built: per-agent plugin manifests. Claude Code reads `.claude-plugin/marketplace.json` and Codex reads `.agents/plugins/marketplace.json` (different schema), and Cursor/Windsurf/Gemini/opencode each want their own wrapper - ponytail ships eight such copies of one skill's text. The `skills` CLI makes all of that unnecessary here.
 
 
 ### Audio
