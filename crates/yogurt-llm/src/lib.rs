@@ -39,6 +39,27 @@ use std::time::Duration;
 /// and aggressive enough that the user notices a stall before refreshing.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Budget for a [`LlmClient`] whose `stream` does not actually stream and
+/// so must finish generating before it yields anything (today: the agent
+/// CLIs in `cli.rs`).
+///
+/// `HTTP_TIMEOUT` is the wrong number for those, and the difference is not
+/// a matter of degree. Against an HTTP provider, `stream()` resolves once
+/// the response *headers* land, and everything after that is governed by
+/// the caller's per-chunk idle timeout - so 60 s is generous for what it
+/// covers. `CliClient::stream` runs the subprocess to completion and
+/// replays the answer as one delta, so the same 60 s has to cover full
+/// generation instead of a handshake.
+///
+/// That gap is what made LLM-5 look like a hang: `claude --model haiku`
+/// ignores `--effort low` and spent ~10k thinking tokens (94 s) on a
+/// 300-character extraction answer, so every enhance died at exactly 60 s
+/// while the identical prompt on sonnet finished in 4 s. Sizing this for
+/// generation lets a slow model be slow instead of being reported as
+/// broken; a genuinely wedged process is still bounded, by the adapter's
+/// own `CLI_TIMEOUT` inside `run`.
+const GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// Lower bound on connect (DNS + TCP + TLS) for `OpenAiCompatClient`.
 /// Surfaces a clear error when the caller pasted a typo'd base_url
 /// instead of stalling for the full `HTTP_TIMEOUT`.
@@ -61,6 +82,18 @@ pub trait LlmClient: Send + Sync {
     /// The model name this client sends on the wire, for provenance
     /// stamps (`meetings.llm_model`). Mocks return a fixed marker.
     fn model_name(&self) -> String;
+
+    /// How long a caller should wait on this client before calling it
+    /// failed - both for `stream()` to resolve and between chunks.
+    ///
+    /// On the trait rather than a constant at the call site because the
+    /// right number depends on what the implementation *does* per await
+    /// point, which only the implementation knows: an HTTP client resolves
+    /// `stream()` at the response headers, while a CLI client has to
+    /// finish generating first. See [`GENERATION_TIMEOUT`].
+    fn response_timeout(&self) -> Duration {
+        HTTP_TIMEOUT
+    }
 }
 
 /// OpenAI-compatible HTTP adapter. Speaks the `/chat/completions` shape —
