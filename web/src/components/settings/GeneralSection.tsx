@@ -93,6 +93,9 @@ export function GeneralSection({ general }: GeneralSectionProps) {
           }}
           className="block w-32 rounded-md border border-line bg-card px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
         />
+        <p className="text-xs font-mono text-mut">
+          Port change applies on next `yogurt start`.
+        </p>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-ink">
@@ -125,9 +128,6 @@ export function GeneralSection({ general }: GeneralSectionProps) {
         also stops once the meeting window closes.
       </p>
 
-      <p className="text-xs font-mono text-mut">
-        Port change applies on next `yogurt start`.
-      </p>
     </section>
   );
 }

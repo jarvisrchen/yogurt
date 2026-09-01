@@ -14,6 +14,7 @@ function renderSection() {
           first_run_completed: true,
           stt_provider: "local",
           stt_model: "",
+          meeting_detection: true,
         }} />
     </QueryClientProvider>,
   );
