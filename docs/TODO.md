@@ -158,29 +158,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## LLM
 
-- [ ] **LLM-5** Enhance times out on CLI providers whose model ignores `--effort low`
-  <details>
-  <summary>Details</summary>
-
-  Selecting `haiku` as the Claude Code CLI provider's model makes every enhance fail with `llm call exceeded 60s timeout`. `sonnet` on the identical prompt is fine. Reproduced against a real 94 s meeting (`01a05a46-d9d0-78c1-b88f-5269955516c0`), running `crates/yogurt-llm/src/cli.rs`'s exact argv by hand:
-
-  | model | wall | output tokens | thinking tokens | result |
-  | --- | ---: | ---: | ---: | ---: |
-  | sonnet, `--effort low` | 4.2 s | 126 | 0 | 314 chars |
-  | haiku, `--effort low` | 94 s | 10100 | 9983 | 305 chars |
-  | haiku, no `--effort` | 77 s | 7550 | 7466 | 211 chars |
-
-  Three separate problems, all of which have to be fixed for this to stop biting:
-
-  **1. `--effort low` is assumed to be sufficient, and silently is not.** `build_args` passes it unconditionally, justified in its own comment as "extraction calls, not reasoning tasks - low effort is faster and cheaper with no real quality loss ... there's no scenario here that benefits from spending more". Sonnet honours it and emits 0 thinking tokens. Haiku ignores it and spends ~10k thinking tokens on a prompt whose answer is 300 characters. Dropping the flag changes nothing (row 3), so the flag is not the lever - and there is no thinking-budget flag on the CLI at all (`claude --help` offers only `--effort` and `--max-budget-usd`).
-
-  **2. The CLI adapter borrows a timeout sized for a different job.** `CLI_TIMEOUT` is `crate::HTTP_TIMEOUT`, and `enhance.rs` separately wraps `llm.stream()` in the same 60 s. For an HTTP provider that budget covers *opening* a stream - headers only - and a long healthy generation then runs on the per-chunk idle timeout instead. But `CliClient::stream` does not stream: it runs `complete()` to completion and replays the whole answer as one delta (`// v1 scope (LLM-4): no --output-format stream-json parsing yet`). So the same 60 s has to cover *full generation*. Even sonnet on a 60-minute meeting already burns 17.6 s of it, so the margin is thin for everyone, not just haiku.
-
-  **3. The failure is illegible.** A model that is merely slow presents as a hang, then a generic "LLM timed out" banner naming no model and offering no remedy. Nothing points at the model choice, which is what made this take a full debugging session to pin down.
-
-  Worth noting the cost inversion, because it undercuts the obvious "just pick the cheap fast model" instinct: haiku here is ~20x slower **and** more expensive than sonnet (10100 output tokens vs 126) for an equivalent answer.
-  </details>
-
 ## CLI
 
 ## DONE
@@ -536,6 +513,37 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
 ### LLM
+
+- [x] **LLM-5** Enhance times out on CLI providers whose model ignores `--effort low`
+  <details>
+  <summary>Details</summary>
+
+  Selecting `haiku` as the Claude Code CLI provider's model makes every enhance fail with `llm call exceeded 60s timeout`. `sonnet` on the identical prompt is fine. Reproduced against a real 94 s meeting (`01a05a46-d9d0-78c1-b88f-5269955516c0`), running `crates/yogurt-llm/src/cli.rs`'s exact argv by hand:
+
+  | model | wall | output tokens | thinking tokens | result |
+  | --- | ---: | ---: | ---: | ---: |
+  | sonnet, `--effort low` | 4.2 s | 126 | 0 | 314 chars |
+  | haiku, `--effort low` | 94 s | 10100 | 9983 | 305 chars |
+  | haiku, no `--effort` | 77 s | 7550 | 7466 | 211 chars |
+
+  Three separate problems, all of which have to be fixed for this to stop biting:
+
+  **1. `--effort low` is assumed to be sufficient, and silently is not.** `build_args` passes it unconditionally, justified in its own comment as "extraction calls, not reasoning tasks - low effort is faster and cheaper with no real quality loss ... there's no scenario here that benefits from spending more". Sonnet honours it and emits 0 thinking tokens. Haiku ignores it and spends ~10k thinking tokens on a prompt whose answer is 300 characters. Dropping the flag changes nothing (row 3), so the flag is not the lever - and there is no thinking-budget flag on the CLI at all (`claude --help` offers only `--effort` and `--max-budget-usd`).
+
+  **2. The CLI adapter borrows a timeout sized for a different job.** `CLI_TIMEOUT` is `crate::HTTP_TIMEOUT`, and `enhance.rs` separately wraps `llm.stream()` in the same 60 s. For an HTTP provider that budget covers *opening* a stream - headers only - and a long healthy generation then runs on the per-chunk idle timeout instead. But `CliClient::stream` does not stream: it runs `complete()` to completion and replays the whole answer as one delta (`// v1 scope (LLM-4): no --output-format stream-json parsing yet`). So the same 60 s has to cover *full generation*. Even sonnet on a 60-minute meeting already burns 17.6 s of it, so the margin is thin for everyone, not just haiku.
+
+  **3. The failure is illegible.** A model that is merely slow presents as a hang, then a generic "LLM timed out" banner naming no model and offering no remedy. Nothing points at the model choice, which is what made this take a full debugging session to pin down.
+
+  Worth noting the cost inversion, because it undercuts the obvious "just pick the cheap fast model" instinct: haiku here is ~20x slower **and** more expensive than sonnet (10100 output tokens vs 126) for an equivalent answer.
+
+  Done 2026-09-01 (#24).
+  The budget moved onto the trait as `LlmClient::response_timeout`, because only the implementation knows what its own await points cost: HTTP keeps the 60 s handshake figure, `CliClient` returns `GENERATION_TIMEOUT` (300 s), and `enhance.rs` asks the client instead of hardcoding a constant for either the open or the per-chunk idle wait.
+  `CLI_TIMEOUT` stays as the inner bound on a wedged subprocess, now sized off `GENERATION_TIMEOUT` so it cannot preempt the caller; the dead `LLM_HTTP_TIMEOUT` is gone.
+  `--effort low` is still sent - it genuinely helps the models that honour it - but is now documented as advisory rather than relied on as a cap.
+  The timeout message names the model and points at Settings, since a timeout here is far more often "this model is slow for this prompt" than "the provider is down".
+  Verified end to end against the running app with `haiku` still configured, on the meeting that was failing: HTTP 200 in 1:53 (`llm_model: cli:claude:haiku`), where before it died at 60 s every time.
+  Still slow, because nothing available can cap haiku's thinking - but slow now reads as slow instead of broken.
+  </details>
 
 - [x] **LLM-1** Route LLM calls through a local agent CLI (`claude -p`, `cursor-agent`) when no API endpoint is reachable
   <details>
