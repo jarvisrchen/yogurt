@@ -6,9 +6,19 @@
  * - Both persist via `PATCH /api/settings` and invalidate `['settings']`.
  *
  * Caption explains that port changes apply on the next `yogurt start`.
+ * - Appearance (UI-6) is browser-local (see `lib/theme.ts`), not a server
+ *   setting, so it applies instantly and survives reload without a flash.
  */
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
+import { getThemePref, setThemePref, type ThemePref } from "../../lib/theme";
+
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 interface GeneralSectionProps {
   general: General;
@@ -21,9 +31,45 @@ export function GeneralSection({ general }: GeneralSectionProps) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
 
+  const [theme, setTheme] = useState<ThemePref>(getThemePref);
+
   return (
     <section className="space-y-5">
       <h2 className="heading-section">General</h2>
+
+      <div className="space-y-1.5">
+        <label className="block text-[10px] font-mono uppercase tracking-wider text-mut">
+          Appearance
+        </label>
+        <div
+          role="radiogroup"
+          aria-label="Appearance"
+          className="inline-flex gap-0.5 rounded-[11px] bg-line/60 p-1"
+        >
+          {THEME_OPTIONS.map((opt) => {
+            const selected = theme === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => {
+                  setThemePref(opt.value);
+                  setTheme(opt.value);
+                }}
+                className={`rounded-lg px-4 py-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
+                  selected
+                    ? "bg-card text-ink shadow-[0_1px_3px_rgba(40,30,15,0.1)]"
+                    : "text-mut hover:text-ink"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="space-y-1.5">
         <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
@@ -45,7 +91,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
               patch.mutate({ port: next });
             }
           }}
-          className="block w-32 rounded-md border border-line bg-white px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
+          className="block w-32 rounded-md border border-line bg-card px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
         />
       </div>
 

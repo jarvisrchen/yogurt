@@ -3,7 +3,8 @@
 /* ────────────────────────────────────────────────────────────────────────────
  * Yogurt design tokens — PRD §16 (Blueberry theme, the default and only v1 theme).
  * Strawberry and Matcha-dark themes are documented in §16.2 but deferred
- * (see §15 — "Blueberry only in v1").
+ * (see §15 — "Blueberry only in v1"). UI-6 adds a dark variant of Blueberry:
+ * the same tokens, re-pointed under `:root[data-theme="dark"]` below.
  *
  * The `@theme` directive is Tailwind 4's CSS-first config replacement for
  * tailwind.config.ts. Every variable here becomes a Tailwind utility:
@@ -28,6 +29,13 @@
   --color-matcha:  #5E9E73;  /* local-only / privacy / success            */
   --color-mtsoft:  #E7F0E8;  /* soft matcha — local-mode badges           */
   --color-mut:     #8A8174;  /* muted text on cards                       */
+  /* Label chip palette (LabelChip.tsx) - the three non-brand label colors. */
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
 
   /* ─── Type families (PRD §16.3) ──────────────────────────────────────── */
   --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -97,6 +105,34 @@
 /* ─── Base resets ─────────────────────────────────────────────────────────── */
 :root { color-scheme: light; }
 
+/* === UI-6: dark mode ======================================================
+ * `data-theme` is stamped on <html> by the inline script in index.html
+ * (pre-paint) and kept current by `web/src/lib/theme.ts`. Tailwind 4 emits
+ * `var(--color-*)` in every utility, so overriding the tokens here restyles
+ * the whole app; components must not hardcode palette hex values.
+ * ========================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper:   #1B1815;
+  --color-card:    #26221D;
+  --color-ink:     #EDEAE2;
+  --color-grey:    #8F877B;
+  --color-line:    #3A342C;
+  --color-blue:    #7D72DE;
+  --color-blsoft:  #2C2846;
+  --color-straw:   #E8886F;
+  --color-strsoft: #3D2622;
+  --color-matcha:  #7FBE8C;
+  --color-mtsoft:  #22342A;
+  --color-mut:     #9B9285;
+  --color-lilac:     #C4A2E8;
+  --color-lilacsoft: #33283F;
+  --color-honey:     #D9B24E;
+  --color-honeysoft: #3A3120;
+  --color-slate:     #A9B7C4;
+  --color-slatesoft: #2A3138;
+}
+
 /* === Heading scale (PRD §16.3: section title 24-30, card title 16-21) ====
  * Named recipes for the bold Hanken headings that were being re-typed as
  * `font-bold tracking-tight text-[Npx] ...` at every call site (and drifting:
@@ -156,7 +192,7 @@ html, body {
 
 .transcript-link {
   color: var(--color-blue);
-  border-bottom: 1.5px dotted #C9B8F0;
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--color-blue) 45%, transparent);
   margin-left: 0.35em;
   cursor: pointer;
   user-select: none;
@@ -230,9 +266,9 @@ html, body {
    * with overlap. */
   background: linear-gradient(
     90deg,
-    #EFE6D6 0%,
-    #F8F1E0 50%,
-    #EFE6D6 100%
+    var(--color-line) 0%,
+    var(--color-paper) 50%,
+    var(--color-line) 100%
   );
   background-size: 200% 100%;
   /* Duration / timing 1.25s linear infinite is load-bearing (CONTEXT D-29

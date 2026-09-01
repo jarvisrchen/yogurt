@@ -85,7 +85,7 @@ export function STTPicker() {
       <article
         data-testid="cloud-stt-card"
         className={
-          "rounded-xl p-5 space-y-3 bg-white transition-colors " +
+          "rounded-xl p-5 space-y-3 bg-card transition-colors " +
           (!isLocal
             ? "border-[1.5px] border-[var(--color-blue)]"
             : "border border-line")

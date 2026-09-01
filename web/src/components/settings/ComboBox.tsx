@@ -220,7 +220,7 @@ export function ComboBox({
           id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
-          className="absolute z-10 mt-1 left-0 right-0 max-h-60 overflow-y-auto bg-white border border-line rounded-md shadow-lg"
+          className="absolute z-10 mt-1 left-0 right-0 max-h-60 overflow-y-auto bg-card border border-line rounded-md shadow-lg"
         >
           {filtered.map((option, idx) => (
             <li
@@ -250,7 +250,7 @@ export function ComboBox({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 left-0 right-0 bg-white border border-line rounded-md shadow-lg px-3 py-2 text-[12px] text-mut"
+          className="absolute z-10 mt-1 left-0 right-0 bg-card border border-line rounded-md shadow-lg px-3 py-2 text-[12px] text-mut"
         >
           {options.length === 0
             ? "No saved suggestions - type a model id and press Enter."

@@ -5,16 +5,12 @@
 //   ■ your notes      (ink #211D18 — what the user typed)
 //   ■ AI              (grey #A89F90 — what the LLM added)
 //
-// The hex literals are intentional — they are the user-facing legend, and
-// they encode the felt-quality contract the acceptance gate measures in
-// DevTools (rgb(33,29,24) and rgb(168,159,144) respectively per CONTEXT
-// D-31). Using the Tailwind token here would still render the right color
-// but make the source less self-documenting for someone reading the
-// component in isolation.
+// Tokens, not hex: the swatches must track the editor's `.ai-grey` /
+// ink colors in both light and dark (UI-6).
 
-const INK = "#211D18"; // user
-const GREY = "#A89F90"; // AI
-const MUT = "#8A8174"; // muted caption text — --color-mut
+const INK = "var(--color-ink)"; // user
+const GREY = "var(--color-grey)"; // AI
+const MUT = "var(--color-mut)"; // muted caption text
 
 export interface LegendProps {
   /**

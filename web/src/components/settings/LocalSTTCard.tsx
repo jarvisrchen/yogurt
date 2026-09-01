@@ -171,7 +171,7 @@ export function LocalSTTCard({
     <article
       data-testid="local-stt-card"
       className={clsx(
-        "rounded-xl p-5 space-y-3 bg-white transition-colors",
+        "rounded-xl p-5 space-y-3 bg-card transition-colors",
         active
           ? "border-[1.5px] border-[var(--color-matcha)]"
           : "border border-line",

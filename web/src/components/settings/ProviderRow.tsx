@@ -122,7 +122,7 @@ export function ProviderRow({
 
   return (
     <article
-      className="rounded-xl border border-line bg-white p-5 space-y-4"
+      className="rounded-xl border border-line bg-card p-5 space-y-4"
       data-testid="inactive-provider-card"
     >
       <header className="flex items-center justify-between">

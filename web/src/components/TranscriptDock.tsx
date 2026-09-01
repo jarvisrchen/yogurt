@@ -9,11 +9,11 @@ import {
 import { TranscriptLine } from "./TranscriptLine";
 import { AudioWaveIcon } from "./AudioWaveIcon";
 
-const INK = "#211D18";
-const GREY = "#A89F90";
-const LINE = "#EBE3D5";
-const PAPER = "#FCFAF5"; // Panel surface — slightly warmer than app paper (D-14).
-const MATCHA = "#5E9E73";
+const INK = "var(--color-ink)";
+const GREY = "var(--color-grey)";
+const LINE = "var(--color-line)";
+const PAPER = "var(--color-card)"; // Panel surface sits above app paper (D-14).
+const MATCHA = "var(--color-matcha)";
 
 /**
  * Right-edge collapsible transcript dock.
@@ -239,7 +239,7 @@ export function TranscriptDock({
           type="button"
           aria-label={open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
           onClick={() => setOpen((v) => !v)}
-          className="absolute flex flex-col items-center justify-center gap-1.5 w-7 text-[12px] font-semibold bg-white"
+          className="absolute flex flex-col items-center justify-center gap-1.5 w-7 text-[12px] font-semibold bg-card"
           style={{
             top: "22px",
             right: open ? "330px" : "0",

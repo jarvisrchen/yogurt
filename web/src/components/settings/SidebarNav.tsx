@@ -79,7 +79,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--color-matcha)] px-2.5 py-1 rounded-full"
             data-testid="local-only-pill"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+            <span className="w-1.5 h-1.5 rounded-full bg-card" />
             Local-only · on
           </span>
         ) : null}
