@@ -1,10 +1,18 @@
 /**
- * MicMuteToggle — icon button next to `MicDevicePicker` in the meeting
- * toolbar (AUD-6). Pauses `Channel::Mic` only via `POST
+ * MicMuteToggle — full-width button between the mic-picker row and the
+ * notes card (AUD-6). Pauses `Channel::Mic` only via `POST
  * /:id/mic-muted` — `Channel::System` keeps recording the whole time.
  *
- * Only meaningful while recording; `Meeting.tsx` gates the mount on
- * `recording` the same way it gates `MicDevicePicker` on `meetingId`.
+ * Always mounted whenever `meetingId` is known (mirrors the notes editor
+ * below it), disabled with an explanatory tooltip while not recording —
+ * muting only makes sense mid-meeting, so it reads as unavailable rather
+ * than disappearing. A core action deserves a big, always-findable target,
+ * not a small icon tucked into the toolbar.
+ *
+ * The `M` hotkey (no modifier — this needs to be a reflex, not a chord)
+ * mirrors it; `useKeyboardShortcut`'s `ignoreWhenTyping` keeps it from
+ * firing while notes/title/chat have focus, and it's `enabled` only while
+ * `recording` so it can't fire before there's anything to mute.
  *
  * Sourced from the shared `["meetings", "active"]` query (`useActiveRecording`,
  * already polled every 5s by `Meeting.tsx` for the STT engine badge) rather
@@ -15,73 +23,63 @@
  */
 import { Mic, MicOff } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "./Button";
+import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 import { audioApi } from "../lib/api/settings";
 import { activeRecordingKey, useActiveRecording } from "../lib/api/meetings";
 
-const STRAW = "#E07A66";
-
 interface MicMuteToggleProps {
   meetingId: string;
+  recording: boolean;
 }
 
-export function MicMuteToggle({ meetingId }: MicMuteToggleProps) {
+export function MicMuteToggle({ meetingId, recording }: MicMuteToggleProps) {
   const qc = useQueryClient();
   const active = useActiveRecording();
-  const muted = active.data?.mic_muted ?? false;
+  const muted = recording ? (active.data?.mic_muted ?? false) : false;
 
   const setMuted = useMutation({
     mutationFn: (next: boolean) => audioApi.setMicMuted(meetingId, next),
     onSuccess: () => void qc.invalidateQueries({ queryKey: activeRecordingKey }),
   });
 
+  const toggle = () => {
+    if (!recording || setMuted.isPending) return;
+    setMuted.mutate(!muted);
+  };
+
+  useKeyboardShortcut({ key: "m", ignoreWhenTyping: true, enabled: recording }, toggle);
+
   return (
-    <div className="flex items-center gap-1.5">
-      <button
-        type="button"
+    <div>
+      <Button
+        variant={muted ? "warn" : "secondary"}
+        disabled={!recording || setMuted.isPending}
+        onClick={toggle}
         aria-label={muted ? "Resume mic" : "Pause mic"}
         title={
-          muted
-            ? "Mic paused — click to resume"
-            : "Pause mic — system audio keeps recording"
+          !recording
+            ? "Mic muting is available once recording starts"
+            : muted
+              ? "Mic paused — click to resume (M)"
+              : "Pause mic — system audio keeps recording (M)"
         }
-        disabled={setMuted.isPending}
-        onClick={() => setMuted.mutate(!muted)}
-        className="inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors disabled:opacity-60"
-        style={
-          muted
-            ? {
-                backgroundColor: "var(--color-strsoft)",
-                borderColor: "var(--color-strsoft)",
-                color: STRAW,
-              }
-            : {
-                backgroundColor: "var(--color-card)",
-                borderColor: "var(--color-line)",
-                color: "var(--color-mut)",
-              }
-        }
+        className="w-full py-3.5 text-[15px]"
       >
-        {muted ? <MicOff size={15} /> : <Mic size={15} />}
-      </button>
-      {muted && (
-        <span
-          className="text-[11px] font-mono inline-flex items-center gap-1"
-          style={{ color: STRAW }}
-        >
-          <span
-            aria-hidden
-            className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: STRAW }}
-          />
-          Mic paused
-        </span>
-      )}
+        {muted ? <MicOff size={18} /> : <Mic size={18} />}
+        {!recording ? "Mute mic" : muted ? "Mic paused — tap to resume" : "Mute mic"}
+        {recording && (
+          <kbd className="bg-black/10 text-current text-[11px] font-mono px-1.5 py-0.5 rounded ml-1">
+            M
+          </kbd>
+        )}
+      </Button>
       {setMuted.isError && (
-        <span className="text-[12px] font-mono text-[var(--color-straw)]">
+        <p className="mt-1.5 text-[12px] font-mono text-[var(--color-straw)]">
           {setMuted.error instanceof Error
             ? setMuted.error.message
             : "Couldn't update mic"}
-        </span>
+        </p>
       )}
     </div>
   );

@@ -30,6 +30,13 @@ describe("Button", () => {
     expect(btn.className).toMatch(/text-mut/);
   });
 
+  it("renders warn variant in strawberry", () => {
+    render(<Button variant="warn">Mic muted</Button>);
+    const btn = screen.getByRole("button");
+    expect(btn.className).toMatch(/bg-straw/);
+    expect(btn.className).toMatch(/text-white/);
+  });
+
   it("fires onClick", () => {
     const onClick = vi.fn();
     render(<Button onClick={onClick}>Click</Button>);

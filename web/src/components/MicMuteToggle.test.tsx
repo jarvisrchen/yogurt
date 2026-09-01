@@ -19,7 +19,7 @@ vi.mock("../lib/api/settings", async () => {
   };
 });
 
-function renderToggle(micMuted: boolean) {
+function renderToggle(micMuted: boolean, recording = true) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -29,11 +29,14 @@ function renderToggle(micMuted: boolean) {
     started_at: 0,
     mic_muted: micMuted,
   });
-  return { qc, ...render(
-    <QueryClientProvider client={qc}>
-      <MicMuteToggle meetingId="meeting-1" />
-    </QueryClientProvider>,
-  ) };
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <MicMuteToggle meetingId="meeting-1" recording={recording} />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("MicMuteToggle", () => {
@@ -55,6 +58,16 @@ describe("MicMuteToggle", () => {
       await screen.findByRole("button", { name: /resume mic/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/mic paused/i)).toBeInTheDocument();
+  });
+
+  it("is disabled (not unmounted) while not recording", async () => {
+    renderToggle(false, false);
+    const button = await screen.findByRole("button", { name: /pause mic/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      expect.stringMatching(/available once recording starts/i),
+    );
   });
 
   it("calls setMicMuted(meetingId, true) when clicked while unmuted", async () => {
@@ -113,5 +126,44 @@ describe("MicMuteToggle", () => {
         screen.getByText(/meeting is not currently recording/i),
       ).toBeInTheDocument();
     });
+  });
+
+  it("toggles on the 'M' hotkey while recording", async () => {
+    vi.mocked(audioApi.setMicMuted).mockResolvedValue({
+      status: "ok",
+      muted: true,
+    });
+    renderToggle(false, true);
+    await screen.findByRole("button", { name: /pause mic/i });
+
+    fireEvent.keyDown(window, { key: "m" });
+
+    await waitFor(() => {
+      expect(audioApi.setMicMuted).toHaveBeenCalledWith("meeting-1", true);
+    });
+  });
+
+  it("does not fire the 'M' hotkey while not recording", async () => {
+    renderToggle(false, false);
+    await screen.findByRole("button", { name: /pause mic/i });
+
+    fireEvent.keyDown(window, { key: "m" });
+
+    expect(audioApi.setMicMuted).not.toHaveBeenCalled();
+  });
+
+  it("does not fire the 'M' hotkey while a text input has focus", async () => {
+    render(
+      <div>
+        <input aria-label="scratch" />
+      </div>,
+    );
+    renderToggle(false, true);
+    await screen.findByRole("button", { name: /pause mic/i });
+
+    screen.getByLabelText("scratch").focus();
+    fireEvent.keyDown(screen.getByLabelText("scratch"), { key: "m" });
+
+    expect(audioApi.setMicMuted).not.toHaveBeenCalled();
   });
 });

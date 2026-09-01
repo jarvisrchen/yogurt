@@ -39,11 +39,16 @@ vi.mock("../components/MicDevicePicker", () => ({
   ),
 }));
 // AUD-6: stubbed the same way as MicDevicePicker above — this file only
-// needs to assert Meeting.tsx mounts/unmounts it with `recording`, not its
-// own `audioApi.setMicMuted` wiring (covered by MicMuteToggle.test.tsx).
+// needs to assert Meeting.tsx keeps it mounted and passes it the right
+// `recording` flag, not its own `audioApi.setMicMuted` wiring (covered by
+// MicMuteToggle.test.tsx).
 vi.mock("../components/MicMuteToggle", () => ({
-  MicMuteToggle: ({ meetingId }: { meetingId: string }) => (
-    <div data-testid="mic-mute-toggle" data-meeting-id={meetingId} />
+  MicMuteToggle: ({ meetingId, recording }: { meetingId: string; recording: boolean }) => (
+    <div
+      data-testid="mic-mute-toggle"
+      data-meeting-id={meetingId}
+      data-recording={String(recording)}
+    />
   ),
 }));
 vi.mock("../lib/session", () => ({
@@ -595,9 +600,12 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
         "true",
       );
     });
-    // AUD-6: mounted only while recording — muting a stopped meeting is a
-    // no-op, so it shares the picker's `recording` gate rather than its own.
-    expect(screen.getByTestId("mic-mute-toggle")).toBeInTheDocument();
+    // AUD-6: always mounted (disabled, not gone, while not recording) — see
+    // the `data-recording` flip below.
+    expect(screen.getByTestId("mic-mute-toggle")).toHaveAttribute(
+      "data-recording",
+      "true",
+    );
 
     await act(async () => {
       screen.getByRole("button", { name: /stop recording/i }).click();
@@ -613,7 +621,10 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
       "data-recording",
       "false",
     );
-    expect(screen.queryByTestId("mic-mute-toggle")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mic-mute-toggle")).toHaveAttribute(
+      "data-recording",
+      "false",
+    );
 
     vi.unstubAllGlobals();
   });
@@ -638,7 +649,12 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
       "data-recording",
       "false",
     );
-    expect(screen.queryByTestId("mic-mute-toggle")).not.toBeInTheDocument();
+    // AUD-6: still mounted (disabled) while stopped, not unmounted — a
+    // core action should stay findable, not disappear.
+    expect(screen.getByTestId("mic-mute-toggle")).toHaveAttribute(
+      "data-recording",
+      "false",
+    );
 
     vi.unstubAllGlobals();
   });

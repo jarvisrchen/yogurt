@@ -549,16 +549,19 @@ export function Meeting() {
               reads, so picking a mic on a stopped-but-open meeting takes
               effect the next time recording starts. */}
           {meetingId && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center">
               <MicDevicePicker meetingId={meetingId} recording={recording} />
-              {/* AUD-6: pause/resume the mic without stopping the recording.
-                  Only meaningful while recording — muting a stopped meeting
-                  is a no-op, so it's gated the same way the Stop/Enhance
-                  buttons above are. */}
-              {recording && <MicMuteToggle meetingId={meetingId} />}
             </div>
           )}
         </header>
+
+        {/* AUD-6: mute the mic without stopping the recording — a core
+            in-meeting action, so it's a big always-findable button between
+            the mic picker and the notes card, not a small toolbar icon.
+            Always mounted once a meeting exists; disabled with an
+            explanatory tooltip while not recording rather than
+            disappearing, since muting only makes sense mid-meeting. */}
+        {meetingId && <MicMuteToggle meetingId={meetingId} recording={recording} />}
 
         {error && (
           <div
