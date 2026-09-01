@@ -3,13 +3,13 @@
 // Two rows:
 //
 //   ■ your notes      (ink #211D18 — what the user typed)
-//   ■ AI              (grey #A89F90 — what the LLM added)
+//   ■ AI              (ai #7A7264 - what the LLM added)
 //
 // Tokens, not hex: the swatches must track the editor's `.ai-grey` /
 // ink colors in both light and dark (UI-6).
 
 const INK = "var(--color-ink)"; // user
-const GREY = "var(--color-grey)"; // AI
+const AI = "var(--color-ai)"; // AI
 const MUT = "var(--color-mut)"; // muted caption text
 
 export interface LegendProps {
@@ -71,7 +71,7 @@ export function Legend({ inline = false }: LegendProps) {
             display: "inline-block",
             width: 9,
             height: 9,
-            background: GREY,
+            background: AI,
             marginRight: 6,
             verticalAlign: "middle",
           }}
