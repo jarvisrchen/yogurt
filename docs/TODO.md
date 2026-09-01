@@ -73,6 +73,14 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
+- [ ] **MTG-11** Auto-start recording when yogurt detects a meeting has begun
+  <details>
+  <summary>Details</summary>
+
+  Today a meeting only starts when the user clicks "+ New meeting" - nothing watches for a meeting actually starting (calendar event, a Zoom/Meet/Slack window opening, system audio suddenly carrying a call) and kicks off recording on its own.
+  Needs a detection signal to key off before this can be scoped: a local calendar read, active-window/app detection for known meeting apps, or a system-audio heuristic - each has different privacy and false-positive tradeoffs worth weighing against the "no telemetry, audio never leaves the machine" constraints in AGENTS.md.
+  </details>
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
