@@ -333,6 +333,9 @@ export interface ActiveRecording {
    * Settings page value mid-recording — this field is the truthful one.
    */
   stt?: "cloud" | "local";
+  /** AUD-6: whether the mic is currently paused. `Channel::System` keeps
+   *  recording regardless — this only reflects the mic. */
+  mic_muted: boolean;
 }
 
 export const activeRecordingKey = ["meetings", "active"] as const;

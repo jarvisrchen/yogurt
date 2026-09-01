@@ -1,6 +1,6 @@
 import { type ButtonHTMLAttributes, type ReactNode } from "react";
 
-type Variant = "primary" | "secondary" | "ghost";
+type Variant = "primary" | "secondary" | "ghost" | "warn";
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> {
   variant?: Variant;
@@ -48,6 +48,10 @@ const VARIANT: Record<Variant, string> = {
     "bg-card text-ink border border-[#D9D0C0] hover:bg-[#F8F2E5] active:bg-[#F1E9D7]",
   // Transparent, used inside cards where any background would compete.
   ghost: "bg-transparent text-mut hover:text-ink hover:bg-blsoft/50",
+  // Strawberry — the app's one "attention, but not an error" tone (matches
+  // MetaPill's warn tone and the recording-error banner). For a state that
+  // needs noticing, not a destructive action.
+  warn: "bg-straw text-white hover:opacity-90 active:opacity-100",
 };
 
 /**
@@ -57,6 +61,8 @@ const VARIANT: Record<Variant, string> = {
  *   - "primary"   — blueberry, white text. New meeting / End meeting / CTAs.
  *   - "secondary" — white card, ink text, hairline border. Cancel / Restart.
  *   - "ghost"     — transparent, muted text. Subtle dismissals.
+ *   - "warn"      — strawberry, white text. A state that needs noticing
+ *                   (mic muted), not a destructive action.
  *
  * Future variants (deferred to Phase 4): "ink" — ink-on-cream End-meeting
  * style used in the live meeting top bar.

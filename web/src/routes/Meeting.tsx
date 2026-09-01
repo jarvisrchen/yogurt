@@ -4,6 +4,7 @@ import { YogurtEditor } from "../editor";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
+import { MicMuteToggle } from "../components/MicMuteToggle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
@@ -553,6 +554,14 @@ export function Meeting() {
             </div>
           )}
         </header>
+
+        {/* AUD-6: mute the mic without stopping the recording — a core
+            in-meeting action, so it's a big always-findable button between
+            the mic picker and the notes card, not a small toolbar icon.
+            Always mounted once a meeting exists; disabled with an
+            explanatory tooltip while not recording rather than
+            disappearing, since muting only makes sense mid-meeting. */}
+        {meetingId && <MicMuteToggle meetingId={meetingId} recording={recording} />}
 
         {error && (
           <div
