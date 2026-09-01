@@ -513,6 +513,21 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
 ### LLM
 
+- [x] **LLM-7** Add an OpenCode local-CLI provider preset
+  <details>
+  <summary>Details</summary>
+
+  Third `adapter: "cli"` preset alongside Claude Code and Cursor Agent, defaulting to `minimax-coding-plan/MiniMax-M3`. Same shape as the other two - no base URL, no key, a `Test` that runs a real completion, and a MODEL field whose `Refresh` asks the binary. `opencode models` returns 370 ids on a live account (every model of every provider the user has configured), so the preset ships one static suggestion and Refresh does the rest.
+
+  Two things made this more than an entry in `PRESETS`.
+
+  `opencode` does not speak the `-p --output-format json` shape. `opencode run --format json` prints JSON LINES - the answer as `type: "text"` parts, thinking as `type: "reasoning"`, a failure as `type: "error"` - so `interpret_output` now dispatches on `CliProgram` rather than assuming one object with `result`/`is_error`. Text is keyed by `part.id` so a future switch to streamed snapshots can't duplicate the answer's prefix; `reasoning` is dropped, since the model's scratchpad is not its reply. `parse_model_list` handles both catalog formats (`<id> - <label>` from cursor-agent, bare `<provider>/<model>` from opencode) with one pass.
+
+  The containment is the part worth remembering. `--auto` is opencode's `--dangerously-skip-permissions` and is the flag a user reaches for to make `run` non-interactive - it must never be passed here. Beyond that, a bare `opencode run` loads the user's global config: verified live, the model was offered `google-workspace_send_gmail_message`, `google-workspace_search_gmail_messages` and Drive writes, which is a working exfiltration path for a transcript that says "email yourself the following". `OPENCODE_CONFIG_CONTENT={}` does NOT close it. `OPENCODE_PERMISSION={"*":"deny"}` does, by removing every tool from the model's schema - 35k input tokens down to 2.2k on the same prompt, and an order to run `echo` comes back as prose about running it rather than a `tool_use` event. `--pure` drops third-party plugins on top.
+
+  Verified end-to-end against the live binary through the real API: preset advertised, provider cloned, Refresh returns 370 with the default present, `Test` returns `{"ok":true,"model":"cli:opencode:minimax-coding-plan/MiniMax-M3"}` in ~4 s, and a bogus `cli_model` surfaces opencode's own error text rather than an exit code.
+  </details>
+
 - [x] **LLM-6** Fetch the model list for a CLI provider instead of shipping one static suggestion
   <details>
   <summary>Details</summary>

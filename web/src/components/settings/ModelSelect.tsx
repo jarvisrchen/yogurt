@@ -21,8 +21,8 @@ import { ComboBox } from "./ComboBox";
  * still shows up.
  *
  * Shared with `cli`-adapter rows, where the same `Refresh` asks the
- * local binary (`cursor-agent --list-models`) instead of an HTTP
- * endpoint. That catalog is not entitlement-filtered - a free Cursor
+ * local binary (`cursor-agent --list-models`, `opencode models`)
+ * instead of an HTTP endpoint. That catalog is not entitlement-filtered - a free Cursor
  * plan lists every model and then refuses each named one at call time -
  * so Refresh deliberately shows the whole list and lets `Test` be the
  * thing that says whether a pick actually works.
