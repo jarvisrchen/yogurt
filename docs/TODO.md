@@ -43,6 +43,15 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## UI
 
+- [ ] **UI-5** "See all XXX models" link and Save button crowd each other on the active provider card
+  <details>
+  <summary>Details</summary>
+
+  On the active provider card in Settings → LLM providers, the "See all Minimax models →" link sits right up against the Save button with barely any gap - looks like it's about to overlap, not great UX.
+
+  ![see all models link crowds the Save button](attachments/2026-08-31-provider-card-link-save-overlap.png)
+  </details>
+
 ## Meetings
 
 - [ ] **MTG-9** Make a meeting's summary/transcript discoverable by an agent from just its URL
