@@ -37,6 +37,8 @@ use cpal::{
     SampleFormat,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
@@ -52,11 +54,24 @@ pub struct MicCapture {
     /// The device cpal handed us at construction time. Surfaced via
     /// `/api/audio/devices` for the UI.
     pub device_name: String,
+    /// AUD-6: shared with the drainer's `FrameChunker`. See
+    /// [`MicCapture::set_muted`].
+    muted: Arc<AtomicBool>,
 }
 
 impl Drop for MicCapture {
     fn drop(&mut self) {
         self.drainer.abort();
+    }
+}
+
+impl MicCapture {
+    /// AUD-6: pause (`true`) or resume (`false`) mic audio reaching the
+    /// broadcast channel — `Channel::System` is untouched. The cpal stream
+    /// and drainer keep running either way, so resuming is instant with no
+    /// re-open cost, unlike a real device switch.
+    pub fn set_muted(&self, muted: bool) {
+        self.muted.store(muted, Ordering::Relaxed);
     }
 }
 
@@ -95,15 +110,30 @@ pub(crate) struct FrameChunker {
     /// system streams < 50 ms; both drainers are spawned synchronously
     /// inside `start_capture()` so the spawn-order skew is microseconds.
     start: Instant,
+    /// AUD-6: while `true`, `feed` still drains `buf` and advances `start`
+    /// as normal, it just skips the broadcast — so unmuting produces no
+    /// timestamp jump or discontinuity, only a real gap in the audio that
+    /// reached the pipeline. `Mic`-only in practice: `System` chunkers are
+    /// constructed via `new`, which always starts unmuted.
+    muted: Arc<AtomicBool>,
 }
 
 impl FrameChunker {
     pub(crate) fn new(channel: Channel, tx: broadcast::Sender<Frame>) -> Self {
+        Self::with_mute(channel, tx, Arc::new(AtomicBool::new(false)))
+    }
+
+    pub(crate) fn with_mute(
+        channel: Channel,
+        tx: broadcast::Sender<Frame>,
+        muted: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             channel,
             tx,
             buf: Vec::with_capacity(FRAME_SAMPLES * 2),
             start: Instant::now(),
+            muted,
         }
     }
 
@@ -123,6 +153,9 @@ impl FrameChunker {
         while self.buf.len() >= FRAME_SAMPLES {
             let chunk: Vec<i16> = self.buf.drain(..FRAME_SAMPLES).collect();
             let monotonic_micros = self.start.elapsed().as_micros() as u64;
+            if self.muted.load(Ordering::Relaxed) {
+                continue;
+            }
             let frame = Frame::new(self.channel, monotonic_micros, chunk);
             // Drop silently if no live subscribers.
             let _ = self.tx.send(frame);
@@ -252,7 +285,8 @@ pub fn spawn_mic_capture(
     // and the FrameChunker. Wakes every DRAINER_TICK, drains the ring,
     // resamples, chunks, broadcasts. May safely block on broadcast::send.
     let mut downmix = Downmix::new(sample_rate, 1)?;
-    let mut chunker = FrameChunker::new(Channel::Mic, tx);
+    let muted = Arc::new(AtomicBool::new(false));
+    let mut chunker = FrameChunker::with_mute(Channel::Mic, tx, muted.clone());
     let drainer = tokio::spawn(async move {
         let mut scratch: Vec<f32> = Vec::with_capacity(DRAINER_SCRATCH_HINT);
         let mut interval = tokio::time::interval(DRAINER_TICK);
@@ -286,6 +320,7 @@ pub fn spawn_mic_capture(
         _stream: stream,
         drainer,
         device_name,
+        muted,
     })
 }
 
@@ -375,6 +410,23 @@ mod tests {
         }
         assert_eq!(count, 3, "expected 3 frames for 1000 samples");
         assert_eq!(chunker.buf.len(), 40, "expected 40 leftover samples");
+    }
+
+    #[test]
+    fn chunker_drops_frames_while_muted_and_resumes_when_unmuted() {
+        let (tx, mut rx) = broadcast::channel::<Frame>(8);
+        let muted = Arc::new(AtomicBool::new(true));
+        let mut chunker = FrameChunker::with_mute(Channel::Mic, tx, muted.clone());
+
+        chunker.feed(&vec![0_i16; FRAME_SAMPLES]);
+        assert!(
+            rx.try_recv().is_err(),
+            "no frame should broadcast while muted"
+        );
+
+        muted.store(false, Ordering::Relaxed);
+        chunker.feed(&vec![0_i16; FRAME_SAMPLES]);
+        assert!(rx.try_recv().is_ok(), "frames should resume once unmuted");
     }
 
     #[test]
