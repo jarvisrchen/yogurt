@@ -61,6 +61,23 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Either way: parse the ID out of the URL, summary first, transcript only on request.
   </details>
 
+- [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
+  <details>
+  <summary>Details</summary>
+
+  Richard sees the enhanced summary pane flash and sometimes appear to get rewritten while enhance is streaming, worse the longer the meeting.
+
+  Root cause: `enhance.rs` emits an `enhance_progress { phase: "streaming" }` WS frame roughly every 80ms (`STREAM_SNAPSHOT_INTERVAL`, `crates/yogurt-server/src/enhance.rs:388`), and each frame carries the *entire* accumulated markdown generated so far, not a delta - a deliberate choice per `docs/archive/.lavish/enhance-streaming-design.html` (self-healing on reconnect).
+  On the client, `useEnhanceProgress` (`web/src/lib/ws.ts:460-479`) applies every frame with no throttling/coalescing, feeding it straight into `YogurtEditor`'s `enrichedMarkdown` prop.
+  The editor's effect (`web/src/editor/index.tsx:103-112`) responds to every change by re-running `markdownToHtml` (full `MarkdownIt.render()` + `DOMPurify.sanitize()`, `web/src/editor/markdown.ts:51-55`) over the whole accumulated string, then replaces the entire ProseMirror doc via `editor.commands.setContent()` - a full parse-and-rebuild, not an append.
+
+  Per-tick cost scales with total text generated so far, not with the size of the new chunk. For a short meeting this is cheap enough to look smooth; for a long one it eventually blows through the 80ms budget, frames queue up and land in bursts, and each full-document swap reads as a visible pop (the `[data-streaming] .ProseMirror` grey recolor and the pulsing-caret `::after`, `web/src/index.css:174-210`, also restart on every replace).
+
+  Two directions, both revisit tradeoffs the archived design doc already weighed:
+  1. Client-side: throttle/coalesce applied frames by elapsed time or text length instead of applying every WS frame, and/or move to incremental append (diff old vs new markdown, patch the ProseMirror doc) instead of full `setContent` each time.
+  2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
+  </details>
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
@@ -91,6 +108,24 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   2. **Per-app system audio.** `SCContentFilter` can be built app-rooted instead of display-rooted, so "just Zoom" is a filter change rather than an architecture change. Check the app-filter API is available at the macOS 13 deployment target.
 
   Zero-code answer that exists today: a macOS aggregate device (Audio MIDI Setup) presents N inputs to cpal as one device. Worth documenting in the README before building anything.
+  </details>
+
+- [ ] **AUD-6** Find a way to mute just the mic during a live meeting so it's excluded from the transcript, while system audio keeps recording
+  <details>
+  <summary>Details</summary>
+
+  Richard wants to step away and talk to someone mid-meeting without that conversation landing in the transcript, without having to stop and restart the recording.
+  This is mic-only: he'd already be muted in the meeting app itself, so the other side's audio (`Channel::System`) should keep capturing normally the whole time - only his own mic (`Channel::Mic`) needs to stop feeding the pipeline while he's talking to someone off to the side.
+  Needs a pause/mute control reachable during an active recording that stops feeding mic audio into the pipeline (rather than just muting playback), and a way to see at a glance that mic capture is currently paused.
+  </details>
+
+- [ ] **AUD-7** Give an agent a live way to debug which channel (mic vs system) picked up which audio during a real meeting
+  <details>
+  <summary>Details</summary>
+
+  It's not obvious today which of "me" (mic) and "them" (system) is actually capturing what, especially when Chrome is playing a video/call to simulate the other side of a meeting.
+  Richard wants a workflow where he says "help me debug this meeting," an agent starts actively tailing the relevant logs/transcript, he starts the recording and plays audio through Chrome to simulate someone talking in Zoom/Slack, and the agent can narrate what it's seeing (which channel picked up the audio, timing, drops) while he narrates what he sees in the UI.
+  `scripts/tail-transcript.sh` and the raw WS frames (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
   </details>
 
 ## LLM
