@@ -42,6 +42,11 @@ export interface General {
    *  (e.g. `"tiny.en"`, `"small.en"`, `"medium.en"`, `"large-v3"`).
    *  Mirrors `crates/yogurt-db::settings::General::stt_model`. */
   stt_model: string;
+  /** MTG-11 - watch for meeting-app windows and offer to start recording.
+   *  Detection never starts a recording on its own; it only surfaces the
+   *  prompt (and stops a recording once the detected window closes).
+   *  Mirrors `crates/yogurt-db::settings::General::meeting_detection`. */
+  meeting_detection: boolean;
 }
 
 /**

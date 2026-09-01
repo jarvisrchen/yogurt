@@ -66,6 +66,7 @@ async fn spawn() -> TestSetup {
         // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
         // here but required by the AppState struct.
         app_events_tx: tokio::sync::broadcast::channel(64).0,
+        detect: Default::default(),
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

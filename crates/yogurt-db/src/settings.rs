@@ -60,6 +60,12 @@ pub struct General {
     /// `medium.en` / `large-v3`).  Seeded to `"small.en"` by V005 per
     /// D-02 baseline.
     pub stt_model: String,
+    /// MTG-11: watch for meeting app windows and offer to start
+    /// recording. Detection never starts a recording on its own — it only
+    /// surfaces the prompt (and stops a recording once the detected
+    /// window closes). Defaults to `true`; there is no seed row, so the
+    /// projection's fallback is the default.
+    pub meeting_detection: bool,
 }
 
 /// Load the `General` struct from the KV table, falling back to defaults
@@ -85,6 +91,10 @@ pub fn load_general(db: &Db) -> Result<General> {
         // shouldn't happen, but defense-in-depth).
         stt_provider: get(db, "stt.provider")?.unwrap_or_else(|| "cloud".to_string()),
         stt_model: get(db, "stt.model")?.unwrap_or_else(|| "small.en".to_string()),
+        meeting_detection: get(db, "general.meeting_detection")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(true),
     })
 }
 
@@ -105,6 +115,9 @@ pub struct GeneralPatch {
     /// `yogurt_stt::models::REGISTRY`.  Settings page flips this when
     /// the user clicks a downloaded model pill.
     pub stt_model: Option<String>,
+    /// MTG-11 — Settings → General flips this to silence the
+    /// meeting-detected prompt.
+    pub meeting_detection: Option<bool>,
 }
 
 /// Apply `patch` to the KV table and return the resulting `General`. The
@@ -132,6 +145,13 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
     }
     if let Some(m) = patch.stt_model {
         set(db, "stt.model", &m)?;
+    }
+    if let Some(d) = patch.meeting_detection {
+        set(
+            db,
+            "general.meeting_detection",
+            if d { "true" } else { "false" },
+        )?;
     }
     load_general(db)
 }

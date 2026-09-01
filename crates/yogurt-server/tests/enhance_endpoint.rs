@@ -740,6 +740,7 @@ fn build_mock_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir
         meeting_repo,
         label_repo,
         app_events_tx: tokio::sync::broadcast::channel(64).0,
+        detect: Default::default(),
     };
     (state, token_str, tmp)
 }
