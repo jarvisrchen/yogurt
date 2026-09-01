@@ -210,6 +210,50 @@ Prints a diagnostic dump (Rust and macOS versions, Screen Recording and Micropho
 | `--reset-screen-recording` | Reset the Screen Recording TCC grant for `ai.yogurt.app` so macOS prompts again on next start. |
 | `--redownload-model <MODEL>` | Delete the local copy of a whisper.cpp model (for example `small.en`) so the next start re-downloads it. |
 
+## Ask an agent about a meeting
+
+Every meeting page has a URL like `http://localhost:7878/meeting/<id>/post`.
+Paste one at a coding agent and it can pull that meeting's summary, or its
+full transcript, and answer questions about it.
+
+This ships as an optional skill. Install it once:
+
+```bash
+npx skills add jarvisrchen/yogurt --skill yogurt-control --global
+```
+
+That installs one copy at `~/.agents/skills/yogurt-control` and symlinks
+every agent you have at it, so Claude Code, Codex, Cursor, and the rest all
+read the same file. Drop `--global` to install into the current project
+instead, `--agent claude-code` to pick just one, and `npx skills update` to
+pull a newer version later.
+
+No Node? It is one file, so fetching it by hand works too. Use
+`~/.claude/skills/` for Claude Code or `~/.codex/skills/` for Codex:
+
+```bash
+mkdir -p ~/.claude/skills/yogurt-control
+curl -fsSL https://raw.githubusercontent.com/jarvisrchen/yogurt/main/.claude/skills/yogurt-control/SKILL.md \
+  -o ~/.claude/skills/yogurt-control/SKILL.md
+```
+
+If you cloned this repo you already have it, at
+`.claude/skills/yogurt-control/`, with no install step.
+
+Then just paste a URL:
+
+> what did we decide in http://localhost:7878/meeting/01a0594d-.../post
+
+It reads the summary first, which is small, and only goes and fetches the
+transcript when you ask for something the summary does not cover. It can
+also start and stop recordings. See [docs/AI-INTEGRATION.md](docs/AI-INTEGRATION.md)
+for the full API if you want to drive yogurt from a script instead.
+
+This stays local: the agent talks to `localhost:7878` on your machine using
+the session token at `~/.yogurt/session-token`. Your meeting content still
+goes wherever that agent sends its prompts, so treat it like pasting the
+notes into any other tool.
+
 ## How it works
 
 One Rust process runs the audio capture (ScreenCaptureKit), live STT
