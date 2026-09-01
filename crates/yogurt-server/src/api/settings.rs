@@ -260,8 +260,16 @@ fn validate_new_provider(body: &providers::NewProvider) -> Result<(), Error> {
         providers::adapter::HTTP => Ok(()),
         providers::adapter::CLI => {
             if yogurt_llm::CliProgram::parse(&body.model).is_none() {
+                // Listed from `CliProgram::ALL` rather than spelled out:
+                // the hand-written version of this message was already
+                // one CLI out of date when a third was added.
+                let known = yogurt_llm::CliProgram::ALL
+                    .iter()
+                    .map(|p| format!("{:?}", p.binary_name()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 return Err(Error::Unprocessable(format!(
-                    "'{}' is not a recognized CLI program (expected \"claude\" or \"cursor-agent\")",
+                    "'{}' is not a recognized CLI program (expected one of {known})",
                     body.model
                 )));
             }
@@ -669,10 +677,10 @@ async fn list_provider_models(
 
     // A `cli`-adapter provider has no `/v1/models` endpoint and no key at
     // all, so it resolves before `provider_and_key`: the catalog comes
-    // from asking the CLI binary itself (`cursor-agent --list-models`).
-    // `claude` has no such flag and falls out of `list_cli_models` as a
-    // plain error, which the UI shows inline while keeping the static
-    // preset suggestions it already had.
+    // from asking the CLI binary itself (`cursor-agent --list-models`,
+    // `opencode models`). `claude` has no such mode and falls out of
+    // `list_cli_models` as a plain error, which the UI shows inline while
+    // keeping the static preset suggestions it already had.
     let provider = find_provider(&s, &id)?;
     if provider.adapter == providers::adapter::CLI {
         let program = yogurt_llm::CliProgram::parse(&provider.model).ok_or_else(|| {
@@ -682,7 +690,7 @@ async fn list_provider_models(
         // not a failed probe, so it's a 422 like the pre-CLI-catalog
         // behavior - the UI keeps showing that preset's static aliases.
         // Only an actual spawn/auth/parse failure is a 502.
-        if program.list_models_flag().is_none() {
+        if program.list_models_arg().is_none() {
             return Err(Error::Unprocessable(format!(
                 "{} has no model catalog to refresh",
                 provider.model

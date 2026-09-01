@@ -75,7 +75,7 @@ pub mod adapter {
 /// new adapter. An `adapter: "cli"` entry is different: `base_url` is
 /// unused (empty) and `default_model` is repurposed to hold the CLI
 /// program id `yogurt_llm::CliProgram::parse` expects ("claude" |
-/// "cursor-agent"), not a model name.
+/// "cursor-agent" | "opencode"), not a model name.
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Minimax",
@@ -213,6 +213,23 @@ pub const PRESETS: &[Preset] = &[
         docs_url: "",
         adapter: adapter::CLI,
         default_cli_model: "auto",
+    },
+    // LLM-7. Unlike the other two CLIs, opencode is a front-end to many
+    // providers rather than one vendor's own agent, so `cli_model` here is
+    // a fully qualified `<provider>/<model>` id, not a short alias.
+    Preset {
+        name: "OpenCode (local CLI)",
+        base_url: "",
+        default_model: "opencode",
+        // `opencode models` returns every model of every provider the user
+        // has configured (370 on a live account, verified) - far too many,
+        // and too account-specific, to hardcode. Refresh is how this list
+        // gets real; the default is the only static suggestion, same
+        // reasoning as cursor-agent above.
+        models: &["minimax-coding-plan/MiniMax-M3"],
+        docs_url: "",
+        adapter: adapter::CLI,
+        default_cli_model: "minimax-coding-plan/MiniMax-M3",
     },
 ];
 

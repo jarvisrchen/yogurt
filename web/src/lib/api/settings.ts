@@ -48,7 +48,7 @@ export interface General {
  * `"http"` (`OpenAiCompatClient` against `base_url` + a stored API key) or
  * `"cli"` (LLM-4: a local agent CLI, `yogurt_llm::CliClient` - no base URL
  * or key involved; `model` holds the CLI program id "claude" |
- * "cursor-agent" instead of a model name). Mirrors
+ * "cursor-agent" | "opencode" instead of a model name). Mirrors
  * `yogurt_db::providers::adapter`.
  */
 export type ProviderAdapter = "http" | "cli";
@@ -77,11 +77,12 @@ export interface Preset {
    * Static list of popular model ids for this preset, used to seed the
    * MODEL `<datalist>` on a freshly-cloned `http` provider, or the
    * `--model` picker's suggestions on a `cli` provider. The Settings
-   * page's `Refresh` button replaces this with the live `/v1/models`
-   * response once a key is on file, for `http` providers only - there is
-   * no live refresh for `cli`. Empty for runtimes like Ollama / LM Studio
-   * where the model list is purely local, and for `cli` presets whose
-   * valid `--model` values are unverified (e.g. Cursor Agent).
+   * page's `Refresh` button replaces this with the live catalog - the
+   * `/v1/models` response once a key is on file for `http` providers,
+   * or the binary's own listing for a `cli` one (LLM-6). Empty for
+   * runtimes like Ollama / LM Studio where the model list is purely
+   * local; one entry for a `cli` preset whose real catalog is too large
+   * or too account-specific to hardcode (Cursor Agent, OpenCode).
    */
   models: string[];
   /**
@@ -93,10 +94,10 @@ export interface Preset {
    */
   docs_url: string;
   adapter: ProviderAdapter;
-  /** `cli`-adapter only: default `--model` suggestion (e.g. "haiku"),
-   *  seeded into a freshly-cloned provider's `cli_model`. Empty for
-   *  presets with no sensible default (cursor-agent's model list is
-   *  unverified). */
+  /** `cli`-adapter only: default `--model` suggestion (e.g. "haiku",
+   *  or a fully qualified "minimax-coding-plan/MiniMax-M3" for
+   *  opencode), seeded into a freshly-cloned provider's `cli_model`.
+   *  Empty for `http` presets. */
   default_cli_model: string;
 }
 

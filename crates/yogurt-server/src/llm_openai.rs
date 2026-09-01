@@ -11,7 +11,7 @@
 //!   provider row from the `providers` table, branching on its `adapter`
 //!   (LLM-4). An `http` row builds `OpenAiCompatClient` from its stored API
 //!   key; a `cli` row `yogurt_llm::CliClient::locate`s the named program
-//!   (`claude` | `cursor-agent`) and needs no key at all.
+//!   (`claude` | `cursor-agent` | `opencode`) and needs no key at all.
 //!
 //! There is deliberately no automatic fallback from an unreachable `http`
 //! provider to a local CLI. An earlier draft of this module did exactly
@@ -236,7 +236,7 @@ mod tests {
     }
 
     /// A `cli`-adapter row with a recognized program (`claude` |
-    /// `cursor-agent`) either resolves `Ok(Some(_))` when that binary
+    /// `cursor-agent` | `opencode`) either resolves `Ok(Some(_))` when that binary
     /// happens to be on this machine's `$PATH`, or a hard `Err` naming the
     /// provider when it isn't - never a silent `Ok(None)` mock fallback,
     /// matching the missing-HTTP-key contract. Both branches are asserted

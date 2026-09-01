@@ -706,7 +706,7 @@ async fn creates_a_cli_provider_and_round_trips_its_adapter() {
     assert_eq!(listed[0]["adapter"], "cli");
 }
 
-/// The two built-in CLI presets round-trip through `GET /api/settings` and
+/// The built-in CLI presets round-trip through `GET /api/settings` and
 /// `GET /api/settings/presets` with `adapter: "cli"` - the exact bug that
 /// briefly existed when `get_settings` and `list_presets` each built their
 /// own `PresetView` mapping and only one of them got the field added.
@@ -731,7 +731,7 @@ async fn cli_presets_are_advertised_with_their_adapter() {
             v.as_array().unwrap().clone()
         };
         let cli_presets: Vec<&Value> = presets.iter().filter(|p| p["adapter"] == "cli").collect();
-        assert_eq!(cli_presets.len(), 2, "{path}: expected 2 cli presets");
+        assert_eq!(cli_presets.len(), 3, "{path}: expected 3 cli presets");
         for p in cli_presets {
             assert_eq!(p["base_url"], "");
         }
@@ -779,11 +779,11 @@ async fn rejects_an_unrecognized_adapter_value() {
     assert_eq!(res.status(), 422);
 }
 
-/// `claude` is the CLI with no `--list-models` flag - its four aliases are
+/// `claude` is the one CLI with no model-list mode - its four aliases are
 /// the whole catalog and ship as static preset suggestions. Refresh on one
 /// is 422 ("nothing to refresh"), never 502, so the UI can tell that apart
-/// from `cursor-agent --list-models` genuinely failing (not logged in,
-/// binary missing) and keep showing the static list.
+/// from `cursor-agent --list-models` / `opencode models` genuinely failing
+/// (not logged in, binary missing) and keep showing the static list.
 #[tokio::test]
 async fn claude_cli_provider_has_no_model_catalog_to_refresh() {
     let (_state, token, base) = boot().await;
