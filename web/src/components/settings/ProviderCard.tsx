@@ -179,27 +179,35 @@ export function ProviderCard({
               )}
             </Field>
           </div>
-          {docsUrl && (
-            <a
-              href={docsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
-            >
-              See all {presetName ?? provider.name} models →
-            </a>
-          )}
+          {/* One flex row, not two bare siblings: the card's `space-y-4`
+              only sets `margin-top`, and both the docs link and `Save`
+              are inline-level, so they share a line box and render
+              flush against each other with no gap (UI-5). */}
+          {(docsUrl || editing) && (
+            <div className="flex flex-wrap items-center gap-3">
+              {docsUrl && (
+                <a
+                  href={docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-[var(--color-blue)] hover:underline"
+                >
+                  See all {presetName ?? provider.name} models →
+                </a>
+              )}
 
-          {editing ? (
-            <button
-              type="button"
-              className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
-              disabled={update.isPending}
-              onClick={() => update.mutate()}
-            >
-              {update.isPending ? "Saving…" : "Save"}
-            </button>
-          ) : null}
+              {editing && (
+                <button
+                  type="button"
+                  className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+                  disabled={update.isPending}
+                  onClick={() => update.mutate()}
+                >
+                  {update.isPending ? "Saving…" : "Save"}
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
 
