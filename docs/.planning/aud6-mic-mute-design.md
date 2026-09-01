@@ -48,10 +48,14 @@ The cpal callback and the SPSC ring are untouched. That thread is documented rea
 
 ### 5. Frontend
 
-- New `web/src/components/MicMuteToggle.tsx`, mounted next to `MicDevicePicker` in `Meeting.tsx` row 4 (`web/src/routes/Meeting.tsx:552`), visible only while `recording` — muting a stopped meeting is a no-op.
-- Icon-only button (Lucide `Mic` / `MicOff`, already used for other toolbar icons in `MeetingMetaPills.tsx`) with an `aria-label`, matching the toolbar's current density. Muted state uses the `STRAW` tint already used for the error banner.
-- Seeded from `activeRecording.data?.mic_muted` (the existing 5s poll), mutates via `POST /api/meetings/:id/mic-muted` — same optimistic-update shape as `MicDevicePicker`'s `setDevice` mutation (`web/src/components/MicDevicePicker.tsx`).
-- `MicMuteToggle.test.tsx` mirrors `MicDevicePicker.test.tsx`'s structure.
+- New `web/src/components/MicMuteToggle.tsx`, mounted between the mic-picker row and the notes card in `Meeting.tsx` (`web/src/routes/Meeting.tsx`).
+- Full-width `<Button>` (`web/src/components/Button.tsx`), `secondary` variant unmuted, new `warn` variant (solid strawberry, white text) muted — matching the app's existing warn tone (`MetaPill tone="warn"`, the error banner) instead of hand-rolled styles.
+- **Always mounted**, not gated on `recording` — a core in-meeting action should stay a big, findable target rather than disappearing. `disabled` (with an explanatory tooltip) while not recording, since muting only makes sense mid-meeting.
+- `M` hotkey via the existing `useKeyboardShortcut` hook (`web/src/hooks/useKeyboardShortcut.ts`) — no modifier, for reflex speed; `ignoreWhenTyping: true` so it doesn't fire while notes/title/chat have focus; `enabled: recording` so it can't fire before there's anything to mute.
+- Seeded from `activeRecording.data?.mic_muted` (the existing 5s poll), mutates via `POST /api/meetings/:id/mic-muted`, invalidates the `["meetings","active"]` query on success so the toggle doesn't wait out the poll interval.
+- `MicMuteToggle.test.tsx` covers both variants, disabled-while-not-recording, click and hotkey wiring (including the hotkey correctly not firing while typing or while not recording).
+
+**Revision (2026-09-01):** shipped first as a small icon button in the mic-picker toolbar row (matching `MicDevicePicker`'s density), gated on `recording` like the row itself. Richard flagged it as a core in-meeting action that needed to be bigger and easier to hit, plus a quick keyboard toggle — landed as the always-visible full-width button + `M` hotkey described above. Verified in the running app (not just tests): unmuted/muted/disabled states, click and the `M` hotkey both toggle correctly.
 
 ## What is deliberately not in scope
 
