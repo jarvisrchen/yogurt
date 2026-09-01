@@ -45,6 +45,22 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Meetings
 
+- [ ] **MTG-9** Make a meeting's summary/transcript discoverable by an agent from just its URL
+  <details>
+  <summary>Details</summary>
+
+  Richard wants to hand an agent (Claude Code or otherwise) a link like `http://127.0.0.1:7878/meeting/<id>/post` and have it know where to look: pull the summary first since it's cheap, then fetch the full transcript only if it needs more detail.
+
+  Today that requires knowing the internal shape - `GET /api/meetings/{id}` for the row (`enriched_md` is the AI summary, `transcript_json` the raw transcript) or `GET /api/meetings/{id}/markdown` for the on-disk export - and both sit behind `routes::require_session_token`.
+
+  No auth story needed for this, though: everything here is local reads against `localhost:7878` / `~/.yogurt/`, nothing leaves the machine, so this is a read tool, not an API client. Two ways to build it, both skip the session token entirely:
+
+  1. A skill (`.claude/skills/`) that knows the URL pattern, extracts the meeting ID, and reads the on-disk markdown export directly - already positioned as the "grep-able source of truth" per the doc comment in `crates/yogurt-server/src/api/meetings.rs:16-22` - falling back to `transcript_json` in SQLite for the raw transcript when the markdown summary isn't enough.
+  2. A `yogurt meeting <id> --summary` / `--transcript` CLI subcommand doing the same lookup, useful for non-Claude agents too.
+
+  Either way: parse the ID out of the URL, summary first, transcript only on request.
+  </details>
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
