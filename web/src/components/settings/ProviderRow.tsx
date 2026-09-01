@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ProviderView } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
-import { ComboBox } from "./ComboBox";
 import { ModelSelect } from "./ModelSelect";
 import { TestKeyButton } from "./TestKeyButton";
 
@@ -150,16 +149,16 @@ export function ProviderRow({
           </div>
           {cliVerified ? (
             <Field label="MODEL">
-              <ComboBox
+              <ModelSelect
+                providerId={provider.id}
+                providerName={provider.name}
                 value={cliModelDraft}
                 onChange={setCliModelDraft}
                 onCommit={(next) => {
                   if (next !== provider.cli_model) updateCliModel.mutate(next);
                 }}
-                options={presetModels}
+                presetModels={presetModels}
                 placeholder="CLI default"
-                ariaLabel={`Model for ${provider.name}`}
-                triggerLabel={`Show model list for ${provider.name}`}
               />
               {updateCliModel.isError && (
                 <p role="status" className="text-[11px] text-[var(--color-straw)]">
