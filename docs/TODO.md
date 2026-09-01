@@ -47,39 +47,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## Audio
 
-- [ ] **AUD-1** Live partials shrink mid-sentence on local STT, and never appear at all for system audio
-  <details>
-  <summary>Details</summary>
-
-  Two symptoms, one cause each, both in the local whisper.cpp partial ticker (`crates/yogurt-stt/src/whisper_local.rs:261`). Deepgram is not involved; `ts_ms 00:00:00` on the in-flight line in the first screenshot is the local ticker's hardcoded `ts_ms: 0`, which is how you tell which engine produced a partial.
-
-  **Partials shrink as you keep talking.** The ticker decodes a *rolling 5-second* buffer:
-
-  ```rust
-  // crates/yogurt-stt/src/whisper_local.rs:348
-  let max = 16_000 * 5;
-  if buf.len() > max {
-      let excess = buf.len() - max;
-      buf.drain(..excess);
-  }
-  ```
-
-  Every 1 s tick re-decodes only the last 5 s of audio and emits the result as a whole-line replacement, so once an utterance passes five seconds the earliest words scroll out of the window and the displayed partial gets *shorter*. It reads as the transcript eating itself. The final is unaffected because it comes from a different path - the VAD segmenter, good for up to `MAX_SEGMENT_MS = 25_000` (`crates/yogurt-stt/src/vad.rs:63`) - which is why the full sentence reappears the moment you pause.
-
-  Deepgram does not have this bug: `fold_deepgram_event` accumulates window-finals in `UtteranceState.buf` and emits `join_words(&st.buf, &transcript)`, so its partials only ever grow. The local ticker keeps no equivalent buffer.
-
-  Fix direction: make the partial cumulative within the current VAD segment rather than a fixed rolling window - clear `partial_buf` on segment emit and let it grow to `MAX_SEGMENT_MS` - and cap decode cost by re-decoding at a coarser interval as the buffer grows, rather than by dropping audio. Confirm the decode stays inside the 1 s tick budget at 25 s of audio before committing to it; if it does not, the fallback is to keep the rolling window but emit an append-only delta rather than replacing the line.
-
-  ![partial wipes mid-utterance](attachments/2026-08-30-live-transcript-partial-wipe.png)
-  ![the same utterance, complete, once the final lands](attachments/2026-08-30-live-transcript-final-catchup.png)
-
-  **No partials at all on headphones.** The ticker is mic-only by design: *"Skipped for system audio in v1 to halve whisper.cpp pressure - PRD §13 only requires the still-listening indicator on the user's own voice."* `Channel::System` therefore has no partial path and only ever renders VAD-segment finals, which is the reported "shows in chunks after each sentence".
-
-  This also explains why the report says the bug only happens on the Mac speaker. On speakers the mic re-captures the speaker output, so the meeting audio lands on `Channel::Mic` *as well* and picks up the ticker - visible in the first screenshot as `Me` and `Them` carrying identical text at `00:01:51`. On headphones there is no bleed, the far end exists only on `Channel::System`, and the streaming indicator disappears. The mystery in the report ("I don't know how it's getting the audio at all") is just system loopback: SCK capture is independent of the output device.
-
-  Decide whether the v1 mic-only tradeoff still holds now that the asymmetry is user-visible. Enabling the ticker for `Channel::System` doubles whisper.cpp pressure, so it needs a perf spike on the smaller models first. The echo-bleed duplicate lines are a separate issue - worth its own entry if it bothers you beyond this bug.
-  </details>
-
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
   <details>
   <summary>Details</summary>
@@ -402,6 +369,47 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   </details>
 
 ### Audio
+
+- [x] **AUD-1** Live partials shrink mid-sentence on local STT, and never appear at all for system audio
+  <details>
+  <summary>Details</summary>
+
+  Two symptoms, one cause each, both in the local whisper.cpp partial ticker (`crates/yogurt-stt/src/whisper_local.rs:261`). Deepgram is not involved; `ts_ms 00:00:00` on the in-flight line in the first screenshot is the local ticker's hardcoded `ts_ms: 0`, which is how you tell which engine produced a partial.
+
+  **Partials shrink as you keep talking.** The ticker decodes a *rolling 5-second* buffer:
+
+  ```rust
+  // crates/yogurt-stt/src/whisper_local.rs:348
+  let max = 16_000 * 5;
+  if buf.len() > max {
+      let excess = buf.len() - max;
+      buf.drain(..excess);
+  }
+  ```
+
+  Every 1 s tick re-decodes only the last 5 s of audio and emits the result as a whole-line replacement, so once an utterance passes five seconds the earliest words scroll out of the window and the displayed partial gets *shorter*. It reads as the transcript eating itself. The final is unaffected because it comes from a different path - the VAD segmenter, good for up to `MAX_SEGMENT_MS = 25_000` (`crates/yogurt-stt/src/vad.rs:63`) - which is why the full sentence reappears the moment you pause.
+
+  Deepgram does not have this bug: `fold_deepgram_event` accumulates window-finals in `UtteranceState.buf` and emits `join_words(&st.buf, &transcript)`, so its partials only ever grow. The local ticker keeps no equivalent buffer.
+
+  Fix direction: make the partial cumulative within the current VAD segment rather than a fixed rolling window - clear `partial_buf` on segment emit and let it grow to `MAX_SEGMENT_MS` - and cap decode cost by re-decoding at a coarser interval as the buffer grows, rather than by dropping audio. Confirm the decode stays inside the 1 s tick budget at 25 s of audio before committing to it; if it does not, the fallback is to keep the rolling window but emit an append-only delta rather than replacing the line.
+
+  ![partial wipes mid-utterance](attachments/2026-08-30-live-transcript-partial-wipe.png)
+  ![the same utterance, complete, once the final lands](attachments/2026-08-30-live-transcript-final-catchup.png)
+
+  **No partials at all on headphones.** The ticker is mic-only by design: *"Skipped for system audio in v1 to halve whisper.cpp pressure - PRD §13 only requires the still-listening indicator on the user's own voice."* `Channel::System` therefore has no partial path and only ever renders VAD-segment finals, which is the reported "shows in chunks after each sentence".
+
+  This also explains why the report says the bug only happens on the Mac speaker. On speakers the mic re-captures the speaker output, so the meeting audio lands on `Channel::Mic` *as well* and picks up the ticker - visible in the first screenshot as `Me` and `Them` carrying identical text at `00:01:51`. On headphones there is no bleed, the far end exists only on `Channel::System`, and the streaming indicator disappears. The mystery in the report ("I don't know how it's getting the audio at all") is just system loopback: SCK capture is independent of the output device.
+
+  Decide whether the v1 mic-only tradeoff still holds now that the asymmetry is user-visible. Enabling the ticker for `Channel::System` doubles whisper.cpp pressure, so it needs a perf spike on the smaller models first. The echo-bleed duplicate lines are a separate issue - worth its own entry if it bothers you beyond this bug.
+
+  Done 2026-08-31.
+  Both symptoms were one cause: the ticker kept its own rolling 5 s window over raw mic audio, parallel to the utterance buffer `Segmenter` already maintains.
+  It now reads `Segmenter::pending()` instead - the in-flight utterance, cleared on segment emit, bounded by `MAX_SEGMENT_MS` - so "partials only ever grow" is structural rather than a rule the ticker has to follow, and the mic-only wiring disappeared with the window.
+  System partials are on: the ticker round-robins the two channels and decodes only the one with an utterance in flight, so whisper.cpp pressure is unchanged at one greedy decode per tick rather than doubled. Only the refresh rate gives, and only while both people talk at once (2 s per side instead of 1 s).
+  The perf spike the entry asked for is committed as `crates/yogurt-stt/examples/partial_decode_cost.rs`: on large-v3-turbo a full 25 s buffer decodes in ~585 ms, against a 1 s tick, because whisper.cpp pads every input to a 30 s mel window and the encoder cost therefore does not scale with buffer length.
+  Partials also carry the utterance's real `start_ms` now, matching what the deepgram adapter already did, so the in-flight line stops rendering as `00:00:00` and the timestamp no longer jumps when the final replaces it.
+  Design: `docs/.planning/aud1-live-partials-design.md`. Verified before/after by driving the real `WhisperLocal::start` with 45 s of speech on both channels: on `main` the partial peaked at 95 chars then shrank to 60 as leading words fell out of the window, with no system partials at all; after, both channels grow monotonically to 400+ chars and reset cleanly on each final.
+  </details>
 
 - [x] **AUD-5** Add the ability to delete a downloaded local STT model
   <details>
