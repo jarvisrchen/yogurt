@@ -25,7 +25,7 @@ import { MeetingCardActions } from "./MeetingCardActions";
 const PALETTE = [
   "var(--color-blsoft)", // blueberry-soft
   "var(--color-mtsoft)", // matcha-soft
-  "#FBE6E0", // strawberry-soft
+  "var(--color-strsoft)", // strawberry-soft
 ];
 
 export function avatarTint(id: string): string {

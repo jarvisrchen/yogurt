@@ -43,9 +43,9 @@ const VARIANT: Record<Variant, string> = {
   // since Tailwind 4 doesn't expose a 'blue-600'-style derived shade without
   // explicit token; opacity-90 on hover is consistent with the design board.
   primary: "bg-blue text-white shadow-button-blue hover:opacity-90 active:opacity-100",
-  // Cream card surface with a slightly warmer line color than --line, per §16.6.
+  // Card surface with a slightly stronger line than --line, per §16.6.
   secondary:
-    "bg-card text-ink border border-[#D9D0C0] hover:bg-[#F8F2E5] active:bg-[#F1E9D7]",
+    "bg-card text-ink border border-line hover:bg-paper active:bg-line/60",
   // Transparent, used inside cards where any background would compete.
   ghost: "bg-transparent text-mut hover:text-ink hover:bg-blsoft/50",
   // Strawberry — the app's one "attention, but not an error" tone (matches

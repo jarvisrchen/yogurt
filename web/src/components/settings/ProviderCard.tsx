@@ -88,7 +88,7 @@ export function ProviderCard({
   });
   return (
     <article
-      className="rounded-xl border-[1.5px] border-[var(--color-blue)] bg-white p-5 shadow-[0_4px_14px_-6px_rgba(91,79,199,0.35)] space-y-4"
+      className="rounded-xl border-[1.5px] border-[var(--color-blue)] bg-card p-5 shadow-[0_4px_14px_-6px_rgba(91,79,199,0.35)] space-y-4"
       data-testid="active-provider-card"
     >
       <header className="flex items-center justify-between">

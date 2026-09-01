@@ -33,7 +33,7 @@ export function BrowserChrome({ url, children, className = "" }: BrowserChromePr
       <div
         data-testid="browser-chrome-header"
         className="h-[42px] flex items-center px-4 border-b border-line"
-        style={{ background: "#F4EEE3" }}
+        style={{ background: "color-mix(in srgb, var(--color-line) 55%, var(--color-paper))" }}
         aria-hidden="true"
       >
         {/* Traffic-light dots */}

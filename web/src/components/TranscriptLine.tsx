@@ -17,8 +17,8 @@ export function formatTs(ms: number): string {
   return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-const INK = "#211D18";  // Phase 1 --color-ink — "Me" label + final body text.
-const GREY = "#A89F90"; // Phase 1 --color-grey — "Them" + timestamp + partial.
+const INK = "var(--color-ink)"; // "Me" label + final body text.
+const GREY = "var(--color-grey)"; // "Them" + timestamp + partial.
 
 /**
  * One transcript line: channel label · monospace timestamp · spoken text.
