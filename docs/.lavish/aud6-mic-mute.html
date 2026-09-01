@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUD-6 · Mic mute toggle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Tokens copied verbatim from web/src/index.css's @theme block, so this
+     renders in the app's real palette rather than an invented one. */
+  :root {
+    --color-paper:   #FBF7EF;
+    --color-card:    #FFFFFF;
+    --color-ink:     #211D18;
+    --color-grey:    #A89F90;
+    --color-line:    #EBE3D5;
+    --color-blue:    #5B4FC7;
+    --color-blsoft:  #ECE9FB;
+    --color-straw:   #E07A66;
+    --color-strsoft: #FBE6E0;
+    --color-matcha:  #5E9E73;
+    --color-mtsoft:  #E7F0E8;
+    --color-mut:     #8A8174;
+    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --radius-button: 9px;
+  }
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+  }
+  .page { max-width: 780px; margin: 0 auto; padding: 48px 40px 90px; }
+
+  .kicker {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-mut);
+  }
+  .kicker code {
+    font-family: var(--font-mono); font-size: 10.5px; text-transform: none; letter-spacing: 0;
+    background: var(--color-card); border: 1px solid var(--color-line); border-radius: 4px; padding: 1px 5px;
+  }
+  h1 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-size: 28px;
+    margin: 8px 0 4px;
+  }
+  .dek { color: var(--color-mut); font-size: 14px; line-height: 1.6; max-width: 60ch; margin: 0 0 28px; }
+  .dek code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+
+  .callout {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--color-blsoft);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 40px;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .callout .dot {
+    flex: none; width: 8px; height: 8px; margin-top: 5px; border-radius: 999px; background: var(--color-blue);
+  }
+  .callout strong { color: var(--color-ink); }
+  .callout .sub { color: var(--color-mut); font-size: 12.5px; margin-top: 3px; }
+
+  section { margin-bottom: 44px; min-width: 0; }
+  .sect-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-mut);
+    margin-bottom: 14px;
+  }
+
+  /* Reproduction of Meeting.tsx's header, rows 1-4 */
+  .mock-frame {
+    background: var(--color-paper);
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 6px rgba(40, 30, 15, 0.06);
+    overflow-x: auto;
+  }
+  .frame-caption {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-mut);
+    margin: 10px 4px 0;
+    line-height: 1.6;
+  }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--color-mut);
+  }
+  .rec-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+    background: var(--color-straw);
+    margin-left: 2px;
+    animation: recpulse 1.4s ease-in-out infinite;
+  }
+  @keyframes recpulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(1.15); } }
+
+  .row1 { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
+  .btn-blue {
+    padding: 8px 16px; border-radius: var(--radius-button);
+    font-size: 13.5px; font-weight: 600; color: #fff;
+    background: var(--color-blue);
+    box-shadow: 0 2px 8px rgba(91, 79, 199, 0.3);
+    border: none; white-space: nowrap;
+  }
+
+  .row2 { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 999px; padding: 2px 8px;
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.4;
+    border: 1px solid var(--color-line); background: var(--color-card); color: var(--color-mut);
+  }
+
+  .row4 { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .mic-select {
+    font-family: var(--font-mono); font-size: 12px;
+    border-radius: 6px; border: 1px solid var(--color-line);
+    padding: 4px 8px; background: var(--color-card); color: var(--color-ink);
+    height: 28px;
+  }
+
+  /* The new control */
+  .mic-mute-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--color-line);
+    background: var(--color-card);
+    color: var(--color-mut);
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+  }
+  .mic-mute-btn:hover { background: var(--color-paper); color: var(--color-ink); }
+  .mic-mute-btn:focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 2px;
+  }
+  .mic-mute-btn.is-muted {
+    background: var(--color-strsoft);
+    border-color: var(--color-strsoft);
+    color: var(--color-straw);
+  }
+  .mic-mute-btn.is-muted:hover { background: #f6d5cd; }
+  .mic-mute-btn svg { width: 15px; height: 15px; flex: none; }
+
+  .paused-note {
+    font-family: var(--font-mono); font-size: 11px; color: var(--color-straw);
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  }
+  .paused-note .dot {
+    width: 5px; height: 5px; border-radius: 999px; background: var(--color-straw); flex: none;
+  }
+
+  /* States showcase grid */
+  .states {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+  }
+  .state-card {
+    min-width: 0;
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 18px 12px;
+    text-align: center;
+  }
+  .state-card .stage { display: flex; justify-content: center; margin-bottom: 12px; }
+  .state-card .label { font-size: 12.5px; font-weight: 600; }
+  .state-card .hint { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-mut); margin-top: 3px; line-height: 1.4; }
+
+  /* Spec table */
+  .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--color-line); background: var(--color-card); }
+  table.spec { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
+  table.spec th, table.spec td {
+    text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--color-line);
+    vertical-align: top;
+  }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec th { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-mut); font-weight: 600; background: var(--color-paper); }
+  table.spec td:first-child { font-weight: 600; white-space: nowrap; }
+  table.spec code { font-family: var(--font-mono); font-size: 12px; background: var(--color-paper); border: 1px solid var(--color-line); border-radius: 4px; padding: 1px 4px; }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--color-line); font-family: var(--font-mono); font-size: 11px; color: var(--color-mut); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">AUD-6 <code>docs/.planning/aud6-mic-mute-design.md</code></p>
+  <h1>Mic mute toggle</h1>
+  <p class="dek">
+    Icon button next to <code>MicDevicePicker</code> in the meeting toolbar, row 4.
+    Visible only while recording. Pauses <code>Channel::Mic</code> only —
+    system audio keeps recording, matching the ticket's ask exactly.
+  </p>
+
+  <div class="callout">
+    <span class="dot" aria-hidden="true"></span>
+    <div>
+      <strong>Open call:</strong> icon-only button (shown below) vs. icon + short text label ("Pause mic").
+      <div class="sub">Defaulting to icon-only to match the toolbar's current density — the inline "Mic paused" note while muted already covers the "see at a glance" requirement without a permanent label taking up row space.</div>
+    </div>
+  </div>
+
+  <section>
+    <p class="sect-label">In the toolbar — unmuted</p>
+    <div class="mock-frame">
+      <a class="back-link" href="#"><span aria-hidden>←</span> Library</a>
+      <div class="row1">
+        <div class="title">Weekly sync w/ Maya</div>
+        <button class="btn-blue">Stop recording</button>
+      </div>
+      <div class="row2">
+        <span class="pill">Aug 31 · 2:00 PM</span>
+        <span class="pill">12 min</span>
+        <span class="pill">Local · small.en</span>
+      </div>
+      <div class="row4">
+        <select class="mic-select"><option>MacBook Pro Microphone (default)</option></select>
+        <button class="mic-mute-btn" aria-label="Pause mic" title="Pause mic — system audio keeps recording">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <p class="frame-caption">Recording pill pulses per the app's existing pattern (Library-link row, above the title). Mic button reads default <code>--color-mut</code> ink, matching the picker beside it.</p>
+  </section>
+
+  <section>
+    <p class="sect-label">In the toolbar — muted</p>
+    <div class="mock-frame">
+      <a class="back-link" href="#"><span aria-hidden>←</span> Library <span class="rec-dot" title="recording"></span></a>
+      <div class="row1">
+        <div class="title">Weekly sync w/ Maya</div>
+        <button class="btn-blue">Stop recording</button>
+      </div>
+      <div class="row2">
+        <span class="pill">Aug 31 · 2:00 PM</span>
+        <span class="pill">12 min</span>
+        <span class="pill">Local · small.en</span>
+      </div>
+      <div class="row4">
+        <select class="mic-select"><option>MacBook Pro Microphone (default)</option></select>
+        <button class="mic-mute-btn is-muted" aria-label="Resume mic" title="Mic paused — click to resume">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="2" x2="22" y1="2" y2="22"/>
+            <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/>
+            <path d="M5 10v2a7 7 0 0 0 12 5"/>
+            <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/>
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+        </button>
+        <span class="paused-note"><span class="dot"></span> Mic paused</span>
+      </div>
+    </div>
+    <p class="frame-caption">Strawberry fill (<code>bg-strsoft</code> / <code>text-straw</code>) is the app's one existing "attention, but not an error" tone — same pair the recording dot and warn-tone <code>MetaPill</code> already use. The inline "Mic paused" label is what actually answers the ticket's "see at a glance" requirement — not the icon alone.</p>
+  </section>
+
+  <section>
+    <p class="sect-label">Component states</p>
+    <div class="states">
+      <div class="state-card">
+        <div class="stage">
+          <button class="mic-mute-btn" aria-label="Pause mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </button>
+        </div>
+        <div class="label">Idle</div>
+        <div class="hint">border-line · text-mut</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mic-mute-btn" style="background: var(--color-paper); color: var(--color-ink);" aria-label="Pause mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </button>
+        </div>
+        <div class="label">Hover</div>
+        <div class="hint">bg-paper · text-ink</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mic-mute-btn" style="outline: 2px solid var(--color-blue); outline-offset: 2px;" aria-label="Pause mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </button>
+        </div>
+        <div class="label">Focus-visible</div>
+        <div class="hint">keyboard nav ring</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mic-mute-btn is-muted" aria-label="Resume mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </button>
+        </div>
+        <div class="label">Muted</div>
+        <div class="hint">bg-strsoft · text-straw</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mic-mute-btn is-muted" style="background:#f6d5cd" aria-label="Resume mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </button>
+        </div>
+        <div class="label">Muted + hover</div>
+        <div class="hint">darker strawberry</div>
+      </div>
+    </div>
+  </section>
+
+  <section style="margin-bottom: 0;">
+    <p class="sect-label">Spec</p>
+    <div class="table-wrap">
+      <table class="spec">
+        <tr><th>Prop</th><th>Value</th></tr>
+        <tr><td>Icon</td><td>Lucide <code>Mic</code> / <code>MicOff</code>, 15px — matches existing icon usage in <code>MeetingMetaPills.tsx</code></td></tr>
+        <tr><td>Size</td><td>28×28px, <code>rounded-md</code> (6px) — matches <code>MicDevicePicker</code>'s <code>&lt;select&gt;</code> height exactly, sits flush beside it</td></tr>
+        <tr><td>Idle</td><td><code>border-line</code> · <code>bg-card</code> · <code>text-mut</code></td></tr>
+        <tr><td>Muted</td><td><code>bg-strsoft</code> · <code>text-straw</code> — same warn pair as <code>MetaPill tone="warn"</code> and the error banner</td></tr>
+        <tr><td>aria-label</td><td><code>"Pause mic"</code> unmuted → <code>"Resume mic"</code> muted (names the action, not the icon)</td></tr>
+        <tr><td>title / tooltip</td><td><code>"Pause mic — system audio keeps recording"</code> — answers "will this stop everything?" inline</td></tr>
+        <tr><td>Inline label</td><td>"Mic paused" text next to the button while muted — the "see at a glance" requirement, not the icon alone</td></tr>
+        <tr><td>Visibility</td><td>Mounted only while <code>recording === true</code> — muting a stopped meeting is a no-op</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <footer>Design doc: docs/.planning/aud6-mic-mute-design.md · Ticket: docs/TODO.md AUD-6 · Not yet implemented</footer>
+
+</div>
+</body>
+</html>

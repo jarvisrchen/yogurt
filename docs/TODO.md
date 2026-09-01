@@ -117,6 +117,8 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Richard wants to step away and talk to someone mid-meeting without that conversation landing in the transcript, without having to stop and restart the recording.
   This is mic-only: he'd already be muted in the meeting app itself, so the other side's audio (`Channel::System`) should keep capturing normally the whole time - only his own mic (`Channel::Mic`) needs to stop feeding the pipeline while he's talking to someone off to the side.
   Needs a pause/mute control reachable during an active recording that stops feeding mic audio into the pipeline (rather than just muting playback), and a way to see at a glance that mic capture is currently paused.
+
+  Design: [docs/.planning/aud6-mic-mute-design.md](.planning/aud6-mic-mute-design.md)
   </details>
 
 - [ ] **AUD-7** Give an agent a live way to debug which channel (mic vs system) picked up which audio during a real meeting
