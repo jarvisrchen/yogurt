@@ -123,6 +123,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
 
   Shipped as **detect-and-prompt**, not auto-record.
   `yogurt_audio::detect` polls `SCShareableContent` every 5s for an on-screen window matching a small allow-list of (bundle id, in-call window title) pairs - Zoom, Google Meet in a browser, Teams, Slack huddles.
+  Only the Google Meet rule is verified against a live call; the other three are inferred from documented window naming and should be confirmed with `cargo run -p yogurt-audio --example meeting_windows` during a real call before being trusted.
   That reuses the `screencapturekit` dependency and the Screen Recording grant system-audio loopback already requires, so detection costs no new dependency and no new TCC prompt.
   The two alternatives in the original scoping note were both worse: a calendar read needs a new permission and fires on events you skip, and a system-audio heuristic means holding a capture stream open around the clock, which is the thing the privacy constraint exists to prevent.
 
