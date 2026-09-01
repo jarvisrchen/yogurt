@@ -46,6 +46,16 @@ The tag selects the commit that gets built, so `main` can move freely without sh
    Check the `**Status:**` line and the Homebrew heading for stale "coming soon" wording.
    Land any fix before the tag so the released tree describes itself accurately.
 
+   **Merge the outstanding doc PRs first.** The tag freezes the tree, so anything still in review ships as whatever `main` said at tag time.
+   ```bash
+   gh pr list -R jarvisrchen/yogurt --json number,title,files \
+     --jq '.[]|select(.files|any(.path|startswith("docs/") or . == "README.md"))|"#\(.number) \(.title)"'
+   ```
+   The failure this prevents is one-directional and worse than a stale doc: a feature PR whose README describes a thing that is not published yet. v0.3.0 shipped `brew install jarvisrchen/yogurt/yogurt-model-*` instructions while those formulae existed only in an untracked local file, so the released README told every user to run a command that returned "No available formula".
+   Ask of each doc change: does this describe something a user can do the moment they install this tag? If not, either publish the dependency first or hold the doc.
+
+   The release log row (step 11) is the one exception - it records run IDs and verified shas that do not exist until after the tag, so it can only land afterwards.
+
 5. **Dry run.** Never tag first.
    ```bash
    gh workflow run Release -R jarvisrchen/yogurt -f dry-run=true --ref main
