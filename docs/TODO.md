@@ -43,15 +43,6 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
 ## UI
 
-- [ ] **UI-5** "See all XXX models" link and Save button crowd each other on the active provider card
-  <details>
-  <summary>Details</summary>
-
-  On the active provider card in Settings → LLM providers, the "See all Minimax models →" link sits right up against the Save button with barely any gap - looks like it's about to overlap, not great UX.
-
-  ![see all models link crowds the Save button](attachments/2026-08-31-provider-card-link-save-overlap.png)
-  </details>
-
 - [ ] **UI-6** Add a dark mode toggle
 
 ## Meetings
@@ -192,6 +183,17 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   Visual evidence:
   ![notes AI section shows a thick focus ring](attachments/2026-08-28-notes-ai-section-focus-ring.png)
   </details>
+
+- [x] **UI-5** "See all XXX models" link and Save button crowd each other on the active provider card
+  <details>
+  <summary>Details</summary>
+
+  On the active provider card in Settings → LLM providers, the "See all Minimax models →" link sits right up against the Save button with barely any gap - looks like it's about to overlap, not great UX.
+
+  ![see all models link crowds the Save button](attachments/2026-08-31-provider-card-link-save-overlap.png)
+  </details>
+
+  Fixed in `ProviderCard.tsx`: the docs link and `Save` now share one `flex … gap-3` row. They were bare siblings of the card's `space-y-4` container, which only sets `margin-top` - and since both are inline-level, they shared a line box and rendered flush.
 
 ### Meetings
 
