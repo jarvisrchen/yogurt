@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUD-6 · Mic mute toggle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Tokens copied verbatim from web/src/index.css's @theme block, so this
+     renders in the app's real palette rather than an invented one. */
+  :root {
+    --color-paper:   #FBF7EF;
+    --color-card:    #FFFFFF;
+    --color-ink:     #211D18;
+    --color-grey:    #A89F90;
+    --color-line:    #EBE3D5;
+    --color-blue:    #5B4FC7;
+    --color-blsoft:  #ECE9FB;
+    --color-straw:   #E07A66;
+    --color-strsoft: #FBE6E0;
+    --color-matcha:  #5E9E73;
+    --color-mtsoft:  #E7F0E8;
+    --color-mut:     #8A8174;
+    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --radius-button: 9px;
+  }
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+  }
+  .page { max-width: 780px; margin: 0 auto; padding: 48px 40px 90px; }
+
+  .kicker {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-mut);
+  }
+  .kicker code {
+    font-family: var(--font-mono); font-size: 10.5px; text-transform: none; letter-spacing: 0;
+    background: var(--color-card); border: 1px solid var(--color-line); border-radius: 4px; padding: 1px 5px;
+  }
+  h1 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-size: 28px;
+    margin: 8px 0 4px;
+  }
+  .dek { color: var(--color-mut); font-size: 14px; line-height: 1.6; max-width: 60ch; margin: 0 0 28px; }
+  .dek code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+
+  .callout {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--color-mtsoft);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 40px;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .callout .dot {
+    flex: none; width: 8px; height: 8px; margin-top: 5px; border-radius: 999px; background: var(--color-matcha);
+  }
+  .callout strong { color: var(--color-ink); }
+  .callout .sub { color: var(--color-mut); font-size: 12.5px; margin-top: 3px; }
+
+  section { margin-bottom: 44px; min-width: 0; }
+  .sect-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-mut);
+    margin-bottom: 14px;
+  }
+
+  /* Reproduction of Meeting.tsx's header + the toggle's real position */
+  .mock-frame {
+    background: var(--color-paper);
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 6px rgba(40, 30, 15, 0.06);
+    overflow-x: auto;
+  }
+  .frame-caption {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-mut);
+    margin: 10px 4px 0;
+    line-height: 1.6;
+  }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--color-mut);
+  }
+  .rec-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+    background: var(--color-straw);
+    margin-left: 2px;
+    animation: recpulse 1.4s ease-in-out infinite;
+  }
+  @keyframes recpulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(1.15); } }
+
+  .row1 { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
+  .btn-blue {
+    padding: 8px 16px; border-radius: var(--radius-button);
+    font-size: 13.5px; font-weight: 600; color: #fff;
+    background: var(--color-blue);
+    box-shadow: 0 2px 8px rgba(91, 79, 199, 0.3);
+    border: none; white-space: nowrap;
+  }
+
+  .row2 { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 999px; padding: 2px 8px;
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.4;
+    border: 1px solid var(--color-line); background: var(--color-card); color: var(--color-mut);
+  }
+
+  .row4 { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .mic-select {
+    font-family: var(--font-mono); font-size: 12px;
+    border-radius: 6px; border: 1px solid var(--color-line);
+    padding: 4px 8px; background: var(--color-card); color: var(--color-ink);
+    height: 28px;
+  }
+
+  /* The shipped control — full-width <Button> (secondary / warn variant) */
+  .mute-row { margin-top: 14px; }
+  .mute-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: var(--radius-button);
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    transition: background-color .12s ease, opacity .12s ease;
+  }
+  .mute-btn.secondary {
+    background: var(--color-card); color: var(--color-ink);
+    border: 1px solid #D9D0C0;
+  }
+  .mute-btn.secondary:hover { background: #F8F2E5; }
+  .mute-btn.warn {
+    background: var(--color-straw); color: #fff; border: none;
+  }
+  .mute-btn.warn:hover { opacity: .9; }
+  .mute-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .mute-btn svg { width: 18px; height: 18px; flex: none; }
+  .mute-btn kbd {
+    font-family: var(--font-mono); font-size: 11px;
+    padding: 2px 6px; border-radius: 4px; margin-left: 2px;
+  }
+  .mute-btn.secondary kbd { background: rgba(0,0,0,.08); color: var(--color-ink); }
+  .mute-btn.warn kbd { background: rgba(255,255,255,.2); color: #fff; }
+
+  /* Legacy icon-only chip, kept only for the "considered" comparison */
+  .mic-mute-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--color-line);
+    background: var(--color-card);
+    color: var(--color-mut);
+  }
+  .mic-mute-btn.is-muted { background: var(--color-strsoft); border-color: var(--color-strsoft); color: var(--color-straw); }
+  .mic-mute-btn svg { width: 15px; height: 15px; flex: none; }
+
+  /* States showcase grid */
+  .states {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  .state-card {
+    min-width: 0;
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 18px 12px;
+    text-align: center;
+  }
+  .state-card .stage { display: flex; justify-content: center; margin-bottom: 12px; }
+  .state-card .stage .mute-btn { width: auto; padding: 8px 14px; font-size: 13px; }
+  .state-card .label { font-size: 12.5px; font-weight: 600; }
+  .state-card .hint { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-mut); margin-top: 3px; line-height: 1.4; }
+
+  /* Spec table */
+  .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--color-line); background: var(--color-card); }
+  table.spec { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
+  table.spec th, table.spec td {
+    text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--color-line);
+    vertical-align: top;
+  }
+  table.spec tr:last-child td { border-bottom: none; }
+  table.spec th { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-mut); font-weight: 600; background: var(--color-paper); }
+  table.spec td:first-child { font-weight: 600; white-space: nowrap; }
+  table.spec code { font-family: var(--font-mono); font-size: 12px; background: var(--color-paper); border: 1px solid var(--color-line); border-radius: 4px; padding: 1px 4px; }
+
+  /* Considered-but-superseded comparison */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .compare { grid-template-columns: 1fr; } }
+  .compare-card { border-radius: 12px; padding: 16px; }
+  .compare-card.was { background: var(--color-card); border: 1px dashed var(--color-line); }
+  .compare-card.now { background: var(--color-mtsoft); border: 1px solid transparent; }
+  .compare-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-mut); margin-bottom: 10px; }
+  .compare-card.now .compare-label { color: var(--color-matcha); }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--color-line); font-family: var(--font-mono); font-size: 11px; color: var(--color-mut); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">AUD-6 <code>docs/.planning/aud6-mic-mute-design.md</code></p>
+  <h1>Mic mute toggle</h1>
+  <p class="dek">
+    A big, full-width button between the mic picker and the notes card, always visible.
+    Pauses <code>Channel::Mic</code> only — system audio keeps recording.
+    The <code>M</code> hotkey toggles it without touching the mouse.
+  </p>
+
+  <div class="callout">
+    <span class="dot" aria-hidden="true"></span>
+    <div>
+      <strong>Shipped 2026-09-01, revised from a small toolbar icon</strong> after review: mid-meeting mute is a core action, so it needed to be a bigger, always-findable target, plus a keyboard shortcut for reflex speed.
+      <div class="sub">The comparison below the states grid shows what changed and why.</div>
+    </div>
+  </div>
+
+  <section>
+    <p class="sect-label">In the page — unmuted, recording</p>
+    <div class="mock-frame">
+      <a class="back-link" href="#"><span aria-hidden>←</span> Library <span class="rec-dot" title="recording"></span></a>
+      <div class="row1">
+        <div class="title">Weekly sync w/ Maya</div>
+        <button class="btn-blue">Stop recording</button>
+      </div>
+      <div class="row2">
+        <span class="pill">Sep 1 · 1:03 PM</span>
+        <span class="pill">2 min</span>
+        <span class="pill">Local · large-v3-turbo</span>
+      </div>
+      <div class="row4">
+        <select class="mic-select"><option>MacBook Pro Microphone (default)</option></select>
+      </div>
+      <div class="mute-row">
+        <button class="mute-btn secondary" aria-label="Pause mic" title="Pause mic — system audio keeps recording (M)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+          Mute mic <kbd>M</kbd>
+        </button>
+      </div>
+    </div>
+    <p class="frame-caption">Between the mic picker row and the notes card, exactly where the ticket asked for it. Full-width <code>&lt;Button variant="secondary"&gt;</code> — same component the app's other buttons use, not hand-rolled styles.</p>
+  </section>
+
+  <section>
+    <p class="sect-label">In the page — muted</p>
+    <div class="mock-frame">
+      <a class="back-link" href="#"><span aria-hidden>←</span> Library <span class="rec-dot" title="recording"></span></a>
+      <div class="row1">
+        <div class="title">Weekly sync w/ Maya</div>
+        <button class="btn-blue">Stop recording</button>
+      </div>
+      <div class="row2">
+        <span class="pill">Sep 1 · 1:03 PM</span>
+        <span class="pill">2 min</span>
+        <span class="pill">Local · large-v3-turbo</span>
+      </div>
+      <div class="row4">
+        <select class="mic-select"><option>MacBook Pro Microphone (default)</option></select>
+      </div>
+      <div class="mute-row">
+        <button class="mute-btn warn" aria-label="Resume mic" title="Mic paused — click to resume (M)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="2" x2="22" y1="2" y2="22"/>
+            <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/>
+            <path d="M5 10v2a7 7 0 0 0 12 5"/>
+            <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/>
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+          Mic paused — tap to resume <kbd>M</kbd>
+        </button>
+      </div>
+    </div>
+    <p class="frame-caption">New <code>warn</code> <code>&lt;Button&gt;</code> variant — solid strawberry, white text — the app's one existing "attention, but not an error" tone (<code>MetaPill tone="warn"</code>, the error banner). Unmissable at a glance, not just a color swap on a small chip.</p>
+  </section>
+
+  <section>
+    <p class="sect-label">In the page — not recording (disabled)</p>
+    <div class="mock-frame">
+      <a class="back-link" href="#"><span aria-hidden>←</span> Library</a>
+      <div class="row1">
+        <div class="title">Weekly sync w/ Maya</div>
+        <button class="btn-blue">Start recording</button>
+      </div>
+      <div class="row2">
+        <span class="pill">Sep 1 · 1:03 PM</span>
+      </div>
+      <div class="row4">
+        <select class="mic-select"><option>MacBook Pro Microphone (default)</option></select>
+      </div>
+      <div class="mute-row">
+        <button class="mute-btn secondary" disabled aria-label="Pause mic" title="Mic muting is available once recording starts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+          Mute mic
+        </button>
+      </div>
+    </div>
+    <p class="frame-caption">Always mounted, never unmounted — disabled + explanatory tooltip while not recording, rather than disappearing. A core action should stay in the same place whether or not it's currently usable.</p>
+  </section>
+
+  <section>
+    <p class="sect-label">Component states</p>
+    <div class="states">
+      <div class="state-card">
+        <div class="stage">
+          <button class="mute-btn secondary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Mute mic</button>
+        </div>
+        <div class="label">Idle</div>
+        <div class="hint">secondary variant</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mute-btn secondary" style="background:#F8F2E5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Mute mic</button>
+        </div>
+        <div class="label">Hover</div>
+        <div class="hint">warmer cream bg</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mute-btn secondary" style="outline:2px solid var(--color-blue); outline-offset:2px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Mute mic</button>
+        </div>
+        <div class="label">Focus-visible</div>
+        <div class="hint"><code>&lt;Button&gt;</code>'s ring</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mute-btn warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Muted</button>
+        </div>
+        <div class="label">Muted</div>
+        <div class="hint">warn variant</div>
+      </div>
+      <div class="state-card">
+        <div class="stage">
+          <button class="mute-btn secondary" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Mute mic</button>
+        </div>
+        <div class="label">Disabled</div>
+        <div class="hint">not recording</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sect-label">What changed — icon-only toolbar chip → big always-visible button</p>
+    <div class="compare">
+      <div class="compare-card was">
+        <div class="compare-label">Considered first</div>
+        <div class="mic-mute-btn" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+        </div>
+        <p class="frame-caption" style="margin-left:0">28×28 icon, tucked into the mic-picker row, gone entirely while not recording. Matched the toolbar's density but was easy to miss for something you need mid-sentence.</p>
+      </div>
+      <div class="compare-card now">
+        <div class="compare-label">Shipped</div>
+        <button class="mute-btn secondary" style="padding:8px 14px; font-size:13px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Mute mic <kbd>M</kbd></button>
+        <p class="frame-caption" style="margin-left:0">Full-width, always mounted (disabled when unusable), plus the <code>M</code> hotkey. Reads as a primary in-meeting control, not a settings toggle.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="margin-bottom: 0;">
+    <p class="sect-label">Spec</p>
+    <div class="table-wrap">
+      <table class="spec">
+        <tr><th>Prop</th><th>Value</th></tr>
+        <tr><td>Component</td><td>Full-width <code>&lt;Button&gt;</code> (<code>web/src/components/Button.tsx</code>) — <code>secondary</code> unmuted, new <code>warn</code> muted</td></tr>
+        <tr><td>Icon</td><td>Lucide <code>Mic</code> / <code>MicOff</code>, 18px</td></tr>
+        <tr><td>Placement</td><td>Between the mic-picker row and the notes card — always mounted once a meeting exists</td></tr>
+        <tr><td>Disabled</td><td>While not recording, with a <code>title</code> explaining why, rather than unmounting</td></tr>
+        <tr><td>Hotkey</td><td><code>M</code> — no modifier, for reflex speed. <code>ignoreWhenTyping</code> + <code>enabled: recording</code></td></tr>
+        <tr><td>aria-label</td><td><code>"Pause mic"</code> unmuted → <code>"Resume mic"</code> muted (names the action, not the icon)</td></tr>
+        <tr><td>title / tooltip</td><td>States what will/won't happen and names the hotkey — <code>"Pause mic — system audio keeps recording (M)"</code></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <footer>Design doc: docs/.planning/aud6-mic-mute-design.md · Ticket: docs/TODO.md AUD-6 · Shipped 2026-09-01</footer>
+
+</div>
+</body>
+</html>

@@ -277,6 +277,16 @@ export const audioApi = {
         body: JSON.stringify({ device_id: deviceId }),
       },
     ),
+  /** `POST /api/meetings/:id/mic-muted` (AUD-6) - pause/resume the mic on an
+   *  actively-recording meeting. `Channel::System` is untouched. */
+  setMicMuted: (meetingId: string, muted: boolean) =>
+    http<{ status: string; muted: boolean }>(
+      `/api/meetings/${meetingId}/mic-muted`,
+      {
+        method: "POST",
+        body: JSON.stringify({ muted }),
+      },
+    ),
 };
 
 // ─── React-Query hooks (Phase 7 onboarding + permission gating) ─────────────

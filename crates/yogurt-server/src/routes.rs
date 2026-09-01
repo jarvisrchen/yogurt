@@ -81,6 +81,7 @@ pub fn router(state: AppState) -> Router {
             "/api/meetings/{id}/audio-device",
             post(switch_meeting_audio_device),
         )
+        .route("/api/meetings/{id}/mic-muted", post(set_meeting_mic_muted))
         // Phase 4 (Plan 04-03): hero augmented-notes endpoint.
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
         // Phase 6 (Plan 06-01): in-meeting chat REST surface.
@@ -332,12 +333,20 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
     };
     // Truthful engine badge (not the Settings row, which may have been
     // flipped mid-recording and won't apply until the next start) — read
-    // straight off the `Meeting` that `Registry::start` stamped.
-    let stt = match state.meetings.get(&id).await {
-        Some(m) => *m.stt_engine.lock().await,
-        None => None,
+    // straight off the `Meeting` that `Registry::start` stamped. AUD-6:
+    // `mic_muted` rides along the same lookup so a page reload or second
+    // tab reflects the true mute state within this existing poll, with no
+    // new WS plumbing.
+    let (stt, mic_muted) = match state.meetings.get(&id).await {
+        Some(m) => (*m.stt_engine.lock().await, *m.mic_muted.lock().await),
+        None => (None, false),
     };
-    let mut body = json!({ "id": id.to_string(), "title": title, "started_at": started_at });
+    let mut body = json!({
+        "id": id.to_string(),
+        "title": title,
+        "started_at": started_at,
+        "mic_muted": mic_muted,
+    });
     if let Some(engine) = stt {
         body["stt"] = json!(engine);
     }
@@ -410,6 +419,41 @@ async fn switch_meeting_audio_device(
         Ok(device) => (
             StatusCode::OK,
             Json(json!({ "status": "switched", "device": device })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::NotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "meeting not found" })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::NotRecording) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "meeting is not currently recording" })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::Device(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// `POST /api/meetings/:id/mic-muted` — pause or resume the mic on an
+/// actively-recording meeting (AUD-6). `Channel::System` is untouched.
+#[derive(Deserialize)]
+struct SetMicMutedRequest {
+    muted: bool,
+}
+
+async fn set_meeting_mic_muted(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SetMicMutedRequest>,
+) -> impl IntoResponse {
+    use crate::meetings::SwitchDeviceError;
+    match state.meetings.set_mic_muted(&id, body.muted).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(json!({ "status": "ok", "muted": body.muted })),
         )
             .into_response(),
         Err(SwitchDeviceError::NotFound) => (

@@ -114,6 +114,16 @@ impl AudioStream {
         self._mic = new_mic;
         Ok(resolved)
     }
+
+    /// AUD-6: pause (`true`) or resume (`false`) mic audio reaching the STT
+    /// pipeline. `Channel::System` is untouched.
+    ///
+    /// ponytail: resets to unmuted after `switch_mic_device` hot-swaps in a
+    /// fresh `MicCapture` — muting and switching devices in the same beat
+    /// is a rare, low-stakes combo, not worth threading the flag through.
+    pub fn set_mic_muted(&self, muted: bool) {
+        self._mic.set_muted(muted);
+    }
 }
 
 /// Open both capture streams (mic + system audio) and return an
