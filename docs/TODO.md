@@ -193,7 +193,7 @@ Closed-out work, kept here for context. Move a `- [x]` item here when the work l
   ![see all models link crowds the Save button](attachments/2026-08-31-provider-card-link-save-overlap.png)
   </details>
 
-  Fixed in `ProviderCard.tsx`: the docs link and `Save` now share one `flex … gap-3` row. They were bare siblings of the card's `space-y-4` container, which only sets `margin-top` - and since both are inline-level, they shared a line box and rendered flush.
+  Landed in #41. `ProviderCard.tsx`: the docs link and `Save` now share one `flex … gap-3` row. They were bare siblings of the card's `space-y-4` container, which only sets `margin-top` - and since both are inline-level, they shared a line box and rendered flush.
 
 ### Meetings
 
