@@ -142,17 +142,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
   </details>
 
-- [ ] **DX-7** `scripts/release.sh preflight | ship | verify | finish | untag`, then shrink the release skill
-  <details>
-  <summary>Details</summary>
-
-  Three PRs: `preflight` (read-only judgment gate, replaces skill steps 1-4 in the same PR), then `verify`/`finish`/`untag` (hash check, tap merge, brew upgrade in place, pre-filled log row with a `NARRATIVE:` slot), then `ship` (bump PR from a throwaway worktree, dry run, tag by merge sha via the GitHub API, watch, verify, finish; resumable from GitHub state).
-  Then the skill becomes about 200 words.
-  No `just` recipe: `just release` already means "run the release binary".
-  Design: `docs/.planning/agent-workflow.md`, section 4C, C1 to C3.
-  After DX-6.
-  </details>
-
 - [ ] **DX-9** Rewrite AGENTS.md around the six-command lifecycle, with the cloud-session paragraph
   <details>
   <summary>Details</summary>

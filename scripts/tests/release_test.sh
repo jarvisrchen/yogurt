@@ -229,5 +229,177 @@ untag_refused=0
 (cd "$FIXTURE" && cmd_untag 0.7.0 -n) >/dev/null 2>&1 || untag_refused=$?
 check "untag refuses (exit 2) when a Release exists, even with -n" "$untag_refused" "2"
 
+# --- ship: marker round trip --------------------------------------------
+
+marker="$(ship_marker deadbeefcafe)"
+check "ship_marker format" "$marker" "<!-- yogurt-release: P=deadbeefcafe -->"
+check "ship_marker_sha round trip" "$(ship_marker_sha "$marker")" "deadbeefcafe"
+check "ship_marker_sha round trip, marker embedded in a larger PR body" \
+  "$(ship_marker_sha "Ships since v0.7.0: abc first.
+
+$marker
+")" "deadbeefcafe"
+check "ship_marker_sha: no marker present" "$(ship_marker_sha "no marker here")" ""
+
+# --- ship: ship_tag_status - pure, no git at all ------------------------
+
+check "ship_tag_status: no tag yet" "$(ship_tag_status "" abc123)" "missing"
+check "ship_tag_status: tag already at target" "$(ship_tag_status abc123 abc123)" "same"
+check "ship_tag_status: tag points elsewhere" "$(ship_tag_status abc123 def456)" "conflict"
+
+# --- ship: ship_main_not_moved - a throwaway local repo, real content so
+# is_docs_only's file-pattern judgment is actually exercised (unlike the
+# FIXTURE repo above, whose commits are --allow-empty). --------------------
+
+DOCS_FIXTURE="$WORK/docs_fixture"
+git init -q -b main "$DOCS_FIXTURE"
+git -C "$DOCS_FIXTURE" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+base_sha="$(git -C "$DOCS_FIXTURE" rev-parse HEAD)"
+
+echo "notes" >"$DOCS_FIXTURE/docs_note.md"
+git -C "$DOCS_FIXTURE" add docs_note.md
+git -C "$DOCS_FIXTURE" -c user.email=t@t -c user.name=t commit -q -m "docs change"
+docs_sha="$(git -C "$DOCS_FIXTURE" rev-parse HEAD)"
+
+echo 'fn main() {}' >"$DOCS_FIXTURE/src.rs"
+git -C "$DOCS_FIXTURE" add src.rs
+git -C "$DOCS_FIXTURE" -c user.email=t@t -c user.name=t commit -q -m "code change"
+code_sha="$(git -C "$DOCS_FIXTURE" rev-parse HEAD)"
+
+same_result=yes
+(cd "$DOCS_FIXTURE" && ship_main_not_moved "$base_sha" "$base_sha") || same_result=no
+check "ship_main_not_moved: parent(S) == P passes" "$same_result" "yes"
+
+docs_result=yes
+(cd "$DOCS_FIXTURE" && ship_main_not_moved "$base_sha" "$docs_sha") || docs_result=no
+check "ship_main_not_moved: a docs-only commit between passes" "$docs_result" "yes"
+
+code_result=yes
+(cd "$DOCS_FIXTURE" && ship_main_not_moved "$base_sha" "$code_sha") || code_result=no
+check "ship_main_not_moved: a code commit between fails" "$code_result" "no"
+
+# --- ship -n: full plan, in order, against a clean fixture --------------
+# A dedicated fixture (not FIXTURE above, whose tags/commits are shaped for
+# the finish/untag tests): a Cargo.toml + README.md, one commit tagged
+# v0.9.0, one commit after it, so preflight's checks all pass for target
+# 1.0.0. gh is re-stubbed here to answer only what preflight + the plan
+# printer call - `-R jarvisrchen/yogurt` throughout, unlike the `--repo
+# jarvisrchen/homebrew-yogurt` stub above.
+
+SHIP_FIXTURE="$WORK/ship_fixture"
+SHIP_BARE="$WORK/ship_origin.git"
+git init -q --bare "$SHIP_BARE"
+git init -q -b main "$SHIP_FIXTURE"
+git -C "$SHIP_FIXTURE" remote add origin "$SHIP_BARE"
+cat >"$SHIP_FIXTURE/Cargo.toml" <<'EOF'
+[workspace.package]
+version = "0.9.0"
+EOF
+echo "# yogurt" >"$SHIP_FIXTURE/README.md"
+git -C "$SHIP_FIXTURE" add Cargo.toml README.md
+git -C "$SHIP_FIXTURE" -c user.email=t@t -c user.name=t commit -q -m first
+git -C "$SHIP_FIXTURE" tag v0.9.0
+echo "more" >>"$SHIP_FIXTURE/README.md"
+git -C "$SHIP_FIXTURE" add README.md
+git -C "$SHIP_FIXTURE" -c user.email=t@t -c user.name=t commit -q -m "second (#99)"
+git -C "$SHIP_FIXTURE" push -q origin main --tags
+
+cat >"$BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+# stub gh - a clean-slate ship 1.0.0 -n: gh auth ok, CI green on any sha,
+# no open doc PRs, no existing dry run, no existing bump PR.
+args="$*"
+case "$args" in
+  "auth status") exit 0 ;;
+  *"run list -R jarvisrchen/yogurt -w CI "*)
+    echo '[{"status":"completed","conclusion":"success"}]' ;;
+  *"pr list -R jarvisrchen/yogurt --state open"*) echo '[]' ;;
+  *"run list -R jarvisrchen/yogurt -w Release "*) : ;; # --jq already applied: empty means no green dry run
+  *"pr list -R jarvisrchen/yogurt --head release/v"*) : ;; # --jq already applied: empty means no bump PR
+  *)
+    echo "unstubbed gh call: $args" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$BIN/gh"
+
+plan_out="$(cd "$SHIP_FIXTURE" && cmd_ship 1.0.0 -n 2>&1)"
+contains "ship -n: plan header" "$plan_out" "PLAN for ship v1.0.0:"
+contains "ship -n: dry-run dispatch" "$plan_out" "gh workflow run release.yml -R jarvisrchen/yogurt -f dry-run=true --ref main"
+contains "ship -n: bump worktree" "$plan_out" "git worktree add --detach"
+contains "ship -n: bump commit" "$plan_out" 'git commit -m "chore: bump version to 1.0.0"'
+contains "ship -n: bump PR open" "$plan_out" "gh pr create -R jarvisrchen/yogurt --base main --head release/v1.0.0"
+contains "ship -n: bump PR checks" "$plan_out" "gh pr checks <N> -R jarvisrchen/yogurt --watch --fail-fast"
+contains "ship -n: bump PR merge" "$plan_out" 'gh pr merge <N> -R jarvisrchen/yogurt --squash --subject "chore: bump version to 1.0.0 (#N)"'
+contains "ship -n: tag creation" "$plan_out" "gh api repos/jarvisrchen/yogurt/git/refs -f ref=refs/tags/v1.0.0 -f sha=<merge sha>"
+contains "ship -n: finish" "$plan_out" "scripts/release.sh finish 1.0.0"
+
+before() {
+  local desc="$1" haystack="$2" first="$3" second="$4"
+  case "$haystack" in
+    *"$first"*"$second"*) pass=$((pass + 1)) ;;
+    *)
+      fail=$((fail + 1))
+      printf 'FAIL: %s (expected to find %s before %s)\n' "$desc" "$first" "$second" >&2
+      ;;
+  esac
+}
+
+before "ship -n order: dry-run before bump worktree" "$plan_out" \
+  "gh workflow run release.yml" "git worktree add --detach"
+before "ship -n order: bump worktree before PR open" "$plan_out" \
+  "git worktree add --detach" "gh pr create -R jarvisrchen/yogurt"
+before "ship -n order: PR open before checks" "$plan_out" \
+  "gh pr create -R jarvisrchen/yogurt" "gh pr checks <N>"
+before "ship -n order: checks before merge" "$plan_out" \
+  "gh pr checks <N>" "gh pr merge <N>"
+before "ship -n order: merge before tag" "$plan_out" \
+  "gh pr merge <N>" "gh api repos/jarvisrchen/yogurt/git/refs"
+before "ship -n order: tag before finish" "$plan_out" \
+  "gh api repos/jarvisrchen/yogurt/git/refs" "scripts/release.sh finish 1.0.0"
+
+# --- ship -n: preflight blocks before any plan is printed - the tag
+# already exists for 0.7.0 in the real repo's history is what the live
+# verification run exercises; here, reuse SHIP_FIXTURE with target
+# "0.9.0", which check_tag_available rejects (v0.9.0 already tagged). -----
+
+preflight_block_status=0
+preflight_block_out="$(cd "$SHIP_FIXTURE" && cmd_ship 0.9.0 -n 2>&1)" || preflight_block_status=$?
+check "ship -n: preflight failure stops before the plan (exit 1)" "$preflight_block_status" "1"
+contains "ship -n: preflight failure message" "$preflight_block_out" "FAIL: preflight did not pass for v0.9.0"
+case "$preflight_block_out" in
+  *"PLAN for ship"*)
+    fail=$((fail + 1))
+    printf 'FAIL: ship -n: preflight failure must not reach the plan printer\n' >&2
+    ;;
+  *) pass=$((pass + 1)) ;;
+esac
+
+# --- open_bump_pr: cleans up its worktree (and the PR-body tempfile) on a
+# failed cargo update - cargo is stubbed to fail unconditionally, so the
+# function's own RETURN trap must fire even though `set -e` would abort a
+# bare failing command before ever reaching a trap (each fallible step is
+# explicitly gated with `|| return 1` for exactly this reason). ------------
+
+cat >"$BIN/cargo" <<'EOF'
+#!/usr/bin/env bash
+echo "stub cargo: refusing (simulated failure for the cleanup test)" >&2
+exit 1
+EOF
+chmod +x "$BIN/cargo"
+
+worktrees_before="$(git -C "$SHIP_FIXTURE" worktree list --porcelain | grep -c '^worktree ')"
+ship_p="$(git -C "$SHIP_FIXTURE" rev-parse main)"
+
+open_status=0
+(cd "$SHIP_FIXTURE" && open_bump_pr 9.0.0 "$ship_p") >/dev/null 2>&1 || open_status=$?
+check "open_bump_pr: a failed cargo update returns non-zero" "$open_status" "1"
+
+worktrees_after="$(git -C "$SHIP_FIXTURE" worktree list --porcelain | grep -c '^worktree ')"
+check "open_bump_pr: no orphaned worktree left after a failed cargo update" "$worktrees_after" "$worktrees_before"
+
+rm -f "$BIN/cargo"
+
 echo "release_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
