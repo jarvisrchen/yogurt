@@ -14,6 +14,7 @@ cd yogurt
 Homebrew is the only prerequisite.
 `setup.sh` installs or bootstraps Rust, Node 22, CMake, Corepack, and the pinned pnpm version.
 It also validates the exact tool versions before building.
+`just dev-bg` also needs tmux, which `setup.sh` does not install: `brew install tmux`.
 
 `setup.sh` is idempotent: it installs the [`just`](https://github.com/casey/just)
 task runner via Homebrew, writes a `.env.local` stub for API keys, builds the
@@ -169,6 +170,8 @@ gh pr create --base main
 ```
 
 ### Working in a git worktree
+
+`just start <ID> [words]` does the worktree, branch and bootstrap below in one step and prints the handover command; use the manual steps only when you want the mechanics or have no ticket ID.
 
 A worktree gives a branch its own directory, so you can run two branches side by side without stashing:
 
