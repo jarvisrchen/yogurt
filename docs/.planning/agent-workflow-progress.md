@@ -52,6 +52,8 @@ These are the things that would have shipped without the second pass.
 
 ## Decisions for Richard
 
+Update 2026-09-02 09:10 PDT: Richard asked for both remaining items to be done, so CLI-6's skill rewrite landed as #72 and v0.8.0 was cut with `scripts/release.sh ship 0.8.0` (bump PR #73, tag at the merge sha, tap PR #9, brew upgraded and tested). The first real ship needed three resumes and a hand patch; the bugs are listed in the v0.8.0 row of `docs/RELEASE-LOG.md` and fixed in a follow-up PR. Items 1 and 2 below are therefore done.
+
 1. **Cut v0.8.0.** It is the first release carrying `yogurt ctl`, `--data-dir` and the fixture endpoint, and the first real run of `scripts/release.sh ship`. The skill is three commands now: `scripts/release.sh preflight 0.8.0`, act on its judgment items, `scripts/release.sh ship 0.8.0`, paste the printed row into `docs/RELEASE-LOG.md` with the narrative. `ship -n --allow-open-docs` was run against the live repo and printed a correct plan; the real thing was left for you.
 2. **CLI-6's skill rewrite** (about 150 words around the generated command block) is the only open scope from the plan, and by the ticket's own rule it waits for that release: the README's `npx skills add` path installs the skill standalone, so it must not name commands the brew binary lacks.
 3. The `llm5-todo-done` worktree (PR #27, merged) is still on disk; `just worktrees` lists it as removable. It predates this run and was left alone.
