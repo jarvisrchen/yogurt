@@ -310,5 +310,125 @@ t "refusal mentions the dirty worktree" grep -qi "dirty" "$WORK/err-dirty"
 t "dirty worktree is not removed" [ -d "$WROOT/land-resume-dirty" ]
 t "branch survives a refused cleanup" bash -c 'git -C "$1" show-ref --verify --quiet refs/heads/land-resume-dirty' _ "$MAIN"
 
+# ── pr: check_worktree_branch refuses on main ────────────────────────
+
+status=0
+( cd "$MAIN" && "$SHIP" pr "docs: test" --body-file "$BODY_GOOD" --dry-run ) >/dev/null 2>"$WORK/err-main" || status=$?
+t "pr from the main checkout on branch main refuses (exit 1)" [ "$status" -eq 1 ]
+t "refusal points at just start" grep -q "just start" "$WORK/err-main"
+
+# ── land: resolves the branch from an explicit PR number ────────────
+
+add_worktree land-by-number
+echo "notes" > "$WROOT/land-by-number/docs/BYNUM.md"
+git -C "$WROOT/land-by-number" add -A
+git -C "$WROOT/land-by-number" commit -q -m "docs: by number test"
+git -C "$WROOT/land-by-number" push -q -u origin land-by-number
+
+VIEW_BYNUM="$WORK/view-bynum.json"
+jq -n '{number: 50, headRefName: "land-by-number", title: "docs: by number test", body: "## What\nx\n", state: "OPEN"}' \
+  > "$VIEW_BYNUM"
+
+LOG_BYNUM="$WORK/log-bynum"
+: > "$LOG_BYNUM"
+status=0
+out="$(cd "$WORK" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_BYNUM" GH_STUB_PR_VIEW_FILE="$VIEW_BYNUM" YOGURT_MAIN="$MAIN" "$SHIP" land 50 2>&1)" || status=$?
+t "land <pr-number> succeeds (exit 0)" [ "$status" -eq 0 ]
+t "land <pr-number> looks up that PR" grep -q '^pr view 50' "$LOG_BYNUM"
+t "land <pr-number> removes the worktree its headRefName names" [ ! -d "$WROOT/land-by-number" ]
+
+# ── land: no worktree found for the branch still deletes the branch ──
+
+add_worktree land-no-worktree
+echo "notes" > "$WROOT/land-no-worktree/docs/NOWT.md"
+git -C "$WROOT/land-no-worktree" add -A
+git -C "$WROOT/land-no-worktree" commit -q -m "docs: no worktree test"
+git -C "$WROOT/land-no-worktree" push -q -u origin land-no-worktree
+# Simulate the worktree directory having been removed by hand already,
+# while the branch itself survives.
+git -C "$MAIN" worktree remove "$WROOT/land-no-worktree"
+
+VIEW_NOWT="$WORK/view-nowt.json"
+jq -n '{number: 51, headRefName: "land-no-worktree", title: "docs: no worktree test", body: "## What\nx\n", state: "MERGED"}' \
+  > "$VIEW_NOWT"
+
+LOG_NOWT="$WORK/log-nowt"
+: > "$LOG_NOWT"
+status=0
+out="$(cd "$MAIN" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_NOWT" GH_STUB_PR_VIEW_FILE="$VIEW_NOWT" YOGURT_MAIN="$MAIN" "$SHIP" land 51 2>&1)" || status=$?
+t "land with no matching worktree still succeeds (exit 0)" [ "$status" -eq 0 ]
+t "land with no matching worktree says it skipped removal" bash -c 'printf "%s" "$1" | grep -q "no worktree found for branch land-no-worktree - skipping worktree removal"' _ "$out"
+t "land with no matching worktree still deletes the branch" bash -c '! git -C "$1" show-ref --verify --quiet refs/heads/land-no-worktree' _ "$MAIN"
+
+# ── land: green CI proceeds to merge ─────────────────────────────────
+
+add_worktree land-ci-green
+mkdir -p "$WROOT/land-ci-green/crates/dummy2/src"
+echo "// dummy2" > "$WROOT/land-ci-green/crates/dummy2/src/lib.rs"
+git -C "$WROOT/land-ci-green" add -A
+git -C "$WROOT/land-ci-green" commit -q -m "feat: dummy2 crate"
+git -C "$WROOT/land-ci-green" push -q -u origin land-ci-green
+
+VIEW_CI_GREEN="$WORK/view-ci-green.json"
+jq -n '{number: 60, headRefName: "land-ci-green", title: "feat: add ci-green code change", body: "## What\nx\n", state: "OPEN"}' \
+  > "$VIEW_CI_GREEN"
+CHECKS_GREEN="$WORK/checks-green.json"
+printf '[{"name":"rust","bucket":"pass"},{"name":"web","bucket":"pass"}]' > "$CHECKS_GREEN"
+
+LOG_CI_GREEN="$WORK/log-ci-green"
+: > "$LOG_CI_GREEN"
+status=0
+out="$(cd "$WROOT/land-ci-green" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_CI_GREEN" GH_STUB_PR_VIEW_FILE="$VIEW_CI_GREEN" GH_STUB_PR_CHECKS_JSON="$CHECKS_GREEN" YOGURT_MAIN="$MAIN" "$SHIP" land 2>&1)" || status=$?
+t "land with green CI succeeds (exit 0)" [ "$status" -eq 0 ]
+t "land with green CI polls gh pr checks" grep -q '^pr checks 60' "$LOG_CI_GREEN"
+t "land with green CI prints ci: green" bash -c 'printf "%s" "$1" | grep -q "ci: green"' _ "$out"
+t "land with green CI proceeds to merge" grep -q '^pr merge' "$LOG_CI_GREEN"
+
+# ── land: red CI refuses and prints the failing check name ───────────
+
+add_worktree land-ci-red
+mkdir -p "$WROOT/land-ci-red/crates/dummy3/src"
+echo "// dummy3" > "$WROOT/land-ci-red/crates/dummy3/src/lib.rs"
+git -C "$WROOT/land-ci-red" add -A
+git -C "$WROOT/land-ci-red" commit -q -m "feat: dummy3 crate"
+git -C "$WROOT/land-ci-red" push -q -u origin land-ci-red
+
+VIEW_CI_RED="$WORK/view-ci-red.json"
+jq -n '{number: 61, headRefName: "land-ci-red", title: "feat: add ci-red code change", body: "## What\nx\n", state: "OPEN"}' \
+  > "$VIEW_CI_RED"
+CHECKS_RED="$WORK/checks-red.json"
+printf '[{"name":"rust-clippy","bucket":"fail"},{"name":"web","bucket":"pass"}]' > "$CHECKS_RED"
+
+LOG_CI_RED="$WORK/log-ci-red"
+: > "$LOG_CI_RED"
+status=0
+( cd "$WROOT/land-ci-red" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_CI_RED" GH_STUB_PR_VIEW_FILE="$VIEW_CI_RED" GH_STUB_PR_CHECKS_JSON="$CHECKS_RED" YOGURT_MAIN="$MAIN" "$SHIP" land ) >"$WORK/out-ci-red" 2>"$WORK/err-ci-red" || status=$?
+t "land with red CI exits 1" [ "$status" -eq 1 ]
+t "land with red CI prints the failing check name" grep -q "rust-clippy" "$WORK/err-ci-red"
+t "land with red CI never merges" bash -c '! grep -q "^pr merge" "$1"' _ "$LOG_CI_RED"
+
+# ── land: hitting the CI cap prints the resume message ───────────────
+
+add_worktree land-ci-cap
+mkdir -p "$WROOT/land-ci-cap/crates/dummy4/src"
+echo "// dummy4" > "$WROOT/land-ci-cap/crates/dummy4/src/lib.rs"
+git -C "$WROOT/land-ci-cap" add -A
+git -C "$WROOT/land-ci-cap" commit -q -m "feat: dummy4 crate"
+git -C "$WROOT/land-ci-cap" push -q -u origin land-ci-cap
+
+VIEW_CI_CAP="$WORK/view-ci-cap.json"
+jq -n '{number: 62, headRefName: "land-ci-cap", title: "feat: add ci-cap code change", body: "## What\nx\n", state: "OPEN"}' \
+  > "$VIEW_CI_CAP"
+CHECKS_PENDING="$WORK/checks-pending.json"
+printf '[{"name":"rust","bucket":"pending"}]' > "$CHECKS_PENDING"
+
+LOG_CI_CAP="$WORK/log-ci-cap"
+: > "$LOG_CI_CAP"
+status=0
+( cd "$WROOT/land-ci-cap" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_CI_CAP" GH_STUB_PR_VIEW_FILE="$VIEW_CI_CAP" GH_STUB_PR_CHECKS_JSON="$CHECKS_PENDING" LAND_CI_CAP_SECONDS=1 LAND_CI_POLL_SECONDS=1 YOGURT_MAIN="$MAIN" "$SHIP" land ) >"$WORK/out-ci-cap" 2>"$WORK/err-ci-cap" || status=$?
+t "land hitting the CI cap exits 1" [ "$status" -eq 1 ]
+t "land hitting the CI cap prints the resume message" grep -q "run just land again to resume" "$WORK/err-ci-cap"
+t "land hitting the CI cap never merges" bash -c '! grep -q "^pr merge" "$1"' _ "$LOG_CI_CAP"
+
 echo "ship_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

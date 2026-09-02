@@ -251,12 +251,23 @@ find_worktree_for_branch() {
   '
 }
 
+# git status --porcelain for a worktree - dies with the git error if the
+# worktree cannot be inspected at all (a broken link, say), so a real
+# failure never gets folded into "clean".
+worktree_dirty_status() {
+  local worktree_dir="$1" out
+  if ! out="$(git -C "$worktree_dir" status --porcelain 2>&1)"; then
+    die "could not check worktree $worktree_dir for uncommitted changes" "$out" 1
+  fi
+  printf '%s' "$out"
+}
+
 land_preflight() {
   local main="$1" worktree_dir="$2" branch="$3" title="$4"
 
   if [ -n "$worktree_dir" ] && [ -d "$worktree_dir" ]; then
     local dirty
-    dirty="$(git -C "$worktree_dir" status --porcelain 2>/dev/null || true)"
+    dirty="$(worktree_dirty_status "$worktree_dir")"
     [ -z "$dirty" ] ||
       die "worktree $worktree_dir has uncommitted changes" "commit or stash them, then run just land again" 1
   fi
@@ -277,6 +288,10 @@ land_preflight() {
 # run) CI on <pr_num>, capped around 5 minutes. Exits 1 on red or timeout.
 land_ci_check() {
   local main="$1" branch="$2" pr_num="$3" dry_run="$4"
+  # ponytail: overridable so ship_test.sh can hit the cap in seconds
+  # instead of the real 5 minutes; defaults match the design (~5m cap,
+  # 10s poll interval).
+  local cap="${LAND_CI_CAP_SECONDS:-300}" interval="${LAND_CI_POLL_SECONDS:-10}"
   local merge_base changed p all_docs=1 any=0
   merge_base="$(git -C "$main" merge-base origin/main "origin/$branch")"
   changed="$(git -C "$main" diff --name-only "$merge_base" "origin/$branch")"
@@ -296,7 +311,7 @@ land_ci_check() {
   fi
 
   if command -v timeout >/dev/null 2>&1; then
-    if timeout 300 gh pr checks "$pr_num" --watch --fail-fast; then
+    if timeout "$cap" gh pr checks "$pr_num" --watch --fail-fast; then
       echo "ci: green"
       return 0
     fi
@@ -311,7 +326,7 @@ land_ci_check() {
 
   # No GNU timeout on stock macOS: poll gh pr checks --json ourselves.
   local waited=0 checks fail_count pending_count
-  while [ "$waited" -lt 300 ]; do
+  while [ "$waited" -lt "$cap" ]; do
     checks="$(gh pr checks "$pr_num" --json name,bucket 2>/dev/null || echo '[]')"
     fail_count="$(printf '%s' "$checks" | grep -c '"bucket":"fail"' || true)"
     if [ "$fail_count" -gt 0 ]; then
@@ -323,8 +338,8 @@ land_ci_check() {
       echo "ci: green"
       return 0
     fi
-    sleep 10
-    waited=$((waited + 10))
+    sleep "$interval"
+    waited=$((waited + interval))
   done
   echo "ci: still running after 5m - run just land again to resume" >&2
   exit 1
@@ -343,7 +358,7 @@ land_cleanup() {
 
   if [ -n "$worktree_dir" ] && [ -d "$worktree_dir" ]; then
     local dirty
-    dirty="$(git -C "$worktree_dir" status --porcelain 2>/dev/null || true)"
+    dirty="$(worktree_dirty_status "$worktree_dir")"
     if [ -n "$dirty" ]; then
       die "worktree $worktree_dir is dirty, refusing to remove" \
           "$(printf '%s' "$dirty" | tr '\n' ' ')" 1
@@ -425,7 +440,8 @@ cmd_land() {
     sha="$(git -C "$main" rev-parse "origin/$branch")"
     squash_body="$(strip_manual_test_section "$pr_body_file")"
     if $dry_run; then
-      echo "would run: gh pr merge $pr_num --squash --match-head-commit $sha --subject \"$pr_title (#$pr_num)\" --body <PR body minus Manual test>"
+      echo "would run: gh pr merge $pr_num --squash --match-head-commit $sha --subject \"$pr_title (#$pr_num)\" --body:"
+      printf '%s\n' "$squash_body"
     else
       gh pr merge "$pr_num" --squash --match-head-commit "$sha" \
         --subject "$pr_title (#$pr_num)" --body "$squash_body"
