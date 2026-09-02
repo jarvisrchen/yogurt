@@ -9,7 +9,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 
 - Audio never leaves the machine unless the user opted into cloud STT (then only audio, never notes); captured audio is deleted after transcription.
 - API keys live only in `~/.yogurt/keys.json` (mode 0600, `FileKeyStore`) - never in SQLite, a response, or a log.
-- One process: no subprocesses, no IPC, no sidecars - except the locked-down `yogurt-llm::CliClient`, an LLM provider only when the user opts in via Settings; see [docs/ARCHITECTURE.md §7.6](docs/ARCHITECTURE.md#76-the-cli-provider-exception-llm-4) for the lockdown and the no-fallback rule.
+- One process: no subprocesses, no IPC, no sidecars - except the locked-down `yogurt-llm::CliClient`, an LLM provider only when the user opts in via Settings (see [docs/ARCHITECTURE.md §7.6](docs/ARCHITECTURE.md#76-the-cli-provider-exception-llm-4) for the lockdown and the no-fallback rule); do not generalize this into a pattern for other subprocesses without revisiting this constraint.
 - Zero telemetry of any kind.
 - macOS 13+ only (ScreenCaptureKit).
 - MIT licensed; keep dependencies MIT-compatible.
@@ -26,17 +26,15 @@ just land                                # wait for CI, squash-merge, clean up
 ```
 
 Releases: `scripts/release.sh preflight <version>`, then `scripts/release.sh ship <version>`; the `release` skill is the pointer for the judgment calls.
-Every command documents its own flags via `--help`/usage and the justfile.
 
 ## Repo layout
 
 - `docs/FEATURES.md` maps every route to its feature.
-- `docs/DEBUGGING-TRANSCRIPTS.md` covers inspecting a live transcript; `docs/MODEL-EVAL.md` covers A/B-ing STT engines and LLMs with `scripts/eval/`.
-- `docs/RELEASING.md` is the release runbook; `docs/RELEASE-LOG.md` the row-per-release log.
-- `.claude/skills/release/SKILL.md`, `.claude/skills/yogurt-control/SKILL.md`: those procedures as checklists.
-- `docs/TODO.md` is the open backlog, `docs/TODO-DONE.md` the closed one; both count toward ID allocation, never archive `TODO-DONE.md`.
-- `docs/.planning/` is active GSD planning.
-- A stale doc, plan, or Lavish surface archives into the mirrored `docs/archive/` tree, never deleted; `docs/.lavish/` holds ARCHITECTURE.md's HTML companions, tracked like everything under `docs/`.
+- `docs/DEBUGGING-TRANSCRIPTS.md`: live-transcript inspection; `docs/MODEL-EVAL.md`: A/B-ing STT/LLMs via `scripts/eval/`.
+- `docs/RELEASING.md`, `docs/RELEASE-LOG.md` (row-per-release log), `.claude/skills/release/SKILL.md`, `.claude/skills/yogurt-control/SKILL.md`.
+- `docs/TODO.md`: open backlog. `docs/TODO-DONE.md`: closed; counts toward ID allocation too, never archive it.
+- `docs/.planning/`: active GSD planning.
+- A stale doc, plan, or Lavish surface archives into the mirrored `docs/archive/` tree, never deleted; new Lavish review surfaces go in `docs/.lavish/`, not the repo root, tracked like everything under `docs/`.
 
 ## Conventions
 
