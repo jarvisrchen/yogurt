@@ -768,3 +768,40 @@ New closed items go at the bottom.
 
   Landed in #65 (2026-09-02). Added `scripts/check-published.sh` (tag vs tap formula version, both tarball URLs + shas vs the release's SHA256SUMS, every README `yogurt-model-*` line vs the tap, every model mirror URL in `crates/yogurt-stt`), wired as `just check-published` (kept out of `just lint`, needs the network) and a new weekly `.github/workflows/check-published.yml` with `workflow_dispatch` as the escape hatch and `--issue` (workflow-only) opening a `gh issue` on failure, skipped if one is already open. Verified: `bash -n` on both scripts; `scripts/tests/check-published_test.sh` (27/27, PATH-stubbed git/gh/curl, wired into `just lint`); `just lint` green end to end; `scripts/check-published.sh` run for real against the live tap and v0.7.0 release - all 14 checks `ok:`, no drift; `scripts/check-published.sh --json | jq .` valid; workflow YAML parses; confirmed by inspection that `--issue`'s `gh issue create`/`gh issue list` path is only ever reached by the test's stubbed `gh`, never by a real run in this session.
   </details>
+
+- [x] **DX-1** `just test` is a weaker gate than CI, and neither exercises the real binary
+  <details>
+  <summary>Details</summary>
+
+  Two separate problems, worth fixing in that order.
+
+  **The cheap one.** `just test` runs `cargo test` + `pnpm test`. CI additionally runs the Playwright suite (`.github/workflows/ci.yml`, `pnpm --dir web e2e`).
+  So the command AGENTS.md points every contributor and agent at is not the gate: you go green locally, open the PR, and find out afterward.
+  The suite is Vite-only - no Rust build, no keys, its own port 5199 - so there is no inner-loop cost to justify keeping them apart.
+  Add `pnpm --dir web e2e` to the `test` recipe.
+
+  **The one that actually matters.** Even after that, the gate still would not have caught MTG-11.
+  `web/playwright.config.ts` is explicit that the specs drive the real React app against a *browser-level mock* of the Rust backend (`page.route`), precisely so they need no keychain and no keys in CI.
+  That is a reasonable design for what they cover, but it means nothing in the automated suite runs the real binary, and nothing at all touches macOS-facing behavior like window detection or audio capture.
+  Every such check today is a human driving a browser, which is exactly how a fabricated verification got through.
+
+  Worth deciding: a small suite that boots the real debug binary and drives it over REST (which `yogurt ctl` from CLI-4 would make cheap to write), gated behind a feature or an env var so CI can skip the parts needing hardware.
+  Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
+
+  DX-4 already closed the cheap half (Playwright folded into `just test`, CI calling `just`).
+  This PR is the D4 half: a real-binary smoke suite and `just test-hw`.
+  `crates/yogurt-cli/tests/ctl_smoke.rs` gained hardware-free coverage of the gaps CLI-4/CLI-5 left open (status and detect on a fresh instance, `enhance last` returning `too_short` on an empty meeting, `summary` as front-matter-only before enhance vs. real content after, `stop` on a never-started meeting stamping `ended_at`), plus a hardware path (`ctl windows`, a real `meeting start`/`stop` that opens and closes the SCK + mic pipeline) gated on `#[ignore]` and a `YOGURT_HW_TESTS=1` check each test re-does itself.
+  `just test-hw` runs that hardware path plus the two pre-existing `#[ignore]` tests (`yogurt-audio`'s permission smoke, `yogurt-stt`'s whisper smoke), skipping the whisper one with a printed notice if `~/.yogurt/models/ggml-small.en.bin` isn't downloaded rather than failing.
+  `ctl meeting mute on` is not covered: no `mute` subcommand exists on `ctl` yet (CLI-6).
+
+  The hardware start/stop test bounds every `ctl` call to 45s (`ctl_run_bounded`, polling `try_wait` instead of assert_cmd's unbounded `.ok()`) so it can never hang the suite; on timeout it kills the child, cleans up via the API, and names the two real causes (a pending TCC prompt for a fresh worktree binary's first run, or a stale capture session).
+  While verifying locally the test hung twice (several minutes each) before passing three times in a row; a direct curl against the same setup proved it was not a TCC prompt (the pipeline opened and closed in under a second) but a stale SCK/mic session left by my own SIGKILL of the first hung attempt, which skips `Drop` and its graceful teardown.
+  Filed AUD-8 for that finding (a force-killed `yogurt` can leave a stale capture session that blocks the next recording); not fixed here, out of DX-1's scope.
+
+  Verified: `just lint` and `just test` both green (`ctl_smoke.rs` now has 21 tests, 2 of them `#[ignore]`d; full rust workspace 443+ tests, 314 web tests, 2 Playwright specs).
+  `cargo test -p yogurt --test ctl_smoke -- --ignored` with no env var confirmed both hardware tests skip cleanly (printed the skip reason, `test result: ok`) and left the real `~/.yogurt` database untouched.
+  `just test-hw` run for real on this Mac, three times end to end: `hw_windows_reports_rows_or_denied` passed every time; `hw_meeting_start_stamps_stt_engine_then_stop_closes_pipeline` opened a real local-whisper capture pipeline (symlinking the developer's already-downloaded `small.en` model into the test's temp `HOME` and switching that instance to the local provider via `PATCH /api/settings`), stamped `stt_engine`, stopped, stamped `ended_at`, and deleted the meeting via `DELETE /api/meetings/:id`; the permission smoke test and the whisper smoke test (model present) both passed on every run.
+  Real `~/.yogurt/db.sqlite` was unchanged across the whole session: `ctl meeting list --limit 3` matched throughout (30 meetings, same top 3 ids) - all `test-hw` work happens against temp-`HOME` servers, same isolation as every other test in this file - and no yogurt process or listener was left behind.
+
+  Landed in #66 (2026-09-02).
+  </details>
