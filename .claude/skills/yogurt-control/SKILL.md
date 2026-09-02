@@ -5,7 +5,18 @@ description: Read or control a meeting in a running yogurt instance. Use when ha
 
 # Read and control yogurt
 
-Reference: [docs/AI-INTEGRATION.md](../../../docs/AI-INTEGRATION.md) is the full API surface. This skill covers the common read and start/stop paths - read the doc if you need more than that.
+[docs/AI-INTEGRATION.md](../../../docs/AI-INTEGRATION.md) is the full API surface: auth, every recipe below, and the offline fallback.
+This skill is the short version - when to reach for it, and the rules the recipes don't say out loud.
+
+## The binary
+
+<!-- yogurt-cli:start -->
+- `yogurt start` - Launch the local server and open the browser
+- `yogurt doctor` - Print diagnostic info (rust, macOS, perms, providers, models) + repair actions
+<!-- yogurt-cli:end -->
+
+`yogurt start --no-open` runs the server without opening a browser tab, but still in the foreground - the caller backgrounds it themselves (tmux by convention) if they want the shell back.
+There is no way yet to control an already-running instance from the CLI; drive it over the REST API below until that lands.
 
 ## First, confirm the server is up
 
@@ -13,7 +24,8 @@ Reference: [docs/AI-INTEGRATION.md](../../../docs/AI-INTEGRATION.md) is the full
 curl -sf http://localhost:7878/api/health >/dev/null || echo "yogurt is not running"
 ```
 
-yogurt has no CLI to start it headlessly - if it's not running, tell the user to launch the app (or `just dev`) and stop here. For reads only, there is an offline fallback at the bottom of this file.
+If it's not running: tell the user to launch it (`yogurt start`, or `just dev`) and stop here.
+Reads still work offline - see the fallback below.
 
 ## Auth
 
@@ -21,74 +33,25 @@ yogurt has no CLI to start it headlessly - if it's not running, tell the user to
 TOKEN=$(cat ~/.yogurt/session-token)
 ```
 
-Send `-H "Authorization: Bearer $TOKEN"` on every call below. Never print `$TOKEN` or send it anywhere but the local yogurt origin.
+Send `-H "Authorization: Bearer $TOKEN"` on every call below.
+Never print `$TOKEN` or send it anywhere but the local yogurt origin.
 
-## Read a meeting from its URL
+## Read a meeting
 
-Given a link like `http://127.0.0.1:7878/meeting/01a0594d-.../post` (the `/post` suffix is optional - a live meeting URL has the same shape), take the origin and the id straight out of the URL. Take the port from the URL too, not from this file: `just dev` moves the backend off 7878 when a second worktree is already running.
+Given a meeting URL, take the origin and id straight out of it, port included: `just dev` moves the backend off 7878 when a second worktree is already running.
+See AI-INTEGRATION.md's ["Read what got captured"](../../../docs/AI-INTEGRATION.md#read-what-got-captured) for the extraction and the curl recipes.
 
-```bash
-URL="<the URL the user gave you>"
-BASE=$(echo "$URL" | sed -E 's#(https?://[^/]+)/.*#\1#')
-ID=$(echo "$URL" | sed -E 's#.*/meeting/([^/?#]+).*#\1#')
-```
-
-**Summary first.** `GET /:id/markdown` returns the canonical `~/.yogurt/notes/*.md` bytes - YAML front-matter plus the AI-enhanced summary, and no transcript. That is the whole point: it is roughly 9x smaller than the meeting row and is almost always enough to answer the question.
-
-```bash
-curl -s "$BASE/api/meetings/$ID/markdown" -H "Authorization: Bearer $TOKEN" | sed -E 's/<[^>]+>//g'
-```
-
-The `sed` strips the `<span data-ai-grey …>` wrappers the enhance renderer emits to tint AI-authored blocks in the editor. They carry no meaning outside the browser and roughly double the token cost. Stripping them leaves the `↳ 02:24` transcript deep-links intact, which is how you find *where* in the transcript to look if you need more.
-
-An empty body under the front-matter means the meeting was never enhanced (`enriched_md` is null and the user typed no notes). Go to the transcript.
-
-**Transcript only if the summary is not enough.** It lives in the meeting row, so ask for the row and let `jq` keep only the transcript - the rest of the row never reaches your context:
-
-```bash
-curl -s "$BASE/api/meetings/$ID" -H "Authorization: Bearer $TOKEN" \
-  | jq -r '.transcript_json | fromjson | .[]
-           | "\((.ts_ms/1000|floor|tostring)) \(.channel): \(.text)"'
-```
-
-`channel` is `me` (mic) or `them` (system audio), `ts_ms` is milliseconds from recording start. On a long meeting, `grep` this rather than reading all of it.
-
-404 means the id is not in the database; 403 means the token is missing or stale.
+**Summary first**, almost always enough: `GET /:id/markdown` is the canonical `~/.yogurt/notes/*.md` bytes, roughly 9x smaller than the full meeting row and with no transcript.
+Only fall back to the transcript (`GET /api/meetings/:id`, filtered to `transcript_json`) when the summary doesn't answer the question.
 
 ## Offline fallback (server down, summary only)
 
-The markdown export is on disk regardless of whether the server is running. Match on the front-matter id, **not** the filename: ids are UUIDv7 and therefore time-ordered, so the `-<id6>` filename suffix collides between meetings recorded minutes apart.
+The markdown export is on disk regardless of whether the server is running.
+Match on the front-matter `id`, not the filename: ids are UUIDv7 and time-ordered, so the filename suffix collides between meetings recorded minutes apart.
+See AI-INTEGRATION.md's ["With the server down"](../../../docs/AI-INTEGRATION.md#with-the-server-down) for the exact `grep`.
 
-```bash
-grep -l "^id: $ID$" ~/.yogurt/notes/*.md
-```
+## Start / stop a meeting
 
-The transcript has no on-disk copy - it is only in `~/.yogurt/db.sqlite`.
-
-## Check what's recording (do this before starting)
-
-```bash
-curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOKEN"
-```
-
-`null` means nothing is live. yogurt only supports one active recording at a time - if this returns a meeting, don't call `/start` again; ask the user whether they want to stop it first.
-
-## Start a meeting
-
-```bash
-ID=$(curl -s -X POST http://localhost:7878/api/meetings \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"title":"<meeting title>"}' | jq -r .id)
-
-curl -s -X POST "http://localhost:7878/api/meetings/$ID/start" -H "Authorization: Bearer $TOKEN"
-```
-
-If the user also wants a Zoom/Meet/etc. call joined, do that as a separate step (e.g. `open "zoommtg://..."`) - yogurt captures system audio regardless of which app produces it, no meeting-platform integration needed. Tell the user recording has started once `/start` succeeds.
-
-## Stop the active meeting
-
-Get the id from `/api/meetings/active` if you don't already have it, then:
-
-```bash
-curl -s -X POST "http://localhost:7878/api/meetings/$ID/stop" -H "Authorization: Bearer $TOKEN"
-```
+yogurt supports one active recording at a time.
+Check [`GET /api/meetings/active`](../../../docs/AI-INTEGRATION.md#check-whats-recording) before `start` - if it returns a meeting, ask the user whether to stop it first rather than starting a second one.
+Recipes: AI-INTEGRATION.md's ["Start a meeting"](../../../docs/AI-INTEGRATION.md#start-a-meeting) and ["Stop a meeting"](../../../docs/AI-INTEGRATION.md#stop-a-meeting).
