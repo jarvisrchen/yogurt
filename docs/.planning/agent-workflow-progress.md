@@ -6,7 +6,7 @@ This file is the record of what shipped, what was found on the way, and what is 
 
 ## Result
 
-All 14 units of the ship order landed as 17 squash-merged PRs (#52 to #68) in about two and a half hours, plus the two by-hand items.
+All 14 units of the ship order landed as 17 squash-merged PRs (#52 to #68), then this log and one fix it surfaced (#69, #70), in about two and a half hours, plus the two by-hand items.
 Every PR was built by a Sonnet implementer in its own worktree, reviewed by a fresh Sonnet reviewer that ran the code, fixed until clean, then merged by the orchestrator after CI.
 Nothing was released: the binary changes (`yogurt ctl`, health fields, fixtures, `--data-dir`) sit on `main` and go out with the next tag.
 
@@ -40,6 +40,7 @@ These are the things that would have shipped without the second pass.
 - `release.sh ship` left an orphaned bump worktree on every failed retry (#64); `verify` leaked its temp dir on a failing check (#61).
 - AGENTS.md's rewrite dropped the "do not generalize the subprocess exception" clause and the Lavish-surfaces-go-in-docs steer (#68); both restored.
 - Em dashes in new script comments would have failed the check-docs gate the same night it landed (#56).
+- Landing this log with `just land` found one more: GitHub deletes the remote branch on merge asynchronously, so the script's own remote delete lost the race and exited 1 after all the useful work (#69). Fixed in #70, which was landed with `just land` itself.
 
 ## Findings worth knowing
 
@@ -54,7 +55,7 @@ These are the things that would have shipped without the second pass.
 1. **Cut v0.8.0.** It is the first release carrying `yogurt ctl`, `--data-dir` and the fixture endpoint, and the first real run of `scripts/release.sh ship`. The skill is three commands now: `scripts/release.sh preflight 0.8.0`, act on its judgment items, `scripts/release.sh ship 0.8.0`, paste the printed row into `docs/RELEASE-LOG.md` with the narrative. `ship -n --allow-open-docs` was run against the live repo and printed a correct plan; the real thing was left for you.
 2. **CLI-6's skill rewrite** (about 150 words around the generated command block) is the only open scope from the plan, and by the ticket's own rule it waits for that release: the README's `npx skills add` path installs the skill standalone, so it must not name commands the brew binary lacks.
 3. The `llm5-todo-done` worktree (PR #27, merged) is still on disk; `just worktrees` lists it as removable. It predates this run and was left alone.
-4. The shared main checkout is 18 commits behind: `cd /Users/rchen/Documents/code/yogurt && git pull --ff-only`. Nothing in the run touched it except this file.
+4. The shared main checkout is 20 commits behind: `cd /Users/rchen/Documents/code/yogurt && git pull --ff-only`. Nothing in the run touched it except this file.
 
 ## Morning checklist
 
@@ -94,3 +95,5 @@ scripts/release.sh preflight 0.8.0   # read-only; the judgment items for the rel
 - 01:51 #66 DX-1.
 - 01:57 #68 DX-9.
 - 02:00 #67 CLI-6 second slice. Orphaned dev server from a removed worktree killed; ports clear; no open PRs.
+- 02:10 #69 this log, landed with `just pr` and `just land`; the land race surfaced.
+- 02:25 #70 the land race fix, landed with `just land`; main CI green on a4ffa37.
