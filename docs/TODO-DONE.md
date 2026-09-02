@@ -663,3 +663,21 @@ New closed items go at the bottom.
   Verified: `just check-docs`, `just lint`, `just test` (rust + web + Playwright) all green; `cargo test -p yogurt --test skill_help` passes and fails correctly with the update hint when the block is stale; em dash count is zero in the scoped paths.
   Caveat: the repo-path rule (rule 4) is scoped to the same reference-doc set as rules 1-2, excluding docs/TODO.md and docs/.planning/, since those intentionally name not-yet-built paths.
   </details>
+
+- [x] **CLI-7** `yogurt start --data-dir` so a worktree instance stops sharing `db.sqlite` with the running app
+  <details>
+  <summary>Details</summary>
+
+  One `YOGURT_DATA_DIR` variable threaded into the `db_path` and `app_db_path` seams `RunConfig` already has; `yogurt doctor` reads the same variable.
+  Keys, models and notes stay shared: a per-worktree `keys.json` would conflict with the keys-live-in-one-file constraint.
+  The hazard is real (two migration runners share one file and "whichever fires first wins") but has not bitten; CLI-3's DONE entry already names this fix conditionally.
+  Deferred until it does.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D6.
+
+  Landed in #59 (2026-09-02). One resolver, `crates/yogurt-cli/src/data_dir.rs`, used by `start`, `doctor`, and `ctl meeting`'s local-DB read fallback: `--data-dir <path>` / `$YOGURT_DATA_DIR` (flag wins, pure `precedence` function with a unit test) relocates `RunConfig::db_path` and `app_db_path` to the same `<dir>/db.sqlite`, mirroring the production default where both already resolve to one file.
+  Keys, models, and notes are untouched, still under `~/.yogurt`.
+  `doctor --json` reports the actual path in use; `ctl meeting`'s `open_db_readonly` (no `--data-dir` flag there, env only) reads the same variable so `ctl meeting list` with no server running can't disagree with a running `--data-dir` instance.
+  `CONTRIBUTING.md`'s worktree section and `scripts/run-backend.sh` document `YOGURT_DATA_DIR` for the dev loop (the script needs no code change - unknown flags already forward and env vars already inherit through `exec`).
+  Verified: `cargo test -p yogurt` (28 passed, including the new `data_dir.rs` integration suite and the precedence unit tests), `just lint`, `just test` all green.
+  By hand: `yogurt start --port 7891 --no-open --data-dir /tmp/yogurt-cli7-smoke` produced `db.sqlite`/`-wal`/`-shm` under the temp dir only, `ctl meeting list` against it returned empty, `YOGURT_DATA_DIR=/tmp/yogurt-cli7-smoke yogurt doctor --json` reported `db_path: /tmp/yogurt-cli7-smoke/db.sqlite`, and `~/.yogurt/db.sqlite`'s mtime was identical before and after (`stat -f %m`).
+  </details>

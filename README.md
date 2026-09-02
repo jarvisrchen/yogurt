@@ -196,6 +196,7 @@ Launches the local server and opens the browser.
 | `--port <PORT>` | `7878` | TCP port to bind. Always binds `127.0.0.1` only, never a LAN interface. |
 | `--no-open` | off | Do not auto-open `http://localhost:<port>` in your default browser once the server is listening. |
 | `--dev` | off | Developer mode. Proxies every non-`/api` request to the Vite dev server on `:5173` instead of serving the web bundle embedded in the binary, loads `.env.local` from the current directory, and allows WebSocket upgrades from the `:5173` origin for hot reload. Never use this for normal use; see [CONTRIBUTING.md](CONTRIBUTING.md). |
+| `--data-dir <PATH>` | `~/.yogurt` | Directory for the SQLite database only - keys, models, and notes still live under `~/.yogurt`. Also settable via `$YOGURT_DATA_DIR`; the flag wins if both are given. |
 
 Without `--dev` the UI you see is whatever was compiled into the binary at build time.
 
@@ -209,6 +210,7 @@ Prints a diagnostic dump (Rust and macOS versions, Screen Recording and Micropho
 | `--check-port` | Report whether port 7878 is free or in use, and suggest a `--port` value if it is busy. |
 | `--reset-screen-recording` | Reset the Screen Recording TCC grant for `ai.yogurt.app` so macOS prompts again on next start. |
 | `--redownload-model <MODEL>` | Delete the local copy of a whisper.cpp model (for example `small.en`) so the next start re-downloads it. |
+| `--data-dir <PATH>` | Report the database under this directory instead of `~/.yogurt`. Also settable via `$YOGURT_DATA_DIR`. |
 
 ### `yogurt ctl`
 

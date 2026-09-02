@@ -1,12 +1,14 @@
 use anyhow::Result;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::time::Duration;
-use yogurt_server::Mode;
+use yogurt_server::{Mode, RunConfig};
 
 pub struct StartArgs {
     pub port: u16,
     pub no_open: bool,
     pub dev: bool,
+    pub data_dir: Option<PathBuf>,
 }
 
 pub async fn run(args: StartArgs) -> Result<()> {
@@ -14,6 +16,18 @@ pub async fn run(args: StartArgs) -> Result<()> {
     let addr: SocketAddr = ([127, 0, 0, 1], args.port).into();
     let mode = if args.dev { Mode::Dev } else { Mode::Release };
     let url = format!("http://127.0.0.1:{}", args.port);
+
+    // CLI-7: --data-dir / $YOGURT_DATA_DIR relocates the two SQLite
+    // databases (RunConfig::db_path + app_db_path, the same file in
+    // production) so a worktree instance stops sharing db.sqlite with
+    // whatever else is running. Keys, models, and notes still resolve
+    // under ~/.yogurt.
+    let mut cfg = RunConfig::new(addr, mode);
+    if let Some(dir) = crate::data_dir::resolve(args.data_dir)? {
+        let db_path = crate::data_dir::db_path(&dir);
+        cfg.db_path = Some(db_path.clone());
+        cfg.app_db_path = Some(db_path);
+    }
 
     if !args.no_open {
         // LO-01: poll for the server to be listening before opening the
@@ -35,7 +49,7 @@ pub async fn run(args: StartArgs) -> Result<()> {
     }
 
     tracing::info!(%url, "yogurt is starting");
-    match yogurt_server::run(addr, mode).await {
+    match yogurt_server::run_with_config(cfg).await {
         Ok(()) => Ok(()),
         Err(err) => {
             // CONTEXT D-19 / FOUND-06: friendly port-conflict UX. Walk the

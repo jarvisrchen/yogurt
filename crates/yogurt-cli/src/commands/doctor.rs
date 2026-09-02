@@ -17,7 +17,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::io::ErrorKind;
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Bundle ID pinned across the notarization config (plan 09-01) and this
@@ -32,6 +32,8 @@ pub struct DoctorArgs {
     pub reset_screen_recording: bool,
     pub check_port: bool,
     pub redownload_model: Option<String>,
+    /// CLI-7: report the database under this directory instead of `~/.yogurt`.
+    pub data_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,7 +73,8 @@ pub async fn run(args: DoctorArgs) -> Result<()> {
         return redownload_model(&model);
     }
 
-    let report = build_report();
+    let data_dir = crate::data_dir::resolve(args.data_dir)?;
+    let report = build_report(data_dir.as_deref());
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -150,16 +153,19 @@ fn yogurt_home() -> Option<PathBuf> {
 /// Collect the diagnostic report. Never fails outright -- every field
 /// degrades to a "couldn't determine" string/empty value on error, so a
 /// broken environment is exactly the case this command needs to survive.
-fn build_report() -> Report {
-    let home = yogurt_home();
-    let db_path = home.as_ref().map(|h| h.join("db.sqlite"));
+fn build_report(data_dir: Option<&Path>) -> Report {
+    // CLI-7: --data-dir / $YOGURT_DATA_DIR (already resolved by the
+    // caller) reports the database `yogurt start` would actually use,
+    // instead of always assuming `~/.yogurt`.
+    let dir = data_dir.map(Path::to_path_buf).or_else(yogurt_home);
+    let db_path = dir.as_ref().map(|d| d.join("db.sqlite"));
     let db_exists = db_path.as_ref().is_some_and(|p| p.exists());
 
     // Only open (and thus run migrations against) the DB if it already
-    // exists -- a diagnostic command must not create `~/.yogurt/db.sqlite`
-    // as a side effect on a machine that has never run `yogurt start`.
-    let (providers, stt) = if db_exists {
-        match yogurt_db::Db::open_default() {
+    // exists -- a diagnostic command must not create `db.sqlite` as a
+    // side effect on a machine that has never run `yogurt start`.
+    let (providers, stt) = if let (true, Some(path)) = (db_exists, db_path.as_ref()) {
+        match yogurt_db::Db::open(path) {
             Ok(db) => {
                 let providers = yogurt_db::providers::list_names(&db).unwrap_or_default();
                 let stt = yogurt_db::settings::load_general(&db)

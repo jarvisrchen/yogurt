@@ -1,6 +1,8 @@
 mod commands;
+mod data_dir;
 
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 /// yogurt — local-first meeting copilot.
 #[derive(Parser, Debug)]
@@ -31,6 +33,11 @@ struct StartArgs {
     /// Run in dev mode (proxies non-API routes to Vite on :5173).
     #[arg(long)]
     dev: bool,
+    /// Directory for the SQLite database (default `~/.yogurt`). Keys,
+    /// models and notes stay under `~/.yogurt` regardless. Also settable
+    /// via `$YOGURT_DATA_DIR`; this flag wins if both are given.
+    #[arg(long, value_name = "PATH")]
+    data_dir: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -47,6 +54,10 @@ struct DoctorArgs {
     /// Re-download a whisper.cpp model (e.g. small.en) by deleting the local copy.
     #[arg(long, value_name = "MODEL")]
     redownload_model: Option<String>,
+    /// Report the database under this directory instead of `~/.yogurt`.
+    /// Also settable via `$YOGURT_DATA_DIR`; this flag wins if both are given.
+    #[arg(long, value_name = "PATH")]
+    data_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -102,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
                 port: args.port,
                 no_open: args.no_open,
                 dev: args.dev,
+                data_dir: args.data_dir,
             })
             .await
         }
@@ -111,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
                 reset_screen_recording: args.reset_screen_recording,
                 check_port: args.check_port,
                 redownload_model: args.redownload_model,
+                data_dir: args.data_dir,
             })
             .await
         }

@@ -11,6 +11,12 @@
 #   ./scripts/run-backend.sh --port 7879    # different port
 #   ./scripts/run-backend.sh --no-open      # don't auto-open the browser
 #   ./scripts/run-backend.sh --release      # release build (slower compile, faster runtime)
+#
+# CLI-7: $YOGURT_DATA_DIR, if set in the calling shell, reaches the binary
+# for free -- this script does not read or strip it, so it inherits like
+# any other env var (`exec` at the bottom preserves the environment).
+# Set it before `just dev` in a worktree whose branch carries a migration,
+# so this instance stops sharing db.sqlite with whatever else is running.
 
 set -euo pipefail
 
