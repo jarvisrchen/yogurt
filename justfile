@@ -117,12 +117,18 @@ test-e2e:
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings
+    ./scripts/tests/ticket_test.sh
+    ./scripts/ticket.sh --check
 
 # Auto-format Rust code (mutates files).
 fmt:
     cargo fmt --all
 
 # ── Maintenance ──────────────────────────────────────────────────────
+
+# docs/TODO.md backlog: list open items, or `ticket <ID>` / `ticket next <PREFIX>` / `ticket done <ID> --note-file <path>` / `ticket --check`.
+ticket *args:
+    ./scripts/ticket.sh {{args}}
 
 # Free disk by removing all build artifacts — re-run `just build` after.
 clean:

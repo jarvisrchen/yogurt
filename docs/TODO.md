@@ -17,7 +17,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `CLI` | CLI |
 | `DX` | Developer experience |
 
-Numbers are per prefix and allocated once: the next ID is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` too.
+Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` too.
 Never reuse or renumber an ID, including when an item moves to DONE.
 A new section gets a new short prefix added to the table above.
 
@@ -40,7 +40,8 @@ Example entry:
 
 ## Done items
 
-Check off an item (`- [x]`), move the whole block to the bottom of `docs/TODO-DONE.md`, and append a one-paragraph resolution note inside the block, for example `Landed in #N (date). ...`.
+Run `just ticket done <ID> --note-file <path>`: it checks off the item (`- [x]`), moves the whole block to the bottom of `docs/TODO-DONE.md`, and appends the note file's content as a paragraph inside the block, for example `Landed in #N (date). ...`.
+The note is a file, not a shell argument, because real resolution notes contain backticks, dollar signs and JSON literals that do not survive shell quoting.
 
 ## UI
 
