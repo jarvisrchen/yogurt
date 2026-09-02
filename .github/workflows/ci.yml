@@ -27,8 +27,7 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: rustfmt
-        run: cargo fmt --all -- --check
+      - uses: extractions/setup-just@v3
       - uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
@@ -39,15 +38,16 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       # rust-embed's #[folder = "../../web/dist/"] derive requires the
       # folder to exist at compile time (web/dist is gitignored) -- build
-      # it before anything that compiles yogurt-server (clippy, test).
+      # it before anything that compiles yogurt-server (just lint's clippy,
+      # just test-rust).
       - name: build web (rust-embed needs web/dist at compile time)
         run: |
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web build
-      - name: clippy
-        run: cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings
+      - name: lint
+        run: just lint
       - name: test
-        run: cargo test --workspace --features yogurt-stt/local-stt --no-fail-fast
+        run: just test-rust
         env:
           YOGURT_MEMORY_KEYSTORE: "1"
 
@@ -55,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v3
       - uses: pnpm/action-setup@v6
         with:
           version: 9.15.4
@@ -65,17 +66,15 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - name: install
         run: pnpm --dir web install --frozen-lockfile
-      - name: typecheck
-        run: pnpm --dir web typecheck
-      - name: test
-        run: pnpm --dir web test
+      - name: lint-web
+        run: just lint-web
       # The Playwright specs mock the backend at the browser layer, so they
       # need no keychain, keys, or audio - only a browser. They were never
       # wired in here, and `library-navigation.spec.ts` silently rotted for
       # it (its meeting fixture lost `labels`, and MeetingCard threw).
       - name: install playwright chromium
         run: pnpm --dir web exec playwright install --with-deps chromium
-      - name: e2e
-        run: pnpm --dir web e2e
-      - name: build
-        run: pnpm --dir web build
+      - name: test-web
+        run: just test-web
+      - name: build-web
+        run: just build-web
