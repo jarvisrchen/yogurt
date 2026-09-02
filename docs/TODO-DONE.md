@@ -607,7 +607,7 @@ New closed items go at the bottom.
   `--check` runs in `just lint`.
   Design: `docs/.planning/agent-workflow.md`, section 4A, A2.
 
-  Landed across two PRs: #52 (docs-only) moved the DONE section out of docs/TODO.md into a flat docs/TODO-DONE.md, and this PR adds scripts/ticket.sh behind a `just ticket` recipe (list, show <ID>, next <PREFIX>, done <ID> --note-file <path>, --check), wired into `just lint`.
+  Landed across two PRs: #52 (docs-only) moved the DONE section out of docs/TODO.md into a flat docs/TODO-DONE.md, and #54 adds scripts/ticket.sh behind a `just ticket` recipe (list, show <ID>, next <PREFIX>, done <ID> --note-file <path>, --check), wired into `just lint`.
   The scanner is BSD awk/sed only, skips fenced code blocks (the "Referencing attachments" example), and treats the next `- [` or `#` line as the block boundary, never `</details>`.
   Verified by hand: `just ticket` lists 18 open items (grep -c '^- \[ \]' docs/TODO.md reports 19, the extra one is the fenced UI-0 example, correctly excluded); `just ticket DX-2` printed this block; `just ticket next DX` printed DX-11 and `just ticket next MTG` printed MTG-12, both matching the true max+1 by hand; `just ticket --check` passed on the real files; the error paths (unknown ID, missing/empty note file, done on an already-closed ID) all exited non-zero with a descriptive message.
   scripts/tests/ticket_test.sh (24 assertions against a synthetic fixture pair, including a no-details-block ticket, a DONE entry with resolution text after </details>, and a fenced-code decoy ID) is wired into `just lint` alongside `--check`, both under a second.
