@@ -22,6 +22,8 @@ just start <ID> [words]   # create/resume a worktree + branch from a ticket ID (
 just worktrees             # every worktree: path, branch, PR state, listening ports, dirty/removable
 just dev-bg [name]         # run `just dev` in a background tmux window, print the port pair once healthy
 just dev-stop [name]       # stop that tmux window
+just pr "<title>" --body-file <f>   # validate title/body/handover/ticket-checkoff, push, open the PR
+just land [pr]             # wait for CI, squash-merge, remove the worktree, delete the branch
 just setup        # one-time: toolchains + pnpm install
 just dev          # backend (cargo run) + frontend (vite) together
 just build        # cargo build --release (build web first, see below)
@@ -53,7 +55,7 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - Rust: rustfmt + clippy clean at `-D warnings`; `anyhow` at binary surface, `thiserror` at crate boundaries.
 - Frontend: React 19 + Vite + Tailwind 4 (tokens in `web/src/index.css` `@theme`, PRD §16 Blueberry) + zustand + TanStack Query.
 - Never use an em dash in prose; use a plain "-".
-- `main` is protected by convention: branch, then open a PR. Never commit or push directly to `main`. The repo is public and `v0.1.0` ships from it, so an unreviewed commit on `main` is a published mistake rather than a local one.
+- `main` is protected by convention: branch, then open a PR with `just pr "<title>" --body-file <f>`, which validates the title, body, and (for a code change) an absolute-path handover line before pushing and creating the PR. Never commit or push directly to `main` - a tracked `.githooks/pre-commit` refuses it (installed by `just bootstrap`/`scripts/setup.sh`, bypass with `--no-verify`), and the repo is public and `v0.1.0` ships from it, so an unreviewed commit there is a published mistake rather than a local one.
 - Do not hand-edit CHANGELOG files; release notes are generated.
 - No agent attribution in git history or on GitHub: no "Generated with Claude Code" footer, no session link, no `Co-Authored-By` for an agent, in commit messages or PR bodies.
 - Squash is the only enabled merge method on this repo; GitHub appends `(#N)` to the squashed commit subject, which is the only thing that back-links a commit on `main` to its PR.
@@ -68,4 +70,4 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - Tests accompany non-trivial logic; E2E behavior is verified against the real binary, not just unit tests.
 - A task is not done at "PR open, CI green". End it by handing over the manual test: the one copy-pasteable command that runs *that worktree*, followed by the two or three clicks that exercise the change and what should happen. Automated tests say the fix works; this is what lets Richard see it work. Use the absolute path (`cd ~/Documents/code/yogurt-worktrees/<slug> && just dev`), not a path relative to wherever the agent happened to be (`../yogurt-worktrees/<slug>`) - a relative path silently resolves to the wrong place, or nowhere, once pasted from a terminal that isn't sitting in the original working directory.
 - `just dev` bootstraps the worktree itself (see above) and moves off :5173 / :7878 when they are busy, so a second worktree can run alongside the first without stopping it - it prints the pair it picked, and the handover command should name the port it will land on only if you know the default is taken.
-- Once the PR merges, remove the worktree (`git worktree remove ../yogurt-worktrees/<slug>`) and delete its merged branch as the final step of the task - this is automatic on merge, not gated on Richard having run the manual test first. If he wants to inspect or run the shipped code afterward, it's already on `main`; there is no need to keep the worktree around for that.
+- `just land [pr]` is the final step of the task: it waits for CI (skipped for a docs-only change), squash-merges, then removes the worktree, deletes the branch (local and remote), and re-prints the handover section rewritten for `main` - not gated on Richard having run the manual test first. If he wants to inspect or run the shipped code afterward, it's already on `main`; there is no need to keep the worktree around for that.

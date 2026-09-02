@@ -23,6 +23,14 @@ dev-bg *args:
 dev-stop *args:
     ./scripts/task.sh dev-stop {{args}}
 
+# Validate title/body/handover/ticket-checkoff, then push and open a PR: `just pr "<title>" --body-file <f> [--draft] [--dry-run]`.
+pr title *rest:
+    ./scripts/ship.sh pr "{{title}}" {{rest}}
+
+# Wait for CI, squash-merge, then remove the worktree, delete the branch, and re-print the handover: `just land [pr] [--dry-run]`.
+land pr='' *rest:
+    ./scripts/ship.sh land {{pr}} {{rest}}
+
 # ── Run modes ────────────────────────────────────────────────────────
 
 # Start the release binary at http://localhost:7878 (single process, embedded web bundle, paste keys via Settings UI).
@@ -78,6 +86,9 @@ frontend:
 bootstrap:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Idempotent, and lives in the common git dir, so this one call covers
+    # every worktree and every agent that shells out to git (DX-5, .githooks/).
+    git config core.hooksPath .githooks
     # The main checkout, from any worktree: .git/ lives there, linked
     # worktrees only get a .git file pointing into it.
     MAIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
@@ -140,6 +151,8 @@ lint: check-docs
     ./scripts/tests/docs-only_test.sh
     ./scripts/tests/task_test.sh
     ./scripts/tests/release_test.sh
+    ./scripts/tests/ship_test.sh
+    ./scripts/tests/hooks_test.sh
 
 # Web typecheck (read-only) - same as CI's web-job lint gate; that job has no cargo.
 lint-web:
