@@ -831,3 +831,14 @@ New closed items go at the bottom.
   Landed in #67 (ctl second slice) and #72 (2026-09-02). Rewrote `.claude/skills/yogurt-control/SKILL.md` to ~150 words of prose around the generated `<!-- yogurt-cli:start/end -->` block: run `yogurt ctl` first, a stated version floor (needs yogurt 0.8.0 or newer, checked with `yogurt --version`, `brew upgrade jarvisrchen/yogurt/yogurt` if older), a link to docs/FEATURES.md, and three rules (summary before transcript, one recording at a time, never print the session token). Folded docs/AI-INTEGRATION.md's per-recipe curl blocks into a route table (method, path, purpose, `ctl` command) plus one example curl, keeping the auth paragraph, health shape, fixture-meeting fields, and websocket frame list as API contract documentation (1309 -> 634 words). Deleted `scripts/tail-transcript.sh`, replaced by `yogurt ctl meeting transcript --follow` / `yogurt ctl ws`; updated its mentions in docs/DEBUGGING-TRANSCRIPTS.md's two "Watch" sections, `scripts/eval/compare.sh`'s comment, docs/TODO.md's AUD-7 block, and the code caption in docs/.lavish/DEBUGGING-TRANSCRIPTS.html. Trimmed README's skill paragraph to one sentence matching what the skill now teaches.
   Verified: `cargo test -p yogurt --test skill_help --features yogurt-stt/local-stt` passes (2/2) after regenerating the block with `YOGURT_UPDATE_DOCS=1`; skill prose (block stripped) is about 150 words; `just check-docs` and `just lint` both pass; `git grep -n tail-transcript` returns only docs/.planning/agent-workflow.md; ran the skill's commands against the real binary in this worktree (`cargo run -q -p yogurt -- ctl`, `ctl status` correctly error with no server running, `ctl meeting summary last` succeeds via the `source: db` fallback).
   </details>
+
+- [x] **UI-8** No app icon when saving yogurt as a web app (Safari Add to Dock / Chrome install)
+  <details>
+  <summary>Details</summary>
+
+  `web/index.html` had no favicon or apple-touch-icon links, so saving yogurt as a web app picked up a generic icon instead of the brand mark.
+
+  Added apple-touch-icon, favicon (svg + png), and a web manifest built from the real
+  `Logo.tsx` brand mark, and linked them from `web/index.html`. Safari's Add to Dock and
+  Chrome's install-as-app now pick up the yogurt logo instead of a generic icon.
+  </details>
