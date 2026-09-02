@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# .githooks/commit-msg - rejects agent attribution and em dashes in commit
+# messages. Installed by `git config core.hooksPath .githooks`
+# (`just bootstrap` / `scripts/setup.sh`), which covers every worktree.
+# Escape hatch: `git commit --no-verify`.
+set -euo pipefail
+
+MSG_FILE="$1"
+EM_DASH="$(printf '\xe2\x80\x94')"
+
+fail() {
+  echo "commit-msg: $1" >&2
+  echo "  $2" >&2
+  echo "commit-msg: bypass with --no-verify if this is a false positive" >&2
+  exit 1
+}
+
+line="$(grep -ni 'generated with' "$MSG_FILE" | head -1 || true)"
+[ -n "$line" ] && fail "message contains \"Generated with\"" "$line"
+
+line="$(grep -nEi 'co-authored-by:.*(claude|anthropic|codex|cursor|opencode|copilot)' "$MSG_FILE" | head -1 || true)"
+[ -n "$line" ] && fail "message contains a Co-Authored-By trailer naming an agent" "$line"
+
+line="$(grep -nF "$EM_DASH" "$MSG_FILE" | head -1 || true)"
+[ -n "$line" ] && fail "message contains an em dash" "$line"
+
+exit 0

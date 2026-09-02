@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit - refuses a commit on main. Installed by
+# `git config core.hooksPath .githooks` (`just bootstrap` /
+# `scripts/setup.sh`), which covers every worktree.
+# Escape hatch: `git commit --no-verify`.
+set -euo pipefail
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$branch" = "main" ]; then
+  echo "pre-commit: refusing to commit on main" >&2
+  echo "  just start <ID> [words]" >&2
+  echo "pre-commit: bypass with --no-verify if this is a false positive" >&2
+  exit 1
+fi
+exit 0

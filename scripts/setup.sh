@@ -44,6 +44,10 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 err()  { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
 
+# Idempotent, and lives in the common git dir, so this one call covers
+# every worktree and every agent that shells out to git (DX-5, .githooks/).
+git config core.hooksPath .githooks
+
 if ! command -v brew >/dev/null 2>&1; then
   err "Homebrew not found. Install it from https://brew.sh, then rerun setup."
   exit 1

@@ -163,10 +163,18 @@ Work on a branch and open a PR. Do not push to `main`.
 The repo is public and releases are cut from `main`, so an unreviewed commit there is something strangers can build.
 CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck, web tests, the Playwright E2E smoke, and `scripts/check-docs.sh`); let it gate the merge.
 
+Tracked git hooks back this up locally: `.githooks/pre-commit` refuses a commit on `main`, and `.githooks/commit-msg` refuses agent attribution and em dashes.
+`just bootstrap` and `./scripts/setup.sh` both point git at them (`git config core.hooksPath .githooks`), which covers every worktree; bypass a hook with `git commit --no-verify` when a rule misfires.
+
+`just pr "<title>" --body-file <f>` validates the title, body, and (for a code change) an absolute-path handover line, then pushes and opens the PR; `just land [pr]` waits for CI, squash-merges, and removes the worktree and branch.
+See `docs/.planning/agent-workflow.md` section 4B for the full design.
+
 ```bash
 git checkout -b feat/my-change
 # ... commit ...
-gh pr create --base main
+just pr "feat: my-change" --body-file body.md
+# once CI is green and it's ready to merge:
+just land
 ```
 
 ### Working in a git worktree

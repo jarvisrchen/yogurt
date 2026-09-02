@@ -142,16 +142,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
   </details>
 
-- [ ] **DX-5** `scripts/ship.sh pr | land` and tracked git hooks
-  <details>
-  <summary>Details</summary>
-
-  `pr` refuses a title without a ticket ID or conventional prefix, a body with attribution or an em dash, a code change without an absolute-path handover line, or a ticket not moved to DONE on the branch.
-  `land` waits for CI (skipped for docs-only), squash-merges with `--match-head-commit`, then from the main checkout removes the worktree (refusing on a dirty tree), deletes the branch, and re-prints the handover; every step resumes.
-  `.githooks/` rejects agent trailers and commits on `main`, activated by `bootstrap` and `setup.sh`.
-  Design: `docs/.planning/agent-workflow.md`, section 4B.
-  </details>
-
 - [ ] **DX-7** `scripts/release.sh preflight | ship | verify | finish | untag`, then shrink the release skill
   <details>
   <summary>Details</summary>
