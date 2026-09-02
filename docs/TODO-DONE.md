@@ -680,4 +680,28 @@ New closed items go at the bottom.
   `CONTRIBUTING.md`'s worktree section and `scripts/run-backend.sh` document `YOGURT_DATA_DIR` for the dev loop (the script needs no code change - unknown flags already forward and env vars already inherit through `exec`).
   Verified: `cargo test -p yogurt` (28 passed, including the new `data_dir.rs` integration suite and the precedence unit tests), `just lint`, `just test` all green.
   By hand: `yogurt start --port 7891 --no-open --data-dir /tmp/yogurt-cli7-smoke` produced `db.sqlite`/`-wal`/`-shm` under the temp dir only, `ctl meeting list` against it returned empty, `YOGURT_DATA_DIR=/tmp/yogurt-cli7-smoke yogurt doctor --json` reported `db_path: /tmp/yogurt-cli7-smoke/db.sqlite`, and `~/.yogurt/db.sqlite`'s mtime was identical before and after (`stat -f %m`).
+- [x] **DX-3** `just start <ID> [words]`, `just worktrees`, `just dev-bg`
+  <details>
+  <summary>Details</summary>
+
+  `start`: fetch, one name for worktree and branch from the ticket ID, `git worktree add` from `origin/main`, `just bootstrap`, print the ticket and the absolute handover line; resumes if the same name already exists.
+  `worktrees`: path, branch, PR state, listening ports by process cwd, `dirty`, `removable`.
+  `dev-bg`: `just dev` in a tmux window, port pair read back from the pane, health polled, one line of output.
+  Design: `docs/.planning/agent-workflow.md`, section 4A, A1, A3, A4.
+  Depends on DX-2 for the ticket lookup.
+
+  Landed in #58 (2026-09-02). `scripts/task.sh` behind four new `just` recipes: `start` derives one lowercase-and-dashes name from a ticket ID (or accepts a free-form slug), creates the worktree and branch off `origin/main`, runs `just bootstrap`, and prints the ticket block plus the absolute handover line; it resumes (re-bootstraps, reprints) when the name is already claimed by both a directory and a branch, and refuses with exit 1 naming what's claimed by what when only one of the two exists.
+  `worktrees` lists every worktree from `git worktree list --porcelain` with path, branch, PR number/state (one batched `gh pr list`, per-branch fallback, `--no-pr` to skip), listening ports matched by the holder process's cwd (via `lsof`, including the `pnpm --dir web dev` case where Vite's cwd is `<worktree>/web` not the worktree root), `dirty`, and `removable`.
+  `dev-bg` opens (or resumes) a `tmux` window running `just dev`, polls the pane for the `YOGURT_PORT=`/`YOGURT_VITE_PORT=` lines and `/api/health`, then prints one line; `dev-stop` kills the window and is idempotent.
+  Along the way: the `dev` recipe's trap now also catches `HUP` (what `tmux kill-window` sends the pane), since that alone wasn't reliable through the `just` -> bash -> `exec`'d binary chain, so `dev-stop` also kills any lingering listener under the worktree's cwd as a backstop - caught by actually running `dev-bg` then `dev-stop` twice against the real worktree and finding both the backend and Vite processes still listening after the first stop.
+  Design: `docs/.planning/agent-workflow.md`, section 4A, A1, A3, A4.
+
+  Verified by hand against the real repo (from `/Users/rchen/Documents/code/yogurt-worktrees/dx-3-start`): `just start` with no args and `just start XX-999` both exit 2, the second naming `just ticket`; `just start dx-3-smoke` (a slug, standing in for `just start DX-3 smoke` - see caveat) created `/Users/rchen/Documents/code/yogurt-worktrees/dx-3-smoke` on branch `dx-3-smoke` off `origin/main`, ran `just bootstrap` for real (installed `web/node_modules`, built `web/dist`), and printed the handover line and the path; a second run resumed instantly with the same output; the worktree and branch were then removed from the main checkout (`git worktree remove`, `git branch -D`).
+  `just worktrees` against the real, currently-running sibling worktrees showed the foreign `~/.treehouse/yogurt-c2d339/...` worktree marked `foreign`, and `llm5-todo-done` (PR #27, merged) marked `removable`; starting `just dev-bg` in this worktree and re-running `just worktrees` showed both `7878` and `5173` on this worktree's row only, and `just dev-stop` cleared them.
+  `just dev-bg` printed `backend=http://localhost:7878 vite=5173 tmux=yogurt:dx-3-start`, `curl -sf http://localhost:7878/api/health` succeeded, a second `just dev-bg` resumed without a second window, `just dev-stop` freed both ports (confirmed via `lsof`), and a second `just dev-stop` exited 0.
+  `scripts/tests/task_test.sh` (10 assertions against a throwaway bare repo + clone: name derivation with a ticket ID and words, a bare lowercase slug, an invalid slug, both claim-detection directions, and the resume path) passes and is wired into `just lint`; `bash -n scripts/task.sh` is clean; `just lint` and `just test` (314 web tests + full cargo workspace) pass.
+
+  Caveat: the shared main checkout (`/Users/rchen/Documents/code/yogurt`) was 3 commits behind `origin/main` during this work and missing `scripts/ticket.sh` on disk entirely, so `just start DX-3 smoke` (the ticket-ID path) could not be exercised against it without pulling that checkout, which AGENTS.md forbids agents from editing.
+  The ticket-ID path itself is exercised end to end by `scripts/tests/task_test.sh` against a synthetic main checkout where it works correctly; the smoke test above used the slug path instead, which shares all the same worktree/branch/bootstrap/resume/handover code and produces the identical name and path.
+  Whoever owns that shared checkout should fast-forward it to `origin/main` so `just start <ID>` works for everyone.
   </details>
