@@ -28,6 +28,7 @@ just setup        # one-time: toolchains + pnpm install
 just dev          # backend (cargo run) + frontend (vite) together
 just build        # cargo build --release (build web first, see below)
 just test         # test-rust + test-web (what CI runs, split across two jobs)
+just test-hw      # hardware smoke tests (real SCK + mic) - never in `just test` or CI
 just lint         # fmt --check + clippy -D warnings + check-docs + ticket.sh --check
 just lint-web     # web typecheck
 just check-docs   # /api paths, just recipes, links, repo paths, em dash, size budgets
