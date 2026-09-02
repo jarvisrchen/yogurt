@@ -15,6 +15,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `AUD` | Audio |
 | `LLM` | LLM |
 | `CLI` | CLI |
+| `DX` | Developer experience |
 
 Numbers are per prefix and allocated once: the next ID is the highest existing number for that prefix plus one, counting the DONE section too.
 Never reuse or renumber an ID, including when an item moves to DONE.
@@ -107,6 +108,54 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 ## LLM
 
 ## CLI
+
+- [ ] **CLI-4** Give agents a `yogurt ctl` instead of a markdown page of curl recipes
+  <details>
+  <summary>Details</summary>
+
+  `.claude/skills/yogurt-control/SKILL.md` is ~114 lines teaching an agent to hand-roll `curl` against the REST API, including reading the session token out of `~/.yogurt/session-token` and attaching it as a bearer header.
+  That is paid for in tokens on every invocation, re-derived from scratch each time, untestable, and silently drifts whenever the API moves - nothing fails when the markdown goes stale, it just quietly describes a shape that no longer exists.
+  The skill also states the gap outright: "yogurt has no CLI to start it headlessly."
+
+  Replace the recipes with subcommands on the binary that already exists.
+  `yogurt doctor --json` is the precedent - the machine-readable habit is already there, it just stops at diagnostics.
+
+  ```
+  yogurt ctl meeting new|start|stop|show --json
+  yogurt ctl detect      # what meeting detection currently sees
+  yogurt ctl windows     # on-screen windows + each one's match verdict
+  ```
+
+  `yogurt ctl windows` is the one with a concrete origin story.
+  MTG-11's detection rules were first "verified" against a window titled to match the rule under test - a loop that could not fail, and did not catch that real Google Meet runs as an installed Chrome app (`com.google.Chrome.app.<hash>`) titled `Google Meet - Meet - <code>`.
+  The tool that settles it exists today only as `cargo run -p yogurt-audio --example meeting_windows`, discoverable by reading `crates/yogurt-audio/src/detect.rs`.
+  A cargo example nobody can find is not infrastructure; promote it.
+
+  Design the surface for an agent, not a human: `--json` output, `--dry-run` on anything destructive, descriptive errors that say what to do instead, subcommands rather than one flat flag soup.
+  Once it exists, `yogurt-control/SKILL.md` shrinks to naming the commands, and the behavior becomes testable in `crates/yogurt-cli`.
+  </details>
+
+## Developer experience
+
+- [ ] **DX-1** `just test` is a weaker gate than CI, and neither exercises the real binary
+  <details>
+  <summary>Details</summary>
+
+  Two separate problems, worth fixing in that order.
+
+  **The cheap one.** `just test` runs `cargo test` + `pnpm test`. CI additionally runs the Playwright suite (`.github/workflows/ci.yml`, `pnpm --dir web e2e`).
+  So the command AGENTS.md points every contributor and agent at is not the gate: you go green locally, open the PR, and find out afterward.
+  The suite is Vite-only - no Rust build, no keys, its own port 5199 - so there is no inner-loop cost to justify keeping them apart.
+  Add `pnpm --dir web e2e` to the `test` recipe.
+
+  **The one that actually matters.** Even after that, the gate still would not have caught MTG-11.
+  `web/playwright.config.ts` is explicit that the specs drive the real React app against a *browser-level mock* of the Rust backend (`page.route`), precisely so they need no keychain and no keys in CI.
+  That is a reasonable design for what they cover, but it means nothing in the automated suite runs the real binary, and nothing at all touches macOS-facing behavior like window detection or audio capture.
+  Every such check today is a human driving a browser, which is exactly how a fabricated verification got through.
+
+  Worth deciding: a small suite that boots the real debug binary and drives it over REST (which `yogurt ctl` from CLI-4 would make cheap to write), gated behind a feature or an env var so CI can skip the parts needing hardware.
+  Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
+  </details>
 
 ## DONE
 
