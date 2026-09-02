@@ -52,5 +52,8 @@ async fn it_responds_to_health() {
 
     assert_eq!(body["status"], "ok");
     assert_eq!(body["service"], "yogurt-server");
+    // CLI-4 / D5: `yogurt ctl` tells instances apart by version + mode.
+    assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(body["mode"], "release");
     handle.abort();
 }

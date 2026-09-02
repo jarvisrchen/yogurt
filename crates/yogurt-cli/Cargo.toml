@@ -50,10 +50,13 @@ yogurt-stt = { path = "../yogurt-stt", features = ["local-stt"] }
 directories = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# CLI-4: `yogurt ctl` talks HTTP to the running server. Moved out of
+# dev-dependencies -- it was already compiled into the binary through
+# yogurt-server's own [dependencies], so this adds no new linkage.
+reqwest = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
-reqwest = { workspace = true }
 # SET-12 follow-up: cli tests redirect HOME to a tempdir so spawned
 # subprocesses don't touch the developer's real ~/.yogurt/db.sqlite.
 tempfile = { workspace = true }
