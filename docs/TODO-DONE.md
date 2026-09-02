@@ -13,7 +13,7 @@ New closed items go at the bottom.
 
   Shipped as **detect-and-prompt**, not auto-record.
   `yogurt_audio::detect` polls `SCShareableContent` every 5s for an on-screen window matching a small allow-list of (bundle id, in-call window title) pairs - Zoom, Google Meet in a browser, Teams, Slack huddles.
-  Only the Google Meet rule is verified against a live call; the other three are inferred from documented window naming and should be confirmed with `cargo run -p yogurt-audio --example meeting_windows` during a real call before being trusted.
+  Only the Google Meet rule is verified against a live call; the other three are inferred from documented window naming and should be confirmed with `yogurt ctl windows` during a real call before being trusted.
   That reuses the `screencapturekit` dependency and the Screen Recording grant system-audio loopback already requires, so detection costs no new dependency and no new TCC prompt.
   The two alternatives in the original scoping note were both worse: a calendar read needs a new permission and fires on events you skip, and a system-audio heuristic means holding a capture stream open around the clock, which is the thing the privacy constraint exists to prevent.
 
@@ -23,7 +23,7 @@ New closed items go at the bottom.
 
   Settings -> General carries an on-by-default toggle.
   Known blind spot: a browser window's title is its active tab's title, so a Meet call in a background tab is invisible; seeing it would need Accessibility permission.
-  `cargo run -p yogurt-audio --example meeting_windows` dumps the live window list with each row's verdict, for retuning the title patterns when a vendor renames a window.
+  `yogurt ctl windows` (CLI-4) dumps the live window list with each row's verdict, for retuning the title patterns when a vendor renames a window.
   </details>
 
 - [x] **UI-1** BASE URL and MODEL fields overlap on long URLs in provider cards
