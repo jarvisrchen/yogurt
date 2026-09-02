@@ -175,17 +175,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Depends on DX-2 for the ticket lookup.
   </details>
 
-- [ ] **DX-4** CI calls `just`; `lint-web`; Playwright in `just test`; `scripts/check-docs.sh`; control-skill dedupe and `--help` drift test
-  <details>
-  <summary>Details</summary>
-
-  The justfile becomes the single definition of the gates: `lint` stays fmt plus clippy, `lint-web` is the typecheck, `test-web` gains Playwright, `test-rust` matches CI's flags.
-  `check-docs.sh` (ubuntu job, no path filter, about 15 seconds): documented `/api` paths exist in the router, backticked `just` recipes exist, relative links resolve, backticked repo paths exist, no em dash in prose paths, size budgets on AGENTS.md and TODO.md.
-  Same PR: delete the recipes `yogurt-control/SKILL.md` duplicates from AI-INTEGRATION.md, fix the false "no CLI to start headlessly" sentence in both, and add the `--help` drift test that generates the skill's command block.
-  Design: `docs/.planning/agent-workflow.md`, sections 4E (E2, E3) and 4D (D2).
-  Closes the cheap half of DX-1.
-  </details>
-
 - [ ] **DX-5** `scripts/ship.sh pr | land` and tracked git hooks
   <details>
   <summary>Details</summary>

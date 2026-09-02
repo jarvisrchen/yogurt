@@ -6,10 +6,10 @@
 # Returns a free port on stdout. May prompt the user.
 #
 # Modes (via $YOGURT_PORT_POLICY env var, default "ask"):
-#   ask    — interactively prompt: kill / new port / abort  (default)
-#   kill   — silently kill the holder
-#   next   — silently pick the next free port (wanted+1, +2, …, up to +20)
-#   fail   — print and exit 1
+#   ask    - interactively prompt: kill / new port / abort  (default)
+#   kill   - silently kill the holder
+#   next   - silently pick the next free port (wanted+1, +2, …, up to +20)
+#   fail   - print and exit 1
 #
 # Inputs:
 #   $1 = role label (e.g. "backend", "vite", shown in the prompt)
@@ -59,7 +59,7 @@ ensure_port_free() {
       return $?
       ;;
     fail)
-      printf '\033[31m✗\033[0m port %d (%s) is busy — held by PID %s (%s)\n' \
+      printf '\033[31m✗\033[0m port %d (%s) is busy - held by PID %s (%s)\n' \
         "$wanted" "$role" "$pid" "$cmd" >&2
       return 1
       ;;
@@ -95,14 +95,14 @@ _ypg_ask() {
   tty="$(_ypg_tty)"
 
   if [ ! -t 0 ] && [ ! -r "$tty" ]; then
-    # No interactive terminal — fall through to fail with hint
+    # No interactive terminal - fall through to fail with hint
     printf '\033[31m✗\033[0m port %d (%s) busy (PID %s: %s) and no TTY for prompt.\n' \
       "$wanted" "$role" "$pid" "$cmd" >&2
     printf '   set YOGURT_PORT_POLICY=kill or =next to choose non-interactively.\n' >&2
     return 1
   fi
 
-  printf '\n\033[33m!\033[0m port %d (%s) is busy — held by PID %s\n' \
+  printf '\n\033[33m!\033[0m port %d (%s) is busy - held by PID %s\n' \
     "$wanted" "$role" "$pid" >&2
   printf '   process: %s\n' "$cmd" >&2
   printf '\n   [k] kill it       (kill -9 %s)\n' "$pid" >&2
@@ -118,7 +118,7 @@ _ypg_ask() {
         kill -9 "$pid" 2>/dev/null || true
         sleep 0.5
         if [ -n "$(_ypg_holder_pid "$wanted")" ]; then
-          printf '\033[31m✗\033[0m kill -9 PID %s failed — still listening on %d\n' "$pid" "$wanted" >&2
+          printf '\033[31m✗\033[0m kill -9 PID %s failed - still listening on %d\n' "$pid" "$wanted" >&2
           return 1
         fi
         printf '\033[32m✓\033[0m killed PID %s; using port %d\n' "$pid" "$wanted" >&2

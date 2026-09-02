@@ -1,4 +1,4 @@
-# yogurt — task runner. Install with `brew install just`, then run from
+# yogurt - task runner. Install with `brew install just`, then run from
 # anywhere in the repo. `just` with no args lists every recipe.
 
 # Default: list recipes. Runs when you type `just` with no recipe name.
@@ -11,7 +11,7 @@ default:
 release *args:
     ./scripts/run-release.sh {{args}}
 
-# Start backend + Vite together in this terminal — picks a free port pair so a second worktree can run alongside, bootstraps first, Ctrl-C stops both cleanly.
+# Start backend + Vite together in this terminal - picks a free port pair so a second worktree can run alongside, bootstraps first, Ctrl-C stops both cleanly.
 dev: bootstrap
     #!/usr/bin/env bash
     set -euo pipefail
@@ -42,17 +42,17 @@ dev: bootstrap
     done
     ./scripts/run-backend.sh --port "$BACKEND_PORT"
 
-# Backend only — debug binary in dev mode, expects Vite already up (:5173, or $YOGURT_VITE_PORT).
+# Backend only - debug binary in dev mode, expects Vite already up (:5173, or $YOGURT_VITE_PORT).
 backend *args:
     ./scripts/run-backend.sh {{args}}
 
-# Vite dev server only — :5173 (or $YOGURT_VITE_PORT), paired with `just backend`.
+# Vite dev server only - :5173 (or $YOGURT_VITE_PORT), paired with `just backend`.
 frontend:
     ./scripts/run-frontend.sh
 
 # ── Setup + build ────────────────────────────────────────────────────
 
-# Make a fresh worktree runnable — restores .env.local, node_modules and web/dist (all gitignored, so they don't come across). No-ops once present; `just dev` depends on it.
+# Make a fresh worktree runnable - restores .env.local, node_modules and web/dist (all gitignored, so they don't come across). No-ops once present; `just dev` depends on it.
 bootstrap:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -64,7 +64,7 @@ bootstrap:
             cp "$MAIN/.env.local" .env.local
             echo "bootstrap: copied .env.local from $MAIN"
         else
-            echo "bootstrap: no .env.local here or in $MAIN — run ./scripts/setup.sh to write a stub" >&2
+            echo "bootstrap: no .env.local here or in $MAIN - run ./scripts/setup.sh to write a stub" >&2
             exit 1
         fi
     fi
@@ -97,32 +97,33 @@ build-web:
 
 # ── Quality gates ────────────────────────────────────────────────────
 
-# Full test suite (cargo + web) — what CI runs.
-test:
-    YOGURT_MEMORY_KEYSTORE=1 cargo test --workspace --features yogurt-stt/local-stt
-    pnpm --dir web test
+# Full test suite - what CI runs, split across the rust job (test-rust) and the web job (test-web).
+test: test-rust test-web
 
-# Just the Rust tests.
+# Rust tests, matching CI's flags.
 test-rust:
-    YOGURT_MEMORY_KEYSTORE=1 cargo test --workspace --features yogurt-stt/local-stt
+    YOGURT_MEMORY_KEYSTORE=1 cargo test --workspace --features yogurt-stt/local-stt --no-fail-fast
 
-# Just the web tests.
+# Web tests plus the Playwright E2E smoke against a browser-mocked backend (no API keys / live LLM). Starts Vite itself. First run needs `pnpm --dir web exec playwright install chromium`.
 test-web:
     pnpm --dir web test
-
-# Playwright E2E smoke — drives the real SPA against a browser-mocked backend
-# (no API keys / live LLM). Starts Vite itself. First run needs
-# `pnpm --dir web exec playwright install chromium`.
-test-e2e:
     pnpm --dir web e2e
 
-# Clippy + rustfmt check (read-only) — same as CI's lint gate.
-lint:
+# Clippy + rustfmt + check-docs (all read-only) - same as CI's rust-job lint gate.
+lint: check-docs
     cargo fmt --all -- --check
     cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings
     ./scripts/tests/ticket_test.sh
     ./scripts/ticket.sh --check
     ./scripts/tests/docs-only_test.sh
+
+# Web typecheck (read-only) - same as CI's web-job lint gate; that job has no cargo.
+lint-web:
+    pnpm --dir web typecheck
+
+# Doc drift: documented /api paths, `just` recipes, links, repo paths, em dash, size budgets. Run by `just lint` and .github/workflows/docs.yml.
+check-docs:
+    ./scripts/check-docs.sh
 
 # Auto-format Rust code (mutates files).
 fmt:
@@ -134,7 +135,7 @@ fmt:
 ticket *args:
     ./scripts/ticket.sh {{args}}
 
-# Free disk by removing all build artifacts — re-run `just build` after.
+# Free disk by removing all build artifacts - re-run `just build` after.
 clean:
     cargo clean
     rm -rf web/dist
@@ -143,10 +144,10 @@ clean:
 clean-incremental:
     find target -name "incremental" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Wipe the user database — next launch routes to /welcome onboarding again (~/.yogurt/keys.json stays).
+# Wipe the user database - next launch routes to /welcome onboarding again (~/.yogurt/keys.json stays).
 reset-db:
     rm -rf ~/.yogurt/db.sqlite ~/.yogurt/db.sqlite-wal ~/.yogurt/db.sqlite-shm
-    @echo "  ✓ ~/.yogurt/db.sqlite removed — next launch starts fresh"
+    @echo "  ✓ ~/.yogurt/db.sqlite removed - next launch starts fresh"
 
 # Download every whisper.cpp model from HuggingFace and print the current SHA256 to paste into REGISTRY.
 refresh-model-hashes *args:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# yogurt run-backend — start the Rust binary in dev mode.
+# yogurt run-backend - start the Rust binary in dev mode.
 #
 # Pair this with ./scripts/run-frontend.sh in a second terminal.
 # Backend proxies non-API requests to Vite (default :5173, override with
@@ -63,7 +63,7 @@ if ! command -v cargo >/dev/null 2>&1; then
   fi
 fi
 
-# .env.local sanity (dev mode reads it). Empty is OK — just warn.
+# .env.local sanity (dev mode reads it). Empty is OK - just warn.
 if [ ! -f .env.local ]; then
   err ".env.local not found. Run ./scripts/setup.sh first to write a stub."
   exit 1
@@ -80,7 +80,7 @@ fi
 VITE_BASE="${YOGURT_VITE_BASE:-http://127.0.0.1:5173}"
 
 bold "Starting yogurt backend (dev mode) at http://localhost:$PORT"
-dim "  Non-API requests proxy to Vite at $VITE_BASE — run ./scripts/run-frontend.sh in another terminal."
+dim "  Non-API requests proxy to Vite at $VITE_BASE - run ./scripts/run-frontend.sh in another terminal."
 dim "  Ctrl-C to stop."
 echo
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# publish-model-mirror — mirror whisper.cpp models onto a GitHub release so
+# publish-model-mirror - mirror whisper.cpp models onto a GitHub release so
 # a machine that cannot reach huggingface.co can still install them (AUD-4).
 #
 # The mirror lives on ONE tag that never moves (`models-v1`), not on each
 # app release. Pinning it per app version would make every release re-fetch
-# the weights from HuggingFace in CI — reintroducing the dependency this
-# removes — and put a duplicate copy on every release page. Identity is
+# the weights from HuggingFace in CI - reintroducing the dependency this
+# removes - and put a duplicate copy on every release page. Identity is
 # already pinned by the SHA256 in REGISTRY, which `download_to` hard-fails
 # on, so a versioned URL buys nothing the hash does not already guarantee.
 #
@@ -15,7 +15,7 @@
 #
 # Assets are the raw `.bin` files only. The `.sha256` sidecar yogurt reads
 # to skip re-hashing is written by the Homebrew formula at install time,
-# from the hash the formula already pins — nothing to upload, nothing to
+# from the hash the formula already pins - nothing to upload, nothing to
 # keep in sync.
 #
 # Usage:
@@ -47,7 +47,7 @@ mut()  { printf '\033[2m  %s\033[0m\n' "$*"; }
 die()  { printf '\033[31mERROR\033[0m %s\n' "$*" >&2; exit 1; }
 
 command -v gh >/dev/null || die "gh CLI not found"
-gh auth status >/dev/null 2>&1 || die "gh is not authenticated — run 'gh auth login'"
+gh auth status >/dev/null 2>&1 || die "gh is not authenticated - run 'gh auth login'"
 
 # Pull the pinned sha256 for a model out of the REGISTRY: find the
 # `filename:` line for it, then the next `sha256:` value in that ModelSpec.
@@ -122,7 +122,7 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
 else
   bold "Creating $TAG"
   # --latest=false so the model mirror never displaces the app release as
-  # the repo's "Latest" — that badge is what points users at the binary.
+  # the repo's "Latest" - that badge is what points users at the binary.
   gh release create "$TAG" "${ASSETS[@]}" \
     --repo "$REPO" \
     --title "whisper.cpp model mirror" \

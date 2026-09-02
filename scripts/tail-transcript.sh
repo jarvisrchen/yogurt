@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tail-transcript — dump a meeting's PERSISTED transcript to a file, on a
+# tail-transcript - dump a meeting's PERSISTED transcript to a file, on a
 # loop, so you can keep it open in an editor and watch it grow.
 #
 # Why this exists: the transcript dock renders the live WS stream (partials
