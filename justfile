@@ -119,6 +119,7 @@ lint:
     cargo clippy --workspace --features yogurt-stt/local-stt --all-targets -- -D warnings
     ./scripts/tests/ticket_test.sh
     ./scripts/ticket.sh --check
+    ./scripts/tests/docs-only_test.sh
 
 # Auto-format Rust code (mutates files).
 fmt:
