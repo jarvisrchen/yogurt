@@ -365,7 +365,7 @@ yogurt ctl meeting transcript last --follow
 yogurt ctl meeting transcript <span class="p">&lt;meeting-id&gt;</span> --follow</pre>
     </div>
 
-    <p><code>persist_transcript</code> writes on every final, so the file grows within a second or two of each finished utterance. If a line is in the dock but never lands here, it was a partial that never got finalized.</p>
+    <p><code>persist_transcript</code> writes on every final, so a new line prints within a second or two of each finished utterance. If a line is in the dock but never lands here, it was a partial that never got finalized.</p>
   </section>
 
   <section class="sec" id="ws">
@@ -373,8 +373,8 @@ yogurt ctl meeting transcript <span class="p">&lt;meeting-id&gt;</span> --follow
     <p>Byte-for-byte what the dock receives, partials included. Use this when you need to see partial churn &mdash; the DB tail cannot show it.</p>
 
     <div class="frame">
-      <div class="cap"><span>websocat</span><span class="rhs">session token from ~/.yogurt/session-token</span></div>
-      <pre class="code">websocat <span class="s">"ws://localhost:7878/ws/meetings/<span class="p">&lt;MEETING_ID&gt;</span>?token=$(cat ~/.yogurt/session-token)"</span></pre>
+      <div class="cap"><span>yogurt ctl ws</span><span class="rhs">one JSON frame per line</span></div>
+      <pre class="code">yogurt ctl ws <span class="p">&lt;meeting-id&gt;</span></pre>
     </div>
 
     <p>Frames are <code>{"type":"transcript","payload":{ts_ms,channel,text,is_final}}</code>. <code>enhance_progress</code> and chat frames ride the same socket, so expect other <code>type</code> values interleaved.</p>
