@@ -36,14 +36,23 @@ yogurt ctl meeting start <id|last>
 yogurt ctl meeting stop [<id|url|last>]
 yogurt ctl meeting show|summary|transcript <id|url|last>
 yogurt ctl meeting enhance <id|url|last>
+yogurt ctl meeting mute on|off [<id|url|last>]
+yogurt ctl meeting search <query> [--limit N]
+yogurt ctl meeting delete <id|url|last> [--dry-run] [--yes]
 yogurt ctl detect [dismiss]
 yogurt ctl windows
+yogurt ctl settings get
+yogurt ctl settings set k=v [--dry-run]
+yogurt ctl provider list|activate <name>|test [<name>]
+yogurt ctl models list|download <name> [--wait]|delete <name> [--dry-run]
+yogurt ctl ws [<id|url|last>] [--types a,b] [--count N]
 ```
 
 `--json` on any subcommand gets machine-readable output; `--port`/`$YOGURT_PORT` picks the instance when more than one is running (`just dev` prints the `$YOGURT_PORT` line to use).
 `<id|url|last>` accepts a bare id, a full meeting URL, or `last` for the most recently created meeting; read commands fall back to the local database (`source: db`) when no server answers.
+`ctl` never sets or reveals a provider key, an STT key, or the session token - `provider list`/`settings get` only ever say `key: set` or `key: missing`.
 See the README's [Command line](../README.md#command-line) section for the full flag reference.
-The rest of this document still applies when `ctl` doesn't have a subcommand for what you need yet (full CRUD, `PATCH`, `search`) - `ctl`'s second slice (`docs/.planning/agent-workflow.md`) is where those land.
+The rest of this document still applies when `ctl` doesn't have a subcommand for what you need yet (full CRUD, `PATCH`) - use `crates/yogurt-server/src/api/meetings.rs` as the source of truth for anything beyond it.
 
 ## Start a meeting
 
@@ -127,7 +136,7 @@ grep -l "^id: $ID$" ~/.yogurt/notes/*.md
 
 There is no on-disk transcript; that lives only in `~/.yogurt/db.sqlite`.
 
-Full CRUD (`GET /api/meetings` list, `PATCH`/`DELETE /api/meetings/:id`, `GET /api/meetings/search?q=`) exists too - see `crates/yogurt-server/src/api/meetings.rs` for the complete surface if you need more than start/stop/read.
+Full CRUD (`GET /api/meetings` list, `PATCH`/`DELETE /api/meetings/:id`, `GET /api/meetings/search?q=`) exists too - `yogurt ctl meeting search`/`delete` wrap the last two, and see `crates/yogurt-server/src/api/meetings.rs` for the complete surface if you need more than that.
 
 ## What agents should not try to do
 

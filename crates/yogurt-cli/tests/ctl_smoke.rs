@@ -259,8 +259,26 @@ async fn no_subcommand_reveals_or_sets_a_key_or_token() {
         vec!["ctl", "meeting", "summary", "--help"],
         vec!["ctl", "meeting", "transcript", "--help"],
         vec!["ctl", "meeting", "enhance", "--help"],
+        // CLI-6: second slice --help tree.
+        vec!["ctl", "meeting", "mute", "--help"],
+        vec!["ctl", "meeting", "mute", "on", "--help"],
+        vec!["ctl", "meeting", "mute", "off", "--help"],
+        vec!["ctl", "meeting", "search", "--help"],
+        vec!["ctl", "meeting", "delete", "--help"],
         vec!["ctl", "detect", "--help"],
         vec!["ctl", "windows", "--help"],
+        vec!["ctl", "settings", "--help"],
+        vec!["ctl", "settings", "get", "--help"],
+        vec!["ctl", "settings", "set", "--help"],
+        vec!["ctl", "provider", "--help"],
+        vec!["ctl", "provider", "list", "--help"],
+        vec!["ctl", "provider", "activate", "--help"],
+        vec!["ctl", "provider", "test", "--help"],
+        vec!["ctl", "models", "--help"],
+        vec!["ctl", "models", "list", "--help"],
+        vec!["ctl", "models", "download", "--help"],
+        vec!["ctl", "models", "delete", "--help"],
+        vec!["ctl", "ws", "--help"],
     ] {
         let mut cmd = Command::cargo_bin("yogurt").expect("binary exists");
         cmd.args(&args).env("HOME", tmp.path());
@@ -287,6 +305,91 @@ async fn no_subcommand_reveals_or_sets_a_key_or_token() {
         assert!(
             !stdout.contains(&token),
             "status output leaked the session token: {stdout}"
+        );
+    }
+
+    // CLI-6: `provider list` must show `key: set` without ever printing the
+    // key itself. There is no `ctl provider create`/`key set` (deliberately
+    // -- see docs/.planning/agent-workflow.md section 5), so the provider
+    // and its key are seeded directly over the REST surface, the same way
+    // the Settings UI would.
+    let fake_key = "sk-test-fake-key-should-never-leak-4f8c1e";
+    let http = reqwest::Client::new();
+    let provider: serde_json::Value = http
+        .post(format!("http://127.0.0.1:{port}/api/settings/providers"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": "ctl-smoke-provider",
+            "base_url": "http://127.0.0.1:1/v1",
+            "model": "test-model",
+        }))
+        .send()
+        .await
+        .expect("create provider")
+        .json()
+        .await
+        .expect("provider json");
+    let provider_id = provider["id"].as_str().expect("provider id").to_string();
+    let key_status = http
+        .post(format!(
+            "http://127.0.0.1:{port}/api/settings/providers/{provider_id}/key"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "api_key": fake_key }))
+        .send()
+        .await
+        .expect("set provider key")
+        .status();
+    assert!(key_status.is_success(), "set key: {key_status}");
+
+    for args in [vec!["provider", "list"], vec!["provider", "list", "--json"]] {
+        let output = ctl(port, tmp.path(), &args).success();
+        let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+        assert!(
+            !stdout.contains(fake_key) && !stdout.contains("sk-test-fake-key"),
+            "{args:?} leaked the provider key: {stdout}"
+        );
+        assert!(
+            stdout.contains("ctl-smoke-provider"),
+            "{args:?} did not list the seeded provider: {stdout}"
+        );
+        assert!(
+            stdout.contains("set"),
+            "{args:?} did not report key: set for the seeded provider: {stdout}"
+        );
+    }
+
+    // `settings get` never carries any key material either (it only ever
+    // reflects the `general` settings block -- `deepgram_key_masked` and
+    // provider keys are not its concern).
+    for args in [vec!["settings", "get"], vec!["settings", "get", "--json"]] {
+        let output = ctl(port, tmp.path(), &args).success();
+        let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+        assert!(
+            !stdout.contains(fake_key) && !stdout.to_lowercase().contains("key"),
+            "{args:?} mentions a key: {stdout}"
+        );
+    }
+
+    // Regression: `ctl ws`'s connect-failure message used to interpolate
+    // the raw ws:// URL, which carries the session token as `?token=...`
+    // (the WS auth contract -- see `crate::ws`'s doc comment on the
+    // server side). `models download --wait` shares the same `connect`
+    // call. Both must fail cleanly without ever printing the token, on
+    // stdout or stderr, text or `--json`.
+    for args in [
+        vec!["ws", "bogus-meeting-id"],
+        vec!["ws", "bogus-meeting-id", "--json"],
+        vec!["models", "download", "nope", "--wait"],
+        vec!["models", "download", "nope", "--wait", "--json"],
+    ] {
+        let output = ctl(port, tmp.path(), &args).failure();
+        let out = output.get_output();
+        let stdout = String::from_utf8(out.stdout.clone()).unwrap();
+        let stderr = String::from_utf8(out.stderr.clone()).unwrap();
+        assert!(
+            !stdout.contains(&token) && !stderr.contains(&token),
+            "{args:?} leaked the session token: stdout={stdout:?} stderr={stderr:?}"
         );
     }
 }
@@ -639,6 +742,315 @@ async fn summary_is_front_matter_only_before_enhance_and_gains_content_after() {
         after.contains('\u{21b3}'),
         "expected enhanced content (deep-link marker) after enhance; got:\n{after}"
     );
+}
+
+// ─── CLI-6: second slice (settings, provider, models, ws, meeting mute/search/delete) ───
+//
+// `provider list`/`settings get` non-leak coverage lives in
+// `no_subcommand_reveals_or_sets_a_key_or_token` above (it already spawns a
+// server and reads the real session token, so seeding a fake provider key
+// there is cheaper than a second server boot). `ws` and a real `models
+// download` are not exercised here -- see the module doc comment and D4 in
+// docs/.planning/agent-workflow.md: `ws` needs a live stream to assert
+// anything about, and `mute`'s real toggle-and-reflect path needs an
+// actual recording, both hardware-adjacent and covered by hand (PR body)
+// or by the separate `just test-hw` suite, not this hermetic one.
+
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_get_set_round_trip_and_rejects_a_bad_value() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let got = ctl(port, tmp.path(), &["settings", "get", "--json"]).success();
+    let got: serde_json::Value = serde_json::from_str(&stdout_of(&got)).unwrap();
+    assert_eq!(
+        got["meeting_detection"], true,
+        "default per yogurt_db::settings::load_general (no seed row)"
+    );
+
+    let set = ctl(
+        port,
+        tmp.path(),
+        &["settings", "set", "meeting_detection=false", "--json"],
+    )
+    .success();
+    let set: serde_json::Value = serde_json::from_str(&stdout_of(&set)).unwrap();
+    assert_eq!(set["meeting_detection"], false);
+
+    let got2 = ctl(port, tmp.path(), &["settings", "get", "--json"]).success();
+    let got2: serde_json::Value = serde_json::from_str(&stdout_of(&got2)).unwrap();
+    assert_eq!(
+        got2["meeting_detection"], false,
+        "the set above should have persisted"
+    );
+
+    // A well-formed but invalid value: the server's `validate_stt_patch`
+    // (crates/yogurt-server/src/api/settings.rs) rejects `local` STT
+    // pointed at a model that isn't downloaded. An unregistered model
+    // name guarantees this 422s in any environment, including a
+    // developer machine that has `brew install`ed a real model package
+    // (`yogurt_stt::models::lookup` finds nothing for a name that was
+    // never in the registry to begin with, real or brew-installed).
+    let rejected = ctl(
+        port,
+        tmp.path(),
+        &[
+            "settings",
+            "set",
+            "stt_provider=local",
+            "stt_model=definitely-not-a-real-model",
+        ],
+    )
+    .failure();
+    let stdout = stdout_of(&rejected);
+    assert_eq!(rejected.get_output().status.code(), Some(1));
+    assert!(stdout.contains("error:"), "got:\n{stdout}");
+    assert!(stdout.contains("not downloaded"), "got:\n{stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_set_dry_run_sends_nothing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let out = ctl(
+        port,
+        tmp.path(),
+        &[
+            "settings",
+            "set",
+            "meeting_detection=false",
+            "--dry-run",
+            "--json",
+        ],
+    )
+    .success();
+    let out: serde_json::Value = serde_json::from_str(&stdout_of(&out)).unwrap();
+    assert_eq!(out["dry_run"], true);
+
+    let got = ctl(port, tmp.path(), &["settings", "get", "--json"]).success();
+    let got: serde_json::Value = serde_json::from_str(&stdout_of(&got)).unwrap();
+    assert_eq!(
+        got["meeting_detection"], true,
+        "--dry-run must not have changed anything"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn models_list_reports_the_whisper_registry() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let out = ctl(port, tmp.path(), &["models", "list", "--json"]).success();
+    let out: serde_json::Value = serde_json::from_str(&stdout_of(&out)).unwrap();
+    let models = out["models"].as_array().expect("models array");
+    assert!(
+        !models.is_empty(),
+        "expected the whisper.cpp registry to be non-empty"
+    );
+    let names: Vec<&str> = models.iter().map(|m| m["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"tiny.en"), "got: {names:?}");
+    for m in models {
+        assert!(m["downloaded"].is_boolean(), "got: {m}");
+        assert!(m["size_mb"].as_u64().unwrap() > 0, "got: {m}");
+    }
+    // Not asserted: `downloaded == false` for every model. A developer
+    // machine with a real `brew install yogurt-model-*` package resolves
+    // as downloaded regardless of `$HOME` (`resolve_model` also checks the
+    // Homebrew prefixes, crates/yogurt-stt/src/models.rs), so a hard
+    // "nothing installed" assertion here would be a false failure on
+    // exactly the machines this project ships a formula for.
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn models_download_of_an_unknown_model_fails_cleanly() {
+    // The one download path this hermetic suite can assert on without
+    // touching the network either way: an unrecognized model name is
+    // rejected client-side (before any request reaches the server's
+    // download endpoint), so it is fast and deterministic in every
+    // environment. A real `--wait` download failing against an
+    // unreachable mirror is the network-dependent case the ticket asks
+    // for -- not reproduced here because this environment (and
+    // potentially CI) has outbound network access to the real mirrors,
+    // so asserting on that path would either be flaky or attempt an
+    // actual multi-MB download in CI; verified once by hand instead (see
+    // the PR body).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let output = ctl(
+        port,
+        tmp.path(),
+        &["models", "download", "not-a-real-model"],
+    )
+    .failure();
+    let stdout = stdout_of(&output);
+    assert_eq!(output.get_output().status.code(), Some(1));
+    assert!(stdout.contains("error:"), "got:\n{stdout}");
+    assert!(stdout.contains("no such model"), "got:\n{stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_search_finds_a_fixture_by_a_transcript_word() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let script = repo_root().join("scripts/eval/conversation.txt");
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--from-script",
+            script.to_str().unwrap(),
+            "--title",
+            "search fixture",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    // Pull a distinctive word straight out of the script's own spoken
+    // lines (`A:`/`B:`) rather than hardcoding one, so this keeps testing
+    // something even if the script's wording changes.
+    let word = std::fs::read_to_string(&script)
+        .expect("conversation.txt readable")
+        .lines()
+        .filter_map(|l| l.strip_prefix("A: ").or_else(|| l.strip_prefix("B: ")))
+        .flat_map(str::split_whitespace)
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .find(|w| w.len() > 4 && w.chars().all(char::is_alphanumeric))
+        .expect("script has at least one word longer than 4 chars")
+        .to_string();
+
+    let found = ctl(port, tmp.path(), &["meeting", "search", &word, "--json"]).success();
+    let found: serde_json::Value = serde_json::from_str(&stdout_of(&found)).unwrap();
+    let ids: Vec<&str> = found["meetings"]
+        .as_array()
+        .expect("meetings array")
+        .iter()
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert!(
+        ids.contains(&id.as_str()),
+        "expected {id} among search results for {word:?}: {ids:?}"
+    );
+
+    // A query that matches nothing is zero results, not an error.
+    let empty = ctl(
+        port,
+        tmp.path(),
+        &["meeting", "search", "zzzznosuchword", "--json"],
+    )
+    .success();
+    let empty: serde_json::Value = serde_json::from_str(&stdout_of(&empty)).unwrap();
+    assert_eq!(empty["total"], 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_mute_against_a_non_recording_meeting_fails_cleanly() {
+    // `POST /api/meetings/:id/mic-muted` (AUD-6) needs an active capture
+    // thread to command -- it 409s ("not currently recording") against a
+    // meeting that was never started, which is every meeting this
+    // hardware-free suite can create. The real toggle-and-reflect path
+    // needs an actual recording; see D4 in
+    // docs/.planning/agent-workflow.md, which puts that under the
+    // separate `just test-hw` suite, not this one. What this suite CAN
+    // verify hermetically is that `ctl` surfaces the rejection cleanly
+    // (not a hang, not a panic) and that retrying is safe.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let script = repo_root().join("scripts/eval/conversation.txt");
+    ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--from-script",
+            script.to_str().unwrap(),
+            "--title",
+            "mute fixture",
+        ],
+    )
+    .success();
+
+    for args in [
+        vec!["meeting", "mute", "on", "last"],
+        vec!["meeting", "mute", "off", "last"],
+    ] {
+        let output = ctl(port, tmp.path(), &args).failure();
+        let stdout = stdout_of(&output);
+        assert_eq!(output.get_output().status.code(), Some(1), "{args:?}");
+        assert!(stdout.contains("error:"), "{args:?} got:\n{stdout}");
+        assert!(stdout.contains("recording"), "{args:?} got:\n{stdout}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_mute_with_no_meeting_given_and_nothing_recording_fails_cleanly() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let output = ctl(port, tmp.path(), &["meeting", "mute", "on"]).failure();
+    let stdout = stdout_of(&output);
+    assert_eq!(output.get_output().status.code(), Some(1));
+    assert!(stdout.contains("error:"), "got:\n{stdout}");
+    assert!(stdout.contains("no active meeting"), "got:\n{stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_delete_dry_run_then_yes() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let script = repo_root().join("scripts/eval/conversation.txt");
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--from-script",
+            script.to_str().unwrap(),
+            "--title",
+            "delete fixture",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    // Refuses without --yes.
+    let refused = ctl(port, tmp.path(), &["meeting", "delete", &id]).failure();
+    assert_eq!(refused.get_output().status.code(), Some(1));
+    let stdout = stdout_of(&refused);
+    assert!(
+        stdout.contains("error:") && stdout.contains("--yes"),
+        "got:\n{stdout}"
+    );
+
+    // --dry-run deletes nothing.
+    let dry = ctl(
+        port,
+        tmp.path(),
+        &["meeting", "delete", &id, "--dry-run", "--json"],
+    )
+    .success();
+    let dry: serde_json::Value = serde_json::from_str(&stdout_of(&dry)).unwrap();
+    assert_eq!(dry["dry_run"], true);
+    assert_eq!(dry["title"], "delete fixture");
+    ctl(port, tmp.path(), &["meeting", "show", &id]).success();
+
+    // --yes deletes for real; a second `show` then fails (the row is gone).
+    ctl(port, tmp.path(), &["meeting", "delete", &id, "--yes"]).success();
+    let shown = ctl(port, tmp.path(), &["meeting", "show", &id]).failure();
+    assert_eq!(shown.get_output().status.code(), Some(1));
 }
 
 // ─── DX-1: real-binary smoke suite, hardware path ────────────────────────

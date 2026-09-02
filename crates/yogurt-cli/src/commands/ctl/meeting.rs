@@ -63,6 +63,36 @@ pub enum MeetingCmd {
     },
     /// Run augmented-notes generation and forward progress to stderr.
     Enhance { meeting: String },
+    /// Pause or resume the mic on an actively-recording meeting. Idempotent;
+    /// defaults to whatever is currently recording.
+    Mute {
+        #[command(subcommand)]
+        action: MuteAction,
+    },
+    /// Full-text search across title, notes, and transcript.
+    Search {
+        query: String,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Remove a meeting. Refuses without --yes unless --dry-run.
+    Delete {
+        meeting: String,
+        /// Print what would be removed, without removing it.
+        #[arg(long)]
+        dry_run: bool,
+        /// Confirm the deletion.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MuteAction {
+    /// Pause the mic.
+    On { meeting: Option<String> },
+    /// Resume the mic.
+    Off { meeting: Option<String> },
 }
 
 pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(), CtlError> {
@@ -82,20 +112,27 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
             transcript(port, json_out, &meeting, follow).await
         }
         MeetingCmd::Enhance { meeting } => enhance(port, json_out, &meeting).await,
+        MeetingCmd::Mute { action } => mute(port, json_out, action).await,
+        MeetingCmd::Search { query, limit } => search(port, json_out, &query, limit).await,
+        MeetingCmd::Delete {
+            meeting,
+            dry_run,
+            yes,
+        } => delete(port, json_out, &meeting, dry_run, yes).await,
     }
 }
 
 // ─── <id|url|last> ──────────────────────────────────────────────────────
 
 #[derive(Debug, PartialEq)]
-enum MeetingRef {
+pub(super) enum MeetingRef {
     Id(String),
     Url { port: u16, id: String },
     Last,
 }
 
 impl MeetingRef {
-    fn parse(s: &str) -> Self {
+    pub(super) fn parse(s: &str) -> Self {
         if s == "last" {
             return MeetingRef::Last;
         }
@@ -124,7 +161,7 @@ struct ActiveRef {
 
 /// Resolve a ref to a live client + id. Mutation path -- never falls back
 /// to the DB, since there's nothing to mutate there.
-async fn client_for_ref(
+pub(super) async fn client_for_ref(
     port_flag: Option<u16>,
     r: &MeetingRef,
 ) -> Result<(Client, String), CtlError> {
@@ -678,6 +715,151 @@ async fn enhance(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Resul
     Ok(())
 }
 
+// ─── mute ───────────────────────────────────────────────────────────────
+
+/// `POST /api/meetings/:id/mic-muted` (AUD-6) -- pauses/resumes the mic on
+/// an actively-recording meeting. It 409s against a meeting that isn't
+/// currently recording (there is no capture thread to command); that
+/// propagates as a normal `CtlError::Server`, same as any other server
+/// rejection. No `<id|url|last>` given defaults to whatever is currently
+/// recording, same as bare `stop` -- `last` (most recently *created*)
+/// would usually be the wrong meeting to mute.
+async fn mute(port_flag: Option<u16>, json_out: bool, action: MuteAction) -> Result<(), CtlError> {
+    let (muted, meeting) = match action {
+        MuteAction::On { meeting } => (true, meeting),
+        MuteAction::Off { meeting } => (false, meeting),
+    };
+    let (c, id) = match meeting {
+        Some(m) => client_for_ref(port_flag, &MeetingRef::parse(&m)).await?,
+        None => {
+            let c = Client::discover(port_flag).await?;
+            let active: Option<ActiveRef> = c.get("/api/meetings/active").await?;
+            match active {
+                Some(a) => (c, a.id),
+                None => {
+                    return Err(CtlError::local(
+                        "no active meeting to mute",
+                        "pass a meeting id, or start a recording first",
+                    ))
+                }
+            }
+        }
+    };
+    let _: serde_json::Value = c
+        .post(
+            &format!("/api/meetings/{id}/mic-muted"),
+            &json!({ "muted": muted }),
+        )
+        .await?;
+    let state = if muted { "muted" } else { "unmuted" };
+    if json_out {
+        println!("{}", json!({ "id": id, "muted": muted }));
+    } else {
+        println!("{state} {id}");
+    }
+    Ok(())
+}
+
+// ─── search ─────────────────────────────────────────────────────────────
+
+/// Percent-encodes a query-string value. Only the handful of workspace
+/// dependencies `ctl` already pulls in are fair game (see AGENTS.md's
+/// "shortest diff" rule) and none of them expose a URL encoder at this
+/// layer, so this is the whole thing: byte-wise, `+` for space, `%XX`
+/// otherwise -- correct for UTF-8 since multi-byte chars just become
+/// several escaped bytes.
+fn encode_query(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+async fn search(
+    port_flag: Option<u16>,
+    json_out: bool,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<(), CtlError> {
+    let c = Client::discover(port_flag).await?;
+    let mut path = format!("/api/meetings/search?q={}", encode_query(query));
+    if let Some(n) = limit {
+        path.push_str(&format!("&limit={n}"));
+    }
+    let meetings: Vec<yogurt_db::Meeting> = c.get(&path).await?;
+    if json_out {
+        println!(
+            "{}",
+            json!({ "meetings": meetings, "total": meetings.len() })
+        );
+    } else {
+        println!("{} meeting(s)", meetings.len());
+        for m in &meetings {
+            let state = if m.ended_at.is_some() {
+                "ended"
+            } else {
+                "live"
+            };
+            println!("{}  {state:<5}  {}", m.id, m.title);
+        }
+    }
+    Ok(())
+}
+
+// ─── delete ─────────────────────────────────────────────────────────────
+
+async fn delete(
+    port_flag: Option<u16>,
+    json_out: bool,
+    meeting: &str,
+    dry_run: bool,
+    yes: bool,
+) -> Result<(), CtlError> {
+    let r = MeetingRef::parse(meeting);
+    let (c, id) = client_for_ref(port_flag, &r).await?;
+    let m: yogurt_db::Meeting = c.get(&format!("/api/meetings/{id}")).await?;
+
+    if dry_run {
+        if json_out {
+            println!(
+                "{}",
+                json!({ "dry_run": true, "id": id, "title": m.title, "created_at": m.created_at })
+            );
+        } else {
+            println!("would delete {id} \"{}\" ({})", m.title, m.created_at);
+        }
+        return Ok(());
+    }
+    if !yes {
+        return Err(CtlError::local(
+            format!(
+                "refusing to delete \"{}\" ({}) without --yes",
+                m.title, m.created_at
+            ),
+            "pass --yes to confirm, or --dry-run to preview",
+        ));
+    }
+
+    c.delete_no_body(&format!("/api/meetings/{id}?delete_file=true"))
+        .await?;
+    if json_out {
+        println!(
+            "{}",
+            json!({ "status": "deleted", "id": id, "title": m.title })
+        );
+    } else {
+        println!("deleted {id} \"{}\"", m.title);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::MeetingRef;
@@ -725,5 +907,12 @@ mod tests {
             MeetingRef::parse("not a url or id"),
             MeetingRef::Id("not a url or id".to_string())
         );
+    }
+
+    #[test]
+    fn encode_query_escapes_spaces_and_specials_but_not_plain_words() {
+        assert_eq!(super::encode_query("standup"), "standup");
+        assert_eq!(super::encode_query("q4 planning"), "q4+planning");
+        assert_eq!(super::encode_query("50% done?"), "50%25+done%3F");
     }
 }
