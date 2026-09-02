@@ -756,3 +756,15 @@ New closed items go at the bottom.
 
   Landed in #64 (2026-09-02). Third PR: `scripts/release.sh ship <version>` orchestrates preflight, the dry-run dispatch, a throwaway-worktree version bump PR (marked with `<!-- yogurt-release: P=<sha> -->` for resumability), the merge, a "main moved" parent-sha assertion, tagging by merge sha via the GitHub API, watching the Release run, then `verify` and `finish`. Every step derives done/not-done from GitHub state so a timed-out run resumes on re-invocation. `-n` runs preflight for real (read-only) and then prints the plan for every mutating step. Verified against the live repo: `ship 0.8.0 -n` prints the real plan (correctly blocking by default on the currently-open #63 doc PR, then showing the full plan with `--allow-open-docs`); `ship 0.7.0 -n` fails preflight (tag exists) and stops before the plan, exit 1; `ship` with no version exits 2. The release skill shrunk from 800 to ~295 words. `ship` itself has not been run for real yet - the next actual release is the test.
   </details>
+
+- [x] **DX-10** `scripts/check-published.sh`: tap formula version, release assets, README formula names and model mirror URLs still resolve
+  <details>
+  <summary>Details</summary>
+
+  Runnable by hand after a formula edit and weekly from a scheduled ubuntu workflow; opens an issue on failure.
+  The one drift a PR-time check cannot see (the v0.3.0 README-versus-tap failure).
+  Design: `docs/.planning/agent-workflow.md`, section 4F, F2.
+  After DX-7.
+
+  Landed in #65 (2026-09-02). Added `scripts/check-published.sh` (tag vs tap formula version, both tarball URLs + shas vs the release's SHA256SUMS, every README `yogurt-model-*` line vs the tap, every model mirror URL in `crates/yogurt-stt`), wired as `just check-published` (kept out of `just lint`, needs the network) and a new weekly `.github/workflows/check-published.yml` with `workflow_dispatch` as the escape hatch and `--issue` (workflow-only) opening a `gh issue` on failure, skipped if one is already open. Verified: `bash -n` on both scripts; `scripts/tests/check-published_test.sh` (27/27, PATH-stubbed git/gh/curl, wired into `just lint`); `just lint` green end to end; `scripts/check-published.sh` run for real against the live tap and v0.7.0 release - all 14 checks `ok:`, no drift; `scripts/check-published.sh --json | jq .` valid; workflow YAML parses; confirmed by inspection that `--issue`'s `gh issue create`/`gh issue list` path is only ever reached by the test's stubbed `gh`, never by a real run in this session.
+  </details>

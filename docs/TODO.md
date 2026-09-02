@@ -153,12 +153,3 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Design: `docs/.planning/agent-workflow.md`, sections 4E (E1) and 4F (F1).
   </details>
 
-- [ ] **DX-10** `scripts/check-published.sh`: tap formula version, release assets, README formula names and model mirror URLs still resolve
-  <details>
-  <summary>Details</summary>
-
-  Runnable by hand after a formula edit and weekly from a scheduled ubuntu workflow; opens an issue on failure.
-  The one drift a PR-time check cannot see (the v0.3.0 README-versus-tap failure).
-  Design: `docs/.planning/agent-workflow.md`, section 4F, F2.
-  After DX-7.
-  </details>
