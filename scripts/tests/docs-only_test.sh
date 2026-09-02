@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests scripts/lib/docs-only.sh — no framework, plain asserts, BSD bash.
+# Tests scripts/lib/docs-only.sh - no framework, plain asserts, BSD bash.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -55,10 +55,10 @@ check "docs/deep/nested/file.txt is docs-only"     "$(is docs/deep/nested/file.t
 check "crates/.../main.rs is NOT docs-only"        "$(is crates/yogurt-server/src/main.rs)"         1
 check "mixed set is NOT docs-only"                 "$(is docs/RELEASING.md crates/x/src/main.rs)"   1
 check "multiple docs paths is docs-only"           "$(is README.md docs/RELEASING.md)"              0
-check "no paths is vacuously docs-only"            "$(is)"                                          0
+check "no paths is NOT docs-only"                  "$(is)"                                          1
 
 # --- changed_paths_between -------------------------------------------
-# Any two real commits in this repo's history — just needs to run and
+# Any two real commits in this repo's history - just needs to run and
 # return the paths git itself reports, no framework needed to fake that up.
 parent="$(git -C "$REPO_ROOT" rev-parse HEAD~1)"
 head="$(git -C "$REPO_ROOT" rev-parse HEAD)"

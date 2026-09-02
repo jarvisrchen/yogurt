@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# release — subcommands that back the release skill (.claude/skills/release/SKILL.md).
+# release - subcommands that back the release skill (.claude/skills/release/SKILL.md).
 #
 # Bash plus `gh` and `jq`, in the style of scripts/publish-model-mirror.sh.
 # Flags only, no prompts. `-n` prints the plan on anything that mutates.
 # `--json` emits a per-check array where the subcommand has checks.
 #
 # Only `preflight` exists so far (DX-7 PR 1 of 3). `verify`, `finish`,
-# `untag` and `ship` land in follow-up PRs — see docs/TODO.md DX-7 and
+# `untag` and `ship` land in follow-up PRs - see docs/TODO.md DX-7 and
 # docs/.planning/agent-workflow.md section 4C.
 #
 # Usage errors exit 2. A failed check exits 1.
@@ -30,8 +30,6 @@ Commands:
         -n         no-op (preflight never mutates; accepted for symmetry)
         --json     emit a JSON array of {check, ok, detail} instead of text
         --strict   fail (rather than list) if any open PR touches docs/ or README.md
-
-More commands (verify, finish, untag, ship) land in follow-up PRs.
 EOF
 }
 
@@ -49,7 +47,7 @@ json_escape() {
   printf '%s' "$s"
 }
 
-# emit_check <name> <true|false> <detail> — prints "ok: "/"FAIL: " in text
+# emit_check <name> <true|false> <detail> - prints "ok: "/"FAIL: " in text
 # mode, records a JSON object in --json mode. Returns the check's own
 # ok/fail status so callers can `check_x || OVERALL_OK=1`.
 emit_check() {
@@ -66,7 +64,7 @@ emit_check() {
 
 # ---- semver -----------------------------------------------------------
 
-# semver_lt a b — true when a < b, comparing X.Y.Z numerically.
+# semver_lt a b - true when a < b, comparing X.Y.Z numerically.
 semver_lt() {
   local IFS=.
   local -a a=($1) b=($2)
@@ -82,11 +80,11 @@ semver_lt() {
 
 # ---- preflight ----------------------------------------------------
 
-# resolve_ci_status <sha> — walks first-parent ancestors of <sha> (up to
+# resolve_ci_status <sha> - walks first-parent ancestors of <sha> (up to
 # 30) looking for a CI run, skipping over commits CI legitimately skipped
 # because they were docs-only. Prints "STATUS|sha|detail" on stdout.
 resolve_ci_status() {
-  local cur="$1" i=0 runs count status conclusion parent changed
+  local cur="$1" i=0 runs count status conclusion parent changed all_docs_only changed_line
   while [ "$i" -lt 30 ]; do
     runs="$(gh run list -R "$REPO" -w CI -c "$cur" --json status,conclusion -L 5 2>/dev/null || echo '[]')"
     count="$(jq 'length' <<<"$runs")"
@@ -107,7 +105,14 @@ resolve_ci_status() {
       return 0
     }
     changed="$(changed_paths_between "$parent" "$cur")"
-    if ! is_docs_only $changed; then
+    # array-free: read one path at a time so a path with a space in it
+    # never gets word-split into two arguments.
+    all_docs_only=1
+    while IFS= read -r changed_line; do
+      [ -n "$changed_line" ] || continue
+      is_docs_only "$changed_line" || { all_docs_only=0; break; }
+    done <<<"$changed"
+    if [ "$all_docs_only" -eq 0 ]; then
       echo "NOTFOUND|$cur|no CI run for $cur and it is not docs-only"
       return 0
     fi
