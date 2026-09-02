@@ -785,7 +785,10 @@ await_run_id() {
 
 # wait_for_run <run_id> - polls a run to completion without streaming
 # output, then prints one "<job name>: <conclusion>" line per job. Returns
-# 0 when the run concluded success.
+# 0 when the run concluded success. Deliberately uncapped: a real build
+# can outlast the calling tool's own timeout (600s), and ship is
+# skip-if-done, so the caller just re-runs ship rather than this needing
+# its own retry budget.
 wait_for_run() {
   local run_id="$1" status
   while :; do
@@ -801,13 +804,21 @@ wait_for_run() {
 
 # open_bump_pr <version> <P> - bumps [workspace.package] version in a
 # throwaway detached worktree from <P>, commits, pushes release/v<version>
-# and opens the PR. Prints the new PR number.
+# and opens the PR. Prints the new PR number. A RETURN trap removes the
+# worktree and the PR-body tempfile on any exit from this function, not
+# just success: every fallible step below is explicitly gated with
+# `|| return 1` (a bare failing command would abort the whole script under
+# set -e without ever reaching a RETURN trap), so a failed cargo update,
+# commit, push or gh pr create never leaves an orphaned worktree
+# registration for a retried `ship` to trip over.
 open_bump_pr() {
-  local version="$1" p="$2" tmp branch body_file pr_num
+  local version="$1" p="$2" tmp branch body_file="" pr_num
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/yogurt-release-bump.XXXXXX")"
   rmdir "$tmp"
   branch="release/v$version"
-  git worktree add --detach "$tmp" "$p" >/dev/null
+  trap 'rm -f "$body_file"; git worktree remove --force "$tmp" 2>/dev/null || true' RETURN
+
+  git worktree add --detach "$tmp" "$p" >/dev/null || return 1
   (
     cd "$tmp"
     awk -v ver="$version" '
@@ -825,14 +836,12 @@ open_bump_pr() {
     git add Cargo.toml Cargo.lock
     git commit -q -m "chore: bump version to $version"
     git push -q origin "HEAD:refs/heads/$branch"
-  )
+  ) || return 1
   body_file="$tmp.body"
   { release_scope_log "$version"; echo; ship_marker "$p"; echo; } > "$body_file"
   gh pr create -R "$REPO" --base main --head "$branch" \
-    --title "chore: bump version to $version" --body-file "$body_file" >/dev/null
-  rm -f "$body_file"
-  git worktree remove "$tmp"
-  pr_num="$(gh pr view "$branch" -R "$REPO" --json number --jq '.number')"
+    --title "chore: bump version to $version" --body-file "$body_file" >/dev/null || return 1
+  pr_num="$(gh pr view "$branch" -R "$REPO" --json number --jq '.number')" || return 1
   printf '%s' "$pr_num"
 }
 

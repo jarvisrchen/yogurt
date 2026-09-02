@@ -376,5 +376,30 @@ case "$preflight_block_out" in
   *) pass=$((pass + 1)) ;;
 esac
 
+# --- open_bump_pr: cleans up its worktree (and the PR-body tempfile) on a
+# failed cargo update - cargo is stubbed to fail unconditionally, so the
+# function's own RETURN trap must fire even though `set -e` would abort a
+# bare failing command before ever reaching a trap (each fallible step is
+# explicitly gated with `|| return 1` for exactly this reason). ------------
+
+cat >"$BIN/cargo" <<'EOF'
+#!/usr/bin/env bash
+echo "stub cargo: refusing (simulated failure for the cleanup test)" >&2
+exit 1
+EOF
+chmod +x "$BIN/cargo"
+
+worktrees_before="$(git -C "$SHIP_FIXTURE" worktree list --porcelain | grep -c '^worktree ')"
+ship_p="$(git -C "$SHIP_FIXTURE" rev-parse main)"
+
+open_status=0
+(cd "$SHIP_FIXTURE" && open_bump_pr 9.0.0 "$ship_p") >/dev/null 2>&1 || open_status=$?
+check "open_bump_pr: a failed cargo update returns non-zero" "$open_status" "1"
+
+worktrees_after="$(git -C "$SHIP_FIXTURE" worktree list --porcelain | grep -c '^worktree ')"
+check "open_bump_pr: no orphaned worktree left after a failed cargo update" "$worktrees_after" "$worktrees_before"
+
+rm -f "$BIN/cargo"
+
 echo "release_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
