@@ -149,7 +149,16 @@ async fn resolve_read(port_flag: Option<u16>, r: &MeetingRef) -> Result<Resolved
 }
 
 fn open_db_readonly() -> Result<yogurt_db::Db, CtlError> {
-    let path = client::yogurt_home()?.join("db.sqlite");
+    // CLI-7: honor $YOGURT_DATA_DIR (no --data-dir flag on ctl itself) so
+    // this read-through-DB fallback agrees with wherever `yogurt start
+    // --data-dir` / $YOGURT_DATA_DIR put the database -- otherwise `ctl
+    // meeting list` with no server running would read the wrong one.
+    let dir = match crate::data_dir::resolve(None) {
+        Ok(Some(dir)) => dir,
+        Ok(None) => client::yogurt_home()?,
+        Err(e) => return Err(CtlError::local(format!("{e:#}"), "check $YOGURT_DATA_DIR")),
+    };
+    let path = dir.join("db.sqlite");
     if !path.exists() {
         return Err(CtlError::local(
             "no local database found",
