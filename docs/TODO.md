@@ -30,7 +30,7 @@ When the user sends a photo, save it into `attachments/` with a `YYYY-MM-DD-<slu
 Example entry:
 
 ```
-- [ ] **UI-5** Settings modal cuts off the API key field on small windows
+- [ ] **UI-0** Settings modal cuts off the API key field on small windows
   <details>
   <summary>Details</summary>
 
@@ -135,6 +135,38 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Once it exists, `yogurt-control/SKILL.md` shrinks to naming the commands, and the behavior becomes testable in `crates/yogurt-cli`.
   </details>
 
+- [ ] **CLI-5** Fixture meetings: `yogurt ctl meeting new --transcript-file` seeds a finished meeting with a known transcript
+  <details>
+  <summary>Details</summary>
+
+  Today the only ways to get a meeting with a transcript are a live recording or `just eval-play`, which speaks the script through the speaker for five minutes and needs TCC grants; `test_support::seed_meeting` never compiles into a runnable binary.
+  So every PR that touches augmented notes or chat is verified by recording a real meeting.
+  Extend `POST /api/meetings` with optional `transcript_json` segments and `ended: true`; `ctl meeting new --transcript-file <segments.json>` sends them and `--from-script scripts/eval/conversation.txt` converts the `A:`/`B:` lines so the eval ground truth doubles as the fixture.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D7.
+  Depends on CLI-4.
+  </details>
+
+- [ ] **CLI-6** `yogurt ctl` second slice, and the control skill rewritten around a generated command block
+  <details>
+  <summary>Details</summary>
+
+  `settings`, `provider`, `models`, `ws`, `meeting mute | search | delete`, once CLI-4's client and port discovery are proven.
+  Then `.claude/skills/yogurt-control/SKILL.md` shrinks to about 150 words: the command block between generator markers (kept honest by the `--help` drift test from DX-4), a Feature Map link, and three rules.
+  Only after the brew release that carries `ctl`: the README's `npx skills add` path installs the skill standalone.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D1 and D2.
+  </details>
+
+- [ ] **CLI-7** `yogurt start --data-dir` so a worktree instance stops sharing `db.sqlite` with the running app
+  <details>
+  <summary>Details</summary>
+
+  One `YOGURT_DATA_DIR` variable threaded into the `db_path` and `app_db_path` seams `RunConfig` already has; `yogurt doctor` reads the same variable.
+  Keys, models and notes stay shared: a per-worktree `keys.json` would conflict with the keys-live-in-one-file constraint.
+  The hazard is real (two migration runners share one file and "whichever fires first wins") but has not bitten; CLI-3's DONE entry already names this fix conditionally.
+  Deferred until it does.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D6.
+  </details>
+
 ## Developer experience
 
 - [ ] **DX-1** `just test` is a weaker gate than CI, and neither exercises the real binary
@@ -155,6 +187,104 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
 
   Worth deciding: a small suite that boots the real debug binary and drives it over REST (which `yogurt ctl` from CLI-4 would make cheap to write), gated behind a feature or an env var so CI can skip the parts needing hardware.
   Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
+  </details>
+
+- [ ] **DX-2** Split DONE out of `docs/TODO.md`; add `just ticket` (list, show, next, done)
+  <details>
+  <summary>Details</summary>
+
+  85% of this file is the DONE section, and every agent that reads the backlog pays about 16k tokens for it.
+  Move DONE to a flat `docs/TODO-DONE.md` (docs-only PR), then `scripts/ticket.sh` behind a `ticket` recipe: list open items, print one block, allocate the next ID across both files, and `done <ID> --note-file` for the checkoff move.
+  Block boundary is the next `- [` or `#` line, never the closing details tag; the scanner skips fenced code (the example above uses a real ID today).
+  `--check` runs in `just lint`.
+  Design: `docs/.planning/agent-workflow.md`, section 4A, A2.
+  </details>
+
+- [ ] **DX-3** `just start <ID> [words]`, `just worktrees`, `just dev-bg`
+  <details>
+  <summary>Details</summary>
+
+  `start`: fetch, one name for worktree and branch from the ticket ID, `git worktree add` from `origin/main`, `just bootstrap`, print the ticket and the absolute handover line; resumes if the same name already exists.
+  `worktrees`: path, branch, PR state, listening ports by process cwd, `dirty`, `removable`.
+  `dev-bg`: `just dev` in a tmux window, port pair read back from the pane, health polled, one line of output.
+  Design: `docs/.planning/agent-workflow.md`, section 4A, A1, A3, A4.
+  Depends on DX-2 for the ticket lookup.
+  </details>
+
+- [ ] **DX-4** CI calls `just`; `lint-web`; Playwright in `just test`; `scripts/check-docs.sh`; control-skill dedupe and `--help` drift test
+  <details>
+  <summary>Details</summary>
+
+  The justfile becomes the single definition of the gates: `lint` stays fmt plus clippy, `lint-web` is the typecheck, `test-web` gains Playwright, `test-rust` matches CI's flags.
+  `check-docs.sh` (ubuntu job, no path filter, about 15 seconds): documented `/api` paths exist in the router, backticked `just` recipes exist, relative links resolve, backticked repo paths exist, no em dash in prose paths, size budgets on AGENTS.md and TODO.md.
+  Same PR: delete the recipes `yogurt-control/SKILL.md` duplicates from AI-INTEGRATION.md, fix the false "no CLI to start headlessly" sentence in both, and add the `--help` drift test that generates the skill's command block.
+  Design: `docs/.planning/agent-workflow.md`, sections 4E (E2, E3) and 4D (D2).
+  Closes the cheap half of DX-1.
+  </details>
+
+- [ ] **DX-5** `scripts/ship.sh pr | land`, tracked git hooks, shared-checkout tree guard
+  <details>
+  <summary>Details</summary>
+
+  `pr` refuses a title without a ticket ID or conventional prefix, a body with attribution or an em dash, a code change without an absolute-path handover line, or a ticket not moved to DONE on the branch.
+  `land` waits for CI (skipped for docs-only), squash-merges with `--match-head-commit`, then from the main checkout removes the worktree (refusing on a dirty tree), deletes the branch, and re-prints the handover; every step resumes.
+  `.githooks/` rejects agent trailers and commits on `main`, activated by `bootstrap` and `setup.sh`.
+  `scripts/lib/tree-guard.sh` refuses builds from the main checkout while other worktrees exist unless `YOGURT_OWN_MAIN=1` is set for that invocation.
+  Design: `docs/.planning/agent-workflow.md`, section 4B.
+  After DX-4, which rewrites the same justfile recipes.
+  </details>
+
+- [ ] **DX-6** One release procedure: fix the untap order, archive the stale runbooks, split the release log, exact-version formula assert
+  <details>
+  <summary>Details</summary>
+
+  The skill and `docs/RELEASING.md` disagree on untap order and both are moot: `brew untap` refuses while a model formula is installed, so upgrade-in-place is the real path.
+  `git mv` `scripts/release-checklist.md` and `scripts/homebrew/` to `docs/archive/`; `release.yml` never reads the seed formula.
+  Move the log table to `docs/RELEASE-LOG.md` and promote its four buried lessons into "When it goes wrong".
+  `release.yml`'s formula test asserts `yogurt <version>` exactly instead of the substring.
+  Design: `docs/.planning/agent-workflow.md`, section 4C, C4 and C5.
+  </details>
+
+- [ ] **DX-7** `scripts/release.sh preflight | ship | verify | finish | untag`, then shrink the release skill
+  <details>
+  <summary>Details</summary>
+
+  Three PRs: `preflight` (read-only judgment gate, replaces skill steps 1-4 in the same PR), then `verify`/`finish`/`untag` (hash check, tap merge, brew upgrade in place, pre-filled log row with a `NARRATIVE:` slot), then `ship` (bump PR from a throwaway worktree, dry run, tag by merge sha via the GitHub API, watch, verify, finish; resumable from GitHub state).
+  Then the skill becomes about 200 words.
+  No `just` recipe: `just release` already means "run the release binary".
+  Design: `docs/.planning/agent-workflow.md`, section 4C, C1 to C3.
+  After DX-6.
+  </details>
+
+- [ ] **DX-8** Feature Map at `docs/FEATURES.md`, with a coverage rule in `check-docs.sh`
+  <details>
+  <summary>Details</summary>
+
+  One table, about 19 rows: what it does, UI path, API, covering test, source anchor, and the `ctl` command once CLI-4 exists.
+  The coverage rule extracts every `.route("...")` literal (spanning lines) and every router path and fails when one has no row and is not in the `internal:` list.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D3.
+  After CLI-4 and DX-4.
+  </details>
+
+- [ ] **DX-9** Rewrite AGENTS.md around the six-command lifecycle, with the cloud-session paragraph
+  <details>
+  <summary>Details</summary>
+
+  About 480 words: constraints, `start`, `ticket`, `dev-bg`, `pr`, `land`, pointers.
+  Evicted rationale (build splice, relative paths, port pair) goes to CONTRIBUTING.md's worktree section first.
+  One paragraph: tickets under `web/` or `docs/` may run as cloud sessions; Rust stays local with the macos-26 runner as the cloud verifier.
+  Only after DX-2 to DX-5 exist.
+  Design: `docs/.planning/agent-workflow.md`, sections 4E (E1) and 4F (F1).
+  </details>
+
+- [ ] **DX-10** `scripts/check-published.sh`: tap formula version, release assets, README formula names and model mirror URLs still resolve
+  <details>
+  <summary>Details</summary>
+
+  Runnable by hand after a formula edit and weekly from a scheduled ubuntu workflow; opens an issue on failure.
+  The one drift a PR-time check cannot see (the v0.3.0 README-versus-tap failure).
+  Design: `docs/.planning/agent-workflow.md`, section 4F, F2.
+  After DX-7.
   </details>
 
 ## DONE
