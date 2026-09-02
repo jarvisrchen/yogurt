@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# yogurt setup — one-time prereq + build script.
+# yogurt setup - one-time prereq + build script.
 #
 # Usage:
 #   ./scripts/setup.sh                 # full setup: check tools, install web deps, build release binary
@@ -64,7 +64,7 @@ bold "[1/5] Checking prerequisites"
 mac_ver=$(sw_vers -productVersion 2>/dev/null || echo "0.0")
 mac_major=${mac_ver%%.*}
 if [ "$mac_major" -lt 13 ] 2>/dev/null; then
-  err "macOS $mac_ver — yogurt needs macOS 13 (Ventura) or newer for ScreenCaptureKit audio."
+  err "macOS $mac_ver - yogurt needs macOS 13 (Ventura) or newer for ScreenCaptureKit audio."
   exit 1
 fi
 ok "macOS $mac_ver"
@@ -151,10 +151,10 @@ elif command -v brew >/dev/null 2>&1; then
   if brew install just >/tmp/yogurt-just-install.log 2>&1; then
     ok "just $(just --version 2>/dev/null | awk '{print $2}') installed"
   else
-    warn "brew install just failed — see /tmp/yogurt-just-install.log. You can still use ./scripts/run-*.sh directly."
+    warn "brew install just failed - see /tmp/yogurt-just-install.log. You can still use ./scripts/run-*.sh directly."
   fi
 else
-  warn "Homebrew not found — skipping 'just' install. Install brew from https://brew.sh, then 'brew install just' (or use ./scripts/run-*.sh directly)."
+  warn "Homebrew not found - skipping 'just' install. Install brew from https://brew.sh, then 'brew install just' (or use ./scripts/run-*.sh directly)."
 fi
 
 # ── 3. .env.local stub ───────────────────────────────────────────
@@ -162,7 +162,7 @@ bold "[3/5] Provisioning .env.local"
 
 if [ ! -f .env.local ]; then
   cat > .env.local <<'EOF'
-# yogurt — local dev API keys. NOT committed (see .gitignore).
+# yogurt - local dev API keys. NOT committed (see .gitignore).
 # Required for cloud transcript (Phase 3):
 YOGURT_DEEPGRAM_API_KEY=
 
@@ -172,7 +172,7 @@ YOGURT_OPENAI_API_KEY=
 # YOGURT_OPENROUTER_API_KEY=
 EOF
   chmod 600 .env.local
-  warn "wrote .env.local stub — only 'just dev' (dev mode) reads it; 'just release' ignores it, paste keys in the Settings UI instead"
+  warn "wrote .env.local stub - only 'just dev' (dev mode) reads it; 'just release' ignores it, paste keys in the Settings UI instead"
 else
   ok ".env.local already exists (not overwriting)"
 fi
@@ -190,7 +190,7 @@ ok "web deps installed"
   cd web
   "${pnpm_runner[@]}" build
 ) >/tmp/yogurt-web-build.log 2>&1 || {
-  err "web build failed — see /tmp/yogurt-web-build.log"
+  err "web build failed - see /tmp/yogurt-web-build.log"
   tail -20 /tmp/yogurt-web-build.log >&2
   exit 1
 }
@@ -201,7 +201,7 @@ if [ "$SKIP_BUILD" = "true" ]; then
   bold "[5/5] Skipping cargo build (--skip-build)"
   dim "    run ./scripts/run-release.sh and it will build on demand"
 else
-  bold "[5/5] Building release binary (this is the slow step — 8-15 min on first run)"
+  bold "[5/5] Building release binary (this is the slow step - 8-15 min on first run)"
   echo "    yogurt-server already pins yogurt-stt with local-stt enabled, so no extra flags."
 
   # Disk space sanity check.
@@ -219,9 +219,9 @@ bold "Done."
 if command -v just >/dev/null 2>&1; then
   echo "Next: just release   (single binary at http://localhost:7878)"
   echo "      just dev       (UI dev with HMR, one terminal)"
-  echo "      just           (no args — lists every recipe)"
+  echo "      just           (no args - lists every recipe)"
 else
   echo "Next: ./scripts/run-release.sh   (single binary at http://localhost:7878)"
   echo "      ./scripts/run-backend.sh + ./scripts/run-frontend.sh   (UI dev with HMR)"
-  echo "      brew install just   (then 'just' lists every recipe — recommended)"
+  echo "      brew install just   (then 'just' lists every recipe - recommended)"
 fi

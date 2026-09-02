@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# refresh-model-hashes — download every whisper.cpp model from HuggingFace
+# refresh-model-hashes - download every whisper.cpp model from HuggingFace
 # and print the SHA256 each one has TODAY. Use the output to update the
 # placeholder hashes in `crates/yogurt-stt/src/models.rs`.
 #

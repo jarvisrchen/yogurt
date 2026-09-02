@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# render-model-formula — print the Homebrew formula for one mirrored
+# render-model-formula - print the Homebrew formula for one mirrored
 # whisper.cpp model (AUD-4). Copy the output into the tap repo at
 # `Formula/yogurt-model-<name>.rb`.
 #
