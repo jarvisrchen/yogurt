@@ -216,7 +216,7 @@ scripts/release.sh ship 0.8.0        # C2
       <div class="card"><div class="id">B2</div><div class="t"><code>just land</code></div><p>CI wait (skipped for docs-only), squash with --match-head-commit, worktree remove (refuses on dirty), branch delete, handover re-printed. Every step resumes.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">M</span></div><div class="dep">same PR as B1</div></div>
       <div class="card"><div class="id">B3</div><div class="t">Tracked git hooks</div><p>commit-msg rejects agent trailers and em dashes; pre-commit refuses main. core.hooksPath set by bootstrap and setup.sh; covers cursor-agent and opencode too.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div></div>
       <div class="card"><div class="id">B4</div><div class="t">GitHub settings, one time</div><p>Squash only, delete branch on merge, PR-only ruleset on main with no required checks and no bypass actors. Also binds Richard.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">min</span></div><div class="dep">decision 1</div></div>
-      <div class="card"><div class="id">B5</div><div class="t">Shared-checkout tree guard</div><p>Refuses just build / dev from the main checkout while other worktrees exist unless YOGURT_OWN_MAIN=1 for that invocation. Never a persistent export.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div><div class="dep">after E3, B2 · decision 11</div></div>
+      <div class="card"><div class="id">B5</div><div class="t">Shared-checkout tree guard</div><p>Decided against. Once just start exists an agent is never in the main checkout; the pre-commit hook covers the commit half; the guard's friction would land on Richard, who is the one who runs from main.</p><div class="meta"><span class="chip skip">skip</span></div><div class="dep">decision 11</div></div>
     </div>
 
     <h3>C · Release</h3>
@@ -258,7 +258,7 @@ scripts/release.sh ship 0.8.0        # C2
       <div class="step"><div class="u">1 · DX-2</div><div class="w">TODO split, just ticket</div><div class="s">afternoon</div></div>
       <div class="step"><div class="u">2 · DX-3</div><div class="w">start, worktrees, dev-bg</div><div class="s">afternoon</div></div>
       <div class="step"><div class="u">3 · DX-4</div><div class="w">CI calls just, check-docs, skill dedupe + drift test</div><div class="s">afternoon</div></div>
-      <div class="step"><div class="u">4 · DX-5</div><div class="w">ship.sh pr | land, hooks, tree guard</div><div class="s">day</div></div>
+      <div class="step"><div class="u">4 · DX-5</div><div class="w">ship.sh pr | land, hooks</div><div class="s">day</div></div>
       <div class="step"><div class="u">5 · DX-6</div><div class="w">one release procedure, formula assert</div><div class="s">afternoon</div></div>
       <div class="step"><div class="u">6 · DX-7</div><div class="w">release.sh in three PRs, then shrink the skill</div><div class="s">day</div></div>
       <div class="step hi"><div class="u">7 · CLI-4</div><div class="w">health identity, yogurt ctl first slice</div><div class="s">day · ships in a release</div></div>
@@ -275,8 +275,26 @@ scripts/release.sh ship 0.8.0        # C2
 
   <section>
     <div class="sect-label">5 · Decisions</div>
-    <h2>Only you can answer these</h2>
-    <p class="lede">Pick an answer and queue it; each question sends exactly one prompt when queued. Notes are optional. Nothing is sent until you press Send to Agent.</p>
+    <h2>Thirteen defaults, one question</h2>
+    <p class="lede">Every question this research raised except one has a defensible default, so those are decided below and each lands by PR where it can be reversed. The last one is an admin action on your account that also binds your own pushes, so it is yours.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>#</th><th>Question</th><th>Decided</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>2</td><td>Worktree and branch name (A1)</td><td>lowercase id plus optional words, no fix/ or docs/ prefix</td><td>the last five code PRs already use it</td></tr>
+        <tr><td>3</td><td>Task ends with just land? (B2)</td><td>yes by default; "just pr, do not land" in the prompt when review is wanted</td><td>13 of the last 20 PRs merged within three minutes</td></tr>
+        <tr><td>4</td><td>ship runs through finish? (C2)</td><td>yes; -n and --no-smoke for exceptions</td><td>every release merged the tap PR right after the hash check</td></tr>
+        <tr><td>5</td><td>Where DONE lives (A2)</td><td>docs/TODO-DONE.md</td><td>ID allocation reads it</td></tr>
+        <tr><td>6</td><td>Feature Map location (D3)</td><td>docs/FEATURES.md</td><td>docs-lint and archive conventions apply uniformly</td></tr>
+        <tr><td>7</td><td>ctl public in the next release, first slice (D1)</td><td>yes</td><td>the README already sends users to the control skill; veto at the CLI-4 PR</td></tr>
+        <tr><td>9</td><td>Em-dash rule scope (E2)</td><td>prose only: markdown, justfile, scripts</td><td>AGENTS.md says "in prose"; 5,883 code-comment hits were never the target</td></tr>
+        <tr><td>10</td><td>tmux as a documented dependency (A4)</td><td>yes</td><td>you asked for tmux on 2026-08-28</td></tr>
+        <tr><td>11</td><td>Shared-checkout tree guard (B5)</td><td>do not build</td><td>just start keeps agents out of main; the guard would only tax you</td></tr>
+        <tr><td>12</td><td>Fixture loader (D7)</td><td>yes</td><td>two optional fields on a local, token-guarded API</td></tr>
+        <tr><td>13</td><td>Release log in its own file (C4)</td><td>yes</td><td>9.5 KB read every release, growing 2 KB each</td></tr>
+        <tr><td>14</td><td>--data-dir (D6)</td><td>deferred</td><td>CLI-3's note says "if that ever bites"; it has not</td></tr>
+      </tbody>
+    </table></div>
+    <h3>The one for you</h3>
     <div id="questions"></div>
   </section>
 
@@ -324,20 +342,7 @@ scripts/release.sh ship 0.8.0        # C2
   // Decision questions: native radios update local state only; the per-question
   // button queues exactly one prompt (Lavish input playbook).
   var QUESTIONS = [
-    ['B4', 'Ruleset on main: PR required, no required status checks, no bypass actors, which also blocks your own direct pushes?'],
-    ['A1', 'One worktree and branch name, lowercase-id plus optional words, dropping the fix/ and docs/ prefixes?'],
-    ['B2', 'just land as the default end of a task, with the prompt saying "just pr, do not land" when you want to review first?'],
-    ['C2', 'ship runs straight through finish (tap merge plus brew upgrade on this machine), rather than stopping for an OK?'],
-    ['A2', 'docs/TODO-DONE.md lives in docs/, not docs/archive/, since ID allocation still reads it?'],
-    ['D3', 'Feature Map at docs/FEATURES.md rather than inside the skill\'s references/?'],
-    ['D1', 'ctl ships publicly in the next brew release with a README section, first slice status / meeting / detect / windows, rest as a fast-follow?'],
-    ['B1', 'Switch squash_merge_commit_message to PR_BODY so the validated body becomes the commit body on main?'],
-    ['E2', 'The em-dash rule covers markdown, justfile and script prose only, never Rust or TypeScript comments?'],
-    ['A4', 'tmux becomes a documented dev dependency?'],
-    ['B5', 'Build the tree guard at all, given you are the one who runs from the main checkout and would type YOGURT_OWN_MAIN=1 just dev there?'],
-    ['D7', 'The fixture loader is worth two optional fields on POST /api/meetings?'],
-    ['C4', 'The release log moves to docs/RELEASE-LOG.md rather than staying inline next to the runbook?'],
-    ['D6', '--data-dir stays deferred until a migration actually bites?']
+    ['B4', 'Change the repo settings once: squash-only, delete branch on merge, squash_merge_commit_message = PR_BODY, and a ruleset on main requiring a pull request with no required status checks and no bypass actors. It also blocks your own direct pushes. Recommendation: yes to all four; nothing else waits on it.']
   ];
   var host = document.getElementById('questions');
   QUESTIONS.forEach(function (q, i) {

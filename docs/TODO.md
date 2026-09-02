@@ -222,16 +222,14 @@ Check off an item (`- [x]`) when the work lands; move it into the matching subse
   Closes the cheap half of DX-1.
   </details>
 
-- [ ] **DX-5** `scripts/ship.sh pr | land`, tracked git hooks, shared-checkout tree guard
+- [ ] **DX-5** `scripts/ship.sh pr | land` and tracked git hooks
   <details>
   <summary>Details</summary>
 
   `pr` refuses a title without a ticket ID or conventional prefix, a body with attribution or an em dash, a code change without an absolute-path handover line, or a ticket not moved to DONE on the branch.
   `land` waits for CI (skipped for docs-only), squash-merges with `--match-head-commit`, then from the main checkout removes the worktree (refusing on a dirty tree), deletes the branch, and re-prints the handover; every step resumes.
   `.githooks/` rejects agent trailers and commits on `main`, activated by `bootstrap` and `setup.sh`.
-  `scripts/lib/tree-guard.sh` refuses builds from the main checkout while other worktrees exist unless `YOGURT_OWN_MAIN=1` is set for that invocation.
   Design: `docs/.planning/agent-workflow.md`, section 4B.
-  After DX-4, which rewrites the same justfile recipes.
   </details>
 
 - [ ] **DX-6** One release procedure: fix the untap order, archive the stale runbooks, split the release log, exact-version formula assert

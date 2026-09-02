@@ -5,7 +5,7 @@ Companion review surface: [../.lavish/agent-workflow.html](../.lavish/agent-work
 
 Richard read Part 1 of lauren (poteto)'s pstack guide and asked what in it applies here.
 The specific ask: what can be scripted between "work on ticket X" and "PR open", at PR completion (merge, cleanup), and for releases, so that each is more repeatable and costs fewer tokens.
-This doc answers that with measured numbers from this repo, a set of proposals that survived adversarial review, an explicit do-not-build list, a ship order with ticket IDs, and the decisions only Richard can make.
+This doc answers that with measured numbers from this repo, a set of proposals that survived adversarial review, an explicit do-not-build list, a ship order with ticket IDs, the defaults chosen for thirteen open questions, and the one decision only Richard can make.
 
 How it was produced: seven research passes over the repo (one per lifecycle or principle), each proposal then reviewed by an independent agent told to refute it against the real files, then a completeness pass against the guide.
 Claims below cite the file they were checked against.
@@ -220,13 +220,11 @@ Run by hand, record the commands in `docs/RELEASING.md` "One-time prerequisites"
 Absorbs the squash-merge paragraph including the `1656270` story and the remote half of `land`'s cleanup.
 It also binds Richard's own direct pushes; that is the stated convention, but he should choose it.
 
-**B5. Shared-checkout build guard** (next, S, after E3 and B2, flagged for decision 11).
-`scripts/lib/tree-guard.sh`, sourced by `run-backend.sh`, `run-release.sh`, and the `build` and `test` recipes (which become bash bodies like `dev` and `bootstrap`): if the cwd is the main checkout (`git rev-parse --git-common-dir` prints `.git` there and an absolute path inside a worktree), more than one worktree exists, and `YOGURT_OWN_MAIN` is unset, exit 2 with "this is the shared checkout; run from a worktree, or `YOGURT_OWN_MAIN=1 just build` if you own this tree".
-The variable is per invocation, never a persistent shell export: an export in Richard's profile is inherited by every agent spawned from that shell and disables the guard for exactly the case it targets.
-The guard covers `just` and script entry points only, not a bare `cargo build`; say so in its message and in the docs.
-Land it after B2, otherwise stale worktrees make "more than one worktree" the permanent state and the guard fires on every invocation from `main`.
-Write the build-splice rationale into CONTRIBUTING.md's worktree section, which has none of it today.
-Absorbs AGENTS.md lines 54-56, the single largest paragraph.
+**B5. Shared-checkout build guard** (do not build; decision 11).
+The design was sound: `scripts/lib/tree-guard.sh` refusing `just build` and `just dev` from the main checkout while other worktrees exist unless `YOGURT_OWN_MAIN=1` is set for that one invocation (never a persistent export, which every agent spawned from that shell would inherit).
+It is not worth its cost.
+Once `just start` exists an agent is never in the main checkout to begin with, the pre-commit hook (B3) stops the commit half of the failure, and the guard's remaining friction lands on Richard, who is the one who runs from `main`.
+Move the build-splice rationale from AGENTS.md lines 54-56 into CONTRIBUTING.md's worktree section as prose, and revisit the guard only if an agent builds in the shared checkout after DX-3 lands.
 
 ### 4C. Release
 
@@ -355,7 +353,7 @@ Two optional fields on a local, token-guarded API is the whole product surface c
 
 ### 4E. Instructions and docs
 
-**E1. Rewrite AGENTS.md to about 480 words** (later, S, after A1, A2, B1-B5, E3).
+**E1. Rewrite AGENTS.md to about 480 words** (later, S, after A1, A2, B1-B4, E3).
 Outline: what yogurt is (40 words); read ARCHITECTURE first (20); hard constraints as six self-contained bullets, with the CLI-provider exception cut to one real sentence plus a pointer to ARCHITECTURE section 7.6 (95); the task lifecycle as the six commands in section 3 (70); repo layout as pointers (100); conventions (150), including the one cloud-session paragraph from F1.
 Evicted rationale (build splice, relative-path handover, port pair, gitignored files) is written into CONTRIBUTING.md's worktree section first; only the port-pair and gitignored-files parts are there today.
 The word count is a budget, not a contract: the file has changed every few days.
@@ -371,7 +369,7 @@ The first run also fails on `crates/yogurt-audio/README.md` line 60, whose link 
 It has to run outside the rust job because `ci.yml` skips docs-only PRs, which is where docs drift is introduced.
 The route rule is one-directional (documented paths must exist); the reverse rule is D3's.
 
-**E3. CI calls `just`** (now, S, before E1 and B5).
+**E3. CI calls `just`** (now, S, before E1).
 Install `just` in both CI jobs with a pinned action version.
 Keep `lint` as fmt plus clippy (called by the rust job) and add `lint-web` for the typecheck (called by the web job, which has no cargo); make `test-web` run vitest plus Playwright; `test-rust` gains `--no-fail-fast` to match CI; `test` equals the two halves.
 Note the Playwright first-run prerequisite (`pnpm --dir web exec playwright install chromium`) on the recipe.
@@ -413,7 +411,7 @@ Consolidated from the reviewers, with the reason each time.
 - A `.github/pull_request_template.md`. Ignored whenever `--body` is passed.
 - A `--force` or merge-on-red flag on `land`. Red CI is a hard stop; the one-off merge stays a deliberate act by hand.
 - `land` pulling the shared checkout's `main`, writing the DONE note itself, or removing a worktree with untracked files.
-- A persistent `YOGURT_OWN_MAIN` export in a shell profile. Every agent spawned from that shell inherits it and the guard is off.
+- The shared-checkout tree guard itself, and any persistent `YOGURT_OWN_MAIN` export. `just start` keeps agents out of the main checkout; the guard would only tax Richard, and a profile export would disable it for every agent spawned from that shell.
 - A Claude Code PreToolUse hook for commit rules. It covers only Claude Code; the tracked git hooks cover every agent that uses git.
 - Enabling the global `gsd-validate-commit.sh` hook via `.planning/config.json`. It enforces Conventional Commits, which rejects the `UI-7: ...` title convention.
 - Release-profile builds for both arches on every PR to make the dry run unnecessary. Two extra macOS runners on 28 merges in three days to save one 3-minute dispatch per release, and the packaging steps would still be unexercised.
@@ -450,7 +448,7 @@ The first two units are one afternoon each and pay back the same day.
 | 1 | A2 TODO split (docs PR), then `just ticket` with its `--check` in `just lint`; fix the two stale AGENTS.md command lines | afternoon | DX-2 |
 | 2 | A1 `just start`; A3 `just worktrees`; A4 `just dev-bg` | afternoon | DX-3 |
 | 3 | E3 CI calls `just`, `lint-web`, Playwright in `test`; E2 `check-docs.sh` with the 61-hit cleanup; D2's two "now" steps (skill dedupe and false claim, `--help` drift test) | afternoon | DX-4 |
-| 4 | B1 `just pr` and B2 `just land` in one `scripts/ship.sh`; B3 git hooks; B5 tree guard last | day | DX-5 |
+| 4 | B1 `just pr` and B2 `just land` in one `scripts/ship.sh`; B3 git hooks | day | DX-5 |
 | 5 | C4 one release procedure (untap fix, archive, log split); C5 formula assert | afternoon | DX-6 |
 | 6 | C1 preflight with the skill edit; then C3 verify/finish/untag; then C2 ship; then shrink the skill. Prove it on the next release | day, three PRs | DX-7 |
 | 7 | D5 health identity; D1 `yogurt ctl` first slice | day | CLI-4 (exists) |
@@ -466,26 +464,32 @@ The first two units are one afternoon each and pay back the same day.
 The single highest-leverage unit is 7, because the skill, the Feature Map, the smoke suite, the fixture loader and the manual-test handover all name `ctl`.
 It is also the only unit that changes the shipped binary, so it goes out in a release.
 Units 1 and 2 go first only because they are cheaper and remove the two most-repeated costs (the TODO read and the worktree setup) the same day.
-Unit 3 goes before unit 4 because B5 rewrites the same justfile recipes E3 corrects.
 
-## 7. Decisions for Richard
+## 7. Decisions
 
-Yes or no, in the order they are needed.
+Thirteen of the questions this research raised have a defensible default, so they are decided here rather than left open.
+Each lands by PR, so any of them can be reversed at review.
 
-1. Ruleset on `main` with a PR requirement, no required status checks, and no bypass actors, which also blocks your own direct pushes (B4)?
-2. `<lowercase-id>[-words]` as the one worktree and branch name, dropping the `fix/` and `docs/` prefixes (A1)?
-3. `just land` as the default end of a task, with the prompt saying "just pr, do not land" when you want to review first (B2)?
-4. `ship` runs straight through `finish` (tap merge plus brew upgrade on this machine), or stops before it for an OK (C2)?
-5. `docs/TODO-DONE.md` in `docs/`, not `docs/archive/`, since ID allocation still reads it (A2)?
-6. Feature Map at `docs/FEATURES.md` rather than inside the skill's `references/` (D3)?
-7. `ctl` ships publicly in the next brew release with a README section, and its first slice is `status`, `meeting`, `detect`, `windows` with the rest as a fast-follow (D1)?
-8. Switch `squash_merge_commit_message` from `COMMIT_MESSAGES` to `PR_BODY`, so the validated PR body becomes the commit body on `main` and branch-commit hygiene stops mattering (B1)?
-9. The em-dash rule covers markdown, justfile and script prose only, never Rust or TypeScript comments (E2)?
-10. tmux becomes a documented dev dependency (A4)?
-11. The tree guard at all, given you are the one who runs from the main checkout and would type `YOGURT_OWN_MAIN=1 just dev` there (B5)?
-12. The fixture loader is worth two optional fields on `POST /api/meetings` (D7)?
-13. The release log moves to `docs/RELEASE-LOG.md` rather than staying inline next to the runbook (C4)?
-14. `--data-dir` stays deferred until a migration actually bites (D6)?
+| # | Question | Decided | Why |
+| --- | --- | --- | --- |
+| 2 | Worktree and branch name (A1) | `<lowercase-id>[-words]`, no `fix/` or `docs/` prefix | the last five code PRs already use it; one style is the point |
+| 3 | Does a task end with `just land`? (B2) | yes by default; the prompt says "just pr, do not land" when review is wanted | today's behaviour: 13 of the last 20 PRs merged within three minutes of opening |
+| 4 | Does `ship` run through `finish`? (C2) | yes; `-n` and `--no-smoke` exist for the exceptions | every release so far merged the tap PR immediately after the hash check |
+| 5 | Where DONE lives (A2) | `docs/TODO-DONE.md` | ID allocation reads it, so it is not archive material |
+| 6 | Feature Map location (D3) | `docs/FEATURES.md` | the docs-lint and archive conventions apply uniformly |
+| 7 | `ctl` public in the next release, first slice as in D1 (D1) | yes | the README already sends external users to install the control skill; a subcommand is the same class as `doctor`; veto at the CLI-4 PR if not |
+| 9 | Em-dash rule scope (E2) | markdown, justfile and script prose only | AGENTS.md says "in prose"; 5,883 hits in code comments say the rule never meant them |
+| 10 | tmux as a documented dev dependency (A4) | yes | Richard asked for tmux on 2026-08-28 |
+| 11 | Shared-checkout tree guard (B5) | do not build | with `just start` and the pre-commit hook an agent is never in the main checkout to begin with; the guard's remaining cost lands on Richard every time he runs from `main`. Revisit if an agent builds there after DX-3 lands |
+| 12 | Fixture loader (D7) | yes | two optional fields on a local, token-guarded API |
+| 13 | Release log in its own file (C4) | yes | 9.5 KB read on every release, growing 2 KB per release |
+| 14 | `--data-dir` (D6) | deferred | CLI-3's own note says "if that ever bites"; it has not |
+
+The one that needs Richard, because it is an admin action on his account and binds his own pushes:
+
+1. Change the repo settings once: squash-only, delete branch on merge, `squash_merge_commit_message` set to `PR_BODY` so the validated PR body becomes the commit body on `main`, and a ruleset on `main` requiring a pull request with no required status checks and no bypass actors (B4, B1).
+Recommendation: yes to all four.
+Nothing else in this plan waits on it; `just land` deletes the remote branch itself until `delete_branch_on_merge` makes that a no-op.
 
 ## 8. Measurements and open questions
 
