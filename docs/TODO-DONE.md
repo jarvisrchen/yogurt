@@ -743,3 +743,16 @@ New closed items go at the bottom.
 
   Landed in #63 (2026-09-02). Adds `scripts/ship.sh pr | land` (design: docs/.planning/agent-workflow.md section 4B) and tracked `.githooks/` (commit-msg, pre-commit) wired via `git config core.hooksPath .githooks` in `just bootstrap` and `scripts/setup.sh`. `pr` validates title, body (attribution/em dash), an absolute-path handover line for code changes, and ticket checkoff before pushing and opening the PR; `land` waits for CI (skipped for docs-only), squash-merges, and cleans up the worktree/branch, resumable at every step. Verified with `scripts/tests/ship_test.sh` (33 cases) and `scripts/tests/hooks_test.sh` (11 cases), both wired into `just lint`; `just lint` and `just test` green; real `just pr --dry-run` and `just land --dry-run` runs and a live commit-msg hook rejection in this worktree.
   </details>
+
+- [x] **DX-7** `scripts/release.sh preflight | ship | verify | finish | untag`, then shrink the release skill
+  <details>
+  <summary>Details</summary>
+
+  Three PRs: `preflight` (read-only judgment gate, replaces skill steps 1-4 in the same PR), then `verify`/`finish`/`untag` (hash check, tap merge, brew upgrade in place, pre-filled log row with a `NARRATIVE:` slot), then `ship` (bump PR from a throwaway worktree, dry run, tag by merge sha via the GitHub API, watch, verify, finish; resumable from GitHub state).
+  Then the skill becomes about 200 words.
+  No `just` recipe: `just release` already means "run the release binary".
+  Design: `docs/.planning/agent-workflow.md`, section 4C, C1 to C3.
+  After DX-6.
+
+  Landed in #64 (2026-09-02). Third PR: `scripts/release.sh ship <version>` orchestrates preflight, the dry-run dispatch, a throwaway-worktree version bump PR (marked with `<!-- yogurt-release: P=<sha> -->` for resumability), the merge, a "main moved" parent-sha assertion, tagging by merge sha via the GitHub API, watching the Release run, then `verify` and `finish`. Every step derives done/not-done from GitHub state so a timed-out run resumes on re-invocation. `-n` runs preflight for real (read-only) and then prints the plan for every mutating step. Verified against the live repo: `ship 0.8.0 -n` prints the real plan (correctly blocking by default on the currently-open #63 doc PR, then showing the full plan with `--allow-open-docs`); `ship 0.7.0 -n` fails preflight (tag exists) and stops before the plan, exit 1; `ship` with no version exits 2. The release skill shrunk from 800 to ~295 words. `ship` itself has not been run for real yet - the next actual release is the test.
+  </details>
