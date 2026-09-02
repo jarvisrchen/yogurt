@@ -163,16 +163,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   After DX-6.
   </details>
 
-- [ ] **DX-8** Feature Map at `docs/FEATURES.md`, with a coverage rule in `check-docs.sh`
-  <details>
-  <summary>Details</summary>
-
-  One table, about 19 rows: what it does, UI path, API, covering test, source anchor, and the `ctl` command once CLI-4 exists.
-  The coverage rule extracts every `.route("...")` literal (spanning lines) and every router path and fails when one has no row and is not in the `internal:` list.
-  Design: `docs/.planning/agent-workflow.md`, section 4D, D3.
-  After CLI-4 and DX-4.
-  </details>
-
 - [ ] **DX-9** Rewrite AGENTS.md around the six-command lifecycle, with the cloud-session paragraph
   <details>
   <summary>Details</summary>

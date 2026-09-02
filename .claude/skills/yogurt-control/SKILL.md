@@ -7,6 +7,7 @@ description: Read or control a meeting in a running yogurt instance. Use when ha
 
 [docs/AI-INTEGRATION.md](../../../docs/AI-INTEGRATION.md) is the full API surface: auth, every recipe below, and the offline fallback.
 This skill is the short version - when to reach for it, and the rules the recipes don't say out loud.
+[docs/FEATURES.md](../../../docs/FEATURES.md) maps every feature to its UI path, API route, and `ctl` command.
 
 ## The binary
 

@@ -124,6 +124,34 @@ agents_size=$(wc -c <AGENTS.md | tr -d ' ')
 todo_size=$(wc -c <docs/TODO.md | tr -d ' ')
 [ "$todo_size" -lt 24576 ] || violate "docs/TODO.md:1" "size" "$todo_size bytes exceeds the 24 KB budget"
 
+# --- Rule 7: every route must be in the feature map (DX-8) ------------------
+#
+# docs/FEATURES.md maps every real route to a feature or lists it under
+# "## Internal routes"; this is the reverse of rule 1 (there, documented
+# paths must be real; here, real routes must be documented). Reuses $routes
+# (the .route("...") literals rule 1 already extracted, spanning lines) and
+# adds every `path:` literal from web/src/router.tsx. axum writes params as
+# `{id}` (and `{*rest}` for a catch-all); the router writes them as `:id`,
+# so server routes are normalized to the router's `:param` style before
+# matching - `{*rest}` -> `:rest`, `{id}` -> `:id` - and compared as a plain
+# substring of docs/FEATURES.md. router.tsx has no nested `path:` composition
+# today (every route is already a full path under a pathless layout route),
+# so each `path:` literal is used exactly as extracted, with no composing.
+router_paths=$(grep -oE 'path: *"[^"]*"' web/src/router.tsx | sed -E 's/^path: *"//; s/"$//')
+if [ -z "$router_paths" ]; then
+  echo "check-docs: found zero router paths in web/src/router.tsx - extraction is broken"
+  exit 1
+fi
+normalized_routes=$(echo "$routes" | sed -E 's/\{\*([A-Za-z0-9_]+)\}/:\1/g; s/\{([A-Za-z0-9_]+)\}/:\1/g')
+{
+  echo "$normalized_routes"
+  echo "$router_paths"
+} | while IFS= read -r r; do
+  [ -z "$r" ] && continue
+  grep -qF "$r" docs/FEATURES.md ||
+    violate "docs/FEATURES.md:1" "route-coverage" "route not in feature map: $r"
+done
+
 # --- Report ------------------------------------------------------------------
 
 if [ -s "$VIOLATIONS" ]; then
