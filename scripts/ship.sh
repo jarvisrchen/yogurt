@@ -156,13 +156,17 @@ check_title() {
 }
 
 check_body_attribution_and_em_dash() {
-  local body_file="$1" line em_dash
-  line="$(grep -ni 'generated with' "$body_file" | head -1 || true)"
-  [ -n "$line" ] && die "PR body contains \"Generated with\": $line" "remove the agent attribution" 1
-  line="$(grep -nEi 'co-authored-by:.*(claude|anthropic|codex|cursor|opencode|copilot)' "$body_file" | head -1 || true)"
-  [ -n "$line" ] && die "PR body contains a Co-Authored-By trailer naming an agent: $line" "remove it" 1
+  local body_file="$1" stripped line em_dash
+  # Checked against the body with code spans/fences blanked out - a PR
+  # about this very script needs to say "Generated with" in a code span
+  # without tripping the rule it is describing.
+  stripped="$(strip_code_spans "$body_file")"
+  line="$(printf '%s\n' "$stripped" | grep -ni 'generated with' | head -1 || true)"
+  [ -n "$line" ] && die "PR body contains \"Generated with\" outside a code span: $line" "remove the agent attribution" 1
+  line="$(printf '%s\n' "$stripped" | grep -nEi 'co-authored-by:.*(claude|anthropic|codex|cursor|opencode|copilot)' | head -1 || true)"
+  [ -n "$line" ] && die "PR body contains a Co-Authored-By trailer naming an agent outside a code span: $line" "remove it" 1
   em_dash="$(printf '\xe2\x80\x94')"
-  line="$(strip_code_spans "$body_file" | grep -nF "$em_dash" | head -1 || true)"
+  line="$(printf '%s\n' "$stripped" | grep -nF "$em_dash" | head -1 || true)"
   [ -n "$line" ] && die "PR body contains an em dash outside a code span: $line" "use a plain '-' instead" 1
   return 0
 }
@@ -458,4 +462,8 @@ main() {
   esac
 }
 
-main "$@"
+# Skip when sourced, matching scripts/release.sh, so sourcing never runs a
+# command or exits.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
