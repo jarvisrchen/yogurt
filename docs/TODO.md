@@ -190,17 +190,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
   </details>
 
-- [ ] **DX-2** Split DONE out of `docs/TODO.md`; add `just ticket` (list, show, next, done)
-  <details>
-  <summary>Details</summary>
-
-  85% of this file is the DONE section, and every agent that reads the backlog pays about 16k tokens for it.
-  Move DONE to a flat `docs/TODO-DONE.md` (docs-only PR), then `scripts/ticket.sh` behind a `ticket` recipe: list open items, print one block, allocate the next ID across both files, and `done <ID> --note-file` for the checkoff move.
-  Block boundary is the next `- [` or `#` line, never the closing details tag; the scanner skips fenced code (the example above uses a real ID today).
-  `--check` runs in `just lint`.
-  Design: `docs/.planning/agent-workflow.md`, section 4A, A2.
-  </details>
-
 - [ ] **DX-3** `just start <ID> [words]`, `just worktrees`, `just dev-bg`
   <details>
   <summary>Details</summary>
