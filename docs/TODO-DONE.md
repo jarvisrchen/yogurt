@@ -658,7 +658,7 @@ New closed items go at the bottom.
   Deferred until it does.
   Design: `docs/.planning/agent-workflow.md`, section 4D, D6.
 
-  Landed in #PLACEHOLDER (2026-09-02). One resolver, `crates/yogurt-cli/src/data_dir.rs`, used by `start`, `doctor`, and `ctl meeting`'s local-DB read fallback: `--data-dir <path>` / `$YOGURT_DATA_DIR` (flag wins, pure `precedence` function with a unit test) relocates `RunConfig::db_path` and `app_db_path` to the same `<dir>/db.sqlite`, mirroring the production default where both already resolve to one file.
+  Landed in #59 (2026-09-02). One resolver, `crates/yogurt-cli/src/data_dir.rs`, used by `start`, `doctor`, and `ctl meeting`'s local-DB read fallback: `--data-dir <path>` / `$YOGURT_DATA_DIR` (flag wins, pure `precedence` function with a unit test) relocates `RunConfig::db_path` and `app_db_path` to the same `<dir>/db.sqlite`, mirroring the production default where both already resolve to one file.
   Keys, models, and notes are untouched, still under `~/.yogurt`.
   `doctor --json` reports the actual path in use; `ctl meeting`'s `open_db_readonly` (no `--data-dir` flag there, env only) reads the same variable so `ctl meeting list` with no server running can't disagree with a running `--data-dir` instance.
   `CONTRIBUTING.md`'s worktree section and `scripts/run-backend.sh` document `YOGURT_DATA_DIR` for the dev loop (the script needs no code change - unknown flags already forward and env vars already inherit through `exec`).
