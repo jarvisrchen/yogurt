@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent workflow · pstack applied to yogurt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Tokens copied verbatim from web/src/index.css's @theme block, so this
+     renders in the app's real palette rather than an invented one. */
+  :root {
+    --color-paper:   #FBF7EF;
+    --color-card:    #FFFFFF;
+    --color-ink:     #211D18;
+    --color-grey:    #A89F90;
+    --color-line:    #EBE3D5;
+    --color-blue:    #5B4FC7;
+    --color-blsoft:  #ECE9FB;
+    --color-straw:   #E07A66;
+    --color-strsoft: #FBE6E0;
+    --color-matcha:  #5E9E73;
+    --color-mtsoft:  #E7F0E8;
+    --color-honey:   #A67C1B;
+    --color-honeysoft: #FBF0D6;
+    --color-slate:   #4E5D6B;
+    --color-slatesoft: #E8ECF0;
+    --color-mut:     #8A8174;
+    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --radius-chip: 6px;
+    --radius-button: 9px;
+    --radius-card: 14px;
+    --shadow-card: 0 2px 6px rgba(40, 30, 15, 0.08);
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.55; }
+  .page { max-width: 880px; margin: 0 auto; padding: 48px 32px 90px; }
+  a { color: var(--color-blue); }
+  code { font-family: var(--font-mono); font-size: 12.5px; background: var(--color-card); border: 1px solid var(--color-line); border-radius: 5px; padding: 1px 5px; word-break: break-word; }
+  pre { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; background: var(--color-card); border: 1px solid var(--color-line); border-radius: var(--radius-card); padding: 14px 16px; overflow-x: auto; margin: 0; }
+  pre code { border: 0; padding: 0; background: none; }
+
+  .kicker { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-mut); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  h1 { font-weight: 700; letter-spacing: -0.01em; font-size: 30px; margin: 8px 0 6px; }
+  .dek { color: var(--color-mut); font-size: 14.5px; max-width: 64ch; margin: 0 0 24px; }
+  h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  section { margin-bottom: 52px; }
+  .sect-label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-mut); margin-bottom: 10px; }
+  .lede { color: var(--color-mut); font-size: 14px; max-width: 70ch; margin: 0 0 16px; }
+
+  .callout { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 44px; }
+  .stat { background: var(--color-card); border: 1px solid var(--color-line); border-radius: var(--radius-card); padding: 14px 16px; box-shadow: var(--shadow-card); }
+  .stat .n { font-family: var(--font-mono); font-size: 22px; font-weight: 600; color: var(--color-blue); }
+  .stat .l { font-size: 12.5px; color: var(--color-mut); margin-top: 2px; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--color-line); border-radius: var(--radius-card); background: var(--color-card); box-shadow: var(--shadow-card); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--color-line); }
+  th { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-mut); background: var(--color-paper); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.k { white-space: nowrap; font-weight: 600; }
+
+  .chip { display: inline-block; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; border-radius: var(--radius-chip); padding: 2px 7px; margin-right: 4px; white-space: nowrap; }
+  .chip.now { background: var(--color-mtsoft); color: var(--color-matcha); }
+  .chip.next { background: var(--color-blsoft); color: var(--color-blue); }
+  .chip.later { background: var(--color-honeysoft); color: var(--color-honey); }
+  .chip.skip { background: var(--color-strsoft); color: var(--color-straw); }
+  .chip.fit { background: var(--color-mtsoft); color: var(--color-matcha); }
+  .chip.gap { background: var(--color-strsoft); color: var(--color-straw); }
+  .chip.nofit { background: var(--color-slatesoft); color: var(--color-slate); }
+  .chip.effort { background: var(--color-paper); color: var(--color-mut); border: 1px solid var(--color-line); }
+  .chip.ticket { background: var(--color-card); color: var(--color-ink); border: 1px solid var(--color-line); text-transform: none; }
+
+  .twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .panel { background: var(--color-card); border: 1px solid var(--color-line); border-radius: var(--radius-card); padding: 14px 16px; box-shadow: var(--shadow-card); }
+  .panel h4 { margin: 0 0 8px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-mut); }
+  .panel.today h4 { color: var(--color-straw); }
+  .panel.after h4 { color: var(--color-matcha); }
+  .steps { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .steps li { margin: 4px 0; }
+  .steps .cost { color: var(--color-mut); font-size: 12.5px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--color-card); border: 1px solid var(--color-line); border-radius: var(--radius-card); padding: 12px 14px; box-shadow: var(--shadow-card); }
+  .card .id { font-family: var(--font-mono); font-size: 11px; color: var(--color-mut); }
+  .card .t { font-weight: 600; font-size: 14px; margin: 2px 0 6px; }
+  .card p { margin: 0 0 8px; font-size: 13px; color: var(--color-ink); }
+  .card .meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .card .dep { font-size: 12px; color: var(--color-mut); margin-top: 6px; }
+
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .step { background: var(--color-card); border: 1px solid var(--color-line); border-radius: var(--radius-button); padding: 10px 12px; font-size: 13px; position: relative; }
+  .step .u { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-mut); }
+  .step .w { font-weight: 600; }
+  .step .s { font-size: 12px; color: var(--color-mut); }
+  .step.hi { border-color: var(--color-blue); background: var(--color-blsoft); }
+
+  form.q { background: var(--color-card); border: 1px solid var(--color-line); border-radius: var(--radius-card); padding: 12px 14px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
+  form.q .qt { font-size: 14px; margin: 0 0 8px; }
+  form.q .qt .ref { font-family: var(--font-mono); font-size: 11px; color: var(--color-mut); margin-left: 6px; }
+  form.q label { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: 13.5px; }
+  form.q input[type=text] { font-family: var(--font-sans); font-size: 13px; border: 1px solid var(--color-line); border-radius: var(--radius-button); padding: 6px 8px; width: 100%; max-width: 420px; margin-top: 8px; display: block; }
+  form.q button { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--color-card); background: var(--color-blue); border: 0; border-radius: var(--radius-button); padding: 7px 12px; margin-top: 10px; cursor: pointer; }
+  form.q .queued { font-family: var(--font-mono); font-size: 11px; color: var(--color-matcha); margin-left: 10px; }
+
+  details { border: 1px solid var(--color-line); border-radius: var(--radius-card); background: var(--color-card); padding: 10px 14px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  details ul { font-size: 13.5px; padding-left: 18px; }
+  details li { margin: 5px 0; }
+  .note { font-size: 13px; color: var(--color-mut); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="kicker"><span>docs/.planning/agent-workflow.md</span> <span>·</span> <span>research, 2026-09-01</span></div>
+  <h1>Agent workflow: pstack applied to yogurt</h1>
+  <p class="dek">What in lauren's pstack guide fits a macOS-only, one-binary meeting app, and which steps between "work on ticket X", "merged and cleaned up", and "released" become scripts. Proposals below survived an adversarial review pass against the real repo; the markdown doc carries the full text and citations.</p>
+
+  <div class="callout">
+    <div class="stat"><div class="n">35 s</div><div class="l">cold debug build in a fresh worktree, 290 crates incl. whisper.cpp (setup.sh says 8-15 min: that is the release profile)</div></div>
+    <div class="stat"><div class="n">85%</div><div class="l">of docs/TODO.md is the DONE section: 64 of 76 KB, about 16k tokens per read, 6 open tickets</div></div>
+    <div class="stat"><div class="n">0 / 23</div><div class="l">merges followed by the worktree + branch cleanup AGENTS.md prescribes; 23 merged branches still on origin</div></div>
+    <div class="stat"><div class="n">3 + 1</div><div class="l">scripts (task, ship, release) plus one CLI subcommand (yogurt ctl) absorb the mechanics of all three lifecycles</div></div>
+  </div>
+
+  <section>
+    <div class="sect-label">1 · Principle by principle</div>
+    <h2>What pstack says, what yogurt has</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>pstack principle</th><th>yogurt today</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td class="k">Verification skill closes the loop</td><td>Curl recipes in a skill; every macOS-facing check is a human clicking. MTG-11 shipped with a fabricated window-title verification.</td><td><span class="chip gap">gap</span> CLI-4 + DX-1 made concrete (4D)</td></tr>
+        <tr><td class="k">Build the Lever: tools over markdown</td><td><code>yogurt doctor --json</code> is the only machine-readable surface. Everything else is prose, in three disagreeing copies for releases.</td><td><span class="chip fit">applies</span> most proposals are "replace a paragraph with a command"</td></tr>
+        <tr><td class="k">Invest in the dev utility, seed data</td><td><code>just bootstrap</code> / <code>just dev</code> are good. Nothing creates the worktree, finds the ticket, opens or lands the PR, or seeds a meeting with a known transcript.</td><td><span class="chip gap">gap</span> 4A, 4B, and the fixture loader D7</td></tr>
+        <tr><td class="k">Cloud agents over worktrees</td><td>ScreenCaptureKit, TCC, real audio, Metal whisper. The workspace does not compile on Linux. 6 of the last 9 feature PRs were local-only.</td><td><span class="chip nofit">non-fit</span> for Rust; the free macos-26 runner is the cloud verifier already (4F)</td></tr>
+        <tr><td class="k">Feature Map</td><td>The 64 KB DONE section is the de facto inventory.</td><td><span class="chip fit">later</span> one guarded table, after <code>ctl</code> exists (D3)</td></tr>
+        <tr><td class="k">Daily maintenance loop</td><td>No drift check. AGENTS.md describes <code>just lint</code> and <code>just build</code> wrongly today.</td><td><span class="chip fit">applies</span> as a 40-line grep on every PR, not an LLM audit (E2)</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="sect-label">2 · Three lifecycles</div>
+    <h2>Today versus proposed</h2>
+    <p class="lede">Left is what an agent does now, following AGENTS.md by hand. Right is the command that absorbs it. Judgment (what to build, whether to merge, the release narrative) stays where it is.</p>
+
+    <h3>Task start</h3>
+    <div class="twocol">
+      <div class="panel today"><h4>today</h4><ol class="steps">
+        <li>git fetch (unwritten, seen in the reflog)</li>
+        <li>git worktree add with an invented slug <span class="cost">· four naming styles across 50 PRs</span></li>
+        <li>just dev, which runs bootstrap</li>
+        <li>grep or read docs/TODO.md for the ticket <span class="cost">· up to 16k tokens</span></li>
+        <li>tmux from memory, poll health, capture-pane for the port <span class="cost">· 3-5 calls</span></li>
+      </ol></div>
+      <div class="panel after"><h4>proposed</h4><pre><code>just start MTG-10 flash   # A1
+just dev-bg               # A4
+just ticket MTG-10        # A2
+just worktrees            # A3</code></pre></div>
+    </div>
+
+    <h3>Task end</h3>
+    <div class="twocol">
+      <div class="panel today"><h4>today</h4><ol class="steps">
+        <li>just lint, just test <span class="cost">· weaker than CI (no Playwright)</span></li>
+        <li>commit with no trailers <span class="cost">· prose only, no hooks</span></li>
+        <li>gh pr create, hand-written body <span class="cost">· 5 heading schemes in 6 PRs; #46 used the forbidden relative path</span></li>
+        <li>gh pr checks --watch <span class="cost">· exits 1 on docs-only PRs</span></li>
+        <li>gh pr merge --squash --delete-branch <span class="cost">· fails from inside the worktree</span></li>
+        <li>worktree remove, branch -D, remote delete <span class="cost">· 0 of 23</span></li>
+      </ol></div>
+      <div class="panel after"><h4>proposed</h4><pre><code>just ticket done MTG-10 --note-file n.md
+just pr "MTG-10: ..." --body-file b.md   # B1
+just land                                # B2
+# hooks (B3) + repo settings (B4) make
+# the rules structural, not prose</code></pre></div>
+    </div>
+
+    <h3>Release</h3>
+    <div class="twocol">
+      <div class="panel today"><h4>today</h4><ol class="steps">
+        <li>11 skill steps, 846 words, plus a bump PR and a log PR <span class="cost">· 14 mechanical PRs across 7 releases</span></li>
+        <li>step 3 is redundant, step 1 is unsatisfiable after a docs-only commit</li>
+        <li>step 10's untap order fails on this machine and has for 3 releases</li>
+        <li>three procedure copies that disagree; scripts/homebrew/ is dead</li>
+      </ol></div>
+      <div class="panel after"><h4>proposed</h4><pre><code>scripts/release.sh preflight 0.8.0   # C1
+scripts/release.sh ship 0.8.0        # C2
+#   bump PR, dry run, tag by merge sha,
+#   watch, verify, finish (C3)
+# narrative goes in the printed log row</code></pre></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sect-label">3 · Proposals</div>
+    <h2>What survived review</h2>
+    <p class="lede">Each card is one proposal from the doc. Priority: <span class="chip now">now</span> this week, <span class="chip next">next</span> after the now items, <span class="chip later">later</span> after a precondition, <span class="chip skip">skip</span> do not build. Click a card to annotate it.</p>
+
+    <h3>A · Task start</h3>
+    <div class="cards">
+      <div class="card"><div class="id">A1</div><div class="t"><code>just start &lt;ID&gt; [words]</code></div><p>Fetch, one name for worktree and branch, worktree add from origin/main, bootstrap, print ticket and absolute handover. Resumes if the name already exists.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div><div class="dep">after A2</div></div>
+      <div class="card"><div class="id">A2</div><div class="t">Split DONE; <code>just ticket</code></div><p>DONE moves to a flat docs/TODO-DONE.md. list / show / next / done --note-file. Fence-aware, never keyed on &lt;/details&gt;. --check in just lint.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div><div class="dep">largest single token item</div></div>
+      <div class="card"><div class="id">A3</div><div class="t"><code>just worktrees</code></div><p>Path, branch, PR state, ports by process cwd, dirty, removable. Foreign worktrees listed, never touched.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">A4</div><div class="t"><code>just dev-bg</code></div><p>just dev in a tmux window; ports read back from the pane; health polled; one output line. tmux becomes a documented dev dependency.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">A5</div><div class="t">Build cache across worktrees</div><p>Cold build measured at 35 s. A shared target dir recreates the no-provenance binary AGENTS.md warns about.</p><div class="meta"><span class="chip skip">skip</span></div></div>
+    </div>
+
+    <h3>B · Task end</h3>
+    <div class="cards">
+      <div class="card"><div class="id">B1</div><div class="t"><code>just pr</code></div><p>Refuses a bad title, attribution or em dash in the body, a code change without an absolute handover line, or a ticket not moved to DONE on the branch. Validates, never generates.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">B2</div><div class="t"><code>just land</code></div><p>CI wait (skipped for docs-only), squash with --match-head-commit, worktree remove (refuses on dirty), branch delete, handover re-printed. Every step resumes.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">M</span></div><div class="dep">same PR as B1</div></div>
+      <div class="card"><div class="id">B3</div><div class="t">Tracked git hooks</div><p>commit-msg rejects agent trailers and em dashes; pre-commit refuses main. core.hooksPath set by bootstrap and setup.sh; covers cursor-agent and opencode too.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">B4</div><div class="t">GitHub settings, one time</div><p>Squash only and delete branch on merge. No ruleset on main: Richard is the sole collaborator, so nobody else can push there and a PR requirement would only bind him. The squash message is set by land, not by a repo setting.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">min</span></div><div class="dep">decision 1</div></div>
+      <div class="card"><div class="id">B5</div><div class="t">Shared-checkout tree guard</div><p>Decided against. Once just start exists an agent is never in the main checkout; the pre-commit hook covers the commit half; the guard's friction would land on Richard, who is the one who runs from main.</p><div class="meta"><span class="chip skip">skip</span></div><div class="dep">decision 11</div></div>
+    </div>
+
+    <h3>C · Release</h3>
+    <div class="cards">
+      <div class="card"><div class="id">C1</div><div class="t"><code>release.sh preflight</code></div><p>Read-only: tag absent, version below target, CI green (with the docs-only fallback), open doc PRs, README status lines, scope since the last tag. Replaces skill steps 1-4 in the same PR.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">M</span></div></div>
+      <div class="card"><div class="id">C2</div><div class="t"><code>release.sh ship</code></div><p>Bump PR from a throwaway worktree, dry run, merge, tag by merge sha via the API, watch, verify, finish. Resumable from GitHub state plus one marker in the bump PR body.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">M</span></div><div class="dep">after C1, C3</div></div>
+      <div class="card"><div class="id">C3</div><div class="t"><code>release.sh verify | finish | untag</code></div><p>Re-download and hash, compare to the tap PR, run the binary, merge the tap PR, brew upgrade in place, print the log row with a NARRATIVE slot. untag refuses once a Release exists.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">M</span></div><div class="dep">with C5</div></div>
+      <div class="card"><div class="id">C4</div><div class="t">One release procedure</div><p>Fix the untap order in both copies now, archive release-checklist.md and scripts/homebrew/, move the log to RELEASE-LOG.md, promote four buried lessons. Skill shrinks to 200 words only after C1-C3 exist.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">C5</div><div class="t">Formula asserts the exact version</div><p>assert_equal "yogurt #{version}" in release.yml's tap heredoc. The tap job never runs on dry runs, so the next real release is the test.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div></div>
+    </div>
+
+    <h3>D · The verification lever</h3>
+    <div class="cards">
+      <div class="card"><div class="id">D1</div><div class="t"><code>yogurt ctl</code></div><p>In the binary: one HTTP client over the running server. First slice: status, meeting list/new/start/stop/show/summary/transcript/enhance, detect, windows. Compact text, --json, idempotent mutations, no key or token ever printed.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">M</span></div><div class="dep">CLI-4 · the lever the rest stands on</div></div>
+      <div class="card"><div class="id">D2</div><div class="t">Control skill, three steps</div><p>Now: dedupe against AI-INTEGRATION.md and fix the false "no CLI" sentence; a --help drift test generates the command block. Later, after the brew release with ctl: the 150-word rewrite.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">D3</div><div class="t">Feature Map</div><p>docs/FEATURES.md, one table, coverage rule in check-docs.sh over multi-line .route literals and router paths. ctl column only once D1 exists.</p><div class="meta"><span class="chip later">later</span><span class="chip effort">S</span></div><div class="dep">after D1, E2</div></div>
+      <div class="card"><div class="id">D4</div><div class="t">DX-1 smoke suite + <code>just test-hw</code></div><p>Real binary, temp HOME, driven through ctl --json. Hardware path behind #[ignore] and an env gate, never under just test. Asserts the capture pipeline opened and closed.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">M</span></div><div class="dep">after D1</div></div>
+      <div class="card"><div class="id">D5</div><div class="t">Health identity + port line</div><p>/api/health gains version and mode (no pid). just dev prints YOGURT_PORT=&lt;port&gt; for ctl. Lands inside D1's PR.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">D6</div><div class="t"><code>--data-dir</code></div><p>One env var into the db_path / app_db_path seams RunConfig already has. Not keys. Deferred until a migration actually bites.</p><div class="meta"><span class="chip later">later</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">D7</div><div class="t">Fixture meetings</div><p>The one pstack principle nothing covered. POST /api/meetings accepts optional transcript segments and ended; ctl meeting new --transcript-file or --from-script conversation.txt. Enhance and chat verifiable in seconds.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div><div class="dep">CLI-5 · with or right after D1</div></div>
+    </div>
+
+    <h3>E · Instructions and docs, F · Parallelism</h3>
+    <div class="cards">
+      <div class="card"><div class="id">E1</div><div class="t">AGENTS.md to ~480 words</div><p>Constraints, the six-command lifecycle, pointers. Rationale moves to CONTRIBUTING.md first. Only after the tools exist. Fix the two stale command lines now.</p><div class="meta"><span class="chip later">later</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">E2</div><div class="t"><code>scripts/check-docs.sh</code></div><p>Routes, recipes, links, paths, em dash in prose paths (61 hits, cleaned in the same PR), size budgets. Runs in just lint and a 15 s ubuntu job with no path filter.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">E3</div><div class="t">CI calls <code>just</code></div><p>lint stays fmt + clippy, lint-web is the typecheck, test-web gains Playwright, test-rust matches CI's flags. The justfile becomes the single gate definition.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">E4</div><div class="t">Prune agent memory</div><p>Four notes restate AGENTS.md; three describe a workflow just dev replaced; one gives a command that fails. Outside the repo.</p><div class="meta"><span class="chip now">now</span><span class="chip effort">min</span></div></div>
+      <div class="card"><div class="id">F1</div><div class="t">Cloud policy, no code</div><p>web/ and docs/ tickets may run as cloud sessions (a fresh sandbox, not a worktree), screenshots attached. Rust stays local; the macos-26 runner is the cloud verifier. One paragraph inside E1.</p><div class="meta"><span class="chip next">next</span><span class="chip effort">S</span></div></div>
+      <div class="card"><div class="id">F2</div><div class="t">Published-drift check</div><p>Tap version, tarball shas, README formula names, model mirror URLs. By hand after a formula edit, weekly on a schedule; opens an issue on failure.</p><div class="meta"><span class="chip later">later</span><span class="chip effort">S</span></div><div class="dep">after C3</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sect-label">4 · Ship order</div>
+    <h2>Fourteen units, one ticket each</h2>
+    <p class="lede">Dependency-respecting. Tickets are per PR-sized unit, not per proposal, because the point is fewer PRs. Unit 7 is the highest-leverage one; units 1 and 2 go first because they pay back the same afternoon.</p>
+    <div class="flow">
+      <div class="step"><div class="u">1 · DX-2</div><div class="w">TODO split, just ticket</div><div class="s">afternoon</div></div>
+      <div class="step"><div class="u">2 · DX-3</div><div class="w">start, worktrees, dev-bg</div><div class="s">afternoon</div></div>
+      <div class="step"><div class="u">3 · DX-4</div><div class="w">CI calls just, check-docs, skill dedupe + drift test</div><div class="s">afternoon</div></div>
+      <div class="step"><div class="u">4 · DX-5</div><div class="w">ship.sh pr | land, hooks</div><div class="s">day</div></div>
+      <div class="step"><div class="u">5 · DX-6</div><div class="w">one release procedure, formula assert</div><div class="s">afternoon</div></div>
+      <div class="step"><div class="u">6 · DX-7</div><div class="w">release.sh in three PRs, then shrink the skill</div><div class="s">day</div></div>
+      <div class="step hi"><div class="u">7 · CLI-4</div><div class="w">health identity, yogurt ctl first slice</div><div class="s">day · ships in a release</div></div>
+      <div class="step"><div class="u">8 · CLI-5</div><div class="w">fixture meetings</div><div class="s">half day</div></div>
+      <div class="step"><div class="u">9 · CLI-6</div><div class="w">ctl second slice, skill rewrite</div><div class="s">day · after the brew release</div></div>
+      <div class="step"><div class="u">10 · DX-1</div><div class="w">smoke suite, just test-hw</div><div class="s">day</div></div>
+      <div class="step"><div class="u">11 · DX-8</div><div class="w">Feature Map + coverage rule</div><div class="s">half day</div></div>
+      <div class="step"><div class="u">12 · DX-9</div><div class="w">AGENTS.md rewrite + cloud paragraph</div><div class="s">hour</div></div>
+      <div class="step"><div class="u">13 · CLI-7</div><div class="w">--data-dir</div><div class="s">half day · when it bites</div></div>
+      <div class="step"><div class="u">14 · DX-10</div><div class="w">published-drift check</div><div class="s">half day</div></div>
+    </div>
+    <p class="note" style="margin-top:10px">One-time, by hand, no ticket: B4 GitHub settings and E4 memory prune. The twelve new tickets are in docs/TODO.md in this PR; drop any at review.</p>
+  </section>
+
+  <section>
+    <div class="sect-label">5 · Decisions</div>
+    <h2>Fourteen answered, one to confirm</h2>
+    <p class="lede">Every question this research raised has a default or an answer from Richard, decided below; each lands by PR where it can be reversed. The last one is a two-flag change to the repo settings, so it is confirmed rather than assumed.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>#</th><th>Question</th><th>Decided</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>2</td><td>Worktree and branch name (A1)</td><td>lowercase id plus optional words, no fix/ or docs/ prefix</td><td>the last five code PRs already use it</td></tr>
+        <tr><td>3</td><td>Task ends with just land? (B2)</td><td>yes by default; "just pr, do not land" in the prompt when review is wanted</td><td>13 of the last 20 PRs merged within three minutes</td></tr>
+        <tr><td>4</td><td>ship runs through finish? (C2)</td><td>yes; -n and --no-smoke for exceptions</td><td>every release merged the tap PR right after the hash check</td></tr>
+        <tr><td>5</td><td>Where DONE lives (A2)</td><td>docs/TODO-DONE.md</td><td>ID allocation reads it</td></tr>
+        <tr><td>6</td><td>Feature Map location (D3)</td><td>docs/FEATURES.md</td><td>docs-lint and archive conventions apply uniformly</td></tr>
+        <tr><td>7</td><td>ctl public in the next release, first slice (D1)</td><td>yes</td><td>the README already sends users to the control skill; veto at the CLI-4 PR</td></tr>
+        <tr><td>9</td><td>Em-dash rule scope (E2)</td><td>prose only: markdown, justfile, scripts</td><td>AGENTS.md says "in prose"; 5,883 code-comment hits were never the target</td></tr>
+        <tr><td>10</td><td>tmux as a documented dependency (A4)</td><td>yes</td><td>you asked for tmux on 2026-08-28</td></tr>
+        <tr><td>11</td><td>Shared-checkout tree guard (B5)</td><td>do not build</td><td>just start keeps agents out of main; the guard would only tax you</td></tr>
+        <tr><td>12</td><td>Fixture loader (D7)</td><td>yes</td><td>two optional fields on a local, token-guarded API</td></tr>
+        <tr><td>13</td><td>Release log in its own file (C4)</td><td>yes</td><td>9.5 KB read every release, growing 2 KB each</td></tr>
+        <tr><td>14</td><td>--data-dir (D6)</td><td>deferred</td><td>CLI-3's note says "if that ever bites"; it has not</td></tr>
+        <tr><td>8</td><td>Squash commit message from PR_BODY? (B1)</td><td>no setting change; land passes subject and body to gh pr merge</td><td>PR_BODY is the whole PR description at merge time, handover included; one flag per merge keeps the stale worktree path out of history</td></tr>
+        <tr><td>1b</td><td>Ruleset requiring a PR on main? (B4)</td><td>no, per Richard</td><td>sole collaborator on a public repo; the rule would only bind him</td></tr>
+      </tbody>
+    </table></div>
+    <h3>The one to confirm</h3>
+    <div id="questions"></div>
+  </section>
+
+  <section>
+    <div class="sect-label">6 · Do not build</div>
+    <details>
+      <summary>Thirty-odd things that sounded good and were rejected, with the reason</summary>
+      <ul>
+        <li>A <code>yogurt task</code>, <code>dev</code> or <code>release</code> subcommand in the product binary: dev orchestration belongs in scripts/; <code>ctl</code> is different because it speaks HTTP to a running server.</li>
+        <li>Auto-starting <code>just dev</code> or a cargo build inside <code>just start</code>: an invisible build in a tree is the hazard AGENTS.md describes.</li>
+        <li>A shared CARGO_TARGET_DIR, sccache, or an APFS clone: the cold build is 35 seconds.</li>
+        <li><code>--json</code> on the dev scripts before something parses it; one stable line per step is cheaper for an agent reading a terminal.</li>
+        <li><code>gh pr merge --auto</code> or required status checks: docs-only PRs never report a check and would never merge.</li>
+        <li>A PR template: ignored whenever <code>--body</code> is passed, which is always.</li>
+        <li>A merge-on-red flag on <code>land</code>; <code>land</code> pulling the shared checkout; <code>land</code> removing a dirty worktree.</li>
+        <li>A persistent YOGURT_OWN_MAIN export: every agent spawned from that shell inherits it.</li>
+        <li>A Claude Code hook for commit rules: covers one agent; the git hooks cover every agent that uses git.</li>
+        <li>Release-profile builds on every PR, a bot that bumps and tags on main, version-from-tag at build time, an LLM-written log narrative, a local state file for <code>ship</code>, rewriting the release skill before the script exists.</li>
+        <li>A TOON serializer; <code>ctl eval</code> in the binary; <code>ctl provider key set</code>; <code>pid</code> in /api/health; a server-written port registry; a per-worktree keys.json; writing fixtures into SQLite from <code>ctl</code>.</li>
+        <li>A weekly LLM audit of AGENTS.md: every drift in the history is a string-existence failure a grep catches; the one exception was wrong when written.</li>
+        <li>A live-server docs test, a Rust drift test importing clap (no lib target), per-feature Feature Map files, synthetic audio injection at /start, any cloud macOS or Linux build, a markdownlint pass, an em-dash check over code comments (5,883 hits), splitting ARCHITECTURE.md.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section>
+    <div class="sect-label">7 · Measured</div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>What</th><th>Number</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td>Cold debug build, fresh worktree</td><td>35 s, 290 crates, 1.7 GB target/; bootstrap 8 s</td><td>this machine, 2026-09-01</td></tr>
+        <tr><td>docs/TODO.md</td><td>75.7 KB, 64 KB DONE, 6 open tickets</td><td>wc, grep</td></tr>
+        <tr><td>Per-session instruction load</td><td>AGENTS.md 1,415 words, about 1.8k tokens</td><td>wc -w</td></tr>
+        <tr><td>Merged PRs since 2026-08-30</td><td>50; about 40% docs-only; 14 mechanical release PRs</td><td>gh pr list</td></tr>
+        <tr><td>Repo settings</td><td>rebase and merge-commit allowed, no branch protection, no rulesets, 23 merged branches on origin</td><td>gh api</td></tr>
+        <tr><td>Em dashes</td><td>61 in prose paths; 5,883 across 378 files, mostly code comments</td><td>git grep</td></tr>
+        <tr><td>Last 30 PRs by verifier</td><td>15 docs-only, 8 CI-closable, 1 real-binary, 6 local-only</td><td>gh pr list --json files</td></tr>
+        <tr><td>Warm CI, macos-26</td><td>about 2 min; dry run 3 min; tag run 4 min</td><td>gh run list</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</div>
+
+<script>
+  // Decision questions: native radios update local state only; the per-question
+  // button queues exactly one prompt (Lavish input playbook).
+  var QUESTIONS = [
+    ['B4', 'Apply the two repo settings once: allow_rebase_merge=false and allow_merge_commit=false (squash is the only merge button), and delete_branch_on_merge=true. No ruleset. Say yes and the agent runs the one gh api PATCH.']
+  ];
+  var host = document.getElementById('questions');
+  QUESTIONS.forEach(function (q, i) {
+    var n = i + 1, id = 'q' + n;
+    var f = document.createElement('form');
+    f.className = 'q';
+    f.setAttribute('data-lavish-question', id);
+    f.innerHTML =
+      '<p class="qt">' + n + '. ' + q[1] + '<span class="ref">' + q[0] + '</span></p>' +
+      '<label><input type="radio" name="a" value="yes"> yes</label>' +
+      '<label><input type="radio" name="a" value="no"> no</label>' +
+      '<label><input type="radio" name="a" value="discuss"> discuss</label>' +
+      '<input type="text" name="note" placeholder="optional note">' +
+      '<button type="submit">Queue answer</button><span class="queued"></span>';
+    f.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var fd = new FormData(f);
+      var a = fd.get('a');
+      if (!a) { f.querySelector('.queued').textContent = 'pick an answer first'; return; }
+      var note = (fd.get('note') || '').trim();
+      var text = 'Decision ' + n + ' (' + q[0] + '): ' + a + (note ? '. Note: ' + note : '') + '. Question was: ' + q[1];
+      if (window.lavish && window.lavish.queuePrompt) {
+        window.lavish.queuePrompt(text, { tag: 'decision', text: 'D' + n + ' ' + q[0] + ': ' + a, element: f, queueKey: id, data: { question: id, proposal: q[0], answer: a, note: note } });
+        f.querySelector('.queued').textContent = 'queued: ' + a;
+      } else {
+        f.querySelector('.queued').textContent = 'selected: ' + a + ' (open with lavish-axi to send)';
+      }
+    });
+    host.appendChild(f);
+  });
+</script>
+</body>
+</html>
