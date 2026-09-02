@@ -646,4 +646,20 @@ New closed items go at the bottom.
   Verified: `just lint` and `just test` (cargo + vitest) both clean; `crates/yogurt-cli/tests/ctl_smoke.rs` (5 tests: no-server exit 1, status version/mode, meeting new/show/list/last, bare stop no-op, the --help tree and `status` output never mention or leak a key/token); manually ran `yogurt ctl windows` and `yogurt ctl detect` on this Mac (screen recording granted, one on-screen window, no meeting-looking title, verdict `-`); full E2E by hand via `just dev` in the worktree (`ctl status`, `meeting new/show/list/stop`, `detect`), smoke meeting deleted afterward via `DELETE /api/meetings/<id>`.
   Deviation: `enhance` forwards progress as a `phase: sending` / periodic `phase: waiting` heartbeat on stderr rather than the server's `enhance_progress` WS frames - `tokio-tungstenite` isn't a `yogurt-cli` dependency and the spec caps new dependencies at moving `reqwest`, so this is the documented polling fallback the ticket allows.
   `ctl meeting transcript --follow` polls on the same basis rather than opening a WebSocket, for the same reason.
+- [x] **DX-4** CI calls `just`; `lint-web`; Playwright in `just test`; `scripts/check-docs.sh`; control-skill dedupe and `--help` drift test
+  <details>
+  <summary>Details</summary>
+
+  The justfile becomes the single definition of the gates: `lint` stays fmt plus clippy, `lint-web` is the typecheck, `test-web` gains Playwright, `test-rust` matches CI's flags.
+  `check-docs.sh` (ubuntu job, no path filter, about 15 seconds): documented `/api` paths exist in the router, backticked `just` recipes exist, relative links resolve, backticked repo paths exist, no em dash in prose paths, size budgets on AGENTS.md and TODO.md.
+  Same PR: delete the recipes `yogurt-control/SKILL.md` duplicates from AI-INTEGRATION.md, fix the false "no CLI to start headlessly" sentence in both, and add the `--help` drift test that generates the skill's command block.
+  Design: `docs/.planning/agent-workflow.md`, sections 4E (E2, E3) and 4D (D2).
+  Closes the cheap half of DX-1.
+
+  Landed in #57 (2026-09-02). CI now calls `just` in both jobs (`extractions/setup-just@v3`, pinned); `lint` runs fmt, clippy and the new `check-docs` recipe; `lint-web` covers the web typecheck; `test-web` gained the Playwright e2e smoke folded in from `test-e2e`; `test-rust` gained `--no-fail-fast`.
+  New `scripts/check-docs.sh` (also run by `.github/workflows/docs.yml`, since `ci.yml` skips docs-only PRs) checks documented `/api` paths, backticked `just` recipes, relative links, backticked repo paths, no em dash, and size budgets; the first run's drift (94 em dashes, one stale link in `crates/yogurt-audio/README.md`) was cleaned up in the same PR.
+  `.claude/skills/yogurt-control/SKILL.md` had its duplicated recipe bodies replaced with pointers into `docs/AI-INTEGRATION.md`, and both files' false "no CLI to start headlessly" sentence was corrected.
+  New `crates/yogurt-cli/tests/skill_help.rs` keeps the skill's generated command block honest against real `--help` output (`YOGURT_UPDATE_DOCS=1` regenerates it) and asserts every `yogurt <word>` mentioned in the skill, AI-INTEGRATION.md and README.md is a real subcommand.
+  Verified: `just check-docs`, `just lint`, `just test` (rust + web + Playwright) all green; `cargo test -p yogurt --test skill_help` passes and fails correctly with the update hint when the block is stale; em dash count is zero in the scoped paths.
+  Caveat: the repo-path rule (rule 4) is scoped to the same reference-doc set as rules 1-2, excluding docs/TODO.md and docs/.planning/, since those intentionally name not-yet-built paths.
   </details>
