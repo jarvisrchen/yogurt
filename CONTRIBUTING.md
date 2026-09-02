@@ -205,21 +205,20 @@ Pushing a tag matching `v*` is the only thing that publishes a release.
 Merging a PR or pushing to `main` runs CI and ships nothing, so `main` can move freely between releases.
 
 ```bash
-# after bumping [workspace.package] version in Cargo.toml to match
-git tag v0.1.0 && git push origin v0.1.0
+./scripts/release.sh preflight 0.1.0   # read-only judgment gate
+./scripts/release.sh ship 0.1.0        # dry run, bump, tag, watch, verify, finish
 ```
 
-That builds both macOS arches, publishes the tarballs to a GitHub Release, and opens a PR against
+`ship` bumps `[workspace.package]` in `Cargo.toml` through its own PR, dry-runs the pipeline, tags the
+merge commit, and waits for both macOS arches to build - only arm64 compiles whisper's Metal backend, so
+a green x86_64 leg alone proves nothing. The tag push opens a PR against
 [jarvisrchen/homebrew-yogurt](https://github.com/jarvisrchen/homebrew-yogurt) with the real version and
-checksums. Merging that PR is the last manual step; until it lands, `brew install` still serves the
-previous formula.
-
-Always dry-run first (`gh workflow run Release -f dry-run=true`), which builds both arches without
-publishing. A green x86_64 leg alone proves nothing, since only arm64 compiles whisper's Metal backend.
+checksums; `ship` merges it and smoke-tests the local `brew install`. Every step is skip-if-done, so
+re-running it after a timeout resumes.
 
 [docs/RELEASING.md](docs/RELEASING.md) is the full runbook: prerequisites, the decisions behind shipping
 an unsigned prebuilt binary, failure recovery, and a log of each release.
-Agents in this repo can run the same procedure as a checklist with the `release` skill
+Agents in this repo run the same procedure as a checklist with the `release` skill
 (`.claude/skills/release/SKILL.md`).
 
 ## Filing issues

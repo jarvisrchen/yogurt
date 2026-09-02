@@ -5,9 +5,8 @@
 # Flags only, no prompts. `-n` prints the plan on anything that mutates.
 # `--json` emits a per-check array where the subcommand has checks.
 #
-# `preflight`, `verify`, `finish` and `untag` exist. `ship` lands in a
-# follow-up PR - see docs/TODO.md DX-7 and docs/.planning/agent-workflow.md
-# section 4C.
+# `preflight`, `ship`, `verify`, `finish` and `untag` exist - see
+# docs/TODO.md DX-7 and docs/.planning/agent-workflow.md section 4C.
 #
 # Usage errors exit 2. A failed check exits 1.
 
@@ -31,6 +30,18 @@ Commands:
         -n         no-op (preflight never mutates; accepted for symmetry)
         --json     emit a JSON array of {check, ok, detail} instead of text
         --strict   fail (rather than list) if any open PR touches docs/ or README.md
+
+  ship <version> [--allow-open-docs] [--no-dry-run] [--no-smoke] [-n]
+      Runs preflight, dry-runs the pipeline, bumps the version in a
+      throwaway worktree and opens a PR for it, merges it, tags the merge
+      commit, watches the tag's Release run, then calls verify and finish.
+      Every step is skip-if-done, driven off GitHub state - re-run it after
+      a timeout and it resumes. Options:
+        --allow-open-docs   do not block on open PRs touching docs/ or README.md
+        --no-dry-run        skip the workflow_dispatch dry run
+        --no-smoke          passed through to finish
+        -n                  run preflight for real, then print the plan for
+                             every remaining mutating step and exit 0
 
   verify <version>
       Read-only checks that the published GitHub Release and tap formula
@@ -669,6 +680,372 @@ cmd_finish() {
   render_log_row "$version" "$today" "${push_run:-?}" "${dry_run:-?}" "$VERIFY_ARM_SHA" "$VERIFY_X86_SHA" "$prev_tag" "$ships"
 }
 
+# ---- ship ---------------------------------------------------------
+
+# ship_marker <sha> - the HTML comment embedded in a bump PR body so a
+# resumed ship reuses the exact origin/main sha the PR was built from.
+ship_marker() {
+  printf '<!-- yogurt-release: P=%s -->' "$1"
+}
+
+# ship_marker_sha <body> - the sha inside a ship_marker comment found in
+# <body>, or empty if no marker is present.
+ship_marker_sha() {
+  printf '%s' "$1" | grep -oE '<!-- yogurt-release: P=[0-9a-f]+ -->' | head -1 \
+    | sed -E 's/.*P=([0-9a-f]+).*/\1/'
+}
+
+# commits_all_docs_only <parent> <child> - true when every commit reachable
+# from <child> back to (excluding) <parent> touches only docs-only paths.
+# True (vacuously) when parent and child are the same commit.
+commits_all_docs_only() {
+  local parent="$1" child="$2" sha
+  while IFS= read -r sha; do
+    [ -n "$sha" ] || continue
+    local changed line all_docs=1
+    changed="$(changed_paths_between "${sha}^" "$sha")"
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      is_docs_only "$line" || { all_docs=0; break; }
+    done <<<"$changed"
+    [ "$all_docs" -eq 1 ] || return 1
+  done < <(git rev-list "${parent}..${child}")
+  return 0
+}
+
+# ship_main_not_moved <P> <parent_of_S> - true when the bump PR's merge
+# commit still has P as its parent, or when every commit landed on main
+# between P and that parent was docs-only (another docs-only PR merged
+# while the bump PR's checks ran). False means "main moved; re-run ship".
+ship_main_not_moved() {
+  local p="$1" parent_of_s="$2"
+  [ "$p" = "$parent_of_s" ] && return 0
+  commits_all_docs_only "$p" "$parent_of_s"
+}
+
+# ship_tag_status <existing_sha> <target_sha> - "missing" when no tag
+# exists yet (<existing_sha> empty), "same" when it already points at
+# <target_sha>, "conflict" when it points elsewhere.
+ship_tag_status() {
+  local existing="$1" target="$2"
+  if [ -z "$existing" ]; then
+    printf 'missing'
+  elif [ "$existing" = "$target" ]; then
+    printf 'same'
+  else
+    printf 'conflict'
+  fi
+}
+
+# find_bump_pr <version> - "<number>\t<state>\t<body>" for the
+# release/v<version> PR on this repo, or empty if none exists.
+find_bump_pr() {
+  gh pr list -R "$REPO" --head "release/v$1" --state all \
+    --json number,state,body \
+    --jq '.[0] // empty | "\(.number)\t\(.state)\t\(.body)"' 2>/dev/null
+}
+
+# release_scope_log <version> - "Ships since <tag>:\n<git log --oneline>"
+# against origin/main - the same scope preflight's release_scope check
+# reports, used as the bump PR body.
+release_scope_log() {
+  local prev_tag range_log
+  prev_tag="$(previous_tag "$1")"
+  if [ -n "$prev_tag" ]; then
+    range_log="$(git log "${prev_tag}..origin/main" --oneline)"
+  else
+    range_log="$(git log origin/main --oneline)"
+  fi
+  printf 'Ships since %s:\n%s\n' "${prev_tag:-(none)}" "$range_log"
+}
+
+# dry_run_green_id_at <sha> - the databaseId of a completed, successful
+# workflow_dispatch Release run at <sha>, or empty.
+dry_run_green_id_at() {
+  gh run list -R "$REPO" -w Release -c "$1" --json databaseId,event,status,conclusion \
+    --jq '[.[] | select(.event=="workflow_dispatch" and .status=="completed" and .conclusion=="success")] | sort_by(.databaseId) | reverse | .[0].databaseId // empty'
+}
+
+# await_run_id <workflow> <event> <sha> - polls up to 60s for a run's
+# databaseId of <workflow> triggered by <event> at <sha> to appear on
+# GitHub (any status), since gh workflow run / git push tag return before
+# the run is registered.
+await_run_id() {
+  local workflow="$1" event="$2" sha="$3" id=""
+  local i
+  for i in $(seq 1 30); do
+    id="$(gh run list -R "$REPO" -w "$workflow" -c "$sha" --json databaseId,event \
+      --jq "[.[] | select(.event==\"$event\")] | sort_by(.databaseId) | reverse | .[0].databaseId // empty")"
+    [ -n "$id" ] && { printf '%s' "$id"; return 0; }
+    sleep 2
+  done
+  echo "release.sh ship: no $workflow run ($event) appeared for $sha within 60s" >&2
+  return 1
+}
+
+# wait_for_run <run_id> - polls a run to completion without streaming
+# output, then prints one "<job name>: <conclusion>" line per job. Returns
+# 0 when the run concluded success.
+wait_for_run() {
+  local run_id="$1" status
+  while :; do
+    status="$(gh run view "$run_id" -R "$REPO" --json status --jq '.status')"
+    [ "$status" = "completed" ] && break
+    sleep 10
+  done
+  gh run view "$run_id" -R "$REPO" --json jobs --jq '.jobs[] | "\(.name): \(.conclusion)"'
+  local conclusion
+  conclusion="$(gh run view "$run_id" -R "$REPO" --json conclusion --jq '.conclusion')"
+  [ "$conclusion" = "success" ]
+}
+
+# open_bump_pr <version> <P> - bumps [workspace.package] version in a
+# throwaway detached worktree from <P>, commits, pushes release/v<version>
+# and opens the PR. Prints the new PR number.
+open_bump_pr() {
+  local version="$1" p="$2" tmp branch body_file pr_num
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/yogurt-release-bump.XXXXXX")"
+  rmdir "$tmp"
+  branch="release/v$version"
+  git worktree add --detach "$tmp" "$p" >/dev/null
+  (
+    cd "$tmp"
+    awk -v ver="$version" '
+      /^\[workspace\.package\]/ { inblock = 1; print; next }
+      /^\[/ { inblock = 0 }
+      inblock && /^version = / { print "version = \"" ver "\""; next }
+      { print }
+    ' Cargo.toml > Cargo.toml.new
+    mv Cargo.toml.new Cargo.toml
+    if ! cargo update --workspace --offline; then
+      echo "release.sh ship: cargo update --workspace --offline failed - an intra-workspace path dep may have a hand-pinned version= that needs removing or bumping; never retry without --offline" >&2
+      exit 1
+    fi
+    git checkout -q -b "$branch"
+    git add Cargo.toml Cargo.lock
+    git commit -q -m "chore: bump version to $version"
+    git push -q origin "HEAD:refs/heads/$branch"
+  )
+  body_file="$tmp.body"
+  { release_scope_log "$version"; echo; ship_marker "$p"; echo; } > "$body_file"
+  gh pr create -R "$REPO" --base main --head "$branch" \
+    --title "chore: bump version to $version" --body-file "$body_file" >/dev/null
+  rm -f "$body_file"
+  git worktree remove "$tmp"
+  pr_num="$(gh pr view "$branch" -R "$REPO" --json number --jq '.number')"
+  printf '%s' "$pr_num"
+}
+
+# print_ship_plan <version> <allow_open_docs> <no_dry_run> <no_smoke> - the
+# mutating commands `ship` would run past preflight, without running them.
+# Runs read-only gh/git queries to show what it would skip.
+print_ship_plan() {
+  local version="$1" allow_open_docs="$2" no_dry_run="$3" no_smoke="$4"
+  local tag="v$version" p
+
+  echo "PLAN for ship v$version:"
+
+  p="$(git rev-parse origin/main 2>/dev/null || echo '?')"
+  if [ "$no_dry_run" -eq 1 ]; then
+    echo "  (--no-dry-run: dry-run dispatch skipped)"
+  else
+    local green
+    green="$(dry_run_green_id_at "$p" 2>/dev/null || true)"
+    if [ -n "$green" ]; then
+      echo "  (a green dry run already exists at $p: run $green - dispatch skipped)"
+    else
+      echo "  gh workflow run release.yml -R $REPO -f dry-run=true --ref main   # at $p"
+    fi
+  fi
+
+  local found bump_pr_num bump_pr_state
+  found="$(find_bump_pr "$version" 2>/dev/null || true)"
+  if [ -n "$found" ]; then
+    IFS=$'\t' read -r bump_pr_num bump_pr_state _ <<<"$found"
+    echo "  (bump PR #$bump_pr_num already exists: $bump_pr_state)"
+    if [ "$bump_pr_state" = "OPEN" ]; then
+      echo "  gh pr checks $bump_pr_num -R $REPO --watch --fail-fast"
+      echo "  gh pr merge $bump_pr_num -R $REPO --squash --subject \"chore: bump version to $version (#$bump_pr_num)\""
+    fi
+  else
+    echo "  git worktree add --detach <tmp> $p"
+    echo "  edit Cargo.toml [workspace.package] version to $version, cargo update --workspace --offline"
+    echo "  git commit -m \"chore: bump version to $version\""
+    echo "  git push origin HEAD:refs/heads/release/v$version"
+    echo "  gh pr create -R $REPO --base main --head release/v$version --title \"chore: bump version to $version\" --body-file <scope+marker>"
+    echo "  git worktree remove <tmp>"
+    echo "  gh pr checks <N> -R $REPO --watch --fail-fast"
+    echo "  gh pr merge <N> -R $REPO --squash --subject \"chore: bump version to $version (#N)\""
+  fi
+
+  echo "  (assert the merge commit's parent is $p, or everything since is docs-only, else: main moved; re-run ship)"
+  echo "  (wait for the dry run and the merge sha's CI run, print job conclusions)"
+
+  local existing_sha
+  existing_sha="$(git ls-remote --tags origin "refs/tags/$tag" 2>/dev/null | awk '{print $1}')"
+  if [ -n "$existing_sha" ]; then
+    echo "  (tag $tag already exists at $existing_sha - skips if the merge sha matches, else exit 2)"
+  else
+    echo "  gh api repos/$REPO/git/refs -f ref=refs/tags/$tag -f sha=<merge sha>"
+  fi
+
+  echo "  (watch the tag's Release run, print job conclusions)"
+  if [ "$no_smoke" -eq 1 ]; then
+    echo "  scripts/release.sh finish $version --no-smoke"
+  else
+    echo "  scripts/release.sh finish $version"
+  fi
+}
+
+# cmd_ship <version> [--allow-open-docs] [--no-dry-run] [--no-smoke] [-n] -
+# preflight, dry run, bump PR, tag by merge sha, verify, finish. Every step
+# derives done/not-done from GitHub state, so re-running after a timeout
+# resumes instead of duplicating.
+cmd_ship() {
+  local version="" allow_open_docs=0 no_dry_run=0 no_smoke=0 dry=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --allow-open-docs) allow_open_docs=1; shift ;;
+      --no-dry-run) no_dry_run=1; shift ;;
+      --no-smoke) no_smoke=1; shift ;;
+      -n) dry=1; shift ;;
+      -h|--help) usage; return 0 ;;
+      -*)
+        echo "release.sh ship: unknown flag $1" >&2
+        usage >&2
+        return 2
+        ;;
+      *)
+        if [ -n "$version" ]; then
+          echo "release.sh ship: unexpected argument $1" >&2
+          return 2
+        fi
+        version="$1"
+        shift
+        ;;
+    esac
+  done
+  if [ -z "$version" ]; then
+    echo "release.sh ship: missing <version>" >&2
+    usage >&2
+    return 2
+  fi
+
+  echo "== preflight =="
+  local preflight_status=0
+  if [ "$allow_open_docs" -eq 1 ]; then
+    ( cmd_preflight "$version" ) || preflight_status=$?
+  else
+    ( cmd_preflight "$version" --strict ) || preflight_status=$?
+  fi
+  if [ "$preflight_status" -ne 0 ]; then
+    echo "FAIL: preflight did not pass for v$version" >&2
+    return 1
+  fi
+
+  if [ "$dry" -eq 1 ]; then
+    print_ship_plan "$version" "$allow_open_docs" "$no_dry_run" "$no_smoke"
+    return 0
+  fi
+
+  local P
+  P="$(git rev-parse origin/main)"
+
+  echo "== dry run at $P =="
+  local dry_run_id=""
+  if [ "$no_dry_run" -eq 1 ]; then
+    echo "ok: --no-dry-run, dispatch skipped"
+  else
+    dry_run_id="$(dry_run_green_id_at "$P")"
+    if [ -n "$dry_run_id" ]; then
+      echo "ok: green dry run already exists at $P (run $dry_run_id)"
+    else
+      gh workflow run release.yml -R "$REPO" -f dry-run=true --ref main
+      dry_run_id="$(await_run_id Release workflow_dispatch "$P")"
+      echo "ok: dispatched dry run (run $dry_run_id)"
+    fi
+  fi
+
+  local found bump_pr_num bump_pr_state bump_pr_body bump_P="$P"
+  found="$(find_bump_pr "$version")"
+  if [ -n "$found" ]; then
+    IFS=$'\t' read -r bump_pr_num bump_pr_state bump_pr_body <<<"$found"
+    local marker_sha
+    marker_sha="$(ship_marker_sha "$bump_pr_body")"
+    [ -n "$marker_sha" ] && bump_P="$marker_sha"
+    echo "ok: bump PR #$bump_pr_num already exists ($bump_pr_state), P=$bump_P"
+  else
+    echo "== opening bump PR =="
+    bump_pr_num="$(open_bump_pr "$version" "$P")"
+    bump_pr_state="OPEN"
+    echo "ok: opened bump PR #$bump_pr_num"
+  fi
+
+  if [ "$bump_pr_state" = "OPEN" ]; then
+    echo "== waiting on bump PR #$bump_pr_num checks =="
+    gh pr checks "$bump_pr_num" -R "$REPO" --watch --fail-fast
+    gh pr merge "$bump_pr_num" -R "$REPO" --squash \
+      --subject "chore: bump version to $version (#$bump_pr_num)"
+    echo "ok: merged bump PR #$bump_pr_num"
+  elif [ "$bump_pr_state" = "MERGED" ]; then
+    echo "ok: bump PR #$bump_pr_num already merged"
+  else
+    echo "FAIL: bump PR #$bump_pr_num is $bump_pr_state, expected OPEN or MERGED" >&2
+    return 1
+  fi
+
+  git fetch origin --quiet
+  local S
+  S="$(gh pr view "$bump_pr_num" -R "$REPO" --json mergeCommit --jq '.mergeCommit.oid')"
+  if [ -z "$S" ] || [ "$S" = "null" ]; then
+    echo "FAIL: bump PR #$bump_pr_num has no merge commit yet" >&2
+    return 1
+  fi
+  local parent_of_s
+  parent_of_s="$(gh api "repos/$REPO/commits/$S" --jq '.parents[0].sha')"
+  if ! ship_main_not_moved "$bump_P" "$parent_of_s"; then
+    echo "FAIL: main moved; re-run ship" >&2
+    return 1
+  fi
+
+  echo "== CI for merge commit $S =="
+  local ci_run_id
+  ci_run_id="$(await_run_id CI push "$S")"
+  wait_for_run "$ci_run_id" || { echo "FAIL: CI failed for $S" >&2; return 1; }
+
+  if [ -n "$dry_run_id" ]; then
+    echo "== dry run =="
+    wait_for_run "$dry_run_id" || { echo "FAIL: dry run failed" >&2; return 1; }
+  fi
+
+  local tag="v$version" existing_sha tag_status
+  existing_sha="$(git ls-remote --tags origin "refs/tags/$tag" | awk '{print $1}')"
+  tag_status="$(ship_tag_status "$existing_sha" "$S")"
+  case "$tag_status" in
+    same) echo "ok: tag $tag already points at $S" ;;
+    missing)
+      gh api "repos/$REPO/git/refs" -f "ref=refs/tags/$tag" -f "sha=$S" >/dev/null
+      echo "ok: tagged $tag at $S"
+      ;;
+    conflict)
+      echo "release.sh ship: tag $tag already exists on origin pointing at $existing_sha, not $S" >&2
+      return 2
+      ;;
+  esac
+
+  echo "== Release run for $tag =="
+  local release_run_id
+  release_run_id="$(await_run_id Release push "$S")"
+  wait_for_run "$release_run_id" || { echo "FAIL: Release run failed for $tag" >&2; return 1; }
+
+  echo "== finish =="
+  if [ "$no_smoke" -eq 1 ]; then
+    cmd_finish "$version" --no-smoke
+  else
+    cmd_finish "$version"
+  fi
+}
+
 # ---- untag ----------------------------------------------------------
 
 # cmd_untag <version> [-n] - deletes the local and remote v<version> tag.
@@ -744,6 +1121,7 @@ main() {
   shift
   case "$cmd" in
     preflight) cmd_preflight "$@" ;;
+    ship) cmd_ship "$@" ;;
     verify) cmd_verify "$@" ;;
     finish) cmd_finish "$@" ;;
     untag) cmd_untag "$@" ;;

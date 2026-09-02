@@ -4,7 +4,7 @@ How a tagged commit becomes `brew install jarvisrchen/yogurt/yogurt` on someone 
 
 The pipeline is [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 This doc is the operational companion: what the pipeline does, what has to be true before you tag, and the decisions and recovery paths behind it.
-The actual checklist to run lives in the [`release` skill](../.claude/skills/release/SKILL.md), whose first step is `scripts/release.sh preflight <version>` - a read-only check of tag, version, CI status, open doc PRs, and README wording against `origin/main`.
+The actual checklist to run lives in the [`release` skill](../.claude/skills/release/SKILL.md): `scripts/release.sh preflight <version>` - a read-only check of tag, version, CI status, open doc PRs, and README wording against `origin/main` - then `scripts/release.sh ship <version>`, which runs the rest end to end and resumes on re-run.
 A row-per-release record of what happened lives in [`docs/RELEASE-LOG.md`](RELEASE-LOG.md).
 
 ---
