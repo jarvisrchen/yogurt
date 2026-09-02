@@ -27,16 +27,13 @@ The browser never sends it back, so nothing the UI does can corrupt what is stor
 ## Watch the persisted transcript live
 
 ```bash
-scripts/tail-transcript.sh                 # newest meeting -> /tmp/yogurt-transcript.json
-scripts/tail-transcript.sh <meeting-id>    # a specific meeting
-OUT=~/t.txt INTERVAL=1 scripts/tail-transcript.sh
+yogurt ctl meeting transcript last --follow    # newest meeting, block and print as segments persist
+yogurt ctl meeting transcript <id> --follow    # a specific meeting
 ```
 
-Leave it running during a meeting and open the output file in an editor.
-It rewrites the file atomically every couple of seconds (temp file plus `mv`), so an editor that reloads on change never catches a half-written file.
-One line per persisted segment: `ts_ms  channel  text`.
+Leave it running during a meeting; one line per persisted segment as it lands.
 
-`persist_transcript` writes on every final, so the file grows within a second or two of each finished utterance.
+`persist_transcript` writes on every final, so a line appears within a second or two of each finished utterance.
 If a line is in the dock but never lands here, it was a partial that never got finalized.
 
 ## Watch the raw WebSocket
@@ -44,11 +41,11 @@ If a line is in the dock but never lands here, it was a partial that never got f
 This is byte-for-byte what the dock receives, partials included.
 
 ```bash
-websocat "ws://localhost:7878/ws/meetings/<MEETING_ID>?token=$(cat ~/.yogurt/session-token)"
+yogurt ctl ws <meeting-id>
 ```
 
 Frames are `{"type":"transcript","payload":{ts_ms,channel,text,is_final}}`.
-`enhance_progress` and chat frames ride the same socket, so expect other `type` values interleaved.
+`enhance_progress` and chat frames ride the same socket, so expect other `type` values interleaved (`--types transcript` filters them out).
 
 Use this when you need to see partial churn - the DB tail cannot show it, because partials are never persisted.
 

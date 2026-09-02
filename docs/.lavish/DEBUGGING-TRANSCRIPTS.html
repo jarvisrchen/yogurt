@@ -354,18 +354,15 @@ flowchart TD
 
   <section class="sec" id="tail">
     <div class="sec-head"><span class="sec-num">01</span><h2>Watch the persisted transcript</h2></div>
-    <p>Leave this running during a meeting and open the output file in an editor. It rewrites the file atomically every couple of seconds (temp file plus <code>mv</code>), so an editor that reloads on change never catches a half-written file.</p>
+    <p>Leave this running during a meeting; it blocks and prints one line per persisted segment as it lands.</p>
 
     <div class="frame">
-      <div class="cap"><span>scripts/tail-transcript.sh</span><span class="rhs">ts_ms &nbsp; channel &nbsp; text</span></div>
-      <pre class="code"><span class="c"># newest meeting -&gt; /tmp/yogurt-transcript.json</span>
-scripts/tail-transcript.sh
+      <div class="cap"><span>yogurt ctl meeting transcript --follow</span><span class="rhs">ts_ms &nbsp; channel &nbsp; text</span></div>
+      <pre class="code"><span class="c"># newest meeting</span>
+yogurt ctl meeting transcript last --follow
 
 <span class="c"># a specific meeting</span>
-scripts/tail-transcript.sh <span class="p">&lt;meeting-id&gt;</span>
-
-<span class="c"># somewhere else, faster</span>
-OUT=~/t.txt INTERVAL=1 scripts/tail-transcript.sh</pre>
+yogurt ctl meeting transcript <span class="p">&lt;meeting-id&gt;</span> --follow</pre>
     </div>
 
     <p><code>persist_transcript</code> writes on every final, so the file grows within a second or two of each finished utterance. If a line is in the dock but never lands here, it was a partial that never got finalized.</p>
