@@ -22,7 +22,8 @@ just setup        # one-time: toolchains + pnpm install
 just dev          # backend (cargo run) + frontend (vite) together
 just build        # cargo build --release (build web first, see below)
 just test         # cargo test --workspace --features yogurt-stt/local-stt + web vitest
-just lint         # fmt --check + clippy -D warnings
+just lint         # fmt --check + clippy -D warnings + ticket.sh --check
+just ticket       # docs/TODO.md backlog: list, show <ID>, next <PREFIX>, done <ID> --note-file <path>
 ```
 
 The frontend must be built (`pnpm --dir web build`) before any Rust build that compiles `yogurt-server` - `rust-embed` requires `web/dist` to exist.
@@ -35,7 +36,7 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - `docs/MODEL-EVAL.md` covers A/B-ing STT engines and LLMs: `scripts/eval/` plays a fixed scripted conversation into a recording and grades two resulting summaries with headless Claude.
 - `docs/RELEASING.md` is the release runbook: what the tagged-push pipeline does, the one-time prerequisites, the decisions behind it, and recovery paths; `docs/RELEASE-LOG.md` has the row-per-release log.
 - `.claude/skills/release/SKILL.md` is the same process as an executable checklist; invoke the `release` skill rather than improvising a release.
-- `docs/TODO.md` is the backlog. Every item has a ticket ID (`UI-1`, `MTG-3`, `AUD-2`, ...); reference it in commits and PR titles, and follow the allocation rule at the top of that file when adding one.
+- `docs/TODO.md` is the backlog. Every item has a ticket ID (`UI-1`, `MTG-3`, `AUD-2`, ...); reference it in commits and PR titles. Use `just ticket` to work with it: no args lists open items, `just ticket <ID>` prints one block, `just ticket next <PREFIX>` allocates the next ID, `just ticket done <ID> --note-file <path>` checks one off.
   Closed tickets live in `docs/TODO-DONE.md` instead; ID allocation counts it too, so do not move it to `docs/archive/`.
 - `docs/.planning/` is where active GSD planning for the next milestone goes.
 - When a doc, plan, or Lavish surface is no longer relevant, move it into the mirrored `docs/archive/` tree (`archive/.lavish/`, `archive/.planning/v1/`, `archive/PRD.md`, ...) - archive, never delete.

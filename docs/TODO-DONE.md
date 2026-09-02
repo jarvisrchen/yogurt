@@ -596,3 +596,21 @@ New closed items go at the bottom.
   </details>
 
   Landed in #53 (2026-09-02). Both the skill and `docs/RELEASING.md` now smoke-test with `brew upgrade`/`brew reinstall` first and a from-scratch `untap`/`uninstall` cycle only as a fallback. `scripts/release-checklist.md` and `scripts/homebrew/` moved to `docs/archive/` unmodified. The release log table moved to the new `docs/RELEASE-LOG.md`; its four buried lessons (false `strings | comm` check, `brew untap` refusal, re-reading `origin/main`'s sha before tagging, `git log <lasttag>..origin/main` for scope) are now in RELEASING.md's "When it goes wrong". `release.yml`'s tap formula test asserts the exact `yogurt <version>` output; unexercised until the next real tag push since the `tap` job never runs on a dry run. Also recorded the one-time GitHub merge settings in RELEASING.md and fixed two stale "log lives in RELEASING.md" pointers (AGENTS.md, README.md). Left `docs/.planning/agent-workflow.md` and its Lavish companion untouched: they describe the pre-fix state as the rationale for this ticket, not a live doc.
+
+- [x] **DX-2** Split DONE out of `docs/TODO.md`; add `just ticket` (list, show, next, done)
+  <details>
+  <summary>Details</summary>
+
+  85% of this file is the DONE section, and every agent that reads the backlog pays about 16k tokens for it.
+  Move DONE to a flat `docs/TODO-DONE.md` (docs-only PR), then `scripts/ticket.sh` behind a `ticket` recipe: list open items, print one block, allocate the next ID across both files, and `done <ID> --note-file` for the checkoff move.
+  Block boundary is the next `- [` or `#` line, never the closing details tag; the scanner skips fenced code (the example above uses a real ID today).
+  `--check` runs in `just lint`.
+  Design: `docs/.planning/agent-workflow.md`, section 4A, A2.
+
+  Landed across two PRs: #52 (docs-only) moved the DONE section out of docs/TODO.md into a flat docs/TODO-DONE.md, and #54 adds scripts/ticket.sh behind a `just ticket` recipe (list, show <ID>, next <PREFIX>, done <ID> --note-file <path>, --check), wired into `just lint`.
+  The scanner is BSD awk/sed only, skips fenced code blocks (the "Referencing attachments" example), and treats the next `- [` or `#` line as the block boundary, never `</details>`.
+  Verified by hand: `just ticket` lists 18 open items (grep -c '^- \[ \]' docs/TODO.md reports 19, the extra one is the fenced UI-0 example, correctly excluded); `just ticket DX-2` printed this block; `just ticket next DX` printed DX-11 and `just ticket next MTG` printed MTG-12, both matching the true max+1 by hand; `just ticket --check` passed on the real files; the error paths (unknown ID, missing/empty note file, done on an already-closed ID) all exited non-zero with a descriptive message.
+  scripts/tests/ticket_test.sh (24 assertions against a synthetic fixture pair, including a no-details-block ticket, a DONE entry with resolution text after </details>, and a fenced-code decoy ID) is wired into `just lint` alongside `--check`, both under a second.
+  `just lint` and `just test` (314 web tests + full cargo workspace) pass clean.
+  This checkoff itself was done with `just ticket done DX-2 --note-file <path>`, the E2E test for the tool.
+  </details>
