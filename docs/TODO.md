@@ -132,14 +132,3 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## Developer experience
 
-- [ ] **DX-9** Rewrite AGENTS.md around the six-command lifecycle, with the cloud-session paragraph
-  <details>
-  <summary>Details</summary>
-
-  About 480 words: constraints, `start`, `ticket`, `dev-bg`, `pr`, `land`, pointers.
-  Evicted rationale (build splice, relative paths, port pair) goes to CONTRIBUTING.md's worktree section first.
-  One paragraph: tickets under `web/` or `docs/` may run as cloud sessions; Rust stays local with the macos-26 runner as the cloud verifier.
-  Only after DX-2 to DX-5 exist.
-  Design: `docs/.planning/agent-workflow.md`, sections 4E (E1) and 4F (F1).
-  </details>
-

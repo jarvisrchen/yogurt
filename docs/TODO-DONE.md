@@ -805,3 +805,16 @@ New closed items go at the bottom.
 
   Landed in #66 (2026-09-02).
   </details>
+
+- [x] **DX-9** Rewrite AGENTS.md around the six-command lifecycle, with the cloud-session paragraph
+  <details>
+  <summary>Details</summary>
+
+  About 480 words: constraints, `start`, `ticket`, `dev-bg`, `pr`, `land`, pointers.
+  Evicted rationale (build splice, relative paths, port pair) goes to CONTRIBUTING.md's worktree section first.
+  One paragraph: tickets under `web/` or `docs/` may run as cloud sessions; Rust stays local with the macos-26 runner as the cloud verifier.
+  Only after DX-2 to DX-5 exist.
+  Design: `docs/.planning/agent-workflow.md`, sections 4E (E1) and 4F (F1).
+
+  Landed in #PR_NUMBER (2026-09-02). Rewrote AGENTS.md around the six-command lifecycle: what yogurt is, hard constraints (CLI-provider exception cut to one sentence pointing at ARCHITECTURE.md §7.6), `just start` -> `dev-bg` -> `ticket done` -> `pr` -> `land`, repo layout as pointers, conventions, and the F1 cloud-session paragraph. 1558 -> 598 words, 9770 -> 4063 bytes (12 KB budget). Evicted rationale (build-splice, relative-path handover, shared-checkout etiquette) moved into CONTRIBUTING.md's worktree section first. Verified: `just lint` and `just test` both green; `./scripts/check-docs.sh` ok; every named command's `--help`/usage confirmed to exist.
+  </details>
