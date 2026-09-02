@@ -63,6 +63,13 @@ curl -s -X POST "http://localhost:7878/api/meetings/$ID/start" \
 
 If you're also joining a Zoom/Meet/etc. call as part of this, launch that separately (`open "zoommtg://..."`, an AppleScript, whatever) - yogurt has no meeting-platform integration and doesn't need one; it captures system audio regardless of which app is making the sound.
 
+### Fixture meetings (no recording at all)
+
+`POST /api/meetings` also takes two optional fields for seeding a finished meeting without recording anything: `transcript_json`, an array of `{ts_ms, channel, text}` segments in exactly the shape the column already stores (see [DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)), and `ended: true`, which stamps `ended_at` at creation instead of leaving the meeting live.
+A malformed `transcript_json` gets a `400` naming the first bad field; `ended: true` with no transcript is a valid finished-but-empty meeting.
+No `stt_engine` is stamped, since the meeting was never actually recorded.
+`yogurt ctl meeting new --transcript-file <segments.json>` and `--from-script <script>` wrap this - see "Controlling yogurt from the CLI" above and [MODEL-EVAL.md](MODEL-EVAL.md).
+
 ## Check what's recording
 
 ```bash

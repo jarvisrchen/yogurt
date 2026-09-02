@@ -221,7 +221,7 @@ Designed for an agent: subcommands rather than flag soup, `--json` output, descr
 yogurt ctl                                        # same as `status`
 yogurt ctl status                                  # instances found, active/detected meeting, stt, provider, permission grants
 yogurt ctl meeting list [--limit N]
-yogurt ctl meeting new [--title T] [--start]
+yogurt ctl meeting new [--title T] [--start | --transcript-file <path> | --from-script <path>]
 yogurt ctl meeting start <id|last>
 yogurt ctl meeting stop [<id|url|last>]            # bare `stop` targets whatever is currently recording
 yogurt ctl meeting show|summary|transcript <id|url|last>
