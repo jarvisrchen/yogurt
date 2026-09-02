@@ -5,6 +5,24 @@
 default:
     @just --list --unsorted
 
+# ── Task lifecycle ───────────────────────────────────────────────────
+
+# Create (or resume) a worktree + branch for a ticket ID or a docs/release slug, bootstrapped and ready.
+start *args:
+    ./scripts/task.sh start {{args}}
+
+# List every worktree: path, branch, PR state, listening ports, dirty/removable.
+worktrees *args:
+    ./scripts/task.sh worktrees {{args}}
+
+# Run `just dev` in a tmux window, print the port pair once it's healthy (resumes if already running).
+dev-bg *args:
+    ./scripts/task.sh dev-bg {{args}}
+
+# Stop the tmux window `just dev-bg` started.
+dev-stop *args:
+    ./scripts/task.sh dev-stop {{args}}
+
 # ── Run modes ────────────────────────────────────────────────────────
 
 # Start the release binary at http://localhost:7878 (single process, embedded web bundle, paste keys via Settings UI).
@@ -29,11 +47,15 @@ dev: bootstrap
     export YOGURT_VITE_BASE="http://127.0.0.1:$VITE_PORT"
     # D5: an echo, not an export -- a recipe cannot export into the
     # caller's shell, so this is copy-paste bait for `--port`/$YOGURT_PORT.
+    # `just dev-bg` reads both lines back from the tmux pane.
     echo "YOGURT_PORT=$BACKEND_PORT   # pass --port or set this for yogurt ctl"
+    echo "YOGURT_VITE_PORT=$VITE_PORT"
     # Both ports are already free, so the scripts' own guards pass through.
     # Ctrl-C in the foreground process group should kill both children.
+    # HUP too: `just dev-stop` kills the tmux window running this recipe,
+    # which sends HUP to the pane's shell, not INT/TERM.
     # Belt + suspenders: on EXIT, kill any remaining jobs.
-    trap 'kill $(jobs -p) 2>/dev/null; wait 2>/dev/null; true' EXIT INT TERM
+    trap 'kill $(jobs -p) 2>/dev/null; wait 2>/dev/null; true' EXIT INT TERM HUP
     ./scripts/run-frontend.sh &
     # Wait for Vite to bind so the backend proxy doesn't 502 on first request.
     for _ in {1..20}; do
@@ -116,6 +138,7 @@ lint: check-docs
     ./scripts/tests/ticket_test.sh
     ./scripts/ticket.sh --check
     ./scripts/tests/docs-only_test.sh
+    ./scripts/tests/task_test.sh
 
 # Web typecheck (read-only) - same as CI's web-job lint gate; that job has no cargo.
 lint-web:
