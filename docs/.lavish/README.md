@@ -7,3 +7,4 @@ Superseded surfaces live in [../archive/.lavish/](../archive/.lavish/).
 - [DEBUGGING-TRANSCRIPTS.html](DEBUGGING-TRANSCRIPTS.html) - companion to [../DEBUGGING-TRANSCRIPTS.md](../DEBUGGING-TRANSCRIPTS.md)
 - [MODEL-EVAL.html](MODEL-EVAL.html) - companion to [../MODEL-EVAL.md](../MODEL-EVAL.md)
 - [aud6-mic-mute.html](aud6-mic-mute.html) - companion to [../.planning/aud6-mic-mute-design.md](../.planning/aud6-mic-mute-design.md)
+- [agent-workflow.html](agent-workflow.html) - companion to [../.planning/agent-workflow.md](../.planning/agent-workflow.md)
