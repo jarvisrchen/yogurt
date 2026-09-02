@@ -131,17 +131,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Design: `docs/.planning/agent-workflow.md`, section 4D, D1 and D2.
   </details>
 
-- [ ] **CLI-7** `yogurt start --data-dir` so a worktree instance stops sharing `db.sqlite` with the running app
-  <details>
-  <summary>Details</summary>
-
-  One `YOGURT_DATA_DIR` variable threaded into the `db_path` and `app_db_path` seams `RunConfig` already has; `yogurt doctor` reads the same variable.
-  Keys, models and notes stay shared: a per-worktree `keys.json` would conflict with the keys-live-in-one-file constraint.
-  The hazard is real (two migration runners share one file and "whichever fires first wins") but has not bitten; CLI-3's DONE entry already names this fix conditionally.
-  Deferred until it does.
-  Design: `docs/.planning/agent-workflow.md`, section 4D, D6.
-  </details>
-
 ## Developer experience
 
 - [ ] **DX-1** `just test` is a weaker gate than CI, and neither exercises the real binary
