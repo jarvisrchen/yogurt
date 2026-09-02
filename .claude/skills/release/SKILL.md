@@ -33,4 +33,3 @@ Release when a merged PR is worth shipping, not on a schedule.
 Full recovery paths are in [docs/RELEASING.md](../../../docs/RELEASING.md).
 
 `strings | comm` looks like proof a feature landed in the binary and is not - long lines differ everywhere, so use `git tag --contains` plus a direct `strings | grep` instead.
-The tap formula's exact-version assert never runs on a dry run - note in the log row whether it held on the next real release.
