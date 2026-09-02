@@ -392,8 +392,11 @@ land_cleanup() {
   fi
 
   git fetch origin --prune --quiet
-  if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-    git push origin --delete "$branch"
+  # delete_branch_on_merge removes the remote branch asynchronously, so the
+  # ls-remote check can pass and the push can still lose the race; both
+  # outcomes leave the branch gone, which is all land needs.
+  if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 \
+    && git push origin --delete "$branch" >/dev/null 2>&1; then
     echo "deleted origin branch $branch"
   else
     echo "origin branch $branch already deleted"
