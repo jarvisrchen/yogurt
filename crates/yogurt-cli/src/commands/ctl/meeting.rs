@@ -61,6 +61,7 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
 
 // ─── <id|url|last> ──────────────────────────────────────────────────────
 
+#[derive(Debug, PartialEq)]
 enum MeetingRef {
     Id(String),
     Url { port: u16, id: String },
@@ -528,4 +529,54 @@ async fn enhance(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Resul
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MeetingRef;
+
+    #[test]
+    fn plain_id_is_id() {
+        assert_eq!(
+            MeetingRef::parse("01a060ee-1fa5-7fc0-952a-1f67a5f38172"),
+            MeetingRef::Id("01a060ee-1fa5-7fc0-952a-1f67a5f38172".to_string())
+        );
+    }
+
+    #[test]
+    fn last_is_last() {
+        assert_eq!(MeetingRef::parse("last"), MeetingRef::Last);
+    }
+
+    #[test]
+    fn meeting_url_carries_port_and_id() {
+        assert_eq!(
+            MeetingRef::parse("http://127.0.0.1:7879/meeting/abc123"),
+            MeetingRef::Url {
+                port: 7879,
+                id: "abc123".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn post_suffixed_meeting_url_carries_port_and_id() {
+        assert_eq!(
+            MeetingRef::parse("http://127.0.0.1:7879/meeting/abc123/post"),
+            MeetingRef::Url {
+                port: 7879,
+                id: "abc123".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_non_meeting_url_falls_back_to_a_bare_id() {
+        // Not a parseable URL, not "last" -- treated as a literal id, same
+        // as any other free-text string a caller might pass.
+        assert_eq!(
+            MeetingRef::parse("not a url or id"),
+            MeetingRef::Id("not a url or id".to_string())
+        );
+    }
 }

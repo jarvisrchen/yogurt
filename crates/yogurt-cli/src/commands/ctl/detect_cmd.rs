@@ -37,7 +37,7 @@ pub async fn run_detect(
                 println!("{}", json!({ "detected": detected }));
             } else {
                 match detected {
-                    Some(m) => println!("{} \u{2014} {}", m.app, m.title),
+                    Some(m) => println!("{} - {}", m.app, m.title),
                     None => println!("nothing detected"),
                 }
             }

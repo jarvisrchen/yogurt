@@ -154,7 +154,7 @@ pub enum StatusTarget {
 }
 
 pub async fn discover_for_status(http: &reqwest::Client, explicit: Option<u16>) -> StatusTarget {
-    if let Some(port) = explicit.or_else(env_port) {
+    if let Some(port) = port_precedence(explicit, env_port()) {
         return StatusTarget::Explicit(port, probe_health(http, port).await);
     }
     StatusTarget::Scanned(scan(http).await)
@@ -163,12 +163,25 @@ pub async fn discover_for_status(http: &reqwest::Client, explicit: Option<u16>) 
 /// Discovery for every command except `status`: resolves to exactly one
 /// instance or fails with a message telling the caller what to do.
 pub async fn resolve(http: &reqwest::Client, explicit: Option<u16>) -> Result<Instance, CtlError> {
-    if let Some(port) = explicit.or_else(env_port) {
+    if let Some(port) = port_precedence(explicit, env_port()) {
         return probe_health(http, port)
             .await
             .ok_or(CtlError::NoServer(Some(port)));
     }
-    let found = scan(http).await;
+    resolve_from_scan(scan(http).await)
+}
+
+/// Pure: `--port` beats `$YOGURT_PORT`. Takes both already-read values
+/// rather than reading `$YOGURT_PORT` itself, so it's unit-testable
+/// without touching the process env.
+fn port_precedence(flag: Option<u16>, env: Option<u16>) -> Option<u16> {
+    flag.or(env)
+}
+
+/// Pure: given however many instances a scan found, decide the outcome.
+/// Takes the already-run scan result rather than probing itself, so
+/// it's unit-testable with a synthetic `Vec<Instance>` and no network.
+fn resolve_from_scan(found: Vec<Instance>) -> Result<Instance, CtlError> {
     match found.len() {
         0 => Err(CtlError::NoServer(None)),
         1 => Ok(found.into_iter().next().expect("len == 1")),
@@ -320,5 +333,55 @@ async fn server_error_message(resp: reqwest::Response) -> String {
             .map(str::to_string)
             .unwrap_or_else(|| format!("server returned {status}")),
         Err(_) => format!("server returned {status}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn inst(port: u16) -> Instance {
+        Instance {
+            port,
+            version: "0.0.0".to_string(),
+            mode: "release".to_string(),
+        }
+    }
+
+    #[test]
+    fn flag_beats_env() {
+        assert_eq!(port_precedence(Some(1), Some(2)), Some(1));
+    }
+
+    #[test]
+    fn env_used_when_no_flag() {
+        assert_eq!(port_precedence(None, Some(2)), Some(2));
+    }
+
+    #[test]
+    fn neither_set_falls_through_to_scan() {
+        assert_eq!(port_precedence(None, None), None);
+    }
+
+    #[test]
+    fn scan_with_no_instances_is_no_server() {
+        assert!(matches!(
+            resolve_from_scan(vec![]),
+            Err(CtlError::NoServer(None))
+        ));
+    }
+
+    #[test]
+    fn scan_with_one_instance_resolves_to_it() {
+        let resolved = resolve_from_scan(vec![inst(7878)]).expect("single instance resolves");
+        assert_eq!(resolved.port, 7878);
+    }
+
+    #[test]
+    fn scan_with_two_instances_is_ambiguous() {
+        match resolve_from_scan(vec![inst(7878), inst(7879)]) {
+            Err(CtlError::Ambiguous(ports)) => assert_eq!(ports, vec![7878, 7879]),
+            other => panic!("expected Ambiguous, got {other:?}"),
+        }
     }
 }
