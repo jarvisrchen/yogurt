@@ -719,3 +719,15 @@ New closed items go at the bottom.
   Landed in #60 (2026-09-02). Extended `POST /api/meetings` with optional `transcript_json` (array of `{ts_ms,channel,text}` segments, validated server-side with a 400 naming the first bad field on a malformed array) and `ended` fields, so a fixture meeting can be seeded with no recording, no `stt_engine`, and `ended_at` stamped from the transcript's own last timestamp. `ctl meeting new --transcript-file <path>` forwards the file's JSON unvalidated so a malformed file's error comes from the server itself; `--from-script <path>` converts an eval-style `A:`/`B:` script into `me`/`them` segments at 4 seconds per line plus any `PAUSE` seconds. Both imply the meeting is created ended and are refused together with `--start` (exit 2, via clap's `conflicts_with`). `ctl meeting show` now also reports a `segments` count.
   Verified: `just lint` and `just test` both green (added 5 `yogurt-cli` integration tests in `ctl_smoke.rs` and 3 `yogurt-server` route tests in `meetings_api.rs`, all passing alongside the existing suite - 314 web tests, full rust workspace, Playwright e2e). Manually ran `just dev`, created a fixture via `--from-script scripts/eval/conversation.txt` (43 segments, matching the script's `A:`/`B:` line count), confirmed `ctl meeting show`/`transcript` output, ran `ctl meeting enhance last` against the real configured MiniMax provider (produced a genuine multi-section summary with action items, not `too_short`), then deleted the fixture via the API and confirmed a 404 on re-fetch.
   </details>
+
+- [x] **DX-8** Feature Map at `docs/FEATURES.md`, with a coverage rule in `check-docs.sh`
+  <details>
+  <summary>Details</summary>
+
+  One table, about 19 rows: what it does, UI path, API, covering test, source anchor, and the `ctl` command once CLI-4 exists.
+  The coverage rule extracts every `.route("...")` literal (spanning lines) and every router path and fails when one has no row and is not in the `internal:` list.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D3.
+  After CLI-4 and DX-4.
+
+  Landed in #62 (2026-09-02). docs/FEATURES.md: 19-row table mapping every user-facing feature to UI path, API routes, ctl command, covering test, and source anchor, plus an Internal routes list (health, session-token, the /api/:rest catch-all, and router.tsx's * catch-all). check-docs.sh gained a coverage rule that extracts every .route(...) literal and every router.tsx path: literal, normalizes axum's {param} to the router's :param, and fails if either is missing from FEATURES.md. Deviated from the design doc's internal-route example list: the detection banner and /ws (STT model-download progress) turned out to be real user-facing features once verified against the code, so they got their own rows instead of being marked internal. Verified: just check-docs passes; removing a route from a FEATURES.md cell makes the new rule fail naming that exact route; adding a bogus /api/nope makes the existing rule 1 fail; 38 .route( calls extracted (38 distinct routes) vs 11 router.tsx path: literals, matching grep -c counts; just lint and just test both pass.
+  </details>
