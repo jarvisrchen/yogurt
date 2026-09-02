@@ -18,6 +18,10 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 ## Commands
 
 ```
+just start <ID> [words]   # create/resume a worktree + branch from a ticket ID (or a slug), bootstrapped
+just worktrees             # every worktree: path, branch, PR state, listening ports, dirty/removable
+just dev-bg [name]         # run `just dev` in a background tmux window, print the port pair once healthy
+just dev-stop [name]       # stop that tmux window
 just setup        # one-time: toolchains + pnpm install
 just dev          # backend (cargo run) + frontend (vite) together
 just build        # cargo build --release (build web first, see below)
@@ -53,7 +57,9 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - Do not hand-edit CHANGELOG files; release notes are generated.
 - No agent attribution in git history or on GitHub: no "Generated with Claude Code" footer, no session link, no `Co-Authored-By` for an agent, in commit messages or PR bodies.
 - Squash is the only enabled merge method on this repo; GitHub appends `(#N)` to the squashed commit subject, which is the only thing that back-links a commit on `main` to its PR.
-- Work in a worktree under `../yogurt-worktrees/`, always. `git worktree add ../yogurt-worktrees/<slug> -b <branch> origin/main` is the first command of a task, not the fallback for when you need a branch. Several sessions share the main checkout, so it is the one place where your mistakes land on someone else. A fresh worktree carries nothing that is gitignored, which is exactly the set of files needed to run: no `node_modules`, no `web/dist` (so `cargo build` fails at `#[derive(RustEmbed)] folder ... does not exist`), and no `.env.local` (so `just dev` starts Vite, then aborts with `.env.local not found`). `just bootstrap` restores all three from the main checkout, and `just dev` depends on it, so a new worktree needs no setup step of its own.
+- `just start <ID> [words]` is the first command of a task, not the fallback for when you need a branch.
+  It creates the worktree and branch under `../yogurt-worktrees/` and runs `just bootstrap` there in one step, so a new worktree needs no setup step of its own.
+  Several sessions share the main checkout, so it is the one place where your mistakes land on someone else.
 
 - Treat the shared checkout as read-only unless you own it. Do not change its branch, do not `reset --hard` it, and do not run a release build in it. Running something out of it counts as owning it: a session with a server or binary running from that tree has a claim on it that `git status` will not show you, so ask before you build there.
 - A build in progress is a write in progress, and it is invisible. `git status` is clean, there is no lock file, and nothing tells you a `cargo build` is running in that tree. Change the branch under one and cargo finishes the run against the new source: some crates compile from the old tree, the rest from the new, and you get a binary spliced from two source trees with exit code 0 and no warning.

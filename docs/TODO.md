@@ -153,17 +153,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
   </details>
 
-- [ ] **DX-3** `just start <ID> [words]`, `just worktrees`, `just dev-bg`
-  <details>
-  <summary>Details</summary>
-
-  `start`: fetch, one name for worktree and branch from the ticket ID, `git worktree add` from `origin/main`, `just bootstrap`, print the ticket and the absolute handover line; resumes if the same name already exists.
-  `worktrees`: path, branch, PR state, listening ports by process cwd, `dirty`, `removable`.
-  `dev-bg`: `just dev` in a tmux window, port pair read back from the pane, health polled, one line of output.
-  Design: `docs/.planning/agent-workflow.md`, section 4A, A1, A3, A4.
-  Depends on DX-2 for the ticket lookup.
-  </details>
-
 - [ ] **DX-5** `scripts/ship.sh pr | land` and tracked git hooks
   <details>
   <summary>Details</summary>
