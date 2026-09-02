@@ -484,10 +484,12 @@ brew_installed_version() {
   brew list --versions jarvisrchen/yogurt/yogurt 2>/dev/null | awk '{print $2}'
 }
 
-# previous_tag <version> - the highest existing v* tag strictly below
-# <version>, or empty if none. Local tags only - every worktree in this
-# repo shares refs, so no fetch is needed here.
-previous_tag() {
+# highest_tag_below <version> - reads candidate tag names (one per line,
+# e.g. "v0.6.0") on stdin and prints the highest v* one strictly below
+# <version>, or empty if none. Pure - no git calls - so it is testable
+# with a synthetic list; ordering is semver (v0.10.0 > v0.7.0), not
+# lexical (where the string "v0.10.0" sorts below "v0.7.0").
+highest_tag_below() {
   local version="$1" best="" tag ver
   while IFS= read -r tag; do
     case "$tag" in v*) ;; *) continue ;; esac
@@ -497,8 +499,19 @@ previous_tag() {
     if [ -z "$best" ] || semver_lt "${best#v}" "$ver"; then
       best="$tag"
     fi
-  done < <(git tag -l 'v*')
+  done
   printf '%s' "$best"
+}
+
+# previous_tag <version> - the highest existing v* tag strictly below
+# <version>, or empty if none. Reads `git ls-remote --tags origin`, never
+# local tags: preflight's check_tag_available established that local tags
+# can lie (a stale one after a deleted-and-repushed release), and CI's
+# fetch-depth-1 checkout has no local tags to read at all.
+previous_tag() {
+  git ls-remote --tags origin \
+    | awk '{print $2}' | sed -e 's#^refs/tags/##' -e 's/\^{}$//' \
+    | highest_tag_below "$1"
 }
 
 # render_log_row <version> <date> <push_run> <dry_run> <arm_sha> <x86_sha>

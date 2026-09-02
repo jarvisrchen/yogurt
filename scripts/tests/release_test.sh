@@ -9,7 +9,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RELEASE="$SCRIPT_DIR/../release.sh"
 
 pass=0
@@ -106,12 +105,40 @@ formula_x86="$(formula_shas "$FORMULA" | sed -n '2p')"
 check "formula_shas arm64 (first)" "$formula_arm" "1111111111111111111111111111111111111111111111111111111111111111"
 check "formula_shas x86_64 (second)" "$formula_x86" "2222222222222222222222222222222222222222222222222222222222222222"
 
-# --- previous_tag / ships_since - against this repo's real tag history --
+# --- highest_tag_below - pure, a synthetic list, no git at all ----------
 
-check "previous_tag(0.7.0)" "$(previous_tag 0.7.0)" "v0.6.0"
-check "previous_tag(0.1.0) has no predecessor" "$(previous_tag 0.1.0)" ""
-want_ships="$(git -C "$REPO_ROOT" log v0.6.0..v0.7.0 --oneline | awk '{printf "%s%s", (NR>1?"; ":""), $0}')"
-check "ships_since matches git log --oneline, joined" "$(cd "$REPO_ROOT" && ships_since v0.6.0 0.7.0)" "$want_ships"
+tags_list=$'v0.6.0\nv0.7.0\nv0.10.0\nmodels-v1\n'
+check "highest_tag_below 0.7.0 picks v0.6.0" "$(printf '%s' "$tags_list" | highest_tag_below 0.7.0)" "v0.6.0"
+check "highest_tag_below 0.10.0 is semver, not lexical" "$(printf '%s' "$tags_list" | highest_tag_below 0.10.0)" "v0.7.0"
+check "highest_tag_below 0.6.0 has no predecessor in the list" "$(printf '%s' "$tags_list" | highest_tag_below 0.6.0)" ""
+check "highest_tag_below ignores non-release tags" "$(printf 'models-v1\n' | highest_tag_below 9.9.9)" ""
+
+# --- previous_tag / ships_since - a throwaway fixture repo, never the
+# real repo or the network: "origin" is a local bare repo, so this works
+# the same in a full clone or CI's fetch-depth-1 shallow one. -----------
+
+FIXTURE="$WORK/fixture"
+BARE="$WORK/origin.git"
+git init -q --bare "$BARE"
+git init -q -b main "$FIXTURE"
+git -C "$FIXTURE" remote add origin "$BARE"
+commit() { git -C "$FIXTURE" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "$1"; }
+commit "first"
+git -C "$FIXTURE" tag v0.6.0
+commit "second (#10)"
+commit "third (#11)"
+git -C "$FIXTURE" tag v0.7.0
+commit "fourth"
+git -C "$FIXTURE" tag v0.10.0
+git -C "$FIXTURE" tag models-v1
+git -C "$FIXTURE" push -q origin main --tags
+
+check "previous_tag(0.7.0) via ls-remote" "$(cd "$FIXTURE" && previous_tag 0.7.0)" "v0.6.0"
+check "previous_tag(0.10.0) is semver-ordered" "$(cd "$FIXTURE" && previous_tag 0.10.0)" "v0.7.0"
+check "previous_tag(0.6.0) has no predecessor" "$(cd "$FIXTURE" && previous_tag 0.6.0)" ""
+
+want_ships="$(git -C "$FIXTURE" log v0.6.0..v0.7.0 --oneline | awk '{printf "%s%s", (NR>1?"; ":""), $0}')"
+check "ships_since matches git log --oneline, joined" "$(cd "$FIXTURE" && ships_since v0.6.0 0.7.0)" "$want_ships"
 
 # --- render_log_row - fixed inputs, no network -------------------------
 
@@ -175,17 +202,10 @@ case "$plan_no_smoke" in
   *) pass=$((pass + 1)) ;;
 esac
 
-# untag -n against a throwaway fixture repo with a real (local + "remote")
-# tag, so the plan reflects an actual git ls-remote/rev-parse - no network,
-# since "origin" is a local bare repo.
-FIXTURE="$WORK/fixture"
-BARE="$WORK/origin.git"
-git init -q --bare "$BARE"
-git init -q -b main "$FIXTURE"
-git -C "$FIXTURE" remote add origin "$BARE"
-git -C "$FIXTURE" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+# untag -n - reuses the fixture repo above, adding one more tag; still no
+# network, since "origin" is that same local bare repo.
 git -C "$FIXTURE" tag v9.9.9
-git -C "$FIXTURE" push -q origin main --tags
+git -C "$FIXTURE" push -q origin v9.9.9
 
 untag_plan="$(cd "$FIXTURE" && cmd_untag 9.9.9 -n)"
 contains "untag plan: deletes remote tag" "$untag_plan" "git push origin :refs/tags/v9.9.9"
