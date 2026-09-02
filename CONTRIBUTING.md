@@ -203,7 +203,26 @@ Pin the pair yourself with `YOGURT_VITE_PORT` and `YOGURT_BACKEND_PORT`, or forc
 If the branch carries a database migration, set `YOGURT_DATA_DIR=~/.yogurt-<slug>` before `just dev` so this worktree gets its own `db.sqlite` instead of upgrading the shared one out from under the main binary.
 Keys and models are still read from `~/.yogurt` either way.
 
+Hand over the manual test with an absolute path, not a relative one.
+`cd ~/Documents/code/yogurt-worktrees/<slug> && just dev` works from any terminal; `cd ../yogurt-worktrees/<slug> && just dev` silently resolves to the wrong place, or nowhere, once pasted from a terminal that was not sitting in the original working directory.
+`just pr` validates that a code-change PR body's handover line is absolute for this reason.
+
 Delete the worktree once its PR merges: `git worktree remove ../yogurt-worktrees/my-change`.
+
+#### The shared main checkout is not a worktree
+
+Several sessions share the main checkout at the repo root, so it is the one place where a mistake lands on someone else.
+Treat it as read-only unless you own it: do not change its branch, do not `reset --hard` it, and do not run a build in it.
+Running something out of it counts as owning it - a session with a server or binary running from that tree has a claim on it that `git status` will not show you - so ask before you build there.
+
+A build in progress is a write in progress, and it is invisible.
+`git status` is clean, there is no lock file, and nothing tells you a `cargo build` is running in that tree.
+Change the branch under one and cargo finishes the run against the new source: some crates compile from the old tree, the rest from the new, and you get a binary spliced from two source trees with exit code 0 and no warning.
+`target/release/yogurt` is a single file with no record of which branch produced it, so the splice is invisible afterward too - build in the shared tree while another session is verifying a fix, and their next run silently exercises your code instead of theirs.
+It reads as a regression in their feature, and nothing in the output says otherwise.
+A spliced binary is worse than a stale one, because it can pass the test it was built to verify while quietly failing a guarantee the same change was supposed to keep.
+
+If you do end up working in the shared checkout anyway, re-run `git branch --show-current` immediately before every commit - not just before `git checkout -b`, since the branch can move under you mid-task - and stage explicit paths rather than `git add -A` so you cannot sweep up another session's work.
 
 ## Releasing
 
