@@ -19,6 +19,10 @@ This skill is the short version - when to reach for it, and the rules the recipe
   - `yogurt ctl meeting` - Create, start, stop, and read meetings on a running instance
   - `yogurt ctl detect` - What meeting detection currently sees (MTG-11), or dismiss the prompt
   - `yogurt ctl windows` - On-screen windows and each one's meeting-detection verdict. No server needed
+  - `yogurt ctl settings` - General settings the server exposes: get and set
+  - `yogurt ctl provider` - Configured LLM providers: list, activate, test
+  - `yogurt ctl models` - STT models: list, download, delete
+  - `yogurt ctl ws` - Subscribe to the server websocket, printing one JSON frame per line
 <!-- yogurt-cli:end -->
 
 `yogurt start --no-open` runs the server without opening a browser tab, but still in the foreground - the caller backgrounds it themselves (tmux by convention) if they want the shell back.

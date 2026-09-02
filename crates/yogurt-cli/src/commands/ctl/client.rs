@@ -310,6 +310,76 @@ impl Client {
         Self::handle_json(resp).await
     }
 
+    /// Same as [`Self::post_empty`] but for endpoints that answer with no
+    /// body at all (e.g. the 202-Accepted-and-fire-and-forget model
+    /// download start) -- `post_empty`'s `resp.json::<T>()` would fail
+    /// parsing an empty body.
+    pub async fn post_no_body(&self, path: &str) -> Result<(), CtlError> {
+        let resp = self
+            .http
+            .post(self.url(path))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| self.conn_error(e))?;
+        Self::handle_status(resp).await
+    }
+
+    pub async fn patch<B: Serialize + ?Sized, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, CtlError> {
+        let resp = self
+            .http
+            .patch(self.url(path))
+            .bearer_auth(&self.token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| self.conn_error(e))?;
+        Self::handle_json(resp).await
+    }
+
+    pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, CtlError> {
+        let resp = self
+            .http
+            .delete(self.url(path))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| self.conn_error(e))?;
+        Self::handle_json(resp).await
+    }
+
+    /// Same as [`Self::delete`] but for `204 No Content` responses (e.g.
+    /// `DELETE /api/meetings/:id`).
+    pub async fn delete_no_body(&self, path: &str) -> Result<(), CtlError> {
+        let resp = self
+            .http
+            .delete(self.url(path))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| self.conn_error(e))?;
+        Self::handle_status(resp).await
+    }
+
+    /// `ws://127.0.0.1:<port><path>?token=<token>` -- the WS auth contract
+    /// (`crate::ws`'s doc comment on the server side) is the query-param
+    /// token, same as every browser `WebSocket` connection.
+    pub fn ws_url(&self, path: &str) -> String {
+        format!("ws://127.0.0.1:{}{path}?token={}", self.port, self.token)
+    }
+
+    async fn handle_status(resp: reqwest::Response) -> Result<(), CtlError> {
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(CtlError::Server(server_error_message(resp).await))
+        }
+    }
+
     async fn handle_json<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T, CtlError> {
         if resp.status().is_success() {
             resp.json::<T>().await.map_err(|e| {

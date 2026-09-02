@@ -226,13 +226,22 @@ yogurt ctl meeting start <id|last>
 yogurt ctl meeting stop [<id|url|last>]            # bare `stop` targets whatever is currently recording
 yogurt ctl meeting show|summary|transcript <id|url|last>
 yogurt ctl meeting enhance <id|url|last>
+yogurt ctl meeting mute on|off [<id|url|last>]     # pauses/resumes the mic; bare form targets whatever is recording
+yogurt ctl meeting search <query> [--limit N]      # full-text: title, notes, transcript
+yogurt ctl meeting delete <id|url|last> [--dry-run] [--yes]
 yogurt ctl detect [dismiss]                        # what meeting detection currently sees
 yogurt ctl windows                                 # on-screen windows + each one's match verdict - no server needed
+yogurt ctl settings get
+yogurt ctl settings set k=v [k2=v2 ...] [--dry-run]
+yogurt ctl provider list|activate <name>|test [<name>]
+yogurt ctl models list|download <name> [--wait]|delete <name> [--dry-run]
+yogurt ctl ws [<id|url|last>] [--types a,b] [--count N]   # one JSON frame per line, until Ctrl-C or --count
 ```
 
 `<id|url|last>` accepts a bare meeting id, a full meeting URL (the port and id are read out of it), or the literal `last` for the most recently created meeting.
 `list`/`show`/`summary`/`transcript` fall back to the local database when no server answers, noting `source: db` (stderr in text mode, a JSON field in `--json` mode) so you know the answer might be behind a server running on a different port.
 Mutations are idempotent: starting an already-recording meeting or stopping one that isn't recording is a no-op, not an error.
+`ws` follows the app-wide `/ws` socket by default (model download progress, chat chunks), or a meeting's own `/ws/meetings/<id>` socket (transcript, enhance progress) when given an id; `models download --wait` follows the same socket to print progress to stderr.
 
 | Flag | What it does |
 |------|--------------|
