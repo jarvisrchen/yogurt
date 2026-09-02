@@ -120,13 +120,13 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## CLI
 
-- [ ] **CLI-6** `yogurt ctl` second slice, and the control skill rewritten around a generated command block
+- [ ] **CLI-6** the control skill rewritten around a generated command block
   <details>
   <summary>Details</summary>
 
-  `settings`, `provider`, `models`, `ws`, `meeting mute | search | delete`, once CLI-4's client and port discovery are proven.
-  Then `.claude/skills/yogurt-control/SKILL.md` shrinks to about 150 words: the command block between generator markers (kept honest by the `--help` drift test from DX-4), a Feature Map link, and three rules.
-  Only after the brew release that carries `ctl`: the README's `npx skills add` path installs the skill standalone.
+  The `yogurt ctl` second slice - `settings`, `provider`, `models`, `ws`, `meeting mute | search | delete` - landed in #67.
+  Remaining scope: `.claude/skills/yogurt-control/SKILL.md` shrinks to about 150 words - the command block between generator markers (kept honest by the `--help` drift test from DX-4), a Feature Map link, and three rules.
+  That rewrite waits for the brew release that carries `ctl`: the README's `npx skills add` path installs the skill standalone, so a skill naming `ctl` commands must not precede a binary that has them.
   Design: `docs/.planning/agent-workflow.md`, section 4D, D1 and D2.
   </details>
 

@@ -11,7 +11,11 @@
 mod client;
 mod detect_cmd;
 mod meeting;
+mod models;
+mod provider;
+mod settings;
 mod status;
+mod ws;
 
 use clap::{Args, Subcommand};
 use serde_json::json;
@@ -46,6 +50,33 @@ pub enum CtlCmd {
     },
     /// On-screen windows and each one's meeting-detection verdict. No server needed.
     Windows,
+    /// General settings the server exposes: get and set.
+    Settings {
+        #[command(subcommand)]
+        cmd: settings::SettingsCmd,
+    },
+    /// Configured LLM providers: list, activate, test.
+    Provider {
+        #[command(subcommand)]
+        cmd: provider::ProviderCmd,
+    },
+    /// STT models: list, download, delete.
+    Models {
+        #[command(subcommand)]
+        cmd: models::ModelsCmd,
+    },
+    /// Subscribe to the server websocket, printing one JSON frame per line.
+    Ws {
+        /// Meeting id, url, or `last` -- scopes to that meeting's transcript
+        /// socket instead of the app-wide one.
+        meeting: Option<String>,
+        /// Only print frames whose "type" is one of these (comma-separated).
+        #[arg(long, value_delimiter = ',')]
+        types: Vec<String>,
+        /// Stop after this many matching frames.
+        #[arg(long)]
+        count: Option<usize>,
+    },
 }
 
 /// Dispatch + top-level error formatting. Returns the process exit code:
@@ -60,6 +91,14 @@ pub async fn run(args: CtlArgs) -> i32 {
         CtlCmd::Meeting { cmd } => meeting::run(cmd, port, json_out).await,
         CtlCmd::Detect { action } => detect_cmd::run_detect(port, json_out, action).await,
         CtlCmd::Windows => detect_cmd::run_windows(json_out).await,
+        CtlCmd::Settings { cmd } => settings::run(cmd, port, json_out).await,
+        CtlCmd::Provider { cmd } => provider::run(cmd, port, json_out).await,
+        CtlCmd::Models { cmd } => models::run(cmd, port, json_out).await,
+        CtlCmd::Ws {
+            meeting,
+            types,
+            count,
+        } => ws::run(meeting, types, count, port, json_out).await,
     };
     match result {
         Ok(()) => 0,

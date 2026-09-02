@@ -54,6 +54,14 @@ serde_json = { workspace = true }
 # dev-dependencies -- it was already compiled into the binary through
 # yogurt-server's own [dependencies], so this adds no new linkage.
 reqwest = { workspace = true }
+# CLI-6: `yogurt ctl ws` (and `models download --wait`) speak the server's
+# WebSocket surface. Both are already compiled into the binary through
+# yogurt-server/yogurt-stt's own [dependencies] (Deepgram STT uses the same
+# WS client) -- pulling them into yogurt-cli's own [dependencies] adds no
+# new crate to the build, it only makes an already-resolved one callable
+# from this crate.
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
