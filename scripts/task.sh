@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# yogurt task — task lifecycle: create/resume a worktree, list worktrees,
+# yogurt task - task lifecycle: create/resume a worktree, list worktrees,
 # run/stop a background dev server in tmux.
 #
 # BSD awk / BSD sed only (no gawk, no GNU-only flags) - stock macOS 13+
@@ -7,12 +7,17 @@
 # for the design this implements.
 set -euo pipefail
 
+# Set by origin_ticket_docs, read by the EXIT trap that cleans it up -
+# has to be global, not a cmd_start local: a trap set inside a function
+# still fires after that function (and its locals) have gone out of scope.
+TICKET_TMP_DIR=""
+
 usage() {
   cat >&2 <<'EOF'
-usage: task.sh start <ID|slug> [words...]   create/resume a worktree + branch
-       task.sh worktrees [--no-pr]          list every worktree
-       task.sh dev-bg [name]                run `just dev` in a tmux window
-       task.sh dev-stop [name]               stop that tmux window
+usage: task.sh start <ID|slug> [words...] [--no-bootstrap]   create/resume a worktree + branch
+       task.sh worktrees [--no-pr]                           list every worktree
+       task.sh dev-bg [name]                                 run `just dev` in a tmux window
+       task.sh dev-stop [name]                               stop that tmux window
 EOF
 }
 
@@ -43,6 +48,28 @@ worktrees_root() {
 
 # ── start ────────────────────────────────────────────────────────────
 
+# scripts/ticket.sh + docs/TODO*.md as of origin/main, copied into a temp
+# dir - never the main checkout's own working tree. That checkout is
+# shared and routinely lags behind origin/main (it did here: no
+# scripts/ticket.sh on disk at all, three commits behind), so reading it
+# straight off disk gives wrong answers about which tickets are open.
+# Prints the temp dir's path on stdout; caller is responsible for rm -rf.
+origin_ticket_docs() {
+  local main="$1" tmp
+  tmp="$(mktemp -d)"
+  if git -C "$main" show origin/main:scripts/ticket.sh > "$tmp/ticket.sh" 2>/dev/null &&
+     mkdir -p "$tmp/docs" &&
+     git -C "$main" show origin/main:docs/TODO.md > "$tmp/docs/TODO.md" 2>/dev/null &&
+     git -C "$main" show origin/main:docs/TODO-DONE.md > "$tmp/docs/TODO-DONE.md" 2>/dev/null
+  then
+    chmod +x "$tmp/ticket.sh"
+    printf '%s\n' "$tmp"
+  else
+    rm -rf "$tmp"
+    return 1
+  fi
+}
+
 cmd_start() {
   local first="${1:-}"
   [ -z "$first" ] && { usage; exit 2; }
@@ -67,7 +94,10 @@ cmd_start() {
   local id="" base name
   if [[ "$first" =~ ^[A-Z]{2,4}-[0-9]+$ ]]; then
     id="$first"
-    "$main/scripts/ticket.sh" 2>/dev/null | cut -f1 | grep -qx "$id" ||
+    TICKET_TMP_DIR="$(origin_ticket_docs "$main")" ||
+      die "could not read docs/TODO*.md from origin/main" "" 1
+    trap 'rm -rf "$TICKET_TMP_DIR"' EXIT
+    TICKET_DOCS_DIR="$TICKET_TMP_DIR/docs" "$TICKET_TMP_DIR/ticket.sh" 2>/dev/null | cut -f1 | grep -qx "$id" ||
       die "$id is not an open ticket" "just ticket" 2
     base="$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')"
   elif [[ "$first" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
@@ -107,7 +137,7 @@ cmd_start() {
   fi
 
   if [ -n "$id" ]; then
-    "$main/scripts/ticket.sh" "$id"
+    TICKET_DOCS_DIR="$TICKET_TMP_DIR/docs" "$TICKET_TMP_DIR/ticket.sh" "$id"
     echo
   fi
   echo "cd $dir && just dev"

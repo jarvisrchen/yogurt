@@ -113,5 +113,14 @@ run start ghost-branch --no-bootstrap >/dev/null 2>&1 || status=$?
 t "a branch claimed without its directory refuses with exit 1" [ "$status" -eq 1 ]
 git -C "$MAIN" branch -D ghost-branch >/dev/null
 
+# --- stale main checkout: ticket state must come from origin/main, not
+# the main checkout's own (possibly stale) working tree ---
+rm -f "$MAIN/scripts/ticket.sh"
+printf '# TODO (stale copy, no MTG-10 here)\n' > "$MAIN/docs/TODO.md"
+status=0
+out="$(run start MTG-10 stale --no-bootstrap 2>&1)" || status=$?
+t "start <ID> still succeeds with a stale/missing ticket.sh and docs on the main checkout's working tree"   [ "$status" -eq 0 ]
+t "start <ID> against a stale main checkout still derives the right name from origin/main"   bash -c 'echo "$1" | tail -1 | grep -q "/mtg-10-stale$"' _ "$out"
+
 echo "task_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
