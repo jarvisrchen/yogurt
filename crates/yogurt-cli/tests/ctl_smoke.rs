@@ -73,6 +73,72 @@ fn ctl(port: u16, home: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
     ctl_cmd(port, home, args).assert()
 }
 
+/// Run a `ctl` subprocess with a hard wall-clock bound, so a hardware test
+/// can never hang the suite -- `Command::output()`/`.ok()` block forever
+/// with no timeout of their own. Polls `try_wait()` (non-blocking) rather
+/// than spawning a watchdog thread; on timeout, kills the child and
+/// returns an error naming the two things that have actually caused this:
+/// a pending TCC permission dialog for THIS binary's first run at this
+/// worktree path (TCC grants are keyed per-path for unsigned dev builds --
+/// see `docs/.planning/agent-workflow.md` section 8), or a stale SCK/mic
+/// capture session left open by a prior hardware test that was killed
+/// with SIGKILL (which skips `Drop`, so the OS-level session outlives the
+/// process and blocks the next `start` until it's reclaimed).
+fn ctl_run_bounded(
+    port: u16,
+    home: &Path,
+    args: &[&str],
+    bound: Duration,
+) -> Result<std::process::Output, String> {
+    // assert_cmd::Command privatizes `spawn` (only `.output()`/`.ok()`,
+    // both unbounded, are exposed) -- build the std::process::Command
+    // directly so we can poll it instead of blocking on it.
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+        .arg("ctl")
+        .arg("--port")
+        .arg(port.to_string())
+        .args(args)
+        .env("HOME", home)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn `ctl {args:?}` failed: {e}"))?;
+    let started = std::time::Instant::now();
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("wait on `ctl {args:?}` failed: {e}"))?
+        {
+            use std::io::Read;
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            if let Some(mut o) = child.stdout.take() {
+                let _ = o.read_to_end(&mut stdout);
+            }
+            if let Some(mut e) = child.stderr.take() {
+                let _ = e.read_to_end(&mut stderr);
+            }
+            return Ok(std::process::Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+        if started.elapsed() > bound {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "`ctl {args:?}` did not return within {bound:?} -- likely a pending Screen \
+                 Recording / Microphone permission prompt for this binary's first run at this \
+                 worktree path (grant it in System Settings > Privacy & Security and run once \
+                 interactively), or a stale capture session left by a prior killed hardware \
+                 test (wait a few seconds for macOS to reclaim it and retry)"
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn status_with_no_server_exits_1_with_help() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -668,7 +734,10 @@ async fn hw_meeting_start_stamps_stt_engine_then_stop_closes_pipeline() {
         .expect("session-token exists")
         .trim()
         .to_string();
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(45))
+        .build()
+        .expect("build reqwest client");
 
     // Switch this instance to local whisper -- the default is "cloud",
     // which needs a Deepgram key this test has none of (AGENTS.md: audio
@@ -695,14 +764,26 @@ async fn hw_meeting_start_stamps_stt_engine_then_stop_closes_pipeline() {
     let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
     let id = created["id"].as_str().expect("id field").to_string();
 
+    // A wall-clock bound on every hardware-facing call -- this test must
+    // never hang the suite (that is the whole reason `just test-hw` is
+    // its own opt-in recipe rather than something a background `cargo
+    // test` could stumble into). `ctl_run_bounded` kills and reports
+    // instead of blocking forever.
+    const HW_CALL_BOUND: Duration = Duration::from_secs(45);
+
     // Exercise + assert without panicking, so the cleanup below always
     // runs -- this is the "capture pipeline opened and closed" check
     // MTG-11 could not machine-verify, and it must never leave a live
     // recording or a stray meeting behind even if an assertion fails.
     let exercise: Result<(), String> = async {
-        let start_out = ctl_cmd(port, tmp.path(), &["meeting", "start", &id])
-            .ok()
-            .map_err(|e| format!("start failed: {e}"))?;
+        let start_out =
+            ctl_run_bounded(port, tmp.path(), &["meeting", "start", &id], HW_CALL_BOUND)?;
+        if !start_out.status.success() {
+            return Err(format!(
+                "start failed: {}",
+                String::from_utf8_lossy(&start_out.stdout)
+            ));
+        }
         eprintln!(
             "hw: ctl meeting start -> {}",
             String::from_utf8_lossy(&start_out.stdout)
@@ -712,9 +793,18 @@ async fn hw_meeting_start_stamps_stt_engine_then_stop_closes_pipeline() {
         // read back `stt_engine`.
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let shown_out = ctl_cmd(port, tmp.path(), &["meeting", "show", &id, "--json"])
-            .ok()
-            .map_err(|e| format!("show failed: {e}"))?;
+        let shown_out = ctl_run_bounded(
+            port,
+            tmp.path(),
+            &["meeting", "show", &id, "--json"],
+            HW_CALL_BOUND,
+        )?;
+        if !shown_out.status.success() {
+            return Err(format!(
+                "show failed: {}",
+                String::from_utf8_lossy(&shown_out.stdout)
+            ));
+        }
         let shown: serde_json::Value =
             serde_json::from_slice(&shown_out.stdout).map_err(|e| format!("bad show JSON: {e}"))?;
         let stt_engine = shown["meeting"]["stt_engine"].as_str().unwrap_or("unknown");
@@ -726,20 +816,23 @@ async fn hw_meeting_start_stamps_stt_engine_then_stop_closes_pipeline() {
     }
     .await;
 
-    let stop_result = ctl_cmd(port, tmp.path(), &["meeting", "stop", &id]).ok();
-    eprintln!(
-        "hw: ctl meeting stop -> {}",
-        stop_result
-            .as_ref()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_else(|e| e.to_string())
-    );
+    let stop_result = ctl_run_bounded(port, tmp.path(), &["meeting", "stop", &id], HW_CALL_BOUND);
+    match &stop_result {
+        Ok(o) => eprintln!(
+            "hw: ctl meeting stop -> {}",
+            String::from_utf8_lossy(&o.stdout)
+        ),
+        Err(e) => eprintln!("hw: ctl meeting stop -> ERROR: {e}"),
+    }
 
-    let shown_after_stop: Option<serde_json::Value> =
-        ctl_cmd(port, tmp.path(), &["meeting", "show", &id, "--json"])
-            .ok()
-            .ok()
-            .and_then(|o| serde_json::from_slice(&o.stdout).ok());
+    let shown_after_stop: Option<serde_json::Value> = ctl_run_bounded(
+        port,
+        tmp.path(),
+        &["meeting", "show", &id, "--json"],
+        HW_CALL_BOUND,
+    )
+    .ok()
+    .and_then(|o| serde_json::from_slice(&o.stdout).ok());
     let ended_at_stamped = shown_after_stop
         .as_ref()
         .is_some_and(|m| m["meeting"]["ended_at"].is_number());
