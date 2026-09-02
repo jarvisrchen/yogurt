@@ -681,3 +681,17 @@ New closed items go at the bottom.
   Verified: `cargo test -p yogurt` (28 passed, including the new `data_dir.rs` integration suite and the precedence unit tests), `just lint`, `just test` all green.
   By hand: `yogurt start --port 7891 --no-open --data-dir /tmp/yogurt-cli7-smoke` produced `db.sqlite`/`-wal`/`-shm` under the temp dir only, `ctl meeting list` against it returned empty, `YOGURT_DATA_DIR=/tmp/yogurt-cli7-smoke yogurt doctor --json` reported `db_path: /tmp/yogurt-cli7-smoke/db.sqlite`, and `~/.yogurt/db.sqlite`'s mtime was identical before and after (`stat -f %m`).
   </details>
+
+- [x] **CLI-5** Fixture meetings: `yogurt ctl meeting new --transcript-file` seeds a finished meeting with a known transcript
+  <details>
+  <summary>Details</summary>
+
+  Today the only ways to get a meeting with a transcript are a live recording or `just eval-play`, which speaks the script through the speaker for five minutes and needs TCC grants; `test_support::seed_meeting` never compiles into a runnable binary.
+  So every PR that touches augmented notes or chat is verified by recording a real meeting.
+  Extend `POST /api/meetings` with optional `transcript_json` segments and `ended: true`; `ctl meeting new --transcript-file <segments.json>` sends them and `--from-script scripts/eval/conversation.txt` converts the `A:`/`B:` lines so the eval ground truth doubles as the fixture.
+  Design: `docs/.planning/agent-workflow.md`, section 4D, D7.
+  Depends on CLI-4.
+
+  Landed in #PENDING (2026-09-02). Extended `POST /api/meetings` with optional `transcript_json` (array of `{ts_ms,channel,text}` segments, validated server-side with a 400 naming the first bad field on a malformed array) and `ended` fields, so a fixture meeting can be seeded with no recording, no `stt_engine`, and `ended_at` stamped from the transcript's own last timestamp. `ctl meeting new --transcript-file <path>` forwards the file's JSON unvalidated so a malformed file's error comes from the server itself; `--from-script <path>` converts an eval-style `A:`/`B:` script into `me`/`them` segments at 4 seconds per line plus any `PAUSE` seconds. Both imply the meeting is created ended and are refused together with `--start` (exit 2, via clap's `conflicts_with`). `ctl meeting show` now also reports a `segments` count.
+  Verified: `just lint` and `just test` both green (added 5 `yogurt-cli` integration tests in `ctl_smoke.rs` and 3 `yogurt-server` route tests in `meetings_api.rs`, all passing alongside the existing suite - 314 web tests, full rust workspace, Playwright e2e). Manually ran `just dev`, created a fixture via `--from-script scripts/eval/conversation.txt` (43 segments, matching the script's `A:`/`B:` line count), confirmed `ctl meeting show`/`transcript` output, ran `ctl meeting enhance last` against the real configured MiniMax provider (produced a genuine multi-section summary with action items, not `too_short`), then deleted the fixture via the API and confirmed a 404 on re-fetch.
+  </details>
