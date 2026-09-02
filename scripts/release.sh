@@ -375,6 +375,7 @@ tap_formula_ref() {
 
 VERIFY_ARM_SHA=""
 VERIFY_X86_SHA=""
+tmpdir=""    # set by cmd_verify; global so its EXIT trap can still see it
 
 # cmd_verify <version> [--json] - read-only; returns 0 when every check
 # passes. On success, sets VERIFY_ARM_SHA/VERIFY_X86_SHA so `finish` can
@@ -387,6 +388,7 @@ cmd_verify() {
       -h|--help) usage; return 0 ;;
       -*)
         echo "release.sh verify: unknown flag $1" >&2
+        usage >&2
         return 2
         ;;
       *)
@@ -401,11 +403,16 @@ cmd_verify() {
   done
   if [ -z "$version" ]; then
     echo "release.sh verify: missing <version>" >&2
+    usage >&2
     return 2
   fi
 
-  local tag="v$version" tmpdir overall_ok=0
+  local tag="v$version" overall_ok=0
+  # tmpdir is intentionally not `local`: the EXIT trap below fires at
+  # actual process exit, by which point cmd_verify's own local scope is
+  # long gone, and `set -u` would call a local out-of-scope var unbound.
   tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/yogurt-release-verify.XXXXXX")"
+  trap 'rm -rf "$tmpdir"' EXIT
 
   # `gh release download` never sets com.apple.quarantine (that xattr is
   # a browser download's doing), so untarring the binary below is safe -
@@ -455,8 +462,6 @@ cmd_verify() {
       check_eq binary_version "extracted $host_tar's yogurt --version" "$printed" "yogurt $version" || overall_ok=1
     fi
   fi
-
-  rm -rf "$tmpdir"
 
   if [ "$JSON" -eq 1 ]; then
     (IFS=,; printf '[%s]\n' "${CHECK_JSON[*]}")
@@ -561,6 +566,7 @@ cmd_finish() {
       -h|--help) usage; return 0 ;;
       -*)
         echo "release.sh finish: unknown flag $1" >&2
+        usage >&2
         return 2
         ;;
       *)
@@ -575,6 +581,7 @@ cmd_finish() {
   done
   if [ -z "$version" ]; then
     echo "release.sh finish: missing <version>" >&2
+    usage >&2
     return 2
   fi
 
@@ -661,6 +668,7 @@ cmd_untag() {
       -h|--help) usage; return 0 ;;
       -*)
         echo "release.sh untag: unknown flag $1" >&2
+        usage >&2
         return 2
         ;;
       *)
@@ -675,6 +683,7 @@ cmd_untag() {
   done
   if [ -z "$version" ]; then
     echo "release.sh untag: missing <version>" >&2
+    usage >&2
     return 2
   fi
 
