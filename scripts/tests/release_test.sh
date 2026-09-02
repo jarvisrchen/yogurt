@@ -240,6 +240,132 @@ check "ship_marker_sha round trip, marker embedded in a larger PR body" \
 $marker
 ")" "deadbeefcafe"
 check "ship_marker_sha: no marker present" "$(ship_marker_sha "no marker here")" ""
+ship_marker_sha_status=0
+ship_marker_sha "no marker here" >/dev/null || ship_marker_sha_status=$?
+check "ship_marker_sha: no marker present exits 0 (grep-no-match is not a failure)" "$ship_marker_sha_status" "0"
+
+# --- find_bump_pr: a real multi-line PR body, marker at the end - stubbed
+# gh forwards the exact --jq expression release.sh passes to a real jq, so
+# this exercises the actual filter, not a hand-rolled substitute. Verifies
+# the fix for the bug where a line-oriented `read` on "num\tstate\tbody"
+# never saw a marker past the body's first newline. --------------------
+
+cat >"$BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+jqexpr=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "--jq" ] && jqexpr="$a"
+  prev="$a"
+done
+case "$*" in
+  *"pr list -R jarvisrchen/yogurt --head release/v0.8.0"*)
+    printf '%s' '[{"number":42,"state":"OPEN","body":"Ships since v0.7.0:\nabc first\n\n<!-- yogurt-release: P=deadbeefcafe -->\n"}]' | jq -r "$jqexpr"
+    ;;
+  *)
+    echo "unstubbed gh call: $*" >&2
+    exit 1
+    ;;
+esac
+STUB
+chmod +x "$BIN/gh"
+
+found_multiline="$(find_bump_pr 0.8.0)"
+read -r fbp_num fbp_state <<<"$(bump_pr_num_state "$found_multiline")"
+check "find_bump_pr: number parsed off the first line" "$fbp_num" "42"
+check "find_bump_pr: state parsed off the first line" "$fbp_state" "OPEN"
+fbp_body="$(printf '%s' "$found_multiline" | tail -n +2)"
+check "find_bump_pr: marker at the end of a multi-line body is still found" \
+  "$(ship_marker_sha "$fbp_body")" "deadbeefcafe"
+
+# --- dry_run_green_id_at: reuses an in-progress dispatch instead of
+# dispatching a second one - the bug that produced two dry runs (33651697600
+# and 33651784100) at the same sha during a resumed ship. -----------------
+
+cat >"$BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+jqexpr=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "--jq" ] && jqexpr="$a"
+  prev="$a"
+done
+case "$*" in
+  *"run list -R jarvisrchen/yogurt -w Release -c deadsha1234"*)
+    printf '%s' '[{"databaseId":111,"event":"workflow_dispatch","status":"in_progress","conclusion":null},{"databaseId":100,"event":"push","status":"completed","conclusion":"success"}]' | jq -r "$jqexpr"
+    ;;
+  *)
+    echo "unstubbed gh call: $*" >&2
+    exit 1
+    ;;
+esac
+STUB
+chmod +x "$BIN/gh"
+
+reused_id="$(dry_run_green_id_at deadsha1234)"
+check "dry_run_green_id_at: reuses an in-progress workflow_dispatch run" "$reused_id" "111"
+
+# --- await_checks_reported: polls until gh pr checks reports at least one
+# check - right after `gh pr create`, GitHub sometimes has none registered
+# yet and `gh pr checks --watch` fails immediately with "no checks
+# reported". Stub answers "none yet" once, then "one check", to exercise
+# the poll loop without waiting anywhere near the real 60s budget. --------
+
+CHECKS_COUNTER="$WORK/checks_counter"
+echo 0 >"$CHECKS_COUNTER"
+cat >"$BIN/gh" <<STUB
+#!/usr/bin/env bash
+case "\$*" in
+  *"pr checks 55 -R jarvisrchen/yogurt --json name --jq length"*)
+    n=\$(cat "$CHECKS_COUNTER")
+    n=\$((n + 1))
+    echo "\$n" >"$CHECKS_COUNTER"
+    if [ "\$n" -lt 2 ]; then
+      echo "no checks reported on the release/v0.8.0 branch" >&2
+      exit 1
+    fi
+    echo 1
+    ;;
+  *)
+    echo "unstubbed gh call: \$*" >&2
+    exit 1
+    ;;
+esac
+STUB
+chmod +x "$BIN/gh"
+
+await_checks_status=0
+await_checks_reported 55 >/dev/null 2>&1 || await_checks_status=$?
+check "await_checks_reported: succeeds once a check is reported" "$await_checks_status" "0"
+check "await_checks_reported: polled more than once before succeeding" "$(cat "$CHECKS_COUNTER")" "2"
+
+# --- tag ranges need a fetch first: a tag created via `gh api .../refs`
+# (as ship's tag step does, and as a normal `git push --tags` from another
+# clone also would) is never local until fetched. A plain clone with
+# --no-tags reproduces exactly that: `git log <tag>..<tag>` fails with
+# "ambiguous argument: unknown revision" until `git fetch --tags` runs. ---
+
+TAGFETCH_BARE="$WORK/tagfetch_origin.git"
+TAGFETCH_PUSH="$WORK/tagfetch_push"
+git init -q --bare "$TAGFETCH_BARE"
+git init -q -b main "$TAGFETCH_PUSH"
+git -C "$TAGFETCH_PUSH" remote add origin "$TAGFETCH_BARE"
+git -C "$TAGFETCH_PUSH" -c user.email=t@t -c user.name=t commit -q --allow-empty -m first
+git -C "$TAGFETCH_PUSH" tag v0.6.0
+git -C "$TAGFETCH_PUSH" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "second (#20)"
+git -C "$TAGFETCH_PUSH" tag v0.7.0
+git -C "$TAGFETCH_PUSH" push -q origin main --tags
+
+TAGFETCH_READER="$WORK/tagfetch_reader"
+git clone -q --no-tags "$TAGFETCH_BARE" "$TAGFETCH_READER"
+
+tagfetch_before_status=0
+(cd "$TAGFETCH_READER" && ships_since v0.6.0 0.7.0) >/dev/null 2>&1 || tagfetch_before_status=$?
+check "ships_since: fails before the remote tag is fetched" "$tagfetch_before_status" "128"
+
+git -C "$TAGFETCH_READER" fetch origin --tags --quiet
+tagfetch_after="$(cd "$TAGFETCH_READER" && ships_since v0.6.0 0.7.0)"
+contains "ships_since: works once git fetch --tags has run" "$tagfetch_after" "second (#20)"
 
 # --- ship: ship_tag_status - pure, no git at all ------------------------
 
@@ -375,6 +501,15 @@ case "$preflight_block_out" in
     ;;
   *) pass=$((pass + 1)) ;;
 esac
+
+# --- exit codes: `scripts/release.sh preflight <version>` run as a real
+# subprocess (not sourced), exercising main()'s dispatch and the top-level
+# execution guard, not just a function call. Same gh stub and SHIP_FIXTURE
+# as above - v0.9.0 is already tagged, so check_tag_available fails. -----
+
+preflight_subprocess_status=0
+(cd "$SHIP_FIXTURE" && bash "$RELEASE" preflight 0.9.0) >/dev/null 2>&1 || preflight_subprocess_status=$?
+check "release.sh preflight (subprocess, main's dispatch): exits 1 on a failed check" "$preflight_subprocess_status" "1"
 
 # --- open_bump_pr: cleans up its worktree (and the PR-body tempfile) on a
 # failed cargo update - cargo is stubbed to fail unconditionally, so the

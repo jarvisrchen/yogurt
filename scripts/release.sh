@@ -303,7 +303,9 @@ cmd_preflight() {
     exit 2
   fi
 
-  git fetch origin --quiet
+  # --tags: check_release_scope below resolves the last v* tag as a local
+  # ref for a `git log <tag>..origin/main` range.
+  git fetch origin --tags --quiet
   local head_sha
   head_sha="$(git rev-parse origin/main)"
 
@@ -319,7 +321,7 @@ cmd_preflight() {
   if [ "$JSON" -eq 1 ]; then
     (IFS=,; printf '[%s]\n' "${CHECK_JSON[*]}")
   else
-    echo "next: follow the release skill from the dry-run step"
+    echo "next: scripts/release.sh ship <version>"
   fi
 
   exit "$overall_ok"
@@ -666,6 +668,12 @@ cmd_finish() {
     echo "PASS: $brew_bin has no com.apple.quarantine"
   fi
 
+  # A tag created via the GitHub API (as ship's tag step does) never shows
+  # up locally on its own - ships_since below resolves v<version> and
+  # prev_tag as local refs, so without this fetch it fails with "ambiguous
+  # argument: unknown revision".
+  git fetch origin --tags --quiet
+
   local tag_sha parent_sha push_run dry_run prev_tag ships today
   tag_sha="$(gh api "repos/$REPO/commits/v$version" --jq '.sha')"
   parent_sha="$(gh api "repos/$REPO/commits/$tag_sha" --jq '.parents[0].sha')"
@@ -691,8 +699,12 @@ ship_marker() {
 # ship_marker_sha <body> - the sha inside a ship_marker comment found in
 # <body>, or empty if no marker is present.
 ship_marker_sha() {
-  printf '%s' "$1" | grep -oE '<!-- yogurt-release: P=[0-9a-f]+ -->' | head -1 \
-    | sed -E 's/.*P=([0-9a-f]+).*/\1/'
+  # grep exits 1 when the marker is absent; that is the "empty" answer, not
+  # a failure, so keep pipefail from turning it into one (and, worse, from
+  # silently killing the whole script when this runs inside a plain `x=$(...)`
+  # assignment under set -e).
+  printf '%s' "$1" | { grep -oE '<!-- yogurt-release: P=[0-9a-f]+ -->' || true; } \
+    | head -1 | sed -E 's/.*P=([0-9a-f]+).*/\1/'
 }
 
 # commits_all_docs_only <parent> <child> - true when every commit reachable
@@ -737,12 +749,22 @@ ship_tag_status() {
   fi
 }
 
-# find_bump_pr <version> - "<number>\t<state>\t<body>" for the
-# release/v<version> PR on this repo, or empty if none exists.
+# find_bump_pr <version> - "<number>\t<state>\n<body>" for the
+# release/v<version> PR on this repo, or empty if none exists. The body is
+# multi-line, so it goes on its own line after number/state; a caller must
+# not parse this with a line-oriented `read` (that stops at the first
+# newline and never sees the marker embedded near the end of the body).
 find_bump_pr() {
   gh pr list -R "$REPO" --head "release/v$1" --state all \
     --json number,state,body \
-    --jq '.[0] // empty | "\(.number)\t\(.state)\t\(.body)"' 2>/dev/null
+    --jq '.[0] // empty | "\(.number)\t\(.state)\n\(.body)"' 2>/dev/null
+}
+
+# bump_pr_num_state <found> - "<number> <state>" parsed from the first line
+# of find_bump_pr's output. A separate helper (not a line-oriented `read`
+# on the whole thing) because the body after that first line is multi-line.
+bump_pr_num_state() {
+  printf '%s' "$1" | head -1 | awk -F'\t' '{print $1, $2}'
 }
 
 # release_scope_log <version> - "Ships since <tag>:\n<git log --oneline>"
@@ -759,11 +781,16 @@ release_scope_log() {
   printf 'Ships since %s:\n%s\n' "${prev_tag:-(none)}" "$range_log"
 }
 
-# dry_run_green_id_at <sha> - the databaseId of a completed, successful
-# workflow_dispatch Release run at <sha>, or empty.
+# dry_run_green_id_at <sha> - the databaseId of a workflow_dispatch Release
+# run at <sha> worth reusing instead of dispatching a new one: a completed
+# successful run, or one still queued/in_progress (the caller waits on that
+# one rather than firing a second dispatch at the same sha - a resumed ship
+# while the first dry run was still running used to double-dispatch).
+# Empty when no such run exists (a completed failed run does not count -
+# that one is worth re-dispatching).
 dry_run_green_id_at() {
   gh run list -R "$REPO" -w Release -c "$1" --json databaseId,event,status,conclusion \
-    --jq '[.[] | select(.event=="workflow_dispatch" and .status=="completed" and .conclusion=="success")] | sort_by(.databaseId) | reverse | .[0].databaseId // empty'
+    --jq '[.[] | select(.event=="workflow_dispatch" and ((.status=="completed" and .conclusion=="success") or .status=="queued" or .status=="in_progress"))] | sort_by(.databaseId) | reverse | .[0].databaseId // empty'
 }
 
 # await_run_id <workflow> <event> <sha> - polls up to 60s for a run's
@@ -780,6 +807,22 @@ await_run_id() {
     sleep 2
   done
   echo "release.sh ship: no $workflow run ($event) appeared for $sha within 60s" >&2
+  return 1
+}
+
+# await_checks_reported <pr_num> - polls up to 60s until `gh pr checks`
+# reports at least one check for <pr_num>. Right after `gh pr create`,
+# GitHub has not always registered any check runs yet, and `gh pr checks
+# --watch` fails immediately with "no checks reported" if none exist.
+await_checks_reported() {
+  local pr_num="$1" n
+  local i
+  for i in $(seq 1 30); do
+    n="$(gh pr checks "$pr_num" -R "$REPO" --json name --jq 'length' 2>/dev/null || echo 0)"
+    [ "$n" -gt 0 ] && return 0
+    sleep 2
+  done
+  echo "release.sh ship: no checks reported for PR #$pr_num within 60s" >&2
   return 1
 }
 
@@ -861,7 +904,7 @@ print_ship_plan() {
     local green
     green="$(dry_run_green_id_at "$p" 2>/dev/null || true)"
     if [ -n "$green" ]; then
-      echo "  (a green dry run already exists at $p: run $green - dispatch skipped)"
+      echo "  (a reusable dry run already exists at $p: run $green - dispatch skipped)"
     else
       echo "  gh workflow run release.yml -R $REPO -f dry-run=true --ref main   # at $p"
     fi
@@ -870,7 +913,7 @@ print_ship_plan() {
   local found bump_pr_num bump_pr_state
   found="$(find_bump_pr "$version" 2>/dev/null || true)"
   if [ -n "$found" ]; then
-    IFS=$'\t' read -r bump_pr_num bump_pr_state _ <<<"$found"
+    read -r bump_pr_num bump_pr_state <<<"$(bump_pr_num_state "$found")"
     echo "  (bump PR #$bump_pr_num already exists: $bump_pr_state)"
     if [ "$bump_pr_state" = "OPEN" ]; then
       echo "  gh pr checks $bump_pr_num -R $REPO --watch --fail-fast"
@@ -967,7 +1010,7 @@ cmd_ship() {
   else
     dry_run_id="$(dry_run_green_id_at "$P")"
     if [ -n "$dry_run_id" ]; then
-      echo "ok: green dry run already exists at $P (run $dry_run_id)"
+      echo "ok: reusing dry run already running or green at $P (run $dry_run_id)"
     else
       gh workflow run release.yml -R "$REPO" -f dry-run=true --ref main
       dry_run_id="$(await_run_id Release workflow_dispatch "$P")"
@@ -978,7 +1021,8 @@ cmd_ship() {
   local found bump_pr_num bump_pr_state bump_pr_body bump_P="$P"
   found="$(find_bump_pr "$version")"
   if [ -n "$found" ]; then
-    IFS=$'\t' read -r bump_pr_num bump_pr_state bump_pr_body <<<"$found"
+    read -r bump_pr_num bump_pr_state <<<"$(bump_pr_num_state "$found")"
+    bump_pr_body="$(printf '%s' "$found" | tail -n +2)"
     local marker_sha
     marker_sha="$(ship_marker_sha "$bump_pr_body")"
     [ -n "$marker_sha" ] && bump_P="$marker_sha"
@@ -992,6 +1036,7 @@ cmd_ship() {
 
   if [ "$bump_pr_state" = "OPEN" ]; then
     echo "== waiting on bump PR #$bump_pr_num checks =="
+    await_checks_reported "$bump_pr_num"
     gh pr checks "$bump_pr_num" -R "$REPO" --watch --fail-fast
     gh pr merge "$bump_pr_num" -R "$REPO" --squash \
       --subject "chore: bump version to $version (#$bump_pr_num)"
@@ -1146,5 +1191,21 @@ main() {
 # Skip when sourced (scripts/tests/release_test.sh does this to reach the
 # pure functions directly) so sourcing never runs a command or exits.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # Safety net for the "silent death" class of bug that shipped v0.8.0: a
+  # failing command inside a plain `x=$(...)` assignment (a pipeline that
+  # fails under pipefail, say) makes set -e exit the whole script with no
+  # message at all. -o errtrace makes the ERR trap fire inside functions
+  # and command substitutions too, not just at top level; the case skips
+  # `return`/`exit`, which are how every FAIL/usage path already reports
+  # itself, so this only speaks up for a failure nothing else explained.
+  set -o errtrace
+  trap '
+    st=$?
+    case "$BASH_COMMAND" in
+      return\ *|exit\ *) ;;
+      *) echo "release.sh: command failed (exit $st): $BASH_COMMAND" >&2 ;;
+    esac
+    exit "$st"
+  ' ERR
   main "$@"
 fi
