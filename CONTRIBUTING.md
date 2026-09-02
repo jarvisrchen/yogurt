@@ -67,16 +67,17 @@ Call the scripts directly when you want one process with its own log stream; use
 ## Running tests
 
 ```bash
-just test         # cargo test --workspace --features yogurt-stt/local-stt + pnpm --dir web test
-just test-rust     # cargo only
-just test-web      # pnpm only
-just test-e2e      # Playwright smoke against a browser-mocked backend
-just lint          # cargo fmt --check + clippy -D warnings
+just test         # test-rust + test-web
+just test-rust     # cargo test --workspace --features yogurt-stt/local-stt --no-fail-fast
+just test-web      # pnpm --dir web test + Playwright e2e smoke
+just lint          # cargo fmt --check + clippy -D warnings + check-docs
+just lint-web      # pnpm --dir web typecheck
 just fmt           # auto-format Rust
 ```
 
-CI runs `just test` and `just lint` equivalents on every PR. Run both before
-pushing.
+CI runs `just lint` and `just test-rust` in the rust job, and `just lint-web`,
+`just test-web` and `just build-web` in the web job, on every PR.
+Run the whole set before pushing.
 
 ## Workspace layout
 
@@ -159,7 +160,7 @@ just release
 Work on a branch and open a PR. Do not push to `main`.
 
 The repo is public and releases are cut from `main`, so an unreviewed commit there is something strangers can build.
-CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck, web tests, and the Playwright E2E smoke); let it gate the merge.
+CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck, web tests, the Playwright E2E smoke, and `scripts/check-docs.sh`); let it gate the merge.
 
 ```bash
 git checkout -b feat/my-change

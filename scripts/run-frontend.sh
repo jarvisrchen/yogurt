@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# yogurt run-frontend — start the Vite dev server with HMR.
+# yogurt run-frontend - start the Vite dev server with HMR.
 #
 # Pair this with ./scripts/run-backend.sh in another terminal.
 # Vite serves the React UI on :5173 and the backend proxies to it.
-# Open the browser at http://localhost:7878 (NOT 5173 — auth lives on
+# Open the browser at http://localhost:7878 (NOT 5173 - auth lives on
 # the backend) once both are up.
 #
 # Usage:
@@ -38,7 +38,7 @@ else
 fi
 
 if [ ! -d web/node_modules ]; then
-  bold "web/node_modules missing — running pnpm install"
+  bold "web/node_modules missing - running pnpm install"
   (cd web && "${PNPM[@]}" install --frozen-lockfile)
 fi
 
@@ -52,7 +52,7 @@ export YOGURT_VITE_PORT="$VITE_PORT"
 BACKEND_PORT="${YOGURT_BACKEND_PORT:-7878}"
 
 bold "Starting Vite dev server at http://127.0.0.1:$VITE_PORT"
-dim "  Open http://localhost:$BACKEND_PORT in the browser — backend proxies to here."
+dim "  Open http://localhost:$BACKEND_PORT in the browser - backend proxies to here."
 if [ "$VITE_PORT" != "5173" ]; then
   dim "  Pair it with: YOGURT_VITE_BASE=http://127.0.0.1:$VITE_PORT ./scripts/run-backend.sh --port $BACKEND_PORT"
 fi

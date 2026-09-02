@@ -13,8 +13,8 @@
 ## File Structure
 
 **Modify**
-- `web/src/components/MeetingMetaPills.tsx` — restyle `EnginePill`'s cloud case AND restyle `LlmPill` to outlined blueberry unconditionally.
-- `web/src/components/MeetingMetaPills.test.tsx` — extend tests for the cloud-outlined style.
+- `web/src/components/MeetingMetaPills.tsx` - restyle `EnginePill`'s cloud case AND restyle `LlmPill` to outlined blueberry unconditionally.
+- `web/src/components/MeetingMetaPills.test.tsx` - extend tests for the cloud-outlined style.
 
 **No backend changes.** `meetings.stt_engine` already carries the locality stamp from recording start; `meetings.llm_model` stays as the bare model name (no `local · ` / `cloud · ` prefix). No DB migration. No new helpers.
 
@@ -50,7 +50,7 @@ it("paints cloud STT as outlined matcha, not filled blueberry", () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/MeetingMetaPills.test.tsx`
-Expected: FAIL — current `EnginePill` cloud branch sets `bg-blsoft text-blue`.
+Expected: FAIL - current `EnginePill` cloud branch sets `bg-blsoft text-blue`.
 
 - [ ] **Step 3: Restyle `EnginePill`**
 
@@ -117,7 +117,7 @@ it("paints LLM pill as outlined blueberry, not filled", () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/MeetingMetaPills.test.tsx`
-Expected: FAIL — current `LlmPill` always uses `bg-blsoft text-blue`.
+Expected: FAIL - current `LlmPill` always uses `bg-blsoft text-blue`.
 
 - [ ] **Step 3: Restyle `LlmPill`**
 
@@ -143,7 +143,7 @@ export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
 }
 ```
 
-Drop the obsolete "blueberry tone to read as AI touched this" sentence from the file-level doc comment above `LlmPill` — the inline rationale now lives next to the return.
+Drop the obsolete "blueberry tone to read as AI touched this" sentence from the file-level doc comment above `LlmPill` - the inline rationale now lives next to the return.
 
 - [ ] **Step 4: Re-run the test + full MeetingMetaPills suite**
 
@@ -177,7 +177,7 @@ Expected: PASS.
 - [ ] **Step 3: Build the full app**
 
 Run: `just build`
-Expected: PASS. The `yogurt-server` build embeds `web/dist` so this rebuilds the bundle too — verifies the new Tailwind class (`border-[#CBE0D2]`) survives the Tailwind 4 JIT pass and doesn't get tree-shaken as unused.
+Expected: PASS. The `yogurt-server` build embeds `web/dist` so this rebuilds the bundle too - verifies the new Tailwind class (`border-[#CBE0D2]`) survives the Tailwind 4 JIT pass and doesn't get tree-shaken as unused.
 
 - [ ] **Step 4: Hand-smoke the new STT pill**
 
@@ -203,8 +203,8 @@ git commit -m "fix(web): smoke-driven tweaks to Option E STT pill"
 
 **Spec coverage:** the lavish mockup's Option E (rendered alongside A/B/C/D/F/G in `docs/.lavish/pill-color-system.html`) was the design. The original plan included four tasks (backend locality stamp, frontend parser, STT restyle, LLM restyle). The user revised scope mid-implementation across two iterations:
 
-1. The LLM model text must stay as a bare name (no `local · ` / `cloud · ` prefix) — the backend locality stamp task was reverted in commit `4a32a12`.
-2. The user initially chose to drop the LLM pill change entirely (keep current filled blueberry), then in a follow-up asked to repaint the LLM pill to outlined blueberry — the option E "cloud LLM" half of the mockup, applied unconditionally because `meetings.llm_model` carries no locality information.
+1. The LLM model text must stay as a bare name (no `local · ` / `cloud · ` prefix) - the backend locality stamp task was reverted in commit `4a32a12`.
+2. The user initially chose to drop the LLM pill change entirely (keep current filled blueberry), then in a follow-up asked to repaint the LLM pill to outlined blueberry - the option E "cloud LLM" half of the mockup, applied unconditionally because `meetings.llm_model` carries no locality information.
 
 Result: STT family split (matcha filled local, matcha outlined cloud) plus LLM pill repainted to outlined blueberry. Tasks 1 and 2 cover those two changes; Task 3 is the verification sweep.
 
