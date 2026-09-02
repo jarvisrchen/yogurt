@@ -232,17 +232,6 @@ Check off an item (`- [x]`), move the whole block to the bottom of `docs/TODO-DO
   Design: `docs/.planning/agent-workflow.md`, section 4B.
   </details>
 
-- [ ] **DX-6** One release procedure: fix the untap order, archive the stale runbooks, split the release log, exact-version formula assert
-  <details>
-  <summary>Details</summary>
-
-  The skill and `docs/RELEASING.md` disagree on untap order and both are moot: `brew untap` refuses while a model formula is installed, so upgrade-in-place is the real path.
-  `git mv` `scripts/release-checklist.md` and `scripts/homebrew/` to `docs/archive/`; `release.yml` never reads the seed formula.
-  Move the log table to `docs/RELEASE-LOG.md` and promote its four buried lessons into "When it goes wrong".
-  `release.yml`'s formula test asserts `yogurt <version>` exactly instead of the substring.
-  Design: `docs/.planning/agent-workflow.md`, section 4C, C4 and C5.
-  </details>
-
 - [ ] **DX-7** `scripts/release.sh preflight | ship | verify | finish | untag`, then shrink the release skill
   <details>
   <summary>Details</summary>

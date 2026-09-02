@@ -33,7 +33,7 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - `docs/ARCHITECTURE.md` is the mechanism doc; `docs/.lavish/` holds its interactive HTML companions - create new Lavish review surfaces there, not at the repo root.
 - `docs/DEBUGGING-TRANSCRIPTS.md` covers inspecting a live transcript: tailing `transcript_json`, reading raw WS frames, and the known UI-vs-DB divergences.
 - `docs/MODEL-EVAL.md` covers A/B-ing STT engines and LLMs: `scripts/eval/` plays a fixed scripted conversation into a recording and grades two resulting summaries with headless Claude.
-- `docs/RELEASING.md` is the release runbook: what the tagged-push pipeline does, the one-time prerequisites, and a log of each release.
+- `docs/RELEASING.md` is the release runbook: what the tagged-push pipeline does, the one-time prerequisites, the decisions behind it, and recovery paths; `docs/RELEASE-LOG.md` has the row-per-release log.
 - `.claude/skills/release/SKILL.md` is the same process as an executable checklist; invoke the `release` skill rather than improvising a release.
 - `docs/TODO.md` is the backlog. Every item has a ticket ID (`UI-1`, `MTG-3`, `AUD-2`, ...); reference it in commits and PR titles, and follow the allocation rule at the top of that file when adding one.
   Closed tickets live in `docs/TODO-DONE.md` instead; ID allocation counts it too, so do not move it to `docs/archive/`.
@@ -49,7 +49,7 @@ All app data lives under `~/.yogurt/` (db.sqlite, notes/, models/, session-token
 - `main` is protected by convention: branch, then open a PR. Never commit or push directly to `main`. The repo is public and `v0.1.0` ships from it, so an unreviewed commit on `main` is a published mistake rather than a local one.
 - Do not hand-edit CHANGELOG files; release notes are generated.
 - No agent attribution in git history or on GitHub: no "Generated with Claude Code" footer, no session link, no `Co-Authored-By` for an agent, in commit messages or PR bodies.
-- Squash and merge PRs. GitHub appends `(#N)` to the squashed commit subject, which is the only thing that back-links a commit on `main` to its PR. Rebase-and-merge replays your original commits verbatim and leaves no PR reference, so `main` loses the trail (see `1656270`, merged from #6).
+- Squash is the only enabled merge method on this repo; GitHub appends `(#N)` to the squashed commit subject, which is the only thing that back-links a commit on `main` to its PR.
 - Work in a worktree under `../yogurt-worktrees/`, always. `git worktree add ../yogurt-worktrees/<slug> -b <branch> origin/main` is the first command of a task, not the fallback for when you need a branch. Several sessions share the main checkout, so it is the one place where your mistakes land on someone else. A fresh worktree carries nothing that is gitignored, which is exactly the set of files needed to run: no `node_modules`, no `web/dist` (so `cargo build` fails at `#[derive(RustEmbed)] folder ... does not exist`), and no `.env.local` (so `just dev` starts Vite, then aborts with `.env.local not found`). `just bootstrap` restores all three from the main checkout, and `just dev` depends on it, so a new worktree needs no setup step of its own.
 
 - Treat the shared checkout as read-only unless you own it. Do not change its branch, do not `reset --hard` it, and do not run a release build in it. Running something out of it counts as owning it: a session with a server or binary running from that tree has a claim on it that `git status` will not show you, so ask before you build there.

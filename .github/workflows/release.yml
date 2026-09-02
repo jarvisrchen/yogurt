@@ -172,7 +172,7 @@ jobs:
             end
 
             test do
-              assert_match "yogurt", shell_output("#{bin}/yogurt --version")
+              assert_equal "yogurt #{version}", shell_output("#{bin}/yogurt --version").strip
             end
           end
           EOF
