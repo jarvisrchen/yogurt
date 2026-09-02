@@ -16,6 +16,8 @@ enum Cmd {
     Start(StartArgs),
     /// Print diagnostic info (rust, macOS, perms, providers, models) + repair actions.
     Doctor(DoctorArgs),
+    /// Control a running yogurt instance: status, meetings, detection, windows.
+    Ctl(commands::ctl::CtlArgs),
 }
 
 #[derive(clap::Args, Debug)]
@@ -111,6 +113,15 @@ async fn main() -> anyhow::Result<()> {
                 redownload_model: args.redownload_model,
             })
             .await
+        }
+        Cmd::Ctl(args) => {
+            // CLI-4: ctl formats its own `error: ... / help: ...` pair and
+            // picks its own exit code (0 success, 1 business-logic error;
+            // clap already handles usage errors with exit 2 before this
+            // ever runs) -- std::process::exit rather than bubbling an
+            // anyhow::Result up through main's generic "Error: {e}" tail.
+            let code = commands::ctl::run(args).await;
+            std::process::exit(code);
         }
     }
 }

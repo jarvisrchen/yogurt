@@ -127,7 +127,7 @@ Crate responsibilities, one line each:
 
 | Crate | Owns |
 |---|---|
-| `yogurt-cli` | Arg parsing, `--dev` mode, `.env.local` load (dev only), calls `yogurt_server::run`. |
+| `yogurt-cli` | Arg parsing, `--dev` mode, `.env.local` load (dev only), calls `yogurt_server::run`. Also `yogurt doctor` (local diagnostics) and `yogurt ctl` (CLI-4: an HTTP client that controls a *running* instance - status, meetings, detection - the agent-facing surface `docs/AI-INTEGRATION.md` and the `yogurt-control` skill point at). |
 | `yogurt-server` | axum router, auth, meeting registry, enhance/chat orchestration, WS fan-out, embedded assets. |
 | `yogurt-audio` | Mic (cpal) + system loopback (ScreenCaptureKit), resample to the frame contract, broadcast frames. |
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |

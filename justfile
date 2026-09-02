@@ -27,6 +27,9 @@ dev: bootstrap
     export YOGURT_VITE_PORT="$VITE_PORT"
     export YOGURT_BACKEND_PORT="$BACKEND_PORT"
     export YOGURT_VITE_BASE="http://127.0.0.1:$VITE_PORT"
+    # D5: an echo, not an export -- a recipe cannot export into the
+    # caller's shell, so this is copy-paste bait for `--port`/$YOGURT_PORT.
+    echo "YOGURT_PORT=$BACKEND_PORT   # pass --port or set this for yogurt ctl"
     # Both ports are already free, so the scripts' own guards pass through.
     # Ctrl-C in the foreground process group should kill both children.
     # Belt + suspenders: on EXIT, kill any remaining jobs.

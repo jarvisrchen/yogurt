@@ -20,8 +20,30 @@ Every example below sends `Authorization: Bearer $TOKEN`.
 
 ## Is yogurt running?
 
-`GET /api/health` needs no token and returns `{"status":"ok","service":"yogurt-server"}` if the binary is up.
-If it isn't, there's nothing else you can do - yogurt has no CLI and no daemon-start-on-demand; the user has to launch the app (or `just dev`) themselves.
+`GET /api/health` needs no token and returns `{"status":"ok","service":"yogurt-server","version":"0.7.0","mode":"release"}` if the binary is up (`mode` is `"dev"` under `just dev` / `yogurt start --dev`).
+If it isn't up, `yogurt ctl status` says so - see "Controlling yogurt from the CLI" below for the full `ctl` surface, which covers everything in this document plus meeting detection and window matching.
+
+## Controlling yogurt from the CLI
+
+Everything below this section is the raw HTTP surface, useful if you're scripting against yogurt directly.
+If you have the `yogurt` binary on `$PATH` (brew install, or a debug build), `yogurt ctl` is the same surface as real subcommands - it resolves the port, reads the token, and formats errors with a `help:` line instead of a bare `curl` exit code:
+
+```bash
+yogurt ctl status                                  # is a server up, what's recording, what's detected
+yogurt ctl meeting list [--limit N]
+yogurt ctl meeting new [--title T] [--start]
+yogurt ctl meeting start <id|last>
+yogurt ctl meeting stop [<id|url|last>]
+yogurt ctl meeting show|summary|transcript <id|url|last>
+yogurt ctl meeting enhance <id|url|last>
+yogurt ctl detect [dismiss]
+yogurt ctl windows
+```
+
+`--json` on any subcommand gets machine-readable output; `--port`/`$YOGURT_PORT` picks the instance when more than one is running (`just dev` prints the `$YOGURT_PORT` line to use).
+`<id|url|last>` accepts a bare id, a full meeting URL, or `last` for the most recently created meeting; read commands fall back to the local database (`source: db`) when no server answers.
+See the README's [Command line](../README.md#command-line) section for the full flag reference.
+The rest of this document still applies when `ctl` doesn't have a subcommand for what you need yet (full CRUD, `PATCH`, `search`) - `ctl`'s second slice (`docs/.planning/agent-workflow.md`) is where those land.
 
 ## Start a meeting
 

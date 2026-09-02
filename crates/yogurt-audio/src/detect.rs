@@ -43,8 +43,8 @@
 //! installed Chrome app reports `com.google.Chrome.app.<hash>`) and a
 //! `"Meet - "` title prefix (the real one is
 //! `"Google Meet - Meet - <code>"`). Treat the unverified rules with
-//! that in mind, and capture the real title with the
-//! `meeting_windows` example before trusting any of them. A miss means
+//! that in mind, and capture the real title with `yogurt ctl windows`
+//! before trusting any of them. A miss means
 //! the user clicks "+ New meeting" like they do today; a false positive
 //! means a dismissable prompt. Neither starts a recording on its own —
 //! see `yogurt_server::detect`.
@@ -54,12 +54,15 @@
 //! here. Seeing it would mean reading tab state, which needs
 //! Accessibility permission — a bigger grant than this feature is worth.
 //!
-//! `cargo run -p yogurt-audio --example meeting_windows` dumps the live
-//! window list with each row's verdict; that is the tool for retuning
-//! these patterns when a vendor renames a window.
+//! `yogurt ctl windows` dumps the live window list with each row's
+//! verdict; that is the tool for retuning these patterns when a vendor
+//! renames a window.
 
 /// A meeting-looking window observed on screen.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (CLI-4): `yogurt ctl status`/`detect` parse this straight
+/// back out of the server's `GET /api/meetings/detected` JSON body.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DetectedMeeting {
     /// `CGWindowID` of the matched window. Stable for the window's
     /// lifetime, which is what lets the caller tell "still the same
@@ -240,6 +243,59 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
 #[cfg(not(target_os = "macos"))]
 pub fn detect_meeting() -> Option<DetectedMeeting> {
     None
+}
+
+/// One on-screen window plus its [`match_window`] verdict - `None` when
+/// nothing in `RULES` matched.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WindowVerdict {
+    pub verdict: Option<&'static str>,
+    pub bundle: String,
+    pub title: String,
+}
+
+/// Enumerate on-screen windows with each one's [`match_window`] verdict.
+/// CLI-4: backs `yogurt ctl windows`, which replaced the
+/// `yogurt-audio/examples/meeting_windows.rs` this function's body used to
+/// live in - that was the tool for retuning `RULES` when a vendor renames
+/// a window; `yogurt ctl windows` is now.
+///
+/// Blocking, same caveat as [`detect_meeting`]. Returns an empty vec on a
+/// SCK enumeration failure - callers that care about "denied" vs
+/// "genuinely no meeting-looking windows" should check
+/// [`crate::permission::has_screen_recording_permission`] first (`yogurt
+/// ctl windows` does, so it never reads as an empty "no meetings").
+#[cfg(target_os = "macos")]
+pub fn scan_windows() -> Vec<WindowVerdict> {
+    use screencapturekit::shareable_content::SCShareableContent;
+
+    let Ok(content) = SCShareableContent::get() else {
+        return Vec::new();
+    };
+    content
+        .windows()
+        .into_iter()
+        .filter_map(|w| {
+            if !w.is_on_screen() || w.window_layer() != 0 {
+                return None;
+            }
+            let title = w.title()?;
+            let app = w.owning_application()?;
+            let bundle = app.bundle_identifier();
+            let verdict = match_window(&bundle, &title);
+            Some(WindowVerdict {
+                verdict,
+                bundle,
+                title,
+            })
+        })
+        .collect()
+}
+
+/// Non-macOS stub, mirroring [`detect_meeting`].
+#[cfg(not(target_os = "macos"))]
+pub fn scan_windows() -> Vec<WindowVerdict> {
+    Vec::new()
 }
 
 #[cfg(test)]
