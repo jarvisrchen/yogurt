@@ -139,6 +139,7 @@ lint: check-docs
     ./scripts/ticket.sh --check
     ./scripts/tests/docs-only_test.sh
     ./scripts/tests/task_test.sh
+    ./scripts/tests/release_test.sh
 
 # Web typecheck (read-only) - same as CI's web-job lint gate; that job has no cargo.
 lint-web:
