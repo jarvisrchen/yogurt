@@ -1,0 +1,20 @@
+name: Check published
+
+on:
+  schedule:
+    # Weekly, a quiet UTC hour - Mondays 09:00 UTC.
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  check-published:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v3
+      - name: check-published
+        run: just check-published --issue
