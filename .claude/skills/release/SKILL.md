@@ -34,7 +34,8 @@ The tag selects the commit that gets built, so `main` can move freely without sh
    `Cargo.toml` carries the tag minus the leading `v`.
    Bump it with `cargo update --workspace` afterwards so `Cargo.lock` moves too; `cargo metadata --no-deps` does NOT write the lock, and a stale lock otherwise rides into the tagged tree.
    If that command fails with `failed to select a version for the requirement <crate>`, an intra-workspace path dep has a hand-pinned `version =` that needs removing or bumping.
-   A mismatch is silent and ugly: the formula installs a binary whose `yogurt --version` disagrees with the version Homebrew thinks it installed, and the formula's `test do` block can still pass because it only greps for the string `yogurt`.
+   A mismatch used to be silent and ugly: the formula could install a binary whose `yogurt --version` disagreed with the version Homebrew thought it installed, and the old `test do` block still passed because it only checked for the substring `yogurt`.
+   `release.yml` now asserts the exact `assert_equal "yogurt #{version}", ...` output, so a mismatch fails the tap formula's own test - but the `tap` job never runs on a dry run, so this assertion is unexercised until the next real release; note in that release's log row whether it held.
    Bump and commit this before tagging, never after.
 
 3. **Lockfile in sync**, because CI runs `--frozen-lockfile`.
@@ -88,15 +89,21 @@ The tag selects the commit that gets built, so `main` can move freely without sh
    gh pr merge <n> -R jarvisrchen/homebrew-yogurt --squash --delete-branch
    ```
 
-10. **Smoke test from a clean state.**
+10. **Smoke test.**
+    `brew untap` and `brew uninstall` refuse while any `yogurt-model-*` formula is installed, since those formulae depend on `yogurt` - that has been true for every release so far, so upgrade-in-place is the normal path:
+    ```bash
+    brew upgrade jarvisrchen/yogurt/yogurt      # or `brew reinstall` when already at that version
+    yogurt --version
+    xattr -l "$(which yogurt)"      # com.apple.provenance ok, com.apple.quarantine is not
+    ```
+    From-scratch is the fallback, only on a machine with no model formula installed:
     ```bash
     brew untap jarvisrchen/yogurt; brew uninstall yogurt
     brew install jarvisrchen/yogurt/yogurt
     yogurt --version
-    xattr -l "$(which yogurt)"      # com.apple.provenance ok, com.apple.quarantine is not
     ```
 
-11. **Log it.** Add a row to the release log in `docs/RELEASING.md` and tick any prerequisite that changed.
+11. **Log it.** Add a row to `docs/RELEASE-LOG.md` and tick any prerequisite that changed in `docs/RELEASING.md`.
 
 ## When it goes wrong
 
