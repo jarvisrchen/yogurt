@@ -153,6 +153,7 @@ lint: check-docs
     ./scripts/tests/release_test.sh
     ./scripts/tests/ship_test.sh
     ./scripts/tests/hooks_test.sh
+    ./scripts/tests/check-published_test.sh
 
 # Web typecheck (read-only) - same as CI's web-job lint gate; that job has no cargo.
 lint-web:
@@ -171,6 +172,10 @@ fmt:
 # docs/TODO.md backlog: list open items, or `ticket <ID>` / `ticket next <PREFIX>` / `ticket done <ID> --note-file <path>` / `ticket --check`.
 ticket *args:
     ./scripts/ticket.sh {{args}}
+
+# Does what's published still match what's documented - tap formula version, release assets, README model lines, model mirror URLs. Needs the network; not part of `just lint`.
+check-published *args:
+    ./scripts/check-published.sh {{args}}
 
 # Free disk by removing all build artifacts - re-run `just build` after.
 clean:
