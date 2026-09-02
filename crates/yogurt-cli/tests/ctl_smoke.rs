@@ -210,3 +210,209 @@ async fn no_subcommand_reveals_or_sets_a_key_or_token() {
         );
     }
 }
+
+// ─── CLI-5: fixture meetings ────────────────────────────────────────────
+
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repo root")
+}
+
+fn stdout_of(output: &assert_cmd::assert::Assert) -> String {
+    String::from_utf8(output.get_output().stdout.clone()).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_new_from_script_creates_ended_fixture_with_segment_count() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let script = repo_root().join("scripts/eval/conversation.txt");
+    let expected_segments = std::fs::read_to_string(&script)
+        .expect("conversation.txt readable")
+        .lines()
+        .filter(|l| l.starts_with("A: ") || l.starts_with("B: "))
+        .count();
+
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--from-script",
+            script.to_str().unwrap(),
+            "--title",
+            "fixture from script",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    let shown = ctl(port, tmp.path(), &["meeting", "show", &id, "--json"]).success();
+    let shown: serde_json::Value = serde_json::from_str(&stdout_of(&shown)).unwrap();
+    assert_eq!(shown["meeting"]["id"], id);
+    assert!(
+        shown["meeting"]["ended_at"].is_number(),
+        "expected ended_at to be stamped: {shown}"
+    );
+    assert_eq!(
+        shown["segments"].as_u64().unwrap(),
+        expected_segments as u64
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_new_transcript_file_round_trips_exactly() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let segments_path = tmp.path().join("segments.json");
+    std::fs::write(
+        &segments_path,
+        r#"[
+            {"ts_ms": 0, "channel": "me", "text": "hello there"},
+            {"ts_ms": 4000, "channel": "them", "text": "hi yourself"},
+            {"ts_ms": 8000, "channel": "me", "text": "great, thanks for asking"}
+        ]"#,
+    )
+    .expect("write segments file");
+
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+            "--title",
+            "fixture round trip",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    let transcript = ctl(port, tmp.path(), &["meeting", "transcript", &id]).success();
+    let stdout = stdout_of(&transcript);
+    assert!(stdout.contains("hello there"), "got:\n{stdout}");
+    assert!(stdout.contains("hi yourself"), "got:\n{stdout}");
+    assert!(
+        stdout.contains("great, thanks for asking"),
+        "got:\n{stdout}"
+    );
+
+    let shown = ctl(port, tmp.path(), &["meeting", "show", &id, "--json"]).success();
+    let shown: serde_json::Value = serde_json::from_str(&stdout_of(&shown)).unwrap();
+    assert_eq!(shown["segments"].as_u64().unwrap(), 3);
+    assert!(shown["meeting"]["ended_at"].is_number());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_new_malformed_transcript_file_exits_1_with_server_message() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    // Missing `ts_ms` on the one segment -- the server's own validation
+    // rejects this, and `ctl` must surface the server's message rather
+    // than swallowing it into a generic "server returned 400".
+    let segments_path = tmp.path().join("bad-segments.json");
+    std::fs::write(&segments_path, r#"[{"channel": "me", "text": "hi"}]"#)
+        .expect("write bad segments file");
+
+    let output = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+        ],
+    )
+    .failure();
+    let stdout = stdout_of(&output);
+    assert_eq!(output.get_output().status.code(), Some(1));
+    assert!(stdout.contains("error:"), "got:\n{stdout}");
+    assert!(
+        stdout.contains("ts_ms"),
+        "expected the server's field-naming message; got:\n{stdout}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_new_transcript_file_with_start_exits_2() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let segments_path = tmp.path().join("segments.json");
+    std::fs::write(
+        &segments_path,
+        r#"[{"ts_ms": 0, "channel": "me", "text": "hi"}]"#,
+    )
+    .expect("write segments file");
+
+    let mut cmd = Command::cargo_bin("yogurt").expect("binary exists");
+    cmd.arg("ctl")
+        .arg("--port")
+        .arg(port.to_string())
+        .args([
+            "meeting",
+            "new",
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+            "--start",
+        ])
+        .env("HOME", tmp.path());
+    let output = cmd.assert().failure();
+    assert_eq!(
+        output.get_output().status.code(),
+        Some(2),
+        "a fixture cannot be recorded into -- expected a usage-error exit"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_last_on_fixture_returns_real_output_not_too_short() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let script = repo_root().join("scripts/eval/conversation.txt");
+    ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--from-script",
+            script.to_str().unwrap(),
+            "--title",
+            "fixture enhance",
+        ],
+    )
+    .success();
+
+    let enhanced = ctl(port, tmp.path(), &["meeting", "enhance", "last", "--json"]).success();
+    let stdout = stdout_of(&enhanced);
+    let body: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(
+        body["too_short"].as_bool(),
+        Some(false),
+        "expected real enhance output, not too_short; got:\n{stdout}"
+    );
+    // `MockLlm::build_mock_output` (crates/yogurt-server/src/llm_mock.rs)
+    // emits one `data-ai-grey` bullet per transcript segment -- a
+    // deterministic marker that enhance actually ran over the fixture's
+    // transcript rather than short-circuiting.
+    let enriched = body["enriched_md"].as_str().expect("enriched_md field");
+    assert!(
+        enriched.contains("data-ai-grey"),
+        "expected the mock LLM's marker bullets; got:\n{enriched}"
+    );
+}

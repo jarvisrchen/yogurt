@@ -6,6 +6,8 @@
 //! (text: stderr; JSON: a field) so the reader knows the answer may be
 //! stale relative to a server that's merely on a different port.
 
+use std::path::{Path, PathBuf};
+
 use clap::Subcommand;
 use serde::Deserialize;
 use serde_json::json;
@@ -23,8 +25,27 @@ pub enum MeetingCmd {
     New {
         #[arg(long)]
         title: Option<String>,
-        #[arg(long)]
+        /// Also begin recording. Refused (exit 2) together with
+        /// `--transcript-file`/`--from-script` -- a fixture meeting was
+        /// never recorded, so there's nothing to record into.
+        #[arg(long, conflicts_with_all = ["transcript_file", "from_script"])]
         start: bool,
+        /// Seed a finished fixture meeting from a JSON file of transcript
+        /// segments (`[{"ts_ms":0,"channel":"me","text":"..."}, ...]`,
+        /// `channel` is `me`/`them` -- see docs/DEBUGGING-TRANSCRIPTS.md
+        /// for the exact shape the server stores). Implies the meeting is
+        /// created already ended.
+        #[arg(long, conflicts_with = "from_script")]
+        transcript_file: Option<PathBuf>,
+        /// Seed a finished fixture meeting by converting a
+        /// scripts/eval-style conversation (`A:`/`B:` lines, `PAUSE
+        /// <seconds>`, `#` comments -- see scripts/eval/conversation.txt)
+        /// into `me`/`them` segments with synthetic timestamps: 4 seconds
+        /// per spoken line, plus any `PAUSE` seconds, so the eval ground
+        /// truth doubles as a fixture without needing to actually speak
+        /// and record it. Implies the meeting is created already ended.
+        #[arg(long)]
+        from_script: Option<PathBuf>,
     },
     /// Begin recording an existing meeting. No-op if it's already recording.
     Start { meeting: String },
@@ -47,7 +68,12 @@ pub enum MeetingCmd {
 pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(), CtlError> {
     match cmd {
         MeetingCmd::List { limit } => list(port, json_out, limit).await,
-        MeetingCmd::New { title, start } => new(port, json_out, title, start).await,
+        MeetingCmd::New {
+            title,
+            start,
+            transcript_file,
+            from_script,
+        } => new(port, json_out, title, start, transcript_file, from_script).await,
         MeetingCmd::Start { meeting } => start(port, json_out, &meeting).await,
         MeetingCmd::Stop { meeting } => stop(port, json_out, meeting).await,
         MeetingCmd::Show { meeting } => show(port, json_out, &meeting).await,
@@ -241,9 +267,34 @@ async fn new(
     json_out: bool,
     title: Option<String>,
     start: bool,
+    transcript_file: Option<PathBuf>,
+    from_script: Option<PathBuf>,
 ) -> Result<(), CtlError> {
+    // CLI-5: `--transcript-file` is forwarded to the server byte-for-shape
+    // untouched (read as a bare `serde_json::Value`, not parsed into our
+    // own segment type) so a malformed file fails on the server's own
+    // validation and the caller sees the server's message, and so a
+    // well-formed file round-trips exactly. `--from-script` has no
+    // existing JSON to forward, so it's built into segments here.
+    let transcript_json = match (&transcript_file, &from_script) {
+        (Some(p), _) => Some(read_json_file(p)?),
+        (None, Some(p)) => Some(
+            serde_json::to_value(segments_from_script(p)?)
+                .expect("Vec<FixtureSegment> always serializes"),
+        ),
+        (None, None) => None,
+    };
+    let ended = transcript_json.is_some();
+
     let c = Client::discover(port_flag).await?;
-    let m: yogurt_db::Meeting = c.post("/api/meetings", &json!({ "title": title })).await?;
+    let mut body = json!({ "title": title });
+    if let Some(tj) = transcript_json {
+        body["transcript_json"] = tj;
+    }
+    if ended {
+        body["ended"] = json!(true);
+    }
+    let m: yogurt_db::Meeting = c.post("/api/meetings", &body).await?;
     let started = if start {
         Some(start_meeting(&c, &m.id).await?)
     } else {
@@ -263,6 +314,88 @@ async fn new(
         }
     }
     Ok(())
+}
+
+/// One `--transcript-file` / `--from-script` segment. Mirrors the
+/// `{ts_ms, channel, text}` shape `docs/DEBUGGING-TRANSCRIPTS.md`
+/// documents and the server validates on `POST /api/meetings`.
+#[derive(Debug, serde::Serialize)]
+struct FixtureSegment {
+    ts_ms: i64,
+    channel: &'static str,
+    text: String,
+}
+
+/// Read `--transcript-file` as raw JSON, no shape validation -- the
+/// server is the one place that owns `transcript_json`'s shape (see
+/// AGENTS.md), so a malformed file is rejected there and this command
+/// surfaces the server's own message rather than a second, possibly
+/// divergent, local check.
+fn read_json_file(path: &Path) -> Result<serde_json::Value, CtlError> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        CtlError::local(
+            format!("could not read --transcript-file {}: {e}", path.display()),
+            "check the path exists",
+        )
+    })?;
+    serde_json::from_str(&content).map_err(|e| {
+        CtlError::local(
+            format!(
+                "--transcript-file {} is not valid JSON: {e}",
+                path.display()
+            ),
+            "check the file contains a JSON array of segments (see docs/DEBUGGING-TRANSCRIPTS.md)",
+        )
+    })
+}
+
+/// Convert an eval-style script (`A:`/`B:` lines, `PAUSE <seconds>`, `#`
+/// comments -- see `scripts/eval/conversation.txt`) into `me`/`them`
+/// segments. Timestamps are synthetic: 4 seconds per spoken line (long
+/// enough to separate turns without parsing word counts to estimate a
+/// speaking rate) plus any `PAUSE` seconds, so a longer silence in the
+/// script still shows up as a gap between segments.
+fn segments_from_script(path: &Path) -> Result<Vec<FixtureSegment>, CtlError> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        CtlError::local(
+            format!("could not read --from-script {}: {e}", path.display()),
+            "check the path exists",
+        )
+    })?;
+    let bad_line = |line: &str| {
+        CtlError::local(
+            format!("--from-script {}: unrecognized line: {line}", path.display()),
+            "expected `A: <line>`, `B: <line>`, `PAUSE <seconds>`, or a `#` comment (see scripts/eval/conversation.txt)",
+        )
+    };
+
+    let mut ts_ms: i64 = 0;
+    let mut segments = Vec::new();
+    for line in content.lines() {
+        let line = line.trim_end();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(secs) = line.strip_prefix("PAUSE ") {
+            let secs: f64 = secs.trim().parse().map_err(|_| bad_line(line))?;
+            ts_ms += (secs * 1000.0).round() as i64;
+            continue;
+        }
+        let (channel, text) = if let Some(t) = line.strip_prefix("A: ") {
+            ("me", t)
+        } else if let Some(t) = line.strip_prefix("B: ") {
+            ("them", t)
+        } else {
+            return Err(bad_line(line));
+        };
+        segments.push(FixtureSegment {
+            ts_ms,
+            channel,
+            text: text.to_string(),
+        });
+        ts_ms += 4000;
+    }
+    Ok(segments)
 }
 
 /// Returns `true` if this call actually started recording, `false` if it
@@ -346,8 +479,12 @@ async fn show(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(
             (get_or_not_found(&repo, &id)?, "db")
         }
     };
+    let segment_count = parse_segments(&m.transcript_json).len();
     if json_out {
-        println!("{}", json!({ "meeting": m, "source": source }));
+        println!(
+            "{}",
+            json!({ "meeting": m, "source": source, "segments": segment_count })
+        );
     } else {
         if source == "db" {
             eprintln!("source: db");
@@ -361,6 +498,7 @@ async fn show(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(
             m.stt_engine.as_deref().unwrap_or("unknown")
         );
         println!("enhanced: {}", m.enriched_md.is_some());
+        println!("segments: {segment_count}");
     }
     Ok(())
 }
