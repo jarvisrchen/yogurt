@@ -109,6 +109,112 @@ async fn it_creates_and_lists_meetings() {
     handle.abort();
 }
 
+// CLI-5: `POST /api/meetings` gains two optional fields, `transcript_json`
+// (an array of `{ts_ms, channel, text}` segments -- the same shape the
+// column already stores) and `ended` -- so a fixture meeting can be seeded
+// without a live recording.
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_creates_a_fixture_meeting_with_transcript_and_ended() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let create_resp = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "title": "fixture",
+            "transcript_json": [
+                {"ts_ms": 0, "channel": "me", "text": "hello there"},
+                {"ts_ms": 4000, "channel": "them", "text": "hi yourself"},
+            ],
+            "ended": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), 201);
+    let created: serde_json::Value = create_resp.json().await.unwrap();
+
+    assert!(
+        created["ended_at"].is_number(),
+        "expected ended_at to be stamped: {created}"
+    );
+    assert!(
+        created["stt_engine"].is_null(),
+        "a fixture meeting was never recorded, so no engine should be stamped: {created}"
+    );
+    let segments: Vec<serde_json::Value> =
+        serde_json::from_str(created["transcript_json"].as_str().unwrap()).unwrap();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(segments[0]["text"], "hello there");
+    assert_eq!(segments[1]["channel"], "them");
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_allows_ended_true_with_no_transcript() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let create_resp = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "title": "empty finished meeting", "ended": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), 201);
+    let created: serde_json::Value = create_resp.json().await.unwrap();
+    assert!(created["ended_at"].is_number());
+    assert_eq!(created["transcript_json"], "[]");
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_rejects_malformed_transcript_json_naming_the_bad_field() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // Missing `ts_ms` on the one segment.
+    let create_resp = client
+        .post(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "title": "bad fixture",
+            "transcript_json": [{"channel": "me", "text": "hi"}],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), 400);
+    let body: serde_json::Value = create_resp.json().await.unwrap();
+    let msg = body["error"].as_str().expect("error field is a string");
+    assert!(
+        msg.contains("ts_ms"),
+        "expected the error to name the missing field: {msg}"
+    );
+
+    // Nothing was left behind -- a rejected create must not leave a stray row.
+    let list_resp: Vec<serde_json::Value> = client
+        .get(format!("http://{addr}/api/meetings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        list_resp.is_empty(),
+        "expected no meeting rows: {list_resp:?}"
+    );
+
+    handle.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn it_patches_title_and_writes_markdown_file() {
     let (addr, token, handle, notes_dir, _tmp) = spawn_server().await;

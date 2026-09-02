@@ -110,17 +110,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## CLI
 
-- [ ] **CLI-5** Fixture meetings: `yogurt ctl meeting new --transcript-file` seeds a finished meeting with a known transcript
-  <details>
-  <summary>Details</summary>
-
-  Today the only ways to get a meeting with a transcript are a live recording or `just eval-play`, which speaks the script through the speaker for five minutes and needs TCC grants; `test_support::seed_meeting` never compiles into a runnable binary.
-  So every PR that touches augmented notes or chat is verified by recording a real meeting.
-  Extend `POST /api/meetings` with optional `transcript_json` segments and `ended: true`; `ctl meeting new --transcript-file <segments.json>` sends them and `--from-script scripts/eval/conversation.txt` converts the `A:`/`B:` lines so the eval ground truth doubles as the fixture.
-  Design: `docs/.planning/agent-workflow.md`, section 4D, D7.
-  Depends on CLI-4.
-  </details>
-
 - [ ] **CLI-6** `yogurt ctl` second slice, and the control skill rewritten around a generated command block
   <details>
   <summary>Details</summary>

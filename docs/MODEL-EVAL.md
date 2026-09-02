@@ -22,6 +22,13 @@ The pieces live in `scripts/eval/`:
 Repeat with a different engine or model.
 Each meeting row records what produced it: `stt_engine` is stamped at start, `llm_model` is stamped by enhance, so runs cannot be mixed up later.
 
+## Skipping the recording (fixtures)
+
+`just eval-play` is no longer the only way to get `conversation.txt` into a meeting.
+`yogurt ctl meeting new --from-script scripts/eval/conversation.txt` converts the same `A:`/`B:` lines into a finished meeting directly (no speaker, no microphone, no TCC grants), with synthetic timestamps standing in for the real ones `play.sh` would have produced.
+This is enough to compare LLMs (the transcript is identical either way, so `stt_engine` is irrelevant), but not STT engines, since no audio was ever transcribed - use `just eval-play` when the STT engine itself is what's under test.
+Run `yogurt ctl meeting enhance <id>` against the fixture to produce `enriched_md` under whichever LLM is configured, then `just eval-compare` on two such fixtures exactly as with two recordings.
+
 ## Compare two trials
 
 ```bash

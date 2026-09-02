@@ -27,7 +27,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::api::ApiError;
 use crate::markdown_exporter::Meeting as ExpMeeting;
@@ -71,6 +71,30 @@ pub struct CreateBody {
     pub title: Option<String>,
     #[serde(default)]
     pub started_at_unix_ms: Option<i64>,
+    /// CLI-5 fixture support: an array of transcript segments in exactly
+    /// the shape the `transcript_json` column already stores (see
+    /// `docs/DEBUGGING-TRANSCRIPTS.md`). Kept as a raw `Value` rather than
+    /// `Vec<FixtureSegment>` so a badly shaped array fails validation as
+    /// an `ApiError::BadRequest` (a real `{"error": "..."}` body) instead
+    /// of axum's generic JSON-rejection text, which `ctl` has no way to
+    /// surface a message from.
+    #[serde(default)]
+    pub transcript_json: Option<serde_json::Value>,
+    /// CLI-5: stamp `ended_at` at creation time so `ctl meeting new
+    /// --transcript-file` seeds a finished, never-recorded meeting
+    /// instead of a live one.
+    #[serde(default)]
+    pub ended: Option<bool>,
+}
+
+/// One `transcript_json` entry, validated on the way in. Same three
+/// fields `ctl`'s own transcript reader and `DEBUGGING-TRANSCRIPTS.md`'s
+/// `json_extract` recipe expect.
+#[derive(Debug, Deserialize, Serialize)]
+struct FixtureSegment {
+    ts_ms: i64,
+    channel: String,
+    text: String,
 }
 
 /// Body for `PATCH /api/meetings/:id`. Mirrors `yogurt_db::MeetingPatch`
@@ -150,6 +174,17 @@ async fn create(
         .unwrap_or("Untitled meeting")
         .to_string();
 
+    // CLI-5: validate the fixture transcript up front, before touching
+    // the DB, so a malformed file never creates a stray meeting row.
+    let segments = body
+        .transcript_json
+        .map(|v| {
+            serde_json::from_value::<Vec<FixtureSegment>>(v)
+                .map_err(|e| ApiError::BadRequest(format!("invalid transcript_json: {e}")))
+        })
+        .transpose()?;
+    let ended = body.ended.unwrap_or(false);
+
     // Bootstrap an in-memory streaming Meeting first so the SQLite row
     // shares the same id (UUID v7) as the registry entry. Without this
     // alignment, the existing `/api/meetings/:id/start` route — which
@@ -166,7 +201,32 @@ async fn create(
     let repo = s.meeting_repo.clone();
     let exporter = s.markdown_exporter.clone();
     let m = tokio::task::spawn_blocking(move || -> anyhow::Result<Meeting> {
-        let m = repo.create(new)?;
+        let mut m = repo.create(new)?;
+        // CLI-5: apply the fixture transcript / ended stamp as a second
+        // write through the same repo `create` already uses, rather than
+        // widening `NewMeeting` — the two optional fields are rare enough
+        // (and this handler is already the one place that owns the
+        // create-then-export sequence) that a follow-up `patch` is the
+        // smaller change. No `stt_engine` is stamped, matching a fixture
+        // that was never actually recorded.
+        if segments.is_some() || ended {
+            let transcript_json = segments.as_ref().map(serde_json::to_string).transpose()?;
+            let ended_at = ended.then(|| {
+                let last_ts_ms = segments
+                    .as_ref()
+                    .and_then(|s| s.iter().map(|seg| seg.ts_ms).max())
+                    .unwrap_or(0);
+                Some(m.started_at + last_ts_ms)
+            });
+            m = repo.patch(
+                &m.id,
+                MeetingPatch {
+                    transcript_json,
+                    ended_at,
+                    ..Default::default()
+                },
+            )?;
+        }
         // Side-effect: write the canonical markdown file. The body is
         // empty until the user types into the notes editor — Phase 4
         // MarkdownExporter still emits the YAML front-matter envelope
