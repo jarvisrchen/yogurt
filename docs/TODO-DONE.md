@@ -614,3 +614,36 @@ New closed items go at the bottom.
   `just lint` and `just test` (314 web tests + full cargo workspace) pass clean.
   This checkoff itself was done with `just ticket done DX-2 --note-file <path>`, the E2E test for the tool.
   </details>
+
+- [x] **CLI-4** Give agents a `yogurt ctl` instead of a markdown page of curl recipes
+  <details>
+  <summary>Details</summary>
+
+  `.claude/skills/yogurt-control/SKILL.md` is ~114 lines teaching an agent to hand-roll `curl` against the REST API, including reading the session token out of `~/.yogurt/session-token` and attaching it as a bearer header.
+  That is paid for in tokens on every invocation, re-derived from scratch each time, untestable, and silently drifts whenever the API moves - nothing fails when the markdown goes stale, it just quietly describes a shape that no longer exists.
+  The skill also states the gap outright: "yogurt has no CLI to start it headlessly."
+
+  Replace the recipes with subcommands on the binary that already exists.
+  `yogurt doctor --json` is the precedent - the machine-readable habit is already there, it just stops at diagnostics.
+
+  ```
+  yogurt ctl meeting new|start|stop|show --json
+  yogurt ctl detect      # what meeting detection currently sees
+  yogurt ctl windows     # on-screen windows + each one's match verdict
+  ```
+
+  `yogurt ctl windows` is the one with a concrete origin story.
+  MTG-11's detection rules were first "verified" against a window titled to match the rule under test - a loop that could not fail, and did not catch that real Google Meet runs as an installed Chrome app (`com.google.Chrome.app.<hash>`) titled `Google Meet - Meet - <code>`.
+  The tool that settles it exists today only as `cargo run -p yogurt-audio --example meeting_windows`, discoverable by reading `crates/yogurt-audio/src/detect.rs`.
+  A cargo example nobody can find is not infrastructure; promote it.
+
+  Design the surface for an agent, not a human: `--json` output, `--dry-run` on anything destructive, descriptive errors that say what to do instead, subcommands rather than one flat flag soup.
+  Once it exists, `yogurt-control/SKILL.md` shrinks to naming the commands, and the behavior becomes testable in `crates/yogurt-cli`.
+
+  Landed in #55 (2026-09-02). Shipped D1's first slice: `yogurt ctl` (status, meeting list/new/start/stop/show/summary/transcript/enhance, detect [dismiss], windows) plus D5 (`/api/health` gains `version`/`mode`, `just dev` prints `YOGURT_PORT=`).
+  Discovery is `--port` / `$YOGURT_PORT` / a scan of 7878-7898; read commands fall back to the local SQLite DB (`source: db`) when no server answers; mutations are idempotent (`start`/`stop` no-op on an already-in-that-state meeting); errors print `error: ... / help: ...` on stdout with exit 1, usage errors exit 2 via clap.
+  `ctl windows` replaced the `yogurt-audio/examples/meeting_windows.rs` cargo example (moved its logic into `yogurt_audio::detect::scan_windows`, called from the CLI via `spawn_blocking` - no new dependency).
+  Verified: `just lint` and `just test` (cargo + vitest) both clean; `crates/yogurt-cli/tests/ctl_smoke.rs` (5 tests: no-server exit 1, status version/mode, meeting new/show/list/last, bare stop no-op, the --help tree and `status` output never mention or leak a key/token); manually ran `yogurt ctl windows` and `yogurt ctl detect` on this Mac (screen recording granted, one on-screen window, no meeting-looking title, verdict `-`); full E2E by hand via `just dev` in the worktree (`ctl status`, `meeting new/show/list/stop`, `detect`), smoke meeting deleted afterward via `DELETE /api/meetings/<id>`.
+  Deviation: `enhance` forwards progress as a `phase: sending` / periodic `phase: waiting` heartbeat on stderr rather than the server's `enhance_progress` WS frames - `tokio-tungstenite` isn't a `yogurt-cli` dependency and the spec caps new dependencies at moving `reqwest`, so this is the documented polling fallback the ticket allows.
+  `ctl meeting transcript --follow` polls on the same basis rather than opening a WebSocket, for the same reason.
+  </details>

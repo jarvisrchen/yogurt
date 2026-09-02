@@ -110,32 +110,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## CLI
 
-- [ ] **CLI-4** Give agents a `yogurt ctl` instead of a markdown page of curl recipes
-  <details>
-  <summary>Details</summary>
-
-  `.claude/skills/yogurt-control/SKILL.md` is ~114 lines teaching an agent to hand-roll `curl` against the REST API, including reading the session token out of `~/.yogurt/session-token` and attaching it as a bearer header.
-  That is paid for in tokens on every invocation, re-derived from scratch each time, untestable, and silently drifts whenever the API moves - nothing fails when the markdown goes stale, it just quietly describes a shape that no longer exists.
-  The skill also states the gap outright: "yogurt has no CLI to start it headlessly."
-
-  Replace the recipes with subcommands on the binary that already exists.
-  `yogurt doctor --json` is the precedent - the machine-readable habit is already there, it just stops at diagnostics.
-
-  ```
-  yogurt ctl meeting new|start|stop|show --json
-  yogurt ctl detect      # what meeting detection currently sees
-  yogurt ctl windows     # on-screen windows + each one's match verdict
-  ```
-
-  `yogurt ctl windows` is the one with a concrete origin story.
-  MTG-11's detection rules were first "verified" against a window titled to match the rule under test - a loop that could not fail, and did not catch that real Google Meet runs as an installed Chrome app (`com.google.Chrome.app.<hash>`) titled `Google Meet - Meet - <code>`.
-  The tool that settles it exists today only as `cargo run -p yogurt-audio --example meeting_windows`, discoverable by reading `crates/yogurt-audio/src/detect.rs`.
-  A cargo example nobody can find is not infrastructure; promote it.
-
-  Design the surface for an agent, not a human: `--json` output, `--dry-run` on anything destructive, descriptive errors that say what to do instead, subcommands rather than one flat flag soup.
-  Once it exists, `yogurt-control/SKILL.md` shrinks to naming the commands, and the behavior becomes testable in `crates/yogurt-cli`.
-  </details>
-
 - [ ] **CLI-5** Fixture meetings: `yogurt ctl meeting new --transcript-file` seeds a finished meeting with a known transcript
   <details>
   <summary>Details</summary>
