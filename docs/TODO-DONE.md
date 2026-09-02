@@ -583,3 +583,16 @@ New closed items go at the bottom.
 
   Two more issues from live manual testing once both CLIs were actually installed: (1) `CliClient::model_name()` returned a bare `"cli:claude"` regardless of any `--model` override, so the Settings `Test` verdict ("answered as cli:claude") looked identical whether `haiku` or the CLI's own default actually ran - fixed by including the override when set (`"cli:claude:haiku"`), which also makes `meetings.llm_model` more informative. (2) The Cursor Agent preset shipped with an empty `models`/`default_cli_model` (the "unverified against a live binary" caveat from earlier in this entry) - live testing against a free-tier account found `cursor-agent --list-models` returns 50+ account-dependent ids, and naming any of them except `"auto"` fails with `ActionRequiredError: Named models unavailable, Free plans can only use Auto`. Fixed by setting the preset's `models` to `["auto"]` and `default_cli_model` to `"auto"` - the one value confirmed to work on every plan, not a guess at the full catalog.
   </details>
+
+- [x] **DX-6** One release procedure: fix the untap order, archive the stale runbooks, split the release log, exact-version formula assert
+  <details>
+  <summary>Details</summary>
+
+  The skill and `docs/RELEASING.md` disagree on untap order and both are moot: `brew untap` refuses while a model formula is installed, so upgrade-in-place is the real path.
+  `git mv` `scripts/release-checklist.md` and `scripts/homebrew/` to `docs/archive/`; `release.yml` never reads the seed formula.
+  Move the log table to `docs/RELEASE-LOG.md` and promote its four buried lessons into "When it goes wrong".
+  `release.yml`'s formula test asserts `yogurt <version>` exactly instead of the substring.
+  Design: `docs/.planning/agent-workflow.md`, section 4C, C4 and C5.
+  </details>
+
+  Landed in #53 (2026-09-02). Both the skill and `docs/RELEASING.md` now smoke-test with `brew upgrade`/`brew reinstall` first and a from-scratch `untap`/`uninstall` cycle only as a fallback. `scripts/release-checklist.md` and `scripts/homebrew/` moved to `docs/archive/` unmodified. The release log table moved to the new `docs/RELEASE-LOG.md`; its four buried lessons (false `strings | comm` check, `brew untap` refusal, re-reading `origin/main`'s sha before tagging, `git log <lasttag>..origin/main` for scope) are now in RELEASING.md's "When it goes wrong". `release.yml`'s tap formula test asserts the exact `yogurt <version>` output; unexercised until the next real tag push since the `tap` job never runs on a dry run. Also recorded the one-time GitHub merge settings in RELEASING.md and fixed two stale "log lives in RELEASING.md" pointers (AGENTS.md, README.md). Left `docs/.planning/agent-workflow.md` and its Lavish companion untouched: they describe the pre-fix state as the rationale for this ticket, not a live doc.

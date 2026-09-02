@@ -3,7 +3,9 @@
 How a tagged commit becomes `brew install jarvisrchen/yogurt/yogurt` on someone else's Mac.
 
 The pipeline is [`.github/workflows/release.yml`](../.github/workflows/release.yml).
-This doc is the operational companion: what the pipeline does, what has to be true before you tag, and a log of what actually happened each release.
+This doc is the operational companion: what the pipeline does, what has to be true before you tag, and the decisions and recovery paths behind it.
+The actual checklist to run lives in the [`release` skill](../.claude/skills/release/SKILL.md).
+A row-per-release record of what happened lives in [`docs/RELEASE-LOG.md`](RELEASE-LOG.md).
 
 ---
 
@@ -94,30 +96,10 @@ These are not per-release, but every one of them has to hold before the first `b
 - [x] **`jarvisrchen/homebrew-yogurt` exists and is public,** with a `Formula/` directory. Done.
 - [x] **`HOMEBREW_TAP_TOKEN` is set** as a repo secret on `jarvisrchen/yogurt`, with push + `pull_requests: write` on the tap repo. Check with `gh api repos/jarvisrchen/homebrew-yogurt --jq '.permissions'` using that token.
 - [x] **Git history carries no real secrets.** `.env.local` is gitignored; the history scan for `sk-` / `AKIA` / `ghp_` / `gsk_` found only a placeholder in an archived `MANUAL_TESTING.md`.
-
-## Cutting a release
-
-1. **Land everything.** Working tree clean, CI green on `main`.
-2. **Check the lockfile.** CI runs `pnpm install --frozen-lockfile`; a `package.json` edit without a matching `pnpm-lock.yaml` fails the build. Verify locally with `pnpm --dir web install --frozen-lockfile`.
-3. **Set the version.** `Cargo.toml` `[workspace.package] version` must match the tag you are about to push, minus the `v`.
-4. **Dry run.**
-   ```bash
-   gh workflow run Release -R jarvisrchen/yogurt -f dry-run=true --ref main
-   gh run watch <id> -R jarvisrchen/yogurt --exit-status
-   ```
-   This builds both arches and skips publishing. Do it before tagging - a tag you have to delete and re-push is the messy failure mode.
-5. **Tag and push.**
-   ```bash
-   git tag v0.1.0 && git push origin v0.1.0
-   ```
-6. **Merge the tap PR.** The pipeline only *opens* it. Until it merges, `brew install` serves the previous formula.
-7. **Smoke test from a clean state.**
-   ```bash
-   brew uninstall yogurt; brew untap jarvisrchen/yogurt
-   brew install jarvisrchen/yogurt/yogurt
-   yogurt --version   # formula's `test do` asserts this contains "yogurt"
-   yogurt start
-   ```
+- [x] **Repo merge settings, applied 2026-09-01:** `gh api -X PATCH repos/jarvisrchen/yogurt -F allow_rebase_merge=false -F allow_merge_commit=false -F delete_branch_on_merge=true`.
+  Squash is the only merge button available on a PR.
+  Branches are deleted on merge, so never pass `--delete-branch` to `gh pr merge`.
+  No branch protection ruleset on `main`, by decision, since there is a sole collaborator.
 
 ## When it goes wrong
 
@@ -134,15 +116,17 @@ That symbol lives in `libclang_rt.osx.a`, which rustc never puts on the link lin
 x86_64 is immune because ggml only builds `ggml-metal` for arm64, so a green x86_64 leg tells you nothing about arm64.
 If this resurfaces, check that the build script still resolves a runtime dir - it degrades to a `cargo:warning` rather than failing loudly.
 
-## Release log
+**`strings | comm` looks like a way to check a feature landed in the built binary, and it is not.**
+`strings` emits long concatenated lines, so a line differing anywhere reads as new even when the substring you actually care about is present in both binaries.
+Use provenance instead: `git tag --contains <commit>` to confirm the commit is only in the tag you just cut, plus a direct `strings <binary> | grep <marker>` for a distinguishing string or symbol.
 
-| Version | Date | Notes |
-| --- | --- | --- |
-| v0.1.0 pre-flight | 2026-08-30 | First dry run of the Release workflow ([33338166544](https://github.com/jarvisrchen/yogurt/actions/runs/33338166544)) - the workflow had never executed before. x86_64 built and packaged; **aarch64 failed at link** on an undefined `___isPlatformVersionAtLeast` out of whisper's `ggml-metal-device.m.o`. Fixed by [PR #1](https://github.com/jarvisrchen/yogurt/pull/1) (`crates/yogurt-stt/build.rs`), which had independently hit the same failure via `setup.sh` on a clean machine. Dry run [33338873469](https://github.com/jarvisrchen/yogurt/actions/runs/33338873469) is green on both arches. Repo still private at the time; tap formula still the `0.0.0` placeholder with zeroed shas. |
-| v0.1.0 | 2026-08-30 | First real release. All four jobs green ([33339847685](https://github.com/jarvisrchen/yogurt/actions/runs/33339847685)), including `tap`, so the token scopes were right. Formula shas verified by re-downloading the published tarballs (`ec7c4de3...` arm64, `1ecac01c...` x86_64). Tap PR merged, `brew install jarvisrchen/yogurt/yogurt` installs 11.7 MB into the Cellar and `yogurt --version` prints `yogurt 0.1.0`. The installed binary carries `com.apple.provenance` but no `com.apple.quarantine`, confirming Gatekeeper stays out of the Homebrew path. |
-| v0.2.0 | 2026-08-30 | Ships the Deepgram key Test button (#2). All four jobs green ([33349475657](https://github.com/jarvisrchen/yogurt/actions/runs/33349475657)) after a clean dry run. Formula shas verified against re-downloaded tarballs (`568d5468...` arm64, `39f4e1ca...` x86_64). `brew install` serves 0.2.0, no `com.apple.quarantine`, and the shipped binary contains both `/api/settings/stt/test` and the Deepgram probe URL, so the feature is in the artifact rather than just the version string. Bumping caught a footgun: `yogurt-cli` pinned `yogurt-server = { version = "0.1.0" }`, which made `cargo update --workspace` fail outright. Removed, since a version on a path dep is only needed for crates.io. |
-| v0.3.0 | 2026-09-01 | Ships AUD-4 (models resolve from a Homebrew prefix, #20) and AUD-1 (cumulative live partials, #21). All four jobs green ([33455470834](https://github.com/jarvisrchen/yogurt/actions/runs/33455470834)) after a clean dry run ([33455193807](https://github.com/jarvisrchen/yogurt/actions/runs/33455193807)). Formula shas verified against re-downloaded tarballs (`cac88dcb...` arm64, `9a15bbc5...` x86_64). Smoke tested from a clean state: `brew install` serves 0.3.0, no `com.apple.quarantine`. Verified the actual feature rather than the version string - installed `yogurt-model-tiny-en` from the new `models-v1` mirror and `yogurt doctor` reported `tiny.en (homebrew)` resolving out of `/opt/homebrew/share/yogurt/models`. `main` moved twice mid-release (#25 landed between the CI check and the merge), so the version-bump PR needed a second merge attempt - re-verify `origin/main`'s sha immediately before tagging rather than reusing the one you checked CI against. |
-| v0.4.0 | 2026-09-01 | Ships LLM-5 (#24): CLI providers get a timeout budgeted for generation rather than a handshake. All four jobs green ([33460106637](https://github.com/jarvisrchen/yogurt/actions/runs/33460106637)) after a clean dry run ([33459894840](https://github.com/jarvisrchen/yogurt/actions/runs/33459894840)). Formula shas verified against re-downloaded tarballs (`2215bec5...` arm64, `56d9d6d3...` x86_64). Smoke tested from a clean state: `brew install` serves 0.4.0, no `com.apple.quarantine`. First release under the step-4 doc-PR check, which immediately caught #27 (the LLM-5 TODO checkoff) still open - merged before tagging. Also published the four `yogurt-model-*` tap formulae ([tap #4](https://github.com/jarvisrchen/homebrew-yogurt/pull/4)), closing the gap where v0.3.0's README documented `brew install` commands that returned "No available formula" for everyone; `yogurt-model-tiny-en` now installs from the published tap and `yogurt doctor` reports `tiny.en (homebrew)`. Note on verifying a feature is in the artifact: LLM-5 changes a timeout constant and control flow rather than adding user-facing text, so there is no distinguishing string to grep for. `strings | comm` looks like it works and does not - `strings` emits long concatenated lines, so a line differing anywhere reads as new even when the substring exists in both binaries. Provenance is the reliable check: `git tag --contains <commit>` returned only v0.4.0, and `GENERATION_TIMEOUT = 300s` is present in the v0.4.0 tree and absent in v0.3.0. |
-| v0.5.0 | 2026-09-01 | Ships the remainder of AUD-4 (#29): `ModelSpec` gains `mirror_url`, and `download()` tries the `models-v1` GitHub mirror before falling back to HuggingFace, so the in-app download button stops depending on HF reachability - the mirror and the tap formulae had already shipped in v0.4.0, but nothing on the download path used them yet. All four jobs green ([33462065181](https://github.com/jarvisrchen/yogurt/actions/runs/33462065181)) after a clean dry run ([33461878955](https://github.com/jarvisrchen/yogurt/actions/runs/33461878955)). Formula shas verified against re-downloaded tarballs (`031f12bc...` arm64, `7cdd3e04...` x86_64). Smoke tested against the existing install rather than a fully clean state - `brew untap`/`uninstall` refused because `yogurt-model-tiny-en` depends on the `yogurt` formula, a real local model install rather than a leftover to force past - `brew install jarvisrchen/yogurt/yogurt` upgraded it in place; `yogurt --version` reports 0.5.0, no `com.apple.quarantine`. Verified the actual feature rather than the version string: `strings` on the installed binary shows all four `releases/download/models-v1/ggml-*.bin` mirror URLs baked in. This release closes out AUD-4 in full; `docs/TODO.md` was already moved to DONE in #29. |
-| v0.6.0 | 2026-09-01 | Ships LLM-6 ([#34](https://github.com/jarvisrchen/yogurt/pull/34)): the CLI-provider MODEL field gets a working `Refresh`, so `cursor-agent`'s ~200 `--model` ids are discoverable from Settings instead of only the static `auto` suggestion. All four jobs green ([33470826264](https://github.com/jarvisrchen/yogurt/actions/runs/33470826264)) after a clean dry run ([33470629433](https://github.com/jarvisrchen/yogurt/actions/runs/33470629433)). Formula shas verified against re-downloaded tarballs (`40e097ff...` arm64, `3df40d1e...` x86_64). Smoke tested against the existing install for the same reason as v0.5.0 - `brew untap`/`uninstall` still refuses while `yogurt-model-tiny-en` depends on the `yogurt` formula - so `brew install jarvisrchen/yogurt/yogurt` upgraded in place; `yogurt --version` reports 0.6.0, `brew list --versions` agrees, and the binary carries `com.apple.provenance` with no `com.apple.quarantine`. Verified the feature is in the artifact rather than the version string: `strings` on the installed binary shows `--list-models` plus both new error texts (`has no model-list flag`, `has no model catalog to refresh`), and `git tag --contains 8fd0937` returns only v0.6.0. The design note worth keeping: the fetched catalog is NOT entitlement-filtered - a free-tier Cursor account lists all 204 ids and then refuses every named one at call time - so `Test` stays the only signal for whether a model is usable, and the dropdown deliberately shows everything rather than spending a real completion per Refresh to pre-filter. |
-| v0.7.0 | 2026-09-01 | Ships MTG-11 meeting detection ([#46](https://github.com/jarvisrchen/yogurt/pull/46)) plus UI-6 dark mode ([#45](https://github.com/jarvisrchen/yogurt/pull/45)), UI-7 AI-text contrast ([#47](https://github.com/jarvisrchen/yogurt/pull/47)), AUD-6 mid-meeting mic mute ([#40](https://github.com/jarvisrchen/yogurt/pull/40)), MTG-9 meeting-by-URL ([#37](https://github.com/jarvisrchen/yogurt/pull/37)) and LLM-7 OpenCode preset ([#38](https://github.com/jarvisrchen/yogurt/pull/38)) - the last three had merged after the v0.6.0 tag was cut, so they go public here rather than in v0.6.0. Worth checking `git log <lasttag>..origin/main` rather than assuming the previous release contains everything merged before it. All four jobs green ([33572225259](https://github.com/jarvisrchen/yogurt/actions/runs/33572225259)) after a clean dry run ([33571768998](https://github.com/jarvisrchen/yogurt/actions/runs/33571768998)). Formula shas verified against re-downloaded tarballs (`879289fc...` arm64, `399f2eca...` x86_64). Smoke tested from a clean state: `brew install` serves 0.7.0, `brew list --versions` agrees, and the binary carries `com.apple.provenance` with no `com.apple.quarantine`. Verified the feature is in the artifact rather than the version string: `strings` on the installed binary shows `/api/meetings/detected`, the `us.zoom.xos` / `com.google.Chrome` / `com.tinyspeck.slackmacgap` bundle ids, and the Settings copy `Offer to record when a meeting is detected`; `git tag --contains f5f1b77` returns only v0.7.0. Caveat shipping with this one: only the Google Meet detection rule was verified against a live call. The first cut was "verified" against a window titled to match the rule under test, which proved nothing - a real call showed Meet runs as an installed Chrome app (`com.google.Chrome.app.<hash>`, not `com.google.Chrome`) titled `Google Meet - Meet - <code>`, so the rule was wrong twice over. The Zoom, Teams and Slack patterns are still inferred and unconfirmed; `cargo run -p yogurt-audio --example meeting_windows` during a real call is the way to settle each one. |
+**`brew untap` and `brew uninstall` refuse once a `yogurt-model-*` formula is installed, because those formulae depend on `yogurt`.**
+This is not a leftover to force past; a real local model install blocks it by design.
+`brew upgrade jarvisrchen/yogurt/yogurt` (or `brew reinstall jarvisrchen/yogurt/yogurt` when already at that version) is the normal smoke-test path.
+A from-scratch `untap`/`uninstall`/install cycle only works on a machine with no model formula installed.
+
+**Re-read `origin/main`'s sha immediately before tagging, not the sha you last checked CI against.**
+`main` moves: the v0.3.0 release needed a second merge attempt because another PR landed between the CI check and the merge, so the sha the tag pointed at was stale by the time it was pushed.
+
+**Use `git log <lasttag>..origin/main` to establish what a release actually ships, rather than assuming the previous release already contains everything merged before it.**
+v0.7.0 shipped three PRs that had merged after the v0.6.0 tag was cut, which only `git log` against the last tag would have surfaced up front.
