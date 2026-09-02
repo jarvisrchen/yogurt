@@ -173,12 +173,12 @@ async fn api_not_found(Path(rest): Path<String>) -> impl IntoResponse {
     )
 }
 
-/// `GET /api/health` — unauthenticated liveness + identity probe.
+/// `GET /api/health` - unauthenticated liveness + identity probe.
 ///
 /// `version` and `mode` are additive (CLI-4 / D5): `yogurt ctl` needs a way
 /// to tell instances apart when a port scan finds more than one, and
 /// `version` also answers "which binary is this" without a separate
-/// `doctor` round trip. No `pid` — that would be new unauthenticated
+/// `doctor` round trip. No `pid` - that would be new unauthenticated
 /// information about the host with no consumer asking for it.
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(json!({

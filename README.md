@@ -210,6 +210,38 @@ Prints a diagnostic dump (Rust and macOS versions, Screen Recording and Micropho
 | `--reset-screen-recording` | Reset the Screen Recording TCC grant for `ai.yogurt.app` so macOS prompts again on next start. |
 | `--redownload-model <MODEL>` | Delete the local copy of a whisper.cpp model (for example `small.en`) so the next start re-downloads it. |
 
+### `yogurt ctl`
+
+Controls a *running* yogurt instance over HTTP - status, meetings, and meeting detection - without touching the UI.
+Designed for an agent: subcommands rather than flag soup, `--json` output, descriptive errors with a `help:` line saying what to run instead.
+
+```
+yogurt ctl                                        # same as `status`
+yogurt ctl status                                  # instances found, active/detected meeting, stt, provider, permission grants
+yogurt ctl meeting list [--limit N]
+yogurt ctl meeting new [--title T] [--start]
+yogurt ctl meeting start <id|last>
+yogurt ctl meeting stop [<id|url|last>]            # bare `stop` targets whatever is currently recording
+yogurt ctl meeting show|summary|transcript <id|url|last>
+yogurt ctl meeting enhance <id|url|last>
+yogurt ctl detect [dismiss]                        # what meeting detection currently sees
+yogurt ctl windows                                 # on-screen windows + each one's match verdict - no server needed
+```
+
+`<id|url|last>` accepts a bare meeting id, a full meeting URL (the port and id are read out of it), or the literal `last` for the most recently created meeting.
+`list`/`show`/`summary`/`transcript` fall back to the local database when no server answers, noting `source: db` (stderr in text mode, a JSON field in `--json` mode) so you know the answer might be behind a server running on a different port.
+Mutations are idempotent: starting an already-recording meeting or stopping one that isn't recording is a no-op, not an error.
+
+| Flag | What it does |
+|------|--------------|
+| `--json` | Print machine-readable JSON instead of compact text. |
+| `--port <PORT>` | Talk to the instance on this port instead of discovering one. Also settable via `$YOGURT_PORT` (`just dev` prints the line to export). |
+
+Without `--port`/`$YOGURT_PORT`, `ctl` scans `127.0.0.1:7878`-`7898` (the same window `just dev` uses when the default port is busy) for a live instance.
+Two instances answering makes `status` list both; every other command exits 1 and asks you to pass `--port`.
+
+`ctl` never sets or reveals an API key or the session token - use the Settings UI for keys, and see [docs/AI-INTEGRATION.md](docs/AI-INTEGRATION.md) if you need the token for a raw HTTP call `ctl` doesn't cover yet.
+
 ## Ask an agent about a meeting
 
 Every meeting page has a URL like `http://localhost:7878/meeting/<id>/post`.

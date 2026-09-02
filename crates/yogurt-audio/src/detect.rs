@@ -245,7 +245,7 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
     None
 }
 
-/// One on-screen window plus its [`match_window`] verdict — `None` when
+/// One on-screen window plus its [`match_window`] verdict - `None` when
 /// nothing in `RULES` matched.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WindowVerdict {
@@ -257,11 +257,11 @@ pub struct WindowVerdict {
 /// Enumerate on-screen windows with each one's [`match_window`] verdict.
 /// CLI-4: backs `yogurt ctl windows`, which replaced the
 /// `yogurt-audio/examples/meeting_windows.rs` this function's body used to
-/// live in — that was the tool for retuning `RULES` when a vendor renames
+/// live in - that was the tool for retuning `RULES` when a vendor renames
 /// a window; `yogurt ctl windows` is now.
 ///
 /// Blocking, same caveat as [`detect_meeting`]. Returns an empty vec on a
-/// SCK enumeration failure — callers that care about "denied" vs
+/// SCK enumeration failure - callers that care about "denied" vs
 /// "genuinely no meeting-looking windows" should check
 /// [`crate::permission::has_screen_recording_permission`] first (`yogurt
 /// ctl windows` does, so it never reads as an empty "no meetings").
