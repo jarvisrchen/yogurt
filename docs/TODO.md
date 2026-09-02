@@ -103,7 +103,7 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
   It's not obvious today which of "me" (mic) and "them" (system) is actually capturing what, especially when Chrome is playing a video/call to simulate the other side of a meeting.
   Richard wants a workflow where he says "help me debug this meeting," an agent starts actively tailing the relevant logs/transcript, he starts the recording and plays audio through Chrome to simulate someone talking in Zoom/Slack, and the agent can narrate what it's seeing (which channel picked up the audio, timing, drops) while he narrates what he sees in the UI.
-  `scripts/tail-transcript.sh` and the raw WS frames (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
+  `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
   </details>
 
 - [ ] **AUD-8** A force-killed `yogurt` can leave a stale SCK/mic capture session that blocks the next recording
@@ -119,16 +119,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 ## LLM
 
 ## CLI
-
-- [ ] **CLI-6** the control skill rewritten around a generated command block
-  <details>
-  <summary>Details</summary>
-
-  The `yogurt ctl` second slice - `settings`, `provider`, `models`, `ws`, `meeting mute | search | delete` - landed in #67.
-  Remaining scope: `.claude/skills/yogurt-control/SKILL.md` shrinks to about 150 words - the command block between generator markers (kept honest by the `--help` drift test from DX-4), a Feature Map link, and three rules.
-  That rewrite waits for the brew release that carries `ctl`: the README's `npx skills add` path installs the skill standalone, so a skill naming `ctl` commands must not precede a binary that has them.
-  Design: `docs/.planning/agent-workflow.md`, section 4D, D1 and D2.
-  </details>
 
 ## Developer experience
 
