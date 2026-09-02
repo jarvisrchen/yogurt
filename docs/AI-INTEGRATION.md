@@ -20,8 +20,8 @@ Every example below sends `Authorization: Bearer $TOKEN`.
 
 ## Is yogurt running?
 
-`GET /api/health` needs no token and returns `{"status":"ok","service":"yogurt-server"}` if the binary is up.
-If it isn't, there's nothing else you can do - yogurt has no CLI and no daemon-start-on-demand; the user has to launch the app (or `just dev`) themselves.
+`GET /api/health` needs no token and returns `{"status":"ok","service":"yogurt-server","version":"0.7.0","mode":"release"}` if the binary is up (`mode` is `"dev"` under `just dev` / `yogurt start --dev`).
+If it isn't up, `yogurt ctl status` says so - see "Controlling yogurt from the CLI" below for the full `ctl` surface, which covers everything in this document plus meeting detection and window matching.
 
 ## Start a meeting
 
