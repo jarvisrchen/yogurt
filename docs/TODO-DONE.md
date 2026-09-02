@@ -731,3 +731,15 @@ New closed items go at the bottom.
 
   Landed in #62 (2026-09-02). docs/FEATURES.md: 19-row table mapping every user-facing feature to UI path, API routes, ctl command, covering test, and source anchor, plus an Internal routes list (health, session-token, the /api/:rest catch-all, and router.tsx's * catch-all). check-docs.sh gained a coverage rule that extracts every .route(...) literal and every router.tsx path: literal, normalizes axum's {param} to the router's :param, and fails if either is missing from FEATURES.md. Deviated from the design doc's internal-route example list: the detection banner and /ws (STT model-download progress) turned out to be real user-facing features once verified against the code, so they got their own rows instead of being marked internal. Verified: just check-docs passes; removing a route from a FEATURES.md cell makes the new rule fail naming that exact route; adding a bogus /api/nope makes the existing rule 1 fail; 38 .route( calls extracted (38 distinct routes) vs 11 router.tsx path: literals, matching grep -c counts; just lint and just test both pass.
   </details>
+
+- [x] **DX-5** `scripts/ship.sh pr | land` and tracked git hooks
+  <details>
+  <summary>Details</summary>
+
+  `pr` refuses a title without a ticket ID or conventional prefix, a body with attribution or an em dash, a code change without an absolute-path handover line, or a ticket not moved to DONE on the branch.
+  `land` waits for CI (skipped for docs-only), squash-merges with `--match-head-commit`, then from the main checkout removes the worktree (refusing on a dirty tree), deletes the branch, and re-prints the handover; every step resumes.
+  `.githooks/` rejects agent trailers and commits on `main`, activated by `bootstrap` and `setup.sh`.
+  Design: `docs/.planning/agent-workflow.md`, section 4B.
+
+  Landed in #TBD (2026-09-02). Adds `scripts/ship.sh pr | land` (design: docs/.planning/agent-workflow.md section 4B) and tracked `.githooks/` (commit-msg, pre-commit) wired via `git config core.hooksPath .githooks` in `just bootstrap` and `scripts/setup.sh`. `pr` validates title, body (attribution/em dash), an absolute-path handover line for code changes, and ticket checkoff before pushing and opening the PR; `land` waits for CI (skipped for docs-only), squash-merges, and cleans up the worktree/branch, resumable at every step. Verified with `scripts/tests/ship_test.sh` (33 cases) and `scripts/tests/hooks_test.sh` (11 cases), both wired into `just lint`; `just lint` and `just test` green; real `just pr --dry-run` and `just land --dry-run` runs and a live commit-msg hook rejection in this worktree.
+  </details>
