@@ -60,11 +60,18 @@ check "no paths is NOT docs-only"                  "$(is)"                      
 # --- changed_paths_between -------------------------------------------
 # Any two real commits in this repo's history - just needs to run and
 # return the paths git itself reports, no framework needed to fake that up.
-parent="$(git -C "$REPO_ROOT" rev-parse HEAD~1)"
-head="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-want="$(git -C "$REPO_ROOT" diff --name-only "$parent" "$head")"
-got="$(cd "$REPO_ROOT" && changed_paths_between "$parent" "$head")"
-check "changed_paths_between matches git diff --name-only" "$got" "$want"
+# CI's checkout is shallow (fetch-depth 1): when a PR branch is a
+# fast-forward of main, GitHub's pull_request merge ref collapses to a
+# single-parent commit and HEAD~1 is not fetched. Skip rather than crash
+# the whole `just lint` recipe when that parent is not available locally.
+if parent="$(git -C "$REPO_ROOT" rev-parse HEAD~1 2>/dev/null)"; then
+  head="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  want="$(git -C "$REPO_ROOT" diff --name-only "$parent" "$head")"
+  got="$(cd "$REPO_ROOT" && changed_paths_between "$parent" "$head")"
+  check "changed_paths_between matches git diff --name-only" "$got" "$want"
+else
+  echo "skip: changed_paths_between check - no HEAD~1 in this (shallow) checkout" >&2
+fi
 
 echo "docs-only_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
