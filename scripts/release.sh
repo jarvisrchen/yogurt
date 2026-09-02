@@ -5,9 +5,9 @@
 # Flags only, no prompts. `-n` prints the plan on anything that mutates.
 # `--json` emits a per-check array where the subcommand has checks.
 #
-# Only `preflight` exists so far (DX-7 PR 1 of 3). `verify`, `finish`,
-# `untag` and `ship` land in follow-up PRs - see docs/TODO.md DX-7 and
-# docs/.planning/agent-workflow.md section 4C.
+# `preflight`, `verify`, `finish` and `untag` exist. `ship` lands in a
+# follow-up PR - see docs/TODO.md DX-7 and docs/.planning/agent-workflow.md
+# section 4C.
 #
 # Usage errors exit 2. A failed check exits 1.
 
@@ -18,6 +18,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/docs-only.sh"
 
 REPO="jarvisrchen/yogurt"
+TAP_REPO="jarvisrchen/homebrew-yogurt"
 
 usage() {
   cat <<'EOF'
@@ -30,6 +31,24 @@ Commands:
         -n         no-op (preflight never mutates; accepted for symmetry)
         --json     emit a JSON array of {check, ok, detail} instead of text
         --strict   fail (rather than list) if any open PR touches docs/ or README.md
+
+  verify <version>
+      Read-only checks that the published GitHub Release and tap formula
+      for v<version> are internally consistent. Makes no changes. Options:
+        --json     emit a JSON array of {check, ok, detail} instead of text
+
+  finish <version> [--no-smoke] [-n]
+      Runs verify, merges the tap PR, upgrades the local brew install and
+      prints a pre-filled docs/RELEASE-LOG.md row. Skip-if-done: safe to
+      re-run. Options:
+        --no-smoke   skip the brew upgrade/test/quarantine steps
+        -n           print the plan (every mutating command) and exit 0
+
+  untag <version> [-n]
+      Deletes the local and remote v<version> tag. Refuses (exit 2) if a
+      GitHub Release v<version> already exists - fix the tap formula by
+      hand instead (see docs/RELEASING.md "When it goes wrong"). Options:
+        -n           print the plan and exit 0
 EOF
 }
 
@@ -47,15 +66,17 @@ json_escape() {
   printf '%s' "$s"
 }
 
-# emit_check <name> <true|false> <detail> - prints "ok: "/"FAIL: " in text
-# mode, records a JSON object in --json mode. Returns the check's own
-# ok/fail status so callers can `check_x || OVERALL_OK=1`.
+# emit_check <name> <true|false> <detail> [pass_label] - prints
+# "<pass_label>: "/"FAIL: " in text mode (pass_label defaults to "ok",
+# preflight's wording; verify passes "PASS"), records a JSON object in
+# --json mode. Returns the check's own ok/fail status so callers can
+# `check_x || OVERALL_OK=1`.
 emit_check() {
-  local name="$1" ok="$2" detail="$3"
+  local name="$1" ok="$2" detail="$3" label="${4:-ok}"
   if [ "$JSON" -eq 1 ]; then
     CHECK_JSON+=("{\"check\":\"$name\",\"ok\":$ok,\"detail\":\"$(json_escape "$detail")\"}")
   elif [ "$ok" = "true" ]; then
-    printf 'ok: %s\n' "$detail"
+    printf '%s: %s\n' "$label" "$detail"
   else
     printf 'FAIL: %s\n' "$detail"
   fi
@@ -293,6 +314,405 @@ cmd_preflight() {
   exit "$overall_ok"
 }
 
+# ---- verify -----------------------------------------------------------
+
+# sha256sums_get <sums_file> <filename> - the hash listed for <filename>
+# in a `shasum -a 256`-style sums file ("<hash>  <filename>" per line).
+sha256sums_get() {
+  awk -v want="$2" '$2==want{print $1; exit}' "$1"
+}
+
+# formula_version <formula_file> - the value of the formula's
+# `version "..."` line.
+formula_version() {
+  awk -F'"' '/^  version "/{print $2; exit}' "$1"
+}
+
+# formula_shas <formula_file> - the formula's two `sha256 "..."` values,
+# one per line, in file order: arm64 first, x86_64 second. release.yml's
+# heredoc always writes the `Hardware::CPU.arm?` branch before the `else`
+# branch, so file order is a reliable stand-in for parsing the
+# `on_macos do` block.
+formula_shas() {
+  grep -oE '"[0-9a-f]{64}"' "$1" | tr -d '"'
+}
+
+# check_eq <name> <detail> <got> <want> - PASS (as "PASS: ...") only when
+# got is non-empty and equals want; a blank got usually means upstream
+# parsing failed. Used only by verify - preflight's checks are their own
+# true/false judgments, not equality comparisons.
+check_eq() {
+  local name="$1" detail="$2" got="$3" want="$4"
+  if [ -n "$got" ] && [ "$got" = "$want" ]; then
+    emit_check "$name" true "$detail ($got)" PASS
+  else
+    emit_check "$name" false "$detail: got '$got', want '$want'"
+  fi
+}
+
+# host_tarball - the release tarball name for the machine running this
+# script; empty for an architecture the release pipeline does not build.
+host_tarball() {
+  case "$(uname -m)" in
+    arm64) printf 'yogurt-aarch64-apple-darwin.tar.gz' ;;
+    x86_64) printf 'yogurt-x86_64-apple-darwin.tar.gz' ;;
+    *) printf '' ;;
+  esac
+}
+
+# tap_formula_ref <version> - the tap-repo ref to read Formula/yogurt.rb
+# from: the bump PR's branch if it still exists, else the tap's default
+# branch. `finish` deletes the branch on merge, so verify falls back for
+# any already-finished release (that is how it can still check v0.7.0).
+tap_formula_ref() {
+  local branch="bump-$1"
+  if gh api "repos/$TAP_REPO/branches/$branch" >/dev/null 2>&1; then
+    printf '%s' "$branch"
+  else
+    gh api "repos/$TAP_REPO" --jq '.default_branch'
+  fi
+}
+
+VERIFY_ARM_SHA=""
+VERIFY_X86_SHA=""
+
+# cmd_verify <version> [--json] - read-only; returns 0 when every check
+# passes. On success, sets VERIFY_ARM_SHA/VERIFY_X86_SHA so `finish` can
+# reuse the already-downloaded hashes in its log row.
+cmd_verify() {
+  local version=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) JSON=1; shift ;;
+      -h|--help) usage; return 0 ;;
+      -*)
+        echo "release.sh verify: unknown flag $1" >&2
+        return 2
+        ;;
+      *)
+        if [ -n "$version" ]; then
+          echo "release.sh verify: unexpected argument $1" >&2
+          return 2
+        fi
+        version="$1"
+        shift
+        ;;
+    esac
+  done
+  if [ -z "$version" ]; then
+    echo "release.sh verify: missing <version>" >&2
+    return 2
+  fi
+
+  local tag="v$version" tmpdir overall_ok=0
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/yogurt-release-verify.XXXXXX")"
+
+  # `gh release download` never sets com.apple.quarantine (that xattr is
+  # a browser download's doing), so untarring the binary below is safe -
+  # it never triggers a Gatekeeper prompt.
+  if ! gh release download "$tag" -R "$REPO" -D "$tmpdir" --clobber \
+      -p 'yogurt-aarch64-apple-darwin.tar.gz' \
+      -p 'yogurt-x86_64-apple-darwin.tar.gz' \
+      -p 'SHA256SUMS' >/dev/null 2>&1; then
+    emit_check release_assets false "could not download release assets for $tag from $REPO - does the GitHub Release exist?" || overall_ok=1
+  else
+    local sums="$tmpdir/SHA256SUMS"
+    local arm_tar="$tmpdir/yogurt-aarch64-apple-darwin.tar.gz"
+    local x86_tar="$tmpdir/yogurt-x86_64-apple-darwin.tar.gz"
+    local arm_local x86_local arm_sums x86_sums
+    arm_local="$(shasum -a 256 "$arm_tar" | awk '{print $1}')"
+    x86_local="$(shasum -a 256 "$x86_tar" | awk '{print $1}')"
+    arm_sums="$(sha256sums_get "$sums" "yogurt-aarch64-apple-darwin.tar.gz")"
+    x86_sums="$(sha256sums_get "$sums" "yogurt-x86_64-apple-darwin.tar.gz")"
+    VERIFY_ARM_SHA="$arm_local"
+    VERIFY_X86_SHA="$x86_local"
+
+    check_eq sha256_aarch64 "arm64 tarball sha256 matches SHA256SUMS" "$arm_local" "$arm_sums" || overall_ok=1
+    check_eq sha256_x86_64 "x86_64 tarball sha256 matches SHA256SUMS" "$x86_local" "$x86_sums" || overall_ok=1
+
+    local ref formula="$tmpdir/yogurt.rb"
+    ref="$(tap_formula_ref "$version")"
+    if gh api "repos/$TAP_REPO/contents/Formula/yogurt.rb?ref=$ref" --jq '.content' 2>/dev/null | base64 -d >"$formula" 2>/dev/null && [ -s "$formula" ]; then
+      emit_check formula_fetch true "fetched Formula/yogurt.rb from $TAP_REPO@$ref" PASS
+      local formula_arm formula_x86
+      formula_arm="$(formula_shas "$formula" | sed -n '1p')"
+      formula_x86="$(formula_shas "$formula" | sed -n '2p')"
+      check_eq formula_sha_aarch64 "formula arm64 sha256 matches SHA256SUMS" "$formula_arm" "$arm_sums" || overall_ok=1
+      check_eq formula_sha_x86_64 "formula x86_64 sha256 matches SHA256SUMS" "$formula_x86" "$x86_sums" || overall_ok=1
+      check_eq formula_version "formula version matches" "$(formula_version "$formula")" "$version" || overall_ok=1
+    else
+      emit_check formula_fetch false "could not fetch Formula/yogurt.rb from $TAP_REPO@$ref" || overall_ok=1
+    fi
+
+    local host_tar
+    host_tar="$(host_tarball)"
+    if [ -z "$host_tar" ]; then
+      emit_check binary_version false "unsupported host arch $(uname -m), cannot untar and run yogurt --version" || overall_ok=1
+    else
+      (cd "$tmpdir" && tar -xzf "$host_tar")
+      local printed
+      printed="$("$tmpdir/yogurt" --version 2>&1 || true)"
+      check_eq binary_version "extracted $host_tar's yogurt --version" "$printed" "yogurt $version" || overall_ok=1
+    fi
+  fi
+
+  rm -rf "$tmpdir"
+
+  if [ "$JSON" -eq 1 ]; then
+    (IFS=,; printf '[%s]\n' "${CHECK_JSON[*]}")
+  fi
+  return "$overall_ok"
+}
+
+# ---- finish -------------------------------------------------------
+
+# find_tap_pr <version> - "<number> <state>" for the bump-<version> PR on
+# the tap repo, or empty if none exists.
+find_tap_pr() {
+  gh pr list --repo "$TAP_REPO" --head "bump-$1" --state all \
+    --json number,state --jq '.[0] | "\(.number) \(.state)"' 2>/dev/null
+}
+
+# brew_installed_version - the version brew reports for the yogurt
+# formula, or empty if not installed.
+brew_installed_version() {
+  brew list --versions jarvisrchen/yogurt/yogurt 2>/dev/null | awk '{print $2}'
+}
+
+# previous_tag <version> - the highest existing v* tag strictly below
+# <version>, or empty if none. Local tags only - every worktree in this
+# repo shares refs, so no fetch is needed here.
+previous_tag() {
+  local version="$1" best="" tag ver
+  while IFS= read -r tag; do
+    case "$tag" in v*) ;; *) continue ;; esac
+    ver="${tag#v}"
+    [ "$ver" = "$version" ] && continue
+    semver_lt "$ver" "$version" || continue
+    if [ -z "$best" ] || semver_lt "${best#v}" "$ver"; then
+      best="$tag"
+    fi
+  done < <(git tag -l 'v*')
+  printf '%s' "$best"
+}
+
+# render_log_row <version> <date> <push_run> <dry_run> <arm_sha> <x86_sha>
+# <prev_tag> <ships> - the docs/RELEASE-LOG.md row `finish` prints, with a
+# literal NARRATIVE: slot for the human sentence.
+render_log_row() {
+  local version="$1" date="$2" push_run="$3" dry_run="$4" arm_sha="$5" x86_sha="$6" prev_tag="$7" ships="$8"
+  local run_url="https://github.com/$REPO/actions/runs"
+  printf '| v%s | %s | NARRATIVE: <one sentence - what this release ships and why>. All four jobs green ([%s](%s/%s)) after a clean dry run ([%s](%s/%s)). Formula shas verified against re-downloaded tarballs (`%.8s...` arm64, `%.8s...` x86_64). Ships since %s: %s |\n' \
+    "$version" "$date" "$push_run" "$run_url" "$push_run" "$dry_run" "$run_url" "$dry_run" "$arm_sha" "$x86_sha" "${prev_tag:-(none)}" "$ships"
+}
+
+# ships_since <prev_tag> <version> - "hash subject; hash subject; ..." for
+# every commit between <prev_tag> (or the start of history, if empty) and
+# v<version>.
+ships_since() {
+  local prev_tag="$1" version="$2" range
+  if [ -n "$prev_tag" ]; then
+    range="${prev_tag}..v${version}"
+  else
+    range="v${version}"
+  fi
+  git log "$range" --oneline | awk '{printf "%s%s", (NR>1?"; ":""), $0}'
+}
+
+# print_finish_plan <version> <no_smoke> - the mutating commands `finish`
+# would run, without running them.
+print_finish_plan() {
+  local version="$1" no_smoke="$2" pr tap_pr_num tap_pr_state installed
+  pr="$(find_tap_pr "$version")"
+  tap_pr_num="${pr%% *}"
+  tap_pr_state="${pr#* }"
+
+  echo "PLAN for finish v$version:"
+  if [ -z "$pr" ]; then
+    echo "  (no tap PR found for branch bump-$version on $TAP_REPO - finish would fail here)"
+  elif [ "$tap_pr_state" = "OPEN" ]; then
+    echo "  gh pr merge $tap_pr_num --repo $TAP_REPO --squash --delete-branch"
+  else
+    echo "  (tap PR #$tap_pr_num already $tap_pr_state, nothing to merge)"
+  fi
+  echo '  git -C "$(brew --repo jarvisrchen/yogurt)" pull --ff-only'
+  if [ "$no_smoke" -eq 1 ]; then
+    echo "  (--no-smoke: brew upgrade/reinstall, brew test and the quarantine check are skipped)"
+  else
+    installed="$(brew_installed_version)"
+    if [ "$installed" = "$version" ]; then
+      echo "  brew reinstall jarvisrchen/yogurt/yogurt"
+    else
+      echo "  brew upgrade jarvisrchen/yogurt/yogurt"
+    fi
+    echo "  brew test jarvisrchen/yogurt/yogurt"
+  fi
+}
+
+# cmd_finish <version> [--no-smoke] [-n] - runs verify, merges the tap
+# PR, upgrades the local brew install, and prints the pre-filled log row.
+# Every step is skip-if-done, so a re-run after a partial failure resumes.
+cmd_finish() {
+  local version="" no_smoke=0 dry=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-smoke) no_smoke=1; shift ;;
+      -n) dry=1; shift ;;
+      -h|--help) usage; return 0 ;;
+      -*)
+        echo "release.sh finish: unknown flag $1" >&2
+        return 2
+        ;;
+      *)
+        if [ -n "$version" ]; then
+          echo "release.sh finish: unexpected argument $1" >&2
+          return 2
+        fi
+        version="$1"
+        shift
+        ;;
+    esac
+  done
+  if [ -z "$version" ]; then
+    echo "release.sh finish: missing <version>" >&2
+    return 2
+  fi
+
+  if ! cmd_verify "$version"; then
+    echo "FAIL: verify did not pass for v$version - fix before finishing" >&2
+    return 1
+  fi
+
+  if [ "$dry" -eq 1 ]; then
+    print_finish_plan "$version" "$no_smoke"
+    return 0
+  fi
+
+  local pr tap_pr_num tap_pr_state
+  pr="$(find_tap_pr "$version")"
+  if [ -z "$pr" ]; then
+    echo "FAIL: no tap PR found for branch bump-$version on $TAP_REPO" >&2
+    return 1
+  fi
+  tap_pr_num="${pr%% *}"
+  tap_pr_state="${pr#* }"
+  if [ "$tap_pr_state" = "OPEN" ]; then
+    gh pr merge "$tap_pr_num" --repo "$TAP_REPO" --squash --delete-branch
+    echo "ok: merged tap PR #$tap_pr_num"
+  else
+    echo "ok: tap PR #$tap_pr_num already $tap_pr_state"
+  fi
+
+  if [ "$no_smoke" -eq 0 ]; then
+    local tap_dir
+    tap_dir="$(brew --repo jarvisrchen/yogurt)"
+    git -C "$tap_dir" pull --ff-only
+
+    local installed
+    installed="$(brew_installed_version)"
+    if [ "$installed" = "$version" ]; then
+      brew reinstall jarvisrchen/yogurt/yogurt
+    else
+      brew upgrade jarvisrchen/yogurt/yogurt
+    fi
+
+    local brew_bin got
+    brew_bin="$(brew --prefix)/bin/yogurt"
+    got="$("$brew_bin" --version)"
+    if [ "$got" != "yogurt $version" ]; then
+      echo "FAIL: $brew_bin --version printed '$got', want 'yogurt $version'" >&2
+      return 1
+    fi
+    echo "PASS: $brew_bin --version prints yogurt $version"
+
+    brew test jarvisrchen/yogurt/yogurt
+    echo "ok: brew test jarvisrchen/yogurt/yogurt passed"
+
+    if xattr -p com.apple.quarantine "$brew_bin" >/dev/null 2>&1; then
+      echo "FAIL: $brew_bin carries com.apple.quarantine" >&2
+      return 1
+    fi
+    echo "PASS: $brew_bin has no com.apple.quarantine"
+  fi
+
+  local tag_sha parent_sha push_run dry_run prev_tag ships today
+  tag_sha="$(gh api "repos/$REPO/commits/v$version" --jq '.sha')"
+  parent_sha="$(gh api "repos/$REPO/commits/$tag_sha" --jq '.parents[0].sha')"
+  push_run="$(gh run list -R "$REPO" -w Release -c "$tag_sha" --json databaseId,event --jq '[.[] | select(.event=="push")][0].databaseId')"
+  dry_run="$(gh run list -R "$REPO" -w Release -c "$parent_sha" --json databaseId,event --jq '[.[] | select(.event=="workflow_dispatch")][0].databaseId')"
+  prev_tag="$(previous_tag "$version")"
+  ships="$(ships_since "$prev_tag" "$version")"
+  today="$(date +%Y-%m-%d)"
+
+  echo
+  echo "docs/RELEASE-LOG.md row:"
+  render_log_row "$version" "$today" "${push_run:-?}" "${dry_run:-?}" "$VERIFY_ARM_SHA" "$VERIFY_X86_SHA" "$prev_tag" "$ships"
+}
+
+# ---- untag ----------------------------------------------------------
+
+# cmd_untag <version> [-n] - deletes the local and remote v<version> tag.
+# Refuses (exit 2) while a GitHub Release v<version> exists.
+cmd_untag() {
+  local version="" dry=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n) dry=1; shift ;;
+      -h|--help) usage; return 0 ;;
+      -*)
+        echo "release.sh untag: unknown flag $1" >&2
+        return 2
+        ;;
+      *)
+        if [ -n "$version" ]; then
+          echo "release.sh untag: unexpected argument $1" >&2
+          return 2
+        fi
+        version="$1"
+        shift
+        ;;
+    esac
+  done
+  if [ -z "$version" ]; then
+    echo "release.sh untag: missing <version>" >&2
+    return 2
+  fi
+
+  local tag="v$version"
+  if gh release view "$tag" -R "$REPO" >/dev/null 2>&1; then
+    echo "release.sh untag: GitHub Release $tag already exists on $REPO" >&2
+    echo 'fix Formula/yogurt.rb by hand in the tap repo instead - see docs/RELEASING.md "When it goes wrong"' >&2
+    return 2
+  fi
+
+  local remote_exists=0 local_exists=0
+  git ls-remote --tags origin "refs/tags/$tag" | grep -q . && remote_exists=1
+  git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1 && local_exists=1
+
+  if [ "$dry" -eq 1 ]; then
+    echo "PLAN for untag $tag:"
+    [ "$remote_exists" -eq 1 ] && echo "  git push origin :refs/tags/$tag"
+    [ "$local_exists" -eq 1 ] && echo "  git tag -d $tag"
+    if [ "$remote_exists" -eq 0 ] && [ "$local_exists" -eq 0 ]; then
+      echo "  (nothing to do: $tag does not exist locally or on origin)"
+    fi
+    return 0
+  fi
+
+  if [ "$remote_exists" -eq 1 ]; then
+    git push origin ":refs/tags/$tag"
+    echo "ok: deleted remote tag $tag"
+  else
+    echo "ok: remote tag $tag does not exist, nothing to delete"
+  fi
+  if [ "$local_exists" -eq 1 ]; then
+    git tag -d "$tag"
+    echo "ok: deleted local tag $tag"
+  else
+    echo "ok: local tag $tag does not exist, nothing to delete"
+  fi
+}
+
 main() {
   if [ $# -eq 0 ]; then
     usage >&2
@@ -302,6 +722,9 @@ main() {
   shift
   case "$cmd" in
     preflight) cmd_preflight "$@" ;;
+    verify) cmd_verify "$@" ;;
+    finish) cmd_finish "$@" ;;
+    untag) cmd_untag "$@" ;;
     -h|--help) usage; exit 0 ;;
     *)
       echo "release.sh: unknown command '$cmd'" >&2
@@ -311,4 +734,8 @@ main() {
   esac
 }
 
-main "$@"
+# Skip when sourced (scripts/tests/release_test.sh does this to reach the
+# pure functions directly) so sourcing never runs a command or exits.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

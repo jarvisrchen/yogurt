@@ -103,7 +103,7 @@ These are not per-release, but every one of them has to hold before the first `b
 
 ## When it goes wrong
 
-**Build failed after the tag was pushed.** Delete the tag locally and remotely (`git tag -d v0.1.0 && git push --delete origin v0.1.0`), fix, re-tag. Safe as long as no Release was published and nobody installed.
+**Build failed after the tag was pushed.** Delete the tag locally and remotely (`./scripts/release.sh untag <version>`, or by hand: `git tag -d v0.1.0 && git push --delete origin v0.1.0`), fix, re-tag. Safe as long as no Release was published and nobody installed. `untag` refuses (exit 2) once a GitHub Release exists - past that point, fix `Formula/yogurt.rb` by hand in the tap repo instead, per the next paragraph.
 
 **Release published but the formula is wrong.** Fix `Formula/yogurt.rb` directly in the tap repo; it is a plain file and takes effect on the next `brew update`. No need to re-cut the release.
 
