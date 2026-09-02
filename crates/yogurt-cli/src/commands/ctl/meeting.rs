@@ -46,6 +46,12 @@ pub enum MeetingCmd {
         /// and record it. Implies the meeting is created already ended.
         #[arg(long)]
         from_script: Option<PathBuf>,
+        /// Seed the user's raw notes from a markdown file. With
+        /// `--transcript-file`/`--from-script` this stages exactly what
+        /// End meeting hands to enhance (notes and transcript both on the
+        /// row), so `ctl meeting enhance` reproduces that path headlessly.
+        #[arg(long)]
+        notes_file: Option<PathBuf>,
     },
     /// Begin recording an existing meeting. No-op if it's already recording.
     Start { meeting: String },
@@ -103,7 +109,19 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
             start,
             transcript_file,
             from_script,
-        } => new(port, json_out, title, start, transcript_file, from_script).await,
+            notes_file,
+        } => {
+            new(
+                port,
+                json_out,
+                title,
+                start,
+                transcript_file,
+                from_script,
+                notes_file,
+            )
+            .await
+        }
         MeetingCmd::Start { meeting } => start(port, json_out, &meeting).await,
         MeetingCmd::Stop { meeting } => stop(port, json_out, meeting).await,
         MeetingCmd::Show { meeting } => show(port, json_out, &meeting).await,
@@ -306,6 +324,7 @@ async fn new(
     start: bool,
     transcript_file: Option<PathBuf>,
     from_script: Option<PathBuf>,
+    notes_file: Option<PathBuf>,
 ) -> Result<(), CtlError> {
     // CLI-5: `--transcript-file` is forwarded to the server byte-for-shape
     // untouched (read as a bare `serde_json::Value`, not parsed into our
@@ -330,6 +349,15 @@ async fn new(
     }
     if ended {
         body["ended"] = json!(true);
+    }
+    if let Some(p) = &notes_file {
+        let notes = std::fs::read_to_string(p).map_err(|e| {
+            CtlError::local(
+                format!("could not read --notes-file {}: {e}", p.display()),
+                "check the path exists",
+            )
+        })?;
+        body["notes_md"] = json!(notes);
     }
     let m: yogurt_db::Meeting = c.post("/api/meetings", &body).await?;
     let started = if start {

@@ -55,6 +55,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 
 `POST /api/meetings` optionally takes `transcript_json` - `{ts_ms, channel, text}` segments in the column's stored shape (see [DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) - and `ended: true`, to seed a finished meeting without recording anything.
 A malformed `transcript_json` 400s naming the bad field; no `stt_engine` is stamped, since nothing was recorded.
+`notes_md` seeds the user's raw notes on the same row (`ctl meeting new --notes-file`), so a following `/enhance` with `transcript_json: "[]"` runs exactly what End meeting runs.
 `ctl meeting new --transcript-file <segments.json>` and `--from-script <script>` wrap this - see [MODEL-EVAL.md](MODEL-EVAL.md).
 
 ## WebSocket frames

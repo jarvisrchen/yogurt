@@ -549,6 +549,12 @@ fn interpret_single_json(
     if parsed.is_error {
         bail!("{program_name} CLI reported an error: {}", parsed.result);
     }
+    // LLM-8: same rule as `interpret_jsonl` - an empty `result` is a
+    // failed call, not an answer. Left as `Ok("")`, the enhance handler
+    // used to merge it into a notes-only document with no error.
+    if parsed.result.trim().is_empty() {
+        bail!("{program_name} CLI returned no text output");
+    }
     Ok(parsed.result)
 }
 
@@ -1039,6 +1045,18 @@ mod tests {
 
     fn exit_status(code: i32) -> std::process::ExitStatus {
         std::process::ExitStatus::from_raw(code)
+    }
+
+    /// LLM-8: a clean exit whose `result` is empty is still a failure.
+    #[test]
+    fn interpret_output_rejects_an_empty_result() {
+        let stdout = r#"{"is_error":false,"result":"  \n"}"#;
+        let err = match interpret_output(CliProgram::Claude, stdout.as_bytes(), b"", exit_status(0))
+        {
+            Err(e) => e,
+            Ok(s) => panic!("expected an error, got {s:?}"),
+        };
+        assert_eq!(err.to_string(), "claude CLI returned no text output");
     }
 
     #[test]
