@@ -142,6 +142,18 @@ test-web:
     pnpm --dir web test
     pnpm --dir web e2e
 
+# Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded. A fresh worktree's `target/debug/yogurt` is a new TCC identity, so the first run here may need a one-time Screen Recording/Microphone grant in System Settings; the start/stop test bounds itself to 45s and names this if it times out.
+test-hw:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    YOGURT_HW_TESTS=1 cargo test -p yogurt --test ctl_smoke --features yogurt-stt/local-stt -- --ignored
+    cargo test -p yogurt-audio --test permission -- --ignored
+    if [ -f "$HOME/.yogurt/models/ggml-small.en.bin" ]; then
+        RUN_WHISPER_SMOKE=1 cargo test -p yogurt-stt --test whisper_smoke --features local-stt -- --ignored --nocapture
+    else
+        echo "test-hw: skipping whisper smoke test -- ~/.yogurt/models/ggml-small.en.bin not downloaded (Settings > Transcription > Local to download it)"
+    fi
+
 # Clippy + rustfmt + check-docs (all read-only) - same as CI's rust-job lint gate.
 lint: check-docs
     cargo fmt --all -- --check

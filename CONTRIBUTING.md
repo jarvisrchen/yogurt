@@ -71,10 +71,16 @@ Call the scripts directly when you want one process with its own log stream; use
 just test         # test-rust + test-web
 just test-rust     # cargo test --workspace --features yogurt-stt/local-stt --no-fail-fast
 just test-web      # pnpm --dir web test + Playwright e2e smoke
+just test-hw       # hardware smoke tests - real SCK + mic pipeline, never in `just test` or CI
 just lint          # cargo fmt --check + clippy -D warnings + check-docs
 just lint-web      # pnpm --dir web typecheck
 just fmt           # auto-format Rust
 ```
+
+Tests fall into three tiers.
+Unit and mocked tests (`just test-rust`, `just test-web`) cover pure logic and browser-mocked UI, need no hardware, and run on every PR.
+Real-binary smoke tests spawn the actual `yogurt` binary against a temp `HOME` and drive it over `yogurt ctl` (`crates/yogurt-cli/tests/ctl_smoke.rs`); the hardware-free ones run inside `just test-rust` in CI, since they exercise the real binary without touching audio or the screen.
+Hardware tests open a real screen-capture and microphone pipeline and need Screen Recording (and Microphone) permission grants; every one is `#[ignore]`d and re-checks `YOGURT_HW_TESTS=1` itself, so they only run locally via `just test-hw`, never under `just test` or CI.
 
 CI runs `just lint` and `just test-rust` in the rust job, and `just lint-web`,
 `just test-web` and `just build-web` in the web job, on every PR.
