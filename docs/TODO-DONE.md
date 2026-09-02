@@ -802,4 +802,6 @@ New closed items go at the bottom.
   `cargo test -p yogurt --test ctl_smoke -- --ignored` with no env var confirmed both hardware tests skip cleanly (printed the skip reason, `test result: ok`) and left the real `~/.yogurt` database untouched.
   `just test-hw` run for real on this Mac, three times end to end: `hw_windows_reports_rows_or_denied` passed every time; `hw_meeting_start_stamps_stt_engine_then_stop_closes_pipeline` opened a real local-whisper capture pipeline (symlinking the developer's already-downloaded `small.en` model into the test's temp `HOME` and switching that instance to the local provider via `PATCH /api/settings`), stamped `stt_engine`, stopped, stamped `ended_at`, and deleted the meeting via `DELETE /api/meetings/:id`; the permission smoke test and the whisper smoke test (model present) both passed on every run.
   Real `~/.yogurt/db.sqlite` was unchanged across the whole session: `ctl meeting list --limit 3` matched throughout (30 meetings, same top 3 ids) - all `test-hw` work happens against temp-`HOME` servers, same isolation as every other test in this file - and no yogurt process or listener was left behind.
+
+  Landed in #66 (2026-09-02).
   </details>
