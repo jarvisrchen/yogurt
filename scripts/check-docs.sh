@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# -e is deliberately omitted: several loops below intentionally run a
+# `grep` that finds nothing (exit 1) per file, and pipefail would abort
+# the script on that instead of letting the loop continue to the next file.
 set -uo pipefail
 
 # check-docs.sh - keeps docs honest against the code: documented /api paths,

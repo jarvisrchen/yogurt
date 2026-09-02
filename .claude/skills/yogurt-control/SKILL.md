@@ -13,10 +13,16 @@ This skill is the short version - when to reach for it, and the rules the recipe
 <!-- yogurt-cli:start -->
 - `yogurt start` - Launch the local server and open the browser
 - `yogurt doctor` - Print diagnostic info (rust, macOS, perms, providers, models) + repair actions
+- `yogurt ctl` - Control a running yogurt instance: status, meetings, detection, windows
+  - `yogurt ctl status` - Instances found, active/detected meeting, stt engine, provider, permission grants
+  - `yogurt ctl meeting` - Create, start, stop, and read meetings on a running instance
+  - `yogurt ctl detect` - What meeting detection currently sees (MTG-11), or dismiss the prompt
+  - `yogurt ctl windows` - On-screen windows and each one's meeting-detection verdict. No server needed
 <!-- yogurt-cli:end -->
 
 `yogurt start --no-open` runs the server without opening a browser tab, but still in the foreground - the caller backgrounds it themselves (tmux by convention) if they want the shell back.
-There is no way yet to control an already-running instance from the CLI; drive it over the REST API below until that lands.
+`yogurt ctl` drives an already-running instance; `--port`/`$YOGURT_PORT` picks it when more than one is up (`just dev` prints the `YOGURT_PORT=` line to use).
+The recipes below are the raw REST surface `ctl` wraps - reach for them when `ctl` doesn't cover what you need yet.
 
 ## First, confirm the server is up
 
