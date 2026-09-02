@@ -132,26 +132,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## Developer experience
 
-- [ ] **DX-1** `just test` is a weaker gate than CI, and neither exercises the real binary
-  <details>
-  <summary>Details</summary>
-
-  Two separate problems, worth fixing in that order.
-
-  **The cheap one.** `just test` runs `cargo test` + `pnpm test`. CI additionally runs the Playwright suite (`.github/workflows/ci.yml`, `pnpm --dir web e2e`).
-  So the command AGENTS.md points every contributor and agent at is not the gate: you go green locally, open the PR, and find out afterward.
-  The suite is Vite-only - no Rust build, no keys, its own port 5199 - so there is no inner-loop cost to justify keeping them apart.
-  Add `pnpm --dir web e2e` to the `test` recipe.
-
-  **The one that actually matters.** Even after that, the gate still would not have caught MTG-11.
-  `web/playwright.config.ts` is explicit that the specs drive the real React app against a *browser-level mock* of the Rust backend (`page.route`), precisely so they need no keychain and no keys in CI.
-  That is a reasonable design for what they cover, but it means nothing in the automated suite runs the real binary, and nothing at all touches macOS-facing behavior like window detection or audio capture.
-  Every such check today is a human driving a browser, which is exactly how a fabricated verification got through.
-
-  Worth deciding: a small suite that boots the real debug binary and drives it over REST (which `yogurt ctl` from CLI-4 would make cheap to write), gated behind a feature or an env var so CI can skip the parts needing hardware.
-  Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
-  </details>
-
 - [ ] **DX-9** Rewrite AGENTS.md around the six-command lifecycle, with the cloud-session paragraph
   <details>
   <summary>Details</summary>
