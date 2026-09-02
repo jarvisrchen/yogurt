@@ -287,10 +287,8 @@ Then just paste a URL:
 
 > what did we decide in http://localhost:7878/meeting/01a0594d-.../post
 
-It reads the summary first, which is small, and only goes and fetches the
-transcript when you ask for something the summary does not cover. It can
-also start and stop recordings. See [docs/AI-INTEGRATION.md](docs/AI-INTEGRATION.md)
-for the full API if you want to drive yogurt from a script instead.
+It runs `yogurt ctl` to check status, reads the summary before the transcript, and can start and stop recordings too.
+See [docs/AI-INTEGRATION.md](docs/AI-INTEGRATION.md) for the full API if you want to drive yogurt from a script instead.
 
 This stays local: the agent talks to `localhost:7878` on your machine using
 the session token at `~/.yogurt/session-token`. Your meeting content still

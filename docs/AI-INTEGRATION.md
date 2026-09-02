@@ -2,146 +2,71 @@
 
 How an AI agent (Claude Code, a script, another tool) drives yogurt from the outside: starting and stopping meetings, reading transcripts and notes, without touching the UI.
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md) first if you need to know *why* the server is shaped this way.
-This doc only covers *how to call it*.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) first for *why* the server is shaped this way; this doc only covers *how to call it*.
 
-## The short version
+Prefer [`yogurt ctl`](../README.md#command-line) over the raw routes below - it resolves the port and token for you.
+The routes are what it wraps, for scripting directly or for what `ctl` doesn't cover yet.
 
-yogurt is a single `axum` server on `http://localhost:7878`.
-Every `/api/*` route except `/api/health` and `/api/session-token` requires a bearer token, which lives on disk at `~/.yogurt/session-token`.
-An agent running on the same machine can read that file directly - it's already inside the trust boundary the server assumes (see `require_session_token` in `crates/yogurt-server/src/routes.rs`).
+## Auth
+
+Every `/api/*` route except `/api/health` and `/api/session-token` requires a bearer token, on disk at `~/.yogurt/session-token`.
+An agent on the same machine can read that file directly - it's already inside the trust boundary the server assumes (see `require_session_token` in `crates/yogurt-server/src/routes.rs`).
+The token is a local secret, equivalent to filesystem access: never send it anywhere but `localhost:7878`, never log it.
 
 ```bash
 TOKEN=$(cat ~/.yogurt/session-token)
-curl -s http://localhost:7878/api/health   # confirm the server is up first
-```
-
-Every example below sends `Authorization: Bearer $TOKEN`.
-
-## Is yogurt running?
-
-`GET /api/health` needs no token and returns `{"status":"ok","service":"yogurt-server","version":"0.7.0","mode":"release"}` if the binary is up (`mode` is `"dev"` under `just dev` / `yogurt start --dev`).
-If it isn't up, `yogurt ctl status` says so - see "Controlling yogurt from the CLI" below for the full `ctl` surface, which covers everything in this document plus meeting detection and window matching.
-
-## Controlling yogurt from the CLI
-
-Everything below this section is the raw HTTP surface, useful if you're scripting against yogurt directly.
-If you have the `yogurt` binary on `$PATH` (brew install, or a debug build), `yogurt ctl` is the same surface as real subcommands - it resolves the port, reads the token, and formats errors with a `help:` line instead of a bare `curl` exit code:
-
-```bash
-yogurt ctl status                                  # is a server up, what's recording, what's detected
-yogurt ctl meeting list [--limit N]
-yogurt ctl meeting new [--title T] [--start]
-yogurt ctl meeting start <id|last>
-yogurt ctl meeting stop [<id|url|last>]
-yogurt ctl meeting show|summary|transcript <id|url|last>
-yogurt ctl meeting enhance <id|url|last>
-yogurt ctl meeting mute on|off [<id|url|last>]
-yogurt ctl meeting search <query> [--limit N]
-yogurt ctl meeting delete <id|url|last> [--dry-run] [--yes]
-yogurt ctl detect [dismiss]
-yogurt ctl windows
-yogurt ctl settings get
-yogurt ctl settings set k=v [--dry-run]
-yogurt ctl provider list|activate <name>|test [<name>]
-yogurt ctl models list|download <name> [--wait]|delete <name> [--dry-run]
-yogurt ctl ws [<id|url|last>] [--types a,b] [--count N]
-```
-
-`--json` on any subcommand gets machine-readable output; `--port`/`$YOGURT_PORT` picks the instance when more than one is running (`just dev` prints the `$YOGURT_PORT` line to use).
-`<id|url|last>` accepts a bare id, a full meeting URL, or `last` for the most recently created meeting; read commands fall back to the local database (`source: db`) when no server answers.
-`ctl` never sets or reveals a provider key, an STT key, or the session token - `provider list`/`settings get` only ever say `key: set` or `key: missing`.
-See the README's [Command line](../README.md#command-line) section for the full flag reference.
-The rest of this document still applies when `ctl` doesn't have a subcommand for what you need yet (full CRUD, `PATCH`) - use `crates/yogurt-server/src/api/meetings.rs` as the source of truth for anything beyond it.
-
-## Start a meeting
-
-Two calls: create the meeting row, then start the recording stream against its id.
-
-```bash
-ID=$(curl -s -X POST http://localhost:7878/api/meetings \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Standup with Zoom"}' | jq -r .id)
-
-curl -s -X POST "http://localhost:7878/api/meetings/$ID/start" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-`title` is optional - an empty body creates "Untitled meeting". `start` begins capturing mic + system audio and transcribing live; from this point audio is being recorded until you call `stop`.
-
-If you're also joining a Zoom/Meet/etc. call as part of this, launch that separately (`open "zoommtg://..."`, an AppleScript, whatever) - yogurt has no meeting-platform integration and doesn't need one; it captures system audio regardless of which app is making the sound.
-
-### Fixture meetings (no recording at all)
-
-`POST /api/meetings` also takes two optional fields for seeding a finished meeting without recording anything: `transcript_json`, an array of `{ts_ms, channel, text}` segments in exactly the shape the column already stores (see [DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)), and `ended: true`, which stamps `ended_at` at creation instead of leaving the meeting live.
-A malformed `transcript_json` gets a `400` naming the first bad field; `ended: true` with no transcript is a valid finished-but-empty meeting.
-No `stt_engine` is stamped, since the meeting was never actually recorded.
-`yogurt ctl meeting new --transcript-file <segments.json>` and `--from-script <script>` wrap this - see "Controlling yogurt from the CLI" above and [MODEL-EVAL.md](MODEL-EVAL.md).
-
-## Check what's recording
-
-```bash
 curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOKEN"
 ```
 
-Returns `null` if nothing is recording, otherwise the active meeting's `id`, `title`, `started_at`, and `stt_engine`. Use this before `start` if you're not sure whether a meeting is already live - yogurt supports one active recording at a time.
+## Routes
 
-## Stop a meeting
+`GET /api/health` returns `{"status":"ok","service":"yogurt-server","version":"0.7.0","mode":"release"}` (`"dev"` under `just dev`/`--dev`).
+`ctl` never sets or reveals a key or the token; no `ctl` column entry means only `crates/yogurt-server/src/api/meetings.rs` covers it.
 
-```bash
-curl -s -X POST "http://localhost:7878/api/meetings/$ID/stop" -H "Authorization: Bearer $TOKEN"
-```
+| Method | Path | Purpose | `ctl` |
+|---|---|---|---|
+| GET | `/api/health` | liveness | - |
+| GET | `/api/meetings` | list | `ctl meeting list` |
+| POST | `/api/meetings` | create (seedable, below) | `ctl meeting new` |
+| GET | `/api/meetings/search` | search | `ctl meeting search` |
+| GET | `/api/meetings/active` | what's recording | `ctl status` |
+| GET | `/api/meetings/{id}` | full row | `ctl meeting show` |
+| PATCH | `/api/meetings/{id}` | update title/notes | - |
+| DELETE | `/api/meetings/{id}` | delete | `ctl meeting delete` |
+| GET | `/api/meetings/{id}/markdown` | notes export (summary) | `ctl meeting summary` |
+| POST | `/api/meetings/{id}/start` | start recording | `ctl meeting start` |
+| POST | `/api/meetings/{id}/stop` | stop recording | `ctl meeting stop` |
+| POST | `/api/meetings/{id}/enhance` | generate notes | `ctl meeting enhance` |
+| POST | `/api/meetings/{id}/mic-muted` | mute/unmute mic | `ctl meeting mute` |
+| POST | `/api/meetings/{id}/chat` | ask a question (streamed) | - |
+| GET | `/api/meetings/detected` | detected meeting | `ctl detect` |
+| POST | `/api/meetings/detected/dismiss` | dismiss prompt | `ctl detect dismiss` |
+| GET/PATCH | `/api/settings` | settings | `ctl settings get`/`set` |
+| GET | `/api/settings/providers` | list providers | `ctl provider list` |
+| POST | `/api/settings/providers/{id}/activate` | activate provider | `ctl provider activate` |
+| POST | `/api/settings/providers/{id}/test` | test provider key | `ctl provider test` |
+| GET | `/api/stt/models` | list STT models | `ctl models list` |
+| POST | `/api/stt/models/{name}/download` | download model | `ctl models download` |
+| DELETE | `/api/stt/models/{name}` | delete model | `ctl models delete` |
+| GET | `/ws/meetings/{id}` | transcript/enhance/chat/audio frames | `ctl ws <id>`, `ctl meeting transcript --follow` |
+| GET | `/ws` | model-download frames | `ctl ws` |
 
-Idempotent-ish: stopping twice doesn't error, but only the first call stamps `ended_at`.
+## Fixture meetings
 
-## Read what got captured
+`POST /api/meetings` optionally takes `transcript_json` - `{ts_ms, channel, text}` segments in the column's stored shape (see [DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) - and `ended: true`, to seed a finished meeting without recording anything.
+A malformed `transcript_json` 400s naming the bad field; no `stt_engine` is stamped, since nothing was recorded.
+`ctl meeting new --transcript-file <segments.json>` and `--from-script <script>` wrap this - see [MODEL-EVAL.md](MODEL-EVAL.md).
 
-If you were handed a URL like `http://127.0.0.1:7878/meeting/<id>/post`, that is all you need - the origin and the meeting id are both in it. Take the port from the URL rather than assuming 7878, since `just dev` moves the backend when a second worktree is already running.
+## WebSocket frames
 
-```bash
-BASE=$(echo "$URL" | sed -E 's#(https?://[^/]+)/.*#\1#')
-ID=$(echo "$URL" | sed -E 's#.*/meeting/([^/?#]+).*#\1#')
-```
-
-**Summary first.** `GET /:id/markdown` returns the canonical `~/.yogurt/notes/*.md` bytes - YAML front-matter plus the enhanced summary, and no transcript:
-
-```bash
-curl -s "$BASE/api/meetings/$ID/markdown" -H "Authorization: Bearer $TOKEN" | sed -E 's/<[^>]+>//g'
-```
-
-The `sed` strips the `<span data-ai-grey …>` wrappers `yogurt-notes`' renderer emits so the editor can tint AI-authored blocks (see MTG-3). They mean nothing outside the browser and roughly double the byte count; stripping them leaves the `↳ 02:24` transcript deep-links readable. On a representative meeting that is 849 bytes against 7,864 for the full row - so prefer this endpoint over `GET /api/meetings/:id` whenever the question is about what was *said*, not about the row's metadata.
-
-An empty body under the front-matter means the meeting was never enhanced (`enriched_md` is null and the user typed no notes), not that the meeting was empty.
-
-**Transcript only when the summary is not enough.** It ships inside the meeting row, so filter it out of the response rather than reading the row:
-
-```bash
-curl -s "$BASE/api/meetings/$ID" -H "Authorization: Bearer $TOKEN" \
-  | jq -r '.transcript_json | fromjson | .[]
-           | "\((.ts_ms/1000|floor|tostring)) \(.channel): \(.text)"'
-```
-
-`channel` is `me` (mic) or `them` (system audio); `ts_ms` is milliseconds from recording start, which is what the summary's `↳ mm:ss` links point at.
-
-The JSON form's `transcript_json` and `notes_md` fields are live during recording; `enriched_md` is only populated after the meeting has been enhanced (`POST /api/meetings/:id/enhance`) or the user has hit that button in the UI.
-
-### With the server down
-
-The markdown export is on disk whether or not yogurt is running. Match the front-matter id, not the filename - meeting ids are UUIDv7 and therefore time-ordered, so the `-<id6>` suffix in `<date>-<slug>-<id6>.md` collides between meetings recorded minutes apart:
-
-```bash
-grep -l "^id: $ID$" ~/.yogurt/notes/*.md
-```
-
-There is no on-disk transcript; that lives only in `~/.yogurt/db.sqlite`.
-
-Full CRUD (`GET /api/meetings` list, `PATCH`/`DELETE /api/meetings/:id`, `GET /api/meetings/search?q=`) exists too - `yogurt ctl meeting search`/`delete` wrap the last two, and see `crates/yogurt-server/src/api/meetings.rs` for the complete surface if you need more than that.
+Both sockets share a `{"type": "<snake_case>", ...}` discriminator.
+`/ws/meetings/{id}`: `transcript` (`ts_ms`, `channel`, `text`, `is_final`), `enhance_progress`, `chat_chunk`, `audio_level`, `stt_error`.
+`/ws`: `stt_model_download_progress`/`complete`/`error`.
+`ctl ws` prints one frame per line from either; `--types` filters by `type`.
 
 ## What agents should not try to do
 
-These follow from the [hard constraints](../AGENTS.md#hard-constraints-never-violate) in AGENTS.md, restated for anything calling the API rather than editing the code:
+Restated from AGENTS.md's [hard constraints](../AGENTS.md#hard-constraints-never-violate):
 
-- Don't read or transmit `~/.yogurt/keys.json` (LLM/STT provider API keys) - nothing in the API surface exposes it, and there's no legitimate reason for a caller to need it.
-- Don't script around the single-active-recording model (e.g. hammering `/start` on multiple ids) - the server doesn't guard against it and you'll get overlapping audio captures.
-- The session token is a local secret, equivalent to filesystem access. Don't put it in a request to anything other than `localhost:7878`, and don't log it.
+- Don't read or transmit `~/.yogurt/keys.json` - nothing in the API exposes it.
+- Don't script around the single-active-recording model (hammering `/start` on multiple ids) - the server won't stop you, and captures will overlap.

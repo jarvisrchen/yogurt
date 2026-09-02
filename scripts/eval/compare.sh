@@ -23,7 +23,7 @@ SCRIPT="${SCRIPT:-$(dirname "$0")/conversation.txt}"
 meeting_id() { local s="${1##*/meeting/}"; echo "${s%%/*}"; }
 
 # One meeting -> markdown section. Transcript is flattened to one line per
-# persisted segment (finals only, same as scripts/tail-transcript.sh).
+# persisted segment (finals only, same as `yogurt ctl meeting transcript`).
 section() {
   local label="$1" id="$2"
   local n; n=$(sqlite3 "$DB" "select count(*) from meetings where id='$id';")
