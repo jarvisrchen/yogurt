@@ -142,7 +142,7 @@ test-web:
     pnpm --dir web test
     pnpm --dir web e2e
 
-# Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded.
+# Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded. A fresh worktree's `target/debug/yogurt` is a new TCC identity, so the first run here may need a one-time Screen Recording/Microphone grant in System Settings; the start/stop test bounds itself to 45s and names this if it times out.
 test-hw:
     #!/usr/bin/env bash
     set -euo pipefail
