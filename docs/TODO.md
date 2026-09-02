@@ -17,7 +17,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `CLI` | CLI |
 | `DX` | Developer experience |
 
-Numbers are per prefix and allocated once: the next ID is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` too.
+Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` too.
 Never reuse or renumber an ID, including when an item moves to DONE.
 A new section gets a new short prefix added to the table above.
 
@@ -40,7 +40,8 @@ Example entry:
 
 ## Done items
 
-Check off an item (`- [x]`), move the whole block to the bottom of `docs/TODO-DONE.md`, and append a one-paragraph resolution note inside the block, for example `Landed in #N (date). ...`.
+Run `just ticket done <ID> --note-file <path>`: it checks off the item (`- [x]`), moves the whole block to the bottom of `docs/TODO-DONE.md`, and appends the note file's content as a paragraph inside the block, for example `Landed in #N (date). ...`.
+The note is a file, not a shell argument, because real resolution notes contain backticks, dollar signs and JSON literals that do not survive shell quoting.
 
 ## UI
 
@@ -187,17 +188,6 @@ Check off an item (`- [x]`), move the whole block to the bottom of `docs/TODO-DO
 
   Worth deciding: a small suite that boots the real debug binary and drives it over REST (which `yogurt ctl` from CLI-4 would make cheap to write), gated behind a feature or an env var so CI can skip the parts needing hardware.
   Not a full E2E rig - just enough that "I verified it" means something a machine can re-run.
-  </details>
-
-- [ ] **DX-2** Split DONE out of `docs/TODO.md`; add `just ticket` (list, show, next, done)
-  <details>
-  <summary>Details</summary>
-
-  85% of this file is the DONE section, and every agent that reads the backlog pays about 16k tokens for it.
-  Move DONE to a flat `docs/TODO-DONE.md` (docs-only PR), then `scripts/ticket.sh` behind a `ticket` recipe: list open items, print one block, allocate the next ID across both files, and `done <ID> --note-file` for the checkoff move.
-  Block boundary is the next `- [` or `#` line, never the closing details tag; the scanner skips fenced code (the example above uses a real ID today).
-  `--check` runs in `just lint`.
-  Design: `docs/.planning/agent-workflow.md`, section 4A, A2.
   </details>
 
 - [ ] **DX-3** `just start <ID> [words]`, `just worktrees`, `just dev-bg`
