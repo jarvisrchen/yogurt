@@ -56,41 +56,21 @@ The tag selects the commit that gets built, so `main` can move freely without sh
    gh run watch <id> -R jarvisrchen/yogurt --exit-status
    ```
 
-5. **Verify the formula shas against the real assets.**
-   Do not trust the workflow's own `SHA256SUMS`; re-download and hash.
+5. **Finish.**
    ```bash
-   gh release download v0.1.0 -R jarvisrchen/yogurt --clobber -p "*.tar.gz"
-   shasum -a 256 yogurt-*.tar.gz
-   gh pr diff <n> -R jarvisrchen/homebrew-yogurt
+   ./scripts/release.sh finish <version>
    ```
-
-6. **Merge the tap PR.** Until this merges, `brew install` serves the previous formula.
-   ```bash
-   gh pr merge <n> -R jarvisrchen/homebrew-yogurt --squash --delete-branch
-   ```
-
-7. **Smoke test.**
-    `brew untap` and `brew uninstall` refuse while any `yogurt-model-*` formula is installed, since those formulae depend on `yogurt` - that has been true for every release so far, so upgrade-in-place is the normal path:
-    ```bash
-    brew upgrade jarvisrchen/yogurt/yogurt      # or `brew reinstall` when already at that version
-    yogurt --version
-    xattr -l "$(which yogurt)"      # com.apple.provenance ok, com.apple.quarantine is not
-    ```
-    From-scratch is the fallback, only on a machine with no model formula installed:
-    ```bash
-    brew untap jarvisrchen/yogurt; brew uninstall yogurt
-    brew install jarvisrchen/yogurt/yogurt
-    yogurt --version
-    ```
-
-8. **Log it.** Add a row to `docs/RELEASE-LOG.md` and tick any prerequisite that changed in `docs/RELEASING.md`.
+   Re-downloads and hashes both tarballs against `SHA256SUMS`, checks the tap formula's shas and version, merges the tap PR, upgrades the local brew install (`brew reinstall` when already at that version), runs `brew test`, checks for no `com.apple.quarantine`, and prints a pre-filled `docs/RELEASE-LOG.md` row with a `NARRATIVE:` slot.
+   Every step is skip-if-done, so re-running it resumes rather than repeating work.
+   `finish <version> -n` prints the plan without running anything; `--no-smoke` skips the brew steps.
+   Paste the printed row into `docs/RELEASE-LOG.md`, write the `NARRATIVE:` sentence, and open the log PR.
 
 ## When it goes wrong
 
 The GitHub Release publishes *before* the `tap` job runs, so a tap failure leaves a public release with a stale formula.
 Fix `Formula/yogurt.rb` by hand in the tap repo rather than re-cutting the release.
 
-For a build failure after the tag is already pushed, delete the tag locally and remotely, fix, re-tag.
+For a build failure after the tag is already pushed, `./scripts/release.sh untag <version>` deletes the local and remote tag - it refuses (exit 2) once a GitHub Release exists, since at that point the fix is `Formula/yogurt.rb` by hand, not a re-tag.
 Safe only while no Release was published and nobody has installed.
 
 Full recovery guidance is in [docs/RELEASING.md](../../../docs/RELEASING.md).
