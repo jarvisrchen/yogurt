@@ -45,7 +45,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
