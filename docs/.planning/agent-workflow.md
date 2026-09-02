@@ -5,7 +5,7 @@ Companion review surface: [../.lavish/agent-workflow.html](../.lavish/agent-work
 
 Richard read Part 1 of lauren (poteto)'s pstack guide and asked what in it applies here.
 The specific ask: what can be scripted between "work on ticket X" and "PR open", at PR completion (merge, cleanup), and for releases, so that each is more repeatable and costs fewer tokens.
-This doc answers that with measured numbers from this repo, a set of proposals that survived adversarial review, an explicit do-not-build list, a ship order with ticket IDs, the defaults chosen for thirteen open questions, and the one decision only Richard can make.
+This doc answers that with measured numbers from this repo, a set of proposals that survived adversarial review, an explicit do-not-build list, a ship order with ticket IDs, and the answers to the questions it raised, all but one of them defaults.
 
 How it was produced: seven research passes over the repo (one per lifecycle or principle), each proposal then reviewed by an independent agent told to refute it against the real files, then a completeness pass against the guide.
 Claims below cite the file they were checked against.
@@ -192,7 +192,8 @@ Resolves the PR from the current branch, or from the argument, in which case the
 If already merged, skips to cleanup.
 Preflight: clean tree, HEAD pushed, ticket moved to DONE if the title carries an ID.
 CI: if every changed path matches `ci.yml`'s docs-only globs, print `ci skipped (docs-only)`; otherwise `gh pr checks --watch --fail-fast` with a cap of a few minutes and a "run `just land` again to resume" message, and on red print the failing check names and `gh run view --log-failed`, exit 1, no override flag.
-Merge: `gh pr merge --squash --match-head-commit <sha>`, never `--delete-branch`.
+Merge: `gh pr merge --squash --match-head-commit <sha> --subject "<PR title>" --body "<PR body minus the manual-test section>"`, never `--delete-branch`.
+Setting the message explicitly means the squash commit on `main` carries the validated narrative whatever `squash_merge_commit_message` is set to (today it is `COMMIT_MESSAGES`, the concatenated branch commits), and the handover lines, whose worktree path is gone after cleanup, stay out of history.
 Cleanup, from the main checkout: `git worktree remove` (no `--force`; a dirty tree is listed and the script refuses, and this path gets a test), `git branch -D`, `git push origin --delete` only if the ref still exists (after B4 it will not), `git fetch origin`.
 Never pulls the shared checkout; prints the pull command for Richard instead.
 Every step is skip-if-done so a re-run resumes.
@@ -213,12 +214,13 @@ Richard's global Claude Code settings already set `attribution` to empty, so the
 Absorbs AGENTS.md line 50's enforcement half and line 57.
 
 **B4. GitHub settings, one time** (now, minutes, Richard's call).
-`gh api -X PATCH repos/jarvisrchen/yogurt -F allow_rebase_merge=false -F allow_merge_commit=false -F delete_branch_on_merge=true`, plus a ruleset created from a JSON body (`gh api -X POST repos/jarvisrchen/yogurt/rulesets --input ruleset.json`) with `conditions.ref_name.include: ["~DEFAULT_BRANCH"]`, rules `pull_request` (`required_approving_review_count: 0`), `non_fast_forward`, `deletion`, and `bypass_actors: []`.
-Do not add required status checks: docs-only PRs never report a check, so they would never merge.
-Before relying on it, push and delete a throwaway tag and attempt a direct push, to confirm the ruleset is scoped to `refs/heads/main` and leaves `refs/tags/*` alone.
-Run by hand, record the commands in `docs/RELEASING.md` "One-time prerequisites", and shrink AGENTS.md line 51 to one fact.
-Absorbs the squash-merge paragraph including the `1656270` story and the remote half of `land`'s cleanup.
-It also binds Richard's own direct pushes; that is the stated convention, but he should choose it.
+`gh api -X PATCH repos/jarvisrchen/yogurt -F allow_rebase_merge=false -F allow_merge_commit=false -F delete_branch_on_merge=true`.
+After this the only merge button is Squash and the branch is deleted on merge, which makes the remote half of `land`'s cleanup a no-op to verify rather than an action.
+No ruleset on `main` (decision 1): Richard is the sole collaborator on a public repo, so nobody else can push there today, and a PR requirement would only constrain him.
+The "never commit or push to `main`" convention stays prose for humans and becomes the pre-commit hook (B3) for agents.
+No change to `squash_merge_commit_message` either: `land` sets the squash commit's subject and body itself (see B2), so the repo default is irrelevant.
+Record the command in `docs/RELEASING.md` "One-time prerequisites" and shrink AGENTS.md line 51 to one fact.
+Absorbs the squash-merge paragraph including the `1656270` story.
 
 **B5. Shared-checkout build guard** (do not build; decision 11).
 The design was sound: `scripts/lib/tree-guard.sh` refusing `just build` and `just dev` from the main checkout while other worktrees exist unless `YOGURT_OWN_MAIN=1` is set for that one invocation (never a persistent export, which every agent spawned from that shell would inherit).
@@ -407,7 +409,7 @@ Consolidated from the reviewers, with the reason each time.
 - Auto-deriving the slug from the ticket title; the ID is already unique and one human word is cheaper than a heuristic.
 - A JSON or SQLite ticket store. The markdown format is machine-parseable by its own rules.
 - `--json` on `just start`, `just ticket`, `just pr`, `just land` before something parses it; one stable line per step is cheaper for an agent reading a terminal.
-- `gh pr merge --auto` or required status checks. Docs-only PRs never report a check, so a required check blocks a third of PRs forever; `land` waiting 1-3 minutes synchronously is simpler.
+- A ruleset on `main` requiring a pull request, `gh pr merge --auto`, or required status checks. Richard is the sole collaborator, so a PR requirement only binds him; docs-only PRs never report a check, so a required check blocks a third of PRs forever; `land` waiting 1-3 minutes synchronously is simpler.
 - A `.github/pull_request_template.md`. Ignored whenever `--body` is passed.
 - A `--force` or merge-on-red flag on `land`. Red CI is a hard stop; the one-off merge stays a deliberate act by hand.
 - `land` pulling the shared checkout's `main`, writing the DONE note itself, or removing a worktree with untracked files.
@@ -459,7 +461,7 @@ The first two units are one afternoon each and pay back the same day.
 | 12 | E1 AGENTS.md rewrite with F1's paragraph | hour | DX-9 |
 | 13 | D6 `--data-dir` | half day | CLI-7 |
 | 14 | F2 published-drift check | half day | DX-10 |
-| One-time, by hand | B4 GitHub settings; E4 memory prune | minutes | none |
+| One-time, by hand | B4 GitHub settings (squash-only, delete branch on merge); E4 memory prune | minutes | none |
 
 The single highest-leverage unit is 7, because the skill, the Feature Map, the smoke suite, the fixture loader and the manual-test handover all name `ctl`.
 It is also the only unit that changes the shipped binary, so it goes out in a release.
@@ -467,7 +469,7 @@ Units 1 and 2 go first only because they are cheaper and remove the two most-rep
 
 ## 7. Decisions
 
-Thirteen of the questions this research raised have a defensible default, so they are decided here rather than left open.
+Fourteen of the questions this research raised have a defensible default or an answer from Richard, so they are decided here rather than left open.
 Each lands by PR, so any of them can be reversed at review.
 
 | # | Question | Decided | Why |
@@ -484,12 +486,14 @@ Each lands by PR, so any of them can be reversed at review.
 | 12 | Fixture loader (D7) | yes | two optional fields on a local, token-guarded API |
 | 13 | Release log in its own file (C4) | yes | 9.5 KB read on every release, growing 2 KB per release |
 | 14 | `--data-dir` (D6) | deferred | CLI-3's own note says "if that ever bites"; it has not |
+| 8 | Squash commit message from `PR_BODY`? (B1) | no setting change; `land` passes the subject and body to `gh pr merge` | `PR_BODY` would be the entire PR description at merge time, handover section included; setting it explicitly per merge is one flag and keeps the stale worktree path out of history |
+| 1b | Ruleset requiring a PR on `main`? (B4) | no, per Richard | sole collaborator on a public repo; nobody else can push, and the rule would only bind him |
 
 The one that needs Richard, because it is an admin action on his account and binds his own pushes:
 
-1. Change the repo settings once: squash-only, delete branch on merge, `squash_merge_commit_message` set to `PR_BODY` so the validated PR body becomes the commit body on `main`, and a ruleset on `main` requiring a pull request with no required status checks and no bypass actors (B4, B1).
-Recommendation: yes to all four.
-Nothing else in this plan waits on it; `just land` deletes the remote branch itself until `delete_branch_on_merge` makes that a no-op.
+1. Change the repo settings once: squash-only and delete branch on merge (B4).
+Richard decided against a ruleset on `main`: he is the sole collaborator, so nobody else can push there, and a PR requirement would only constrain him.
+Nothing else in this plan waits on the two remaining settings; `just land` deletes the remote branch itself until `delete_branch_on_merge` makes that a no-op.
 
 ## 8. Measurements and open questions
 
