@@ -7,12 +7,7 @@
 //! a PID file and fail fast when the marker points at a dead process,
 //! rather than hanging silently inside SCK.
 //!
-//! ponytail: PID reuse is a false-positive ceiling here - if the OS recycles
-//! the dead PID onto an unrelated live process before we check, we'd treat
-//! a genuinely free capture session as "already recording" and refuse to
-//! start. Rare in practice and the escape hatch is simple:
-//! `rm <data_dir>/capture.lock`. Upgrade to a process-start-time check if
-//! this ever bites.
+//! ponytail: PID reuse can misread a free session as "already recording"; escape hatch: `rm <data_dir>/capture.lock`.
 
 use crate::error::{AudioError, Result};
 use std::io::Write;
