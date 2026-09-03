@@ -64,6 +64,8 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
+- [ ] **MTG-12** Don't suggest starting a meeting while one is already in progress
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
@@ -113,6 +115,18 @@ The note is a file, not a shell argument, because real resolution notes contain 
   A subsequent `start()` (same machine, same or a different `yogurt` process) then hangs for several minutes opening its own capture session, apparently waiting for macOS to reclaim the still-held OS-level resources from the killed process; a direct retry once that window passed opened and closed cleanly in under a second.
   Normal shutdown (Cmd-Q, or `ctl meeting stop`) already goes through `Registry::stop()`'s graceful teardown (200ms watchdog), so this only bites a hard kill - Activity Monitor "Force Quit", a crash, `kill -9` - while a meeting is recording.
   Worth understanding whether this is inherent to `SCStream`/`cpal` cleanup timing (nothing to do beyond documenting it) or something `yogurt` could shorten, e.g. detecting an orphaned session on next launch and giving a clear error instead of a silent multi-minute hang.
+  </details>
+
+- [ ] **AUD-9** Filter filler words and misheard noise out of the transcript
+  <details>
+  <summary>Details</summary>
+
+  Two related clutter sources in the live/stored transcript, both fixable at the same choke point: `relay_transcript_events` (`crates/yogurt-server/src/meetings.rs:874`), the one place every `TranscriptEvent` passes through before reaching both persistence and the WS - it already does one text-level filter there (`EchoDeduper`).
+
+  1. **Backchannel filler.** "mmhmm", "uh-huh", "yeah", "um" etc. get transcribed as real (correct) words but add no value to notes. A blocklist filter dropping short finals that are just filler would slot in next to `EchoDeduper`. Risk: can't distinguish backchannel noise from a genuine one-word answer ("yeah" meaning "yes" to a direct question) - a word-list alone will drop some real utterances.
+  2. **Misheard noise.** Coughs, mic bumps, taps, background sound get a guessed word from the STT model. VAD (`crates/yogurt-stt/src/vad.rs`) only gates on energy/spectral "is this voiceish," so noise with speech-like broadband energy passes VAD fine and Whisper/Deepgram then hallucinate a word for it. The unused lever: Deepgram already returns a per-result `confidence` score that's parsed and discarded today (`crates/yogurt-stt/src/deepgram.rs`, near the `is_final`/`speech_final` handling ~line 500); whisper.cpp has the analogous `no_speech_prob`/avg log-prob per segment via whisper-rs, also unused. Gate on that instead of trying to pre-filter audio before STT. Risk: confidence is a blunt instrument - mumbled or accented real speech can also score low, so an aggressive threshold risks silently eating unclear-but-real speech, not just noise.
+
+  Open question before building: drop silently, or surface low-confidence/filler segments as visibly greyed-out first so nothing vanishes without a trace.
   </details>
 
 ## LLM
