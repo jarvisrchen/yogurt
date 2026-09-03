@@ -864,3 +864,15 @@ New closed items go at the bottom.
   Harness: `ctl meeting new --notes-file` seeds notes alongside `--transcript-file`, so `ctl meeting enhance` runs exactly the End meeting path (notes and transcript from the row).
   Tests: `crates/yogurt-notes` (weave, diff), `crates/yogurt-llm/src/cli.rs`, `crates/yogurt-server/tests/enhance_endpoint.rs` (scripted LLM: empty reply, one-word weave), `crates/yogurt-cli/tests/ctl_smoke.rs` (seeded End-meeting path).
   </details>
+
+- [x] **CLI-8** Add a `--markdown` flag to `ctl meeting transcript` for a shareable, seedable export
+  <details>
+  <summary>Details</summary>
+
+  `ctl meeting transcript` prints plain `<seconds> <channel>: <text>` lines (or `--json` segments), neither of which is markdown.
+  Richard wants a `--markdown` flag that formats the transcript as a real markdown doc - title header, `**speaker**` bold, `(mm:ss)` timestamps - so redirecting it to a `.md` file (`yogurt ctl meeting transcript <id> --markdown > out.md`) gives something worth sharing, without a shell one-liner to remember.
+  No `--output` flag needed - shell redirection already covers "where to save."
+  The existing `--json` output already round-trips into `ctl meeting new --transcript-file`, so that seeding path stays as-is; this ticket is purely the human-readable markdown rendering.
+
+  Added `--markdown` to `ctl meeting transcript`: title header, `**speaker**` bold, `(mm:ss)` timestamps. Works with `--follow` (header printed once) and refuses combination with `--json`. Covered by two new tests in `ctl_smoke.rs`.
+  </details>

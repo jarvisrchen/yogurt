@@ -65,6 +65,11 @@ pub enum MeetingCmd {
     Transcript {
         #[arg(long)]
         follow: bool,
+        /// Format as a shareable markdown doc (title header, **speaker**
+        /// bold, (mm:ss) timestamps) instead of plain text. Conflicts with
+        /// the global --json -- pick one output format.
+        #[arg(long)]
+        markdown: bool,
         meeting: String,
     },
     /// Run augmented-notes generation and forward progress to stderr.
@@ -126,9 +131,11 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
         MeetingCmd::Stop { meeting } => stop(port, json_out, meeting).await,
         MeetingCmd::Show { meeting } => show(port, json_out, &meeting).await,
         MeetingCmd::Summary { meeting } => summary(port, json_out, &meeting).await,
-        MeetingCmd::Transcript { follow, meeting } => {
-            transcript(port, json_out, &meeting, follow).await
-        }
+        MeetingCmd::Transcript {
+            follow,
+            markdown,
+            meeting,
+        } => transcript(port, json_out, &meeting, follow, markdown).await,
         MeetingCmd::Enhance { meeting } => enhance(port, json_out, &meeting).await,
         MeetingCmd::Mute { action } => mute(port, json_out, action).await,
         MeetingCmd::Search { query, limit } => search(port, json_out, &query, limit).await,
@@ -625,15 +632,31 @@ fn parse_segments(transcript_json: &str) -> Vec<Segment> {
     serde_json::from_str(transcript_json).unwrap_or_default()
 }
 
-fn print_segment(json_out: bool, s: &Segment) {
+fn print_segment(json_out: bool, markdown: bool, s: &Segment) {
     if json_out {
         println!(
             "{}",
             json!({ "ts_ms": s.ts_ms, "channel": s.channel, "text": s.text })
         );
+    } else if markdown {
+        let secs = s.ts_ms / 1000;
+        println!(
+            "**{}** ({:02}:{:02})  {}",
+            s.channel,
+            secs / 60,
+            secs % 60,
+            s.text
+        );
     } else {
         println!("{} {}: {}", s.ts_ms / 1000, s.channel, s.text);
     }
+}
+
+fn print_markdown_header(title: &str, id: &str) {
+    println!("# {title}");
+    println!();
+    println!("_meeting id: {id}_");
+    println!();
 }
 
 async fn transcript(
@@ -641,7 +664,14 @@ async fn transcript(
     json_out: bool,
     meeting: &str,
     follow: bool,
+    markdown: bool,
 ) -> Result<(), CtlError> {
+    if json_out && markdown {
+        return Err(CtlError::local(
+            "--markdown conflicts with --json",
+            "pick one output format",
+        ));
+    }
     let r = MeetingRef::parse(meeting);
     match resolve_read(port_flag, &r).await? {
         Resolved::Db(db, id) => {
@@ -654,15 +684,21 @@ async fn transcript(
             let repo = yogurt_db::MeetingRepo::new(db);
             let m = get_or_not_found(&repo, &id)?;
             eprintln!("source: db");
+            if markdown {
+                print_markdown_header(&m.title, &m.id);
+            }
             for s in parse_segments(&m.transcript_json) {
-                print_segment(json_out, &s);
+                print_segment(json_out, markdown, &s);
             }
         }
-        Resolved::Server(c, id) if follow => follow_transcript(&c, &id, json_out).await?,
+        Resolved::Server(c, id) if follow => follow_transcript(&c, &id, json_out, markdown).await?,
         Resolved::Server(c, id) => {
             let m: yogurt_db::Meeting = c.get(&format!("/api/meetings/{id}")).await?;
+            if markdown {
+                print_markdown_header(&m.title, &m.id);
+            }
             for s in parse_segments(&m.transcript_json) {
-                print_segment(json_out, &s);
+                print_segment(json_out, markdown, &s);
             }
         }
     }
@@ -674,14 +710,24 @@ async fn transcript(
 /// `reqwest`), so `--follow` re-fetches the meeting row on an interval and
 /// prints whatever segments are new. Stops once the meeting has an
 /// `ended_at` and a poll produced nothing new, or on Ctrl-C.
-async fn follow_transcript(c: &Client, id: &str, json_out: bool) -> Result<(), CtlError> {
+async fn follow_transcript(
+    c: &Client,
+    id: &str,
+    json_out: bool,
+    markdown: bool,
+) -> Result<(), CtlError> {
     let mut printed = 0usize;
+    let mut header_printed = false;
     loop {
         let m: yogurt_db::Meeting = c.get(&format!("/api/meetings/{id}")).await?;
+        if markdown && !header_printed {
+            print_markdown_header(&m.title, &m.id);
+            header_printed = true;
+        }
         let segs = parse_segments(&m.transcript_json);
         let is_new = segs.len() > printed;
         for s in &segs[printed.min(segs.len())..] {
-            print_segment(json_out, s);
+            print_segment(json_out, markdown, s);
         }
         printed = segs.len();
         if m.ended_at.is_some() && !is_new {
