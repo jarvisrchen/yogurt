@@ -34,6 +34,8 @@ screencapturekit = { workspace = true }
 objc2 = "0.6"
 objc2-av-foundation = "0.3"
 block2 = "0.6"
+directories = { workspace = true }
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { workspace = true }

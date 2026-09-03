@@ -21,6 +21,8 @@
 pub mod detect;
 mod error;
 mod frame;
+#[cfg(target_os = "macos")]
+mod lock;
 mod mic;
 pub mod permission;
 mod resample;
@@ -73,6 +75,10 @@ pub const BROADCAST_CAPACITY: usize = 256;
 pub struct AudioStream {
     _mic: MicCapture,
     _system: SystemCapture,
+    /// Cleared on drop so the next `start_capture()` doesn't mistake a
+    /// clean shutdown for an orphaned session (see `lock` module).
+    #[cfg(target_os = "macos")]
+    _capture_lock: lock::CaptureLock,
     /// Public so consumers can clone/subscribe and so `Channel::Mic` STT
     /// sessions can register late (after `start_capture` returns).
     pub mic_tx: broadcast::Sender<Frame>,
@@ -151,6 +157,9 @@ pub fn start_capture(mic_device: Option<&str>) -> Result<AudioStream> {
         return Err(AudioError::PermissionDenied);
     }
 
+    #[cfg(target_os = "macos")]
+    let _capture_lock = lock::acquire()?;
+
     let (mic_tx, _) = broadcast::channel::<Frame>(BROADCAST_CAPACITY);
     let (system_tx, _) = broadcast::channel::<Frame>(BROADCAST_CAPACITY);
 
@@ -169,6 +178,8 @@ pub fn start_capture(mic_device: Option<&str>) -> Result<AudioStream> {
     Ok(AudioStream {
         _mic,
         _system,
+        #[cfg(target_os = "macos")]
+        _capture_lock,
         mic_tx,
         system_tx,
     })
