@@ -5,7 +5,7 @@
 //   ┌───────────────────────────────────────────────────────────────┐
 //   │  ● Weaving your notes into the transcript…   ━━━     1,234c   │  ← EnhancingBanner (visible while enhancing)
 //   ├───────────────────────────────────────────────────────────────┤
-//   │                                       [ Re-enhance ]          │  ← top-right toolbar (sticky)
+//   │                          [ Auto ▾ ] [ Re-enhance ]          │  ← top-right toolbar (sticky)
 //   │                                                                │
 //   │                              ┌──── 660px column ───┐           │
 //   │                              │                     │           │
@@ -29,6 +29,9 @@
 //   4. ReEnhanceButton triggers a fresh POST /enhance, then onEnhanced
 //      replaces the editor content via the YogurtEditor `enrichedMarkdown`
 //      prop (which calls `editor.commands.setContent(html, false)`).
+//      TemplatePicker beside it picks the note format (LLM-9): Auto lets
+//      the model choose; the value then follows whatever the row was last
+//      enhanced with, so a plain Re-enhance keeps the same format.
 //   5. Clicking a `↳ HH:MM` deep-link inside the editor dispatches
 //      `yogurt:transcript:scrollTo` on `window` and opens the transcript
 //      dock — TranscriptDock listens for that event and scrolls.
@@ -44,6 +47,8 @@ import { YogurtEditor } from "../editor";
 import { EnhancingBanner } from "../components/EnhancingBanner";
 import { Legend } from "../components/Legend";
 import { ReEnhanceButton } from "../components/ReEnhanceButton";
+import { TemplatePicker } from "../components/TemplatePicker";
+import { AUTO_TEMPLATE } from "../lib/api/templates";
 import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
@@ -84,6 +89,7 @@ interface MeetingFetchResponse {
   ended_at?: number | null;
   stt_engine?: string | null;
   llm_model?: string | null;
+  template?: string | null;
 }
 
 interface LocationStateShape {
@@ -140,6 +146,9 @@ export function MeetingPost() {
   );
   const [sttEngine, setSttEngine] = useState<string | undefined>(undefined);
   const [llmModel, setLlmModel] = useState<string | undefined>(undefined);
+  // The picker's value: AUTO_TEMPLATE until the row (or an enhance
+  // response) names the format that shaped the summary.
+  const [template, setTemplate] = useState<string>(AUTO_TEMPLATE);
   const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -271,6 +280,7 @@ export function MeetingPost() {
           setEndedAtUnixMs(json.ended_at ?? undefined);
           setSttEngine(json.stt_engine ?? undefined);
           setLlmModel(json.llm_model ?? undefined);
+          if (json.template) setTemplate(json.template);
         } catch (e) {
           // AbortError from cleanup is expected — ignore.
           if (cancelled || generationRef.current !== myGen) return;
@@ -427,6 +437,7 @@ export function MeetingPost() {
     generationRef.current += 1;
     setEnrichedMd(response.enriched_md);
     if (response.llm_model) setLlmModel(response.llm_model);
+    if (response.template) setTemplate(response.template);
     setActiveDocument("enhanced");
     // The final document has landed - stop holding the streamed preview
     // over it (a re-enhance can produce byte-identical enriched_md, so this
@@ -636,6 +647,13 @@ export function MeetingPost() {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
         {token && (
+          <TemplatePicker
+            value={template}
+            onChange={setTemplate}
+            disabled={bannerVisible}
+          />
+        )}
+        {token && (
           <ReEnhanceButton
             meetingId={meetingId}
             notesMd={notesMd}
@@ -643,6 +661,7 @@ export function MeetingPost() {
             title={displayTitle}
             startedAtUnixMs={startedAtUnixMs}
             endedAtUnixMs={endedAtUnixMs}
+            template={template === AUTO_TEMPLATE ? undefined : template}
             token={token}
             onEnhanced={handleEnhanced}
             onEnhancing={handleEnhancing}

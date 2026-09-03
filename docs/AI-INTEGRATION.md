@@ -37,6 +37,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | POST | `/api/meetings/{id}/start` | start recording | `ctl meeting start` |
 | POST | `/api/meetings/{id}/stop` | stop recording | `ctl meeting stop` |
 | POST | `/api/meetings/{id}/enhance` | generate notes | `ctl meeting enhance` |
+| GET | `/api/templates` | note formats for enhance | - |
 | POST | `/api/meetings/{id}/mic-muted` | mute/unmute mic | `ctl meeting mute` |
 | POST | `/api/meetings/{id}/chat` | ask a question (streamed) | - |
 | GET | `/api/meetings/detected` | detected meeting | `ctl detect` |
@@ -57,6 +58,10 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 A malformed `transcript_json` 400s naming the bad field; no `stt_engine` is stamped, since nothing was recorded.
 `notes_md` seeds the user's raw notes on the same row (`ctl meeting new --notes-file`), so a following `/enhance` with `transcript_json: "[]"` runs exactly what End meeting runs.
 `ctl meeting new --transcript-file <segments.json>` and `--from-script <script>` wrap this - see [MODEL-EVAL.md](MODEL-EVAL.md).
+
+`/enhance`'s body also takes an optional `template` field: `"auto"` or omitted auto-detects the note format from the transcript, or pass one of the ids `GET /api/templates` lists to force it.
+The response and the meeting row both carry the resolved `template`.
+`ctl meeting enhance --template <id>` forces it from the CLI.
 
 ## WebSocket frames
 

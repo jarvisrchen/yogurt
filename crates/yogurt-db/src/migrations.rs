@@ -66,6 +66,9 @@ fn migrations() -> Migrations<'static> {
         // Feature (LLM-4 follow-up): `providers.cli_model`, the `--model`
         // override for a `cli`-adapter row's agent CLI.
         M::up(include_str!("../migrations/V010__providers_cli_model.sql")),
+        // Feature (LLM-9): `meetings.template`, the enhance note format that
+        // shaped `enriched_md` - picked by the model or forced by the user.
+        M::up(include_str!("../migrations/V011__meetings_template.sql")),
     ])
 }
 

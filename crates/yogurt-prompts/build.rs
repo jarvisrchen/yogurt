@@ -1,6 +1,6 @@
 fn main() {
-    // Re-run the build if either bundled prompt template changes so that
-    // `rust-embed` picks up edits on the next `cargo build`.
-    println!("cargo:rerun-if-changed=templates/enhance.md");
-    println!("cargo:rerun-if-changed=templates/chat-system.md");
+    // Re-run the build if any bundled prompt template changes so that
+    // `rust-embed` picks up edits on the next `cargo build`. A directory
+    // path makes cargo scan it recursively, which covers `enhance/*.md`.
+    println!("cargo:rerun-if-changed=templates");
 }

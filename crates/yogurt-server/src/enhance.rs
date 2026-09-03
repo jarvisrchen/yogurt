@@ -2,7 +2,8 @@
 //!
 //! `POST /api/meetings/{id}/enhance` accepts the user's raw notes plus the
 //! transcript-so-far in the request body, renders the bundled `enhance.md`
-//! prompt, calls the LLM (env-var override, else the configured active
+//! prompt (with one note format forced, or all of them offered for the
+//! model to pick from - LLM-9), calls the LLM (env-var override, else the configured active
 //! provider + stored key, else the deterministic `MockLlm` when nothing
 //! is configured), runs `yogurt_notes::merge_notes` over
 //! the result, persists `enriched_md` + `enriched_doc_json` to SQLite and
@@ -42,7 +43,7 @@ use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
 use yogurt_llm::{ChatMessage, ChatRequest};
 use yogurt_notes::{merge_notes, TranscriptSegment};
-use yogurt_prompts::EnhanceCtx;
+use yogurt_prompts::{split_template_line, EnhanceCtx, Template, TEMPLATE_IDS};
 
 /// A meeting with no typed notes AND a transcript under this many words has
 /// nothing meaningful for the LLM to work with - an accidental start/stop,
@@ -79,6 +80,12 @@ pub struct EnhanceRequest {
     /// front-matter; `null` if not provided.
     #[serde(default)]
     pub ended_at_unix_ms: Option<i64>,
+    /// Note format to shape the summary into, an id from
+    /// `yogurt_prompts::TEMPLATE_IDS`. Absent, empty, or `"auto"` lets the
+    /// model pick the best fit itself (the default flow); anything else
+    /// unknown is a 400.
+    #[serde(default)]
+    pub template: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -102,6 +109,23 @@ pub struct EnhanceResponse {
     /// its "Enhanced" pill without refetching. `None` when `too_short`.
     #[serde(default)]
     pub llm_model: Option<String>,
+    /// Note format that shaped `enriched_md` - the one requested, or the
+    /// one the model picked when the request left it to auto-detect
+    /// (falling back to `general` when the reply named nothing usable).
+    /// `None` when `too_short`.
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+/// `GET /api/templates` - every note format, in picker order.
+pub async fn list_templates(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Template>>, (StatusCode, String)> {
+    state
+        .prompts
+        .templates()
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("templates: {e}")))
 }
 
 /// `POST /api/meetings/{id}/enhance`.
@@ -159,6 +183,25 @@ pub async fn enhance(
     };
 
     let user_notes = req.notes_md.clone();
+
+    // 1a) Resolve the requested note format. `None` here means "let the
+    // model choose"; a name that is not a known template is the caller's
+    // mistake, not something to silently fall back from.
+    let forced_template: Option<&'static str> = match req.template.as_deref().map(str::trim) {
+        None | Some("") | Some("auto") => None,
+        Some(id) => match TEMPLATE_IDS.iter().copied().find(|t| *t == id) {
+            Some(known) => Some(known),
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "unknown template {id:?}; expected one of: {}",
+                        TEMPLATE_IDS.join(", ")
+                    ),
+                ))
+            }
+        },
+    };
 
     // 1b) Resolve the transcript. The server-side STT persistence task
     // (meetings.rs) is the source of truth for what was said; the client
@@ -239,6 +282,7 @@ pub async fn enhance(
             notes_file: String::new(),
             too_short: true,
             llm_model: None,
+            template: None,
         }));
     }
 
@@ -248,6 +292,7 @@ pub async fn enhance(
         .render_enhance(&EnhanceCtx {
             notes: &user_notes,
             transcript: &transcript_json,
+            template: forced_template,
         })
         .map_err(|e| {
             (
@@ -414,11 +459,15 @@ pub async fn enhance(
                 Some(t) => now.duration_since(t) >= STREAM_SNAPSHOT_INTERVAL,
             };
             if should_emit {
+                // The prompt asks for a `template: <id>` first line; the
+                // browser previews the document, not the marker, and the
+                // banner's count describes what it shows.
+                let text = split_template_line(&llm_output).1;
                 let _ = meeting.events_tx.send(serde_json::json!({
                     "type": "enhance_progress",
                     "phase": "streaming",
-                    "chars": llm_output.len(),
-                    "text": llm_output.clone(),
+                    "chars": text.len(),
+                    "text": text,
                 }));
                 last_emit = Some(now);
                 last_emitted_len = llm_output.len();
@@ -435,11 +484,12 @@ pub async fn enhance(
     // last frame a WS subscriber sees always matches the full accumulated
     // text, since the broadcast channel has no replay for a late joiner.
     if llm_output.len() != last_emitted_len {
+        let text = split_template_line(&llm_output).1;
         let _ = meeting.events_tx.send(serde_json::json!({
             "type": "enhance_progress",
             "phase": "streaming",
-            "chars": llm_output.len(),
-            "text": llm_output.clone(),
+            "chars": text.len(),
+            "text": text,
         }));
     }
 
@@ -453,8 +503,31 @@ pub async fn enhance(
     // the stored document isn't permanently ugly. The same model also
     // sometimes echoes the prompt's section scaffolding into the output
     // despite the hard rules — strip that too.
-    let llm_output =
-        strip_prompt_scaffolding(&strip_model_reasoning(&fix_model_mojibake(&llm_output)));
+    // LLM-9: peel the `template: <id>` marker off first. A forced format
+    // wins over whatever the model wrote; in auto mode an unknown or
+    // missing id falls back to `general` rather than failing the whole
+    // enhance over one line - the document that follows is still good.
+    let llm_output = strip_model_reasoning(&fix_model_mojibake(&llm_output));
+    let (picked, body) = split_template_line(&llm_output);
+    let template: &str = match forced_template {
+        Some(id) => id,
+        None => match picked.map(|p| p.to_ascii_lowercase()) {
+            Some(p) if TEMPLATE_IDS.contains(&p.as_str()) => {
+                TEMPLATE_IDS.iter().copied().find(|t| *t == p).unwrap()
+            }
+            other => {
+                tracing::warn!(
+                    event = "enhance_template_unrecognized",
+                    meeting_id = %meeting_id,
+                    model = %llm_model,
+                    picked = ?other,
+                    "model named no known template; using general"
+                );
+                TEMPLATE_IDS[0]
+            }
+        },
+    };
+    let llm_output = strip_prompt_scaffolding(body);
 
     // LLM-8: an empty reply must fail loudly. `merge_notes(notes, "")`
     // happily yields the user's notes untouched, and that got persisted and
@@ -682,6 +755,7 @@ pub async fn enhance(
                     starred: None,
                     stt_engine: None,
                     llm_model: Some(llm_model),
+                    template: Some(template.to_string()),
                     label_ids: None,
                 },
             )?;
@@ -714,6 +788,8 @@ pub async fn enhance(
         event = "enhance_complete",
         meeting_id = %meeting_id,
         model = %llm_model,
+        template,
+        forced = forced_template.is_some(),
         elapsed_ms = llm_started.elapsed().as_millis(),
         "enhance complete"
     );
@@ -723,6 +799,7 @@ pub async fn enhance(
         notes_file: notes_path.to_string_lossy().into_owned(),
         too_short: false,
         llm_model: Some(llm_model),
+        template: Some(template.to_string()),
     }))
 }
 

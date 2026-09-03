@@ -91,6 +91,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/meetings/{id}/mic-muted", post(set_meeting_mic_muted))
         // Phase 4 (Plan 04-03): hero augmented-notes endpoint.
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
+        // LLM-9: the note formats enhance can shape a summary into, for
+        // the post-meeting picker.
+        .route("/api/templates", get(crate::enhance::list_templates))
         // Phase 6 (Plan 06-01): in-meeting chat REST surface.
         // POST inserts a user + placeholder assistant row and spawns the
         // LLM streaming task; GET hydrates the chat window on remount.

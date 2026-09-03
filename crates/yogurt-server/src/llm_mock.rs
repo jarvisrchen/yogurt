@@ -75,10 +75,26 @@ impl LlmClient for MockLlm {
 /// `<span data-transcript-link>↳ HH:MM</span>`. Public-in-module so the
 /// trait impl can reuse it; not exported from the crate.
 fn build_mock_output(user: &str) -> String {
+    let has_markers = user.contains("<user_notes>");
     let (notes, transcript_json) = split_prompt(user);
     let transcript: Vec<Seg> = serde_json::from_str(transcript_json).unwrap_or_default();
 
     let mut out = String::new();
+    // LLM-9: the prompt asks the model to name the note format on the first
+    // line. The mock "detects" a standup from the word alone so the
+    // auto-detect path is exercised end to end; everything else is general.
+    // Skipped on a marker-less prompt so a malformed prompt still yields an
+    // empty document.
+    if has_markers {
+        let standup = transcript
+            .iter()
+            .any(|s| s.text.to_ascii_lowercase().contains("standup"));
+        out.push_str(if standup {
+            "template: standup\n\n"
+        } else {
+            "template: general\n\n"
+        });
+    }
     // User notes preserved verbatim — the merge layer treats them as
     // user-source markdown and pulldown-cmark escapes any HTML on parse.
     // BL-2 sanitization happens at the enrich-handler layer via
@@ -163,6 +179,10 @@ mod tests {
             .await
             .unwrap();
         let out = &resp.content;
+        assert!(
+            out.starts_with("template: general\n\n"),
+            "names the note format first: {out}"
+        );
         assert!(out.contains("- pricing"), "user notes preserved: {out}");
         assert!(
             out.contains("data-ai-grey data-ts=\"120\""),

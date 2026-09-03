@@ -73,7 +73,14 @@ pub enum MeetingCmd {
         meeting: String,
     },
     /// Run augmented-notes generation and forward progress to stderr.
-    Enhance { meeting: String },
+    Enhance {
+        meeting: String,
+        /// Note format to use (`general`, `standup`, `one-on-one`,
+        /// `team-meeting`, `design-review`, `customer-call`, `interview`).
+        /// Omit to let the model pick the best fit.
+        #[arg(long)]
+        template: Option<String>,
+    },
     /// Pause or resume the mic on an actively-recording meeting. Idempotent;
     /// defaults to whatever is currently recording.
     Mute {
@@ -136,7 +143,9 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
             markdown,
             meeting,
         } => transcript(port, json_out, &meeting, follow, markdown).await,
-        MeetingCmd::Enhance { meeting } => enhance(port, json_out, &meeting).await,
+        MeetingCmd::Enhance { meeting, template } => {
+            enhance(port, json_out, &meeting, template.as_deref()).await
+        }
         MeetingCmd::Mute { action } => mute(port, json_out, action).await,
         MeetingCmd::Search { query, limit } => search(port, json_out, &query, limit).await,
         MeetingCmd::Delete {
@@ -570,6 +579,9 @@ async fn show(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(
             m.stt_engine.as_deref().unwrap_or("unknown")
         );
         println!("enhanced: {}", m.enriched_md.is_some());
+        if let Some(t) = m.template.as_deref() {
+            println!("template: {t}");
+        }
         println!("segments: {segment_count}");
     }
     Ok(())
@@ -747,7 +759,12 @@ async fn follow_transcript(
 /// prints `phase: sending` up front and a `phase: waiting` heartbeat
 /// every 5s instead of going silent -- the documented deviation, so an
 /// agent driving this doesn't read a long pause as hung and retry.
-async fn enhance(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(), CtlError> {
+async fn enhance(
+    port_flag: Option<u16>,
+    json_out: bool,
+    meeting: &str,
+    template: Option<&str>,
+) -> Result<(), CtlError> {
     let r = MeetingRef::parse(meeting);
     let (c, id) = client_for_ref(port_flag, &r).await?;
     let m: yogurt_db::Meeting = c.get(&format!("/api/meetings/{id}")).await?;
@@ -757,6 +774,7 @@ async fn enhance(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Resul
         "title": m.title,
         "started_at_unix_ms": m.started_at,
         "ended_at_unix_ms": m.ended_at,
+        "template": template,
     });
 
     eprintln!("phase: sending");
@@ -782,6 +800,9 @@ async fn enhance(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Resul
         println!("too_short: meeting had no notes and a trivial transcript, nothing to enhance");
     } else {
         println!("enhanced {id}");
+        if let Some(t) = resp.get("template").and_then(|v| v.as_str()) {
+            println!("template: {t}");
+        }
         if let Some(f) = resp.get("notes_file").and_then(|v| v.as_str()) {
             println!("notes file: {f}");
         }

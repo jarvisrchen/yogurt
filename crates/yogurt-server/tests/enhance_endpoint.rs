@@ -948,9 +948,10 @@ async fn enhance_streams_progress_over_ws() {
         .render_enhance(&EnhanceCtx {
             notes: notes_md,
             transcript: transcript_json,
+            template: None,
         })
         .expect("render enhance prompt");
-    let expected_raw = yogurt_server::__test_only_llm_mock::MockLlm
+    let mock_raw = yogurt_server::__test_only_llm_mock::MockLlm
         .complete(ChatRequest {
             messages: vec![ChatMessage::user(user_prompt)],
             stream: false,
@@ -958,6 +959,9 @@ async fn enhance_streams_progress_over_ws() {
         .await
         .expect("mock complete")
         .content;
+    // LLM-9: the streamed preview is the document after the `template:`
+    // marker line, exactly as the handler strips it.
+    let expected_raw = yogurt_prompts::split_template_line(&mock_raw).1.to_string();
 
     // Connect the WS BEFORE posting — the handler runs the whole enhance
     // pipeline (including the `done` frame) inside the POST's response

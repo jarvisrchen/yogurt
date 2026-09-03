@@ -876,3 +876,16 @@ New closed items go at the bottom.
 
   Added `--markdown` to `ctl meeting transcript`: title header, `**speaker**` bold, `(mm:ss)` timestamps. Works with `--follow` (header printed once) and refuses combination with `--json`. Covered by two new tests in `ctl_smoke.rs`.
   </details>
+
+- [x] **LLM-9** Enhance templates: auto-detected note formats (standup, 1:1, design review...) with a manual picker on Re-enhance
+  <details>
+  <summary>Details</summary>
+
+  Enhance always produced the same section shape, no matter what kind of meeting it was.
+  Bundle a handful of note formats (standup, one-on-one, team meeting, design review, customer call, interview, and a general fallback) as prompt templates.
+  Auto-detect the right one from the transcript and notes during the same enhance call, rather than a separate classification pass.
+  Add a manual picker beside Re-enhance so a wrong guess, or a shape the user just prefers, is one click away.
+
+  Landed in the enhance-templates PR (2026-09-03).
+  Seven formats under `crates/yogurt-prompts/templates/enhance/`, auto-detected in the same LLM call via a `template:` first line, forced via the `template` body field / `--template`, stamped on `meetings.template`, picker beside Re-enhance.
+  </details>

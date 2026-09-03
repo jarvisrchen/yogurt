@@ -396,13 +396,25 @@ impl Client {
 
 async fn server_error_message(resp: reqwest::Response) -> String {
     let status = resp.status();
-    match resp.json::<serde_json::Value>().await {
-        Ok(body) => body
-            .get("error")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("server returned {status}")),
-        Err(_) => format!("server returned {status}"),
+    let body = resp.text().await.unwrap_or_default();
+    error_message_from(status, &body)
+}
+
+/// The server answers some failures as `{"error": "..."}` and others (axum
+/// `(StatusCode, String)` rejections, e.g. enhance's unknown-template 400)
+/// as a plain-text body. Both carry the message the user needs, so only an
+/// empty body falls back to the bare status.
+fn error_message_from(status: reqwest::StatusCode, body: &str) -> String {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {
+            return msg.to_string();
+        }
+    }
+    let text = body.trim();
+    if text.is_empty() || text.starts_with('{') || text.starts_with('<') {
+        format!("server returned {status}")
+    } else {
+        format!("server returned {status}: {text}")
     }
 }
 
@@ -416,6 +428,27 @@ mod tests {
             version: "0.0.0".to_string(),
             mode: "release".to_string(),
         }
+    }
+
+    #[test]
+    fn error_message_keeps_json_and_plain_text_bodies() {
+        let bad = reqwest::StatusCode::BAD_REQUEST;
+        assert_eq!(
+            error_message_from(bad, r#"{"error":"meeting not found"}"#),
+            "meeting not found"
+        );
+        assert_eq!(
+            error_message_from(bad, "unknown template \"nope\"; expected one of: general"),
+            "server returned 400 Bad Request: unknown template \"nope\"; expected one of: general"
+        );
+        assert_eq!(
+            error_message_from(bad, ""),
+            "server returned 400 Bad Request"
+        );
+        assert_eq!(
+            error_message_from(bad, r#"{"detail":"x"}"#),
+            "server returned 400 Bad Request"
+        );
     }
 
     #[test]

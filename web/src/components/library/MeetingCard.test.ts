@@ -18,6 +18,7 @@ function meeting(over: Partial<Meeting> = {}): Meeting {
     starred: false,
     stt_engine: null,
     llm_model: null,
+    template: null,
     labels: [],
     created_at: new Date(START).toISOString(),
     updated_at: new Date(START).toISOString(),
