@@ -1,4 +1,4 @@
-//! AUD-8: orphaned-capture-session detection.
+//! Orphaned-capture-session detection.
 //!
 //! A force-killed `yogurt` process skips `AudioStream::Drop`, so its SCK +
 //! cpal handles never get torn down, and macOS blocks the *next*
@@ -69,9 +69,9 @@ fn acquire_at(path: &Path) -> Result<CaptureLock> {
             }
             tracing::warn!(
                 stale_pid = pid,
-                "AUD-8: orphaned capture marker - a previous yogurt process was likely \
-                 force-killed mid-recording; macOS may still be reclaiming its SCK/mic \
-                 resources for several minutes"
+                "orphaned capture marker - a previous yogurt process was likely force-killed \
+                 mid-recording; macOS may still be reclaiming its SCK/mic resources for \
+                 several minutes"
             );
         }
         let _ = std::fs::remove_file(path);

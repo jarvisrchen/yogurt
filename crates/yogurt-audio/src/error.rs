@@ -19,11 +19,11 @@ pub enum AudioError {
     #[error("system audio capture failed to start: {0}")]
     SystemCaptureFailed(String),
 
-    /// AUD-8: capture marker's PID is alive - another yogurt process is recording.
+    /// Capture marker's PID is alive - another yogurt process is recording.
     #[error("another yogurt process is already recording")]
     AlreadyRecording,
 
-    /// AUD-8: capture marker's PID is dead - the OS may still be reclaiming
+    /// Capture marker's PID is dead - the OS may still be reclaiming
     /// its SCK/mic resources, so we fail fast instead of hanging inside SCK.
     #[error(
         "a previous recording session ended abnormally (force-killed) and macOS may still be \
