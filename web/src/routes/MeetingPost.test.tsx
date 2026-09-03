@@ -63,19 +63,34 @@ import { MeetingPost } from "./MeetingPost";
 
 const MEETING_ID = "019f10a8-861c-7c61-b10f-cdf424b02b4d";
 
+const TEMPLATES = [
+  { id: "general", name: "General", when: "nothing else fits" },
+  { id: "standup", name: "Standup", when: "a daily standup" },
+  { id: "interview", name: "Interview", when: "a job interview" },
+];
+
 function mockMeetingFetch(row: Record<string, unknown>) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url);
+      if (u.includes("/api/templates")) {
+        return new Response(JSON.stringify(TEMPLATES), { status: 200 });
+      }
       if (u.includes(`/api/meetings/${MEETING_ID}`)) {
         if (init?.method === "POST") {
+          // Echo the requested format back the way the server does when
+          // one is forced; "standup" stands in for auto-detection.
+          const template =
+            (JSON.parse(String(init.body)) as { template?: string })
+              .template ?? "standup";
           return new Response(
             JSON.stringify({
               enriched_md: "## regenerated",
               notes_file: "/tmp/notes.md",
               too_short: false,
               llm_model: "gpt-5-mini",
+              template,
             }),
             { status: 200 },
           );
@@ -210,6 +225,54 @@ describe("MeetingPost — live-recording redirect", () => {
     });
     // The header pill follows the model the re-enhance actually used.
     expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
+  });
+
+  it("re-enhances with the picked note format and shows the one that was used", async () => {
+    mockMeetingFetch({
+      id: MEETING_ID,
+      title: "Daily",
+      started_at: 1000,
+      ended_at: 2000,
+      notes_md: "- x",
+      enriched_md: "## Enhanced summary",
+      transcript_json: "[]",
+      template: "general",
+    });
+
+    renderPost();
+    await screen.findByText("Enhanced summary");
+    const picker = (await screen.findByTestId("template-picker")) as HTMLSelectElement;
+    // The stored format is preselected, and the list came from the server.
+    await waitFor(() => expect(picker.value).toBe("general"));
+    expect(screen.getByRole("option", { name: "Auto" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Interview" })).toBeInTheDocument();
+
+    // Auto sends no template at all - the server decides.
+    fireEvent.change(picker, { target: { value: "auto" } });
+    fireEvent.click(screen.getByTestId("re-enhance-button"));
+    await waitFor(() => {
+      const post = vi
+        .mocked(fetch)
+        .mock.calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post?.[1]?.body))).not.toHaveProperty("template");
+    });
+    // ...and the picker then shows what it detected.
+    await waitFor(() => expect(picker.value).toBe("standup"));
+
+    // A forced format rides along on the request.
+    fireEvent.change(picker, { target: { value: "interview" } });
+    fireEvent.click(screen.getByTestId("re-enhance-button"));
+    await waitFor(() => {
+      const posts = vi
+        .mocked(fetch)
+        .mock.calls.filter(([, init]) => init?.method === "POST");
+      expect(posts).toHaveLength(2);
+      expect(JSON.parse(String(posts[1]?.[1]?.body))).toMatchObject({
+        template: "interview",
+      });
+    });
+    expect(picker.value).toBe("interview");
   });
 
   it("does not redirect when a DIFFERENT meeting is the active recording", async () => {

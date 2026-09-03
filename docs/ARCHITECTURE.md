@@ -132,7 +132,7 @@ Crate responsibilities, one line each:
 | `yogurt-audio` | Mic (cpal) + system loopback (ScreenCaptureKit), resample to the frame contract, broadcast frames. |
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
 | `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. |
-| `yogurt-prompts` | Embedded prompt templates and their render context. |
+| `yogurt-prompts` | Embedded prompt templates and their render context, including the seven enhance note formats (LLM-9). |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming, and the local agent-CLI provider adapter (§7.6). |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
 
@@ -328,7 +328,7 @@ sequenceDiagram
     E->>DB: meeting in registry?  else SELECT + hydrate transient Meeting
     Note over E,DB: registry is wiped on restart, so hydrate<br/>keeps Re-enhance working after a restart
     E->>DB: request transcript empty -> read stored transcript_json
-    E->>PR: render_enhance({ notes, transcript })
+    E->>PR: render_enhance({ notes, transcript, template })
     E->>WS: enhance_progress { phase: "sending" }
     WS-->>B: banner: sending
 
@@ -358,6 +358,12 @@ sequenceDiagram
     E-->>B: { enriched_md, notes_file }
     B->>B: navigate /meeting/{id}/post, setContent(enriched_md)
 ```
+
+The `template` field on `render_enhance` (LLM-9) is the note-format mechanism.
+The seven formats live as markdown files under `crates/yogurt-prompts/templates/enhance/<id>.md`, each a name, a when-to-use line, and a section outline.
+By default `template` is absent and the same enhance call auto-detects the format: the prompt lists all seven and asks the model to name one on a `template: <id>` first line, which the server parses and strips before the merge.
+If the model names nothing recognizable, the server falls back to `general` instead of failing.
+A known id in the request body (or `--template` on the CLI) forces that format instead of asking the model to choose, and either way the resolved id is stamped on `meetings.template`.
 
 The black/grey UX in one paragraph: `yogurt-notes` parses both the user's markdown and the LLM's markdown into block ASTs, keys blocks by normalized text, and for every LLM block that is not a user block emits `Source::AiGrey` with a guessed transcript timestamp.
 `render::to_markdown` wraps those in `<span data-ai-grey data-ts=...>`, which is the wire format TipTap styles grey and makes click-to-transcript work.
@@ -732,7 +738,7 @@ Local mic and system each get their own segmenter, and every decode runs on `spa
 
 | Part of the prompt | Approx tokens |
 |---|---|
-| `enhance.md` instructions (fixed, 2.6 KB) | ~650 |
+| `enhance.md` instructions, plus the note-format block (LLM-9): fixed when a template is forced, or all seven formats when auto-detecting | ~650, roughly +400 more in auto mode |
 | User's sparse notes | 100 to 400 |
 | `transcript_json` (see below) | ~24,000 |
 | Output (the merged document) | 400 to 1,200 |
@@ -788,7 +794,7 @@ Not present, in rough priority order if cost ever matters:
 
 1. **No gating of the system channel.** It streams silence for the entire meeting at full price. Gating it on output-audio activity would cut the Deepgram bill by close to half for solo work.
 2. **No transcript windowing in chat.** Every message pays for the full transcript again.
-3. **No prompt caching.** The `enhance.md` prefix is fixed at ~650 tokens and the chat system prompt is stable, but neither is sent in a form that claims providers' cached-input discounts (OpenAI prices cached input at half rate).
+3. **No prompt caching.** The `enhance.md` prefix is roughly 650 tokens (plus roughly 400 more when auto-detecting the note format, LLM-9) and the chat system prompt is stable, but neither is sent in a form that claims providers' cached-input discounts (OpenAI prices cached input at half rate).
 4. **No spend meter.** Nothing in the app tells the user what a meeting cost, which for a BYO-key product is the number they would most want to see.
 5. **Re-enhance is a full re-run** at full price, with no diffing against the previous result.
 

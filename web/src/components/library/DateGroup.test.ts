@@ -14,6 +14,7 @@ function fakeMeeting(id: string, startedAt: Date): Meeting {
     starred: false,
     stt_engine: null,
     llm_model: null,
+    template: null,
     labels: [],
     created_at: startedAt.toISOString(),
     updated_at: startedAt.toISOString(),
