@@ -58,6 +58,10 @@ pub struct Meeting {
     /// LLM that produced `enriched_md`, e.g. "MiniMax-Text-01" or "mock".
     /// `None` until the meeting has been enhanced at least once.
     pub llm_model: Option<String>,
+    /// Enhance note format that shaped `enriched_md`, an id from
+    /// `yogurt_prompts::TEMPLATE_IDS` such as "standup". `None` until the
+    /// meeting has been enhanced with a template-aware build.
+    pub template: Option<String>,
     /// Row creation timestamp (ISO 8601 over the wire).
     pub created_at: DateTime<Utc>,
     /// Last mutation timestamp (ISO 8601 over the wire). Updated on every
@@ -129,6 +133,9 @@ pub struct MeetingPatch {
     /// Same plain-`Option` semantics as `stt_engine`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm_model: Option<String>,
+    /// Same plain-`Option` semantics as `stt_engine`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
     /// Replace this meeting's label set with exactly these ids. `None`
     /// leaves labels alone; `Some(vec![])` clears them. Applied via
     /// `labels::set_for_meeting_conn` inside the same transaction as the
@@ -276,6 +283,10 @@ impl MeetingRepo {
                 sets.push("llm_model = ?");
                 args.push(e.clone().into());
             }
+            if let Some(e) = patch.template.as_ref() {
+                sets.push("template = ?");
+                args.push(e.clone().into());
+            }
             if sets.is_empty() && patch.label_ids.is_none() {
                 // No fields supplied — still touch updated_at? PRD §10
                 // says "PATCH with empty body is a no-op". Match that.
@@ -366,7 +377,7 @@ impl MeetingRepo {
             let mut stmt = conn.prepare_cached(
                 "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
                         m.enriched_md, m.transcript_json, m.starred, \
-                        m.created_at, m.updated_at, m.stt_engine, m.llm_model \
+                        m.created_at, m.updated_at, m.stt_engine, m.llm_model, m.template \
                  FROM meetings m \
                  JOIN meetings_fts f ON f.rowid = m.rowid \
                  WHERE meetings_fts MATCH ?1 \
@@ -399,11 +410,11 @@ impl MeetingRepo {
 
 const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
     notes_md, enriched_md, transcript_json, starred, created_at, updated_at, \
-    stt_engine, llm_model FROM meetings WHERE id = ?1";
+    stt_engine, llm_model, template FROM meetings WHERE id = ?1";
 
 const SELECT_ALL_ORDER_BY_STARTED_DESC: &str = "SELECT id, title, started_at, \
     ended_at, notes_md, enriched_md, transcript_json, starred, created_at, \
-    updated_at, stt_engine, llm_model FROM meetings ORDER BY started_at DESC, id DESC";
+    updated_at, stt_engine, llm_model, template FROM meetings ORDER BY started_at DESC, id DESC";
 
 /// Project one SQLite row onto the `Meeting` wire shape. Used by `get`,
 /// `list`, and (indirectly) `create` / `patch` via `get`.
@@ -424,6 +435,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     let updated_at_ms: i64 = r.get(9)?;
     let stt_engine: Option<String> = r.get(10)?;
     let llm_model: Option<String> = r.get(11)?;
+    let template: Option<String> = r.get(12)?;
     Ok(Meeting {
         id,
         title: title.unwrap_or_default(),
@@ -435,6 +447,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
         starred: starred_i != 0,
         stt_engine,
         llm_model,
+        template,
         created_at: ms_to_dt(created_at_ms),
         updated_at: ms_to_dt(updated_at_ms),
         labels: Vec::new(),
@@ -625,6 +638,24 @@ mod tests {
         .unwrap();
         let reloaded = repo.get(&m.id).unwrap().unwrap();
         assert_eq!(reloaded.llm_model.as_deref(), Some("MiniMax-Text-01"));
+        assert_eq!(reloaded.template, None, "template is stamped separately");
+        repo.patch(
+            &m.id,
+            MeetingPatch {
+                template: Some("standup".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            repo.get(&m.id).unwrap().unwrap().template.as_deref(),
+            Some("standup")
+        );
+        assert_eq!(
+            repo.list().unwrap()[0].template.as_deref(),
+            Some("standup"),
+            "list carries the stamp too"
+        );
         // list() uses a different SELECT than get(); both must project the column.
         assert_eq!(
             repo.list().unwrap()[0].llm_model.as_deref(),

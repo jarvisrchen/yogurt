@@ -50,6 +50,8 @@ export interface Meeting {
   stt_engine: string | null;
   /** LLM that produced `enriched_md` (e.g. "MiniMax-Text-01"); `null` until enhanced. */
   llm_model: string | null;
+  /** Note format that shaped `enriched_md` (e.g. "standup"); `null` until enhanced. */
+  template: string | null;
   /** ISO 8601 UTC string. */
   created_at: string;
   /** ISO 8601 UTC string. */

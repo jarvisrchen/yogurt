@@ -1,11 +1,12 @@
 // ReEnhanceButton — single-button affordance per PRD §5.5 / NOTES-12.
 //
-// Explicitly NO caret, NO template-picker dropdown — template picker is
-// v2 (PRD §5.5: "Re-enhance always re-runs the single bundled enhance.md").
+// No caret of its own: the note format lives in the sibling
+// <TemplatePicker> (LLM-9), and this button just carries its value.
 //
 // On click:
 //   1. setBusy(true) + onEnhancing(true).
-//   2. POST /api/meetings/{id}/enhance with raw notes + transcript.
+//   2. POST /api/meetings/{id}/enhance with raw notes + transcript (+ the
+//      chosen template, when one is forced).
 //   3. On success: onEnhanced(enriched_md, notes_file). The host swaps the
 //      editor content via the YogurtEditor `enrichedMarkdown` prop.
 //   4. setBusy(false) + onEnhancing(false), even on error.
@@ -34,6 +35,8 @@ export interface ReEnhanceButtonProps {
   startedAtUnixMs?: number;
   /** Optional meeting end time (unix ms). */
   endedAtUnixMs?: number;
+  /** Note format id to force; undefined lets the model auto-detect. */
+  template?: string;
   /** Session token from ensureSessionToken(). */
   token: string;
   /** Called with the enriched markdown when the POST succeeds. */
@@ -52,6 +55,7 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
     title,
     startedAtUnixMs,
     endedAtUnixMs,
+    template,
     token,
     onEnhanced,
     onEnhancing,
@@ -71,6 +75,7 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
         title,
         started_at_unix_ms: startedAtUnixMs,
         ended_at_unix_ms: endedAtUnixMs,
+        template,
       };
       const response = await postEnhance(meetingId, body, token);
       onEnhanced(response);

@@ -101,6 +101,11 @@ export interface EnhanceRequestBody {
   started_at_unix_ms?: number;
   /** Optional meeting end time (unix ms). */
   ended_at_unix_ms?: number;
+  /**
+   * Note format id (`GET /api/templates`). Omit to let the model pick the
+   * best fit; the response's `template` says which one it chose.
+   */
+  template?: string;
 }
 
 export interface EnhanceResponse {
@@ -114,6 +119,9 @@ export interface EnhanceResponse {
   notes_file: string;
   /** Model that produced `enriched_md`; absent/null when `too_short`. */
   llm_model?: string | null;
+  /** Note format that shaped `enriched_md` (requested or auto-detected);
+   *  absent/null when `too_short`. */
+  template?: string | null;
   /**
    * True when the meeting had no notes and a trivial transcript, so the
    * server skipped enhancing entirely (`enriched_md` / `notes_file` are
