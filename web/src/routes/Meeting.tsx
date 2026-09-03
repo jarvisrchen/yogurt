@@ -299,10 +299,7 @@ export function Meeting() {
       // /start stamps started_at + stt_engine on the row; refetch so the
       // meta pills reflect the real engine instead of the poll fallback.
       void queryClient.invalidateQueries({ queryKey: meetingKey(id) });
-      // MTG-12: the server now suppresses the "meeting detected" banner
-      // and reports this meeting as active, but both are 5s-polled
-      // queries - without this they'd keep showing the stale pre-start
-      // values (banner still up, pill still absent) for up to 5s.
+      // Both are 5s-polled; don't leave the detection banner up while recording.
       void queryClient.invalidateQueries({ queryKey: detectedMeetingKey });
       void queryClient.invalidateQueries({ queryKey: activeRecordingKey });
     } catch (e) {

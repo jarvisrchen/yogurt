@@ -339,11 +339,8 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
 /// `GET /api/meetings/detected` — MTG-11. The meeting-looking window the
 /// watcher last saw, or `null`.
 ///
-/// Returns `null` while a recording is already running (MTG-12): the
-/// prompt asks "start recording?", which is noise once the answer is
-/// obviously yes. `DetectState::prompt` takes that as an argument rather
-/// than this handler deciding it, so the check can't be skipped by a
-/// caller that forgets it.
+/// Returns `null` while a recording is already running: "start
+/// recording?" is noise once the answer is obviously yes.
 async fn detected_meeting(State(state): State<AppState>) -> impl IntoResponse {
     let recording = state.meetings.active_recording().await.is_some();
     let st = state.detect.lock().await;

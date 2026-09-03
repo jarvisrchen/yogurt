@@ -167,9 +167,7 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { qc } = renderAt("/meeting/meeting-1", { autoStart: true });
-    // Seed both polled queries so invalidation is observable below: an
-    // `invalidateQueries` on a key with no cached entry leaves no state
-    // to assert on.
+    // Seed so invalidation is observable.
     qc.setQueryData(detectedMeetingKey, null);
     qc.setQueryData(activeRecordingKey, null);
 
@@ -192,10 +190,6 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
       screen.queryByRole("button", { name: /^start recording$/i }),
     ).toBeNull();
 
-    // MTG-12: /start invalidates the "meeting detected" and "active
-    // recording" queries itself rather than waiting on their 5s poll, so
-    // the detection banner drops and the recording pill appears right
-    // away instead of up to 5s late.
     expect(qc.getQueryState(detectedMeetingKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(activeRecordingKey)?.isInvalidated).toBe(true);
 
