@@ -82,6 +82,7 @@ const state = vi.hoisted(() => ({
 vi.mock("../lib/api/meetings", () => ({
   meetingKey: (id: string) => ["meetings", id],
   activeRecordingKey: ["meetings", "active"],
+  detectedMeetingKey: ["meetings", "detected"],
   meetingsApi: {
     patch: vi.fn().mockResolvedValue({}),
   },
@@ -103,6 +104,7 @@ vi.mock("../lib/api/settings", () => ({
 }));
 
 import { Meeting } from "./Meeting";
+import { activeRecordingKey, detectedMeetingKey } from "../lib/api/meetings";
 
 // Task 2 (End meeting navigates immediately with `state: { autoEnhance }`
 // instead of awaiting a POST first): a plain probe div can't assert on the
@@ -164,7 +166,10 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderAt("/meeting/meeting-1", { autoStart: true });
+    const { qc } = renderAt("/meeting/meeting-1", { autoStart: true });
+    // Seed so invalidation is observable.
+    qc.setQueryData(detectedMeetingKey, null);
+    qc.setQueryData(activeRecordingKey, null);
 
     await waitFor(() => {
       expect(
@@ -184,6 +189,9 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
     expect(
       screen.queryByRole("button", { name: /^start recording$/i }),
     ).toBeNull();
+
+    expect(qc.getQueryState(detectedMeetingKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(activeRecordingKey)?.isInvalidated).toBe(true);
 
     vi.unstubAllGlobals();
   });
