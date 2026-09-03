@@ -105,16 +105,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
   </details>
 
-- [ ] **AUD-8** A force-killed `yogurt` can leave a stale SCK/mic capture session that blocks the next recording
-  <details>
-  <summary>Details</summary>
-
-  Found while verifying DX-1's hardware smoke test: SIGKILLing a `yogurt` process mid-recording skips `Drop`, so `AudioStream`'s SCK + cpal teardown never runs.
-  A subsequent `start()` (same machine, same or a different `yogurt` process) then hangs for several minutes opening its own capture session, apparently waiting for macOS to reclaim the still-held OS-level resources from the killed process; a direct retry once that window passed opened and closed cleanly in under a second.
-  Normal shutdown (Cmd-Q, or `ctl meeting stop`) already goes through `Registry::stop()`'s graceful teardown (200ms watchdog), so this only bites a hard kill - Activity Monitor "Force Quit", a crash, `kill -9` - while a meeting is recording.
-  Worth understanding whether this is inherent to `SCStream`/`cpal` cleanup timing (nothing to do beyond documenting it) or something `yogurt` could shorten, e.g. detecting an orphaned session on next launch and giving a clear error instead of a silent multi-minute hang.
-  </details>
-
 - [ ] **AUD-9** Filter filler words and misheard noise out of the transcript
   <details>
   <summary>Details</summary>

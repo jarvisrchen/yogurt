@@ -893,3 +893,24 @@ New closed items go at the bottom.
 - [x] **MTG-12** Don't suggest starting a meeting while one is already in progress
 
   The server guard now lives in `DetectState::prompt(recording)` with a unit test, and starting a recording from `+ New meeting` invalidates the detection and active-recording queries so the banner drops immediately instead of lingering up to one 5s poll.
+
+- [x] **AUD-8** A force-killed `yogurt` can leave a stale SCK/mic capture session that blocks the next recording
+  <details>
+  <summary>Details</summary>
+
+  Found while verifying DX-1's hardware smoke test: SIGKILLing a `yogurt` process mid-recording skips `Drop`, so `AudioStream`'s SCK + cpal teardown never runs.
+  A subsequent `start()` (same machine, same or a different `yogurt` process) then hangs for several minutes opening its own capture session, apparently waiting for macOS to reclaim the still-held OS-level resources from the killed process; a direct retry once that window passed opened and closed cleanly in under a second.
+  Normal shutdown (Cmd-Q, or `ctl meeting stop`) already goes through `Registry::stop()`'s graceful teardown (200ms watchdog), so this only bites a hard kill - Activity Monitor "Force Quit", a crash, `kill -9` - while a meeting is recording.
+  Worth understanding whether this is inherent to `SCStream`/`cpal` cleanup timing (nothing to do beyond documenting it) or something `yogurt` could shorten, e.g. detecting an orphaned session on next launch and giving a clear error instead of a silent multi-minute hang.
+
+  AUD-8: detects orphaned SCK capture sessions from a force-killed yogurt process.
+
+  `start_capture()` now writes a PID marker (`<data_dir>/capture.lock`, honoring
+  `YOGURT_DATA_DIR`) and removes it on clean teardown. On the next start, a marker
+  with a live PID fails fast (AlreadyRecording); a marker with a dead PID (the
+  AUD-8 case - a force-killed process) logs a warning, clears the stale marker,
+  and fails fast with OrphanedSession instead of hanging silently inside SCK for
+  several minutes.
+
+  Verified via unit tests only (no hardware/SCK E2E - no CI hardware available).
+  </details>
