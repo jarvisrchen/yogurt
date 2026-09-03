@@ -68,8 +68,15 @@ pub struct DetectState {
 
 impl DetectState {
     /// What the prompt should show, or `None` when there is nothing to
-    /// offer (no meeting seen, or the user dismissed this one).
-    pub fn prompt(&self) -> Option<&DetectedMeeting> {
+    /// offer: no meeting seen, the user dismissed this one, or a
+    /// recording is already running (MTG-12 — "start recording?" is
+    /// noise once the answer is obviously yes). Folding the
+    /// already-recording check in here, rather than leaving it to each
+    /// caller, means every path to the prompt gets it for free.
+    pub fn prompt(&self, recording: bool) -> Option<&DetectedMeeting> {
+        if recording {
+            return None;
+        }
         let current = self.current.as_ref()?;
         if self.dismissed == Some(current.window_id) {
             return None;
@@ -269,14 +276,24 @@ mod tests {
         let mut st = DetectState::default();
         st.advance(window(7), None);
         st.dismiss_current();
-        assert_eq!(st.prompt(), None);
+        assert_eq!(st.prompt(false), None);
 
         // Same window, still dismissed.
         st.advance(window(7), None);
-        assert_eq!(st.prompt(), None);
+        assert_eq!(st.prompt(false), None);
 
         // New call, new window id — prompt again.
         st.advance(window(8), None);
-        assert_eq!(st.prompt().map(|m| m.window_id), Some(8));
+        assert_eq!(st.prompt(false).map(|m| m.window_id), Some(8));
+    }
+
+    #[test]
+    fn no_prompt_while_a_recording_is_already_running() {
+        // MTG-12: a meeting-looking window is on screen, but a recording
+        // is already in progress — "start recording?" would be noise.
+        let mut st = DetectState::default();
+        st.advance(window(7), None);
+        assert_eq!(st.prompt(false).map(|m| m.window_id), Some(7));
+        assert_eq!(st.prompt(true), None);
     }
 }
