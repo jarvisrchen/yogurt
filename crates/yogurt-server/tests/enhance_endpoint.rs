@@ -713,7 +713,169 @@ async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
 /// before POSTing) and on `prompts` (to independently reconstruct the exact
 /// user prompt the handler renders, so the mock's raw output can be
 /// predicted without duplicating the mock's own bullet-formatting logic).
+/// Scripted LLM: answers every request with the same text, so a test can
+/// pin the model's reply exactly where `MockLlm` derives it from the prompt.
+#[derive(Clone)]
+struct FixedLlm(String);
+
+#[async_trait::async_trait]
+impl LlmClient for FixedLlm {
+    fn model_name(&self) -> String {
+        "fixed".into()
+    }
+
+    async fn complete(&self, _req: ChatRequest) -> anyhow::Result<yogurt_llm::ChatResponse> {
+        Ok(yogurt_llm::ChatResponse {
+            content: self.0.clone(),
+            model: "fixed".into(),
+        })
+    }
+
+    async fn stream(
+        &self,
+        _req: ChatRequest,
+    ) -> anyhow::Result<
+        futures_util::stream::BoxStream<'static, anyhow::Result<yogurt_llm::ChatChunk>>,
+    > {
+        let chunks = vec![
+            Ok(yogurt_llm::ChatChunk {
+                delta: self.0.clone(),
+                done: false,
+            }),
+            Ok(yogurt_llm::ChatChunk {
+                delta: String::new(),
+                done: true,
+            }),
+        ];
+        Ok(futures_util::stream::iter(chunks).boxed())
+    }
+}
+
+/// Serve `state` on its bound port; the task is dropped with the caller.
+async fn serve(state: AppState) -> tokio::task::JoinHandle<()> {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], state.bind_port));
+    let app = yogurt_server::__test_router(state);
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    })
+}
+
+async fn ephemeral_port() -> u16 {
+    let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    port
+}
+
+/// LLM-8 regression (the "End meeting just showed my notes" report): a
+/// model that answers with nothing must surface as an error, not as the
+/// user's own notes persisted and displayed as the enhanced document.
+/// `merge_notes(notes, "")` is exactly the notes, so nothing downstream
+/// would ever notice - only the handler can.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_fails_loudly_when_the_model_returns_nothing() {
+    let port = ephemeral_port().await;
+    let (state, token, tmp) = build_test_state(port, Arc::new(FixedLlm("  \n\n".into())));
+    let _server = serve(state.clone()).await;
+    let meeting_id = state.meetings.create().await.id;
+
+    let resp = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "- pricing\n- 247k\n",
+            "transcript_json": r#"[{"ts_ms":1000,"channel":"them","text":"base salary is two forty seven"}]"#,
+            "title": "Empty reply",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        502,
+        "an empty model reply is a failed enhance"
+    );
+    let body = resp.text().await.unwrap();
+    assert!(body.contains("empty reply"), "got: {body}");
+
+    // Nothing persisted: the notes-only echo never reaches the row or disk.
+    let conn = rusqlite::Connection::open(tmp.path().join("yogurt-test.db")).unwrap();
+    let rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM meetings WHERE id = ?1",
+            [meeting_id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        rows, 0,
+        "no enriched row must be written for an empty reply"
+    );
+    assert!(
+        std::fs::read_dir(tmp.path().join("notes"))
+            .map(|d| d.count() == 0)
+            .unwrap_or(true),
+        "no markdown file must be written for an empty reply"
+    );
+}
+
+/// LLM-8 regression (meeting 01a05a46): the model folded the one-word
+/// note `247k` into `Base salary: 247k`. The merge used to miss it (the
+/// weave ignored one-word lines), paint the whole bullet grey, and then
+/// append `247k` again as an orphan paragraph. Now the user's word is ink
+/// inside the bullet and appears exactly once.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_weaves_a_one_word_note_into_the_ai_bullet_without_duplicating_it() {
+    let port = ephemeral_port().await;
+    let model_output =
+        "## Offer\n\n- Base salary: 247k\n- 464k RSU with quarterly vesting at 6.25% per quarter\n";
+    let (state, token, _tmp) = build_test_state(port, Arc::new(FixedLlm(model_output.into())));
+    let _server = serve(state.clone()).await;
+    let meeting_id = state.meetings.create().await.id;
+
+    let resp = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/api/meetings/{meeting_id}/enhance"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "notes_md": "247k\n\n464k RSU\n",
+            "transcript_json": r#"[{"ts_ms":40000,"channel":"them","text":"a base salary of 247,000 and an equity grant of 464,000"}]"#,
+            "title": "Offer",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let enriched = body["enriched_md"].as_str().unwrap();
+
+    assert_eq!(
+        enriched.matches("247k").count(),
+        1,
+        "the note appears once, inside the bullet - no orphan copy. got:\n{enriched}"
+    );
+    assert!(
+        enriched.contains("</span>247k"),
+        "the user's word is outside the grey span. got:\n{enriched}"
+    );
+    assert_eq!(enriched.matches("464k RSU").count(), 1, "got:\n{enriched}");
+    assert!(
+        !enriched.trim_end().ends_with("247k"),
+        "no trailing orphan paragraph. got:\n{enriched}"
+    );
+}
+
 fn build_mock_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
+    build_test_state(
+        bind_port,
+        Arc::new(yogurt_server::__test_only_llm_mock::MockLlm),
+    )
+}
+
+fn build_test_state(
+    bind_port: u16,
+    llm: Arc<dyn LlmClient>,
+) -> (AppState, String, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let db_path = tmp.path().join("yogurt-test.db");
     let token_path = tmp.path().join("session-token");
@@ -736,7 +898,7 @@ fn build_mock_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir
         prompts,
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
-        llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
+        llm_override: Some(llm),
         meeting_repo,
         label_repo,
         app_events_tx: tokio::sync::broadcast::channel(64).0,

@@ -842,3 +842,25 @@ New closed items go at the bottom.
   `Logo.tsx` brand mark, and linked them from `web/index.html`. Safari's Add to Dock and
   Chrome's install-as-app now pick up the yogurt logo instead of a generic icon.
   </details>
+
+- [x] **LLM-8** End meeting can show the raw notes as the enhanced summary, and a one-word note comes back grey plus duplicated
+  <details>
+  <summary>Details</summary>
+
+  Reported 2026-09-02.
+  After End meeting the enhanced view was just the typed notes, with no error anywhere; Re-enhance then produced a real summary.
+  In that summary `247k` sat grey inside "Base salary: 247k" and appeared again as an orphan paragraph at the end (meeting `01a05a46`).
+
+  Two independent faults, both reproduced headlessly through `yogurt ctl` and pinned with tests.
+
+  **1. An empty model reply was persisted as the summary.**
+  `enhance.rs` never checked the scrubbed LLM output; `merge_notes(notes, "")` is exactly the notes, so an empty reply (a CLI provider returning an empty `result`, a reasoning model whose whole answer sat in an unclosed `<think>`) was written to the row and shown as the enhanced document with no error anywhere.
+  Enhance now fails with 502 and an `enhance_progress` error frame ("returned no text - try Re-enhance"), and `interpret_single_json` in the CLI provider rejects an empty `result` the way the opencode path already did.
+
+  **2. One-word notes were painted grey and duplicated.**
+  `weave::find_user_line` required two words, so `247k` folded into "Base salary: 247k" was never recognised: the bullet went fully grey and the defensive append re-emitted `247k` as an orphan paragraph (meeting `01a05a46`).
+  `MIN_WORDS` is now 1; matching is whole-word, so it only lands where the word actually appears.
+
+  Harness: `ctl meeting new --notes-file` seeds notes alongside `--transcript-file`, so `ctl meeting enhance` runs exactly the End meeting path (notes and transcript from the row).
+  Tests: `crates/yogurt-notes` (weave, diff), `crates/yogurt-llm/src/cli.rs`, `crates/yogurt-server/tests/enhance_endpoint.rs` (scripted LLM: empty reply, one-word weave), `crates/yogurt-cli/tests/ctl_smoke.rs` (seeded End-meeting path).
+  </details>
