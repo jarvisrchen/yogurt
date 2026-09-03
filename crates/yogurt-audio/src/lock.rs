@@ -3,27 +3,50 @@
 //! A force-killed `yogurt` process skips `AudioStream::Drop`, so its SCK +
 //! cpal handles never get torn down. macOS then blocks the *next*
 //! `start_capture()` for several minutes inside `SCStream::start_capture()`
-//! while it reclaims the dead process's resources — a direct retry after
+//! while it reclaims the dead process's resources - a direct retry after
 //! that window opens instantly. We can't shorten that OS-level reclaim, so
 //! instead we detect the condition up front (a PID marker file that points
 //! at a process which is no longer alive) and fail fast with an actionable
 //! error instead of hanging silently.
+//!
+//! ponytail: PID reuse is a false-positive ceiling here - if the OS recycles
+//! the dead PID onto an unrelated live process before we check, we'd treat
+//! a genuinely free capture session as "already recording" and refuse to
+//! start. Rare in practice (the window is the time between this process
+//! dying and the next `start_capture()` call) and the escape hatch is
+//! simple: `rm <data_dir>/capture.lock`. Upgrade to a process-start-time
+//! check (e.g. comparing `/proc`-equivalent start time) if this ever bites.
 
 use crate::error::{AudioError, Result};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-fn lock_path() -> Result<PathBuf> {
+/// `~/.yogurt`, overridable via `$YOGURT_DATA_DIR` - mirrors the precedence
+/// in `yogurt-cli::data_dir::resolve` (env only here; the `--data-dir` CLI
+/// flag never reaches this crate) so two isolated instances (e.g. a
+/// worktree's `just dev-bg` pointed at its own data dir) don't collide on
+/// the same lock file, and an orphan under a custom data dir stays visible
+/// instead of silently checking the wrong `~/.yogurt`.
+fn data_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os("YOGURT_DATA_DIR") {
+        let dir = PathBuf::from(dir);
+        std::fs::create_dir_all(&dir)?;
+        return Ok(dir);
+    }
     let base = directories::BaseDirs::new().ok_or_else(|| {
         AudioError::SystemCaptureFailed("could not resolve home directory".into())
     })?;
     let dir = base.home_dir().join(".yogurt");
     std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("capture.lock"))
+    Ok(dir)
+}
+
+fn lock_path() -> Result<PathBuf> {
+    Ok(data_dir()?.join("capture.lock"))
 }
 
 /// True if a process with this PID is alive. `kill(pid, 0)` sends no
-/// signal — it's the standard liveness probe. `ESRCH` means gone; `EPERM`
+/// signal - it's the standard liveness probe. `ESRCH` means gone; `EPERM`
 /// still means alive (owned by someone else). Any other error is treated
 /// conservatively as "alive" so we never clobber a live session's marker.
 #[cfg(target_os = "macos")]
@@ -49,7 +72,7 @@ impl Drop for CaptureLock {
 /// Acquire the capture marker before opening SCK/cpal.
 ///
 /// - No marker present: write ours, proceed.
-/// - Marker with a live PID: another yogurt process is already recording —
+/// - Marker with a live PID: another yogurt process is already recording -
 ///   fail immediately with [`AudioError::AlreadyRecording`].
 /// - Marker with a dead PID: the AUD-8 orphaned-session case. Log a clear
 ///   warning, remove the stale marker (so it doesn't wedge every future
@@ -68,7 +91,7 @@ fn acquire_at(path: &Path) -> Result<CaptureLock> {
             }
             tracing::warn!(
                 stale_pid = pid,
-                "AUD-8: found an orphaned capture marker — a previous yogurt process was \
+                "AUD-8: found an orphaned capture marker - a previous yogurt process was \
                  likely force-killed mid-recording; macOS may still be reclaiming its SCK/mic \
                  resources for several minutes"
             );
@@ -131,7 +154,7 @@ mod tests {
 
         let err = acquire_at(&path).expect_err("should reject a live-owner marker");
         assert!(matches!(err, AudioError::AlreadyRecording));
-        // The live marker is left in place — it's not ours to clean up.
+        // The live marker is left in place - it's not ours to clean up.
         assert!(path.exists());
 
         std::fs::remove_dir_all(&dir).ok();

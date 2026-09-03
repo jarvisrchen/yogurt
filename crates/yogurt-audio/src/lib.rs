@@ -75,7 +75,7 @@ pub const BROADCAST_CAPACITY: usize = 256;
 pub struct AudioStream {
     _mic: MicCapture,
     _system: SystemCapture,
-    /// AUD-8: RAII marker — removed on drop so the *next* `start_capture()`
+    /// AUD-8: RAII marker - removed on drop so the *next* `start_capture()`
     /// doesn't mistake a clean shutdown for an orphaned session. Held for
     /// the lifetime of the stream, never read after acquisition.
     #[cfg(target_os = "macos")]
@@ -161,7 +161,7 @@ pub fn start_capture(mic_device: Option<&str>) -> Result<AudioStream> {
     // AUD-8: fail fast if the marker from a previous session shows either
     // a live yogurt process still recording, or a dead one whose SCK/mic
     // resources macOS hasn't reclaimed yet (opening SCK right now would
-    // hang for minutes) — see `lock` module docs.
+    // hang for minutes) - see `lock` module docs.
     #[cfg(target_os = "macos")]
     let _capture_lock = lock::acquire()?;
 
