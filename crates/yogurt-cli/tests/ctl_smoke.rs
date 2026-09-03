@@ -498,6 +498,93 @@ async fn meeting_new_transcript_file_round_trips_exactly() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn meeting_transcript_markdown_formats_title_speaker_and_timestamp() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let segments_path = tmp.path().join("segments.json");
+    std::fs::write(
+        &segments_path,
+        r#"[
+            {"ts_ms": 0, "channel": "me", "text": "hello there"},
+            {"ts_ms": 65000, "channel": "them", "text": "hi yourself"}
+        ]"#,
+    )
+    .expect("write segments file");
+
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+            "--title",
+            "CLI-8 markdown export",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    let transcript = ctl(
+        port,
+        tmp.path(),
+        &["meeting", "transcript", &id, "--markdown"],
+    )
+    .success();
+    let stdout = stdout_of(&transcript);
+    assert!(stdout.contains("# CLI-8 markdown export"), "got:\n{stdout}");
+    assert!(
+        stdout.contains("**me** (00:00)  hello there"),
+        "got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("**them** (01:05)  hi yourself"),
+        "got:\n{stdout}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn meeting_transcript_markdown_conflicts_with_json() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let segments_path = tmp.path().join("segments.json");
+    std::fs::write(
+        &segments_path,
+        r#"[{"ts_ms": 0, "channel": "me", "text": "hi"}]"#,
+    )
+    .expect("write segments file");
+
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    let output = ctl(
+        port,
+        tmp.path(),
+        &["meeting", "transcript", &id, "--markdown", "--json"],
+    )
+    .failure();
+    let stdout = stdout_of(&output);
+    assert!(stdout.contains("--markdown"), "got:\n{stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn meeting_new_malformed_transcript_file_exits_1_with_server_message() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let (_guard, port) = spawn_server(tmp.path()).await;
