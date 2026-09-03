@@ -19,6 +19,22 @@ pub enum AudioError {
     #[error("system audio capture failed to start: {0}")]
     SystemCaptureFailed(String),
 
+    /// AUD-8: another yogurt process already holds the capture marker and
+    /// is alive — a second concurrent recording session was attempted.
+    #[error("another yogurt process is already recording")]
+    AlreadyRecording,
+
+    /// AUD-8: the capture marker points at a PID that is no longer alive —
+    /// a previous yogurt process was force-killed mid-recording and macOS
+    /// may still be reclaiming its SCK/mic resources for several minutes.
+    /// Opening a new session right now would likely hang silently for that
+    /// whole window, so we fail fast instead.
+    #[error(
+        "a previous recording session ended abnormally (force-killed) and macOS may still be \
+         reclaiming its audio resources; wait a minute or two and try again"
+    )]
+    OrphanedSession,
+
     /// We're not on macOS. Mic still works; system loopback does not.
     #[error("system audio capture is only supported on macOS 13+")]
     UnsupportedPlatform,
