@@ -82,6 +82,7 @@ const state = vi.hoisted(() => ({
 vi.mock("../lib/api/meetings", () => ({
   meetingKey: (id: string) => ["meetings", id],
   activeRecordingKey: ["meetings", "active"],
+  detectedMeetingKey: ["meetings", "detected"],
   meetingsApi: {
     patch: vi.fn().mockResolvedValue({}),
   },
@@ -103,6 +104,7 @@ vi.mock("../lib/api/settings", () => ({
 }));
 
 import { Meeting } from "./Meeting";
+import { activeRecordingKey, detectedMeetingKey } from "../lib/api/meetings";
 
 // Task 2 (End meeting navigates immediately with `state: { autoEnhance }`
 // instead of awaiting a POST first): a plain probe div can't assert on the
@@ -164,7 +166,12 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderAt("/meeting/meeting-1", { autoStart: true });
+    const { qc } = renderAt("/meeting/meeting-1", { autoStart: true });
+    // Seed both polled queries so invalidation is observable below: an
+    // `invalidateQueries` on a key with no cached entry leaves no state
+    // to assert on.
+    qc.setQueryData(detectedMeetingKey, null);
+    qc.setQueryData(activeRecordingKey, null);
 
     await waitFor(() => {
       expect(
@@ -184,6 +191,13 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
     expect(
       screen.queryByRole("button", { name: /^start recording$/i }),
     ).toBeNull();
+
+    // MTG-12: /start invalidates the "meeting detected" and "active
+    // recording" queries itself rather than waiting on their 5s poll, so
+    // the detection banner drops and the recording pill appears right
+    // away instead of up to 5s late.
+    expect(qc.getQueryState(detectedMeetingKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(activeRecordingKey)?.isInvalidated).toBe(true);
 
     vi.unstubAllGlobals();
   });
