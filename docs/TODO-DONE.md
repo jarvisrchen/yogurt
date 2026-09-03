@@ -889,3 +889,7 @@ New closed items go at the bottom.
   Landed in the enhance-templates PR (2026-09-03).
   Seven formats under `crates/yogurt-prompts/templates/enhance/`, auto-detected in the same LLM call via a `template:` first line, forced via the `template` body field / `--template`, stamped on `meetings.template`, picker beside Re-enhance.
   </details>
+
+- [x] **MTG-12** Don't suggest starting a meeting while one is already in progress
+
+  The server guard now lives in `DetectState::prompt(recording)` with a unit test, and starting a recording from `+ New meeting` invalidates the detection and active-recording queries so the banner drops immediately instead of lingering up to one 5s poll.
