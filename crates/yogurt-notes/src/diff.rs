@@ -156,6 +156,33 @@ mod tests {
         assert!(matches!(out[1].source, Source::AiGrey { .. }));
     }
 
+    /// LLM-8 (meeting 01a05a46): notes `247k` / `464k RSU`, model output
+    /// `- Base salary: 247k`. The one-word line used to come back grey
+    /// inside the bullet and then AGAIN as a bare paragraph at the end.
+    #[test]
+    fn one_word_note_folded_into_an_ai_bullet_is_painted_not_appended() {
+        let user = vec![
+            Block::Paragraph { md: "247k".into() },
+            Block::Paragraph {
+                md: "464k RSU".into(),
+            },
+        ];
+        let enriched = vec![
+            Block::ListItem {
+                md: "Base salary: 247k".into(),
+                depth: 0,
+            },
+            Block::ListItem {
+                md: "464k RSU with quarterly vesting at 6.25%".into(),
+                depth: 0,
+            },
+        ];
+        let out = merge(&user, &enriched, &[]);
+        assert_eq!(out.len(), 2, "no orphan append: {out:?}");
+        assert_eq!(out[0].user_runs, vec![(13, 17)]);
+        assert_eq!(out[1].user_runs, vec![(0, 8)]);
+    }
+
     #[test]
     fn user_line_woven_into_an_ai_bullet_is_painted_not_appended() {
         let user = vec![

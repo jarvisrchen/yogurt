@@ -456,6 +456,32 @@ pub async fn enhance(
     let llm_output =
         strip_prompt_scaffolding(&strip_model_reasoning(&fix_model_mojibake(&llm_output)));
 
+    // LLM-8: an empty reply must fail loudly. `merge_notes(notes, "")`
+    // happily yields the user's notes untouched, and that got persisted and
+    // shown as the "enhanced" document - the notes echoed back, no error
+    // anywhere, and only Re-enhance revealed the model had said nothing.
+    // Same error shape as the other LLM failures so the banner shows the
+    // message and Re-enhance stays available.
+    if llm_output.trim().is_empty() {
+        tracing::error!(
+            event = "enhance_llm_empty_reply",
+            meeting_id = %meeting_id,
+            model = %llm_model,
+            "enhance LLM returned no text"
+        );
+        let _ = meeting.events_tx.send(serde_json::json!({
+            "type": "enhance_progress",
+            "phase": "error",
+            "message": format!(
+                "{llm_model} returned no text - try Re-enhance or a different model in Settings"
+            )
+        }));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("llm {llm_model} returned an empty reply"),
+        ));
+    }
+
     let merged = match merge_notes(&user_notes, &llm_output, &transcript_json) {
         Ok(m) => m,
         Err(e) => {

@@ -6,8 +6,13 @@
 //! user's words black inside the model's sentence.
 
 /// Fewest words a note line needs before we go looking for it inside AI
-/// text - a one-word note matches everywhere and means nothing.
-const MIN_WORDS: usize = 2;
+/// text. One: a single-word note ("247k", "pricing") is exactly the kind
+/// of line the model is told to fold into a richer bullet, and matching
+/// is whole-word (punctuation-trimmed, case-folded), so it only lands
+/// where that word actually appears. Skipping it left the user's word
+/// painted grey inside the bullet AND appended again as an orphan
+/// paragraph (LLM-8).
+const MIN_WORDS: usize = 1;
 /// Fraction of the line's words that must be found, in order.
 const MIN_RATIO: f32 = 0.75;
 
@@ -128,8 +133,21 @@ mod tests {
             ),
             None
         );
-        // one-word notes never match
-        assert_eq!(find_user_line("kill switch before Monday", "switch"), None);
+    }
+
+    /// LLM-8: a one-word note the model folded into a bullet is found as
+    /// a whole word, and only as a whole word.
+    #[test]
+    fn one_word_note_matches_as_a_whole_word() {
+        let t = "Base salary: 247k";
+        let r = find_user_line(t, "247k").unwrap();
+        assert_eq!(&t[r.0..r.1], "247k");
+        assert_eq!(
+            find_user_line("kill switch before Monday", "switch"),
+            Some((5, 11))
+        );
+        // "switch" is not a substring match on "switches".
+        assert_eq!(find_user_line("flip the switches", "switch"), None);
     }
 
     #[test]

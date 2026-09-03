@@ -600,6 +600,84 @@ async fn enhance_last_on_fixture_returns_real_output_not_too_short() {
     );
 }
 
+/// LLM-8: the End meeting path, headless. The browser hands enhance the
+/// notes and an EMPTY transcript and relies on the row for what was said;
+/// `--notes-file` + `--transcript-file` stage that exact row and
+/// `ctl meeting enhance` (which sends the row's own notes and transcript)
+/// drives it. Asserts the notes survive exactly once and the transcript
+/// actually produced AI bullets - the two things the report said went
+/// wrong.
+#[tokio::test(flavor = "multi_thread")]
+async fn enhance_on_seeded_notes_and_transcript_keeps_notes_once_and_adds_ai_bullets() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (_guard, port) = spawn_server(tmp.path()).await;
+
+    let notes_path = tmp.path().join("notes.md");
+    std::fs::write(&notes_path, "- pricing decision\n- 247k\n").expect("write notes");
+    let segments_path = tmp.path().join("segments.json");
+    std::fs::write(
+        &segments_path,
+        r#"[
+            {"ts_ms": 40000, "channel": "them", "text": "we would like to offer a base salary of 247k"},
+            {"ts_ms": 57000, "channel": "them", "text": "the equity grant follows the quarterly vesting schedule"}
+        ]"#,
+    )
+    .expect("write segments");
+
+    let created = ctl(
+        port,
+        tmp.path(),
+        &[
+            "meeting",
+            "new",
+            "--notes-file",
+            notes_path.to_str().unwrap(),
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+            "--title",
+            "end meeting path",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().expect("id field").to_string();
+
+    let shown = ctl(port, tmp.path(), &["meeting", "show", &id, "--json"]).success();
+    let shown: serde_json::Value = serde_json::from_str(&stdout_of(&shown)).unwrap();
+    assert_eq!(
+        shown["meeting"]["notes_md"].as_str(),
+        Some("- pricing decision\n- 247k\n"),
+        "notes seeded on the row: {shown}"
+    );
+    assert!(
+        shown["meeting"]["enriched_md"].is_null(),
+        "not enhanced yet: {shown}"
+    );
+
+    let enhanced = ctl(port, tmp.path(), &["meeting", "enhance", "last", "--json"]).success();
+    let body: serde_json::Value = serde_json::from_str(&stdout_of(&enhanced)).expect("valid JSON");
+    assert_eq!(body["too_short"].as_bool(), Some(false), "got: {body}");
+    let enriched = body["enriched_md"].as_str().expect("enriched_md field");
+    assert_eq!(
+        enriched.matches("pricing decision").count(),
+        1,
+        "each note survives exactly once. got:\n{enriched}"
+    );
+    assert_eq!(enriched.matches("247k").count(), 1, "got:\n{enriched}");
+    assert!(
+        enriched.contains(r#"data-ai-grey="" data-ts="40""#)
+            && enriched.contains(r#"data-ai-grey="" data-ts="57""#),
+        "one AI bullet per transcript segment, stamped with its time. got:\n{enriched}"
+    );
+
+    // What the browser reads back is the same document.
+    let summary = ctl(port, tmp.path(), &["meeting", "summary", &id]).success();
+    let summary = stdout_of(&summary);
+    assert!(summary.contains("pricing decision"), "got:\n{summary}");
+    assert!(summary.contains("base salary"), "got:\n{summary}");
+}
+
 // ─── DX-1: real-binary smoke suite gaps (hardware-free) ─────────────────
 
 #[tokio::test(flavor = "multi_thread")]

@@ -85,6 +85,11 @@ pub struct CreateBody {
     /// instead of a live one.
     #[serde(default)]
     pub ended: Option<bool>,
+    /// LLM-8 fixture support: the user's raw notes, so `ctl meeting new
+    /// --notes-file` can stage exactly what End meeting hands to enhance
+    /// (notes on the row, transcript on the row) without a browser.
+    #[serde(default)]
+    pub notes_md: Option<String>,
 }
 
 /// One `transcript_json` entry, validated on the way in. Same three
@@ -184,6 +189,7 @@ async fn create(
         })
         .transpose()?;
     let ended = body.ended.unwrap_or(false);
+    let notes_md = body.notes_md;
 
     // Bootstrap an in-memory streaming Meeting first so the SQLite row
     // shares the same id (UUID v7) as the registry entry. Without this
@@ -209,7 +215,7 @@ async fn create(
         // create-then-export sequence) that a follow-up `patch` is the
         // smaller change. No `stt_engine` is stamped, matching a fixture
         // that was never actually recorded.
-        if segments.is_some() || ended {
+        if segments.is_some() || ended || notes_md.is_some() {
             let transcript_json = segments.as_ref().map(serde_json::to_string).transpose()?;
             let ended_at = ended.then(|| {
                 let last_ts_ms = segments
@@ -223,6 +229,7 @@ async fn create(
                 MeetingPatch {
                     transcript_json,
                     ended_at,
+                    notes_md,
                     ..Default::default()
                 },
             )?;
