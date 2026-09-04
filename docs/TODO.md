@@ -45,6 +45,14 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
+- [ ] **UI-9** Add a "New label" affordance to the Labels group in the left panel
+  <details>
+  <summary>Details</summary>
+
+  `SidebarLabelRow` already supports rename and delete, but the only way to create a label is through the per-meeting `LabelPicker` popover.
+  Add a create action to the sidebar Labels group (an inline row or "+" button) that reuses `useCreateLabel`, so labels can be managed entirely from the left panel.
+  </details>
+
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
@@ -103,6 +111,15 @@ The note is a file, not a shell argument, because real resolution notes contain 
   It's not obvious today which of "me" (mic) and "them" (system) is actually capturing what, especially when Chrome is playing a video/call to simulate the other side of a meeting.
   Richard wants a workflow where he says "help me debug this meeting," an agent starts actively tailing the relevant logs/transcript, he starts the recording and plays audio through Chrome to simulate someone talking in Zoom/Slack, and the agent can narrate what it's seeing (which channel picked up the audio, timing, drops) while he narrates what he sees in the UI.
   `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
+  </details>
+
+- [ ] **AUD-10** Add a Test button for the local STT model, matching the cloud one
+  <details>
+  <summary>Details</summary>
+
+  `STTPicker` renders `TestKeyButton` for the Deepgram card only.
+  The local-model pills have no equivalent, so a downloaded model that fails to load is only discovered when a meeting starts.
+  Add a Test action for the selected local model that loads it and transcribes a short built-in clip, reporting a verdict line like the cloud button.
   </details>
 
 ## LLM
