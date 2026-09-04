@@ -950,4 +950,21 @@ New closed items go at the bottom.
   Enter commits (trimmed name, ignores empty/whitespace-only) via `useCreateLabel`; Escape cancels; blur commits like rename does.
   The button and input disable while the create mutation is pending.
   Added vitest coverage in Sidebar.labels.test.tsx for opening the input, Enter creating, and Escape canceling.
+- [x] **AUD-10** Add a Test button for the local STT model, matching the cloud one
+  <details>
+  <summary>Details</summary>
+
+  `STTPicker` renders `TestKeyButton` for the Deepgram card only.
+  The local-model pills have no equivalent, so a downloaded model that fails to load is only discovered when a meeting starts.
+  Add a Test action for the selected local model that loads it and transcribes a short built-in clip, reporting a verdict line like the cloud button.
+
+  Added a Test action for the local whisper.cpp model, matching the existing Deepgram Test button.
+
+  Backend: `POST /api/settings/stt/local/test` (`test_local_stt` in `crates/yogurt-server/src/api/settings.rs`) resolves the model (defaults to the currently selected `stt_model`), then runs `WhisperLocal::self_test` on `spawn_blocking` - loads the model and decodes a built-in 1s silent clip. Returns the same `{ok, model, error}` shape the LLM provider test endpoint already uses, so the frontend's `TestKeyButton` renders it unchanged.
+
+  `WhisperLocal::self_test` (`crates/yogurt-stt/src/whisper_local.rs`) is a small new public method reusing `load` + the existing private `decode`. No new audio fixture needed - a `vec![0i16; 16_000]` in-memory silent buffer is the clip.
+
+  Frontend: `LocalSTTCard` now renders a `TestKeyButton` under the model picker, testing the currently selected model. Disabled unless that model is downloaded.
+
+  Verified: cargo fmt/clippy -D warnings, cargo test (all pass), web typecheck + vitest (pass), and a real E2E hit against a running dev server with a downloaded small.en model returned `{"ok":true,"model":"small.en · loaded and ran in 7035ms"}`.
   </details>

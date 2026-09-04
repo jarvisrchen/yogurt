@@ -147,6 +147,28 @@ impl WhisperLocal {
         })
     }
 
+    /// AUD-10: Settings → Transcription "Test" action for the local model.
+    /// Loads the model (reusing [`Self::load`]) and runs one decode against
+    /// a built-in 1 s silent clip, proving the model actually loads and
+    /// whisper.cpp can run inference on this machine — the same failure
+    /// mode ("model file present but Metal init / load fails") that
+    /// otherwise only surfaces when a real meeting starts.
+    ///
+    /// The clip is silence, so an empty transcript is the expected,
+    /// successful result — the verdict is "it ran", not "it heard words".
+    ///
+    /// **Blocking:** wraps model load + a whisper.cpp decode. Callers on
+    /// an async runtime MUST run this inside `tokio::task::spawn_blocking`
+    /// (LOCAL-05 — same rule as `load`/`decode`).
+    pub fn self_test(model_path: PathBuf) -> Result<()> {
+        let whisper = Self::load(model_path)?;
+        // 1 s of silence at 16 kHz mono — big enough for whisper.cpp to
+        // run a real inference pass, small enough to stay instant.
+        let silence = vec![0i16; 16_000];
+        Self::decode(&whisper.ctx, &silence, /* fast */ false)?;
+        Ok(())
+    }
+
     /// Run whisper.cpp on a PCM segment, returning the joined transcript text.
     ///
     /// Inputs:

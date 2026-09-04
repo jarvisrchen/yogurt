@@ -50,9 +50,11 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { useModels, useDeleteModel, formatBytes } from "../../lib/api/stt";
+import { settingsApi } from "../../lib/api/settings";
 import { useModelDownloadProgress } from "../../hooks/useModelDownloadProgress";
 import { ModelPicker } from "./ModelPicker";
 import { ModelDownloadDialog } from "../dialogs/ModelDownloadDialog";
+import { TestKeyButton } from "./TestKeyButton";
 
 /** `http()` throws `Error("<status> <statusText>: <raw body>")`. The
  *  delete endpoint's 409 body is a plain sentence (not JSON) - strip the
@@ -233,6 +235,16 @@ export function LocalSTTCard({
           onDelete={(name) => del.mutate(name)}
           activeModelName={active ? selectedModel : null}
         />
+      )}
+
+      {q.data && (
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-line">
+          <TestKeyButton
+            providerName={selectedModel}
+            hasStoredKey={selectedModelDownloaded}
+            testFn={() => settingsApi.testLocalStt(selectedModel)}
+          />
+        </div>
       )}
 
       {del.isError && (

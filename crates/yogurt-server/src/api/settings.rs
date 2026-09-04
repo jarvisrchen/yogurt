@@ -23,6 +23,7 @@
 //! | POST   | `/api/settings/providers/{id}/test`        | `test_provider`       |
 //! | POST   | `/api/settings/providers/{id}/models`      | `list_provider_models`|
 //! | POST   | `/api/settings/stt/test`                   | `test_stt_key`        |
+//! | POST   | `/api/settings/stt/local/test`             | `test_local_stt`      |
 //! | GET    | `/api/settings/presets`                    | `list_presets`        |
 //!
 //! ## axum 0.8 path syntax
@@ -69,6 +70,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/settings/stt/key", post(set_stt_key))
         .route("/api/settings/stt/test", post(test_stt_key))
+        .route("/api/settings/stt/local/test", post(test_local_stt))
         .route("/api/settings/presets", get(list_presets))
 }
 
@@ -481,6 +483,82 @@ async fn test_stt_key(
             error: Some(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)),
         },
     };
+    Ok(Json(result))
+}
+
+/// Body for `POST /api/settings/stt/local/test`. `model` defaults to the
+/// currently-selected `general.stt_model` when omitted, so the button can
+/// just fire with no body for the common case.
+#[derive(Deserialize)]
+struct TestLocalSttBody {
+    #[serde(default)]
+    model: Option<String>,
+}
+
+/// `POST /api/settings/stt/local/test` (AUD-10) - loads the selected
+/// whisper.cpp model and runs one decode against a built-in silent clip,
+/// reporting whether the model actually loads and runs on this machine.
+/// Otherwise a broken download (bad file, unsupported model on this CPU)
+/// is only discovered when a real meeting starts.
+///
+/// Mirrors `test_stt_key`'s `{ok, error}` contract via the shared
+/// `TestConnectionResult`-shaped `TestSttResult` — reuses it so the
+/// frontend's existing `TestKeyButton` verdict rendering works unchanged.
+/// `error.model` carries the resolved model name plus load+decode latency
+/// on success.
+///
+/// Runs on `spawn_blocking`: `WhisperLocal::load` mmaps a model file
+/// (tens of MB to a few GB) and whisper.cpp's decode is synchronous CPU
+/// work — both would starve the tokio runtime if run inline (LOCAL-05).
+async fn test_local_stt(
+    State(s): State<AppState>,
+    Json(body): Json<TestLocalSttBody>,
+) -> Result<Json<TestProviderResult>, Error> {
+    let model_name = match body.model {
+        Some(m) if !m.trim().is_empty() => m,
+        _ => settings::load_general(&s.db)?.stt_model,
+    };
+
+    let result = tokio::task::spawn_blocking(move || -> TestProviderResult {
+        let spec = match yogurt_stt::models::lookup(&model_name) {
+            Some(spec) => spec,
+            None => {
+                return TestProviderResult {
+                    ok: false,
+                    model: None,
+                    error: Some(format!("Unknown model: {model_name}")),
+                }
+            }
+        };
+        let Some(model_path) = yogurt_stt::models::resolve_model(spec) else {
+            return TestProviderResult {
+                ok: false,
+                model: None,
+                error: Some(format!(
+                    "{model_name} is not downloaded yet — download it above, then test."
+                )),
+            };
+        };
+        let started = std::time::Instant::now();
+        match yogurt_stt::WhisperLocal::self_test(model_path) {
+            Ok(()) => TestProviderResult {
+                ok: true,
+                model: Some(format!(
+                    "{model_name} · loaded and ran in {}ms",
+                    started.elapsed().as_millis()
+                )),
+                error: None,
+            },
+            Err(e) => TestProviderResult {
+                ok: false,
+                model: None,
+                error: Some(truncate(&format!("{e:#}"), MAX_TEST_ERROR_LEN)),
+            },
+        }
+    })
+    .await
+    .map_err(|e| Error::Internal(format!("test task panicked: {e}")))?;
+
     Ok(Json(result))
 }
 
