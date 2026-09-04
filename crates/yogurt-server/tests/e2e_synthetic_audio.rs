@@ -105,6 +105,7 @@ async fn it_delivers_transcript_to_browser_well_under_2s() {
             channel: Channel::Mic,
             text: "fast path".into(),
             is_final: true,
+            confidence: None,
         })
         .unwrap();
 

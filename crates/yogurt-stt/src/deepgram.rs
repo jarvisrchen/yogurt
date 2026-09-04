@@ -191,6 +191,7 @@ fn emit_status(txn: &TranscriptTx, channel: Channel, ts_ms: u64, text: &str) {
         channel,
         text: text.to_string(),
         is_final: true,
+        confidence: None,
     });
 }
 
@@ -489,14 +490,12 @@ pub fn fold_deepgram_event(
     if v.get("type")?.as_str()? != "Results" {
         return None;
     }
-    let transcript = v
-        .get("channel")?
-        .get("alternatives")?
-        .get(0)?
-        .get("transcript")?
-        .as_str()?
-        .trim()
-        .to_string();
+    let alt = v.get("channel")?.get("alternatives")?.get(0)?;
+    let transcript = alt.get("transcript")?.as_str()?.trim().to_string();
+    let confidence = alt
+        .get("confidence")
+        .and_then(|x| x.as_f64())
+        .map(|c| c as f32);
     let window_final = v.get("is_final").and_then(|x| x.as_bool()).unwrap_or(false);
     let speech_final = v
         .get("speech_final")
@@ -532,6 +531,7 @@ pub fn fold_deepgram_event(
             channel,
             text: full,
             is_final: true,
+            confidence,
         })
     } else if window_final {
         st.buf = join_words(&st.buf, &transcript);
@@ -540,6 +540,7 @@ pub fn fold_deepgram_event(
             channel,
             text: st.buf.clone(),
             is_final: false,
+            confidence,
         })
     } else {
         Some(TranscriptEvent {
@@ -547,6 +548,7 @@ pub fn fold_deepgram_event(
             channel,
             text: join_words(&st.buf, &transcript),
             is_final: false,
+            confidence,
         })
     }
 }
@@ -583,6 +585,10 @@ pub fn parse_deepgram_event(text: &str, channel: Channel) -> Option<TranscriptEv
     if transcript.is_empty() {
         return None;
     }
+    let confidence = alt
+        .get("confidence")
+        .and_then(|x| x.as_f64())
+        .map(|c| c as f32);
     let start_s = v.get("start").and_then(|x| x.as_f64()).unwrap_or(0.0);
     // Primary: speech_final (end-of-utterance). Fallback to is_final only
     // when speech_final is absent — defensive against Deepgram schema
@@ -598,6 +604,7 @@ pub fn parse_deepgram_event(text: &str, channel: Channel) -> Option<TranscriptEv
         channel,
         text: transcript.to_string(),
         is_final,
+        confidence,
     })
 }
 
@@ -621,6 +628,7 @@ mod tests {
         assert_eq!(ev.text, "hello world");
         assert!(ev.is_final);
         assert_eq!(ev.channel, Channel::Mic);
+        assert_eq!(ev.confidence, Some(0.99));
     }
 
     #[test]

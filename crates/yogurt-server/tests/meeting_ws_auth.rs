@@ -229,6 +229,7 @@ async fn it_accepts_meeting_ws_with_correct_origin_and_token() {
             channel: yogurt_stt::Channel::Mic,
             text: "auth happy path".into(),
             is_final: true,
+            confidence: None,
         })
         .unwrap();
 

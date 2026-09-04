@@ -901,6 +901,15 @@ async fn relay_transcript_events(
                     );
                     continue;
                 }
+                if is_noise(&ev) {
+                    tracing::debug!(
+                        ts_ms = ev.ts_ms,
+                        text = %ev.text,
+                        confidence = ?ev.confidence,
+                        "noise filter: dropped segment"
+                    );
+                    continue;
+                }
                 if tx.send(ev).is_err() {
                     tracing::debug!("transcript relay: no receivers, terminating");
                     return;
@@ -933,6 +942,57 @@ const ECHO_DEDUPE_SIMILARITY: f64 = 0.8;
 /// close together, and `[stt reconnecting]`-style status lines (which fire
 /// on both channels at once) must stay visible.
 const ECHO_DEDUPE_MIN_WORDS: usize = 3;
+
+/// Backchannel/filler words dropped outright when they're ALL a segment
+/// contains. Deliberately excludes "yeah", "okay", "right", "yes", "no" -
+/// those are real one-word answers, and a word list can't tell backchannel
+/// apart from an answer.
+const FILLER_WORDS: &[&str] = &[
+    "um", "umm", "uh", "uhh", "hmm", "hm", "mm", "mmm", "mhm", "mmhmm", "huh", "ah", "er", "erm",
+    "oh", "eh",
+];
+
+/// Confidence floor below which a segment is dropped as noise. Conservative
+/// so mumbled real speech survives; hallucinated words from coughs or taps
+/// score well below it.
+const MIN_CONFIDENCE: f32 = 0.4;
+
+/// True when `ev` is backchannel filler or low-confidence noise and should
+/// be dropped rather than relayed.
+fn is_noise(ev: &TranscriptEvent) -> bool {
+    if ev.confidence.is_some_and(|c| c < MIN_CONFIDENCE) {
+        return true;
+    }
+    if is_sound_tag(&ev.text) {
+        return true;
+    }
+    let words = normalize_words(&ev.text);
+    !words.is_empty() && words.iter().all(|w| FILLER_WORDS.contains(&w.as_str()))
+}
+
+/// True when `text` is whisper's non-speech sound description rather than
+/// transcribed speech: `*whistling*`, `[music]`, `(laughs)`, `♪ la la ♪`, or
+/// an ALL-CAPS phrase like `BIRDS CHIRP`. Server status lines (`[stt ...]`)
+/// are exempted since they share the bracket syntax.
+fn is_sound_tag(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with("[stt ") {
+        return false;
+    }
+    let is_wrapped = (trimmed.starts_with('*') && trimmed.ends_with('*'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+        || (trimmed.starts_with('(') && trimmed.ends_with(')'))
+        || trimmed.contains('♪');
+    if is_wrapped {
+        return true;
+    }
+    // ponytail: an all-caps genuine answer ("OK") or acronym-only line is
+    // dropped too; whisper normally casts real speech in sentence case.
+    trimmed.chars().any(|c| c.is_alphabetic()) && !trimmed.chars().any(|c| c.is_lowercase())
+}
 
 /// Lowercase, split on every non-alphanumeric char, drop empties. Both
 /// channels' text passes through the same normalization, so punctuation and
@@ -1407,6 +1467,7 @@ mod tests {
                 channel: Channel::Mic,
                 text: "hi".into(),
                 is_final: false,
+                confidence: None,
             })
             .unwrap();
 
@@ -1784,6 +1845,17 @@ mod tests {
             channel,
             text: text.to_string(),
             is_final,
+            confidence: None,
+        }
+    }
+
+    fn ev_conf(text: &str, confidence: Option<f32>) -> TranscriptEvent {
+        TranscriptEvent {
+            ts_ms: 0,
+            channel: Channel::Mic,
+            text: text.to_string(),
+            is_final: true,
+            confidence,
         }
     }
 
@@ -1913,6 +1985,64 @@ mod tests {
             d.accept(&ev(200, Channel::System, text, true)),
             "system final repeating earlier system text"
         );
+    }
+
+    #[test]
+    fn is_noise_drops_pure_filler() {
+        assert!(is_noise(&ev_conf("Um, uh-huh.", None)));
+    }
+
+    #[test]
+    fn is_noise_keeps_filler_mixed_with_real_words() {
+        assert!(!is_noise(&ev_conf("um so I think", None)));
+    }
+
+    #[test]
+    fn is_noise_drops_low_confidence() {
+        assert!(is_noise(&ev_conf("hello world", Some(0.1))));
+    }
+
+    #[test]
+    fn is_noise_keeps_confidence_at_threshold() {
+        assert!(!is_noise(&ev_conf("hello world", Some(MIN_CONFIDENCE))));
+    }
+
+    #[test]
+    fn is_noise_keeps_none_confidence() {
+        assert!(!is_noise(&ev_conf("hello world", None)));
+    }
+
+    #[test]
+    fn is_noise_keeps_empty_text() {
+        assert!(!is_noise(&ev_conf("", None)));
+    }
+
+    #[test]
+    fn is_noise_drops_sound_tags() {
+        assert!(is_noise(&ev_conf("*whistling*", None)));
+        assert!(is_noise(&ev_conf("[music]", None)));
+        assert!(is_noise(&ev_conf("(laughs)", None)));
+        assert!(is_noise(&ev_conf("♪ la la ♪", None)));
+        assert!(is_noise(&ev_conf("BIRDS CHIRP", None)));
+    }
+
+    #[test]
+    fn is_noise_keeps_stt_status_lines() {
+        assert!(!is_noise(&ev_conf("[stt reconnecting]", None)));
+        assert!(!is_noise(&ev_conf(
+            "[stt overloaded, transcript may be lossy]",
+            None
+        )));
+    }
+
+    #[test]
+    fn is_noise_keeps_real_speech() {
+        assert!(!is_noise(&ev_conf("Okay, are we ready to talk?", None)));
+        assert!(!is_noise(&ev_conf(
+            "I'm gonna go make my food first.",
+            None
+        )));
+        assert!(!is_noise(&ev_conf("*whistling* then we talked", None)));
     }
 
     /// Drives `persist_transcript` directly against a broadcast channel: a

@@ -306,6 +306,49 @@ describe("useTranscriptWs", () => {
     ]);
   });
 
+  it("dedupes a late seedHistory refetch against live events already received (MTG-13)", async () => {
+    // A meeting already live on page load: seedHistory starts empty, so the
+    // seed effect returns early and never latches. Live finals accumulate
+    // in `events`. A mid-meeting persist + refetch then delivers those same
+    // finals (plus older history) as seedHistory - they must not be
+    // prepended a second time.
+    const { result, rerender } = renderHook(
+      ({ seedHistory }: { seedHistory: TranscriptEvent[] }) =>
+        useTranscriptWs("meeting-late-seed", "test-token", seedHistory),
+      { initialProps: { seedHistory: [] as TranscriptEvent[] } },
+    );
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    const ws = MockWebSocket.lastInstance!;
+
+    const liveA: TranscriptEvent = {
+      ts_ms: 1000,
+      channel: "mic",
+      text: "first live line",
+      is_final: true,
+    };
+    const liveB: TranscriptEvent = {
+      ts_ms: 2000,
+      channel: "system",
+      text: "second live line",
+      is_final: true,
+    };
+    act(() => {
+      ws.emit(frame(liveA));
+      ws.emit(frame(liveB));
+    });
+    expect(result.current.events).toEqual([liveA, liveB]);
+
+    const older: TranscriptEvent = {
+      ts_ms: 500,
+      channel: "mic",
+      text: "older seeded line",
+      is_final: true,
+    };
+    rerender({ seedHistory: [older, liveA, liveB] });
+
+    expect(result.current.events).toEqual([older, liveA, liveB]);
+  });
+
   it("keeps the seeded history when the token arrives after mount (MTG-1)", async () => {
     // Client-side nav back into a live meeting: React Query's cache is warm
     // so `seedHistory` is ready on the first render, but `ensureSessionToken`

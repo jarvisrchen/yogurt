@@ -116,6 +116,7 @@ async fn it_fans_transcript_events_to_ws_clients() {
             channel: yogurt_stt::Channel::Mic,
             text: "hello from the test".into(),
             is_final: true,
+            confidence: None,
         })
         .unwrap();
 
