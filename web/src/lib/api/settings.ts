@@ -246,6 +246,17 @@ export const settingsApi = {
       body: JSON.stringify(api_key ? { api_key } : {}),
     }),
   /**
+   * `POST /api/settings/stt/local/test` (AUD-10) - loads the given local
+   * whisper.cpp model and transcribes a built-in silent clip, reporting
+   * whether the model actually loads and runs on this machine. Omit
+   * `model` to test whatever `stt_model` is currently selected.
+   */
+  testLocalStt: (model?: string) =>
+    http<TestConnectionResult>("/api/settings/stt/local/test", {
+      method: "POST",
+      body: JSON.stringify(model ? { model } : {}),
+    }),
+  /**
    * `POST /api/settings/providers/:id/models` - probe the provider's
    * `/v1/models` and return the list of model ids it advertises. A draft
    * `apiKey` is preferred over the stored key so the user can

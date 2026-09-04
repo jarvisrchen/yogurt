@@ -105,15 +105,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
   </details>
 
-- [ ] **AUD-10** Add a Test button for the local STT model, matching the cloud one
-  <details>
-  <summary>Details</summary>
-
-  `STTPicker` renders `TestKeyButton` for the Deepgram card only.
-  The local-model pills have no equivalent, so a downloaded model that fails to load is only discovered when a meeting starts.
-  Add a Test action for the selected local model that loads it and transcribes a short built-in clip, reporting a verdict line like the cloud button.
-  </details>
-
 ## LLM
 
 ## CLI
