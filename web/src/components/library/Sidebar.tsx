@@ -15,11 +15,12 @@
  * conceptual link, smaller blast radius. (Auto-fix Rule 3.)
  */
 
+import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
 import { Plus, Settings as SettingsIcon } from "lucide-react";
 import { Logo } from "../Logo";
 import { useCreateMeeting } from "../../lib/api/meetings";
-import { useLabels } from "../../lib/api/labels";
+import { useCreateLabel, useLabels } from "../../lib/api/labels";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { SidebarLabelRow } from "./SidebarLabelRow";
@@ -29,6 +30,18 @@ export function Sidebar() {
   const navigate = useNavigate();
   const createMeeting = useCreateMeeting();
   const labels = useLabels();
+  const createLabel = useCreateLabel();
+  const [addingLabel, setAddingLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+
+  function commitNewLabel() {
+    const name = newLabelName.trim();
+    if (name.length > 0) {
+      createLabel.mutate({ name });
+    }
+    setNewLabelName("");
+    setAddingLabel(false);
+  }
 
   // Phase 5 settings drive the "Local-only · on" pill — only show it
   // when no `kind === "cloud"` provider is active. The shape is the
@@ -119,14 +132,46 @@ export function Sidebar() {
       </nav>
 
       {/* Labels */}
-      <div className="px-5 pt-5 pb-1 text-[11px] font-mono uppercase tracking-wider text-mut">
-        Labels
+      <div className="px-5 pt-5 pb-1 flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-mut">
+        <span>Labels</span>
+        <button
+          type="button"
+          aria-label="New label"
+          onClick={() => {
+            setNewLabelName("");
+            setAddingLabel(true);
+          }}
+          disabled={createLabel.isPending}
+          className="text-mut hover:text-ink disabled:opacity-50"
+        >
+          <Plus size={12} aria-hidden />
+        </button>
       </div>
       <div className="px-2 flex flex-col gap-0.5">
-        {(labels.data ?? []).length === 0 ? (
+        {addingLabel && (
+          <div className="px-3 py-1">
+            <input
+              autoFocus
+              placeholder="Label name"
+              value={newLabelName}
+              onChange={(e) => setNewLabelName(e.target.value)}
+              onBlur={commitNewLabel}
+              disabled={createLabel.isPending}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitNewLabel();
+                if (e.key === "Escape") {
+                  setNewLabelName("");
+                  setAddingLabel(false);
+                }
+              }}
+              className="w-full px-2 py-1 rounded-button border border-line bg-paper text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-blue/30"
+            />
+          </div>
+        )}
+        {(labels.data ?? []).length === 0 && !addingLabel ? (
           <p className="px-3 py-1 text-[12px] font-mono text-mut">No labels yet</p>
         ) : (
-          labels.data!.map((l) => <SidebarLabelRow key={l.id} label={l} />)
+          (labels.data ?? []).map((l) => <SidebarLabelRow key={l.id} label={l} />)
         )}
       </div>
 

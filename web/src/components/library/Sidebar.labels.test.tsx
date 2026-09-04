@@ -8,7 +8,12 @@ import "@testing-library/jest-dom/vitest";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Sidebar } from "./Sidebar";
-import { useDeleteLabel, useLabels, useUpdateLabel } from "../../lib/api/labels";
+import {
+  useCreateLabel,
+  useDeleteLabel,
+  useLabels,
+  useUpdateLabel,
+} from "../../lib/api/labels";
 import { useCreateMeeting } from "../../lib/api/meetings";
 import { settingsApi } from "../../lib/api/settings";
 
@@ -16,6 +21,7 @@ vi.mock("../../lib/api/labels", () => ({
   useLabels: vi.fn(),
   useUpdateLabel: vi.fn(),
   useDeleteLabel: vi.fn(),
+  useCreateLabel: vi.fn(),
 }));
 
 vi.mock("../../lib/api/meetings", () => ({
@@ -59,6 +65,10 @@ describe("Sidebar — Labels section", () => {
       mutateAsync: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -88,6 +98,10 @@ describe("Sidebar — Labels section", () => {
       mutateAsync: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -116,10 +130,84 @@ describe("Sidebar — Labels section", () => {
       mutateAsync: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
 
     expect(screen.getByText("No labels yet")).toBeInTheDocument();
+  });
+
+  it("creates a label via the + affordance", () => {
+    vi.mocked(useLabels).mockReturnValue({ data: [] } as unknown as ReturnType<
+      typeof useLabels
+    >);
+    vi.mocked(useUpdateLabel).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useUpdateLabel>);
+    vi.mocked(useDeleteLabel).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteLabel>);
+    vi.mocked(useCreateMeeting).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateMeeting>);
+    const mutate = vi.fn();
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
+
+    renderSidebar();
+
+    expect(screen.queryByPlaceholderText("Label name")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New label" }));
+    const input = screen.getByPlaceholderText("Label name");
+
+    fireEvent.change(input, { target: { value: "  Sales  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mutate).toHaveBeenCalledWith({ name: "Sales" });
+    expect(screen.queryByPlaceholderText("Label name")).not.toBeInTheDocument();
+  });
+
+  it("closes the new-label input on Escape without creating", () => {
+    vi.mocked(useLabels).mockReturnValue({ data: [] } as unknown as ReturnType<
+      typeof useLabels
+    >);
+    vi.mocked(useUpdateLabel).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useUpdateLabel>);
+    vi.mocked(useDeleteLabel).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteLabel>);
+    vi.mocked(useCreateMeeting).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateMeeting>);
+    const mutate = vi.fn();
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
+
+    renderSidebar();
+
+    fireEvent.click(screen.getByRole("button", { name: "New label" }));
+    const input = screen.getByPlaceholderText("Label name");
+    fireEvent.change(input, { target: { value: "Draft" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.queryByPlaceholderText("Label name")).not.toBeInTheDocument();
   });
 });

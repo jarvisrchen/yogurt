@@ -45,14 +45,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-- [ ] **UI-9** Add a "New label" affordance to the Labels group in the left panel
-  <details>
-  <summary>Details</summary>
-
-  `SidebarLabelRow` already supports rename and delete, but the only way to create a label is through the per-meeting `LabelPicker` popover.
-  Add a create action to the sidebar Labels group (an inline row or "+" button) that reuses `useCreateLabel`, so labels can be managed entirely from the left panel.
-  </details>
-
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings

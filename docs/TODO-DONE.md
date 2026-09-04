@@ -937,3 +937,17 @@ New closed items go at the bottom.
 
   Fixed the live-transcript duplicate-lines bug (MTG-13): the seed effect in `useTranscriptWs` (`web/src/lib/ws.ts`) now dedupes seed entries against the finals already present in `events` before prepending, using the same `${channel} ${text}` signature already used for `seededFinalsRef`, so a mid-meeting `seedHistory` refetch (e.g. from a periodic `transcript_json` persist plus a window-focus TanStack refetch) no longer re-adds finals that live WS delivery already appended. Added a regression test in `web/src/lib/ws.test.ts` that mounts with an empty `seedHistory`, delivers two live finals, then rerenders with a `seedHistory` containing those two plus one older entry, asserting exactly three deduped events in order.
   </details>
+
+- [x] **UI-9** Add a "New label" affordance to the Labels group in the left panel
+  <details>
+  <summary>Details</summary>
+
+  `SidebarLabelRow` already supports rename and delete, but the only way to create a label is through the per-meeting `LabelPicker` popover.
+  Add a create action to the sidebar Labels group (an inline row or "+" button) that reuses `useCreateLabel`, so labels can be managed entirely from the left panel.
+
+  Added a "+" affordance next to the Labels group header in the sidebar.
+  Clicking it opens an inline text input matching SidebarLabelRow's rename styling.
+  Enter commits (trimmed name, ignores empty/whitespace-only) via `useCreateLabel`; Escape cancels; blur commits like rename does.
+  The button and input disable while the create mutation is pending.
+  Added vitest coverage in Sidebar.labels.test.tsx for opening the input, Enter creating, and Escape canceling.
+  </details>
