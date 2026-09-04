@@ -963,8 +963,35 @@ fn is_noise(ev: &TranscriptEvent) -> bool {
     if ev.confidence.is_some_and(|c| c < MIN_CONFIDENCE) {
         return true;
     }
+    if is_sound_tag(&ev.text) {
+        return true;
+    }
     let words = normalize_words(&ev.text);
     !words.is_empty() && words.iter().all(|w| FILLER_WORDS.contains(&w.as_str()))
+}
+
+/// True when `text` is whisper's non-speech sound description rather than
+/// transcribed speech: `*whistling*`, `[music]`, `(laughs)`, `♪ la la ♪`, or
+/// an ALL-CAPS phrase like `BIRDS CHIRP`. Server status lines (`[stt ...]`)
+/// are exempted since they share the bracket syntax.
+fn is_sound_tag(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with("[stt ") {
+        return false;
+    }
+    let is_wrapped = (trimmed.starts_with('*') && trimmed.ends_with('*'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+        || (trimmed.starts_with('(') && trimmed.ends_with(')'))
+        || trimmed.contains('♪');
+    if is_wrapped {
+        return true;
+    }
+    // ponytail: an all-caps genuine answer ("OK") or acronym-only line is
+    // dropped too; whisper normally casts real speech in sentence case.
+    trimmed.chars().any(|c| c.is_alphabetic()) && !trimmed.chars().any(|c| c.is_lowercase())
 }
 
 /// Lowercase, split on every non-alphanumeric char, drop empties. Both
@@ -1988,6 +2015,34 @@ mod tests {
     #[test]
     fn is_noise_keeps_empty_text() {
         assert!(!is_noise(&ev_conf("", None)));
+    }
+
+    #[test]
+    fn is_noise_drops_sound_tags() {
+        assert!(is_noise(&ev_conf("*whistling*", None)));
+        assert!(is_noise(&ev_conf("[music]", None)));
+        assert!(is_noise(&ev_conf("(laughs)", None)));
+        assert!(is_noise(&ev_conf("♪ la la ♪", None)));
+        assert!(is_noise(&ev_conf("BIRDS CHIRP", None)));
+    }
+
+    #[test]
+    fn is_noise_keeps_stt_status_lines() {
+        assert!(!is_noise(&ev_conf("[stt reconnecting]", None)));
+        assert!(!is_noise(&ev_conf(
+            "[stt overloaded, transcript may be lossy]",
+            None
+        )));
+    }
+
+    #[test]
+    fn is_noise_keeps_real_speech() {
+        assert!(!is_noise(&ev_conf("Okay, are we ready to talk?", None)));
+        assert!(!is_noise(&ev_conf(
+            "I'm gonna go make my food first.",
+            None
+        )));
+        assert!(!is_noise(&ev_conf("*whistling* then we talked", None)));
     }
 
     /// Drives `persist_transcript` directly against a broadcast channel: a

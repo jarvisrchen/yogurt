@@ -926,3 +926,14 @@ New closed items go at the bottom.
 
   Filtered at `relay_transcript_events` next to `EchoDeduper`: pure-filler segments (non-lexical list, "yeah"/"okay" kept) and segments with engine confidence below 0.4 are dropped with a debug log. `TranscriptEvent.confidence` is populated from Deepgram and from whisper `1 - no_speech_probability`. Open question resolved as drop-with-log; greyed-out UI deferred.
   </details>
+
+- [x] **MTG-13** Live transcript renders every line twice
+  <details>
+  <summary>Details</summary>
+
+  Loading a page mid-meeting shows every transcript line duplicated in the live dock.
+  Root cause: `useTranscriptWs`'s seed effect (`web/src/lib/ws.ts`, ~line 212) latches `seededMeetingIdRef` only when `seedHistory` is non-empty; on page load during a live meeting `seedHistory` starts empty, so the effect returns early without latching and live WS finals accumulate directly in `events`.
+  The server persists `transcript_json` mid-meeting and a later TanStack refetch (window focus, etc.) makes `seedHistory` non-empty, so the effect fires again and prepends those same segments on top of the identical live events already present.
+
+  Fixed the live-transcript duplicate-lines bug (MTG-13): the seed effect in `useTranscriptWs` (`web/src/lib/ws.ts`) now dedupes seed entries against the finals already present in `events` before prepending, using the same `${channel} ${text}` signature already used for `seededFinalsRef`, so a mid-meeting `seedHistory` refetch (e.g. from a periodic `transcript_json` persist plus a window-focus TanStack refetch) no longer re-adds finals that live WS delivery already appended. Added a regression test in `web/src/lib/ws.test.ts` that mounts with an empty `seedHistory`, delivers two live finals, then rerenders with a `seedHistory` containing those two plus one older entry, asserting exactly three deduped events in order.
+  </details>
