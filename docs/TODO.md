@@ -105,7 +105,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
   </details>
 
-
 ## LLM
 
 ## CLI
