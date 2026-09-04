@@ -83,6 +83,9 @@ pub struct TranscriptEvent {
     /// `true` when the engine considers this segment locked in. Deepgram sends
     /// `is_final: true` after its end-of-utterance heuristic fires.
     pub is_final: bool,
+    /// Engine's per-segment confidence in `0.0..=1.0`, or `None` when the
+    /// engine doesn't expose one.
+    pub confidence: Option<f32>,
 }
 
 pub type AudioRx = tokio::sync::broadcast::Receiver<AudioChunk>;
@@ -110,6 +113,7 @@ mod tests {
             channel: Channel::Mic,
             text: "hello world".into(),
             is_final: true,
+            confidence: Some(0.9),
         };
         let json = serde_json::to_value(&ev).unwrap();
         // PRD §10: `{ts_ms, channel, text, is_final}`. `channel` is "mic" lowercase

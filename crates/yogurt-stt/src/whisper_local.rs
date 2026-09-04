@@ -157,7 +157,7 @@ impl WhisperLocal {
     ///
     /// **This function blocks the calling thread.** Always call it from
     /// inside `tokio::task::spawn_blocking`.
-    fn decode(ctx: &WhisperContext, pcm_i16: &[i16], fast: bool) -> Result<String> {
+    fn decode(ctx: &WhisperContext, pcm_i16: &[i16], fast: bool) -> Result<(String, Option<f32>)> {
         // whisper-rs wants f32 in [-1.0, 1.0]. The helper is a single
         // SIMD-friendly loop in whisper-rs; no allocation other than our
         // destination buffer.
@@ -198,6 +198,10 @@ impl WhisperLocal {
 
         let n_segments = state.full_n_segments();
         let mut out = String::new();
+        // Confidence = 1 - max(no_speech_probability) across segments: the
+        // worst (most silence-like) segment sets the ceiling for the whole
+        // decode.
+        let mut max_no_speech = 0.0f32;
         for i in 0..n_segments {
             // whisper-rs 0.16 replaced `full_get_segment_text(i)` with the
             // typed `get_segment(i)?.to_str_lossy()` chain. Lossy is
@@ -208,9 +212,15 @@ impl WhisperLocal {
                 if let Ok(s) = seg.to_str_lossy() {
                     out.push_str(&s);
                 }
+                max_no_speech = max_no_speech.max(seg.no_speech_probability());
             }
         }
-        Ok(out.trim().to_string())
+        let confidence = if n_segments > 0 {
+            Some(1.0 - max_no_speech)
+        } else {
+            None
+        };
+        Ok((out.trim().to_string(), confidence))
     }
 }
 
@@ -258,7 +268,7 @@ impl Stt for WhisperLocal {
                 let ctx = ctx_mic.clone();
                 // LOCAL-05 invariant: whisper.cpp call MUST be on a
                 // blocking thread, not on the tokio worker pool.
-                let text = tokio::task::spawn_blocking(move || {
+                let (text, confidence) = tokio::task::spawn_blocking(move || {
                     Self::decode(&ctx, &pcm, /* fast */ false)
                 })
                 .await
@@ -273,6 +283,7 @@ impl Stt for WhisperLocal {
                     channel: Channel::Mic,
                     text,
                     is_final: true,
+                    confidence,
                 });
             }
         });
@@ -285,7 +296,7 @@ impl Stt for WhisperLocal {
             while let Some((pcm, start_ms, _end_ms)) = sys_seg_rx.recv().await {
                 let ctx = ctx_sys.clone();
                 // LOCAL-05 invariant.
-                let text = tokio::task::spawn_blocking(move || {
+                let (text, confidence) = tokio::task::spawn_blocking(move || {
                     Self::decode(&ctx, &pcm, /* fast */ false)
                 })
                 .await
@@ -300,6 +311,7 @@ impl Stt for WhisperLocal {
                     channel: Channel::System,
                     text,
                     is_final: true,
+                    confidence,
                 });
             }
         });
@@ -388,7 +400,7 @@ impl Stt for WhisperLocal {
 
                 let ctx = ctx_partial.clone();
                 // LOCAL-05 invariant.
-                let text = tokio::task::spawn_blocking(move || {
+                let (text, confidence) = tokio::task::spawn_blocking(move || {
                     Self::decode(&ctx, &pcm, /* fast */ true)
                 })
                 .await
@@ -412,6 +424,7 @@ impl Stt for WhisperLocal {
                     channel,
                     text,
                     is_final: false,
+                    confidence,
                 });
             }
         }));

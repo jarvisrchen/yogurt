@@ -232,7 +232,21 @@ export function useTranscriptWs(
         .filter((e) => e.is_final)
         .map((e) => `${e.channel} ${e.text}`),
     );
-    setEvents((prev) => [...seedHistory, ...prev]);
+    // MTG-13: if this meeting was already live when the page loaded, seedHistory
+    // starts empty and live finals land in `events` first; a later mid-meeting
+    // persist + refetch then delivers those same finals as seedHistory here.
+    // Dedupe against what's already in `events` so they aren't prepended twice.
+    setEvents((prev) => {
+      const existing = new Set(
+        prev
+          .filter((e) => e.is_final)
+          .map((e) => `${e.channel} ${e.text}`),
+      );
+      const newSeeds = seedHistory.filter(
+        (e) => !e.is_final || !existing.has(`${e.channel} ${e.text}`),
+      );
+      return [...newSeeds, ...prev];
+    });
   }, [meetingId, seedHistory]);
 
   useEffect(() => {
