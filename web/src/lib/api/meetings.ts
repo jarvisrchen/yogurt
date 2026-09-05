@@ -338,6 +338,7 @@ export interface ActiveRecording {
   /** AUD-6: whether the mic is currently paused. `Channel::System` keeps
    *  recording regardless — this only reflects the mic. */
   mic_muted: boolean;
+  echo_enabled: boolean;
 }
 
 export const activeRecordingKey = ["meetings", "active"] as const;

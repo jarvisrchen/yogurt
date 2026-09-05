@@ -47,6 +47,11 @@ export interface General {
    *  prompt (and stops a recording once the detected window closes).
    *  Mirrors `crates/yogurt-db::settings::General::meeting_detection`. */
   meeting_detection: boolean;
+  /** Output device the mic is echoed to, "" means system default. */
+  audio_echo_output_device: string;
+  /** Whether mic-echo starts enabled on the next recording. */
+  audio_echo_enabled: boolean;
+  audio_echo_buffer: number;
 }
 
 /**
@@ -282,6 +287,7 @@ export const settingsApi = {
 
 export const audioApi = {
   devices: () => http<AudioDevice[]>("/api/audio/devices"),
+  outputDevices: () => http<AudioDevice[]>("/api/audio/output-devices"),
   /** `POST /api/meetings/:id/audio-device` (quick task 260709-wnn) - hot-swap
    *  the mic device on an actively-recording meeting. Returns the resolved
    *  device name so the caller can reflect the actual active device. */
@@ -303,6 +309,22 @@ export const audioApi = {
         body: JSON.stringify({ muted }),
       },
     ),
+  setEcho: (meetingId: string, body: { enabled?: boolean; device?: string }) =>
+    http<{ enabled: boolean; device: string }>(
+      `/api/meetings/${meetingId}/echo`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  /** `POST /api/audio/echo/test` - plays a 440 Hz test tone on the echo
+   *  output device, independent of any recording. `device` missing/empty
+   *  falls back to the persisted echo output device, then system default. */
+  testEcho: (device?: string) =>
+    http<TestConnectionResult>("/api/audio/echo/test", {
+      method: "POST",
+      body: JSON.stringify(device ? { device } : {}),
+    }),
 };
 
 // ─── React-Query hooks (Phase 7 onboarding + permission gating) ─────────────

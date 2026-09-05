@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUD-11 mic echo - mockup options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBF7EF;--card:#FFFFFF;--ink:#211D18;--grey:#A89F90;--ai:#7A7264;--line:#EBE3D5;
+    --blue:#5B4FC7;--blsoft:#ECE9FB;--straw:#E07A66;--strsoft:#FBE6E0;--matcha:#5E9E73;--mtsoft:#E7F0E8;--mut:#8A8174;
+    --honey:#A67C1B;--honeysoft:#FBF0D6;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    --r-chip:6px;--r-btn:9px;--r-card:14px;--r-pill:999px;
+    --sh-card:0 2px 6px rgba(40,30,15,.08);--sh-pop:0 12px 30px -10px rgba(40,30,15,.22);--sh-blue:0 2px 8px rgba(91,79,199,.3);
+  }
+  *{box-sizing:border-box;min-width:0}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:26px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px}
+  h2{font-size:18px;font-weight:700;margin:40px 0 12px;letter-spacing:-.01em}
+  h3{font-size:14px;font-weight:600;margin:0}
+  p{margin:0 0 8px}
+  .sub{color:var(--mut);font-size:13px}
+  .mono{font-family:var(--mono)}
+  .k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px}
+  .opt{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-card);padding:18px;display:flex;flex-direction:column;gap:12px}
+  .opt .tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:var(--r-pill);background:var(--blsoft);color:var(--blue);font-weight:600}
+  .opt ul{margin:0;padding-left:18px;font-size:13px;color:var(--ai)}
+  .opt li{margin:2px 0}
+  .pro::marker{color:var(--matcha)} .con::marker{color:var(--straw)}
+  /* ---- meeting header replica ---- */
+  .mock{background:var(--paper);border:1px dashed var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
+  .mock .back{font-size:12px;color:var(--mut);display:flex;gap:6px;align-items:center}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--straw);animation:recpulse 1.4s ease-in-out infinite}
+  @keyframes recpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
+  .row1{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px}
+  .title{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1}
+  .btn{padding:7px 12px;border-radius:var(--r-btn);font-size:12.5px;font-weight:600;color:#fff;background:var(--blue);box-shadow:var(--sh-blue);border:0;font-family:inherit}
+  .pills{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--card);color:var(--mut);display:inline-flex;align-items:center;gap:5px}
+  .pill.on{background:var(--mtsoft);color:var(--matcha);border-color:transparent;font-weight:600}
+  .pill.warn{background:var(--honeysoft);color:var(--honey);border-color:transparent}
+  .sel{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:6px;padding:4px 22px 4px 8px;background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238A8174' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 7px center;color:var(--ink);appearance:none}
+  .microw{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--mut)}
+  .arrow{color:var(--grey)}
+  .big{width:100%;padding:12px;border-radius:var(--r-btn);border:1px solid var(--line);background:var(--card);font:inherit;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ink)}
+  .big.on{background:var(--mtsoft);border-color:var(--matcha);color:var(--matcha)}
+  .big kbd{background:rgba(0,0,0,.08);font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:14px;font-size:13px;color:var(--grey)}
+  .ico{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .meter{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+  .meter i{width:3px;background:var(--matcha);border-radius:1px;animation:wave 1s ease-in-out infinite}
+  .meter i:nth-child(2){animation-delay:.15s}.meter i:nth-child(3){animation-delay:.3s}.meter i:nth-child(4){animation-delay:.45s}
+  @keyframes wave{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+  /* settings replica */
+  .set{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:18px;display:flex;flex-direction:column;gap:14px;max-width:520px}
+  .set .hs{font-size:15px;font-weight:700}
+  .set label.k{display:block;margin-bottom:5px}
+  .set .sel{width:100%;padding:8px 26px 8px 10px;font-family:var(--sans);font-size:13px}
+  .field{display:flex;flex-direction:column}
+  .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .sw{width:34px;height:20px;border-radius:999px;background:var(--matcha);position:relative;flex:none}
+  .sw::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+  .sw.off{background:var(--line)}.sw.off::after{right:auto;left:2px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-family:var(--mono);font-size:11px}
+  .seg span{padding:4px 9px;color:var(--mut)}.seg span.on{background:var(--blsoft);color:var(--blue);font-weight:600}
+  .note{font-family:var(--mono);font-size:11px;color:var(--mut)}
+  .callout{background:var(--card);border-left:3px solid var(--blue);border-radius:8px;padding:12px 14px;font-size:13px;margin:12px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);background:var(--paper)}
+  tr:last-child td{border-bottom:0}
+  .tw{overflow-x:auto}
+  .arch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:stretch}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px}
+  .box b{display:block;font-family:var(--mono);font-size:11px;color:var(--blue);margin-bottom:3px}
+  .box.new{border-color:var(--matcha);background:var(--mtsoft)}
+  .box.new b{color:var(--matcha)}
+  form.q{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--sh-pop)}
+  form.q label.opt-l{display:flex;gap:10px;align-items:flex-start;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;cursor:pointer}
+  form.q label.opt-l:has(input:checked){border-color:var(--blue);background:var(--blsoft)}
+  form.q input[type=radio],form.q input[type=checkbox]{margin-top:3px;accent-color:var(--blue)}
+  form.q textarea{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px;resize:vertical;min-height:56px}
+  form.q button{align-self:flex-start;padding:9px 16px;border-radius:var(--r-btn);background:var(--blue);color:#fff;font-weight:600;font-size:13.5px;border:0;box-shadow:var(--sh-blue);cursor:pointer;font-family:inherit}
+  .queued{font-family:var(--mono);font-size:11px;color:var(--matcha);display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AUD-11: echo the mic to a second output device</h1>
+  <p class="sub">Three ways to put "send my mic to BlackHole while recording" into yogurt. All three share the same backend. Pick one below, or mix.</p>
+
+  <div class="callout">
+    <b>What it does.</b> While a meeting records, yogurt already owns a cpal mic input stream. The echo opens a cpal <em>output</em> stream on a chosen device (typically BlackHole, so Zoom/OBS/a DAW can read it) and copies mic frames to it with a small fixed buffer. Audio stays in-process and on-machine, and muting the mic mutes the echo too.
+  </div>
+
+  <h2>Option A: inline on the mic row</h2>
+  <div class="grid">
+    <div class="opt">
+      <span class="tag">A</span>
+      <h3>Echo picker next to the mic picker, same style</h3>
+      <div class="mock">
+        <div class="back">← Library <span class="dot"></span></div>
+        <div class="row1"><span class="title">Weekly sync</span><span><button class="btn">Stop recording</button> <button class="btn">End meeting</button></span></div>
+        <div class="pills"><span class="pill">Sep 4</span><span class="pill">12:42</span><span class="pill">whisper-large-v3</span></div>
+        <div class="microw">
+          <select class="sel"><option>MacBook Pro Microphone</option></select>
+          <span class="arrow">→ echo</span>
+          <select class="sel" style="color:var(--matcha)"><option>BlackHole 2ch</option><option>Off</option><option>External Headphones</option></select>
+          <span class="pill on"><span class="meter"><i></i><i></i><i></i><i></i></span> ~10 ms</span>
+        </div>
+        <button class="big"><svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg> Mute mic <kbd>M</kbd></button>
+        <div class="card">Notes…</div>
+      </div>
+      <ul>
+        <li class="pro">Zero new surface: the row already holds the device picker; the echo picker is its mirror.</li>
+        <li class="pro">Hot-swap while recording, same as the mic picker. "Off" is just another option.</li>
+        <li class="pro">Live pill shows it is actually flowing (level meter + buffer latency).</li>
+        <li class="con">Two dropdowns on one line reads a bit dense; the arrow is doing the explaining.</li>
+        <li class="con">Buffer size lives in Settings only.</li>
+      </ul>
+    </div>
+
+    <div class="opt">
+      <span class="tag">B</span>
+      <h3>Big echo toggle beside the mute button, output device on the mic row</h3>
+      <div class="mock">
+        <div class="back">← Library <span class="dot"></span></div>
+        <div class="row1"><span class="title">Weekly sync</span><span><button class="btn">Stop recording</button> <button class="btn">End meeting</button></span></div>
+        <div class="pills"><span class="pill">Sep 4</span><span class="pill">12:42</span><span class="pill">whisper-large-v3</span></div>
+        <div class="microw">
+          <select class="sel"><option>MacBook Pro Microphone</option></select>
+          <span class="arrow">echo to</span>
+          <select class="sel"><option>BlackHole 2ch</option><option>External Headphones</option><option>MacBook Pro Speakers</option></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button class="big"><svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg> Mute mic <kbd>M</kbd></button>
+          <button class="big on"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg> Echo → BlackHole 2ch <kbd>E</kbd></button>
+        </div>
+        <div class="card">Notes…</div>
+      </div>
+      <ul>
+        <li class="pro">Reads as a core in-meeting action, parallel to Mute (same size, same keyboard-shortcut pattern).</li>
+        <li class="pro">One tap on/off; state is obvious from across the room (matcha fill when live).</li>
+        <li class="pro">Output device picked right on the mic row (mirrors the mic picker); the button is pure on/off.</li>
+        <li class="con">Takes vertical space above the notes even when you never use it (hide unless an echo device is configured).</li>
+      </ul>
+    </div>
+
+    <div class="opt">
+      <span class="tag">C</span>
+      <h3>Settings-first, status pill in the meeting</h3>
+      <div class="mock">
+        <div class="back">← Library <span class="dot"></span></div>
+        <div class="row1"><span class="title">Weekly sync</span><span><button class="btn">Stop recording</button> <button class="btn">End meeting</button></span></div>
+        <div class="pills"><span class="pill">Sep 4</span><span class="pill">12:42</span><span class="pill">whisper-large-v3</span><span class="pill on"><span class="meter"><i></i><i></i><i></i><i></i></span> echo → BlackHole 2ch</span></div>
+        <div class="microw"><select class="sel"><option>MacBook Pro Microphone</option></select></div>
+        <button class="big"><svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg> Mute mic <kbd>M</kbd></button>
+        <div class="card">Notes…</div>
+      </div>
+      <ul>
+        <li class="pro">Nothing new in the meeting chrome except a metadata pill; the feature is "set and forget" like the STT engine.</li>
+        <li class="pro">Cleanest for people who never use it: no pill, no change at all.</li>
+        <li class="con">Turning it off mid-call means a trip to Settings (pill could click through).</li>
+        <li class="con">Pill row is metadata that persists after Stop; the echo pill would have to disappear on Stop, which is inconsistent with its neighbors.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Option B, expanded: full-width two-column layout</h2>
+  <p class="sub">Left column is the mic (device, then Mute). Right column is the echo (output device, then Echo). Both dropdowns use the existing picker style; both buttons are the existing full-width Button. Shown recording with echo on, then stopped.</p>
+  <style>
+    .full{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-card);padding:0;overflow:hidden;margin-bottom:20px}
+    .full .win{background:var(--paper);padding:28px 32px 32px;display:flex;flex-direction:column;gap:12px}
+    .full .title{font-size:26px}
+    .full .btn{padding:8px 16px;font-size:13.5px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-top:4px}
+    .col{display:flex;flex-direction:column;gap:8px;min-width:0}
+    .col .k{display:flex;align-items:center;gap:8px}
+    .col .sel{width:100%;padding:6px 26px 6px 10px}
+    .col .big{padding:14px;font-size:15px}
+    .big.on .meter i{background:currentColor}
+    .big:disabled{opacity:.55}
+    @media (max-width:640px){.cols{grid-template-columns:1fr}}
+  </style>
+  <div class="full"><div class="win">
+    <div class="back">← Library <span class="dot"></span></div>
+    <div class="row1"><span class="title">Weekly sync</span><span><button class="btn">Stop recording</button> <button class="btn">End meeting</button></span></div>
+    <div class="pills"><span class="pill">Sep 4</span><span class="pill">12:42</span><span class="pill">whisper-large-v3</span><span class="pill">gpt-4.1</span></div>
+    <div class="cols">
+      <div class="col">
+        <span class="k">Microphone</span>
+        <select class="sel"><option>MacBook Pro Microphone (default)</option><option>External USB Mic</option></select>
+        <button class="big"><svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg> Mute mic <kbd>M</kbd></button>
+      </div>
+      <div class="col">
+        <span class="k">Echo to <span class="pill on" style="text-transform:none;letter-spacing:0"><span class="meter"><i></i><i></i><i></i><i></i></span> live · ~11 ms</span></span>
+        <select class="sel"><option>BlackHole 2ch</option><option>External Headphones</option><option>MacBook Pro Speakers</option></select>
+        <button class="big on"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg> Echo <kbd>E</kbd></button>
+      </div>
+    </div>
+    <div class="card" style="min-height:140px">Notes…</div>
+  </div></div>
+
+  <p class="sub">Same screen while stopped (not recording): both buttons disabled with a tooltip, like Mute today. The dropdown selections persist to Settings so the next Start uses them.</p>
+  <div class="full"><div class="win">
+    <div class="back">← Library</div>
+    <div class="row1"><span class="title">Weekly sync</span><span><button class="btn">Start recording</button> <button class="btn">End meeting</button></span></div>
+    <div class="pills"><span class="pill">Sep 4</span><span class="pill">12:42</span><span class="pill">whisper-large-v3</span><span class="pill">gpt-4.1</span></div>
+    <div class="cols">
+      <div class="col">
+        <span class="k">Microphone</span>
+        <select class="sel"><option>MacBook Pro Microphone (default)</option></select>
+        <button class="big" disabled><svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg> Mute mic</button>
+      </div>
+      <div class="col">
+        <span class="k">Echo to</span>
+        <select class="sel"><option>BlackHole 2ch</option></select>
+        <button class="big" disabled><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg> Echo</button>
+      </div>
+    </div>
+    <div class="card" style="min-height:140px">Notes…</div>
+  </div></div>
+  <div class="callout"><b>Behavior.</b> Echo starts off each recording (safe default, no surprise audio into Zoom) unless "Echo on by default" is checked in Settings. Muting the mic also silences the echo. Picking a new output device while echo is live hot-swaps it. If the device can't be opened, the Echo button drops back to off and the existing error banner explains why; recording is unaffected.</div>
+
+  <h2>Settings → Audio (shared by all options)</h2>
+  <p class="sub">B and C need this to pick the device. A only needs the buffer knob here.</p>
+  <div class="set">
+    <div class="hs">Audio</div>
+    <div class="field"><label class="k">Input device</label><select class="sel"><option>System default</option></select></div>
+    <div class="field">
+      <label class="k">Echo output device</label>
+      <select class="sel" style="font-family:var(--sans)"><option selected>BlackHole 2ch</option><option>External Headphones</option><option>MacBook Pro Speakers</option></select>
+      <p class="note" style="margin-top:6px">Also changeable from the meeting page. Use a virtual device such as BlackHole to hand your mic to Zoom or OBS while yogurt records.</p>
+    </div>
+    <div class="toggle"><div><div style="font-size:13px;font-weight:600">Echo on by default</div><p class="note">Start echoing as soon as a recording starts. Off: press Echo (E) during the meeting.</p></div><span class="sw off"></span></div>
+    <div class="field">
+      <label class="k">Echo buffer</label>
+      <div class="seg"><span>128</span><span>256</span><span class="on">512</span><span>1024</span><span>2048</span></div>
+      <p class="note" style="margin-top:6px">frames · 512 ≈ 10.7 ms at 48 kHz. Larger is safer against dropouts.</p>
+    </div>
+    <p class="note">System audio is captured via ScreenCaptureKit - no extra setup.</p>
+  </div>
+
+  <h2>Backend (same for A, B, C)</h2>
+  <div class="arch">
+    <div class="box"><b>cpal input</b>mic stream, already in <span class="mono">yogurt-audio::mic</span></div>
+    <div class="box new"><b>SPSC ring</b>mic callback also pushes f32 frames here (only when echo is on)</div>
+    <div class="box new"><b>cpal output</b>new <span class="mono">echo.rs</span>: output stream on the chosen device, pops the ring, mono → N channels, zero-fills on underrun</div>
+    <div class="box new"><b>routes</b><span class="mono">GET /api/audio/output-devices</span>; <span class="mono">POST /:id/echo-device</span> (hot-swap through the existing capture-thread AudioCommand channel, like audio-device)</div>
+    <div class="box new"><b>settings</b><span class="mono">mic_echo_output_device</span> ("" = off), <span class="mono">mic_echo_buffer</span> (512)</div>
+    <div class="box"><b>lifecycle</b>opens with <span class="mono">/start</span>, tears down with stop; mute pauses it; failure to open shows the existing error banner, recording continues</div>
+  </div>
+  <p class="note" style="margin-top:10px">Inspired by shadow-voice's single PortAudio duplex stream, but two cpal streams plus a ring is what the existing mic-capture ownership allows without touching the STT path. Sample-rate mismatch between mic and output goes through the existing <span class="mono">resample.rs</span>.</p>
+
+  <h2>At a glance</h2>
+  <div class="tw"><table>
+    <tr><th></th><th>A inline</th><th>B toggle</th><th>C settings</th></tr>
+    <tr><td>Change device mid-call</td><td>yes</td><td>no (Settings)</td><td>no (Settings)</td></tr>
+    <tr><td>On/off mid-call</td><td>dropdown</td><td>one tap + <span class="mono">E</span></td><td>no</td></tr>
+    <tr><td>Meeting chrome added</td><td>1 select + pill</td><td>1 big button</td><td>1 pill</td></tr>
+    <tr><td>Live "it's flowing" signal</td><td>meter pill</td><td>button fill</td><td>meter pill</td></tr>
+    <tr><td>Frontend diff</td><td>small</td><td>small</td><td>smallest</td></tr>
+  </table></div>
+
+  <h2>Your call</h2>
+  <form class="q" data-lavish-question="aud11-option" onsubmit="event.preventDefault();const fd=new FormData(event.currentTarget);const o=fd.get('opt');if(!o)return;const knob=fd.get('knob')?'yes':'no';const dflt=fd.get('dflt')?'yes':'no';const notes=(fd.get('notes')||'').toString().trim();const msg='AUD-11 decision: implement option '+o+'. Expose the echo buffer knob in Settings: '+knob+'.'+(notes?' Notes: '+notes:'');window.lavish.queuePrompt(msg,{tag:'choice',text:'Option '+o,element:event.currentTarget,data:{option:o,buffer_knob:knob,notes}});event.currentTarget.querySelector('.queued').style.display='block';">
+    <div class="k">Which layout should I build?</div>
+    <label class="opt-l"><input type="radio" name="opt" value="A"><span><b>A</b> Inline echo picker on the mic row (device + on/off live, meter pill)</span></label>
+    <label class="opt-l"><input type="radio" name="opt" value="B"><span><b>B</b> Big echo toggle next to Mute, device chosen in Settings</span></label>
+    <label class="opt-l"><input type="radio" name="opt" value="C"><span><b>C</b> Settings-only, status pill in the meeting</span></label>
+    <label class="opt-l"><input type="radio" name="opt" value="A+B" checked><span><b>B expanded</b> Two-column: mic dropdown over Mute, output dropdown over a plain Echo button</span></label>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="dflt"> Include the "Echo on by default" Settings toggle</label>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="knob" checked> Show the echo buffer knob in Settings (otherwise fixed at 512 frames)</label>
+    <textarea name="notes" placeholder="Anything else: default device, shortcut key, wording…"></textarea>
+    <button type="submit">Queue this answer</button>
+    <span class="queued">Queued. Press Send to Agent when you're done.</span>
+  </form>
+</div>
+</body>
+</html>

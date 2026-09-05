@@ -51,6 +51,23 @@ vi.mock("../components/MicMuteToggle", () => ({
     />
   ),
 }));
+vi.mock("../components/EchoDevicePicker", () => ({
+  EchoDevicePicker: ({ recording }: { meetingId: string; recording: boolean }) => (
+    <div data-testid="echo-picker" data-recording={String(recording)} />
+  ),
+}));
+vi.mock("../components/EchoTestButton", () => ({
+  EchoTestButton: () => <div data-testid="echo-test-button" />,
+}));
+vi.mock("../components/MicEchoToggle", () => ({
+  MicEchoToggle: ({ meetingId, recording }: { meetingId: string; recording: boolean }) => (
+    <div
+      data-testid="mic-echo-toggle"
+      data-meeting-id={meetingId}
+      data-recording={String(recording)}
+    />
+  ),
+}));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
 }));
