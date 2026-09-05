@@ -152,12 +152,13 @@ check "ships_since drops the bump and log-PR commits" "$(cd "$FIXTURE" && ships_
 row="$(render_log_row 0.7.0 2026-09-02 33572225259 33571768998 879289fcbc56 399f2ecaa5a4 "$(printf '%s\n' '- first' '- second')")"
 contains "row has version" "$row" "| v0.7.0 |"
 contains "row has date" "$row" "| 2026-09-02 |"
-contains "row has NARRATIVE slot" "$row" "NARRATIVE:"
+contains "row has NARRATIVE slot as the first bullet" "$row" "| - NARRATIVE:"
 contains "row has push run link" "$row" "[33572225259](https://github.com/jarvisrchen/yogurt/actions/runs/33572225259)"
 contains "row has dry run link" "$row" "[33571768998](https://github.com/jarvisrchen/yogurt/actions/runs/33571768998)"
 contains "row has arm sha prefix" "$row" '`879289fc...`'
 contains "row has x86 sha prefix" "$row" '`399f2eca...`'
-contains "row joins the bullets with <br>" "$row" "<br>- first<br>- second<br>All four jobs"
+contains "row joins the bullets with <br>" "$row" "<br>- first<br>- second<br>- All four jobs"
+contains "row bullets the verification trail" "$row" "<br>- Formula shas verified"
 check "row is one line" "$(printf '%s' "$row" | wc -l | tr -d ' ')" "0"
 
 # --- -n plans - PATH-shimmed gh/brew, no network ------------------------
