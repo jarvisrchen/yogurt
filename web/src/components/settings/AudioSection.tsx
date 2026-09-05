@@ -10,6 +10,7 @@ import { DeviceOptions } from "../DeviceOptions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, type General } from "../../lib/api/settings";
 import { EchoTestButton } from "../EchoTestButton";
+import { RefreshDevicesButton } from "../RefreshDevicesButton";
 
 interface AudioSectionProps {
   general: General;
@@ -51,9 +52,12 @@ export function AudioSection({ general }: AudioSectionProps) {
       <h2 className="heading-section">Audio</h2>
 
       <div className="space-y-1.5">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
-          Input device
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+            Input device
+          </label>
+          <RefreshDevicesButton />
+        </div>
         <select
           className="block w-full rounded-md border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
           value={general.audio_input_device}
@@ -70,7 +74,10 @@ export function AudioSection({ general }: AudioSectionProps) {
           <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
             Echo output device
           </label>
-          <EchoTestButton device={general.audio_echo_output_device} />
+          <div className="flex items-center gap-1">
+            <RefreshDevicesButton />
+            <EchoTestButton device={general.audio_echo_output_device} />
+          </div>
         </div>
         <select
           className="block w-full rounded-md border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"

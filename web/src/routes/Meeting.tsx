@@ -7,6 +7,7 @@ import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
 import { EchoDevicePicker } from "../components/EchoDevicePicker";
 import { EchoTestButton } from "../components/EchoTestButton";
+import { RefreshDevicesButton } from "../components/RefreshDevicesButton";
 import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
@@ -575,7 +576,8 @@ export function Meeting() {
                   {recording && activeRecording.data?.echo_enabled && (
                     <Pill tone="matcha" status="status">live</Pill>
                   )}
-                  <EchoTestButton device={echoDevice} className="ml-auto" />
+                  <RefreshDevicesButton className="ml-auto" />
+                  <EchoTestButton device={echoDevice} />
                 </div>
                 <EchoDevicePicker meetingId={meetingId} recording={recording} />
                 <MicEchoToggle meetingId={meetingId} recording={recording} />
