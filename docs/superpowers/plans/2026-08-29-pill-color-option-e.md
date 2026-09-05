@@ -201,7 +201,7 @@ git commit -m "fix(web): smoke-driven tweaks to Option E STT pill"
 
 ## Self-Review
 
-**Spec coverage:** the lavish mockup's Option E (rendered alongside A/B/C/D/F/G in `docs/.lavish/pill-color-system.html`) was the design. The original plan included four tasks (backend locality stamp, frontend parser, STT restyle, LLM restyle). The user revised scope mid-implementation across two iterations:
+**Spec coverage:** the lavish mockup's Option E (rendered alongside A/B/C/D/F/G in `docs/archive/.lavish/pill-color-system.html`) was the design. The original plan included four tasks (backend locality stamp, frontend parser, STT restyle, LLM restyle). The user revised scope mid-implementation across two iterations:
 
 1. The LLM model text must stay as a bare name (no `local · ` / `cloud · ` prefix) - the backend locality stamp task was reverted in commit `4a32a12`.
 2. The user initially chose to drop the LLM pill change entirely (keep current filled blueberry), then in a follow-up asked to repaint the LLM pill to outlined blueberry - the option E "cloud LLM" half of the mockup, applied unconditionally because `meetings.llm_model` carries no locality information.
