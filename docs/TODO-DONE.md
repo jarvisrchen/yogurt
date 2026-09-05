@@ -393,7 +393,7 @@ New closed items go at the bottom.
   Server: new `AudioCommand::SetMicMuted`, serviced by the same `run_capture_control_loop` as the existing device hot-swap (now one dispatch closure, since both variants need `&mut stream`). `Meeting.mic_muted` mirrors `stt_engine`; `Registry::set_mic_muted` mirrors `switch_mic_device` exactly (lookup, 5s-timeout send, error mapping).
   Route: `POST /api/meetings/:id/mic-muted`, and `GET /api/meetings/active` now carries `mic_muted` so a reload or second tab reflects the true state off the existing 5s poll - no new WS plumbing.
   Frontend: `MicMuteToggle` is a big, full-width button between the mic picker and the notes card, always mounted (disabled with an explanatory tooltip while not recording, rather than disappearing) since it's a core in-meeting action. `M` hotkey (no modifier, `ignoreWhenTyping`) via the existing `useKeyboardShortcut` hook. `secondary`/new `warn` `<Button>` variant - solid strawberry, white text, matching the app's existing warn-tone pattern - rather than an icon-only toolbar chip.
-  Design mockups: [docs/.lavish/aud6-mic-mute.html](.lavish/aud6-mic-mute.html) (also reviewed via Open Design against the app's real tokens before implementation).
+  Design mockups: [docs/archive/.lavish/aud6-mic-mute.html](archive/.lavish/aud6-mic-mute.html) (also reviewed via Open Design against the app's real tokens before implementation).
   </details>
 
 - [x] **CLI-3** `just dev` should pick a free port pair so two worktrees can run at once
