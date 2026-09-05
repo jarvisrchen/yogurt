@@ -25,7 +25,7 @@ Release when a merged PR is worth shipping, not on a schedule.
    Skip-if-done throughout - on a timeout, call it again; it resumes.
    `-n` previews the plan; `--allow-open-docs` and `--no-smoke` cover the exceptions.
 
-3. **Log it.** Paste the printed `docs/RELEASE-LOG.md` table row and the "What shipped" section, write the `NARRATIVE:` sentence, open the log PR (docs-only).
+3. **Log it.** Paste the printed `docs/RELEASE-LOG.md` row, write the `NARRATIVE:` sentence, open the log PR (docs-only).
 
 ## When it goes wrong
 

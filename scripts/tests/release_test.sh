@@ -142,14 +142,14 @@ commit "docs(releasing): log the v0.7.0 release (#13)"
 commit "fifth, no PR"
 git -C "$FIXTURE" tag v0.7.1
 git -C "$FIXTURE" push -q origin main --tags
-want_ships="$(printf '### v0.7.0\n\n- third ([#11](https://github.com/jarvisrchen/yogurt/pull/11))\n- second ([#10](https://github.com/jarvisrchen/yogurt/pull/10))')"
-check "ships_since renders PR-linked bullets under a version heading" "$(cd "$FIXTURE" && ships_since v0.6.0 0.7.0)" "$want_ships"
-want_ships="$(printf '### v0.7.1\n\n- fifth, no PR\n- fourth')"
+want_ships="$(printf '%s\n' '- third ([#11](https://github.com/jarvisrchen/yogurt/pull/11))' '- second ([#10](https://github.com/jarvisrchen/yogurt/pull/10))')"
+check "ships_since renders PR-linked bullets, newest first" "$(cd "$FIXTURE" && ships_since v0.6.0 0.7.0)" "$want_ships"
+want_ships="$(printf '%s\n' '- fifth, no PR' '- fourth')"
 check "ships_since drops the bump and log-PR commits" "$(cd "$FIXTURE" && ships_since v0.7.0 0.7.1)" "$want_ships"
 
 # --- render_log_row - fixed inputs, no network -------------------------
 
-row="$(render_log_row 0.7.0 2026-09-02 33572225259 33571768998 879289fcbc56 399f2ecaa5a4)"
+row="$(render_log_row 0.7.0 2026-09-02 33572225259 33571768998 879289fcbc56 399f2ecaa5a4 "$(printf '%s\n' '- first' '- second')")"
 contains "row has version" "$row" "| v0.7.0 |"
 contains "row has date" "$row" "| 2026-09-02 |"
 contains "row has NARRATIVE slot" "$row" "NARRATIVE:"
@@ -157,6 +157,8 @@ contains "row has push run link" "$row" "[33572225259](https://github.com/jarvis
 contains "row has dry run link" "$row" "[33571768998](https://github.com/jarvisrchen/yogurt/actions/runs/33571768998)"
 contains "row has arm sha prefix" "$row" '`879289fc...`'
 contains "row has x86 sha prefix" "$row" '`399f2eca...`'
+contains "row joins the bullets with <br>" "$row" "<br>- first<br>- second<br>All four jobs"
+check "row is one line" "$(printf '%s' "$row" | wc -l | tr -d ' ')" "0"
 
 # --- -n plans - PATH-shimmed gh/brew, no network ------------------------
 
