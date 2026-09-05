@@ -137,20 +137,29 @@ check "previous_tag(0.7.0) via ls-remote" "$(cd "$FIXTURE" && previous_tag 0.7.0
 check "previous_tag(0.10.0) is semver-ordered" "$(cd "$FIXTURE" && previous_tag 0.10.0)" "v0.7.0"
 check "previous_tag(0.6.0) has no predecessor" "$(cd "$FIXTURE" && previous_tag 0.6.0)" ""
 
-want_ships="$(git -C "$FIXTURE" log v0.6.0..v0.7.0 --oneline | awk '{printf "%s%s", (NR>1?"; ":""), $0}')"
-check "ships_since matches git log --oneline, joined" "$(cd "$FIXTURE" && ships_since v0.6.0 0.7.0)" "$want_ships"
+commit "chore: bump version to 0.7.1 (#12)"
+commit "docs(releasing): log the v0.7.0 release (#13)"
+commit "fifth, no PR"
+git -C "$FIXTURE" tag v0.7.1
+git -C "$FIXTURE" push -q origin main --tags
+want_ships="$(printf '%s\n' '- third ([#11](https://github.com/jarvisrchen/yogurt/pull/11))' '- second ([#10](https://github.com/jarvisrchen/yogurt/pull/10))')"
+check "ships_since renders PR-linked bullets, newest first" "$(cd "$FIXTURE" && ships_since v0.6.0 0.7.0)" "$want_ships"
+want_ships="$(printf '%s\n' '- fifth, no PR' '- fourth')"
+check "ships_since drops the bump and log-PR commits" "$(cd "$FIXTURE" && ships_since v0.7.0 0.7.1)" "$want_ships"
 
 # --- render_log_row - fixed inputs, no network -------------------------
 
-row="$(render_log_row 0.7.0 2026-09-02 33572225259 33571768998 879289fcbc56 399f2ecaa5a4 v0.6.0 "abc123 first; def456 second")"
+row="$(render_log_row 0.7.0 2026-09-02 33572225259 33571768998 879289fcbc56 399f2ecaa5a4 "$(printf '%s\n' '- first' '- second')")"
 contains "row has version" "$row" "| v0.7.0 |"
 contains "row has date" "$row" "| 2026-09-02 |"
-contains "row has NARRATIVE slot" "$row" "NARRATIVE:"
+contains "row opens with the change bullets" "$row" "| 2026-09-02 | - first<br>- second<br>"
 contains "row has push run link" "$row" "[33572225259](https://github.com/jarvisrchen/yogurt/actions/runs/33572225259)"
 contains "row has dry run link" "$row" "[33571768998](https://github.com/jarvisrchen/yogurt/actions/runs/33571768998)"
 contains "row has arm sha prefix" "$row" '`879289fc...`'
 contains "row has x86 sha prefix" "$row" '`399f2eca...`'
-contains "row has ships list" "$row" "Ships since v0.6.0: abc123 first; def456 second"
+contains "row joins the bullets with <br>" "$row" "- first<br>- second<br>- All four jobs"
+contains "row bullets the verification trail" "$row" "<br>- Formula shas verified"
+check "row is one line" "$(printf '%s' "$row" | wc -l | tr -d ' ')" "0"
 
 # --- -n plans - PATH-shimmed gh/brew, no network ------------------------
 
@@ -365,7 +374,7 @@ check "ships_since: fails before the remote tag is fetched" "$tagfetch_before_st
 
 git -C "$TAGFETCH_READER" fetch origin --tags --quiet
 tagfetch_after="$(cd "$TAGFETCH_READER" && ships_since v0.6.0 0.7.0)"
-contains "ships_since: works once git fetch --tags has run" "$tagfetch_after" "second (#20)"
+contains "ships_since: works once git fetch --tags has run" "$tagfetch_after" "second ([#20]"
 
 # --- ship: ship_tag_status - pure, no git at all ------------------------
 
