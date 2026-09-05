@@ -1,12 +1,6 @@
-//! AUD-11: echo the mic's mono sample stream out to a chosen cpal output
-//! device (typically a virtual device like "BlackHole 2ch") so other apps
-//! (Zoom, OBS) can consume the mic without yogurt being in the call.
-//!
-//! Audio never leaves the process - the output stream reads from the same
-//! SPSC ring the mic's input callback tees into (see `mic.rs`'s `TeeSink`).
-//! Echo failure is always non-fatal to recording: every entry point here
-//! returns a `Result` the caller logs and falls back from, never a panic
-//! or a failure that stops capture.
+//! Echoes the mic's mono sample stream out to a chosen cpal output device.
+//! Audio stays in-process: the output stream reads from the same ring the
+//! mic's input callback tees into.
 
 use crate::error::{AudioError, Result};
 use crate::ring::AudioRingConsumer;
@@ -35,16 +29,11 @@ impl MicEcho {
     }
 
     /// Open an output stream on `device_name` (`None`/`""` = system default
-    /// output) that plays back `consumer`'s mono sample stream, fanned out
-    /// to every output channel, zero-filled on underrun or while `muted`.
+    /// output) that plays back `consumer`'s mono sample stream.
     ///
-    /// `sample_rate` must equal the mic's native rate - the output config is
-    /// pinned to it exactly.
-    ///
-    /// ponytail: requires an exact sample-rate match (or a device whose
-    /// supported range covers it) rather than resampling; upgrade path is
-    /// wiring `resample.rs`'s rubato path in here if a real device's output
-    /// range never covers the mic's rate.
+    /// ponytail: `sample_rate` must equal the mic's native rate exactly;
+    /// upgrade path is wiring resample.rs's rubato path in here if a real
+    /// device's output range never covers the mic's rate.
     pub(crate) fn start(
         device_name: Option<&str>,
         buffer: u32,
@@ -88,15 +77,9 @@ impl MicEcho {
                     &config,
                     move |out: &mut [f32], _: &cpal::OutputCallbackInfo| {
                         let is_muted = muted.load(Ordering::Relaxed);
-                        // ponytail: try_lock, not a blocking lock. Nothing
-                        // else ever touches this consumer while a stream is
-                        // live - `AudioStream` always drops the previous
-                        // `MicEcho` before installing a new one - so
-                        // contention should never actually happen. Treat a
-                        // failed lock as underrun (zero-fill) rather than
-                        // blocking the CoreAudio IOProc, which must not
-                        // stall. Upgrade path: an arc-swappable consumer if
-                        // this ever shows real contention.
+                        // ponytail: try_lock must never block the IOProc; a
+                        // failed lock zero-fills instead. Upgrade path: an
+                        // arc-swappable consumer if this ever shows real contention.
                         let Ok(mut guard) = consumer.try_lock() else {
                             out.fill(0.0);
                             return;
@@ -136,30 +119,17 @@ impl MicEcho {
 
 impl Drop for MicEcho {
     fn drop(&mut self) {
-        // AUD-11 E2E fix (the real root cause of the "tone never stops"
-        // bug): cpal 0.15's macOS `Stream` registers a device-disconnect
-        // listener that clones the `Stream` into its own closure, which
-        // that closure stores back inside the very `StreamInner` it points
-        // to (`add_disconnect_listener` in cpal's coreaudio backend) - a
-        // permanent `Arc` self-reference cycle. The refcount never reaches
-        // zero, so the underlying `AudioUnit` never actually disposes on
-        // Drop alone; the render callback would keep running forever.
-        // `pause()` sidesteps this: it calls `audio_unit.stop()` directly
-        // through the shared Mutex regardless of the leaked Arc clone, so
-        // it's the only thing that reliably silences the stream. Not a
-        // cpal version we can bump our way out of at time of writing —
-        // upgrade path is dropping this workaround if a future cpal fixes
-        // the listener's own lifetime.
+        // cpal 0.15's macOS Stream has a disconnect listener that clones
+        // itself into its own StreamInner, a permanent Arc self-reference
+        // that keeps the refcount from ever reaching zero, so Drop alone
+        // never disposes the AudioUnit. pause() calls audio_unit.stop()
+        // directly and reliably silences it regardless.
         let _ = self._stream.pause();
         tracing::info!(device = %self.device_name, "mic echo stopped");
     }
 }
 
 /// Fan a mono sample stream out to `channels` interleaved output channels.
-/// Zero-fills every frame while `muted`, and zero-fills any frame
-/// `pop_one` can't satisfy (ring underrun) rather than repeating stale
-/// audio. Pure function over slices/closures - no cpal, no ring type - so
-/// it's unit-testable without a real device.
 fn fan_out(
     out: &mut [f32],
     channels: usize,
@@ -204,7 +174,6 @@ mod tests {
         let mut out = [9.0_f32; 4];
         fan_out(&mut out, 2, true, || it.next());
         assert_eq!(out, [0.0; 4]);
-        // Muted never even touches the source.
         assert_eq!(it.next(), Some(1.0));
     }
 
@@ -220,13 +189,7 @@ mod tests {
         let _ = crate::list_output_devices();
     }
 
-    /// AUD-11 E2E regression: real hardware showed echo output streams
-    /// stacking up across toggles/hot-swaps instead of the old one being
-    /// dropped. The fix is ordering (`AudioStream::open_echo`/`stop_echo`
-    /// drop the previous `MicEcho` before/instead of building a new one)
-    /// rather than anything cpal-specific, so this mirrors the exact
-    /// `Option<T>` replace/clear pattern those methods use and proves it
-    /// drops synchronously - no hardware needed.
+    /// open_echo/stop_echo rely on Option assignment dropping the old stream synchronously.
     #[test]
     fn replacing_or_clearing_an_option_drops_the_previous_value_immediately() {
         use std::sync::atomic::{AtomicUsize, Ordering as AtoOrdering};
@@ -240,15 +203,12 @@ mod tests {
 
         let drops = AtomicUsize::new(0);
 
-        // Mirrors `stop_echo`: clearing the slot must drop synchronously.
         {
             let mut slot = Some(DropCounter(&drops));
             clear(&mut slot);
             assert_eq!(drops.load(AtoOrdering::SeqCst), 1);
         }
 
-        // Mirrors `open_echo`: replacing Some(_) with Some(_) must drop the
-        // old value before the new one is stored, not after, not never.
         {
             let mut slot = Some(DropCounter(&drops));
             replace(&mut slot, DropCounter(&drops));
@@ -261,8 +221,6 @@ mod tests {
             assert_eq!(drops.load(AtoOrdering::SeqCst), 3);
         }
 
-        // Opaque functions so the compiler can't "helpfully" flag the
-        // reassignment inside as a dead store - it's the whole point.
         fn clear<T>(slot: &mut Option<T>) {
             *slot = None;
         }

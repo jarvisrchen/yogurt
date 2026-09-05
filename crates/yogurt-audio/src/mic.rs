@@ -57,28 +57,19 @@ pub struct MicCapture {
     /// AUD-6: shared with the drainer's `FrameChunker`. See
     /// [`MicCapture::set_muted`].
     muted: Arc<AtomicBool>,
-    /// AUD-11: native sample rate this capture was opened at. The echo
-    /// output stream must match it exactly (see `echo.rs`).
+    /// Native sample rate this capture was opened at; the echo output
+    /// stream must match it exactly.
     pub(crate) sample_rate: u32,
-    /// AUD-11: gates whether the callback bothers teeing samples into
-    /// `echo_consumer`'s ring - set by `AudioStream::start_echo`/`stop_echo`.
+    /// Gates whether the callback tees samples into `echo_consumer`'s ring.
     echo_active: Arc<AtomicBool>,
-    /// AUD-11: the consumer half of the echo ring, shared with whichever
-    /// echo output stream is currently reading it. Lives for the whole
-    /// capture's lifetime (unlike the old take-once design) so re-enabling
-    /// echo never needs to respawn the mic - see
-    /// [`MicCapture::echo_consumer_handle`].
+    /// Consumer half of the echo ring, shared with whichever echo output
+    /// stream is currently reading it.
     echo_consumer: Arc<std::sync::Mutex<AudioRingConsumer>>,
 }
 
 impl Drop for MicCapture {
     fn drop(&mut self) {
-        // AUD-11 E2E fix: cpal's macOS `Stream` has a permanent internal
-        // Arc self-reference (its own disconnect listener clones itself
-        // into its own StreamInner - see echo.rs's `Drop for MicEcho` for
-        // the full story), so the refcount never hits zero and Drop alone
-        // never truly stops the underlying AudioUnit. `pause()` calls
-        // `audio_unit.stop()` directly and reliably silences it.
+        // cpal 0.15 never disposes the stream on drop; pause() is what stops it (see echo.rs).
         let _ = self._stream.pause();
         self.drainer.abort();
     }
@@ -93,22 +84,17 @@ impl MicCapture {
         self.muted.store(muted, Ordering::Relaxed);
     }
 
-    /// AUD-11: shared with the echo output stream so muting the mic also
-    /// zero-fills the echo instead of playing stale/underrun audio.
+    /// Shared with the echo output stream so muting also zero-fills the echo.
     pub(crate) fn muted_handle(&self) -> Arc<AtomicBool> {
         self.muted.clone()
     }
 
-    /// AUD-11: enable/disable the callback teeing samples into the echo
-    /// ring. Called by `AudioStream::start_echo`/`stop_echo`.
+    /// Enable/disable teeing samples into the echo ring.
     pub(crate) fn set_echo_active(&self, active: bool) {
         self.echo_active.store(active, Ordering::Relaxed);
     }
 
-    /// AUD-11: clone a handle to the echo ring's consumer half. Cheap
-    /// (Arc clone) and callable any number of times - only one echo output
-    /// stream should read it at a time, which `AudioStream` guarantees by
-    /// always dropping the previous `MicEcho` before installing a new one.
+    /// Clone a handle to the echo ring's consumer half.
     pub(crate) fn echo_consumer_handle(&self) -> Arc<std::sync::Mutex<AudioRingConsumer>> {
         self.echo_consumer.clone()
     }
@@ -236,9 +222,7 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>> {
     Ok(out)
 }
 
-/// Enumerate all output devices the cpal default host knows about. AUD-11:
-/// backs `GET /api/audio/output-devices`, populating the echo-destination
-/// picker (typically listing "BlackHole 2ch" alongside real speakers).
+/// Enumerate all output devices the cpal default host knows about.
 pub fn list_output_devices() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
     let default_name = host.default_output_device().and_then(|d| d.name().ok());
@@ -305,10 +289,7 @@ pub fn spawn_mic_capture(
 
     // Producer/consumer pair shared between the audio thread and the drainer.
     let (mut producer, mut consumer) = ring();
-    // AUD-11: second ring the callback tees mono samples into when echo is
-    // active (`echo.rs` reads it from an output-device callback). Always
-    // created - cheap (256 KiB) - so `start_echo` never has to touch the
-    // audio thread; it only flips `echo_active` and takes `echo_consumer`.
+    // Echo ring is always allocated so start_echo never touches the audio thread.
     let (mut echo_producer, echo_consumer) = ring();
     let echo_consumer = Arc::new(std::sync::Mutex::new(echo_consumer));
     let echo_active = Arc::new(AtomicBool::new(false));
@@ -410,9 +391,7 @@ pub fn spawn_mic_capture(
     })
 }
 
-/// Destination for down-mixed mono samples. Implemented by
-/// [`AudioRingProducer`] directly, and by [`TeeSink`] to fan the same
-/// samples into a second (echo) ring without a second down-mix pass.
+/// Destination for down-mixed mono samples.
 trait Sink {
     fn push_slice(&mut self, samples: &[f32]);
 }
@@ -423,10 +402,7 @@ impl Sink for AudioRingProducer {
     }
 }
 
-/// AUD-11: tees every push into `main` (always) and `echo` (only while
-/// `echo_active` is set). `echo_active` is an `AtomicBool` load per push -
-/// negligible next to the ring write itself, and it's how a mic callback
-/// with no echo consumer attached stays a no-op on the echo path.
+/// Tees every push into `main` (always) and `echo` (while `echo_active`).
 struct TeeSink<'a> {
     main: &'a mut AudioRingProducer,
     echo: &'a mut AudioRingProducer,
@@ -584,8 +560,6 @@ mod tests {
 
     #[test]
     fn list_output_devices_does_not_panic() {
-        // Same rationale as list_input_devices_does_not_panic: no hardware
-        // assertions, just confirm enumeration doesn't error or panic.
         let _ = list_output_devices();
     }
 

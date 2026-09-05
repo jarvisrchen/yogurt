@@ -51,7 +51,6 @@ vi.mock("../components/MicMuteToggle", () => ({
     />
   ),
 }));
-// AUD-11: stubbed the same way as the mic components above.
 vi.mock("../components/EchoDevicePicker", () => ({
   EchoDevicePicker: ({ recording }: { meetingId: string; recording: boolean }) => (
     <div data-testid="echo-picker" data-recording={String(recording)} />

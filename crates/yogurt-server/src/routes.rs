@@ -322,11 +322,7 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
                 repo.patch(&id_str, patch)
             })
             .await;
-            // AUD-11: best-effort echo restore. Never fails the start -
-            // a device that vanished since the last session just leaves
-            // the meeting echo-off, reflected truthfully in `echo_enabled`
-            // on `/active` since `Registry::set_echo` only stamps `true`
-            // on an actual successful open.
+            // Best-effort echo restore; never fails the start.
             if g.audio_echo_enabled {
                 if let Err(e) = state
                     .meetings
@@ -549,13 +545,9 @@ async fn set_meeting_mic_muted(
     }
 }
 
-/// `POST /api/meetings/:id/echo` - AUD-11: open/close/hot-swap the mic
-/// echo on an actively-recording meeting. Either field may be omitted;
-/// an omitted field falls back to the persisted setting. Applies live to
-/// the running capture AND persists the corresponding settings fields -
-/// except on a device-open failure, where `enabled` stays `false` and the
-/// setting is deliberately NOT flipped to `true` (a persisted lie the UI
-/// would show as "on" while the capture thread never opened it).
+/// `POST /api/meetings/:id/echo` - open/close/hot-swap the mic echo on an
+/// actively-recording meeting. An omitted field falls back to the
+/// persisted setting.
 #[derive(Deserialize, Default)]
 struct SetEchoRequest {
     enabled: Option<bool>,
@@ -591,12 +583,8 @@ async fn set_meeting_echo(
         .await
     {
         Ok((live_enabled, live_device)) => {
-            // Persist truthfully: `audio_echo_enabled` mirrors the live
-            // result (never the request), and the device is only updated
-            // to the resolved name when echo actually ended up running -
-            // an explicit `device` in the request is remembered either way
-            // (it's a real user choice even if this particular toggle is
-            // an "off").
+            // Persist the live result, not the request - a failed open must not
+            // record enabled: true.
             let persisted_device = if live_enabled {
                 live_device.clone()
             } else {
@@ -610,9 +598,7 @@ async fn set_meeting_echo(
             if let Err(e) = yogurt_db::settings::save_general_patch(&state.db, patch) {
                 tracing::warn!(error = %e, "failed to persist echo settings after live apply");
             }
-            // `stop_echo`'s reply carries "" (there's no live device once
-            // closed) - respond with the persisted device instead so the
-            // UI's dropdown doesn't jump to "System default" on every off.
+            // stop_echo's reply carries "" - use the persisted device instead.
             let response_device = if live_enabled {
                 live_device
             } else {

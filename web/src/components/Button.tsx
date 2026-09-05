@@ -52,8 +52,7 @@ const VARIANT: Record<Variant, string> = {
   // MetaPill's warn tone and the recording-error banner). For a state that
   // needs noticing, not a destructive action.
   warn: "bg-straw text-white hover:opacity-90 active:opacity-100",
-  // Matcha "live" state (AUD-11 echo toggle) — an action that is currently
-  // active, not an error or a call to action.
+  // Matcha "live" state - an active action, not an error or CTA.
   on: "bg-mtsoft text-matcha border border-matcha hover:opacity-90 active:opacity-100",
 };
 

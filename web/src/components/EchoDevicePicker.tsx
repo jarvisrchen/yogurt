@@ -1,15 +1,6 @@
 /**
- * EchoDevicePicker — "Echo to" device dropdown on the meeting page (AUD-11).
- *
- * Mirrors `MicDevicePicker.tsx`'s two write paths:
- *   - recording: a selection hot-swaps the live echo output device via
- *     `POST /:id/echo { device }`.
- *   - stopped: a selection instead `PATCH`es `settings.audio_echo_output_device`
- *     — the field the echo toggle reads to pick the output device for the
- *     *next* recording (same mechanism `AudioSection.tsx` uses on the
- *     Settings page).
- * Shares the `["audio-output-devices"]` query key so a re-render doesn't
- * refetch `GET /api/audio/output-devices` twice.
+ * "Echo to" device dropdown on the meeting page.
+ * While recording, a selection hot-swaps the live device; otherwise it writes the setting used for the next recording.
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

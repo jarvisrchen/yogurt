@@ -47,12 +47,11 @@ export interface General {
    *  prompt (and stops a recording once the detected window closes).
    *  Mirrors `crates/yogurt-db::settings::General::meeting_detection`. */
   meeting_detection: boolean;
-  /** AUD-11 — output device the mic is echoed to, "" means system default.
-   *  Also changeable live from the meeting page while recording. */
+  /** Output device the mic is echoed to, "" means system default. */
   audio_echo_output_device: string;
-  /** AUD-11 — whether mic-echo starts enabled on the next recording. */
+  /** Whether mic-echo starts enabled on the next recording. */
   audio_echo_enabled: boolean;
-  /** AUD-11 — echo ring-buffer size in frames, one of 128/256/512/1024/2048. */
+  /** Echo ring-buffer size in frames. */
   audio_echo_buffer: number;
 }
 
@@ -289,8 +288,6 @@ export const settingsApi = {
 
 export const audioApi = {
   devices: () => http<AudioDevice[]>("/api/audio/devices"),
-  /** `GET /api/audio/output-devices` (AUD-11) - devices the mic can be
-   *  echoed to (e.g. a virtual device like "BlackHole 2ch"). */
   outputDevices: () => http<AudioDevice[]>("/api/audio/output-devices"),
   /** `POST /api/meetings/:id/audio-device` (quick task 260709-wnn) - hot-swap
    *  the mic device on an actively-recording meeting. Returns the resolved
@@ -313,8 +310,6 @@ export const audioApi = {
         body: JSON.stringify({ muted }),
       },
     ),
-  /** `POST /api/meetings/:id/echo` (AUD-11) - toggle mic-echo and/or switch
-   *  its output device on an actively-recording meeting. */
   setEcho: (meetingId: string, body: { enabled?: boolean; device?: string }) =>
     http<{ enabled: boolean; device: string }>(
       `/api/meetings/${meetingId}/echo`,

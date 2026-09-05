@@ -125,8 +125,7 @@ pub type MeetingId = Uuid;
 /// `run_capture_control_loop` alongside the existing shutdown `oneshot`.
 pub enum AudioCommand {
     /// Replies with the resolved device name and whether the mic echo is
-    /// still live after the swap (AUD-11: re-attach can fail on the new
-    /// device, and `Meeting::echo_enabled` must not lie about it).
+    /// still live after the swap.
     SwitchMicDevice {
         device_name: String,
         reply: oneshot::Sender<std::result::Result<(String, bool), String>>,
@@ -137,12 +136,9 @@ pub enum AudioCommand {
         muted: bool,
         reply: oneshot::Sender<std::result::Result<(), String>>,
     },
-    /// AUD-11: open/close/hot-swap the mic echo. `enabled: false` closes it
+    /// Open/close/hot-swap the mic echo. `enabled: false` closes it
     /// (device/buffer ignored); `enabled: true` opens or re-opens it on
-    /// `device_name` (`""` = system default) at `buffer` frames. The reply
-    /// carries the live `(enabled, resolved_device)` state, which mirrors
-    /// what `AudioStream::start_echo` actually did - not just an echo of
-    /// the request - so the caller never has to guess whether it landed.
+    /// `device_name` (`""` = system default) at `buffer` frames.
     SetEcho {
         enabled: bool,
         device_name: String,
@@ -220,11 +216,8 @@ pub struct Meeting {
     /// change; read by the `GET /api/meetings/active` route so a reload or
     /// second tab reflects the true state without new WS plumbing.
     pub mic_muted: Mutex<bool>,
-    /// AUD-11: whether the mic is currently being echoed to an output
-    /// device. Same lifecycle as `mic_muted` - `false` before the first
-    /// start, reset on every new start, set by `Registry::set_echo` after
-    /// the capture thread confirms the change. Read by `GET
-    /// /api/meetings/active`.
+    /// Whether the mic is currently being echoed to an output device.
+    /// Same lifecycle as `mic_muted`.
     pub echo_enabled: Mutex<bool>,
 }
 
@@ -874,12 +867,7 @@ impl Registry {
         }
     }
 
-    /// AUD-11: open/close the mic echo on an actively-recording meeting.
-    /// Same shape as `set_mic_muted` - forwards an `AudioCommand::SetEcho`
-    /// and awaits the reply with a 5s timeout - plus stamps
-    /// `Meeting::echo_enabled` with the *live* result on success, so a
-    /// failed open (device unavailable / unsupported rate) never lies
-    /// about echo being on.
+    /// Open/close the mic echo on an actively-recording meeting.
     pub async fn set_echo(
         &self,
         id: &MeetingId,
@@ -912,8 +900,7 @@ impl Registry {
                 Ok((live_enabled, device))
             }
             Ok(Ok(Err(msg))) => {
-                // `open_echo` tears the previous stream down before it tries
-                // the new device, so a failed open always means echo is off.
+                // open_echo tears down the previous stream first, so a failed open means echo is off.
                 *m.echo_enabled.lock().await = false;
                 Err(SwitchDeviceError::Device(msg))
             }

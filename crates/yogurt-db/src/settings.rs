@@ -66,16 +66,11 @@ pub struct General {
     /// window closes). Defaults to `true`; there is no seed row, so the
     /// projection's fallback is the default.
     pub meeting_detection: bool,
-    /// AUD-11: cpal output device the mic echo plays to. `""` = system
-    /// default output device.
+    /// Output device the mic echo plays to. `""` = system default.
     pub audio_echo_output_device: String,
-    /// AUD-11: persisted state of the in-meeting Echo button, read at
-    /// `/start` so a recording that was echoing keeps echoing across a
-    /// server restart mid-meeting.
+    /// Persisted state of the in-meeting Echo button.
     pub audio_echo_enabled: bool,
-    /// AUD-11: echo output buffer size in frames. Must be one of 128, 256,
-    /// 512, 1024, 2048 - validated on PATCH (`api::settings::patch_settings`),
-    /// not here, so a legacy/malformed row still loads with the fallback.
+    /// Echo output buffer size in frames, one of 128/256/512/1024/2048.
     pub audio_echo_buffer: u32,
 }
 
@@ -138,8 +133,6 @@ pub struct GeneralPatch {
     /// MTG-11 — Settings → General flips this to silence the
     /// meeting-detected prompt.
     pub meeting_detection: Option<bool>,
-    /// AUD-11 - validated to one of 128/256/512/1024/2048 by
-    /// `api::settings::patch_settings` before reaching here.
     pub audio_echo_output_device: Option<String>,
     pub audio_echo_enabled: Option<bool>,
     pub audio_echo_buffer: Option<u32>,

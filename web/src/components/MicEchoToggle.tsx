@@ -1,13 +1,6 @@
 /**
- * MicEchoToggle — full-width "Echo" button next to MicMuteToggle (AUD-11).
- *
- * Mirrors `MicMuteToggle.tsx`: sourced from the shared
- * `["meetings", "active"]` query (`useActiveRecording`) rather than local
- * state, disabled with an explanatory tooltip while not recording, and
- * bound to the `E` hotkey via `useKeyboardShortcut`.
- *
- * Toggling calls `POST /:id/echo { enabled }` — the device itself is
- * chosen by the neighboring `EchoDevicePicker`, not this button.
+ * Full-width "Echo" toggle button next to MicMuteToggle.
+ * Only active while recording; the output device itself is chosen by the neighboring EchoDevicePicker.
  */
 import { Volume2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

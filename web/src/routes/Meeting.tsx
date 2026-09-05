@@ -555,11 +555,7 @@ export function Meeting() {
           )}
           {/* Row 3: label chips, left-aligned under the title. */}
           {meetingId && <MeetingLabels meetingId={meetingId} />}
-          {/* Row 4: mic + echo, two columns (AUD-11). Visible whenever the
-              meeting is open (recording OR stopped) — while recording each
-              picker hot-swaps its live device; while stopped each persists
-              its settings field, so a pick on a stopped-but-open meeting
-              takes effect the next time recording starts. */}
+          {/* Row 4: mic + echo, two columns. */}
           {meetingId && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
               <div className="space-y-1.5">
@@ -567,10 +563,6 @@ export function Meeting() {
                   Microphone
                 </label>
                 <MicDevicePicker meetingId={meetingId} recording={recording} />
-                {/* AUD-6: mute the mic without stopping the recording —
-                    always mounted once a meeting exists; disabled with an
-                    explanatory tooltip while not recording rather than
-                    disappearing, since muting only makes sense mid-meeting. */}
                 <MicMuteToggle meetingId={meetingId} recording={recording} />
               </div>
               <div className="space-y-1.5">

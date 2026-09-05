@@ -217,10 +217,7 @@ async fn validate_stt_patch(
     }
 }
 
-/// AUD-11: the only echo buffer sizes cpal's `BufferSize::Fixed` gets
-/// asked for. Not a hardware limit - a small closed set keeps the
-/// picker simple and every value is a power of two the drainer's 20ms
-/// tick comfortably covers.
+/// The only echo buffer sizes cpal's `BufferSize::Fixed` gets asked for.
 const VALID_ECHO_BUFFERS: [u32; 5] = [128, 256, 512, 1024, 2048];
 
 fn validate_echo_patch(patch: &settings::GeneralPatch) -> Result<(), Error> {
@@ -916,8 +913,7 @@ enum Error {
     Unprocessable(String),
     /// 400 - malformed request value that isn't even a coherent
     /// configuration attempt (e.g. an echo buffer size cpal was never
-    /// asked to support). Distinct from `Unprocessable`'s 422 because
-    /// AUD-11's contract with the frontend specifies 400 here.
+    /// asked to support).
     BadRequest(String),
     /// 502 - a live probe against the provider's own endpoint failed
     /// (upstream rejected the key, refused the connection, or timed out).

@@ -106,8 +106,6 @@ fn it_patches_stt_provider_and_model() {
     assert_eq!(g.stt_model, "medium.en");
 }
 
-/// AUD-11: defaults before any patch - echo off, default output device,
-/// 512-frame buffer.
 #[test]
 fn it_loads_echo_defaults() {
     let db = Db::open_in_memory().unwrap();
@@ -117,7 +115,6 @@ fn it_loads_echo_defaults() {
     assert_eq!(g.audio_echo_buffer, 512);
 }
 
-/// AUD-11: the three echo fields round-trip through a patch + reload.
 #[test]
 fn it_round_trips_echo_settings() {
     let db = Db::open_in_memory().unwrap();

@@ -15,8 +15,8 @@ pub enum AudioError {
     #[error("microphone device unavailable: {0}")]
     MicUnavailable(String),
 
-    /// AUD-11: the chosen echo output device disappeared, or does not
-    /// support the mic's sample rate.
+    /// The chosen echo output device disappeared, or does not support the
+    /// mic's sample rate.
     #[error("output device unavailable: {0}")]
     OutputUnavailable(String),
 
