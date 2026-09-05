@@ -19,6 +19,7 @@
 #![deny(rust_2018_idioms, missing_debug_implementations)]
 
 pub mod detect;
+mod echo;
 mod error;
 mod frame;
 #[cfg(target_os = "macos")]
@@ -32,9 +33,10 @@ mod system;
 #[cfg(any(test, feature = "synthetic"))]
 pub mod synthetic;
 
+pub use echo::{play_test_tone, MicEcho};
 pub use error::{AudioError, Result};
 pub use frame::{Channel, Frame, FRAME_SAMPLES, SAMPLE_RATE_HZ};
-pub use mic::{list_input_devices, spawn_mic_capture, DeviceInfo, MicCapture};
+pub use mic::{list_input_devices, list_output_devices, spawn_mic_capture, DeviceInfo, MicCapture};
 pub use permission::{
     has_microphone_permission, has_screen_recording_permission, request_microphone_permission,
     request_screen_recording_permission, PermissionStatus,
@@ -84,6 +86,13 @@ pub struct AudioStream {
     pub mic_tx: broadcast::Sender<Frame>,
     /// Public for the same reason — Phase 3 system-channel consumers.
     pub system_tx: broadcast::Sender<Frame>,
+    /// `Some` while the mic is being echoed to an output device.
+    echo: Option<MicEcho>,
+    /// The output device the caller last asked for (`""` = system default),
+    /// remembered so `switch_mic_device` can reattach echo.
+    echo_requested_device: String,
+    /// The buffer size (frames) the caller last asked for, reused on reattach.
+    echo_buffer: u32,
 }
 
 impl std::fmt::Debug for AudioStream {
@@ -118,7 +127,21 @@ impl AudioStream {
     pub fn switch_mic_device(&mut self, device_name: Option<&str>) -> Result<String> {
         let new_mic = spawn_mic_capture(self.mic_tx.clone(), device_name)?;
         let resolved = new_mic.device_name.clone();
+        let was_echoing = self.echo.is_some();
+        self.echo = None;
         self._mic = new_mic;
+
+        if was_echoing {
+            let requested = self.echo_requested_device.clone();
+            let buffer = self.echo_buffer;
+            let dev = Some(requested.as_str()).filter(|s| !s.is_empty());
+            if let Err(e) = self.open_echo(dev, buffer) {
+                tracing::warn!(
+                    error = %e,
+                    "failed to reattach mic echo after device switch; echo disabled"
+                );
+            }
+        }
         Ok(resolved)
     }
 
@@ -130,6 +153,42 @@ impl AudioStream {
     /// is a rare, low-stakes combo, not worth threading the flag through.
     pub fn set_mic_muted(&self, muted: bool) {
         self._mic.set_muted(muted);
+    }
+
+    /// Start (or hot-swap) echoing the mic to `device` (`None`/`""` =
+    /// system default output), buffered at `buffer` frames. Returns the
+    /// resolved device name.
+    pub fn start_echo(&mut self, device: Option<&str>, buffer: u32) -> Result<String> {
+        self.open_echo(device, buffer)
+    }
+
+    /// Shared by `start_echo` and `switch_mic_device`'s reattach path.
+    fn open_echo(&mut self, device: Option<&str>, buffer: u32) -> Result<String> {
+        self.echo_requested_device = device.unwrap_or("").to_string();
+        self.echo_buffer = buffer;
+
+        // Stop before start so two output streams never overlap on the same device.
+        self._mic.set_echo_active(false);
+        self.echo = None;
+
+        let consumer = self._mic.echo_consumer_handle();
+        let muted = self._mic.muted_handle();
+        let echo = MicEcho::start(device, buffer, self._mic.sample_rate, muted, consumer)?;
+        let name = echo.device_name().to_string();
+        self._mic.set_echo_active(true);
+        self.echo = Some(echo);
+        Ok(name)
+    }
+
+    /// Stop echoing. Idempotent.
+    pub fn stop_echo(&mut self) {
+        self._mic.set_echo_active(false);
+        self.echo = None;
+    }
+
+    /// The device currently receiving the echo, if any.
+    pub fn echo_device(&self) -> Option<String> {
+        self.echo.as_ref().map(|e| e.device_name().to_string())
     }
 }
 
@@ -182,5 +241,8 @@ pub fn start_capture(mic_device: Option<&str>) -> Result<AudioStream> {
         _capture_lock,
         mic_tx,
         system_tx,
+        echo: None,
+        echo_requested_device: String::new(),
+        echo_buffer: 512,
     })
 }

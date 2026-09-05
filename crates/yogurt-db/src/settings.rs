@@ -66,6 +66,12 @@ pub struct General {
     /// window closes). Defaults to `true`; there is no seed row, so the
     /// projection's fallback is the default.
     pub meeting_detection: bool,
+    /// Output device the mic echo plays to. `""` = system default.
+    pub audio_echo_output_device: String,
+    /// Persisted state of the in-meeting Echo button.
+    pub audio_echo_enabled: bool,
+    /// Echo output buffer size in frames, one of 128/256/512/1024/2048.
+    pub audio_echo_buffer: u32,
 }
 
 /// Load the `General` struct from the KV table, falling back to defaults
@@ -95,6 +101,15 @@ pub fn load_general(db: &Db) -> Result<General> {
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(true),
+        audio_echo_output_device: get(db, "audio.echo_output_device")?.unwrap_or_default(),
+        audio_echo_enabled: get(db, "audio.echo_enabled")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(false),
+        audio_echo_buffer: get(db, "audio.echo_buffer")?
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(512),
     })
 }
 
@@ -118,6 +133,9 @@ pub struct GeneralPatch {
     /// MTG-11 — Settings → General flips this to silence the
     /// meeting-detected prompt.
     pub meeting_detection: Option<bool>,
+    pub audio_echo_output_device: Option<String>,
+    pub audio_echo_enabled: Option<bool>,
+    pub audio_echo_buffer: Option<u32>,
 }
 
 /// Apply `patch` to the KV table and return the resulting `General`. The
@@ -152,6 +170,15 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
             "general.meeting_detection",
             if d { "true" } else { "false" },
         )?;
+    }
+    if let Some(d) = patch.audio_echo_output_device {
+        set(db, "audio.echo_output_device", &d)?;
+    }
+    if let Some(e) = patch.audio_echo_enabled {
+        set(db, "audio.echo_enabled", if e { "true" } else { "false" })?;
+    }
+    if let Some(b) = patch.audio_echo_buffer {
+        set(db, "audio.echo_buffer", &b.to_string())?;
     }
     load_general(db)
 }

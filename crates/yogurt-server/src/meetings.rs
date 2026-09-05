@@ -124,15 +124,26 @@ pub type MeetingId = Uuid;
 /// the mic device or pause/resume it mid-recording. Serviced by
 /// `run_capture_control_loop` alongside the existing shutdown `oneshot`.
 pub enum AudioCommand {
+    /// Replies with the resolved device name and whether the mic echo is
+    /// still live after the swap.
     SwitchMicDevice {
         device_name: String,
-        reply: oneshot::Sender<std::result::Result<String, String>>,
+        reply: oneshot::Sender<std::result::Result<(String, bool), String>>,
     },
     /// AUD-6: pause (`true`) or resume (`false`) mic audio reaching the STT
     /// pipeline, without touching system audio or restarting capture.
     SetMicMuted {
         muted: bool,
         reply: oneshot::Sender<std::result::Result<(), String>>,
+    },
+    /// Open/close/hot-swap the mic echo. `enabled: false` closes it
+    /// (device/buffer ignored); `enabled: true` opens or re-opens it on
+    /// `device_name` (`""` = system default) at `buffer` frames.
+    SetEcho {
+        enabled: bool,
+        device_name: String,
+        buffer: u32,
+        reply: oneshot::Sender<std::result::Result<(bool, String), String>>,
     },
 }
 
@@ -205,6 +216,8 @@ pub struct Meeting {
     /// change; read by the `GET /api/meetings/active` route so a reload or
     /// second tab reflects the true state without new WS plumbing.
     pub mic_muted: Mutex<bool>,
+    /// Same lifecycle as `mic_muted`: read by `GET /api/meetings/active`.
+    pub echo_enabled: Mutex<bool>,
 }
 
 /// Abort a spawned task when the owner is dropped. Used so the STT session
@@ -237,6 +250,7 @@ impl Meeting {
             persist: Mutex::new(None),
             stt_engine: Mutex::new(None),
             mic_muted: Mutex::new(false),
+            echo_enabled: Mutex::new(false),
         }
     }
 }
@@ -476,12 +490,39 @@ impl Registry {
                         } else {
                             Some(device_name.as_str())
                         };
-                        let _ =
-                            reply.send(stream.switch_mic_device(opt).map_err(|e| e.to_string()));
+                        let _ = reply.send(
+                            stream
+                                .switch_mic_device(opt)
+                                .map(|name| (name, stream.echo_device().is_some()))
+                                .map_err(|e| e.to_string()),
+                        );
                     }
                     AudioCommand::SetMicMuted { muted, reply } => {
                         stream.set_mic_muted(muted);
                         let _ = reply.send(Ok(()));
+                    }
+                    AudioCommand::SetEcho {
+                        enabled,
+                        device_name,
+                        buffer,
+                        reply,
+                    } => {
+                        if !enabled {
+                            stream.stop_echo();
+                            let _ = reply.send(Ok((false, String::new())));
+                        } else {
+                            let dev = if device_name.is_empty() {
+                                None
+                            } else {
+                                Some(device_name.as_str())
+                            };
+                            let _ = reply.send(
+                                stream
+                                    .start_echo(dev, buffer)
+                                    .map(|name| (true, name))
+                                    .map_err(|e| e.to_string()),
+                            );
+                        }
                     }
                 });
                 // Dropping `stream` here stops both mic + system capture via RAII.
@@ -773,7 +814,10 @@ impl Registry {
         .map_err(|_| SwitchDeviceError::NotRecording)?;
 
         match tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await {
-            Ok(Ok(Ok(name))) => Ok(name),
+            Ok(Ok(Ok((name, echo_live)))) => {
+                *m.echo_enabled.lock().await = echo_live;
+                Ok(name)
+            }
             Ok(Ok(Err(msg))) => Err(SwitchDeviceError::Device(msg)),
             Ok(Err(_)) => Err(SwitchDeviceError::NotRecording),
             Err(_) => Err(SwitchDeviceError::Device(
@@ -818,6 +862,50 @@ impl Registry {
             Ok(Err(_)) => Err(SwitchDeviceError::NotRecording),
             Err(_) => Err(SwitchDeviceError::Device(
                 "timed out waiting for capture thread to set mic mute".into(),
+            )),
+        }
+    }
+
+    /// Open/close the mic echo on an actively-recording meeting.
+    pub async fn set_echo(
+        &self,
+        id: &MeetingId,
+        enabled: bool,
+        device_name: String,
+        buffer: u32,
+    ) -> std::result::Result<(bool, String), SwitchDeviceError> {
+        let m = self.get(id).await.ok_or(SwitchDeviceError::NotFound)?;
+
+        let tx = m
+            .audio_cmd_tx
+            .lock()
+            .await
+            .clone()
+            .ok_or(SwitchDeviceError::NotRecording)?;
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(AudioCommand::SetEcho {
+            enabled,
+            device_name,
+            buffer,
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SwitchDeviceError::NotRecording)?;
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await {
+            Ok(Ok(Ok((live_enabled, device)))) => {
+                *m.echo_enabled.lock().await = live_enabled;
+                Ok((live_enabled, device))
+            }
+            Ok(Ok(Err(msg))) => {
+                // open_echo tears down the previous stream first, so a failed open means echo is off.
+                *m.echo_enabled.lock().await = false;
+                Err(SwitchDeviceError::Device(msg))
+            }
+            Ok(Err(_)) => Err(SwitchDeviceError::NotRecording),
+            Err(_) => Err(SwitchDeviceError::Device(
+                "timed out waiting for capture thread to set echo".into(),
             )),
         }
     }
@@ -1510,7 +1598,7 @@ mod tests {
                         .lock()
                         .unwrap()
                         .push(format!("switch:{device_name}"));
-                    let _ = reply.send(Ok(format!("resolved:{device_name}")));
+                    let _ = reply.send(Ok((format!("resolved:{device_name}"), false)));
                 }
                 AudioCommand::SetMicMuted { muted, reply } => {
                     seen_for_worker
@@ -1518,6 +1606,13 @@ mod tests {
                         .unwrap()
                         .push(format!("mute:{muted}"));
                     let _ = reply.send(Ok(()));
+                }
+                AudioCommand::SetEcho { enabled, reply, .. } => {
+                    seen_for_worker
+                        .lock()
+                        .unwrap()
+                        .push(format!("echo:{enabled}"));
+                    let _ = reply.send(Ok((enabled, "test-device".into())));
                 }
             });
         });
@@ -1536,7 +1631,7 @@ mod tests {
                     .await
                     .expect("reply within 1s — a timeout means the select loop deadlocked")
                     .expect("reply sender dropped unexpectedly");
-                assert_eq!(reply, Ok(format!("resolved:{name}")));
+                assert_eq!(reply, Ok((format!("resolved:{name}"), false)));
             }
 
             for muted in [true, false] {

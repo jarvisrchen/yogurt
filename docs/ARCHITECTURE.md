@@ -179,8 +179,13 @@ Rules that hold this together:
 
 - **Realtime callbacks never allocate, never lock, never broadcast.**
   They write into a ring buffer; a tokio drainer does the resample, quantize, chunk, and broadcast.
-- **RAII is the stop mechanism.**
+- **RAII is the stop mechanism, with one cpal caveat.**
   Dropping `AudioStream` stops both cpal and the `SCStream`.
+  cpal 0.15's macOS backend keeps an `Arc` self-reference per stream, so a plain drop never reaches the audio unit; the `Drop` impls in `mic.rs` and `echo.rs` call `pause()` first, which is what actually silences the hardware.
+- **Mic echo (AUD-11) is a second consumer of the mic callback.**
+  The callback tees into an extra ring only while an echo is active; `MicEcho` owns a cpal output stream on the chosen device that drains that ring, fans mono out to every channel, and zero-fills while muted or on underrun.
+  It is serviced on the same capture thread as mic hot-swap and never affects the STT path.
+  If the output device cannot run at the mic's rate (a Bluetooth headset at 16 kHz, say), a small linear resampler in the output callback bridges the gap rather than refusing the device.
   `stop()` joins the capture thread so a back-to-back start cannot open an overlapping SCK session.
 - **The capture thread body is wrapped in `catch_unwind`.**
   A panic inside ScreenCaptureKit (usually a TCC denial) becomes a clean HTTP 400 with a permission hint instead of a mystery "channel closed".

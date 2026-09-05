@@ -476,8 +476,12 @@ graph LR
         <p>They write into a ring buffer. A tokio drainer does the resample, quantize, chunk, and broadcast.</p>
       </div>
       <div class="rule">
-        <h4>RAII is the stop mechanism</h4>
-        <p>Dropping <code>AudioStream</code> stops both cpal and the SCStream. <code>stop()</code> joins the thread so back-to-back starts cannot overlap SCK sessions.</p>
+        <h4>RAII is the stop mechanism, with one cpal caveat</h4>
+        <p>Dropping <code>AudioStream</code> stops both cpal and the SCStream. <code>stop()</code> joins the thread so back-to-back starts cannot overlap SCK sessions. cpal 0.15's macOS backend keeps an <code>Arc</code> self-reference per stream, so a plain drop never reaches the audio unit; the <code>Drop</code> impls in <code>mic.rs</code> and <code>echo.rs</code> call <code>pause()</code> first, which is what actually silences the hardware.</p>
+      </div>
+      <div class="rule">
+        <h4>Mic echo is a second consumer of the mic callback</h4>
+        <p>The callback tees into an extra ring only while an echo is active. <code>MicEcho</code> owns a cpal output stream that drains it, fans mono out to every channel, and zero-fills while muted. If the device cannot run at the mic's rate (a Bluetooth headset at 16 kHz), a small linear resampler in the output callback bridges the gap rather than refusing the device.</p>
       </div>
       <div class="rule">
         <h4>The capture thread is wrapped in catch_unwind</h4>

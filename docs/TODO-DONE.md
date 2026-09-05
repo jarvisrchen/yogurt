@@ -393,7 +393,7 @@ New closed items go at the bottom.
   Server: new `AudioCommand::SetMicMuted`, serviced by the same `run_capture_control_loop` as the existing device hot-swap (now one dispatch closure, since both variants need `&mut stream`). `Meeting.mic_muted` mirrors `stt_engine`; `Registry::set_mic_muted` mirrors `switch_mic_device` exactly (lookup, 5s-timeout send, error mapping).
   Route: `POST /api/meetings/:id/mic-muted`, and `GET /api/meetings/active` now carries `mic_muted` so a reload or second tab reflects the true state off the existing 5s poll - no new WS plumbing.
   Frontend: `MicMuteToggle` is a big, full-width button between the mic picker and the notes card, always mounted (disabled with an explanatory tooltip while not recording, rather than disappearing) since it's a core in-meeting action. `M` hotkey (no modifier, `ignoreWhenTyping`) via the existing `useKeyboardShortcut` hook. `secondary`/new `warn` `<Button>` variant - solid strawberry, white text, matching the app's existing warn-tone pattern - rather than an icon-only toolbar chip.
-  Design mockups: [docs/.lavish/aud6-mic-mute.html](.lavish/aud6-mic-mute.html) (also reviewed via Open Design against the app's real tokens before implementation).
+  Design mockups: [docs/archive/.lavish/aud6-mic-mute.html](archive/.lavish/aud6-mic-mute.html) (also reviewed via Open Design against the app's real tokens before implementation).
   </details>
 
 - [x] **CLI-3** `just dev` should pick a free port pair so two worktrees can run at once
@@ -967,4 +967,27 @@ New closed items go at the bottom.
   Frontend: `LocalSTTCard` now renders a `TestKeyButton` under the model picker, testing the currently selected model. Disabled unless that model is downloaded.
 
   Verified: cargo fmt/clippy -D warnings, cargo test (all pass), web typecheck + vitest (pass), and a real E2E hit against a running dev server with a downloaded small.en model returned `{"ok":true,"model":"small.en · loaded and ran in 7035ms"}`.
+  </details>
+
+- [x] **AUD-11** Echo the mic to a second output device during a live meeting
+  <details>
+  <summary>Details</summary>
+
+  Richard already runs a standalone Python app for this: `/Users/rchen/Documents/code/shadow-voice` (`audio_echo.py`, PortAudio/sounddevice) captures a macOS input device and routes it in real time (sub-50ms, adjustable buffer) to a chosen output device, typically a virtual device like BlackHole so another app (Zoom, OBS, a DAW) can consume the mic.
+  Fold that into yogurt so it is one less process to run: when starting or during a live meeting, offer an option to echo the mic into a selectable output device.
+  Needs a design pass before implementation, at least: where the toggle and device picker live in the live-meeting UI and Settings (persist the chosen output device), whether the echo taps the existing cpal mic stream in `yogurt-audio` or opens a second one, latency/buffer controls, and how it interacts with the hard constraints (in-process only, no audio leaves the machine; echo to a local output device is fine).
+  Use shadow-voice for inspiration on device enumeration, buffer sizing, and the latency/stability trade-off; do not port its Python.
+
+  Two-column block on the live meeting page: mic picker over Mute, echo output picker over an Echo button (E). Backend tees the mic ring into a cpal output stream (`yogurt-audio/src/echo.rs`), hot-swappable, silenced by mute; settings `audio_echo_output_device`, `audio_echo_enabled`, `audio_echo_buffer`. Verified on hardware with a 440 Hz tone through BlackHole 2ch. Also fixed cpal streams never stopping on Drop (cpal 0.15 macOS Arc cycle), which had leaked mic streams on every hot-swap.
+  </details>
+
+- [x] **UI-10** Make the Screen Recording failure banner say which app to grant and link to the macOS pane
+  <details>
+  <summary>Details</summary>
+
+  When start fails with "The user declined TCCs", the banner's "Open Settings" goes to yogurt's own Settings page, which cannot fix it.
+  The grant belongs to the app that launched yogurt (the terminal, or Homebrew's binary), not to yogurt, and macOS 26 can leave a stale grant that looks on but is refused; the fix is toggling that app off and on under Privacy & Security > Screen & System Audio Recording.
+  Say that in the banner and link `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture` (a plain anchor, no subprocess).
+
+  The banner now detects a Screen Recording / TCC denial and, instead of linking to yogurt's own Settings, explains that the grant belongs to the app that launched yogurt (terminal or Homebrew), that it must be quit and reopened after a grant change, and links `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`.
   </details>

@@ -5,6 +5,11 @@ import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
+import { EchoDevicePicker } from "../components/EchoDevicePicker";
+import { EchoTestButton } from "../components/EchoTestButton";
+import { RefreshDevicesButton } from "../components/RefreshDevicesButton";
+import { MicEchoToggle } from "../components/MicEchoToggle";
+import { Pill } from "../components/Pill";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
@@ -131,6 +136,7 @@ export function Meeting() {
   // one that *will* fuse these notes - the same way the STT pill falls
   // back to the active-recording poll before the row is refetched.
   const activeLlmModel = useSettings().data?.providers.find((p) => p.is_active)?.model;
+  const echoDevice = useSettings().data?.general?.audio_echo_output_device ?? "";
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
 
   // Live-dock-loses-history-on-remount fix: parse the meeting row's
@@ -552,27 +558,33 @@ export function Meeting() {
           )}
           {/* Row 3: label chips, left-aligned under the title. */}
           {meetingId && <MeetingLabels meetingId={meetingId} />}
-          {/* Row 4: mic picker, left-aligned under the title, on its own
-              (smaller) line instead of crowding row 1. Visible whenever the
-              meeting is open (recording OR stopped) — while recording it
-              hot-swaps the live capture device; while stopped it persists
-              `settings.audio_input_device`, the same field `POST /start`
-              reads, so picking a mic on a stopped-but-open meeting takes
-              effect the next time recording starts. */}
+          {/* Row 4: mic + echo, two columns. */}
           {meetingId && (
-            <div className="flex items-center">
-              <MicDevicePicker meetingId={meetingId} recording={recording} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+              <div className="space-y-1.5">
+                <label className="flex items-center h-5 text-[10px] font-mono uppercase tracking-wider text-mut">
+                  Microphone
+                </label>
+                <MicDevicePicker meetingId={meetingId} recording={recording} />
+                <MicMuteToggle meetingId={meetingId} recording={recording} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center h-5 gap-1.5">
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+                    Echo to
+                  </label>
+                  {recording && activeRecording.data?.echo_enabled && (
+                    <Pill tone="matcha" status="status">live</Pill>
+                  )}
+                  <RefreshDevicesButton className="ml-auto" />
+                  <EchoTestButton device={echoDevice} />
+                </div>
+                <EchoDevicePicker meetingId={meetingId} recording={recording} />
+                <MicEchoToggle meetingId={meetingId} recording={recording} />
+              </div>
             </div>
           )}
         </header>
-
-        {/* AUD-6: mute the mic without stopping the recording — a core
-            in-meeting action, so it's a big always-findable button between
-            the mic picker and the notes card, not a small toolbar icon.
-            Always mounted once a meeting exists; disabled with an
-            explanatory tooltip while not recording rather than
-            disappearing, since muting only makes sense mid-meeting. */}
-        {meetingId && <MicMuteToggle meetingId={meetingId} recording={recording} />}
 
         {error && (
           <div
@@ -585,14 +597,28 @@ export function Meeting() {
             }}
           >
             <p>{error}</p>
-            {errorIsStartFailure && (
-              <Link
-                to="/settings"
-                className="inline-block underline font-semibold hover:opacity-80"
-              >
-                Open Settings
-              </Link>
-            )}
+            {errorIsStartFailure &&
+              (/screen recording|declined tccs/i.test(error) ? (
+                <p className="space-y-1.5">
+                  Grant Screen &amp; System Audio Recording to the app that
+                  launched yogurt (your terminal, or Homebrew), then quit and
+                  reopen it. A recently changed grant only takes effect on the
+                  next launch.{" "}
+                  <a
+                    href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                    className="inline-block underline font-semibold hover:opacity-80"
+                  >
+                    Open macOS Screen Recording settings
+                  </a>
+                </p>
+              ) : (
+                <Link
+                  to="/settings"
+                  className="inline-block underline font-semibold hover:opacity-80"
+                >
+                  Open Settings
+                </Link>
+              ))}
           </div>
         )}
 

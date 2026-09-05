@@ -128,6 +128,11 @@ impl AudioRingConsumer {
     pub(crate) fn dropped_samples(&self) -> u64 {
         self.stats.dropped_samples.load(Ordering::Relaxed)
     }
+
+    /// Pop exactly one sample, or `None` on underrun.
+    pub(crate) fn pop(&mut self) -> Option<f32> {
+        self.inner.pop().ok()
+    }
 }
 
 /// Shared overflow counter. Producer increments, consumer reads.

@@ -105,6 +105,15 @@ The note is a file, not a shell argument, because real resolution notes contain 
   `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
   </details>
 
+- [ ] **AUD-12** Time out the ScreenCaptureKit content query on start so a TCC denial fails fast instead of wedging the server
+  <details>
+  <summary>Details</summary>
+
+  Seen 2026-09-05: macOS 26 silently stopped honoring WezTerm's Screen Recording grant (preflight still said granted, `SCShareableContent` returned zero displays).
+  `POST /start` blocked inside `SCShareableContent::get` for minutes with no timeout, held `capture.lock` the whole time, and made every other yogurt instance report "another yogurt process is already recording".
+  Wrap the query in a bounded wait (a few seconds), release the lock, and return the existing permission-hint 400.
+  </details>
+
 ## LLM
 
 ## CLI
