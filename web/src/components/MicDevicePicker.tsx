@@ -20,6 +20,7 @@
  * matching `AudioSection.tsx`'s pattern.
  */
 import { useState } from "react";
+import { DeviceOptions } from "./DeviceOptions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, settingsKey } from "../lib/api/settings";
 
@@ -100,12 +101,7 @@ export function MicDevicePicker({ meetingId, recording }: MicDevicePickerProps) 
         disabled={setDevice.isPending}
         onChange={(e) => setDevice.mutate(e.target.value)}
       >
-        {devices.data?.map((d) => (
-          <option key={d.name} value={d.name}>
-            {d.name}
-            {d.is_default ? " (default)" : ""}
-          </option>
-        ))}
+        <DeviceOptions devices={devices.data} selected={effectiveValue} />
       </select>
       {setDevice.isPending && (
         <span className="text-[12px] font-mono text-mut">

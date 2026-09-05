@@ -23,6 +23,89 @@ impl std::fmt::Debug for MicEcho {
     }
 }
 
+/// Resolve an output device, pick its `sample_rate`-capable config, and
+/// build the fixed-size `StreamConfig` both `MicEcho::start` and
+/// `play_test_tone` need. Shared so device lookup + config selection is
+/// written once.
+fn open_output_device(
+    device_name: Option<&str>,
+    buffer: u32,
+    sample_rate: u32,
+) -> Result<(cpal::Device, String, cpal::StreamConfig, cpal::SampleFormat)> {
+    let host = cpal::default_host();
+    let device = match device_name {
+        Some(name) if !name.is_empty() => host
+            .output_devices()
+            .map_err(|e| AudioError::Cpal(format!("output_devices(): {e}")))?
+            .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+            .ok_or_else(|| AudioError::OutputUnavailable(format!("not found: {name}")))?,
+        _ => host
+            .default_output_device()
+            .ok_or_else(|| AudioError::OutputUnavailable("no default output device".into()))?,
+    };
+    let resolved_name = device.name().unwrap_or_else(|_| "<unknown>".to_string());
+
+    let supported_range = device
+        .supported_output_configs()
+        .map_err(|e| AudioError::Cpal(format!("supported_output_configs: {e}")))?
+        .find(|c| c.min_sample_rate().0 <= sample_rate && sample_rate <= c.max_sample_rate().0)
+        .ok_or_else(|| {
+            AudioError::OutputUnavailable(format!("does not support {sample_rate} Hz"))
+        })?;
+    let supported = supported_range.with_sample_rate(cpal::SampleRate(sample_rate));
+    let sample_format = supported.sample_format();
+    let mut config: cpal::StreamConfig = supported.into();
+    config.buffer_size = cpal::BufferSize::Fixed(buffer);
+
+    Ok((device, resolved_name, config, sample_format))
+}
+
+/// Next sample of a 440 Hz sine at amplitude 0.2, advancing `phase` by one
+/// sample at `sample_rate`. `phase` wraps at `2*PI` so it never grows
+/// unbounded across a long-running callback.
+fn tone_sample(phase: &mut f32, sample_rate: u32) -> f32 {
+    const FREQ_HZ: f32 = 440.0;
+    const AMPLITUDE: f32 = 0.2;
+    let sample = AMPLITUDE * phase.sin();
+    *phase += 2.0 * std::f32::consts::PI * FREQ_HZ / sample_rate as f32;
+    if *phase >= 2.0 * std::f32::consts::PI {
+        *phase -= 2.0 * std::f32::consts::PI;
+    }
+    sample
+}
+
+/// Play a 440 Hz test tone on `device` (`None`/`""` = system default output)
+/// for 700 ms, at the device's own default sample rate. Blocks the calling
+/// thread; callers run it via `spawn_blocking`. Returns the resolved device
+/// name.
+pub fn play_test_tone(device: Option<&str>, buffer: u32) -> Result<String> {
+    let host = cpal::default_host();
+    let probe = match device {
+        Some(name) if !name.is_empty() => host
+            .output_devices()
+            .map_err(|e| AudioError::Cpal(format!("output_devices(): {e}")))?
+            .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+            .ok_or_else(|| AudioError::OutputUnavailable(format!("not found: {name}")))?,
+        _ => host
+            .default_output_device()
+            .ok_or_else(|| AudioError::OutputUnavailable("no default output device".into()))?,
+    };
+    let sample_rate = probe
+        .default_output_config()
+        .map_err(|e| AudioError::Cpal(format!("default_output_config: {e}")))?
+        .sample_rate()
+        .0;
+
+    let mut phase = 0.0_f32;
+    let echo = MicEcho::start_with_source(device, buffer, sample_rate, move || {
+        Some(tone_sample(&mut phase, sample_rate))
+    })?;
+    let resolved_name = echo.device_name().to_string();
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    drop(echo);
+    Ok(resolved_name)
+}
+
 impl MicEcho {
     pub fn device_name(&self) -> &str {
         &self.device_name
@@ -41,31 +124,31 @@ impl MicEcho {
         muted: Arc<AtomicBool>,
         consumer: Arc<Mutex<AudioRingConsumer>>,
     ) -> Result<Self> {
-        let host = cpal::default_host();
-        let device = match device_name {
-            Some(name) if !name.is_empty() => host
-                .output_devices()
-                .map_err(|e| AudioError::Cpal(format!("output_devices(): {e}")))?
-                .find(|d| d.name().map(|n| n == name).unwrap_or(false))
-                .ok_or_else(|| AudioError::OutputUnavailable(format!("not found: {name}")))?,
-            _ => host
-                .default_output_device()
-                .ok_or_else(|| AudioError::OutputUnavailable("no default output device".into()))?,
-        };
-        let resolved_name = device.name().unwrap_or_else(|_| "<unknown>".to_string());
+        Self::start_with_source(device_name, buffer, sample_rate, move || {
+            let is_muted = muted.load(Ordering::Relaxed);
+            if is_muted {
+                None
+            } else {
+                // ponytail: try_lock must never block the IOProc; a failed
+                // lock zero-fills instead. Upgrade path: an arc-swappable
+                // consumer if this ever shows real contention.
+                consumer.try_lock().ok().and_then(|mut g| g.pop())
+            }
+        })
+    }
 
-        let supported_range = device
-            .supported_output_configs()
-            .map_err(|e| AudioError::Cpal(format!("supported_output_configs: {e}")))?
-            .find(|c| c.min_sample_rate().0 <= sample_rate && sample_rate <= c.max_sample_rate().0)
-            .ok_or_else(|| {
-                AudioError::OutputUnavailable(format!("does not support {sample_rate} Hz"))
-            })?;
-        let supported = supported_range.with_sample_rate(cpal::SampleRate(sample_rate));
-        let channels = supported.channels() as usize;
-        let sample_format = supported.sample_format();
-        let mut config: cpal::StreamConfig = supported.into();
-        config.buffer_size = cpal::BufferSize::Fixed(buffer);
+    /// Shared build path for both the mic-echo stream and the test-tone
+    /// stream: opens `device_name`, picks a `sample_rate`-capable F32
+    /// config, and fans `next_sample`'s output to every channel.
+    fn start_with_source(
+        device_name: Option<&str>,
+        buffer: u32,
+        sample_rate: u32,
+        mut next_sample: impl FnMut() -> Option<f32> + Send + 'static,
+    ) -> Result<Self> {
+        let (device, resolved_name, config, sample_format) =
+            open_output_device(device_name, buffer, sample_rate)?;
+        let channels = config.channels as usize;
 
         let err_callback = |e: cpal::StreamError| {
             tracing::error!(error = %e, "cpal echo output stream error");
@@ -76,15 +159,7 @@ impl MicEcho {
                 .build_output_stream::<f32, _, _>(
                     &config,
                     move |out: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                        let is_muted = muted.load(Ordering::Relaxed);
-                        // ponytail: try_lock must never block the IOProc; a
-                        // failed lock zero-fills instead. Upgrade path: an
-                        // arc-swappable consumer if this ever shows real contention.
-                        let Ok(mut guard) = consumer.try_lock() else {
-                            out.fill(0.0);
-                            return;
-                        };
-                        fan_out(out, channels, is_muted, || guard.pop());
+                        fan_out(out, channels, false, &mut next_sample);
                     },
                     err_callback,
                     None,
@@ -182,6 +257,38 @@ mod tests {
         let mut out = [9.0_f32; 2];
         fan_out(&mut out, 0, false, || Some(1.0));
         assert_eq!(out, [9.0, 9.0]);
+    }
+
+    #[test]
+    fn tone_sample_stays_within_amplitude_and_matches_known_phases() {
+        let sample_rate = 48_000;
+        let mut phase = 0.0_f32;
+        let first = tone_sample(&mut phase, sample_rate);
+        assert!(
+            (first - 0.0).abs() < 1e-4,
+            "phase 0 should be ~0, got {first}"
+        );
+
+        // One quarter period in: sin(pi/2) * 0.2 == 0.2.
+        let quarter_samples = sample_rate / 440 / 4;
+        let mut phase = 0.0_f32;
+        let mut last = 0.0;
+        for _ in 0..quarter_samples {
+            last = tone_sample(&mut phase, sample_rate);
+        }
+        assert!(
+            (last - 0.2).abs() < 0.01,
+            "expected ~0.2 at quarter period, got {last}"
+        );
+
+        let mut phase = 0.0_f32;
+        for _ in 0..sample_rate {
+            let s = tone_sample(&mut phase, sample_rate);
+            assert!(
+                (-0.2..=0.2).contains(&s),
+                "sample {s} out of amplitude bounds"
+            );
+        }
     }
 
     #[test]

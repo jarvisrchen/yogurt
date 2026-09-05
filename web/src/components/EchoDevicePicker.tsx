@@ -3,6 +3,7 @@
  * While recording, a selection hot-swaps the live device; otherwise it writes the setting used for the next recording.
  */
 import { useState } from "react";
+import { DeviceOptions } from "./DeviceOptions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, settingsKey } from "../lib/api/settings";
 
@@ -59,12 +60,7 @@ export function EchoDevicePicker({ meetingId, recording }: EchoDevicePickerProps
         onChange={(e) => setDevice.mutate(e.target.value)}
       >
         <option value="">System default</option>
-        {devices.data?.map((d) => (
-          <option key={d.name} value={d.name}>
-            {d.name}
-            {d.is_default ? " (default)" : ""}
-          </option>
-        ))}
+        <DeviceOptions devices={devices.data} selected={effectiveValue} />
       </select>
       {setDevice.isPending && (
         <span className="text-[12px] font-mono text-mut">

@@ -27,6 +27,7 @@ pub fn router(state: AppState) -> Router {
     let audio_routes = Router::new()
         .route("/api/audio/devices", get(audio::get_devices))
         .route("/api/audio/output-devices", get(audio::get_output_devices))
+        .route("/api/audio/echo/test", post(audio::test_echo))
         .route("/api/audio/permission", get(audio::get_permission))
         // Quick task 260628-g71 DD-05: dedicated POST to fire the macOS
         // microphone permission dialog from the Welcome "Grant Microphone"

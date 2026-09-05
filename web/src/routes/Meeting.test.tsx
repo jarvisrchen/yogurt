@@ -56,6 +56,9 @@ vi.mock("../components/EchoDevicePicker", () => ({
     <div data-testid="echo-picker" data-recording={String(recording)} />
   ),
 }));
+vi.mock("../components/EchoTestButton", () => ({
+  EchoTestButton: () => <div data-testid="echo-test-button" />,
+}));
 vi.mock("../components/MicEchoToggle", () => ({
   MicEchoToggle: ({ meetingId, recording }: { meetingId: string; recording: boolean }) => (
     <div

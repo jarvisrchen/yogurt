@@ -29,15 +29,19 @@
 //! the JSON body.
 
 use axum::{
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use yogurt_audio::{
-    has_microphone_permission, has_screen_recording_permission, list_input_devices,
+    has_microphone_permission, has_screen_recording_permission, list_input_devices, play_test_tone,
     request_microphone_permission, request_screen_recording_permission, start_capture, AudioError,
     AudioStream, DeviceInfo, PermissionStatus,
 };
+use yogurt_db::settings;
+
+use crate::state::AppState;
 
 /// JSON body for `GET /api/audio/permission`,
 /// `POST /api/audio/microphone/request`, and
@@ -128,6 +132,67 @@ pub async fn get_output_devices() -> Result<Json<Vec<DeviceInfo>>, (StatusCode, 
     yogurt_audio::list_output_devices()
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(Deserialize)]
+pub struct TestEchoBody {
+    #[serde(default)]
+    device: Option<String>,
+}
+
+/// Result of `POST /api/audio/echo/test`. Same `{ok, model, error}` shape
+/// as `TestProviderResult` in `api::settings` so the frontend's existing
+/// verdict rendering (`TestKeyButton`) works unchanged; the two are
+/// duplicated rather than shared because they live in separate modules
+/// with no other coupling.
+#[derive(Serialize)]
+pub struct TestEchoResult {
+    pub ok: bool,
+    pub model: Option<String>,
+    pub error: Option<String>,
+}
+
+/// `POST /api/audio/echo/test` - plays a 440 Hz tone on the echo output
+/// device for 700 ms, independent of any recording or ScreenCaptureKit, so
+/// the user can verify their echo routing (e.g. BlackHole) before a real
+/// meeting. `device` missing/empty falls back to the persisted
+/// `audio_echo_output_device` setting, then to the system default.
+pub async fn test_echo(
+    State(s): State<AppState>,
+    Json(body): Json<TestEchoBody>,
+) -> Result<Json<TestEchoResult>, (StatusCode, String)> {
+    let general = settings::load_general(&s.db)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let device = body
+        .device
+        .filter(|d| !d.is_empty())
+        .unwrap_or(general.audio_echo_output_device);
+    let buffer = general.audio_echo_buffer;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let dev = Some(device.as_str()).filter(|d| !d.is_empty());
+        play_test_tone(dev, buffer)
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("test task panicked: {e}"),
+        )
+    })?;
+
+    Ok(Json(match result {
+        Ok(name) => TestEchoResult {
+            ok: true,
+            model: Some(format!("{name} · 440 Hz for 0.7 s")),
+            error: None,
+        },
+        Err(e) => TestEchoResult {
+            ok: false,
+            model: None,
+            error: Some(e.to_string()),
+        },
+    }))
 }
 
 /// Begin recording. Phase 3 will wire this into `POST /api/meetings/:id/start`.

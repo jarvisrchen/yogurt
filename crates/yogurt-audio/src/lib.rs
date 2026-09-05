@@ -33,7 +33,7 @@ mod system;
 #[cfg(any(test, feature = "synthetic"))]
 pub mod synthetic;
 
-pub use echo::MicEcho;
+pub use echo::{play_test_tone, MicEcho};
 pub use error::{AudioError, Result};
 pub use frame::{Channel, Frame, FRAME_SAMPLES, SAMPLE_RATE_HZ};
 pub use mic::{list_input_devices, list_output_devices, spawn_mic_capture, DeviceInfo, MicCapture};

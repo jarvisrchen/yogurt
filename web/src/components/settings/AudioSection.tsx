@@ -6,8 +6,10 @@
  * `PATCH /api/settings { audio_input_device }` and invalidates the
  * `['settings']` query so the rest of the page re-reads.
  */
+import { DeviceOptions } from "../DeviceOptions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, type General } from "../../lib/api/settings";
+import { EchoTestButton } from "../EchoTestButton";
 
 interface AudioSectionProps {
   general: General;
@@ -59,19 +61,17 @@ export function AudioSection({ general }: AudioSectionProps) {
           disabled={devices.isLoading || patch.isPending}
         >
           <option value="">System default</option>
-          {devices.data?.map((d) => (
-            <option key={d.name} value={d.name}>
-              {d.name}
-              {d.is_default ? " (default)" : ""}
-            </option>
-          ))}
+          <DeviceOptions devices={devices.data} selected={general.audio_input_device} />
         </select>
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
-          Echo output device
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+            Echo output device
+          </label>
+          <EchoTestButton device={general.audio_echo_output_device} />
+        </div>
         <select
           className="block w-full rounded-md border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
           value={general.audio_echo_output_device}
@@ -79,12 +79,7 @@ export function AudioSection({ general }: AudioSectionProps) {
           disabled={outputDevices.isLoading || patchEchoDevice.isPending}
         >
           <option value="">System default</option>
-          {outputDevices.data?.map((d) => (
-            <option key={d.name} value={d.name}>
-              {d.name}
-              {d.is_default ? " (default)" : ""}
-            </option>
-          ))}
+          <DeviceOptions devices={outputDevices.data} selected={general.audio_echo_output_device} />
         </select>
         <p className="text-xs font-mono text-mut">
           Also changeable from the meeting page. Use a virtual device such as

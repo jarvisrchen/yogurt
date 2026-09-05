@@ -318,6 +318,14 @@ export const audioApi = {
         body: JSON.stringify(body),
       },
     ),
+  /** `POST /api/audio/echo/test` - plays a 440 Hz test tone on the echo
+   *  output device, independent of any recording. `device` missing/empty
+   *  falls back to the persisted echo output device, then system default. */
+  testEcho: (device?: string) =>
+    http<TestConnectionResult>("/api/audio/echo/test", {
+      method: "POST",
+      body: JSON.stringify(device ? { device } : {}),
+    }),
 };
 
 // ─── React-Query hooks (Phase 7 onboarding + permission gating) ─────────────

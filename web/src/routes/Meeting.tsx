@@ -6,6 +6,7 @@ import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
 import { EchoDevicePicker } from "../components/EchoDevicePicker";
+import { EchoTestButton } from "../components/EchoTestButton";
 import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
@@ -134,6 +135,7 @@ export function Meeting() {
   // one that *will* fuse these notes - the same way the STT pill falls
   // back to the active-recording poll before the row is refetched.
   const activeLlmModel = useSettings().data?.providers.find((p) => p.is_active)?.model;
+  const echoDevice = useSettings().data?.general?.audio_echo_output_device ?? "";
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
 
   // Live-dock-loses-history-on-remount fix: parse the meeting row's
@@ -573,6 +575,7 @@ export function Meeting() {
                   {recording && activeRecording.data?.echo_enabled && (
                     <Pill tone="matcha" status="status">live</Pill>
                   )}
+                  <EchoTestButton device={echoDevice} className="ml-auto" />
                 </div>
                 <EchoDevicePicker meetingId={meetingId} recording={recording} />
                 <MicEchoToggle meetingId={meetingId} recording={recording} />
