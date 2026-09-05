@@ -528,16 +528,16 @@ previous_tag() {
 }
 
 # render_log_row <version> <date> <push_run> <dry_run> <arm_sha> <x86_sha>
-# <ships> - the docs/RELEASE-LOG.md row `finish` prints, with a literal
-# NARRATIVE: slot for the human sentence. Every line of the cell is a bullet:
-# narrative, the <ships> lines from ships_since, then the verification trail.
+# <ships> - the docs/RELEASE-LOG.md row `finish` prints. Every line of the
+# cell is a bullet: the <ships> lines from ships_since, then the verification
+# trail. Anything the release taught us goes in as more bullets by hand.
 # A table cell cannot hold real lines, so bullets are joined with <br>, which
 # GitHub renders as line breaks.
 render_log_row() {
   local version="$1" date="$2" push_run="$3" dry_run="$4" arm_sha="$5" x86_sha="$6" ships="$7"
   local run_url="https://github.com/$REPO/actions/runs"
   ships="$(printf '%s\n' "$ships" | awk '{printf "%s%s", (NR>1?"<br>":""), $0}')"
-  printf '| v%s | %s | - NARRATIVE: <one sentence - what this release ships and why>.<br>%s<br>- All four jobs green ([%s](%s/%s)) after a clean dry run ([%s](%s/%s)).<br>- Formula shas verified against re-downloaded tarballs (`%.8s...` arm64, `%.8s...` x86_64). |\n' \
+  printf '| v%s | %s | %s<br>- All four jobs green ([%s](%s/%s)) after a clean dry run ([%s](%s/%s)).<br>- Formula shas verified against re-downloaded tarballs (`%.8s...` arm64, `%.8s...` x86_64). |\n' \
     "$version" "$date" "$ships" "$push_run" "$run_url" "$push_run" "$dry_run" "$run_url" "$dry_run" "$arm_sha" "$x86_sha"
 }
 
