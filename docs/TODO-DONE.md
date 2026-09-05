@@ -980,3 +980,14 @@ New closed items go at the bottom.
 
   Two-column block on the live meeting page: mic picker over Mute, echo output picker over an Echo button (E). Backend tees the mic ring into a cpal output stream (`yogurt-audio/src/echo.rs`), hot-swappable, silenced by mute; settings `audio_echo_output_device`, `audio_echo_enabled`, `audio_echo_buffer`. Verified on hardware with a 440 Hz tone through BlackHole 2ch. Also fixed cpal streams never stopping on Drop (cpal 0.15 macOS Arc cycle), which had leaked mic streams on every hot-swap.
   </details>
+
+- [x] **UI-10** Make the Screen Recording failure banner say which app to grant and link to the macOS pane
+  <details>
+  <summary>Details</summary>
+
+  When start fails with "The user declined TCCs", the banner's "Open Settings" goes to yogurt's own Settings page, which cannot fix it.
+  The grant belongs to the app that launched yogurt (the terminal, or Homebrew's binary), not to yogurt, and macOS 26 can leave a stale grant that looks on but is refused; the fix is toggling that app off and on under Privacy & Security > Screen & System Audio Recording.
+  Say that in the banner and link `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture` (a plain anchor, no subprocess).
+
+  The banner now detects a Screen Recording / TCC denial and, instead of linking to yogurt's own Settings, explains that the grant belongs to the app that launched yogurt (terminal or Homebrew), that it must be quit and reopened after a grant change, and links `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`.
+  </details>

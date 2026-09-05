@@ -595,14 +595,28 @@ export function Meeting() {
             }}
           >
             <p>{error}</p>
-            {errorIsStartFailure && (
-              <Link
-                to="/settings"
-                className="inline-block underline font-semibold hover:opacity-80"
-              >
-                Open Settings
-              </Link>
-            )}
+            {errorIsStartFailure &&
+              (/screen recording|declined tccs/i.test(error) ? (
+                <p className="space-y-1.5">
+                  Grant Screen &amp; System Audio Recording to the app that
+                  launched yogurt (your terminal, or Homebrew), then quit and
+                  reopen it. A recently changed grant only takes effect on the
+                  next launch.{" "}
+                  <a
+                    href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                    className="inline-block underline font-semibold hover:opacity-80"
+                  >
+                    Open macOS Screen Recording settings
+                  </a>
+                </p>
+              ) : (
+                <Link
+                  to="/settings"
+                  className="inline-block underline font-semibold hover:opacity-80"
+                >
+                  Open Settings
+                </Link>
+              ))}
           </div>
         )}
 

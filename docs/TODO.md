@@ -45,15 +45,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-- [ ] **UI-10** Make the Screen Recording failure banner say which app to grant and link to the macOS pane
-  <details>
-  <summary>Details</summary>
-
-  When start fails with "The user declined TCCs", the banner's "Open Settings" goes to yogurt's own Settings page, which cannot fix it.
-  The grant belongs to the app that launched yogurt (the terminal, or Homebrew's binary), not to yogurt, and macOS 26 can leave a stale grant that looks on but is refused; the fix is toggling that app off and on under Privacy & Security > Screen & System Audio Recording.
-  Say that in the banner and link `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture` (a plain anchor, no subprocess).
-  </details>
-
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
