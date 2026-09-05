@@ -257,7 +257,6 @@ impl Drop for MicEcho {
     }
 }
 
-/// Fan a mono sample stream out to `channels` interleaved output channels.
 fn fan_out(
     out: &mut [f32],
     channels: usize,
@@ -317,7 +316,6 @@ mod tests {
         let src = [1.0_f32, 2.0, 3.0, 4.0];
         let mut it = src.into_iter();
         let mut r = LinearResampler::new(move || it.next().unwrap_or(0.0), 48_000, 48_000);
-        // Values pass through in order at a 1:1 step.
         assert_eq!(r.next(), 1.0);
         assert_eq!(r.next(), 2.0);
         assert_eq!(r.next(), 3.0);
@@ -338,7 +336,6 @@ mod tests {
         let a = r.next();
         let b = r.next();
         let c = r.next();
-        // Outputs land two source samples apart and stay ordered.
         assert!(a < b && b < c, "expected increasing {a} {b} {c}");
         assert!((b - a - 2.0).abs() < 1e-3, "step should be ~2 samples");
     }

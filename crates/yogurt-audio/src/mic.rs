@@ -89,12 +89,10 @@ impl MicCapture {
         self.muted.clone()
     }
 
-    /// Enable/disable teeing samples into the echo ring.
     pub(crate) fn set_echo_active(&self, active: bool) {
         self.echo_active.store(active, Ordering::Relaxed);
     }
 
-    /// Clone a handle to the echo ring's consumer half.
     pub(crate) fn echo_consumer_handle(&self) -> Arc<std::sync::Mutex<AudioRingConsumer>> {
         self.echo_consumer.clone()
     }

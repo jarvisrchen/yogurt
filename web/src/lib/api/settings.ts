@@ -51,7 +51,6 @@ export interface General {
   audio_echo_output_device: string;
   /** Whether mic-echo starts enabled on the next recording. */
   audio_echo_enabled: boolean;
-  /** Echo ring-buffer size in frames. */
   audio_echo_buffer: number;
 }
 

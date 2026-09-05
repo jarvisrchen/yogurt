@@ -216,8 +216,7 @@ pub struct Meeting {
     /// change; read by the `GET /api/meetings/active` route so a reload or
     /// second tab reflects the true state without new WS plumbing.
     pub mic_muted: Mutex<bool>,
-    /// Whether the mic is currently being echoed to an output device.
-    /// Same lifecycle as `mic_muted`.
+    /// Same lifecycle as `mic_muted`: read by `GET /api/meetings/active`.
     pub echo_enabled: Mutex<bool>,
 }
 

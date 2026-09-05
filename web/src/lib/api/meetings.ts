@@ -338,7 +338,6 @@ export interface ActiveRecording {
   /** AUD-6: whether the mic is currently paused. `Channel::System` keeps
    *  recording regardless — this only reflects the mic. */
   mic_muted: boolean;
-  /** Whether the mic is currently being echoed to an output device. */
   echo_enabled: boolean;
 }
 
