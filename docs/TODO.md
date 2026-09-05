@@ -45,6 +45,15 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
+- [ ] **UI-10** Make the Screen Recording failure banner say which app to grant and link to the macOS pane
+  <details>
+  <summary>Details</summary>
+
+  When start fails with "The user declined TCCs", the banner's "Open Settings" goes to yogurt's own Settings page, which cannot fix it.
+  The grant belongs to the app that launched yogurt (the terminal, or Homebrew's binary), not to yogurt, and macOS 26 can leave a stale grant that looks on but is refused; the fix is toggling that app off and on under Privacy & Security > Screen & System Audio Recording.
+  Say that in the banner and link `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture` (a plain anchor, no subprocess).
+  </details>
+
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
@@ -103,6 +112,15 @@ The note is a file, not a shell argument, because real resolution notes contain 
   It's not obvious today which of "me" (mic) and "them" (system) is actually capturing what, especially when Chrome is playing a video/call to simulate the other side of a meeting.
   Richard wants a workflow where he says "help me debug this meeting," an agent starts actively tailing the relevant logs/transcript, he starts the recording and plays audio through Chrome to simulate someone talking in Zoom/Slack, and the agent can narrate what it's seeing (which channel picked up the audio, timing, drops) while he narrates what he sees in the UI.
   `yogurt ctl meeting transcript --follow` and `yogurt ctl ws` (see [docs/DEBUGGING-TRANSCRIPTS.md](DEBUGGING-TRANSCRIPTS.md)) already expose the pieces; this needs turning into something an agent can watch continuously and reason about live, not just a one-off dump.
+  </details>
+
+- [ ] **AUD-12** Time out the ScreenCaptureKit content query on start so a TCC denial fails fast instead of wedging the server
+  <details>
+  <summary>Details</summary>
+
+  Seen 2026-09-05: macOS 26 silently stopped honoring WezTerm's Screen Recording grant (preflight still said granted, `SCShareableContent` returned zero displays).
+  `POST /start` blocked inside `SCShareableContent::get` for minutes with no timeout, held `capture.lock` the whole time, and made every other yogurt instance report "another yogurt process is already recording".
+  Wrap the query in a bounded wait (a few seconds), release the lock, and return the existing permission-hint 400.
   </details>
 
 ## LLM
