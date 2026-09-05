@@ -185,6 +185,7 @@ Rules that hold this together:
 - **Mic echo (AUD-11) is a second consumer of the mic callback.**
   The callback tees into an extra ring only while an echo is active; `MicEcho` owns a cpal output stream on the chosen device that drains that ring, fans mono out to every channel, and zero-fills while muted or on underrun.
   It is serviced on the same capture thread as mic hot-swap and never affects the STT path.
+  If the output device cannot run at the mic's rate (a Bluetooth headset at 16 kHz, say), a small linear resampler in the output callback bridges the gap rather than refusing the device.
   `stop()` joins the capture thread so a back-to-back start cannot open an overlapping SCK session.
 - **The capture thread body is wrapped in `catch_unwind`.**
   A panic inside ScreenCaptureKit (usually a TCC denial) becomes a clean HTTP 400 with a permission hint instead of a mystery "channel closed".
