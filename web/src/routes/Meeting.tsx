@@ -5,6 +5,9 @@ import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
+import { EchoDevicePicker } from "../components/EchoDevicePicker";
+import { MicEchoToggle } from "../components/MicEchoToggle";
+import { Pill } from "../components/Pill";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
@@ -552,27 +555,39 @@ export function Meeting() {
           )}
           {/* Row 3: label chips, left-aligned under the title. */}
           {meetingId && <MeetingLabels meetingId={meetingId} />}
-          {/* Row 4: mic picker, left-aligned under the title, on its own
-              (smaller) line instead of crowding row 1. Visible whenever the
-              meeting is open (recording OR stopped) — while recording it
-              hot-swaps the live capture device; while stopped it persists
-              `settings.audio_input_device`, the same field `POST /start`
-              reads, so picking a mic on a stopped-but-open meeting takes
-              effect the next time recording starts. */}
+          {/* Row 4: mic + echo, two columns (AUD-11). Visible whenever the
+              meeting is open (recording OR stopped) — while recording each
+              picker hot-swaps its live device; while stopped each persists
+              its settings field, so a pick on a stopped-but-open meeting
+              takes effect the next time recording starts. */}
           {meetingId && (
-            <div className="flex items-center">
-              <MicDevicePicker meetingId={meetingId} recording={recording} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+              <div className="space-y-1.5">
+                <label className="flex items-center h-5 text-[10px] font-mono uppercase tracking-wider text-mut">
+                  Microphone
+                </label>
+                <MicDevicePicker meetingId={meetingId} recording={recording} />
+                {/* AUD-6: mute the mic without stopping the recording —
+                    always mounted once a meeting exists; disabled with an
+                    explanatory tooltip while not recording rather than
+                    disappearing, since muting only makes sense mid-meeting. */}
+                <MicMuteToggle meetingId={meetingId} recording={recording} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center h-5 gap-1.5">
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+                    Echo to
+                  </label>
+                  {recording && activeRecording.data?.echo_enabled && (
+                    <Pill tone="matcha" status="status">live</Pill>
+                  )}
+                </div>
+                <EchoDevicePicker meetingId={meetingId} recording={recording} />
+                <MicEchoToggle meetingId={meetingId} recording={recording} />
+              </div>
             </div>
           )}
         </header>
-
-        {/* AUD-6: mute the mic without stopping the recording — a core
-            in-meeting action, so it's a big always-findable button between
-            the mic picker and the notes card, not a small toolbar icon.
-            Always mounted once a meeting exists; disabled with an
-            explanatory tooltip while not recording rather than
-            disappearing, since muting only makes sense mid-meeting. */}
-        {meetingId && <MicMuteToggle meetingId={meetingId} recording={recording} />}
 
         {error && (
           <div

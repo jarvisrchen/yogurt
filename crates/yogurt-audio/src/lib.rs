@@ -19,6 +19,7 @@
 #![deny(rust_2018_idioms, missing_debug_implementations)]
 
 pub mod detect;
+mod echo;
 mod error;
 mod frame;
 #[cfg(target_os = "macos")]
@@ -32,9 +33,10 @@ mod system;
 #[cfg(any(test, feature = "synthetic"))]
 pub mod synthetic;
 
+pub use echo::MicEcho;
 pub use error::{AudioError, Result};
 pub use frame::{Channel, Frame, FRAME_SAMPLES, SAMPLE_RATE_HZ};
-pub use mic::{list_input_devices, spawn_mic_capture, DeviceInfo, MicCapture};
+pub use mic::{list_input_devices, list_output_devices, spawn_mic_capture, DeviceInfo, MicCapture};
 pub use permission::{
     has_microphone_permission, has_screen_recording_permission, request_microphone_permission,
     request_screen_recording_permission, PermissionStatus,
@@ -84,6 +86,15 @@ pub struct AudioStream {
     pub mic_tx: broadcast::Sender<Frame>,
     /// Public for the same reason — Phase 3 system-channel consumers.
     pub system_tx: broadcast::Sender<Frame>,
+    /// AUD-11: `Some` while the mic is being echoed to an output device.
+    echo: Option<MicEcho>,
+    /// AUD-11: the output device the caller last asked for (`""` = system
+    /// default). Remembered so `switch_mic_device` can reattach echo on
+    /// the new mic stream without the server having to resend it.
+    echo_requested_device: String,
+    /// AUD-11: the buffer size (frames) the caller last asked for, reused
+    /// on reattach for the same reason.
+    echo_buffer: u32,
 }
 
 impl std::fmt::Debug for AudioStream {
@@ -118,7 +129,31 @@ impl AudioStream {
     pub fn switch_mic_device(&mut self, device_name: Option<&str>) -> Result<String> {
         let new_mic = spawn_mic_capture(self.mic_tx.clone(), device_name)?;
         let resolved = new_mic.device_name.clone();
+        let was_echoing = self.echo.is_some();
+
+        // AUD-11 E2E fix: drop the OLD echo stream before swapping in the
+        // new mic. Two cpal output streams bound to the same device (e.g.
+        // BlackHole) can both end up live at once if a new one is opened
+        // before the old one's Drop actually completes - stop-then-start
+        // is what guarantees only one ever plays.
+        self.echo = None;
         self._mic = new_mic;
+
+        // Reattach echo to the freshly-spawned mic's ring. Never fails the
+        // switch itself - a device that can no longer serve the (possibly
+        // changed) sample rate just leaves echo off with a warn, same as a
+        // failed echo attempt at `/start`.
+        if was_echoing {
+            let requested = self.echo_requested_device.clone();
+            let buffer = self.echo_buffer;
+            let dev = Some(requested.as_str()).filter(|s| !s.is_empty());
+            if let Err(e) = self.open_echo(dev, buffer) {
+                tracing::warn!(
+                    error = %e,
+                    "failed to reattach mic echo after device switch; echo disabled"
+                );
+            }
+        }
         Ok(resolved)
     }
 
@@ -130,6 +165,56 @@ impl AudioStream {
     /// is a rare, low-stakes combo, not worth threading the flag through.
     pub fn set_mic_muted(&self, muted: bool) {
         self._mic.set_muted(muted);
+    }
+
+    /// AUD-11: start (or hot-swap) echoing the mic to `device` (`None`/`""`
+    /// = system default output), buffered at `buffer` frames. Returns the
+    /// resolved device name. Never touches STT or the mic - echo is purely
+    /// an output-side tap on the mic's sample stream.
+    pub fn start_echo(&mut self, device: Option<&str>, buffer: u32) -> Result<String> {
+        self.open_echo(device, buffer)
+    }
+
+    /// Shared by `start_echo` and `switch_mic_device`'s reattach path.
+    /// Remembers the request (`echo_requested_device`/`echo_buffer`) before
+    /// attempting the open, so a later reattach always has the last-known
+    /// intent even if this call itself fails.
+    fn open_echo(&mut self, device: Option<&str>, buffer: u32) -> Result<String> {
+        self.echo_requested_device = device.unwrap_or("").to_string();
+        self.echo_buffer = buffer;
+
+        // AUD-11 E2E fix: drop any existing echo stream FIRST, before
+        // building the replacement. Building-then-swapping left a window
+        // where two cpal output streams were both live on the same device
+        // at once (real hardware measured the level roughly doubling per
+        // swap); stop-then-start serializes it so only one ever plays.
+        self._mic.set_echo_active(false);
+        self.echo = None;
+
+        // `echo_consumer_handle` clones an `Arc` to the ring's consumer -
+        // the mic no longer needs to be respawned to re-enable echo, since
+        // the consumer lives for the whole capture's lifetime rather than
+        // being taken once.
+        let consumer = self._mic.echo_consumer_handle();
+        let muted = self._mic.muted_handle();
+        let echo = MicEcho::start(device, buffer, self._mic.sample_rate, muted, consumer)?;
+        let name = echo.device_name().to_string();
+        self._mic.set_echo_active(true);
+        self.echo = Some(echo);
+        Ok(name)
+    }
+
+    /// AUD-11: stop echoing. Idempotent - a no-op if echo wasn't running.
+    /// Drops the output stream synchronously (see `open_echo`'s comment on
+    /// why ordering here matters).
+    pub fn stop_echo(&mut self) {
+        self._mic.set_echo_active(false);
+        self.echo = None;
+    }
+
+    /// AUD-11: the device currently receiving the echo, if any.
+    pub fn echo_device(&self) -> Option<String> {
+        self.echo.as_ref().map(|e| e.device_name().to_string())
     }
 }
 
@@ -182,5 +267,8 @@ pub fn start_capture(mic_device: Option<&str>) -> Result<AudioStream> {
         _capture_lock,
         mic_tx,
         system_tx,
+        echo: None,
+        echo_requested_device: String::new(),
+        echo_buffer: 512,
     })
 }

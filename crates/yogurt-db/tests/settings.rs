@@ -105,3 +105,38 @@ fn it_patches_stt_provider_and_model() {
     assert_eq!(g.stt_provider, "local");
     assert_eq!(g.stt_model, "medium.en");
 }
+
+/// AUD-11: defaults before any patch - echo off, default output device,
+/// 512-frame buffer.
+#[test]
+fn it_loads_echo_defaults() {
+    let db = Db::open_in_memory().unwrap();
+    let g = settings::load_general(&db).unwrap();
+    assert_eq!(g.audio_echo_output_device, "");
+    assert!(!g.audio_echo_enabled);
+    assert_eq!(g.audio_echo_buffer, 512);
+}
+
+/// AUD-11: the three echo fields round-trip through a patch + reload.
+#[test]
+fn it_round_trips_echo_settings() {
+    let db = Db::open_in_memory().unwrap();
+    let patched = settings::save_general_patch(
+        &db,
+        settings::GeneralPatch {
+            audio_echo_output_device: Some("BlackHole 2ch".into()),
+            audio_echo_enabled: Some(true),
+            audio_echo_buffer: Some(1024),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(patched.audio_echo_output_device, "BlackHole 2ch");
+    assert!(patched.audio_echo_enabled);
+    assert_eq!(patched.audio_echo_buffer, 1024);
+
+    let g = settings::load_general(&db).unwrap();
+    assert_eq!(g.audio_echo_output_device, "BlackHole 2ch");
+    assert!(g.audio_echo_enabled);
+    assert_eq!(g.audio_echo_buffer, 1024);
+}

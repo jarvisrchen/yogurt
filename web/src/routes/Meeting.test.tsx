@@ -51,6 +51,21 @@ vi.mock("../components/MicMuteToggle", () => ({
     />
   ),
 }));
+// AUD-11: stubbed the same way as the mic components above.
+vi.mock("../components/EchoDevicePicker", () => ({
+  EchoDevicePicker: ({ recording }: { meetingId: string; recording: boolean }) => (
+    <div data-testid="echo-picker" data-recording={String(recording)} />
+  ),
+}));
+vi.mock("../components/MicEchoToggle", () => ({
+  MicEchoToggle: ({ meetingId, recording }: { meetingId: string; recording: boolean }) => (
+    <div
+      data-testid="mic-echo-toggle"
+      data-meeting-id={meetingId}
+      data-recording={String(recording)}
+    />
+  ),
+}));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
 }));

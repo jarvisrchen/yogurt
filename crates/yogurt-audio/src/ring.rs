@@ -128,7 +128,21 @@ impl AudioRingConsumer {
     pub(crate) fn dropped_samples(&self) -> u64 {
         self.stats.dropped_samples.load(Ordering::Relaxed)
     }
+
+    /// Pop exactly one sample, or `None` on underrun. AUD-11: the echo
+    /// output callback drains one sample per output frame this way -
+    /// wait-free, no allocation, matching the real-time-safety contract
+    /// of the producer side.
+    pub(crate) fn pop(&mut self) -> Option<f32> {
+        self.inner.pop().ok()
+    }
 }
+
+// SAFETY-adjacent note, not a real safety issue: `Consumer<f32>` from rtrb
+// is already `Send` (it owns no non-Send state); no unsafe impl needed
+// here. AUD-11 just relies on that being true so the echo output stream's
+// 'static closure can own an `AudioRingConsumer` moved from the audio
+// thread's spawn function.
 
 /// Shared overflow counter. Producer increments, consumer reads.
 #[derive(Debug, Default)]

@@ -92,10 +92,10 @@ export function MicDevicePicker({ meetingId, recording }: MicDevicePickerProps) 
     "";
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 w-full">
       <select
         aria-label="Microphone"
-        className="text-[12px] font-mono rounded-md border border-line px-2 py-1"
+        className="w-full text-[12px] font-mono rounded-md border border-line px-2 py-1"
         value={effectiveValue}
         disabled={setDevice.isPending}
         onChange={(e) => setDevice.mutate(e.target.value)}

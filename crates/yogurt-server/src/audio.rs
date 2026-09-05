@@ -122,6 +122,15 @@ pub async fn get_devices() -> Result<Json<Vec<DeviceInfo>>, (StatusCode, String)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+/// `GET /api/audio/output-devices` - AUD-11: output devices for the echo
+/// destination picker (typically listing "BlackHole 2ch" alongside real
+/// speakers/headphones). Same shape as `get_devices`.
+pub async fn get_output_devices() -> Result<Json<Vec<DeviceInfo>>, (StatusCode, String)> {
+    yogurt_audio::list_output_devices()
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
 /// Begin recording. Phase 3 will wire this into `POST /api/meetings/:id/start`.
 ///
 /// Surfaces [`AudioError::PermissionDenied`] for the §5.11 recovery flow.

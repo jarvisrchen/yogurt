@@ -26,6 +26,7 @@ pub fn router(state: AppState) -> Router {
     // attacks that can hit GETs without CORS protection.
     let audio_routes = Router::new()
         .route("/api/audio/devices", get(audio::get_devices))
+        .route("/api/audio/output-devices", get(audio::get_output_devices))
         .route("/api/audio/permission", get(audio::get_permission))
         // Quick task 260628-g71 DD-05: dedicated POST to fire the macOS
         // microphone permission dialog from the Welcome "Grant Microphone"
@@ -89,6 +90,7 @@ pub fn router(state: AppState) -> Router {
             post(switch_meeting_audio_device),
         )
         .route("/api/meetings/{id}/mic-muted", post(set_meeting_mic_muted))
+        .route("/api/meetings/{id}/echo", post(set_meeting_echo))
         // Phase 4 (Plan 04-03): hero augmented-notes endpoint.
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
         // LLM-9: the note formats enhance can shape a summary into, for
@@ -320,6 +322,29 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
                 repo.patch(&id_str, patch)
             })
             .await;
+            // AUD-11: best-effort echo restore. Never fails the start -
+            // a device that vanished since the last session just leaves
+            // the meeting echo-off, reflected truthfully in `echo_enabled`
+            // on `/active` since `Registry::set_echo` only stamps `true`
+            // on an actual successful open.
+            if g.audio_echo_enabled {
+                if let Err(e) = state
+                    .meetings
+                    .set_echo(
+                        &id,
+                        true,
+                        g.audio_echo_output_device.clone(),
+                        g.audio_echo_buffer,
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        error = ?e,
+                        meeting_id = %id,
+                        "failed to start mic echo at recording start; continuing without it"
+                    );
+                }
+            }
             (StatusCode::OK, Json(json!({ "status": "started" }))).into_response()
         }
         Err(e) => (
@@ -384,15 +409,20 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
     // `mic_muted` rides along the same lookup so a page reload or second
     // tab reflects the true mute state within this existing poll, with no
     // new WS plumbing.
-    let (stt, mic_muted) = match state.meetings.get(&id).await {
-        Some(m) => (*m.stt_engine.lock().await, *m.mic_muted.lock().await),
-        None => (None, false),
+    let (stt, mic_muted, echo_enabled) = match state.meetings.get(&id).await {
+        Some(m) => (
+            *m.stt_engine.lock().await,
+            *m.mic_muted.lock().await,
+            *m.echo_enabled.lock().await,
+        ),
+        None => (None, false, false),
     };
     let mut body = json!({
         "id": id.to_string(),
         "title": title,
         "started_at": started_at,
         "mic_muted": mic_muted,
+        "echo_enabled": echo_enabled,
     });
     if let Some(engine) = stt {
         body["stt"] = json!(engine);
@@ -510,6 +540,97 @@ async fn set_meeting_mic_muted(
             .into_response(),
         Err(SwitchDeviceError::NotRecording) => (
             StatusCode::CONFLICT,
+            Json(json!({ "error": "meeting is not currently recording" })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::Device(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// `POST /api/meetings/:id/echo` - AUD-11: open/close/hot-swap the mic
+/// echo on an actively-recording meeting. Either field may be omitted;
+/// an omitted field falls back to the persisted setting. Applies live to
+/// the running capture AND persists the corresponding settings fields -
+/// except on a device-open failure, where `enabled` stays `false` and the
+/// setting is deliberately NOT flipped to `true` (a persisted lie the UI
+/// would show as "on" while the capture thread never opened it).
+#[derive(Deserialize, Default)]
+struct SetEchoRequest {
+    enabled: Option<bool>,
+    device: Option<String>,
+}
+
+async fn set_meeting_echo(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SetEchoRequest>,
+) -> impl IntoResponse {
+    use crate::meetings::SwitchDeviceError;
+
+    let g = match yogurt_db::settings::load_general(&state.db) {
+        Ok(g) => g,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("load settings: {e}") })),
+            )
+                .into_response();
+        }
+    };
+    let enabled = body.enabled.unwrap_or(g.audio_echo_enabled);
+    let device = body
+        .device
+        .clone()
+        .unwrap_or_else(|| g.audio_echo_output_device.clone());
+
+    match state
+        .meetings
+        .set_echo(&id, enabled, device.clone(), g.audio_echo_buffer)
+        .await
+    {
+        Ok((live_enabled, live_device)) => {
+            // Persist truthfully: `audio_echo_enabled` mirrors the live
+            // result (never the request), and the device is only updated
+            // to the resolved name when echo actually ended up running -
+            // an explicit `device` in the request is remembered either way
+            // (it's a real user choice even if this particular toggle is
+            // an "off").
+            let persisted_device = if live_enabled {
+                live_device.clone()
+            } else {
+                device
+            };
+            let patch = yogurt_db::settings::GeneralPatch {
+                audio_echo_enabled: Some(live_enabled),
+                audio_echo_output_device: Some(persisted_device.clone()),
+                ..Default::default()
+            };
+            if let Err(e) = yogurt_db::settings::save_general_patch(&state.db, patch) {
+                tracing::warn!(error = %e, "failed to persist echo settings after live apply");
+            }
+            // `stop_echo`'s reply carries "" (there's no live device once
+            // closed) - respond with the persisted device instead so the
+            // UI's dropdown doesn't jump to "System default" on every off.
+            let response_device = if live_enabled {
+                live_device
+            } else {
+                persisted_device
+            };
+            (
+                StatusCode::OK,
+                Json(json!({ "enabled": live_enabled, "device": response_device })),
+            )
+                .into_response()
+        }
+        Err(SwitchDeviceError::NotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "meeting not found" })),
+        )
+            .into_response(),
+        Err(SwitchDeviceError::NotRecording) => (
+            StatusCode::NOT_FOUND,
             Json(json!({ "error": "meeting is not currently recording" })),
         )
             .into_response(),

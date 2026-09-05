@@ -15,6 +15,11 @@ pub enum AudioError {
     #[error("microphone device unavailable: {0}")]
     MicUnavailable(String),
 
+    /// AUD-11: the chosen echo output device disappeared, or does not
+    /// support the mic's sample rate.
+    #[error("output device unavailable: {0}")]
+    OutputUnavailable(String),
+
     /// SCK refused to start — usually a transient OS-level issue.
     #[error("system audio capture failed to start: {0}")]
     SystemCaptureFailed(String),

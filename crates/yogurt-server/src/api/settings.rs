@@ -217,12 +217,63 @@ async fn validate_stt_patch(
     }
 }
 
+/// AUD-11: the only echo buffer sizes cpal's `BufferSize::Fixed` gets
+/// asked for. Not a hardware limit - a small closed set keeps the
+/// picker simple and every value is a power of two the drainer's 20ms
+/// tick comfortably covers.
+const VALID_ECHO_BUFFERS: [u32; 5] = [128, 256, 512, 1024, 2048];
+
+fn validate_echo_patch(patch: &settings::GeneralPatch) -> Result<(), Error> {
+    if let Some(b) = patch.audio_echo_buffer {
+        if !VALID_ECHO_BUFFERS.contains(&b) {
+            return Err(Error::BadRequest(format!(
+                "invalid audio_echo_buffer {b}; must be one of {VALID_ECHO_BUFFERS:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 async fn patch_settings(
     State(s): State<AppState>,
     Json(patch): Json<settings::GeneralPatch>,
 ) -> Result<Json<settings::General>, Error> {
     validate_stt_patch(&s.db, &patch).await?;
+    validate_echo_patch(&patch)?;
     Ok(Json(settings::save_general_patch(&s.db, patch)?))
+}
+
+#[cfg(test)]
+mod echo_buffer_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_every_documented_buffer_size() {
+        for b in VALID_ECHO_BUFFERS {
+            let patch = settings::GeneralPatch {
+                audio_echo_buffer: Some(b),
+                ..Default::default()
+            };
+            assert!(validate_echo_patch(&patch).is_ok(), "{b} should be valid");
+        }
+    }
+
+    #[test]
+    fn rejects_an_unsupported_buffer_size() {
+        let patch = settings::GeneralPatch {
+            audio_echo_buffer: Some(384),
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_echo_patch(&patch),
+            Err(Error::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn a_missing_buffer_field_is_fine() {
+        assert!(validate_echo_patch(&settings::GeneralPatch::default()).is_ok());
+    }
 }
 
 async fn list_providers(State(s): State<AppState>) -> Result<Json<Vec<ProviderView>>, Error> {
@@ -863,6 +914,11 @@ enum Error {
     /// 422 - the patch is well-formed JSON but describes an invalid
     /// configuration (e.g. local STT pointed at an undownloaded model).
     Unprocessable(String),
+    /// 400 - malformed request value that isn't even a coherent
+    /// configuration attempt (e.g. an echo buffer size cpal was never
+    /// asked to support). Distinct from `Unprocessable`'s 422 because
+    /// AUD-11's contract with the frontend specifies 400 here.
+    BadRequest(String),
     /// 502 - a live probe against the provider's own endpoint failed
     /// (upstream rejected the key, refused the connection, or timed out).
     /// This is the *provider's* fault, not ours, so it's distinct from
@@ -889,6 +945,11 @@ impl IntoResponse for Error {
             Error::Internal(s) => (StatusCode::INTERNAL_SERVER_ERROR, s).into_response(),
             Error::Unprocessable(msg) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({ "error": msg })),
+            )
+                .into_response(),
+            Error::BadRequest(msg) => (
+                StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({ "error": msg })),
             )
                 .into_response(),

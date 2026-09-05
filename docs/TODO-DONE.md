@@ -968,3 +968,15 @@ New closed items go at the bottom.
 
   Verified: cargo fmt/clippy -D warnings, cargo test (all pass), web typecheck + vitest (pass), and a real E2E hit against a running dev server with a downloaded small.en model returned `{"ok":true,"model":"small.en · loaded and ran in 7035ms"}`.
   </details>
+
+- [x] **AUD-11** Echo the mic to a second output device during a live meeting
+  <details>
+  <summary>Details</summary>
+
+  Richard already runs a standalone Python app for this: `/Users/rchen/Documents/code/shadow-voice` (`audio_echo.py`, PortAudio/sounddevice) captures a macOS input device and routes it in real time (sub-50ms, adjustable buffer) to a chosen output device, typically a virtual device like BlackHole so another app (Zoom, OBS, a DAW) can consume the mic.
+  Fold that into yogurt so it is one less process to run: when starting or during a live meeting, offer an option to echo the mic into a selectable output device.
+  Needs a design pass before implementation, at least: where the toggle and device picker live in the live-meeting UI and Settings (persist the chosen output device), whether the echo taps the existing cpal mic stream in `yogurt-audio` or opens a second one, latency/buffer controls, and how it interacts with the hard constraints (in-process only, no audio leaves the machine; echo to a local output device is fine).
+  Use shadow-voice for inspiration on device enumeration, buffer sizing, and the latency/stability trade-off; do not port its Python.
+
+  Two-column block on the live meeting page: mic picker over Mute, echo output picker over an Echo button (E). Backend tees the mic ring into a cpal output stream (`yogurt-audio/src/echo.rs`), hot-swappable, silenced by mute; settings `audio_echo_output_device`, `audio_echo_enabled`, `audio_echo_buffer`. Verified on hardware with a 440 Hz tone through BlackHole 2ch. Also fixed cpal streams never stopping on Drop (cpal 0.15 macOS Arc cycle), which had leaked mic streams on every hot-swap.
+  </details>
