@@ -50,7 +50,8 @@ Commands:
 
   finish <version> [--no-smoke] [-n]
       Runs verify, merges the tap PR, upgrades the local brew install and
-      prints a pre-filled docs/RELEASE-LOG.md row. Skip-if-done: safe to
+      prints a pre-filled docs/RELEASE-LOG.md row and
+      "What shipped" section. Skip-if-done: safe to
       re-run. Options:
         --no-smoke   skip the brew upgrade/test/quarantine steps
         -n           print the plan (every mutating command) and exit 0
@@ -528,26 +529,39 @@ previous_tag() {
 }
 
 # render_log_row <version> <date> <push_run> <dry_run> <arm_sha> <x86_sha>
-# <prev_tag> <ships> - the docs/RELEASE-LOG.md row `finish` prints, with a
-# literal NARRATIVE: slot for the human sentence.
+# - the docs/RELEASE-LOG.md table row `finish` prints, with a literal
+# NARRATIVE: slot for the human sentence.
 render_log_row() {
-  local version="$1" date="$2" push_run="$3" dry_run="$4" arm_sha="$5" x86_sha="$6" prev_tag="$7" ships="$8"
+  local version="$1" date="$2" push_run="$3" dry_run="$4" arm_sha="$5" x86_sha="$6"
   local run_url="https://github.com/$REPO/actions/runs"
-  printf '| v%s | %s | NARRATIVE: <one sentence - what this release ships and why>. All four jobs green ([%s](%s/%s)) after a clean dry run ([%s](%s/%s)). Formula shas verified against re-downloaded tarballs (`%.8s...` arm64, `%.8s...` x86_64). Ships since %s: %s |\n' \
-    "$version" "$date" "$push_run" "$run_url" "$push_run" "$dry_run" "$run_url" "$dry_run" "$arm_sha" "$x86_sha" "${prev_tag:-(none)}" "$ships"
+  printf '| v%s | %s | NARRATIVE: <one sentence - what this release ships and why>. All four jobs green ([%s](%s/%s)) after a clean dry run ([%s](%s/%s)). Formula shas verified against re-downloaded tarballs (`%.8s...` arm64, `%.8s...` x86_64). |\n' \
+    "$version" "$date" "$push_run" "$run_url" "$push_run" "$dry_run" "$run_url" "$dry_run" "$arm_sha" "$x86_sha"
 }
 
-# ships_since <prev_tag> <version> - "hash subject; hash subject; ..." for
-# every commit between <prev_tag> (or the start of history, if empty) and
-# v<version>.
+# ships_since <prev_tag> <version> - the "What shipped" section for
+# v<version>: a `### vX.Y.Z` heading and one `- subject ([#N](pr url))`
+# bullet per commit between <prev_tag> (or the start of history, if empty)
+# and v<version>, newest first. The version bump and the previous release's
+# log PR are release plumbing, not changes, so they are dropped.
 ships_since() {
-  local prev_tag="$1" version="$2" range
+  local prev_tag="$1" version="$2" range subjects
   if [ -n "$prev_tag" ]; then
     range="${prev_tag}..v${version}"
   else
     range="v${version}"
   fi
-  git log "$range" --oneline | awk '{printf "%s%s", (NR>1?"; ":""), $0}'
+  subjects="$(git log "$range" --format='%s')" || return $?
+  echo "### v${version}"
+  echo
+  printf '%s\n' "$subjects" \
+    | grep -v -e '^chore: bump version' -e '^docs(releasing): log' \
+    | awk -v pr="https://github.com/$REPO/pull/" '
+        match($0, / \(#[0-9]+\)$/) {
+          n = substr($0, RSTART + 3, RLENGTH - 4)
+          print "- " substr($0, 1, RSTART - 1) " ([#" n "](" pr n "))"
+          next
+        }
+        { print "- " $0 }' || true
 }
 
 # print_finish_plan <version> <no_smoke> - the mutating commands `finish`
@@ -684,8 +698,11 @@ cmd_finish() {
   today="$(date +%Y-%m-%d)"
 
   echo
-  echo "docs/RELEASE-LOG.md row:"
-  render_log_row "$version" "$today" "${push_run:-?}" "${dry_run:-?}" "$VERIFY_ARM_SHA" "$VERIFY_X86_SHA" "$prev_tag" "$ships"
+  echo "docs/RELEASE-LOG.md table row:"
+  render_log_row "$version" "$today" "${push_run:-?}" "${dry_run:-?}" "$VERIFY_ARM_SHA" "$VERIFY_X86_SHA"
+  echo
+  echo "docs/RELEASE-LOG.md 'What shipped' section:"
+  echo "$ships"
 }
 
 # ---- ship ---------------------------------------------------------
