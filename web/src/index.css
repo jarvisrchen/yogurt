@@ -50,8 +50,6 @@
   --radius-pill:   999px;  /* pills, recording badge                        */
 
   /* ─── Elevation (PRD §16.4) ──────────────────────────────────────────── */
-  /* UI-11: Whimsical-style soft, deep, ink-tinted shadows. Dark mode
-   * re-points these under :root[data-theme="dark"] below. */
   --shadow-card:   0 16px 32px -4px rgba(33, 29, 24, 0.06);
   --shadow-pop:    0 12px 16px -4px rgba(33, 29, 24, 0.18);
   --shadow-window: 0 24px 48px -8px rgba(33, 29, 24, 0.22);
@@ -136,7 +134,6 @@
   --color-honeysoft: #3A3120;
   --color-slate:     #A9B7C4;
   --color-slatesoft: #2A3138;
-  /* Ink-tinted shadows vanish on #1B1815; use neutral black at higher alpha. */
   --shadow-card:   0 16px 32px -4px rgba(0, 0, 0, 0.35);
   --shadow-pop:    0 12px 16px -4px rgba(0, 0, 0, 0.5);
   --shadow-window: 0 24px 48px -8px rgba(0, 0, 0, 0.6);
@@ -145,12 +142,8 @@
 /* === Heading scale (PRD §16.3: section title 24-30, card title 16-21) ====
  * Named recipes for the bold Manrope headings that were being re-typed as
  * `font-bold tracking-tight text-[Npx] ...` at every call site (and drifting:
- * the 18px card title had two line-heights). UI-11a folded the two one-off
- * display sizes in too (greeting 34, meeting title 26) so weight and tracking
- * live in exactly one place.
+ * the 18px card title had two line-heights).
  * ========================================================================== */
-/* UI-11: display sizes (hero, greeting, title, state, section) at Manrope 800,
- * card-level (wordmark, card, sm) at 700, all at Whimsical's -0.01em tracking. */
 @utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
 @utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
 @utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
@@ -167,7 +160,7 @@ html, body {
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.5;
-  letter-spacing: 0.009em; /* UI-11: Whimsical UI tracking */
+  letter-spacing: 0.009em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -396,8 +389,7 @@ html, body {
   margin: 0;
 }
 
-/* Heading scale: body is 15px Manrope; headings step 24 / 19 / 16 within
- * the PRD §16.3 card-title band, at the UI-11 heading weight and tracking. */
+/* Heading scale: 24 / 19 / 16 within the PRD §16.3 card-title band. */
 .yogurt-editor .ProseMirror h1,
 .yogurt-editor .ProseMirror h2,
 .yogurt-editor .ProseMirror h3 {

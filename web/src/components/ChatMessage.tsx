@@ -70,7 +70,7 @@ function MiniMarkdown({ content }: { content: string }) {
  * User bubbles: right-aligned, blueberry background (`--color-blue`),
  * white text. Assistant bubbles: left-aligned, cream `--color-card`
  * background with a `--color-line` border. The asymmetric rounded
- * corners (rounded-br-md / rounded-bl-md) point the speech bubble
+ * corners (rounded-br-chip / rounded-bl-chip) point the speech bubble
  * toward its speaker per PRD §16 chat motif.
  *
  * `isStreaming` only renders the blinking caret on the active assistant
