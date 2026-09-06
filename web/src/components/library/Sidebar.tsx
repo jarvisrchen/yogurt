@@ -2,7 +2,7 @@
  * Phase 7 (Plan 07-01) — Library sidebar (212px, paper bg, blueberry CTA).
  *
  * PRD §5.9 + D-02. Top-to-bottom layout:
- *   1. Yogurt swirl logo + "yogurt" wordmark (Hanken 700)
+ *   1. Yogurt swirl logo + "yogurt" wordmark (heading-wordmark)
  *   2. Primary "+ New meeting" blueberry button (creates → /meeting/:id)
  *   3. Nav: "All meetings" (lilac active), "Starred"
  *   4. Footer:

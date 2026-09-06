@@ -2,7 +2,7 @@
  * Phase 7 (Plan 07-01) — Library hero greeting + meeting-count caption.
  *
  * PRD §5.9 + D-03:
- *   - "Good morning, you" in Hanken 700 at 34px
+ *   - "Good morning, you" via heading-greeting (34px)
  *   - "N meeting{s} · all on this Mac" in JetBrains Mono at 13px
  */
 

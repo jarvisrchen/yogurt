@@ -3,7 +3,7 @@
  *
  * Layout (PRD §5.9 + D-06):
  *   [42px tinted avatar with 2-letter bold initials]
- *   ╎ Title (Hanken-bold 15px)
+ *   ╎ Title (heading-sm)
  *   ╎ [2:45 PM] [47 min]               ← mono 11px pills (MetaPill); duration
  *   ╎                                     omitted while ended_at is null;
  *   ╎                                     [not enhanced] only for the

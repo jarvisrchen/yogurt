@@ -1,10 +1,10 @@
 // Font registration — side-effect imports register @font-face rules.
 // Order matters only for CSS dedup; functionally all are independent.
-import "@fontsource/hanken-grotesk/400.css";
-import "@fontsource/hanken-grotesk/500.css";
-import "@fontsource/hanken-grotesk/600.css";
-import "@fontsource/hanken-grotesk/700.css";
-import "@fontsource/hanken-grotesk/800.css";
+import "@fontsource/manrope/400.css";
+import "@fontsource/manrope/500.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/manrope/800.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";

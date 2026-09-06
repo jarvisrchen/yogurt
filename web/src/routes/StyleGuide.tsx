@@ -33,10 +33,10 @@ const COLORS: Array<{ token: string; hex: string; use: string }> = [
 ];
 
 const RADII: Array<{ name: string; px: number; bg: string }> = [
-  { name: "chip",   px: 6,   bg: "bg-blsoft" },
-  { name: "button", px: 9,   bg: "bg-blsoft" },
-  { name: "card",   px: 14,  bg: "bg-card border border-line" },
-  { name: "panel",  px: 16,  bg: "bg-card border border-line" },
+  { name: "chip",   px: 8,   bg: "bg-blsoft" },
+  { name: "button", px: 12,  bg: "bg-blsoft" },
+  { name: "card",   px: 16,  bg: "bg-card border border-line" },
+  { name: "panel",  px: 24,  bg: "bg-card border border-line" },
   { name: "pill",   px: 999, bg: "bg-mtsoft" },
 ];
 
@@ -118,7 +118,7 @@ export function StyleGuide() {
           <div className="space-y-6">
             <div>
               <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
-                Hanken Grotesk 700 · 44 / 32 / 26
+                Manrope 800 · 44 / 34 / 26
               </p>
               <p className="heading-hero mt-1">
                 yogurt
@@ -135,7 +135,7 @@ export function StyleGuide() {
             </div>
             <div>
               <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
-                Hanken Grotesk · 400 / 500 / 600 / 700 / 800
+                Manrope · 400 / 500 / 600 / 700 / 800
               </p>
               <p className="font-sans font-normal text-[15px] text-ink">
                 The quick brown fox jumps over the lazy dog. 400.
@@ -147,7 +147,7 @@ export function StyleGuide() {
                 The quick brown fox jumps over the lazy dog. 600.
               </p>
               <p className="heading-sm">
-                Card title style — 16px Hanken 700.
+                Card title style - 16px Manrope 700.
               </p>
               <p className="font-sans font-extrabold text-[15px] text-ink">
                 The quick brown fox jumps over the lazy dog. 800.
