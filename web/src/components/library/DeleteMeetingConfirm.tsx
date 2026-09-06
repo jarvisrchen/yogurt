@@ -11,6 +11,9 @@
  *
  * The confirm auto-reverts after 3s of inaction; toggling the checkbox
  * re-arms that timer so it can't vanish mid-decision.
+ *
+ * `ConfirmPanel` is exported so the bulk-delete action bar (MTG-14) can
+ * reuse the same confirm surface for the "delete N meetings" case.
  */
 
 import { useEffect, useState } from "react";
@@ -110,7 +113,7 @@ export function DeleteMeetingConfirm({ id, onDeleted, variant }: Props) {
   );
 }
 
-interface ConfirmPanelProps {
+export interface ConfirmPanelProps {
   testId?: string;
   containerClassName: string;
   deleteFile: boolean;
@@ -121,7 +124,12 @@ interface ConfirmPanelProps {
   isPending: boolean;
 }
 
-function ConfirmPanel({
+/**
+ * Exported so the Library's bulk-delete action bar (MTG-14) can reuse the
+ * exact same "Delete? / Cancel" + "also delete .md" confirm surface -
+ * only the mutation it's wired to differs (bulk vs. single meeting).
+ */
+export function ConfirmPanel({
   testId,
   containerClassName,
   deleteFile,

@@ -50,14 +50,31 @@ export function useKeyboardShortcut(
   }, [key, metaOrCtrl, enabled, ignoreWhenTyping, handler]);
 }
 
-/** True when the event target is a text-entry surface (input, textarea,
- *  select, or a contenteditable region such as the TipTap editor). */
+/** `<input>` types that aren't text entry - a focused checkbox or radio
+ *  (e.g. right after a click) shouldn't count as "typing". */
+const NON_TEXT_INPUT_TYPES = new Set([
+  "checkbox",
+  "radio",
+  "button",
+  "submit",
+  "reset",
+  "range",
+  "color",
+  "file",
+  "image",
+]);
+
+/** True when the event target is a text-entry surface (a text-like input,
+ *  textarea, select, or a contenteditable region such as the TipTap
+ *  editor) - as opposed to e.g. a checkbox, which is an `<input>` too but
+ *  captures no text. */
 function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
-  return (
-    t.isContentEditable ||
-    t.tagName === "INPUT" ||
-    t.tagName === "TEXTAREA" ||
-    t.tagName === "SELECT"
-  );
+  if (t.isContentEditable || t.tagName === "TEXTAREA" || t.tagName === "SELECT") {
+    return true;
+  }
+  if (t.tagName === "INPUT") {
+    return !NON_TEXT_INPUT_TYPES.has((t as HTMLInputElement).type);
+  }
+  return false;
 }

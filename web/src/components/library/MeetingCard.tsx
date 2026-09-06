@@ -52,9 +52,22 @@ interface Props {
    * per card.
    */
   activeId?: string | null;
+  /** MTG-14: true once any card in the list is selected - pins every
+   *  checkbox visible instead of only-on-hover. */
+  selectionActive?: boolean;
+  /** MTG-14: whether this specific card is selected. */
+  selected?: boolean;
+  /** MTG-14: checkbox click handler - `shiftKey` drives range-select. */
+  onToggleSelect?: (id: string, shiftKey: boolean) => void;
 }
 
-export function MeetingCard({ meeting, activeId }: Props) {
+export function MeetingCard({
+  meeting,
+  activeId,
+  selectionActive = false,
+  selected = false,
+  onToggleSelect,
+}: Props) {
   const isLive = activeId != null && activeId === meeting.id;
   const parts = metaParts(meeting);
   const caption = parts
@@ -74,6 +87,35 @@ export function MeetingCard({ meeting, activeId }: Props) {
         isLive ? "border-straw" : "border-line"
       } rounded-card shadow-card hover:border-grey/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40`}
     >
+      <label
+        className={`shrink-0 flex items-center h-[22px] pr-0.5 ${
+          selectionActive
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+        }`}
+        // stopPropagation only (no preventDefault) so clicking the label
+        // still natively toggles its checkbox - Link navigation fires on
+        // click, which this already cancels before it reaches the <Link>.
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          // onChange, not onClick+preventDefault: a checkbox's native click
+          // toggle can't be reliably suppressed from a click handler, so
+          // fighting it there leaves the DOM's real `checked` state out of
+          // sync with `selected` (seen live: a shift-range-selected box
+          // that stayed visually unchecked). Reading the driving event via
+          // `nativeEvent` for the shift-key gets the same result the
+          // idiomatic way - the next render's `checked={selected}` is what
+          // actually wins, for every checkbox the range touches.
+          onChange={(e) =>
+            onToggleSelect?.(meeting.id, (e.nativeEvent as MouseEvent).shiftKey)
+          }
+          aria-label={selected ? `Deselect ${meeting.title}` : `Select ${meeting.title}`}
+          className="w-4 h-4 rounded-[4px] border border-line accent-blue cursor-pointer"
+        />
+      </label>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <InlineTitle

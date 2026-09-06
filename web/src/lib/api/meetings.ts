@@ -215,6 +215,7 @@ export function useDeleteMeeting(): UseMutationResult<
     mutationFn: ({ id, deleteFile }) => meetingsApi.delete(id, deleteFile),
     onSuccess: (_void, { id }) => {
       qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
       qc.removeQueries({ queryKey: meetingKey(id) });
     },
   });
@@ -262,6 +263,80 @@ export function useSetMeetingLabels(): UseMutationResult<
       qc.invalidateQueries({ queryKey: ["labels"] });
       qc.setQueryData(meetingKey(m.id), m);
     },
+  });
+}
+
+// ─── MTG-14 - Library multi-select bulk actions ────────────────────────────
+//
+// No bulk server route: both hooks fan out over the existing per-meeting
+// endpoints with `Promise.allSettled`, then invalidate once regardless of
+// partial failure - a rejected `Promise.all` would abort the whole batch,
+// leaving meetings that *did* succeed server-side stuck in a stale cache
+// (and a stale `selected` set) with no error ever surfaced to the caller.
+
+/** `DELETE /api/meetings/:id` for every selected id. */
+export function useBulkDeleteMeetings(): UseMutationResult<
+  void,
+  Error,
+  { ids: string[]; deleteFile: boolean }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, deleteFile }) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => meetingsApi.delete(id, deleteFile)),
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        throw new Error(
+          `Failed to delete ${failed.length} of ${ids.length} meetings`,
+        );
+      }
+    },
+    // onSettled (not onSuccess): a partial failure still needs the
+    // successfully-deleted meetings reflected in the list.
+    onSettled: (_data, _error, { ids }) => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
+      for (const id of ids) qc.removeQueries({ queryKey: meetingKey(id) });
+    },
+  });
+}
+
+/**
+ * Adds or removes one label across several meetings via
+ * `PATCH /api/meetings/:id { label_ids }` per meeting. Each meeting's next
+ * label set is computed from its own current labels, so it's safe to run
+ * over meetings that already have (or lack) the label.
+ */
+export function useBulkSetLabel(): UseMutationResult<
+  void,
+  Error,
+  { meetings: Pick<Meeting, "id" | "labels">[]; labelId: string; mode: "add" | "remove" }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ meetings, labelId, mode }) => {
+      const results = await Promise.allSettled(
+        meetings.map((m) => {
+          const ids = new Set(m.labels.map((l) => l.id));
+          if (mode === "add") ids.add(labelId);
+          else ids.delete(labelId);
+          return meetingsApi.patch(m.id, { label_ids: [...ids] });
+        }),
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        throw new Error(
+          `Failed to update labels on ${failed.length} of ${meetings.length} meetings`,
+        );
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
+    },
+    onError: (err) => console.error("bulk label update failed", err),
   });
 }
 
