@@ -26,6 +26,11 @@ pub struct Label {
     pub id: String,
     pub name: String,
     pub color: String,
+    /// Custom sidebar order (UI-12), set via `LabelRepo::reorder`.
+    pub position: i64,
+    /// Unix ms, touched on rename/recolor and on apply/remove from a
+    /// meeting (UI-12) — backs the "Last updated" sidebar sort.
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,7 +57,7 @@ impl LabelRepo {
     pub fn list_with_counts(&self) -> Result<Vec<LabelWithCount>> {
         self.db.with_conn(|conn| {
             let mut stmt = conn.prepare_cached(
-                "SELECT l.id, l.name, l.color, COUNT(ml.meeting_id) \
+                "SELECT l.id, l.name, l.color, l.position, l.updated_at, COUNT(ml.meeting_id) \
                  FROM labels l \
                  LEFT JOIN meeting_labels ml ON ml.label_id = l.id \
                  GROUP BY l.id \
@@ -64,8 +69,10 @@ impl LabelRepo {
                         id: r.get(0)?,
                         name: r.get(1)?,
                         color: r.get(2)?,
+                        position: r.get(3)?,
+                        updated_at: r.get(4)?,
                     },
-                    meeting_count: r.get(3)?,
+                    meeting_count: r.get(5)?,
                 })
             })?;
             let mut out = Vec::new();
@@ -107,12 +114,30 @@ impl LabelRepo {
             };
             let id = Ulid::new().to_string();
             let now_ms = chrono::Utc::now().timestamp_millis();
+            // Append at the end of the custom order rather than defaulting
+            // to 0, so a freshly-created label doesn't jump to the front
+            // of a list the user has already hand-ordered.
+            let position: i64 = conn.query_row(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM labels",
+                [],
+                |r| r.get(0),
+            )?;
             conn.execute(
-                "INSERT INTO labels (id, name, color, created_at) VALUES (?1, ?2, ?3, ?4)",
-                params![id, name, color, now_ms],
+                "INSERT INTO labels (id, name, color, created_at, position, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?4)",
+                params![id, name, color, now_ms, position],
             )
             .context("insert label")?;
-            Ok((Label { id, name, color }, true))
+            Ok((
+                Label {
+                    id,
+                    name,
+                    color,
+                    position,
+                    updated_at: now_ms,
+                },
+                true,
+            ))
         })
     }
 
@@ -135,16 +160,41 @@ impl LabelRepo {
             }
             let new_name = name.unwrap_or(current.name);
             let new_color = color.unwrap_or(current.color);
+            let now_ms = chrono::Utc::now().timestamp_millis();
             conn.execute(
-                "UPDATE labels SET name = ?1, color = ?2 WHERE id = ?3",
-                params![new_name, new_color, id_owned],
+                "UPDATE labels SET name = ?1, color = ?2, updated_at = ?3 WHERE id = ?4",
+                params![new_name, new_color, now_ms, id_owned],
             )
             .context("update label")?;
             Ok(Label {
                 id: id_owned,
                 name: new_name,
                 color: new_color,
+                position: current.position,
+                updated_at: now_ms,
             })
+        })
+    }
+
+    /// Set the custom sidebar order: `ids[0]` gets position 0, `ids[1]`
+    /// position 1, etc. An id that doesn't exist bails "label not found"
+    /// (same wording `set_for_meeting_conn` uses, so `ApiError::from`
+    /// maps it to 400 the same way). Does not touch `updated_at` —
+    /// reordering isn't a content change.
+    pub fn reorder(&self, ids: &[String]) -> Result<()> {
+        self.db.with_conn(|conn| {
+            let tx = conn.unchecked_transaction().context("begin reorder tx")?;
+            for (position, id) in ids.iter().enumerate() {
+                let n = tx.execute(
+                    "UPDATE labels SET position = ?1 WHERE id = ?2",
+                    params![position as i64, id],
+                )?;
+                if n == 0 {
+                    bail!("label not found: {id}");
+                }
+            }
+            tx.commit().context("commit reorder tx")?;
+            Ok(())
         })
     }
 
@@ -187,6 +237,12 @@ pub(crate) fn set_for_meeting_conn(
             bail!("label not found");
         }
     }
+    let mut before_stmt =
+        tx.prepare("SELECT label_id FROM meeting_labels WHERE meeting_id = ?1")?;
+    let before: Vec<String> = before_stmt
+        .query_map(params![meeting_id], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    drop(before_stmt);
     tx.execute(
         "DELETE FROM meeting_labels WHERE meeting_id = ?1",
         params![meeting_id],
@@ -195,6 +251,20 @@ pub(crate) fn set_for_meeting_conn(
         tx.execute(
             "INSERT OR IGNORE INTO meeting_labels (meeting_id, label_id) VALUES (?1, ?2)",
             params![meeting_id, lid],
+        )?;
+    }
+    // UI-12: touch `updated_at` on every label whose association with
+    // this meeting just changed (applied or removed), so "Last updated"
+    // sidebar sort reflects it.
+    let touched = before
+        .iter()
+        .filter(|l| !label_ids.contains(l))
+        .chain(label_ids.iter().filter(|l| !before.contains(l)));
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    for lid in touched {
+        tx.execute(
+            "UPDATE labels SET updated_at = ?1 WHERE id = ?2",
+            params![now_ms, lid],
         )?;
     }
     tx.commit().context("commit label tx")?;
@@ -231,13 +301,15 @@ fn is_hex_color(s: &str) -> bool {
 
 fn find_by_name(conn: &rusqlite::Connection, name: &str) -> rusqlite::Result<Option<Label>> {
     conn.query_row(
-        "SELECT id, name, color FROM labels WHERE name = ?1 COLLATE NOCASE",
+        "SELECT id, name, color, position, updated_at FROM labels WHERE name = ?1 COLLATE NOCASE",
         params![name],
         |r| {
             Ok(Label {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 color: r.get(2)?,
+                position: r.get(3)?,
+                updated_at: r.get(4)?,
             })
         },
     )
@@ -246,13 +318,15 @@ fn find_by_name(conn: &rusqlite::Connection, name: &str) -> rusqlite::Result<Opt
 
 fn find_by_id(conn: &rusqlite::Connection, id: &str) -> rusqlite::Result<Option<Label>> {
     conn.query_row(
-        "SELECT id, name, color FROM labels WHERE id = ?1",
+        "SELECT id, name, color, position, updated_at FROM labels WHERE id = ?1",
         params![id],
         |r| {
             Ok(Label {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 color: r.get(2)?,
+                position: r.get(3)?,
+                updated_at: r.get(4)?,
             })
         },
     )
@@ -420,5 +494,99 @@ mod tests {
         assert_eq!(patched.labels.len(), 1);
         assert_eq!(patched.labels[0].id, l.id);
         assert!(patched.updated_at > before);
+    }
+
+    #[test]
+    fn find_or_create_appends_position_at_the_end() {
+        let (_, labels, _) = fresh();
+        let (a, _) = labels.find_or_create("Sales", None).unwrap();
+        let (b, _) = labels.find_or_create("Support", None).unwrap();
+        assert_eq!(a.position, 0);
+        assert_eq!(b.position, 1);
+    }
+
+    #[test]
+    fn reorder_sets_positions_in_the_given_order() {
+        let (_, labels, _) = fresh();
+        let (a, _) = labels.find_or_create("Alpha", None).unwrap();
+        let (b, _) = labels.find_or_create("Bravo", None).unwrap();
+        let (c, _) = labels.find_or_create("Charlie", None).unwrap();
+
+        labels
+            .reorder(&[c.id.clone(), a.id.clone(), b.id.clone()])
+            .unwrap();
+
+        let by_id = |id: &str| {
+            labels
+                .list_with_counts()
+                .unwrap()
+                .into_iter()
+                .find(|l| l.label.id == id)
+                .unwrap()
+                .label
+                .position
+        };
+        assert_eq!(by_id(&c.id), 0);
+        assert_eq!(by_id(&a.id), 1);
+        assert_eq!(by_id(&b.id), 2);
+    }
+
+    #[test]
+    fn reorder_rejects_an_unknown_id() {
+        let (_, labels, _) = fresh();
+        let err = labels.reorder(&["nonesuch".to_string()]).unwrap_err();
+        assert!(err.to_string().contains("label not found"));
+    }
+
+    #[test]
+    fn update_touches_updated_at() {
+        let (_, labels, _) = fresh();
+        let (a, _) = labels.find_or_create("Sales", None).unwrap();
+        let before = a.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let renamed = labels.update(&a.id, Some("Customers"), None).unwrap();
+        assert!(renamed.updated_at > before);
+    }
+
+    #[test]
+    fn applying_and_removing_a_label_touches_its_updated_at() {
+        let (_, labels, meetings) = fresh();
+        let m = meetings
+            .create(NewMeeting {
+                title: "T".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let (l, _) = labels.find_or_create("Sales", None).unwrap();
+        let before = l.updated_at;
+
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        labels
+            .set_for_meeting(&m.id, std::slice::from_ref(&l.id))
+            .unwrap();
+        let after_apply = labels
+            .list_with_counts()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.label.id == l.id)
+            .unwrap()
+            .label
+            .updated_at;
+        assert!(after_apply > before, "applying a label touches updated_at");
+
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        labels.set_for_meeting(&m.id, &[]).unwrap();
+        let after_remove = labels
+            .list_with_counts()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.label.id == l.id)
+            .unwrap()
+            .label
+            .updated_at;
+        assert!(
+            after_remove > after_apply,
+            "removing a label touches updated_at"
+        );
     }
 }

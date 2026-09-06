@@ -471,7 +471,7 @@ fn labels_for(
         .collect::<Vec<_>>()
         .join(",");
     let sql = format!(
-        "SELECT ml.meeting_id, l.id, l.name, l.color \
+        "SELECT ml.meeting_id, l.id, l.name, l.color, l.position, l.updated_at \
          FROM meeting_labels ml JOIN labels l ON l.id = ml.label_id \
          WHERE ml.meeting_id IN ({placeholders}) \
          ORDER BY l.name COLLATE NOCASE"
@@ -486,6 +486,8 @@ fn labels_for(
                     id: r.get(1)?,
                     name: r.get(2)?,
                     color: r.get(3)?,
+                    position: r.get(4)?,
+                    updated_at: r.get(5)?,
                 },
             ))
         },

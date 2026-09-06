@@ -1046,3 +1046,15 @@ New closed items go at the bottom.
 
   Landed 2026-09-06. `normalize_color` accepts palette keys or `#rrggbb` (lowercased); `labelTone()` renders a hex color with a translucent background; the sidebar recolor menu gained a native color input plus hex text field.
   </details>
+
+- [x] **UI-12** Sort or order the sidebar Labels group: alphabetical, last updated, or custom
+  <details>
+  <summary>Details</summary>
+
+  Labels are always listed `ORDER BY l.name COLLATE NOCASE` (`crates/yogurt-db/src/labels.rs`).
+  Add a sort control on the Labels group with alphabetical, last updated, and custom (drag to reorder) modes.
+  Custom needs a persisted `position` column plus a reorder endpoint; last updated needs an `updated_at` touched when a label is renamed, recolored, or applied.
+  Persist the chosen mode in settings so it survives reloads.
+
+  Landed 2026-09-06. Migration V012 adds `position` and `updated_at`; `PUT /api/labels/order` persists a custom order; the sidebar Labels header has an A-Z / Last updated / Custom select with drag to reorder in Custom mode, persisted in localStorage.
+  </details>
