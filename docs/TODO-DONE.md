@@ -1036,3 +1036,13 @@ New closed items go at the bottom.
 
   Landed via the ui-13 PR (2026-09-06). Filled lucide `Star` before the Starred nav text, inheriting the row color.
   </details>
+
+- [x] **UI-14** Let a label take a custom hex color, not only a palette key
+  <details>
+  <summary>Details</summary>
+
+  `labels.color` is a palette key validated against `COLORS` in `crates/yogurt-db/src/labels.rs`, and `LabelChip` maps it through `LABEL_COLORS` to design tokens.
+  Add a hex input to the label create/rename UI, accept `#rrggbb` alongside palette keys on the server, and render a custom color in `LabelChip`, `LabelPicker`, and the sidebar with a derived soft background so contrast stays readable.
+
+  Landed 2026-09-06. `normalize_color` accepts palette keys or `#rrggbb` (lowercased); `labelTone()` renders a hex color with a translucent background; the sidebar recolor menu gained a native color input plus hex text field.
+  </details>

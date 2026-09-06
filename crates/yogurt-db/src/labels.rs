@@ -5,9 +5,11 @@
 //! "Sales" and "sales" are the same label (`find_or_create` returns the
 //! existing row rather than erroring or duplicating).
 //!
-//! `color` is a palette *key* (one of [`COLORS`]), not a hex value — the
-//! web `LabelChip` component owns the actual hex mapping so a future
-//! palette refresh only touches one file.
+//! `color` is either a palette *key* (one of [`COLORS`]) or a custom
+//! `#rrggbb` hex string. Hex input is normalized to lowercase before
+//! storage. The web `LabelChip` component owns the palette-key -> hex
+//! mapping so a future palette refresh only touches one file; a hex
+//! `color` is rendered as-is.
 
 use crate::Db;
 use anyhow::{bail, Context, Result};
@@ -81,9 +83,7 @@ impl LabelRepo {
     /// by rotation), and `created_at = now`.
     pub fn find_or_create(&self, name: &str, color: Option<&str>) -> Result<(Label, bool)> {
         let name = validate_name(name)?;
-        if let Some(c) = color {
-            validate_color(c)?;
-        }
+        let color = color.map(normalize_color).transpose()?;
         self.db.with_conn(|conn| -> Result<(Label, bool)> {
             if let Some(existing) = find_by_name(conn, &name)? {
                 return Ok((existing, false));
@@ -91,8 +91,8 @@ impl LabelRepo {
             // Auto-color: first palette entry no existing label uses, so
             // adjacent labels stay visually distinct even after the user
             // recolors one; once every color is taken, cycle by count.
-            let color = match color {
-                Some(c) => c.to_string(),
+            let color = match &color {
+                Some(c) => c.clone(),
                 None => {
                     let mut stmt = conn.prepare("SELECT color FROM labels")?;
                     let used: Vec<String> = stmt
@@ -121,9 +121,7 @@ impl LabelRepo {
     /// exists"; an unknown id bails "label not found".
     pub fn update(&self, id: &str, name: Option<&str>, color: Option<&str>) -> Result<Label> {
         let name = name.map(validate_name).transpose()?;
-        if let Some(c) = color {
-            validate_color(c)?;
-        }
+        let color = color.map(normalize_color).transpose()?;
         let id_owned = id.to_string();
         self.db.with_conn(|conn| -> Result<Label> {
             let current =
@@ -136,7 +134,7 @@ impl LabelRepo {
                 }
             }
             let new_name = name.unwrap_or(current.name);
-            let new_color = color.map(str::to_string).unwrap_or(current.color);
+            let new_color = color.unwrap_or(current.color);
             conn.execute(
                 "UPDATE labels SET name = ?1, color = ?2 WHERE id = ?3",
                 params![new_name, new_color, id_owned],
@@ -214,11 +212,21 @@ fn validate_name(name: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-fn validate_color(color: &str) -> Result<()> {
-    if !COLORS.contains(&color) {
-        bail!("invalid color");
+/// Accepts a palette key as-is, or a `#rrggbb` hex string (any case,
+/// lowercased before storage). Anything else bails "invalid color".
+fn normalize_color(color: &str) -> Result<String> {
+    if COLORS.contains(&color) {
+        return Ok(color.to_string());
     }
-    Ok(())
+    let lower = color.to_lowercase();
+    if is_hex_color(&lower) {
+        return Ok(lower);
+    }
+    bail!("invalid color");
+}
+
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn find_by_name(conn: &rusqlite::Connection, name: &str) -> rusqlite::Result<Option<Label>> {
@@ -279,6 +287,35 @@ mod tests {
         let (_, labels, _) = fresh();
         let err = labels.find_or_create("   ", None).unwrap_err();
         assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn find_or_create_accepts_and_normalizes_hex_color() {
+        let (_, labels, _) = fresh();
+        let (a, _) = labels.find_or_create("Sales", Some("#A3C9FF")).unwrap();
+        assert_eq!(a.color, "#a3c9ff");
+    }
+
+    #[test]
+    fn find_or_create_rejects_invalid_hex_color() {
+        let (_, labels, _) = fresh();
+        for bad in ["#fff", "#gggggg", "blue2", "a3c9ff", "#a3c9ff0"] {
+            let err = labels.find_or_create("Sales", Some(bad)).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid color"),
+                "expected {bad:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn update_recolors_with_hex_and_keeps_palette_keys_working() {
+        let (_, labels, _) = fresh();
+        let (a, _) = labels.find_or_create("Sales", Some("blue")).unwrap();
+        let recolored = labels.update(&a.id, None, Some("#123ABC")).unwrap();
+        assert_eq!(recolored.color, "#123abc");
+        let back = labels.update(&a.id, None, Some("matcha")).unwrap();
+        assert_eq!(back.color, "matcha");
     }
 
     #[test]

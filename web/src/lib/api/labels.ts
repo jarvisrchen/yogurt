@@ -11,9 +11,9 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { json, meetingsKey, type Label, type LabelColor } from "./meetings";
+import { json, meetingsKey, type Label, type LabelColor, type PaletteColor } from "./meetings";
 
-export type { Label, LabelColor };
+export type { Label, LabelColor, PaletteColor };
 
 export interface LabelWithCount extends Label {
   meeting_count: number;

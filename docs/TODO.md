@@ -45,14 +45,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-- [ ] **UI-14** Let a label take a custom hex color, not only a palette key
-  <details>
-  <summary>Details</summary>
-
-  `labels.color` is a palette key validated against `COLORS` in `crates/yogurt-db/src/labels.rs`, and `LabelChip` maps it through `LABEL_COLORS` to design tokens.
-  Add a hex input to the label create/rename UI, accept `#rrggbb` alongside palette keys on the server, and render a custom color in `LabelChip`, `LabelPicker`, and the sidebar with a derived soft background so contrast stays readable.
-  </details>
-
 - [ ] **UI-12** Sort or order the sidebar Labels group: alphabetical, last updated, or custom
   <details>
   <summary>Details</summary>

@@ -13,12 +13,16 @@ import { MoreHorizontal } from "lucide-react";
 import {
   useDeleteLabel,
   useUpdateLabel,
-  type LabelColor,
+  type PaletteColor,
   type LabelWithCount,
 } from "../../lib/api/labels";
-import { LABEL_COLORS } from "../labels/LabelChip";
+import { isHexColor, labelTone } from "../labels/LabelChip";
 
-const SWATCH_COLORS: LabelColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
+const SWATCH_COLORS: PaletteColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
+
+/** Starting point shown in the custom-color inputs for a label that
+ *  doesn't have a hex color yet. */
+const DEFAULT_CUSTOM_COLOR = "#8a8fa3";
 
 interface Props {
   label: LabelWithCount;
@@ -29,12 +33,16 @@ export function SidebarLabelRow({ label }: Props) {
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [draftName, setDraftName] = useState(label.name);
+  const [customColor, setCustomColor] = useState(
+    isHexColor(label.color) ? label.color : DEFAULT_CUSTOM_COLOR,
+  );
   const wrapperRef = useRef<HTMLDivElement>(null);
   const update = useUpdateLabel();
   const del = useDeleteLabel();
 
   useEffect(() => {
     if (!menuOpen) return;
+    setCustomColor(isHexColor(label.color) ? label.color : DEFAULT_CUSTOM_COLOR);
     const onDown = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
@@ -43,7 +51,11 @@ export function SidebarLabelRow({ label }: Props) {
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen]);
+  }, [menuOpen, label.color]);
+
+  function commitCustomColor(hex: string) {
+    if (isHexColor(hex)) update.mutate({ id: label.id, color: hex });
+  }
 
   useEffect(() => {
     if (!confirming) return;
@@ -51,7 +63,7 @@ export function SidebarLabelRow({ label }: Props) {
     return () => clearTimeout(t);
   }, [confirming]);
 
-  const tone = LABEL_COLORS[label.color] ?? { bg: "var(--color-line)", fg: "var(--color-mut)" };
+  const tone = labelTone(label.color);
 
   function commitRename() {
     const name = draftName.trim();
@@ -131,7 +143,7 @@ export function SidebarLabelRow({ label }: Props) {
           </button>
           <div className="flex items-center gap-1.5 py-1.5">
             {SWATCH_COLORS.map((c) => {
-              const swatch = LABEL_COLORS[c];
+              const swatch = labelTone(c);
               return (
                 <button
                   key={c}
@@ -145,6 +157,40 @@ export function SidebarLabelRow({ label }: Props) {
                 />
               );
             })}
+          </div>
+          <div className="flex items-center gap-1.5 pb-1.5">
+            <input
+              type="color"
+              aria-label="Custom label color"
+              // Falls back past a not-yet-valid `customColor` draft (e.g.
+              // mid-typed hex in the text field below) so this native input
+              // never gets fed an invalid value, which browsers silently
+              // render as black.
+              value={
+                isHexColor(label.color)
+                  ? label.color
+                  : isHexColor(customColor)
+                    ? customColor
+                    : DEFAULT_CUSTOM_COLOR
+              }
+              onChange={(e) => {
+                setCustomColor(e.target.value);
+                update.mutate({ id: label.id, color: e.target.value });
+              }}
+              className="w-4 h-4 rounded-[5px] border-none bg-transparent p-0 cursor-pointer"
+            />
+            <input
+              type="text"
+              aria-label="Custom label color hex"
+              value={customColor}
+              onChange={(e) => setCustomColor(e.target.value)}
+              onBlur={() => commitCustomColor(customColor)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitCustomColor(customColor);
+              }}
+              placeholder="#a3c9ff"
+              className="w-20 px-1.5 py-0.5 rounded-button border border-line bg-paper text-[11px] text-ink focus:outline-none focus:ring-2 focus:ring-blue/30"
+            />
           </div>
           {confirming ? (
             <div className="space-y-1">
