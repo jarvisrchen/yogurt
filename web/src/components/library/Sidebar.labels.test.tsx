@@ -114,6 +114,43 @@ describe("Sidebar — Labels section", () => {
     expect(menu.parentElement?.parentElement?.className).not.toMatch(/overflow/);
   });
 
+  it("commits a valid custom hex on Enter but not an invalid one on blur", () => {
+    vi.mocked(useLabels).mockReturnValue({
+      data: [{ id: "l1", name: "Sales", color: "blue", meeting_count: 3 }],
+    } as unknown as ReturnType<typeof useLabels>);
+    const mutate = vi.fn();
+    vi.mocked(useUpdateLabel).mockReturnValue({
+      mutate,
+    } as unknown as ReturnType<typeof useUpdateLabel>);
+    vi.mocked(useDeleteLabel).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteLabel>);
+    vi.mocked(useCreateMeeting).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
+
+    renderSidebar();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sales label options" }));
+    const hexInput = screen.getByRole("textbox", { name: "Custom label color hex" });
+
+    fireEvent.change(hexInput, { target: { value: "not-a-color" } });
+    fireEvent.blur(hexInput);
+    expect(mutate).not.toHaveBeenCalled();
+
+    fireEvent.change(hexInput, { target: { value: "#A3C9FF" } });
+    fireEvent.keyDown(hexInput, { key: "Enter" });
+    expect(mutate).toHaveBeenCalledWith({ id: "l1", color: "#A3C9FF" });
+  });
+
   it("shows a muted line when there are no labels", () => {
     vi.mocked(useLabels).mockReturnValue({ data: [] } as unknown as ReturnType<
       typeof useLabels
