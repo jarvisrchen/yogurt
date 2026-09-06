@@ -634,7 +634,7 @@ export function MeetingPost() {
               title={displayTitle ?? "Untitled meeting"}
               className="block heading-card truncate"
             />
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <div className="mt-1 space-y-1.5">
               <MeetingMetaPills
                 startedAt={startedAtUnixMs}
                 endedAt={endedAtUnixMs}
