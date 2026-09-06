@@ -119,7 +119,7 @@ export function LabelPicker({ meetingId, selected, open, onClose, anchorClassNam
         />
       </div>
       {filtered.length === 0 && !showCreateRow && (
-        <p className="px-3 py-2 text-[12px] font-mono text-mut">
+        <p className="px-3 py-2 text-[12px] text-mut">
           {(labels.data ?? []).length === 0
             ? "No labels yet. Type to create one."
             : "No matches."}
@@ -138,7 +138,7 @@ export function LabelPicker({ meetingId, selected, open, onClose, anchorClassNam
             className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-paper"
           >
             <span
-              className="w-2 h-2 rounded-pill shrink-0"
+              className="w-[9px] h-[9px] rounded-[3px] shrink-0"
               style={{ background: tone.fg }}
               aria-hidden
             />

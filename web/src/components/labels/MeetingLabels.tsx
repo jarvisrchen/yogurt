@@ -45,7 +45,7 @@ export function MeetingLabels({ meetingId, labels }: Props) {
         // mousedown, before this onClick runs).
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 text-mut hover:text-ink text-[12px] font-mono"
+        className="inline-flex items-center gap-1 text-mut hover:text-ink text-[12.5px] font-medium"
       >
         <Tag size={12} aria-hidden />
         Label

@@ -187,7 +187,7 @@ export function ComboBox({
             : undefined
         }
         role="combobox"
-        className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1 disabled:opacity-50"
+        className="w-full rounded-button border border-line bg-paper pl-3 pr-7 py-2 text-[13.5px] text-ink placeholder:text-grey focus:border-blue outline-none disabled:opacity-50"
       />
       <button
         id={triggerId}
@@ -220,7 +220,7 @@ export function ComboBox({
           id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
-          className="absolute z-10 mt-1 left-0 right-0 max-h-60 overflow-y-auto bg-card border border-line rounded-md shadow-lg"
+          className="absolute z-10 mt-1 left-0 right-0 max-h-60 overflow-y-auto bg-card border border-line rounded-chip shadow-pop"
         >
           {filtered.map((option, idx) => (
             <li
@@ -235,7 +235,7 @@ export function ComboBox({
                 e.preventDefault();
                 pick(option);
               }}
-              className={`px-3 py-1.5 font-mono text-[12.5px] cursor-pointer ${
+              className={`px-3 py-1.5 text-[12.5px] cursor-pointer ${
                 idx === highlight
                   ? "bg-[var(--color-blsoft)] text-ink"
                   : "text-ink"
@@ -250,7 +250,7 @@ export function ComboBox({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 left-0 right-0 bg-card border border-line rounded-md shadow-lg px-3 py-2 text-[12px] text-mut"
+          className="absolute z-10 mt-1 left-0 right-0 bg-card border border-line rounded-chip shadow-pop px-3 py-2 text-[12px] text-mut"
         >
           {options.length === 0
             ? "No saved suggestions - type a model id and press Enter."

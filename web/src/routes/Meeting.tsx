@@ -7,12 +7,14 @@ import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
 import { EchoDevicePicker } from "../components/EchoDevicePicker";
 import { EchoTestButton } from "../components/EchoTestButton";
+import { buttonClassName } from "../components/Button";
 import { RefreshDevicesButton } from "../components/RefreshDevicesButton";
 import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
+import { LABEL } from "../components/settings/labelClass";
 import { ensureSessionToken } from "../lib/session";
 import {
   activeRecordingKey,
@@ -31,9 +33,7 @@ import {
   type TranscriptEvent,
 } from "../lib/ws";
 
-const INK = "var(--color-ink)";
 const LINE = "var(--color-line)";
-const BLUE = "var(--color-blue)";
 const STRAW_SOFT = "var(--color-strsoft)";
 const STRAW = "var(--color-straw)";
 
@@ -465,7 +465,7 @@ export function Meeting() {
       <main className="max-w-[660px] mx-auto px-10 py-12 space-y-6">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           aria-label="Back to library — recording continues in the background"
           title={
             recording
@@ -495,10 +495,10 @@ export function Meeting() {
                 <InlineTitle
                   id={meetingId}
                   title={title}
-                  className="text-[26px] font-bold tracking-tight leading-none text-ink"
+                  className="heading-title"
                 />
               ) : (
-                <h1 className="text-[26px] font-bold tracking-tight leading-none" style={{ color: INK }}>
+                <h1 className="heading-title">
                   {title}
                 </h1>
               )}
@@ -508,8 +508,7 @@ export function Meeting() {
                 <button
                   type="button"
                   onClick={() => startRecording()}
-                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
-                  style={{ backgroundColor: BLUE }}
+                  className={buttonClassName("primary")}
                 >
                   Start recording
                 </button>
@@ -518,8 +517,7 @@ export function Meeting() {
                 <button
                   type="button"
                   onClick={stopRecording}
-                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
-                  style={{ backgroundColor: BLUE }}
+                  className={buttonClassName("primary")}
                 >
                   Stop recording
                 </button>
@@ -531,8 +529,7 @@ export function Meeting() {
                   disabled={enhancing}
                   aria-busy={enhancing}
                   data-testid="end-meeting"
-                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90 disabled:opacity-70"
-                  style={{ backgroundColor: BLUE }}
+                  className={buttonClassName("primary")}
                 >
                   {enhancing ? "Enhancing…" : "End meeting"}
                 </button>
@@ -562,7 +559,7 @@ export function Meeting() {
           {meetingId && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
               <div className="space-y-1.5">
-                <label className="flex items-center h-5 text-[10px] font-mono uppercase tracking-wider text-mut">
+                <label className={`flex items-center h-5 ${LABEL}`}>
                   Microphone
                 </label>
                 <MicDevicePicker meetingId={meetingId} recording={recording} />
@@ -570,7 +567,7 @@ export function Meeting() {
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center h-5 gap-1.5">
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+                  <label className={LABEL}>
                     Echo to
                   </label>
                   {recording && activeRecording.data?.echo_enabled && (

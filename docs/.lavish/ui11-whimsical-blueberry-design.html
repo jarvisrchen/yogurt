@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI-11: Whimsical × Blueberry restyle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Rendered in the target theme itself: yogurt's Blueberry tokens, Whimsical type/radii/shadows. */
+:root{--paper:#FBF7EF;--card:#FFFFFF;--ink:#211D18;--grey:#A89F90;--ai:#7A7264;--line:#EBE3D5;--blue:#5B4FC7;--blsoft:#ECE9FB;--straw:#E07A66;--strsoft:#FBE6E0;--matcha:#5E9E73;--mtsoft:#E7F0E8;--mut:#8A8174;
+--sh-card:0 16px 32px -4px rgba(33,29,24,.06);--sh-pop:0 12px 16px -4px rgba(33,29,24,.18)}
+@media (prefers-color-scheme:dark){:root{--paper:#1B1815;--card:#26221D;--ink:#EDEAE2;--grey:#8F877B;--ai:#A69D90;--line:#3A342C;--blue:#7D72DE;--blsoft:#2C2846;--straw:#E8886F;--strsoft:#3D2622;--matcha:#7FBE8C;--mtsoft:#22342A;--mut:#9B9285;
+--sh-card:0 16px 32px -4px rgba(0,0,0,.35);--sh-pop:0 12px 16px -4px rgba(0,0,0,.5)}}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper);color:var(--ink);font-family:Manrope,Inter,system-ui,sans-serif;font-size:15px;line-height:1.55;letter-spacing:.009em;-webkit-font-smoothing:antialiased}
+.mono,code,kbd{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.86em}
+code{background:var(--blsoft);color:var(--ink);padding:1px 6px;border-radius:6px}
+a{color:var(--blue)}
+.nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 32px;display:flex;align-items:center;gap:18px;font-size:13px}
+.nav .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;letter-spacing:-.01em}
+.nav .menu{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
+.nav .menu a{color:var(--mut);text-decoration:none}
+.nav .menu a:hover{color:var(--ink)}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 32px 96px}
+h1{font-weight:800;letter-spacing:-.01em;font-size:44px;line-height:1.05}
+h2{font-weight:800;letter-spacing:-.01em;font-size:24px;line-height:1.1;margin:56px 0 14px;scroll-margin-top:72px}
+h3{font-weight:700;font-size:16px;margin:22px 0 8px}
+p{max-width:760px;margin-bottom:10px}
+.lead{color:var(--mut);font-size:17px;max-width:760px;margin-top:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:12px;border:1px solid var(--line);color:var(--mut);background:var(--card);font-weight:500}
+.pill.blue{background:var(--blsoft);border-color:transparent;color:var(--blue)}
+.pill.matcha{background:var(--mtsoft);border-color:transparent;color:var(--matcha)}
+.pill.straw{background:var(--strsoft);border-color:transparent;color:var(--ink)}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--sh-card)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:16px 0}
+.grid .card h3{margin-top:0}
+.grid .card p{font-size:13.5px;color:var(--mut);margin:0}
+.grid .card .n{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-bottom:8px}
+.big{font-weight:800;font-size:34px;letter-spacing:-.01em;line-height:1;margin-bottom:6px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:14px 0}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:var(--sh-card)}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:700}
+tr:last-child td{border-bottom:0}
+td.k{font-weight:600;white-space:nowrap}
+td.old{color:var(--mut)}
+td.new{color:var(--ink);font-weight:600}
+.sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px;border:1px solid var(--line)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+.cmp .card{padding:18px}
+.cmp .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:700;margin-bottom:12px}
+.demo{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;color:#fff;background:var(--blue);font-weight:600;font-size:14px;padding:10px 18px;border-radius:12px;box-shadow:0 8px 16px -6px rgba(91,79,199,.35)}
+.btn.old{font-family:"Hanken Grotesk",system-ui,sans-serif;font-size:13.5px;padding:8px 16px;border-radius:9px;box-shadow:0 2px 8px rgba(91,79,199,.3)}
+.btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.mini{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--sh-card);font-size:13px;flex:1;min-width:150px}
+.mini.old{border-radius:14px;box-shadow:0 2px 6px rgba(40,30,15,.08)}
+.mini b{display:block;font-size:15px;font-weight:700;margin-bottom:4px}
+.mini.old b{font-family:"Hanken Grotesk",system-ui,sans-serif}
+.hh{font-weight:800;letter-spacing:-.01em;font-size:26px;line-height:1.1}
+.hh.old{font-family:"Hanken Grotesk",system-ui,sans-serif;font-weight:700;letter-spacing:-.025em}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+.step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--sh-card)}
+.step .tag{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--blsoft);color:var(--blue);margin-bottom:10px;font-weight:600}
+.step h3{margin:0 0 6px}
+.step ul{margin:8px 0 0 18px;font-size:13.5px;color:var(--mut)}
+.step li{margin-bottom:4px}
+.dec{display:flex;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--sh-card);margin-bottom:12px;align-items:flex-start}
+.dec .num{width:32px;height:32px;border-radius:12px;background:var(--blue);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+.dec h3{margin:0 0 4px;font-size:15px}
+.dec p{margin:0;font-size:13.5px;color:var(--mut)}
+.dec .rec{margin-top:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--matcha);font-weight:600}
+.callout{border-left:3px solid var(--straw);background:var(--strsoft);border-radius:0 12px 12px 0;padding:12px 16px;font-size:13.5px;margin:16px 0;max-width:760px}
+ul.plain{margin:8px 0 0 18px;max-width:760px}
+ul.plain li{margin-bottom:6px}
+.foot{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut);display:flex;gap:16px;flex-wrap:wrap}
+@media (max-width:760px){.cmp,.steps{grid-template-columns:1fr}h1{font-size:34px}.wrap{padding:28px 18px 72px}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <span class="brand"><svg width="22" height="22" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg>yogurt</span>
+  <span class="pill blue">UI-11</span><span class="pill">design, not implemented</span>
+  <span class="menu"><a href="#why">Why tokens</a><a href="#tokens">Token flip</a><a href="#survey">Survey</a><a href="#components">Components</a><a href="#rollout">Rollout</a><a href="#decisions">Decisions</a></span>
+</nav>
+
+<div class="wrap">
+  <h1>Restyle yogurt to Whimsical × Blueberry</h1>
+  <p class="lead">Whimsical's type, radii and soft shadows on yogurt's own Blueberry palette, light and dark. Functionality does not change. This page is rendered in the target theme, and it follows your system light/dark setting.</p>
+  <div class="row">
+    <a class="pill" href="design-mockups/whimsical-blueberry.html">Light mockups →</a>
+    <a class="pill" href="design-mockups/whimsical-blueberry-dark.html">Dark mockups →</a>
+    <a class="pill" href="https://styles.refero.design/style/8e153a14-40a9-4793-b94b-c144d325c730">Whimsical on Refero →</a>
+    <a class="pill" href="../.planning/ui11-whimsical-blueberry-design.md">Markdown source</a>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="n">Scope</div><div class="big">UI only</div><p>Every route, API call, shortcut and test keeps its behavior.</p></div>
+    <div class="card"><div class="n">Colors</div><div class="big">0 changed</div><p>Both palettes stay exactly as shipped. That is the point of this variant.</p></div>
+    <div class="card"><div class="n">Files touched by the flip</div><div class="big">4</div><p><code>index.css</code>, <code>Button.tsx</code>, <code>main.tsx</code>, <code>package.json</code>.</p></div>
+    <div class="card"><div class="n">Cleanup before the flip</div><div class="big">~30 sites</div><p>Call sites that bypass tokens today, migrated with zero visual change.</p></div>
+  </div>
+
+  <h2 id="why">Why this is mostly a token change</h2>
+  <p>The app is built on Tailwind 4's CSS-first <code>@theme</code> in <code>web/src/index.css</code>. Every color, radius, shadow and font is a <code>--color-*</code>, <code>--radius-*</code>, <code>--shadow-*</code> or <code>--font-*</code> variable, and Tailwind emits <code>var(--…)</code> in every utility.</p>
+  <p>Dark mode (UI-6) already works by re-pointing color tokens under <code>:root[data-theme="dark"]</code>, so components never hardcode palette hex. The same seam lands this restyle: change the values once and the 69 non-test components follow.</p>
+  <p>What does not follow for free is the set of call sites that reach past the tokens. The survey below lists them, and PR A migrates them first so the flip is complete.</p>
+
+  <h2 id="tokens">The token flip</h2>
+  <div class="cmp">
+    <div class="card"><div class="lbl">Today · Hanken Grotesk, 9/14px, hairline shadow</div>
+      <div class="hh old">Good morning, you</div>
+      <div class="demo" style="margin-top:14px"><span class="btn old">New meeting</span><span class="btn old ghost" style="border-radius:9px">Re-enhance</span></div>
+      <div class="demo" style="margin-top:14px"><div class="mini old"><b>Weekly 1:1</b><span style="color:var(--mut)">8:00 AM · 31 min</span></div></div>
+    </div>
+    <div class="card"><div class="lbl">Target · Manrope, 12/16px, soft shadow</div>
+      <div class="hh">Good morning, you</div>
+      <div class="demo" style="margin-top:14px"><span class="btn">New meeting</span><span class="btn ghost">Re-enhance</span></div>
+      <div class="demo" style="margin-top:14px"><div class="mini"><b>Weekly 1:1</b><span style="color:var(--mut)">8:00 AM · 31 min</span></div></div>
+    </div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Token</th><th>Today</th><th>Target</th><th>Shows on</th></tr></thead>
+    <tbody>
+    <tr><td class="k">--font-sans</td><td class="old">Hanken Grotesk</td><td class="new">Manrope · Inter · DM Sans · system-ui</td><td>everything</td></tr>
+    <tr><td class="k">heading weight</td><td class="old">700</td><td class="new">800 (see decision 2)</td><td>all <code>heading-*</code> utilities</td></tr>
+    <tr><td class="k">heading tracking</td><td class="old">-0.025em</td><td class="new">-0.01em</td><td>all <code>heading-*</code> utilities</td></tr>
+    <tr><td class="k">body letter-spacing</td><td class="old">none</td><td class="new">0.009em</td><td><code>html, body</code></td></tr>
+    <tr><td class="k">--radius-chip</td><td class="old">6px</td><td class="new">8px</td><td>label chips, kbd hints</td></tr>
+    <tr><td class="k">--radius-button</td><td class="old">9px</td><td class="new">12px</td><td>buttons, inputs, nav rows</td></tr>
+    <tr><td class="k">--radius-card</td><td class="old">14px</td><td class="new">16px</td><td>cards, meeting cards, dialogs</td></tr>
+    <tr><td class="k">--radius-panel</td><td class="old">–</td><td class="new">24px (new)</td><td>dock, chat window, floating dialogs</td></tr>
+    <tr><td class="k">--radius-pill</td><td class="old">999px</td><td class="new">999px</td><td>unchanged</td></tr>
+    <tr><td class="k">--shadow-card</td><td class="old mono">0 2px 6px rgba(40,30,15,.08)</td><td class="new mono">0 16px 32px -4px rgba(33,29,24,.06)</td><td>cards</td></tr>
+    <tr><td class="k">--shadow-pop</td><td class="old mono">0 12px 30px -10px rgba(40,30,15,.22)</td><td class="new mono">0 12px 16px -4px rgba(33,29,24,.18)</td><td>popovers, ask pill, recording pill</td></tr>
+    <tr><td class="k">--shadow-window</td><td class="old mono">0 26px 60px -28px rgba(40,30,15,.4)</td><td class="new mono">0 24px 48px -8px rgba(33,29,24,.22)</td><td>dialogs, dock</td></tr>
+    <tr><td class="k">dark shadows</td><td class="old">none, light values reused</td><td class="new mono">same offsets, rgba(0,0,0,.35 / .5 / .6)</td><td>dark mode only</td></tr>
+    <tr><td class="k">Button</td><td class="old">px-4 py-2 · 13.5px · 600</td><td class="new">px-[18px] py-2.5 · 14px · 600</td><td>all buttons</td></tr>
+    </tbody></table></div>
+  <p>Shadows get a dark override for the first time. Today the light values render under dark mode, invisible on <span class="sw" style="background:#1B1815"></span><code>#1B1815</code>, so the new depth would be lost without it.</p>
+
+  <h3>Unchanged, on purpose</h3>
+  <div class="row">
+    <span class="pill" style="border-color:transparent;background:var(--paper)"><span class="sw" style="background:#5B4FC7;margin:0"></span>blueberry</span>
+    <span class="pill straw"><span class="dot" style="color:var(--straw)"></span>strawberry</span>
+    <span class="pill matcha"><span class="dot"></span>matcha</span>
+    <span class="pill">logo</span><span class="pill">label chips lilac · honey · slate</span><span class="pill">AI-grey swatch contract</span><span class="pill">transcript-link</span><span class="pill">660px hero column</span><span class="pill">330px dock</span><span class="pill">all motion</span><span class="pill">JetBrains Mono</span>
+  </div>
+
+  <h2 id="survey">Survey: what bypasses the tokens today</h2>
+  <p>Counted across the 69 non-test <code>.tsx</code> files in <code>web/src</code>.</p>
+  <div class="grid">
+    <div class="card"><div class="n">Radii off-token</div><div class="big">14 files</div><p>Tailwind defaults <code>rounded-md/lg/xl/2xl</code> or literals, mostly under <code>components/settings/</code>, plus MeetingPost, ChatWindow, ChatMessage, TemplatePicker, ModelDownloadDialog, Settings, Library.</p></div>
+    <div class="card"><div class="n">Shadows off-token</div><div class="big">10 sites</div><p>Literal <code>shadow-[…]</code> values, every one restating an existing token: 3× button glow, 2× window, 1× pop, 4× hairline → card.</p></div>
+    <div class="card"><div class="n">Headings off-utility</div><div class="big">9 files</div><p>Inline <code>font-bold tracking-tight text-[Npx]</code> in Meeting, MeetingPost, Settings, Welcome, MeetingCard, Greeting, ModelDownloadStub, ModelDownloadDialog, StyleGuide.</p></div>
+    <div class="card"><div class="n">Raw hex</div><div class="big">2 real</div><p>macOS traffic lights in BrowserChrome and two <code>color: #FFFFFF</code> inline styles. Everything else is a comment or the logo.</p></div>
+    <div class="card"><div class="n">Tests asserting classes</div><div class="big">9 files</div><p>All on color tokens (<code>text-blue</code>, <code>text-matcha</code>, <code>bg-blsoft</code>). None assert a radius, shadow or font, so the flip breaks no test.</p></div>
+    <div class="card"><div class="n">Circles</div><div class="big">22 sites</div><p><code>rounded-full</code> on dots, avatars, icon buttons. These stay circles and must not migrate to <code>rounded-pill</code>.</p></div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Radius mapping</th><th>Today</th><th>Becomes</th></tr></thead>
+    <tbody>
+    <tr><td class="k">rounded-md</td><td class="old">6px default</td><td class="new">rounded-chip</td></tr>
+    <tr><td class="k">rounded-lg</td><td class="old">8px default</td><td class="new">rounded-button</td></tr>
+    <tr><td class="k">rounded-xl</td><td class="old">12px default</td><td class="new">rounded-card</td></tr>
+    <tr><td class="k">rounded-2xl</td><td class="old">16px default</td><td class="new">rounded-panel</td></tr>
+    <tr><td class="k">rounded-[9px] / [10px] / [11px]</td><td class="old">literals</td><td class="new">case by case</td></tr>
+    </tbody></table></div>
+
+  <h2 id="components">Component by component</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Component</th><th>Change</th></tr></thead>
+    <tbody>
+    <tr><td class="k">Button.tsx</td><td>Padding and size per the table. Radius follows the token. Primary keeps <code>shadow-button-blue</code>, see decision 1.</td></tr>
+    <tr><td class="k">Card.tsx · Pill.tsx</td><td>No code change. Radius and shadow follow tokens. Pill stays 999px with 1px border, same as Whimsical.</td></tr>
+    <tr><td class="k">Sidebar.tsx · SidebarNav.tsx</td><td>Active nav row uses <code>rounded-button</code> (12px) with <code>bg-blsoft</code>. Wordmark picks up the heavier heading weight.</td></tr>
+    <tr><td class="k">TranscriptDock.tsx · ChatWindow.tsx</td><td>Outer panel takes <code>rounded-panel</code> on the exposed corner and <code>shadow-window</code>.</td></tr>
+    <tr><td class="k">RecordingPill · AskPill · MeetingDetectedBanner</td><td>Floating, take <code>shadow-pop</code>.</td></tr>
+    <tr><td class="k">EnhancingBanner.tsx</td><td>Unchanged. Already <code>bg-blsoft</code> plus the mono counter.</td></tr>
+    <tr><td class="k">YogurtEditor · .yogurt-editor</td><td>Body copy follows <code>--font-sans</code>. Prose headings (24 / 19 / 16px) take the new weight and tracking.</td></tr>
+    <tr><td class="k">StyleGuide.tsx</td><td>Its three inline headings move to utilities. Radius and elevation sections document the new values. This route is the visual regression surface.</td></tr>
+    <tr><td class="k">Fonts</td><td><code>@fontsource/manrope</code> 400–800 replaces <code>@fontsource/hanken-grotesk</code> in <code>main.tsx</code> and <code>package.json</code>. OFL 1.1, same license family. No CDN, no network fetch. Swap the row in <code>THIRD_PARTY_LICENSES.md</code> when regenerated.</td></tr>
+    </tbody></table></div>
+  <div class="callout"><b>Risk to check by hand.</b> Manrope sets a touch wider than Hanken at the same size. The already-tight layouts are provider rows (UI-1 fixed an overlap there), meta pills, the Settings nav and the <kbd>⌘N</kbd> hint inside New meeting. Check at a 1024px window.</div>
+
+  <h2 id="rollout">Rollout: two PRs</h2>
+  <div class="steps">
+    <div class="step"><span class="tag">PR A · UI-11a</span><h3>Move off-token styles onto tokens</h3>
+      <p style="font-size:13.5px;color:var(--mut)">Pure refactor, zero intended visual change. Reviewable by diff; Playwright before/after should be pixel-identical.</p>
+      <ul><li>14 radius files → token utilities</li><li>10 shadow literals → token utilities</li><li>9 inline headings → <code>heading-*</code></li><li>add <code>--radius-panel</code>, <code>heading-greeting</code> (34px), <code>heading-title</code> (30px)</li></ul></div>
+    <div class="step"><span class="tag">PR B · UI-11b</span><h3>Flip tokens to Whimsical × Blueberry</h3>
+      <p style="font-size:13.5px;color:var(--mut)">Small diff, whole-app visual change. PR body carries screenshots of the five routes in light and dark next to the mockups.</p>
+      <ul><li><code>index.css</code> token values and <code>heading-*</code> utilities</li><li>dark shadow overrides</li><li><code>Button</code> sizing</li><li>font imports and <code>package.json</code></li></ul></div>
+  </div>
+  <p>Splitting keeps the visual review of PR B free of 30 mechanical edits, and PR A cannot regress anything visible. Both stay under <code>web/</code>, so both qualify for the cloud-session path in <code>AGENTS.md</code>.</p>
+  <h3>Verification</h3>
+  <ul class="plain">
+    <li><code>just test</code> green on both PRs, no test edits expected.</li>
+    <li>Playwright screenshots of <code>/welcome</code>, <code>/</code>, <code>/meeting/:id</code>, <code>/meeting/:id/post</code>, <code>/settings/model</code> in light and dark for PR B.</li>
+    <li>Manual pass on the tight layouts above at 1024px.</li>
+    <li>Contrast unchanged, so the UI-7 AI-grey and Pill notes still hold.</li>
+    <li>Dark toggle in Settings → General still flips without a flash; the inline script in <code>index.html</code> is untouched.</li>
+  </ul>
+
+  <h2 id="decisions">Decisions needed from jarvisrchen</h2>
+  <div class="dec"><div class="num">1</div><div><h3>Blueberry glow on primary buttons</h3><p>Whimsical is flat. Today's primary has a <code>shadow-button-blue</code> glow.</p><span class="rec">✓ Recommend: keep it, softened to <span class="mono">0 8px 16px -6px rgba(91,79,199,.35)</span>. The one place yogurt stays more playful than Whimsical.</span></div></div>
+  <div class="dec"><div class="num">2</div><div><h3>Heading weight</h3><p>Mock uses Manrope 800 everywhere. 700 reads calmer next to 15px body.</p><span class="rec">✓ Recommend: 800 for hero, greeting, title, section. 700 for card, sm, wordmark.</span></div></div>
+  <div class="dec"><div class="num">3</div><div><h3>Body text size</h3><p>Mock rendered at 14px. The app is 15px.</p><span class="rec">✓ Recommend: stay at 15px. Manrope is compact enough and nothing has to move.</span></div></div>
+  <div class="dec"><div class="num">4</div><div><h3>Circles stay circles</h3><p>22 <code>rounded-full</code> sites are dots, avatars and icon buttons.</p><span class="rec">✓ Recommend: confirm they are excluded from PR A so it does not over-migrate.</span></div></div>
+
+  <h3>Out of scope</h3>
+  <ul class="plain">
+    <li>No new components, no layout changes, no copy changes.</li>
+    <li>Settings audio and general were not mocked; they inherit the tokens like everything else.</li>
+    <li>The Strawberry and Matcha alternate themes deferred in PRD §16.2 stay deferred.</li>
+  </ul>
+
+  <div class="foot"><span>Ticket UI-11 · <code>docs/TODO.md</code></span><span>Source: <code>docs/.planning/ui11-whimsical-blueberry-design.md</code></span><span>Mockups: <code>docs/.lavish/design-mockups/</code></span></div>
+</div>
+</body>
+</html>

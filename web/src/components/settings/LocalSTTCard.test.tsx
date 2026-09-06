@@ -2,7 +2,7 @@
  * LocalSTTCard "Use Local" guard test (fast task).
  *
  * Local STT could previously be activated with a model that was never
- * downloaded — recording then failed at meeting start. The radio must be
+ * downloaded — recording then failed at meeting start. The button must be
  * disabled (and show a "Download the model first" hint) until the
  * currently-selected model's `downloaded` flag is true.
  */
@@ -82,7 +82,7 @@ describe("LocalSTTCard — Use Local guard", () => {
   it("disables Use Local and shows a hint when the selected model isn't downloaded", () => {
     const { onActivate } = renderCard({ selectedModel: "small.en" });
 
-    const radio = screen.getByRole("radio", { name: /use local/i });
+    const radio = screen.getByRole("button", { name: /use local/i });
     expect(radio).toBeDisabled();
     expect(screen.getByText(/download the model first/i)).toBeInTheDocument();
 
@@ -93,7 +93,7 @@ describe("LocalSTTCard — Use Local guard", () => {
   it("enables Use Local once the selected model is downloaded", () => {
     const { onActivate } = renderCard({ selectedModel: "tiny.en" });
 
-    const radio = screen.getByRole("radio", { name: /use local/i });
+    const radio = screen.getByRole("button", { name: /use local/i });
     expect(radio).not.toBeDisabled();
     expect(screen.queryByText(/download the model first/i)).not.toBeInTheDocument();
 
@@ -101,24 +101,28 @@ describe("LocalSTTCard — Use Local guard", () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  it("still disables the radio and shows the hint when local is already active but the model isn't downloaded", () => {
+  it("still shows the hint when local is already active but the model isn't downloaded", () => {
     // Regression for the guard gap: `activateBlocked` used to short-circuit
     // to `false` whenever `active` was already true, so a persisted-but-
     // broken combo (model deleted after activation, or a bad row from
     // before this guard existed) rendered as if nothing were wrong. The
     // guard must track disk truth regardless of which provider is active.
+    // The card is active, so the header shows "In use" and no "Use Local"
+    // button — the hint is the only observable signal here.
     renderCard({ active: true, selectedModel: "small.en" });
 
-    const radio = screen.getByRole("radio", { name: /use local/i });
-    expect(radio).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /use local/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/download the model first/i)).toBeInTheDocument();
   });
 
-  it("keeps the radio enabled when local is active and the model is downloaded", () => {
+  it("shows no hint when local is active and the model is downloaded", () => {
     renderCard({ active: true, selectedModel: "tiny.en" });
 
-    const radio = screen.getByRole("radio", { name: /use local/i });
-    expect(radio).not.toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /use local/i }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/download the model first/i)).not.toBeInTheDocument();
   });
 });

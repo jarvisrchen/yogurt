@@ -39,20 +39,21 @@
   --color-slatesoft: #E8ECF0;
 
   /* ─── Type families (PRD §16.3) ──────────────────────────────────────── */
-  --font-sans:  "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans:  "Manrope", "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* ─── Border radius (PRD §16.4) ──────────────────────────────────────── */
-  --radius-chip:   6px;    /* small chip                                    */
-  --radius-button: 9px;    /* buttons, inputs                               */
-  --radius-card:   14px;   /* cards                                         */
+  --radius-chip:   8px;    /* small chip                                    */
+  --radius-button: 12px;   /* buttons, inputs, nav rows                     */
+  --radius-card:   16px;   /* cards                                         */
+  --radius-panel:  24px;   /* floating panels: chat window, dialogs, dock   */
   --radius-pill:   999px;  /* pills, recording badge                        */
 
   /* ─── Elevation (PRD §16.4) ──────────────────────────────────────────── */
-  --shadow-card:   0 2px 6px rgba(40, 30, 15, 0.08);
-  --shadow-pop:    0 12px 30px -10px rgba(40, 30, 15, 0.22);
-  --shadow-window: 0 26px 60px -28px rgba(40, 30, 15, 0.4);
-  --shadow-button-blue: 0 2px 8px rgba(91, 79, 199, 0.3);
+  --shadow-card:   0 16px 32px -4px rgba(33, 29, 24, 0.06);
+  --shadow-pop:    0 12px 16px -4px rgba(33, 29, 24, 0.18);
+  --shadow-window: 0 24px 48px -8px rgba(33, 29, 24, 0.22);
+  --shadow-button-blue: 0 8px 16px -6px rgba(91, 79, 199, 0.35);
 
   /* ─── Motion easings (PRD §16.5) ─────────────────────────────────────── */
   --ease-pop:   cubic-bezier(0, 0, 0.2, 1);          /* popUp 260ms        */
@@ -133,20 +134,24 @@
   --color-honeysoft: #3A3120;
   --color-slate:     #A9B7C4;
   --color-slatesoft: #2A3138;
+  --shadow-card:   0 16px 32px -4px rgba(0, 0, 0, 0.35);
+  --shadow-pop:    0 12px 16px -4px rgba(0, 0, 0, 0.5);
+  --shadow-window: 0 24px 48px -8px rgba(0, 0, 0, 0.6);
 }
 
 /* === Heading scale (PRD §16.3: section title 24-30, card title 16-21) ====
- * Named recipes for the bold Hanken headings that were being re-typed as
+ * Named recipes for the bold Manrope headings that were being re-typed as
  * `font-bold tracking-tight text-[Npx] ...` at every call site (and drifting:
- * the 18px card title had two line-heights). One-off display sizes (hero
- * greeting, meeting title) stay inline - they are not a scale, just a size.
+ * the 18px card title had two line-heights).
  * ========================================================================== */
-@utility heading-hero    { @apply font-bold tracking-tight text-[44px] leading-none text-ink; }
-@utility heading-state   { @apply font-bold tracking-tight text-[30px] text-ink; }
-@utility heading-section { @apply font-bold tracking-tight text-[24px] leading-none text-ink; }
-@utility heading-wordmark{ @apply font-bold tracking-tight text-[20px] leading-none text-ink; }
-@utility heading-card    { @apply font-bold tracking-tight text-[18px] leading-tight text-ink; }
-@utility heading-sm      { @apply font-sans font-bold text-[16px] text-ink; }
+@utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
+@utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
+@utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
+@utility heading-state   { @apply font-extrabold tracking-[-0.01em] text-[30px] text-ink; }
+@utility heading-section { @apply font-extrabold tracking-[-0.01em] text-[24px] leading-none text-ink; }
+@utility heading-wordmark{ @apply font-bold tracking-[-0.01em] text-[20px] leading-none text-ink; }
+@utility heading-card    { @apply font-bold tracking-[-0.01em] text-[18px] leading-tight text-ink; }
+@utility heading-sm      { @apply font-sans font-bold tracking-[-0.01em] text-[16px] text-ink; }
 
 html, body {
   margin: 0;
@@ -155,6 +160,7 @@ html, body {
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.5;
+  letter-spacing: 0.009em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -383,13 +389,13 @@ html, body {
   margin: 0;
 }
 
-/* Heading scale: body is 15px Hanken; headings step 24 / 19 / 16 within
- * the PRD §16.3 card-title band (16–21px Hanken 700, h1 slightly above). */
+/* Heading scale: 24 / 19 / 16 within the PRD §16.3 card-title band. */
 .yogurt-editor .ProseMirror h1,
 .yogurt-editor .ProseMirror h2,
 .yogurt-editor .ProseMirror h3 {
   color: var(--color-ink);
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   line-height: 1.3;
   margin: 1em 0 0.35em;
 }

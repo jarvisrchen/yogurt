@@ -991,3 +991,16 @@ New closed items go at the bottom.
 
   The banner now detects a Screen Recording / TCC denial and, instead of linking to yogurt's own Settings, explains that the grant belongs to the app that launched yogurt (terminal or Homebrew), that it must be quit and reopened after a grant change, and links `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`.
   </details>
+
+- [x] **UI-11** Restyle the whole app to the Whimsical × Blueberry theme (light + dark)
+  <details>
+  <summary>Details</summary>
+
+  jarvisrchen picked the Whimsical × Blueberry direction from the Refero Styles mockups: Whimsical's type (Manrope), radii and soft shadows on yogurt's existing Blueberry palette, light and dark.
+  Mockups: `docs/.lavish/design-mockups/whimsical-blueberry.html` and `whimsical-blueberry-dark.html`.
+  Design and implementation plan: `docs/.planning/ui11-whimsical-blueberry-design.md`, lavish at `docs/.lavish/ui11-whimsical-blueberry-design.html`.
+  UI only: no functional change, every screen keeps its behavior and tests.
+
+  Landed in two PRs (2026-09-05): part 1 moved every off-token radius, shadow and heading onto the design tokens; part 2 flipped the tokens to Whimsical x Blueberry (Manrope, 8/12/16/24px radii, soft ink-tinted shadows with a dark override, 800-weight display headings) with colors unchanged.
+  Design: `docs/.planning/ui11-whimsical-blueberry-design.md`.
+  </details>

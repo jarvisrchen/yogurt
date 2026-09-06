@@ -15,6 +15,7 @@ import { Button } from "../components/Button";
 import { Pill, RecordingBadge, ProviderChip } from "../components/Pill";
 import { Card } from "../components/Card";
 import { BrowserChrome } from "../components/BrowserChrome";
+import { LABEL } from "../components/settings/labelClass";
 
 const COLORS: Array<{ token: string; hex: string; use: string }> = [
   { token: "paper",   hex: "#FBF7EF", use: "App background, hero surfaces" },
@@ -33,16 +34,17 @@ const COLORS: Array<{ token: string; hex: string; use: string }> = [
 ];
 
 const RADII: Array<{ name: string; px: number; bg: string }> = [
-  { name: "chip",   px: 6,   bg: "bg-blsoft" },
-  { name: "button", px: 9,   bg: "bg-blsoft" },
-  { name: "card",   px: 14,  bg: "bg-card border border-line" },
+  { name: "chip",   px: 8,   bg: "bg-blsoft" },
+  { name: "button", px: 12,  bg: "bg-blsoft" },
+  { name: "card",   px: 16,  bg: "bg-card border border-line" },
+  { name: "panel",  px: 24,  bg: "bg-card border border-line" },
   { name: "pill",   px: 999, bg: "bg-mtsoft" },
 ];
 
 const SHADOWS: Array<{ name: string; className: string; use: string }> = [
   { name: "shadow-card",   className: "shadow-card",                                                       use: "Card surface (default)" },
-  { name: "shadow-pop",    className: "shadow-[0_12px_30px_-10px_rgba(40,30,15,0.22)]",                    use: "Chat window, popovers" },
-  { name: "shadow-window", className: "shadow-[0_26px_60px_-28px_rgba(40,30,15,0.4)]",                     use: "Modals, mockup chrome" },
+  { name: "shadow-pop",    className: "shadow-pop",    use: "Chat window, popovers" },
+  { name: "shadow-window", className: "shadow-window", use: "Modals, mockup chrome" },
 ];
 
 const MOTION: Array<{ name: string; duration: string; use: string; className: string }> = [
@@ -116,16 +118,16 @@ export function StyleGuide() {
         <Card padding="lg">
           <div className="space-y-6">
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
-                Hanken Grotesk 700 · 44 / 32 / 26
+              <p className={LABEL}>
+                Manrope 800 · 44 / 34 / 26
               </p>
               <p className="heading-hero mt-1">
                 yogurt
               </p>
-              <p className="font-bold tracking-tight text-[32px] leading-tight text-ink">
+              <p className="heading-greeting">
                 Welcome to yogurt.
               </p>
-              <p className="font-bold tracking-tight text-[26px] leading-tight text-ink">
+              <p className="heading-title">
                 Good afternoon, Dana
               </p>
               <p className="italic text-[18px] text-mut">
@@ -133,8 +135,8 @@ export function StyleGuide() {
               </p>
             </div>
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
-                Hanken Grotesk · 400 / 500 / 600 / 700 / 800
+              <p className={LABEL}>
+                Manrope · 400 / 500 / 600 / 700 / 800
               </p>
               <p className="font-sans font-normal text-[15px] text-ink">
                 The quick brown fox jumps over the lazy dog. 400.
@@ -146,14 +148,14 @@ export function StyleGuide() {
                 The quick brown fox jumps over the lazy dog. 600.
               </p>
               <p className="heading-sm">
-                Card title style — 16px Hanken 700.
+                Card title style - 16px Manrope 700.
               </p>
               <p className="font-sans font-extrabold text-[15px] text-ink">
                 The quick brown fox jumps over the lazy dog. 800.
               </p>
             </div>
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
+              <p className={LABEL}>
                 JetBrains Mono · 400 / 500 / 600
               </p>
               <p className="font-mono text-[12px] text-ink">$ yogurt start</p>
@@ -400,7 +402,7 @@ export function StyleGuide() {
         <Card padding="lg">
           <div className="space-y-6">
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide mb-3">
+              <p className={`${LABEL} mb-3`}>
                 Inline SVG — brand mark at three sizes
               </p>
               <div className="flex items-end gap-6">
@@ -411,7 +413,7 @@ export function StyleGuide() {
               </div>
             </div>
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide mb-3">
+              <p className={`${LABEL} mb-3`}>
                 Unicode glyphs in context
               </p>
               <div className="flex items-center gap-3 flex-wrap">
@@ -455,7 +457,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="font-bold tracking-tight text-[26px] text-ink leading-tight">{title}</h2>
+      <h2 className="heading-title leading-tight">{title}</h2>
       <p className="mt-1 text-[13px] text-mut">{caption}</p>
       <div className="mt-5">{children}</div>
     </section>

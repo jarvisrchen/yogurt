@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
+import { Button } from "../Button";
+import { LABEL } from "./labelClass";
 
 /**
  * AddProviderForm — inline "+ Add" expansion for the Model section
  * (fast task: the `+ Add` button in Settings.tsx used to be dead).
  *
  * No modal library — this renders as an inline card in the same spot the
- * button sat, matching `ProviderCard`'s rounded-xl/border-line/bg-card
+ * button sat, matching `ProviderCard`'s rounded-card/border-line/bg-card
  * chrome. `POST /api/settings/providers` inserts the row inactive
  * (`is_active=0`, same as `PresetChip`), so on success it shows up as an
  * inactive `ProviderRow` card in the list — the footer `Set active`
@@ -51,7 +53,7 @@ export function AddProviderForm({ onDone, onCreated }: Props) {
   return (
     <form
       data-testid="add-provider-form"
-      className="rounded-xl border border-line bg-card p-4 space-y-3"
+      className="rounded-card border border-line bg-card p-4 space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         if (valid && !create.isPending) create.mutate();
@@ -64,7 +66,7 @@ export function AddProviderForm({ onDone, onCreated }: Props) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="My provider"
-            className="w-full text-[13px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
+            className="w-full text-[13.5px] text-ink border-b border-line focus:border-blue outline-none py-1"
           />
         </Field>
         <Field label="BASE URL">
@@ -73,7 +75,7 @@ export function AddProviderForm({ onDone, onCreated }: Props) {
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="https://…/v1"
-            className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
+            className="w-full text-[13.5px] text-ink border-b border-line focus:border-blue outline-none py-1"
           />
         </Field>
         <Field label="MODEL">
@@ -82,30 +84,31 @@ export function AddProviderForm({ onDone, onCreated }: Props) {
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="gpt-4o-mini"
-            className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
+            className="w-full text-[13.5px] text-ink border-b border-line focus:border-blue outline-none py-1"
           />
         </Field>
       </div>
 
       <div className="flex items-center gap-3">
-        <button
+        <Button
           type="submit"
+          variant="secondary"
           disabled={!valid || create.isPending}
-          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+          className="px-3 py-1.5 text-[13px]"
         >
           {create.isPending ? "Adding…" : "Add provider"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
+          className="px-3 py-1.5 text-[13px]"
           onClick={onDone}
-          className="text-[12.5px] font-semibold text-mut hover:text-ink"
         >
           Cancel
-        </button>
+        </Button>
       </div>
 
       {create.isError && (
-        <p className="text-xs text-[var(--color-straw)]">
+        <p className="text-[12.5px] text-straw">
           Failed to add provider: {String(create.error)}
         </p>
       )}
@@ -116,9 +119,7 @@ export function AddProviderForm({ onDone, onCreated }: Props) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey block">
-        {label}
-      </span>
+      <span className={`${LABEL} block`}>{label}</span>
       {children}
     </label>
   );

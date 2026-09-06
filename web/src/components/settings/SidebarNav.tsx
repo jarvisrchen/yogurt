@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import type { ProviderView } from "../../lib/api/settings";
+import { Pill } from "../Pill";
 
 /**
  * Settings page left rail — Phase 5 (Plan 05-03), SET-01..SET-03.
@@ -12,7 +13,7 @@ import type { ProviderView } from "../../lib/api/settings";
  * Footer:
  * - Green matcha "Local-only · on" pill rendered iff no active provider
  *   has a non-localhost base URL (PRD §5.6 D-14).
- * - JetBrains-Mono caption disclosing where keys and data live. The
+ * - Caption disclosing where keys and data live (paths rendered in mono). The
  *   `→` glyph is U+2192 (never `->` ASCII — UI-SPEC §Copywriting).
  */
 
@@ -40,13 +41,13 @@ export function SidebarNav({ active, onChange, providers }: Props) {
 
   return (
     <nav
-      className="w-[212px] shrink-0 bg-[var(--color-paper)] border-r border-line flex flex-col"
+      className="w-[212px] shrink-0 bg-paper border-r border-line flex flex-col"
       aria-label="Settings sections"
     >
       <header className="px-5 pt-6 pb-2 space-y-3">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           aria-label="Back to library"
         >
           <ArrowLeft size={16} aria-hidden />
@@ -62,9 +63,9 @@ export function SidebarNav({ active, onChange, providers }: Props) {
             <button
               type="button"
               onClick={() => onChange(s.id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-[13.5px] ${
+              className={`w-full text-left px-3 py-2 rounded-button text-[13.5px] ${
                 active === s.id
-                  ? "bg-[var(--color-blsoft)] text-[var(--color-blue)] font-semibold"
+                  ? "bg-blsoft text-blue font-semibold"
                   : "text-ink hover:bg-line/40 font-medium"
               }`}
             >
@@ -75,18 +76,17 @@ export function SidebarNav({ active, onChange, providers }: Props) {
       </ul>
       <footer className="p-4 border-t border-line space-y-2">
         {localOnly ? (
-          <span
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--color-matcha)] px-2.5 py-1 rounded-full"
-            data-testid="local-only-pill"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
-            Local-only · on
+          <span data-testid="local-only-pill" className="inline-block">
+            <Pill tone="matcha" className="text-white bg-matcha">
+              <span className="w-1.5 h-1.5 rounded-pill bg-white" />
+              Local-only · on
+            </Pill>
           </span>
         ) : null}
-        <div className="font-mono text-[10.5px] text-mut leading-relaxed">
-          keys → ~/.yogurt/keys.json
+        <div className="text-[13px] text-mut leading-relaxed">
+          keys → <code className="font-mono">~/.yogurt/keys.json</code>
           <br />
-          data → ~/.yogurt/
+          data → <code className="font-mono">~/.yogurt/</code>
         </div>
       </footer>
     </nav>

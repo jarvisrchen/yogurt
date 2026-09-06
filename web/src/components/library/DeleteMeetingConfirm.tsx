@@ -159,7 +159,7 @@ function ConfirmPanel({
           Cancel
         </button>
       </div>
-      <label className="flex items-start gap-1.5 text-[11px] font-mono text-mut cursor-pointer">
+      <label className="flex items-start gap-1.5 text-[11px] text-mut cursor-pointer">
         <input
           type="checkbox"
           checked={deleteFile}
@@ -168,9 +168,11 @@ function ConfirmPanel({
           className="mt-[1px] accent-straw"
         />
         <span>
-          {deleteFile
-            ? "also delete .md in ~/.yogurt/notes"
-            : ".md file stays in ~/.yogurt/notes"}
+          {deleteFile ? (
+            <>also delete .md in <code className="font-mono">~/.yogurt/notes</code></>
+          ) : (
+            <><code className="font-mono">.md</code> file stays in <code className="font-mono">~/.yogurt/notes</code></>
+          )}
         </span>
       </label>
     </div>

@@ -30,10 +30,10 @@ interface Props {
 
 export function LabelChip({ label, size = "md", onRemove }: Props) {
   const tone = LABEL_COLORS[label.color] ?? FALLBACK;
-  const textSize = size === "sm" ? "text-[10px]" : "text-[11px]";
+  const textSize = size === "sm" ? "text-[11px]" : "text-[12px]";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 ${textSize} font-mono leading-none`}
+      className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 ${textSize} font-medium leading-none`}
       style={{ background: tone.bg, color: tone.fg }}
     >
       {label.name}
