@@ -69,6 +69,11 @@ fn migrations() -> Migrations<'static> {
         // Feature (LLM-9): `meetings.template`, the enhance note format that
         // shaped `enriched_md` - picked by the model or forced by the user.
         M::up(include_str!("../migrations/V011__meetings_template.sql")),
+        // Feature (UI-12): `labels.position` (custom sidebar order) +
+        // `labels.updated_at` (last-updated sidebar order).
+        M::up(include_str!(
+            "../migrations/V012__labels_position_updated_at.sql"
+        )),
     ])
 }
 

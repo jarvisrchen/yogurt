@@ -20,20 +20,37 @@ import { Link, NavLink, useNavigate } from "react-router";
 import { Plus, Settings as SettingsIcon, Star } from "lucide-react";
 import { Logo } from "../Logo";
 import { useCreateMeeting } from "../../lib/api/meetings";
-import { useCreateLabel, useLabels } from "../../lib/api/labels";
+import { useCreateLabel, useLabels, useReorderLabels } from "../../lib/api/labels";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { SidebarLabelRow } from "./SidebarLabelRow";
 import { Button } from "../Button";
 import { LABEL } from "../settings/labelClass";
+import { getLabelSortMode, setLabelSortMode, sortLabels } from "../../lib/labelSort";
 
 export function Sidebar() {
   const navigate = useNavigate();
   const createMeeting = useCreateMeeting();
   const labels = useLabels();
   const createLabel = useCreateLabel();
+  const reorderLabels = useReorderLabels();
   const [addingLabel, setAddingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
+  const [sortMode, setSortMode] = useState(getLabelSortMode);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const sortedLabels = sortLabels(labels.data ?? [], sortMode);
+
+  function handleDrop(targetIndex: number) {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      setDragIndex(null);
+      return;
+    }
+    const ids = sortedLabels.map((l) => l.id);
+    const [moved] = ids.splice(dragIndex, 1);
+    ids.splice(targetIndex, 0, moved);
+    reorderLabels.mutate(ids);
+    setDragIndex(null);
+  }
 
   function commitNewLabel() {
     const name = newLabelName.trim();
@@ -136,18 +153,34 @@ export function Sidebar() {
       {/* Labels */}
       <div className={`px-5 pt-5 pb-1 flex items-center justify-between ${LABEL}`}>
         <span>Labels</span>
-        <button
-          type="button"
-          aria-label="New label"
-          onClick={() => {
-            setNewLabelName("");
-            setAddingLabel(true);
-          }}
-          disabled={createLabel.isPending}
-          className="text-mut hover:text-ink disabled:opacity-50"
-        >
-          <Plus size={12} aria-hidden />
-        </button>
+        <div className="flex items-center gap-1">
+          <select
+            aria-label="Sort labels"
+            value={sortMode}
+            onChange={(e) => {
+              const mode = e.target.value as typeof sortMode;
+              setSortMode(mode);
+              setLabelSortMode(mode);
+            }}
+            className="text-[10px] text-mut bg-transparent border-none text-right focus:outline-none cursor-pointer"
+          >
+            <option value="alpha">A-Z</option>
+            <option value="updated">Last updated</option>
+            <option value="custom">Custom</option>
+          </select>
+          <button
+            type="button"
+            aria-label="New label"
+            onClick={() => {
+              setNewLabelName("");
+              setAddingLabel(true);
+            }}
+            disabled={createLabel.isPending}
+            className="text-mut hover:text-ink disabled:opacity-50"
+          >
+            <Plus size={12} aria-hidden />
+          </button>
+        </div>
       </div>
       <div className="px-2 flex flex-col gap-0.5">
         {addingLabel && (
@@ -170,10 +203,24 @@ export function Sidebar() {
             />
           </div>
         )}
-        {(labels.data ?? []).length === 0 && !addingLabel ? (
+        {sortedLabels.length === 0 && !addingLabel ? (
           <p className="px-3 py-1 text-[12px] text-mut">No labels yet</p>
         ) : (
-          (labels.data ?? []).map((l) => <SidebarLabelRow key={l.id} label={l} />)
+          sortedLabels.map((l, i) => (
+            <div
+              key={l.id}
+              draggable={sortMode === "custom"}
+              onDragStart={() => setDragIndex(i)}
+              onDragOver={(e) => {
+                if (sortMode === "custom") e.preventDefault();
+              }}
+              onDrop={() => handleDrop(i)}
+              onDragEnd={() => setDragIndex(null)}
+              className={dragIndex === i ? "opacity-50" : undefined}
+            >
+              <SidebarLabelRow label={l} />
+            </div>
+          ))
         )}
       </div>
 

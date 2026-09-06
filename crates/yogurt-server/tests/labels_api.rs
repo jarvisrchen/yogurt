@@ -228,6 +228,72 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn it_reorders_labels_via_put_order() {
+    let (addr, token, handle, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let mut ids = Vec::new();
+    for name in ["Alpha", "Bravo", "Charlie"] {
+        let id = client
+            .post(format!("http://{addr}/api/labels"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "name": name }))
+            .send()
+            .await
+            .unwrap()
+            .json::<serde_json::Value>()
+            .await
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        ids.push(id);
+    }
+
+    let reordered = vec![ids[2].clone(), ids[0].clone(), ids[1].clone()];
+    let resp = client
+        .put(format!("http://{addr}/api/labels/order"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "ids": reordered }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let list: Vec<serde_json::Value> = client
+        .get(format!("http://{addr}/api/labels"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let position_of = |id: &str| {
+        list.iter()
+            .find(|l| l["id"].as_str().unwrap() == id)
+            .unwrap()["position"]
+            .as_i64()
+            .unwrap()
+    };
+    assert_eq!(position_of(&ids[2]), 0);
+    assert_eq!(position_of(&ids[0]), 1);
+    assert_eq!(position_of(&ids[1]), 2);
+
+    // Unknown id -> 400.
+    let bad = client
+        .put(format!("http://{addr}/api/labels/order"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "ids": ["nonesuch"] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), 400);
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn it_requires_a_bearer_token() {
     let (addr, _token, handle, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
