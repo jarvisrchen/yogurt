@@ -1004,3 +1004,14 @@ New closed items go at the bottom.
   Landed in two PRs (2026-09-05): part 1 moved every off-token radius, shadow and heading onto the design tokens; part 2 flipped the tokens to Whimsical x Blueberry (Manrope, 8/12/16/24px radii, soft ink-tinted shadows with a dark override, 800-weight display headings) with colors unchanged.
   Design: `docs/.planning/ui11-whimsical-blueberry-design.md`.
   </details>
+
+- [x] **DX-11** `just bootstrap` skips `pnpm install` after a lockfile change
+  <details>
+  <summary>Details</summary>
+
+  Bootstrap only installed when `web/node_modules` was missing, so pulling a branch that changed `pnpm-lock.yaml` (UI-11 swapped the font package) left the main checkout with stale deps and Vite failed on `@fontsource/manrope`.
+  Compare the lockfile against the copy pnpm leaves in `node_modules/.pnpm/lock.yaml` and install on mismatch.
+
+  Landed 2026-09-06.
+  Bootstrap now compares web/pnpm-lock.yaml with node_modules/.pnpm/lock.yaml and reinstalls on mismatch, so every entry point that runs bootstrap (just dev, just start) picks up lockfile changes.
+  </details>
