@@ -17,7 +17,7 @@
 
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
-import { Plus, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Star } from "lucide-react";
 import { Logo } from "../Logo";
 import { useCreateMeeting } from "../../lib/api/meetings";
 import { useCreateLabel, useLabels } from "../../lib/api/labels";
@@ -121,13 +121,14 @@ export function Sidebar() {
         <NavLink
           to="/starred"
           className={({ isActive }) =>
-            `px-3 py-1.5 rounded-button text-[13px] ${
+            `px-3 py-1.5 rounded-button text-[13px] flex items-center gap-1.5 ${
               isActive
                 ? "bg-blsoft text-blue font-semibold"
                 : "text-ink hover:bg-line/40"
             }`
           }
         >
+          <Star size={14} className="shrink-0 fill-current" aria-hidden />
           Starred
         </NavLink>
       </nav>
