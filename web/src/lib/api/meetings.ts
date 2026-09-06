@@ -215,6 +215,7 @@ export function useDeleteMeeting(): UseMutationResult<
     mutationFn: ({ id, deleteFile }) => meetingsApi.delete(id, deleteFile),
     onSuccess: (_void, { id }) => {
       qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
       qc.removeQueries({ queryKey: meetingKey(id) });
     },
   });
@@ -296,6 +297,7 @@ export function useBulkDeleteMeetings(): UseMutationResult<
     // successfully-deleted meetings reflected in the list.
     onSettled: (_data, _error, { ids }) => {
       qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
       for (const id of ids) qc.removeQueries({ queryKey: meetingKey(id) });
     },
   });

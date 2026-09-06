@@ -117,22 +117,22 @@ export function SelectionActionBar({ meetings, onSelectAll, onClear }: Props) {
         />
       </div>
       <div className="relative">
-        {!confirming ? (
-          <button
-            type="button"
-            className={`${itemButton} text-straw`}
-            onClick={(e) => {
-              stop(e);
-              setDeleteFile(true);
-              setConfirming(true);
-            }}
-          >
-            Delete
-          </button>
-        ) : (
+        <button
+          type="button"
+          className={`${itemButton} text-straw`}
+          aria-expanded={confirming}
+          onClick={(e) => {
+            stop(e);
+            setDeleteFile(true);
+            setConfirming((c) => !c);
+          }}
+        >
+          Delete
+        </button>
+        {confirming && (
           <ConfirmPanel
             testId="bulk-delete-confirm-popover"
-            containerClassName="absolute bottom-full left-0 mb-1 px-3 py-2 flex flex-col gap-1.5 bg-card border border-line rounded-card shadow-pop min-w-[220px]"
+            containerClassName="absolute bottom-full left-0 mb-2 px-3 py-2 flex flex-col gap-1.5 bg-card border border-line rounded-card shadow-pop min-w-[220px]"
             deleteFile={deleteFile}
             setDeleteFile={setDeleteFile}
             onConfirm={onConfirmDelete}

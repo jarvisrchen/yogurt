@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCreateLabel, useLabels } from "../../lib/api/labels";
 import { useBulkSetLabel, type Meeting } from "../../lib/api/meetings";
-import { LABEL_COLORS } from "./LabelChip";
+import { labelTone } from "./LabelChip";
 
 interface Props {
   meetings: Pick<Meeting, "id" | "labels">[];
@@ -102,7 +102,7 @@ export function BulkLabelPicker({ meetings, mode, open, onClose }: Props) {
         </p>
       )}
       {filtered.map((l) => {
-        const tone = LABEL_COLORS[l.color] ?? { bg: "var(--color-line)", fg: "var(--color-mut)" };
+        const tone = labelTone(l.color);
         return (
           <button
             key={l.id}

@@ -1058,3 +1058,14 @@ New closed items go at the bottom.
 
   Landed 2026-09-06. Migration V012 adds `position` and `updated_at`; `PUT /api/labels/order` persists a custom order; the sidebar Labels header has an A-Z / Last updated / Custom select with drag to reorder in Custom mode, persisted in localStorage.
   </details>
+
+- [x] **MTG-14** Multi-select meetings on the dashboard to delete or label them in bulk
+  <details>
+  <summary>Details</summary>
+
+  Every meeting action on the library dashboard is per card (`MeetingCardActions`): star, label, delete.
+  Add a selection mode (checkbox on hover, shift-click for ranges, select all) with a floating action bar offering Delete and Add/Remove label.
+  Delete needs a confirm step since it is irreversible; both actions can fan out over the existing per-meeting endpoints or gain a bulk route if the round trips matter.
+
+  Landed 2026-09-06. Hover checkbox on meeting cards with shift-click ranges, a floating action bar (Select all, Add label, Remove label, Delete with confirm, Clear), Escape clears; bulk actions fan out over the per-meeting endpoints.
+  </details>
