@@ -110,6 +110,7 @@ fn it_patches_stt_provider_and_model() {
 fn it_loads_echo_defaults() {
     let db = Db::open_in_memory().unwrap();
     let g = settings::load_general(&db).unwrap();
+    assert!(!g.audio_echo_feature);
     assert_eq!(g.audio_echo_output_device, "");
     assert!(!g.audio_echo_enabled);
     assert_eq!(g.audio_echo_buffer, 512);
@@ -121,6 +122,7 @@ fn it_round_trips_echo_settings() {
     let patched = settings::save_general_patch(
         &db,
         settings::GeneralPatch {
+            audio_echo_feature: Some(true),
             audio_echo_output_device: Some("BlackHole 2ch".into()),
             audio_echo_enabled: Some(true),
             audio_echo_buffer: Some(1024),
@@ -128,11 +130,13 @@ fn it_round_trips_echo_settings() {
         },
     )
     .unwrap();
+    assert!(patched.audio_echo_feature);
     assert_eq!(patched.audio_echo_output_device, "BlackHole 2ch");
     assert!(patched.audio_echo_enabled);
     assert_eq!(patched.audio_echo_buffer, 1024);
 
     let g = settings::load_general(&db).unwrap();
+    assert!(g.audio_echo_feature);
     assert_eq!(g.audio_echo_output_device, "BlackHole 2ch");
     assert!(g.audio_echo_enabled);
     assert_eq!(g.audio_echo_buffer, 1024);

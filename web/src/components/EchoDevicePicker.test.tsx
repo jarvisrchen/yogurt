@@ -34,6 +34,7 @@ function baseGeneral(overrides: Partial<Record<string, unknown>> = {}) {
     port: 7878,
     open_browser_on_start: true,
     audio_input_device: "",
+    audio_echo_feature: false,
     audio_echo_output_device: "",
     audio_echo_enabled: false,
     audio_echo_buffer: 512,

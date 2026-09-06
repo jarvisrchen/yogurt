@@ -36,6 +36,12 @@ export function AudioSection({ general }: AudioSectionProps) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
 
+  const patchEchoFeature = useMutation({
+    mutationFn: (audio_echo_feature: boolean) =>
+      settingsApi.patch({ audio_echo_feature }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+
   const patchEchoDevice = useMutation({
     mutationFn: (audio_echo_output_device: string) =>
       settingsApi.patch({ audio_echo_output_device }),
@@ -71,58 +77,78 @@ export function AudioSection({ general }: AudioSectionProps) {
           </select>
         </div>
 
-        <div className="border-t border-line pt-4 mt-4 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className={LABEL}>
-              Echo output device
-            </label>
-            <div className="flex items-center gap-1">
-              <RefreshDevicesButton />
-              <EchoTestButton device={general.audio_echo_output_device} />
-            </div>
-          </div>
-          <select
-            className="block w-full rounded-button border border-line bg-paper px-3 py-2 text-[13.5px] focus:border-blue focus:outline-none"
-            value={general.audio_echo_output_device}
-            onChange={(e) => patchEchoDevice.mutate(e.target.value)}
-            disabled={outputDevices.isLoading || patchEchoDevice.isPending}
-          >
-            <option value="">System default</option>
-            <DeviceOptions devices={outputDevices.data} selected={general.audio_echo_output_device} />
-          </select>
+        <div className="border-t border-line pt-4 mt-4 space-y-3">
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              defaultChecked={general.audio_echo_feature}
+              onChange={(e) => patchEchoFeature.mutate(e.target.checked)}
+              className="h-4 w-4 accent-blue"
+            />
+            <span>Mic echo</span>
+          </label>
           <p className="text-[12.5px] text-mut">
-            Also changeable from the meeting page. Use a virtual device such as
-            BlackHole to hand your mic to Zoom or OBS while yogurt records.
+            Route your mic to a second output device such as BlackHole while
+            yogurt records. Off for most people.
           </p>
         </div>
 
-        <div className="border-t border-line pt-4 mt-4 space-y-1.5">
-          <label className={`block ${LABEL}`}>
-            Echo buffer
-          </label>
-          <div className="inline-flex rounded-button border border-line bg-paper overflow-hidden">
-            {ECHO_BUFFERS.map((size) => (
-              <button
-                key={size}
-                type="button"
-                onClick={() => patchEchoBuffer.mutate(size)}
-                disabled={patchEchoBuffer.isPending}
-                aria-pressed={general.audio_echo_buffer === size}
-                className={`px-3 py-2 text-[13.5px] border-r border-line last:border-r-0 ${
-                  general.audio_echo_buffer === size
-                    ? "bg-blsoft text-blue font-semibold"
-                    : "text-mut"
-                }`}
+        {general.audio_echo_feature && (
+          <>
+            <div className="border-t border-line pt-4 mt-4 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className={LABEL}>
+                  Echo output device
+                </label>
+                <div className="flex items-center gap-1">
+                  <RefreshDevicesButton />
+                  <EchoTestButton device={general.audio_echo_output_device} />
+                </div>
+              </div>
+              <select
+                className="block w-full rounded-button border border-line bg-paper px-3 py-2 text-[13.5px] focus:border-blue focus:outline-none"
+                value={general.audio_echo_output_device}
+                onChange={(e) => patchEchoDevice.mutate(e.target.value)}
+                disabled={outputDevices.isLoading || patchEchoDevice.isPending}
               >
-                {size}
-              </button>
-            ))}
-          </div>
-          <p className="text-[12.5px] text-mut">
-            Frames per callback. 512 is about 10.7 ms at 48 kHz. Larger is
-            safer against dropouts.
-          </p>
-        </div>
+                <option value="">System default</option>
+                <DeviceOptions devices={outputDevices.data} selected={general.audio_echo_output_device} />
+              </select>
+              <p className="text-[12.5px] text-mut">
+                Also changeable from the meeting page. Use a virtual device such as
+                BlackHole to hand your mic to Zoom or OBS while yogurt records.
+              </p>
+            </div>
+
+            <div className="border-t border-line pt-4 mt-4 space-y-1.5">
+              <label className={`block ${LABEL}`}>
+                Echo buffer
+              </label>
+              <div className="inline-flex rounded-button border border-line bg-paper overflow-hidden">
+                {ECHO_BUFFERS.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => patchEchoBuffer.mutate(size)}
+                    disabled={patchEchoBuffer.isPending}
+                    aria-pressed={general.audio_echo_buffer === size}
+                    className={`px-3 py-2 text-[13.5px] border-r border-line last:border-r-0 ${
+                      general.audio_echo_buffer === size
+                        ? "bg-blsoft text-blue font-semibold"
+                        : "text-mut"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[12.5px] text-mut">
+                Frames per callback. 512 is about 10.7 ms at 48 kHz. Larger is
+                safer against dropouts.
+              </p>
+            </div>
+          </>
+        )}
 
         <p className="text-[12.5px] text-mut">
           System audio is captured via ScreenCaptureKit — no extra setup.
