@@ -62,7 +62,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
             <button
               type="button"
               onClick={() => onChange(s.id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-[13.5px] ${
+              className={`w-full text-left px-3 py-2 rounded-chip text-[13.5px] ${
                 active === s.id
                   ? "bg-[var(--color-blsoft)] text-[var(--color-blue)] font-semibold"
                   : "text-ink hover:bg-line/40 font-medium"

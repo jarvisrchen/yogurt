@@ -7,6 +7,7 @@ import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
 import { EchoDevicePicker } from "../components/EchoDevicePicker";
 import { EchoTestButton } from "../components/EchoTestButton";
+import { buttonClassName } from "../components/Button";
 import { RefreshDevicesButton } from "../components/RefreshDevicesButton";
 import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
@@ -31,9 +32,7 @@ import {
   type TranscriptEvent,
 } from "../lib/ws";
 
-const INK = "var(--color-ink)";
 const LINE = "var(--color-line)";
-const BLUE = "var(--color-blue)";
 const STRAW_SOFT = "var(--color-strsoft)";
 const STRAW = "var(--color-straw)";
 
@@ -495,10 +494,10 @@ export function Meeting() {
                 <InlineTitle
                   id={meetingId}
                   title={title}
-                  className="text-[26px] font-bold tracking-tight leading-none text-ink"
+                  className="heading-title"
                 />
               ) : (
-                <h1 className="text-[26px] font-bold tracking-tight leading-none" style={{ color: INK }}>
+                <h1 className="heading-title">
                   {title}
                 </h1>
               )}
@@ -508,8 +507,7 @@ export function Meeting() {
                 <button
                   type="button"
                   onClick={() => startRecording()}
-                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
-                  style={{ backgroundColor: BLUE }}
+                  className={buttonClassName("primary")}
                 >
                   Start recording
                 </button>
@@ -518,8 +516,7 @@ export function Meeting() {
                 <button
                   type="button"
                   onClick={stopRecording}
-                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90"
-                  style={{ backgroundColor: BLUE }}
+                  className={buttonClassName("primary")}
                 >
                   Stop recording
                 </button>
@@ -531,8 +528,7 @@ export function Meeting() {
                   disabled={enhancing}
                   aria-busy={enhancing}
                   data-testid="end-meeting"
-                  className="px-4 py-2 rounded-button text-[13.5px] font-semibold text-white shadow-[0_2px_8px_rgba(91,79,199,0.3)] hover:opacity-90 disabled:opacity-70"
-                  style={{ backgroundColor: BLUE }}
+                  className={buttonClassName("primary", "disabled:opacity-70")}
                 >
                   {enhancing ? "Enhancing…" : "End meeting"}
                 </button>

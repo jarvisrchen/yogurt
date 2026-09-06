@@ -59,7 +59,7 @@ export function TestKeyButton({
         type="button"
         disabled={!canTest}
         aria-label={`Test connection for ${providerName}`}
-        className="text-sm font-semibold text-mut border border-line rounded-md px-3 py-1.5 hover:text-ink hover:border-grey disabled:opacity-40 shrink-0"
+        className="text-sm font-semibold text-mut border border-line rounded-chip px-3 py-1.5 hover:text-ink hover:border-grey disabled:opacity-40 shrink-0"
         onClick={() => test.mutate(draft)}
       >
         {test.isPending ? "Testing…" : "Test"}

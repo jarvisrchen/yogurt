@@ -115,7 +115,7 @@ export function ModelDownloadDialog({
     return (
       <dialog
         ref={ref}
-        className="rounded-lg p-0 backdrop:bg-black/30"
+        className="rounded-panel p-0 backdrop:bg-black/30"
         onClose={onClose}
       />
     );
@@ -139,7 +139,7 @@ export function ModelDownloadDialog({
       ref={ref}
       onClose={onClose}
       data-testid="model-download-dialog"
-      className="rounded-lg p-0 backdrop:bg-black/30 w-[420px] bg-[var(--color-card)] text-ink shadow-xl"
+      className="rounded-panel p-0 backdrop:bg-black/30 w-[420px] bg-[var(--color-card)] text-ink shadow-window"
     >
       <div className="p-6 space-y-4">
         <header className="flex items-start gap-3">
@@ -150,7 +150,7 @@ export function ModelDownloadDialog({
             ↓
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold tracking-tight text-[20px] leading-tight">
+            <h3 className="heading-wordmark leading-tight">
               {title}
             </h3>
             <p className="text-[11px] font-mono uppercase tracking-wider text-mut">

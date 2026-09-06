@@ -112,7 +112,7 @@ export function ApiKeyInput({
           type="button"
           disabled={!draft || setKey.isPending}
           aria-label={`Save API key for ${providerName}`}
-          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50 shrink-0"
+          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-chip disabled:opacity-50 shrink-0"
           onClick={() => setKey.mutate(draft)}
         >
           {setKey.isPending ? "Saving…" : "Save key"}

@@ -36,13 +36,14 @@ const RADII: Array<{ name: string; px: number; bg: string }> = [
   { name: "chip",   px: 6,   bg: "bg-blsoft" },
   { name: "button", px: 9,   bg: "bg-blsoft" },
   { name: "card",   px: 14,  bg: "bg-card border border-line" },
+  { name: "panel",  px: 16,  bg: "bg-card border border-line" },
   { name: "pill",   px: 999, bg: "bg-mtsoft" },
 ];
 
 const SHADOWS: Array<{ name: string; className: string; use: string }> = [
   { name: "shadow-card",   className: "shadow-card",                                                       use: "Card surface (default)" },
-  { name: "shadow-pop",    className: "shadow-[0_12px_30px_-10px_rgba(40,30,15,0.22)]",                    use: "Chat window, popovers" },
-  { name: "shadow-window", className: "shadow-[0_26px_60px_-28px_rgba(40,30,15,0.4)]",                     use: "Modals, mockup chrome" },
+  { name: "shadow-pop",    className: "shadow-pop",    use: "Chat window, popovers" },
+  { name: "shadow-window", className: "shadow-window", use: "Modals, mockup chrome" },
 ];
 
 const MOTION: Array<{ name: string; duration: string; use: string; className: string }> = [
@@ -122,10 +123,10 @@ export function StyleGuide() {
               <p className="heading-hero mt-1">
                 yogurt
               </p>
-              <p className="font-bold tracking-tight text-[32px] leading-tight text-ink">
+              <p className="heading-greeting">
                 Welcome to yogurt.
               </p>
-              <p className="font-bold tracking-tight text-[26px] leading-tight text-ink">
+              <p className="heading-title">
                 Good afternoon, Dana
               </p>
               <p className="italic text-[18px] text-mut">
@@ -455,7 +456,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="font-bold tracking-tight text-[26px] text-ink leading-tight">{title}</h2>
+      <h2 className="heading-title leading-tight">{title}</h2>
       <p className="mt-1 text-[13px] text-mut">{caption}</p>
       <div className="mt-5">{children}</div>
     </section>

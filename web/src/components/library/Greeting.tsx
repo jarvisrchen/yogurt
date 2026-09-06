@@ -18,7 +18,7 @@ export function Greeting({ count }: Props) {
   const plural = count === 1 ? "meeting" : "meetings";
   return (
     <header className="mb-8">
-      <h1 className="font-bold tracking-tight text-[34px] leading-tight text-ink">{greeting}</h1>
+      <h1 className="heading-greeting">{greeting}</h1>
       <p className="mt-1 text-[13px] font-mono text-mut">
         {count} {plural} · all on this Mac
       </p>

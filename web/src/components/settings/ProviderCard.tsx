@@ -88,7 +88,7 @@ export function ProviderCard({
   });
   return (
     <article
-      className="rounded-xl border-[1.5px] border-[var(--color-blue)] bg-card p-5 shadow-[0_4px_14px_-6px_rgba(91,79,199,0.35)] space-y-4"
+      className="rounded-card border-[1.5px] border-[var(--color-blue)] bg-card p-5 shadow-button-blue space-y-4"
       data-testid="active-provider-card"
     >
       <header className="flex items-center justify-between">
@@ -113,7 +113,7 @@ export function ProviderCard({
 
       {isCli ? (
         <div className="space-y-3">
-          <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
+          <div className="rounded-button bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
             Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
             locally via your existing CLI login. No API key or base URL to
             configure.
@@ -199,7 +199,7 @@ export function ProviderCard({
               {editing && (
                 <button
                   type="button"
-                  className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+                  className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-chip disabled:opacity-50"
                   disabled={update.isPending}
                   onClick={() => update.mutate()}
                 >

@@ -44,7 +44,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
         <div
           role="radiogroup"
           aria-label="Appearance"
-          className="inline-flex gap-0.5 rounded-[11px] bg-line/60 p-1"
+          className="inline-flex gap-0.5 rounded-card bg-line/60 p-1"
         >
           {THEME_OPTIONS.map((opt) => {
             const selected = theme === opt.value;
@@ -58,9 +58,9 @@ export function GeneralSection({ general }: GeneralSectionProps) {
                   setThemePref(opt.value);
                   setTheme(opt.value);
                 }}
-                className={`rounded-lg px-4 py-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
+                className={`rounded-button px-4 py-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
                   selected
-                    ? "bg-card text-ink shadow-[0_1px_3px_rgba(40,30,15,0.1)]"
+                    ? "bg-card text-ink shadow-card"
                     : "text-mut hover:text-ink"
                 }`}
               >
@@ -91,7 +91,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
               patch.mutate({ port: next });
             }
           }}
-          className="block w-32 rounded-md border border-line bg-card px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
+          className="block w-32 rounded-chip border border-line bg-card px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
         />
         <p className="text-xs font-mono text-mut">
           Port change applies on next `yogurt start`.

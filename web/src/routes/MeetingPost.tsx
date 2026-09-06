@@ -577,7 +577,7 @@ export function MeetingPost() {
         data-testid="meeting-too-short"
       >
         <div role="status" aria-live="polite" className="text-center space-y-1.5">
-          <p className="font-bold tracking-tight text-[19px] text-ink">Meeting too short</p>
+          <p className="heading-card">Meeting too short</p>
           <p className="text-[13px] text-mut">
             Nothing to enhance — back to the library…
           </p>
@@ -632,7 +632,7 @@ export function MeetingPost() {
             <InlineTitle
               id={meetingId}
               title={displayTitle ?? "Untitled meeting"}
-              className="block text-[19px] font-bold tracking-tight leading-tight text-ink truncate"
+              className="block heading-card truncate"
             />
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <MeetingMetaPills
@@ -697,7 +697,7 @@ export function MeetingPost() {
         <div
           role="tablist"
           aria-label="Meeting document"
-          className="mb-7 inline-flex gap-0.5 rounded-[11px] bg-line/60 p-1"
+          className="mb-7 inline-flex gap-0.5 rounded-card bg-line/60 p-1"
         >
           {(["enhanced", "notes"] as const).map((document) => {
             const selected = activeDocument === document;
@@ -708,9 +708,9 @@ export function MeetingPost() {
                 role="tab"
                 aria-selected={selected}
                 onClick={() => setActiveDocument(document)}
-                className={`rounded-lg px-4 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
+                className={`rounded-button px-4 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
                   selected
-                    ? "bg-card text-ink shadow-[0_1px_3px_rgba(40,30,15,0.1)]"
+                    ? "bg-card text-ink shadow-card"
                     : "text-mut hover:text-ink"
                 }`}
               >

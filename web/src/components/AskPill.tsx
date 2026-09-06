@@ -28,7 +28,7 @@ export function AskPill({ onExpand }: AskPillProps) {
       <span className="flex-1 truncate">Ask this meeting…</span>
       <span
         aria-hidden="true"
-        className="inline-flex items-center justify-center h-6 px-2 rounded-md text-[11px] font-mono text-[var(--color-mut)] bg-[var(--color-blsoft)]"
+        className="inline-flex items-center justify-center h-6 px-2 rounded-chip text-[11px] font-mono text-[var(--color-mut)] bg-[var(--color-blsoft)]"
       >
         ⌘K
       </span>

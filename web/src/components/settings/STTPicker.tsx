@@ -85,7 +85,7 @@ export function STTPicker() {
       <article
         data-testid="cloud-stt-card"
         className={
-          "rounded-xl p-5 space-y-3 bg-card transition-colors " +
+          "rounded-card p-5 space-y-3 bg-card transition-colors " +
           (!isLocal
             ? "border-[1.5px] border-[var(--color-blue)]"
             : "border border-line")
@@ -134,7 +134,7 @@ export function STTPicker() {
             <button
               type="button"
               disabled={!keyDraft || setSttKey.isPending}
-              className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+              className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-chip disabled:opacity-50"
               onClick={() => setSttKey.mutate(keyDraft)}
             >
               {setSttKey.isPending ? "Saving…" : "Save key"}

@@ -196,7 +196,7 @@ export function Welcome() {
       <section className="bg-paper px-16 py-16 flex flex-col justify-center">
         <div className="flex items-center gap-3 mb-12">
           <Logo size={36} />
-          <span className="font-bold tracking-tight text-[22px] text-ink leading-none">
+          <span className="heading-section">
             yogurt
           </span>
         </div>

@@ -122,7 +122,7 @@ export function ProviderRow({
 
   return (
     <article
-      className="rounded-xl border border-line bg-card p-5 space-y-4"
+      className="rounded-card border border-line bg-card p-5 space-y-4"
       data-testid="inactive-provider-card"
     >
       <header className="flex items-center justify-between">
@@ -142,7 +142,7 @@ export function ProviderRow({
 
       {isCli ? (
         <div className="space-y-3">
-          <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
+          <div className="rounded-button bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
             Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
             locally via your existing CLI login. No API key or base URL to
             configure.
@@ -296,7 +296,7 @@ export function ProviderRow({
       <div className="flex justify-end">
         <button
           type="button"
-          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-chip disabled:opacity-50"
           onClick={() => activate.mutate()}
           disabled={activate.isPending}
         >

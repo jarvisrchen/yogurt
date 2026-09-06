@@ -140,7 +140,9 @@ Both stay under `web/`, so both qualify for the cloud-session path in `AGENTS.md
 - Contrast: unchanged colors, so the UI-7 AI-grey and Pill contrast notes still hold.
 - Dark mode toggle in Settings → General still switches without a flash, since the inline script in `index.html` is untouched.
 
-## Decisions needed
+## Decisions
+
+All four recommendations accepted by Richard on 2026-09-05.
 
 1. Blueberry button glow.
    Whimsical is flat, no glow on primary buttons.

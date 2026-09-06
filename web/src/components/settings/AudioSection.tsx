@@ -59,7 +59,7 @@ export function AudioSection({ general }: AudioSectionProps) {
           <RefreshDevicesButton />
         </div>
         <select
-          className="block w-full rounded-md border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
+          className="block w-full rounded-chip border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
           value={general.audio_input_device}
           onChange={(e) => patch.mutate(e.target.value)}
           disabled={devices.isLoading || patch.isPending}
@@ -80,7 +80,7 @@ export function AudioSection({ general }: AudioSectionProps) {
           </div>
         </div>
         <select
-          className="block w-full rounded-md border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
+          className="block w-full rounded-chip border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
           value={general.audio_echo_output_device}
           onChange={(e) => patchEchoDevice.mutate(e.target.value)}
           disabled={outputDevices.isLoading || patchEchoDevice.isPending}
@@ -98,7 +98,7 @@ export function AudioSection({ general }: AudioSectionProps) {
         <label className="block text-[10px] font-mono uppercase tracking-wider text-mut">
           Echo buffer
         </label>
-        <div className="inline-flex rounded-md border border-line overflow-hidden">
+        <div className="inline-flex rounded-chip border border-line overflow-hidden">
           {ECHO_BUFFERS.map((size) => (
             <button
               key={size}

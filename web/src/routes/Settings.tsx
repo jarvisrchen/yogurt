@@ -140,8 +140,8 @@ export function Settings() {
                 defaultCliModel={findPreset(active)?.default_cli_model ?? ""}
               />
             ) : data.providers.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-line bg-card/50 p-6 space-y-1">
-                <p className="font-bold tracking-tight text-[15px] text-ink">
+              <div className="rounded-card border border-dashed border-line bg-card/50 p-6 space-y-1">
+                <p className="heading-sm">
                   No providers configured yet
                 </p>
                 <p className="text-[13px] text-mut">

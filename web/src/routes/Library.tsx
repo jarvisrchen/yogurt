@@ -226,7 +226,7 @@ function LibrarySkeleton() {
     >
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="flex items-center gap-3 py-2 px-2 -mx-2">
-          <div className="w-[42px] h-[42px] rounded-[10px] shimmer shrink-0" />
+          <div className="w-[42px] h-[42px] rounded-button shimmer shrink-0" />
           <div className="flex-1">
             <ShimmerSkeleton
               staggerMs={0}
