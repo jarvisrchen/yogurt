@@ -1069,3 +1069,13 @@ New closed items go at the bottom.
 
   Landed 2026-09-06. Hover checkbox on meeting cards with shift-click ranges, a floating action bar (Select all, Add label, Remove label, Delete with confirm, Clear), Escape clears; bulk actions fan out over the per-meeting endpoints.
   </details>
+
+- [x] **AUD-13** Make mic echo an opt-in feature toggle, off by default
+  <details>
+  <summary>Details</summary>
+
+  The echo UI (meeting page "Echo to" column, Settings > Audio echo device and buffer) is shown to everyone though almost nobody routes their mic to a virtual device.
+  Add a "Mic echo" toggle in Settings > Audio, default off, and only render the echo controls and auto-start behavior when it is on.
+
+  Landed 2026-09-06. Adds audio_echo_feature (default off) gating the meeting-page echo column, the Settings echo controls, and echo auto-start at recording start.
+  </details>

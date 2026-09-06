@@ -137,6 +137,7 @@ export function Meeting() {
   // back to the active-recording poll before the row is refetched.
   const activeLlmModel = useSettings().data?.providers.find((p) => p.is_active)?.model;
   const echoDevice = useSettings().data?.general?.audio_echo_output_device ?? "";
+  const echoFeatureEnabled = useSettings().data?.general?.audio_echo_feature ?? false;
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
 
   // Live-dock-loses-history-on-remount fix: parse the meeting row's
@@ -555,9 +556,13 @@ export function Meeting() {
           )}
           {/* Row 3: label chips, left-aligned under the title. */}
           {meetingId && <MeetingLabels meetingId={meetingId} />}
-          {/* Row 4: mic + echo, two columns. */}
+          {/* Row 4: mic (+ echo, when the AUD-13 feature toggle is on). */}
           {meetingId && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+            <div
+              className={`grid grid-cols-1 gap-x-4 gap-y-2 ${
+                echoFeatureEnabled ? "sm:grid-cols-2" : ""
+              }`}
+            >
               <div className="space-y-1.5">
                 <label className={`flex items-center h-5 ${LABEL}`}>
                   Microphone
@@ -565,20 +570,22 @@ export function Meeting() {
                 <MicDevicePicker meetingId={meetingId} recording={recording} />
                 <MicMuteToggle meetingId={meetingId} recording={recording} />
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center h-5 gap-1.5">
-                  <label className={LABEL}>
-                    Echo to
-                  </label>
-                  {recording && activeRecording.data?.echo_enabled && (
-                    <Pill tone="matcha" status="status">live</Pill>
-                  )}
-                  <RefreshDevicesButton className="ml-auto" />
-                  <EchoTestButton device={echoDevice} />
+              {echoFeatureEnabled && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center h-5 gap-1.5">
+                    <label className={LABEL}>
+                      Echo to
+                    </label>
+                    {recording && activeRecording.data?.echo_enabled && (
+                      <Pill tone="matcha" status="status">live</Pill>
+                    )}
+                    <RefreshDevicesButton className="ml-auto" />
+                    <EchoTestButton device={echoDevice} />
+                  </div>
+                  <EchoDevicePicker meetingId={meetingId} recording={recording} />
+                  <MicEchoToggle meetingId={meetingId} recording={recording} />
                 </div>
-                <EchoDevicePicker meetingId={meetingId} recording={recording} />
-                <MicEchoToggle meetingId={meetingId} recording={recording} />
-              </div>
+              )}
             </div>
           )}
         </header>

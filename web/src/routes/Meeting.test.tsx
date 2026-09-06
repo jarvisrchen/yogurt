@@ -94,6 +94,9 @@ const state = vi.hoisted(() => ({
     started_at: number;
     stt?: "cloud" | "local";
   } | null,
+  // AUD-13: mirrors `general.audio_echo_feature` - off by default, the
+  // same as a fresh install.
+  audioEchoFeature: false,
 }));
 
 vi.mock("../lib/api/meetings", () => ({
@@ -117,7 +120,12 @@ vi.mock("../lib/api/meetings", () => ({
 }));
 
 vi.mock("../lib/api/settings", () => ({
-  useSettings: () => ({ data: { providers: state.providers } }),
+  useSettings: () => ({
+    data: {
+      providers: state.providers,
+      general: { audio_echo_feature: state.audioEchoFeature },
+    },
+  }),
 }));
 
 import { Meeting } from "./Meeting";
@@ -714,6 +722,63 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
     // The chip is meeting metadata (stamped at start), not a live status —
     // it must not vanish just because recording flipped to false.
     expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Meeting - echo column gated behind AUD-13 feature toggle", () => {
+  beforeEach(() => {
+    state.meetingRow = undefined;
+    state.activeRecording = null;
+    state.audioEchoFeature = false;
+    vi.clearAllMocks();
+  });
+
+  it("omits the Echo to column when the mic-echo feature is off (default)", async () => {
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-live");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mic-picker")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Echo to")).toBeNull();
+    expect(screen.queryByTestId("echo-picker")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the Echo to column when the mic-echo feature is on", async () => {
+    state.audioEchoFeature = true;
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+
+    renderAt("/meeting/meeting-live");
+
+    await waitFor(() => {
+      expect(screen.getByText("Echo to")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("echo-picker")).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });
