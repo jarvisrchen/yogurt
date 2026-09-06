@@ -92,8 +92,8 @@ export function ChatMessage({ message, isStreaming = false }: Props) {
       <div
         className={
           isUser
-            ? "max-w-[78%] px-3 py-2 rounded-2xl rounded-br-md bg-[var(--color-blue)] text-white text-[14px] leading-relaxed"
-            : "max-w-[78%] px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed"
+            ? "max-w-[78%] px-3 py-2 rounded-panel rounded-br-chip bg-[var(--color-blue)] text-white text-[14px] leading-relaxed"
+            : "max-w-[78%] px-3 py-2 rounded-panel rounded-bl-chip bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed"
         }
       >
         {isEmptyFinishedReply ? (
