@@ -45,16 +45,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-- [ ] **UI-12** Sort or order the sidebar Labels group: alphabetical, last updated, or custom
-  <details>
-  <summary>Details</summary>
-
-  Labels are always listed `ORDER BY l.name COLLATE NOCASE` (`crates/yogurt-db/src/labels.rs`).
-  Add a sort control on the Labels group with alphabetical, last updated, and custom (drag to reorder) modes.
-  Custom needs a persisted `position` column plus a reorder endpoint; last updated needs an `updated_at` touched when a label is renamed, recolored, or applied.
-  Persist the chosen mode in settings so it survives reloads.
-  </details>
-
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
