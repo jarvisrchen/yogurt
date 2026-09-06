@@ -16,6 +16,8 @@
  * row refetches) renders as "Local STT" / "Cloud STT".
  */
 
+import { Cloud, HardDrive, Sparkles } from "lucide-react";
+
 interface Props {
   startedAt?: number | null;
   endedAt?: number | null;
@@ -82,9 +84,7 @@ export function MetaPill({
 export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined }) {
   const engine = parseSttEngine(sttEngine);
   if (!engine) return null;
-  // Filled matcha = on this Mac, neutral card = went to a provider — a
-  // leading dot (matcha/mut) carries the same distinction as the lavish
-  // mockup's `.pill.ok .dot`, not an icon.
+  // Filled matcha = on this Mac, neutral card = went to a provider.
   const tone = engine.cloud ? "bg-card text-mut border border-line" : "bg-mtsoft text-ink";
   return (
     <span
@@ -92,10 +92,11 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
       data-testid="engine-pill"
       title={engine.cloud ? "Transcribed by cloud STT" : "Transcribed on this Mac"}
     >
-      <span
-        aria-hidden="true"
-        className={`inline-block w-[7px] h-[7px] rounded-pill ${engine.cloud ? "bg-mut" : "bg-matcha"}`}
-      />
+      {engine.cloud ? (
+        <Cloud size={12} aria-hidden />
+      ) : (
+        <HardDrive size={12} aria-hidden className="text-matcha" />
+      )}
       {engine.text}
     </span>
   );
@@ -129,6 +130,7 @@ export function LlmPill({
       data-testid="llm-pill"
       title={pending ? `Will enhance with ${model}` : `Enhanced by ${model}`}
     >
+      <Sparkles size={12} aria-hidden className={pending ? undefined : "text-blue"} />
       {model}
     </span>
   );
