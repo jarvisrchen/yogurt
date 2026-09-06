@@ -528,7 +528,7 @@ export function Meeting() {
                   disabled={enhancing}
                   aria-busy={enhancing}
                   data-testid="end-meeting"
-                  className={buttonClassName("primary", "disabled:opacity-70")}
+                  className={buttonClassName("primary")}
                 >
                   {enhancing ? "Enhancing…" : "End meeting"}
                 </button>
