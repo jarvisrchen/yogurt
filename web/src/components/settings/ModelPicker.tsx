@@ -20,7 +20,7 @@
  *     3s. Only one model's confirm can be open at a time.
  *
  * Matcha tokens per PRD §16.2:
- *   - selected pill — `var(--color-matcha)` border + `var(--color-mtsoft)` bg.
+ *   - selected pill — `border-matcha` border + `bg-mtsoft` background.
  *   - unselected pill — neutral line border + white bg.
  */
 import { useEffect, useState } from "react";
@@ -120,7 +120,14 @@ export function ModelPicker({
               : "downloading…"
             : `download (${m.size_mb} MB)`;
         return (
-          <span key={m.name} className="inline-flex items-center gap-1.5">
+          <span
+            key={m.name}
+            className={clsx(
+              "inline-flex gap-1.5",
+              isDownloading ? "flex-col items-start" : "items-center",
+            )}
+          >
+            <span className="inline-flex items-center gap-1.5">
             <button
               type="button"
               title={title}
@@ -136,18 +143,18 @@ export function ModelPicker({
                 m.downloaded ? onSelect(m.name) : onRequestDownload(m.name)
               }
               className={clsx(
-                "text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors",
+                "text-[13.5px] font-medium px-2.5 py-1 rounded-pill transition-colors",
                 // nowrap + shrink-0: when the delete confirm pair appears next
                 // to the pill, the pill must wrap to the next row as a unit,
                 // not squeeze its size chip onto a second line.
                 "inline-flex items-center gap-1.5 whitespace-nowrap shrink-0",
                 isSelected
-                  ? "border-[1.5px] border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)]"
+                  ? "border-[1.5px] border-matcha bg-mtsoft text-matcha"
                   : m.downloaded
-                    ? "border border-line bg-card text-ink hover:border-[var(--color-matcha)]"
+                    ? "border border-line bg-card text-ink hover:border-matcha"
                     : isDownloading
-                      ? "border border-[var(--color-matcha)] bg-[var(--color-mtsoft)] text-[var(--color-matcha)] hover:opacity-90"
-                      : "border border-dashed border-line bg-card text-mut hover:border-[var(--color-matcha)] hover:text-[var(--color-matcha)]",
+                      ? "border border-matcha bg-mtsoft text-matcha hover:opacity-90"
+                      : "border border-dashed border-line bg-card text-mut hover:border-matcha hover:text-matcha",
               )}
             >
               <span aria-hidden>{m.name}</span>
@@ -156,7 +163,7 @@ export function ModelPicker({
               </span>
               <span
                 aria-hidden
-                className="text-[10px]"
+                className="text-[12.5px] text-mut"
                 title={
                   m.managed_by_homebrew
                     ? `${m.size_mb} MB installed by Homebrew`
@@ -168,19 +175,10 @@ export function ModelPicker({
                   : `${(m.size_mb / 1024).toFixed(1)} GB`}
               </span>
             </button>
-            {isDownloading ? (
-              <span
-                aria-hidden
-                className="text-[10px] text-[var(--color-matcha)] font-semibold"
-                title="click pill to reopen progress dialog"
-              >
-                {pct != null ? `${pct}%` : "…"}
-              </span>
-            ) : null}
             {showSlow && (
               <span
                 title="Slower than real-time on Intel"
-                className="text-[10px] px-1.5 py-0.5 rounded bg-strsoft text-ink border border-straw/40"
+                className="text-[11px] px-1.5 py-0.5 rounded bg-strsoft text-ink border border-straw/40"
               >
                 slow
               </span>
@@ -188,7 +186,7 @@ export function ModelPicker({
             {m.downloaded && m.managed_by_homebrew ? (
               <span
                 title="Installed by Homebrew - remove it with brew uninstall"
-                className="text-[10px] px-1.5 py-0.5 rounded bg-line/40 text-mut border border-line"
+                className="text-[11px] px-1.5 py-0.5 rounded bg-line/40 text-mut border border-line"
               >
                 brew
               </span>
@@ -204,7 +202,7 @@ export function ModelPicker({
                       setConfirming(null);
                       onDelete(m.name);
                     }}
-                    className="text-[10px] px-2 py-0.5 rounded-full bg-strsoft text-ink border border-straw/40 font-semibold whitespace-nowrap hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50"
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-strsoft text-ink border border-straw/40 font-semibold whitespace-nowrap hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50"
                   >
                     Delete?
                   </button>
@@ -214,7 +212,7 @@ export function ModelPicker({
                       e.stopPropagation();
                       setConfirming(null);
                     }}
-                    className="text-[10px] text-mut hover:text-ink"
+                    className="text-[11px] text-mut hover:text-ink"
                   >
                     Cancel
                   </button>
@@ -234,6 +232,24 @@ export function ModelPicker({
                 </button>
               )
             ) : null}
+            </span>
+            {isDownloading && (
+              <span className="inline-flex items-center gap-1.5 w-24">
+                <span
+                  aria-hidden
+                  className="h-1.5 flex-1 rounded-pill bg-line overflow-hidden"
+                  title="click pill to reopen progress dialog"
+                >
+                  <span
+                    className="block h-full rounded-pill bg-blue"
+                    style={{ width: `${pct ?? 0}%` }}
+                  />
+                </span>
+                <span aria-hidden className="text-[11px] text-blue font-semibold">
+                  {pct != null ? `${pct}%` : "…"}
+                </span>
+              </span>
+            )}
           </span>
         );
       })}

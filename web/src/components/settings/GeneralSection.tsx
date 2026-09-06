@@ -35,100 +35,103 @@ export function GeneralSection({ general }: GeneralSectionProps) {
   const [theme, setTheme] = useState<ThemePref>(getThemePref);
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-4">
       <h2 className="heading-section">General</h2>
 
-      <div className="space-y-1.5">
-        <label className={`block ${LABEL}`}>
-          Appearance
-        </label>
-        <div
-          role="radiogroup"
-          aria-label="Appearance"
-          className="inline-flex gap-0.5 rounded-card bg-line/60 p-1"
-        >
-          {THEME_OPTIONS.map((opt) => {
-            const selected = theme === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => {
-                  setThemePref(opt.value);
-                  setTheme(opt.value);
-                }}
-                className={`rounded-button px-4 py-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
-                  selected
-                    ? "bg-card text-ink shadow-card"
-                    : "text-mut hover:text-ink"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
+      <div className="rounded-card border border-line bg-card p-5 space-y-5">
+        <div className="space-y-1.5">
+          <label className={`block ${LABEL}`}>
+            Appearance
+          </label>
+          <div
+            role="radiogroup"
+            aria-label="Appearance"
+            className="inline-flex gap-0.5 rounded-card bg-line/60 p-1"
+          >
+            {THEME_OPTIONS.map((opt) => {
+              const selected = theme === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => {
+                    setThemePref(opt.value);
+                    setTheme(opt.value);
+                  }}
+                  className={`rounded-button px-4 py-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
+                    selected
+                      ? "bg-card text-ink shadow-card"
+                      : "text-mut hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-line pt-4 mt-4 space-y-1.5">
+          <label className={LABEL}>
+            Port
+          </label>
+          <input
+            type="number"
+            min={1024}
+            max={65535}
+            defaultValue={general.port}
+            onBlur={(e) => {
+              const next = Number.parseInt(e.target.value, 10);
+              if (
+                Number.isFinite(next) &&
+                next >= 1024 &&
+                next <= 65535 &&
+                next !== general.port
+              ) {
+                patch.mutate({ port: next });
+              }
+            }}
+            className="block w-32 rounded-button border border-line bg-paper px-3 py-2 text-[13.5px] focus:border-blue focus:outline-none"
+          />
+          <p className="text-[12.5px] text-mut">
+            Port change applies on next `yogurt start`.
+          </p>
+        </div>
+
+        <div className="border-t border-line pt-4 mt-4 space-y-3">
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              defaultChecked={general.open_browser_on_start}
+              onChange={(e) =>
+                patch.mutate({ open_browser_on_start: e.target.checked })
+              }
+              className="h-4 w-4 accent-blue"
+            />
+            <span>Open browser on start</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              defaultChecked={general.meeting_detection}
+              onChange={(e) => patch.mutate({ meeting_detection: e.target.checked })}
+              className="h-4 w-4 accent-blue"
+            />
+            <span>Offer to record when a meeting is detected</span>
+          </label>
+
+          <p className="text-[12.5px] text-mut">
+            Detection reads on-screen window titles for known meeting apps
+            (Zoom, Google Meet, Teams, Slack huddles). It never starts a
+            recording on its own - it offers, you click. Nothing leaves your
+            machine, and titles are never saved. While it is on, a recording
+            also stops once the meeting window closes.
+          </p>
         </div>
       </div>
-
-      <div className="space-y-1.5">
-        <label className={LABEL}>
-          Port
-        </label>
-        <input
-          type="number"
-          min={1024}
-          max={65535}
-          defaultValue={general.port}
-          onBlur={(e) => {
-            const next = Number.parseInt(e.target.value, 10);
-            if (
-              Number.isFinite(next) &&
-              next >= 1024 &&
-              next <= 65535 &&
-              next !== general.port
-            ) {
-              patch.mutate({ port: next });
-            }
-          }}
-          className="block w-32 rounded-chip border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
-        />
-        <p className="text-xs text-mut">
-          Port change applies on next `yogurt start`.
-        </p>
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-ink">
-        <input
-          type="checkbox"
-          defaultChecked={general.open_browser_on_start}
-          onChange={(e) =>
-            patch.mutate({ open_browser_on_start: e.target.checked })
-          }
-          className="h-4 w-4 accent-blue"
-        />
-        <span>Open browser on start</span>
-      </label>
-
-      <label className="flex items-center gap-2 text-sm text-ink">
-        <input
-          type="checkbox"
-          defaultChecked={general.meeting_detection}
-          onChange={(e) => patch.mutate({ meeting_detection: e.target.checked })}
-          className="h-4 w-4 accent-blue"
-        />
-        <span>Offer to record when a meeting is detected</span>
-      </label>
-
-      <p className="text-xs text-mut">
-        Detection reads on-screen window titles for known meeting apps
-        (Zoom, Google Meet, Teams, Slack huddles). It never starts a
-        recording on its own - it offers, you click. Nothing leaves your
-        machine, and titles are never saved. While it is on, a recording
-        also stops once the meeting window closes.
-      </p>
-
     </section>
   );
 }

@@ -16,7 +16,7 @@ const VALUE = "text-[13.5px] text-ink";
  * ACTIVE badge, soft shadow, and Edit toggle are reserved for the active
  * card (UI-SPEC §Visuals + §Accent reservations #1) — the inactive card
  * uses a regular `--color-line` border, no shadow, and exposes
- * `Set active` as the primary footer action instead of Edit.
+ * `Set active` beside the key/test row instead of Edit.
  *
  * BASE URL stays read-only here — it's a structural field the user almost
  * never wants to change after the provider exists. MODEL is editable via
@@ -217,87 +217,90 @@ export function ProviderRow({
         </>
       )}
 
-      <div className="border-t border-line pt-4 mt-4 space-y-2">
-        {isCli ? (
-          // No key concept at all - `Test` just confirms the CLI resolves
-          // and answers.
-          <div className="flex flex-wrap items-center gap-3">
-            <TestKeyButton
-              providerId={provider.id}
-              providerName={provider.name}
-              alwaysTestable
-              onResult={(result) => {
-                if (!result.ok) return;
-                setCliTestedOk(true);
-                if (!provider.cli_model && defaultCliModel) {
-                  updateCliModel.mutate(defaultCliModel);
-                }
-              }}
-            />
-          </div>
-        ) : (
-          <>
-            <div className={LABEL}>API KEY · stored locally</div>
-            {provider.api_key_masked ? (
-              <div className="flex items-center gap-2">
-                <span className={VALUE}>{provider.api_key_masked}</span>
-                <span className="text-matcha text-[12.5px] font-medium">
-                  ✓ stored
-                </span>
-              </div>
-            ) : (
-              <div className="text-[12.5px] text-mut">No key stored yet.</div>
-            )}
-            {keying ? (
-              <div className="pt-1 space-y-2">
-                <ApiKeyInput
-                  providerId={provider.id}
-                  providerName={provider.name}
-                  hasStoredKey={!!provider.api_key_masked}
-                  autoFocus
-                  onSaved={() => {
-                    setKeying(false);
-                    onKeyClosed?.();
-                  }}
-                  onDraftChange={setApiKeyDraft}
-                />
-                <Button
-                  variant="secondary"
-                  className="px-3 py-1.5 text-[13px]"
-                  onClick={() => {
-                    setKeying(false);
-                    setApiKeyDraft("");
-                    onKeyClosed?.();
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              // Collapsed: `Test` stays reachable so a provider that is fully
-              // set up can be probed without pretending to replace its key.
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <Button
-                  variant="secondary"
-                  className="px-3 py-1.5 text-[13px]"
-                  onClick={() => setKeying(true)}
-                >
-                  {provider.api_key_masked ? "Replace key" : "Add key"}
-                </Button>
-                <TestKeyButton
-                  providerId={provider.id}
-                  providerName={provider.name}
-                  hasStoredKey={!!provider.api_key_masked}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex justify-end">
+      {/* `items-start`: the left column can grow taller than `Set active`
+          once a Test verdict wraps onto its own line - the button must
+          stay pinned at the top of the row, never pushed down by it. */}
+      <div className="border-t border-line pt-4 mt-4 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
+          {isCli ? (
+            // No key concept at all - `Test` just confirms the CLI resolves
+            // and answers.
+            <div className="flex flex-wrap items-center gap-3">
+              <TestKeyButton
+                providerId={provider.id}
+                providerName={provider.name}
+                alwaysTestable
+                onResult={(result) => {
+                  if (!result.ok) return;
+                  setCliTestedOk(true);
+                  if (!provider.cli_model && defaultCliModel) {
+                    updateCliModel.mutate(defaultCliModel);
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <>
+              <div className={LABEL}>API KEY · stored locally</div>
+              {provider.api_key_masked ? (
+                <div className="flex items-center gap-2">
+                  <span className={VALUE}>{provider.api_key_masked}</span>
+                  <span className="text-matcha text-[12.5px] font-medium">
+                    ✓ stored
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[12.5px] text-mut">No key stored yet.</div>
+              )}
+              {keying ? (
+                <div className="space-y-2">
+                  <ApiKeyInput
+                    providerId={provider.id}
+                    providerName={provider.name}
+                    hasStoredKey={!!provider.api_key_masked}
+                    autoFocus
+                    onSaved={() => {
+                      setKeying(false);
+                      onKeyClosed?.();
+                    }}
+                    onDraftChange={setApiKeyDraft}
+                  />
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-[13px]"
+                    onClick={() => {
+                      setKeying(false);
+                      setApiKeyDraft("");
+                      onKeyClosed?.();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                // Collapsed: `Test` stays reachable so a provider that is fully
+                // set up can be probed without pretending to replace its key.
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-[13px]"
+                    onClick={() => setKeying(true)}
+                  >
+                    {provider.api_key_masked ? "Replace key" : "Add key"}
+                  </Button>
+                  <TestKeyButton
+                    providerId={provider.id}
+                    providerName={provider.name}
+                    hasStoredKey={!!provider.api_key_masked}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
         <Button
           variant="primary"
+          className="shrink-0"
           onClick={() => activate.mutate()}
           disabled={activate.isPending}
         >

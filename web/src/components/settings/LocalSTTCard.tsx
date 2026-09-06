@@ -3,8 +3,10 @@
  * (Phase 8 Plan 08-03, PRD §5.6 / D-12).
  *
  * Replaces the Phase-7 STATE-04 "Coming in v1" stub.  Renders:
- *   - card chrome with matcha tinting when `active`
- *   - header with the title + a "Use Local" radio button
+ *   - card chrome matching `ProviderCard`: blueberry border + shadow when
+ *     `active`, a plain line border otherwise
+ *   - header with the title + a "Use Local" button (an "In use" pill
+ *     replaces it once the card is active and unblocked)
  *   - explanatory body copy
  *   - a `<ModelPicker />` row driven by `useModels()`, with live `⟳ NN%`
  *     progress on the pill of any currently-downloading model
@@ -33,10 +35,10 @@
  *
  * "Use Local" guard (fast task) — activating local STT with a model that
  * was never downloaded used to be possible from this card even though
- * recording would then fail at meeting start. The "Use Local" radio is
+ * recording would then fail at meeting start. The "Use Local" button is
  * now disabled unless the currently-selected model's `downloaded` flag
  * (from `useModels()`, already fetched for the pill row) is true, with a
- * "Download the model first" hint taking the place of the radio.
+ * "Download the model first" hint next to it.
  *
  * Delete affordance - `ModelPicker` renders a trash icon next to every
  * downloaded, non-active model pill. Confirming wires to
@@ -55,6 +57,8 @@ import { useModelDownloadProgress } from "../../hooks/useModelDownloadProgress";
 import { ModelPicker } from "./ModelPicker";
 import { ModelDownloadDialog } from "../dialogs/ModelDownloadDialog";
 import { TestKeyButton } from "./TestKeyButton";
+import { Button } from "../Button";
+import { Pill } from "../Pill";
 
 /** `http()` throws `Error("<status> <statusText>: <raw body>")`. The
  *  delete endpoint's 409 body is a plain sentence (not JSON) - strip the
@@ -173,54 +177,49 @@ export function LocalSTTCard({
     <article
       data-testid="local-stt-card"
       className={clsx(
-        "rounded-card p-5 space-y-3 bg-card transition-colors",
+        "rounded-card bg-card p-5 space-y-4 transition-colors",
         active
-          ? "border-[1.5px] border-[var(--color-matcha)]"
+          ? "border-[1.5px] border-blue shadow-button-blue"
           : "border border-line",
       )}
     >
-      <header className="flex items-center justify-between">
-        <h3 className="heading-card">Local · whisper.cpp</h3>
-        <div className="flex flex-col items-end gap-1">
-          <label
-            className={clsx(
-              "inline-flex items-center gap-2 text-[12px] font-medium",
-              activateBlocked ? "cursor-not-allowed opacity-50" : "cursor-pointer",
-            )}
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="heading-card min-w-0">Local · whisper.cpp</h3>
+          {active && !activateBlocked && <Pill tone="matcha">In use</Pill>}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Button
+            variant={active ? "secondary" : "primary"}
+            className="px-3 py-1.5 text-[13px] whitespace-nowrap"
+            disabled={activateBlocked}
+            // `disabled` alone is a UI nicety, not enforcement — guard
+            // in the handler too so the activation can't fire via a
+            // synthetic/programmatic click on a disabled button.
+            onClick={() => {
+              if (!activateBlocked) onActivate();
+            }}
           >
-            <input
-              type="radio"
-              name="stt-provider"
-              checked={active}
-              disabled={activateBlocked}
-              // `disabled` alone is a UI nicety, not enforcement — guard
-              // in the handler too so the activation can't fire via a
-              // synthetic/programmatic change event on a disabled input.
-              onChange={() => {
-                if (!activateBlocked) onActivate();
-              }}
-              className="accent-[var(--color-matcha)]"
-            />
-            <span>Use Local</span>
-          </label>
+            Use Local
+          </Button>
           {activateBlocked && (
-            <span className="text-[10px] text-[var(--color-straw)]">
+            <span className="text-[11px] text-straw">
               Download the model first
             </span>
           )}
         </div>
       </header>
 
-      <p className="text-[13px] text-mut">
+      <p className="text-[12.5px] text-mut">
         Whisper.cpp with Metal acceleration. Audio never leaves this Mac.
         Local is free.
       </p>
 
       {q.isLoading && (
-        <p className="text-[11px] text-mut">Loading models…</p>
+        <p className="text-[12.5px] text-mut">Loading models…</p>
       )}
       {q.isError && (
-        <p className="text-[11px] text-[var(--color-straw)]">
+        <p className="text-[12.5px] text-straw">
           Failed to load models: {String(q.error)}
         </p>
       )}
@@ -238,7 +237,7 @@ export function LocalSTTCard({
       )}
 
       {q.data && (
-        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-line">
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4 mt-4">
           <TestKeyButton
             providerName={selectedModel}
             hasStoredKey={selectedModelDownloaded}
@@ -248,14 +247,14 @@ export function LocalSTTCard({
       )}
 
       {del.isError && (
-        <p role="alert" className="text-[11px] text-[var(--color-straw)]">
+        <p role="alert" className="text-[12.5px] text-straw">
           {deleteErrorMessage(del.error)}
         </p>
       )}
       {showFreed && del.data && (
         <p
           data-testid="model-freed"
-          className="text-[11px] text-[var(--color-matcha)]"
+          className="text-[12.5px] text-matcha"
         >
           Deleted {del.variables}
           {del.data.freed_bytes > 0
@@ -264,7 +263,7 @@ export function LocalSTTCard({
         </p>
       )}
 
-      <p className="text-[11px] text-mut pt-1">
+      <p className="text-[12.5px] text-mut pt-1">
         Models download on first use · stored in{" "}
         <code className="font-mono text-ink">~/.yogurt/models/</code>
       </p>

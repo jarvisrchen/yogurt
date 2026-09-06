@@ -145,9 +145,9 @@ describe("STTPicker — Cloud card", () => {
     await waitFor(() => screen.getByTestId("cloud-stt-card"));
 
     // "small.en" is downloaded per `modelsFixture`, so "Use Local" is the
-    // clickable transition from the fixture's default `stt_provider:
-    // "cloud"` — clicking an already-checked radio wouldn't fire onChange.
-    fireEvent.click(screen.getByRole("radio", { name: /use local/i }));
+    // switch action rendered on the non-selected card given the fixture's
+    // default `stt_provider: "cloud"`.
+    fireEvent.click(screen.getByRole("button", { name: /use local/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId("stt-patch-error")).toHaveTextContent(
