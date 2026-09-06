@@ -45,6 +45,32 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
+- [ ] **UI-11** Let a label take a custom hex color, not only a palette key
+  <details>
+  <summary>Details</summary>
+
+  `labels.color` is a palette key validated against `COLORS` in `crates/yogurt-db/src/labels.rs`, and `LabelChip` maps it through `LABEL_COLORS` to design tokens.
+  Add a hex input to the label create/rename UI, accept `#rrggbb` alongside palette keys on the server, and render a custom color in `LabelChip`, `LabelPicker`, and the sidebar with a derived soft background so contrast stays readable.
+  </details>
+
+- [ ] **UI-12** Sort or order the sidebar Labels group: alphabetical, last updated, or custom
+  <details>
+  <summary>Details</summary>
+
+  Labels are always listed `ORDER BY l.name COLLATE NOCASE` (`crates/yogurt-db/src/labels.rs`).
+  Add a sort control on the Labels group with alphabetical, last updated, and custom (drag to reorder) modes.
+  Custom needs a persisted `position` column plus a reorder endpoint; last updated needs an `updated_at` touched when a label is renamed, recolored, or applied.
+  Persist the chosen mode in settings so it survives reloads.
+  </details>
+
+- [ ] **UI-13** Show the star icon next to the "Starred" nav item in the left panel
+  <details>
+  <summary>Details</summary>
+
+  The Starred row in `web/src/components/library/Sidebar.tsx` is plain text while `MeetingCard` already draws the lucide `Star` glyph.
+  Render the same filled `Star` before the label, sized to match the row text, so the nav item echoes the affordance on the cards.
+  </details>
+
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
@@ -62,6 +88,15 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Two directions, both revisit tradeoffs the archived design doc already weighed:
   1. Client-side: throttle/coalesce applied frames by elapsed time or text length instead of applying every WS frame, and/or move to incremental append (diff old vs new markdown, patch the ProseMirror doc) instead of full `setContent` each time.
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
+  </details>
+
+- [ ] **MTG-14** Multi-select meetings on the dashboard to delete or label them in bulk
+  <details>
+  <summary>Details</summary>
+
+  Every meeting action on the library dashboard is per card (`MeetingCardActions`): star, label, delete.
+  Add a selection mode (checkbox on hover, shift-click for ranges, select all) with a floating action bar offering Delete and Add/Remove label.
+  Delete needs a confirm step since it is irreversible; both actions can fan out over the existing per-meeting endpoints or gain a bulk route if the round trips matter.
   </details>
 
 ## Audio
