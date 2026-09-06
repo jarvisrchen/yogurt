@@ -64,15 +64,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
-- [ ] **MTG-14** Multi-select meetings on the dashboard to delete or label them in bulk
-  <details>
-  <summary>Details</summary>
-
-  Every meeting action on the library dashboard is per card (`MeetingCardActions`): star, label, delete.
-  Add a selection mode (checkbox on hover, shift-click for ranges, select all) with a floating action bar offering Delete and Add/Remove label.
-  Delete needs a confirm step since it is irreversible; both actions can fan out over the existing per-meeting endpoints or gain a bulk route if the round trips matter.
-  </details>
-
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download

@@ -86,9 +86,20 @@ interface Props {
   now?: Date;
   /** Id of the currently-recording meeting, forwarded to every card. */
   activeId?: string | null;
+  /** MTG-14 multi-select - forwarded to every `MeetingCard`. */
+  selectionActive?: boolean;
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelect?: (id: string, shiftKey: boolean) => void;
 }
 
-export function DateGroup({ meetings, now = new Date(), activeId }: Props) {
+export function DateGroup({
+  meetings,
+  now = new Date(),
+  activeId,
+  selectionActive,
+  selectedIds,
+  onToggleSelect,
+}: Props) {
   const groups = groupMeetingsByDay(meetings, now);
   return (
     <div className="flex flex-col gap-8">
@@ -100,7 +111,13 @@ export function DateGroup({ meetings, now = new Date(), activeId }: Props) {
           <ul className="flex flex-col gap-2">
             {g.meetings.map((m) => (
               <li key={m.id}>
-                <MeetingCard meeting={m} activeId={activeId} />
+                <MeetingCard
+                  meeting={m}
+                  activeId={activeId}
+                  selectionActive={selectionActive}
+                  selected={selectedIds?.has(m.id) ?? false}
+                  onToggleSelect={onToggleSelect}
+                />
               </li>
             ))}
           </ul>

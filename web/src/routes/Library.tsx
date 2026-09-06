@@ -25,6 +25,11 @@
  * the inline "No matches" line — we do NOT swap in `<EmptyLibrary />`
  * there, because the user has clearly typed something and a giant
  * "Start your first meeting" CTA would be confusing.
+ *
+ * MTG-14 adds multi-select: this route owns the client-only
+ * `SelectionState` (see `components/library/selection.ts`) and forwards
+ * it down through `<DateGroup>` to each `<MeetingCard>`'s checkbox, and
+ * mounts the floating `<SelectionActionBar>` once anything is selected.
  */
 
 import { useState } from "react";
@@ -39,6 +44,8 @@ import { useLabels } from "../lib/api/labels";
 import { DateGroup } from "../components/library/DateGroup";
 import { Greeting } from "../components/library/Greeting";
 import { SearchPill } from "../components/library/SearchPill";
+import { SelectionActionBar } from "../components/library/SelectionActionBar";
+import { EMPTY_SELECTION, clickSelect, clearSelection, selectAll } from "../components/library/selection";
 import { Sidebar } from "../components/library/Sidebar";
 import { ShimmerSkeleton } from "../components/ShimmerSkeleton";
 import { EmptyLibrary } from "../components/states/EmptyLibrary";
@@ -61,6 +68,10 @@ export function Library({ starredOnly = false }: LibraryProps) {
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
+
+  // MTG-14 - multi-select. Client-only, cleared on route change (the
+  // `key` isn't needed: navigating away unmounts Library entirely).
+  const [selection, setSelection] = useState(EMPTY_SELECTION);
 
   // Library isn't a page where permission state changes mid-session (the
   // recovery flow requires restarting Yogurt anyway, which naturally
@@ -88,6 +99,23 @@ export function Library({ starredOnly = false }: LibraryProps) {
   const isLoading = isSearching ? found.isLoading : all.isLoading;
   const error = isSearching ? found.error : all.error;
 
+  // MTG-14 - the visible order shift-click ranges over and "Select all"
+  // selects; the meeting objects (not just ids) selected labels need for
+  // add/remove.
+  const orderedIds = meetings.map((m) => m.id);
+  const selectedMeetings = meetings.filter((m) => selection.selected.has(m.id));
+  // Gate rendering on the meetings actually still in view, not the raw id
+  // set: an id can linger in `selection.selected` after its meeting is
+  // deleted elsewhere or drops out of the current search/label filter,
+  // which would otherwise leave a phantom "0 selected" action bar floating
+  // on screen with every checkbox pinned visible for nothing.
+  const hasSelection = selectedMeetings.length > 0;
+
+  const onToggleSelect = (id: string, shiftKey: boolean) =>
+    setSelection((s) => clickSelect(s, id, orderedIds, shiftKey));
+  const onSelectAll = () => setSelection(selectAll(orderedIds));
+  const onClearSelection = () => setSelection(clearSelection());
+
   // A label filter for a deleted label id: bounce to the Library root once
   // the labels list has resolved and confirms the id is gone. Guarded on
   // `!labels.isLoading` so a fresh page load doesn't redirect before the
@@ -113,6 +141,14 @@ export function Library({ starredOnly = false }: LibraryProps) {
       }
     },
   );
+
+  // Escape clears an in-progress multi-select (MTG-14). `ignoreWhenTyping`
+  // matters here: without it, canceling an inline title/label rename (or
+  // closing the label picker) with Escape also silently wiped the whole
+  // selection, since the same keypress bubbles up from any input.
+  useKeyboardShortcut({ key: "Escape", ignoreWhenTyping: true }, () => {
+    if (selection.selected.size > 0) onClearSelection();
+  });
 
   // Permission gate (STATE-02). While the permission probe is still
   // loading we render the chrome but no empty/list content — avoids a
@@ -175,9 +211,22 @@ export function Library({ starredOnly = false }: LibraryProps) {
           )
         )}
         {!isLoading && !error && meetings.length > 0 && (
-          <DateGroup meetings={meetings} activeId={activeId} />
+          <DateGroup
+            meetings={meetings}
+            activeId={activeId}
+            selectionActive={hasSelection}
+            selectedIds={selection.selected}
+            onToggleSelect={onToggleSelect}
+          />
         )}
       </main>
+      {hasSelection && (
+        <SelectionActionBar
+          meetings={selectedMeetings}
+          onSelectAll={onSelectAll}
+          onClear={onClearSelection}
+        />
+      )}
     </div>
   );
 }
