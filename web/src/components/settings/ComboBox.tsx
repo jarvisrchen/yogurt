@@ -187,7 +187,7 @@ export function ComboBox({
             : undefined
         }
         role="combobox"
-        className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1 disabled:opacity-50"
+        className="w-full rounded-button border border-line bg-paper pl-3 pr-7 py-2 text-[13.5px] text-ink placeholder:text-grey focus:border-blue outline-none disabled:opacity-50"
       />
       <button
         id={triggerId}

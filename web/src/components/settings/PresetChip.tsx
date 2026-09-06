@@ -50,9 +50,9 @@ export function PresetChip({
       type="button"
       onClick={() => clone.mutate()}
       disabled={clone.isPending}
-      className="text-xs font-mono uppercase tracking-[0.06em] px-3 py-1.5 rounded-full border border-dashed border-grey text-mut hover:border-[var(--color-blue)] hover:text-[var(--color-blue)] disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none border bg-card text-mut border-line hover:text-ink hover:border-grey disabled:opacity-50"
     >
-      {clone.isPending ? "…" : preset.name}
+      {clone.isPending ? "…" : `+ ${preset.name}`}
     </button>
   );
 }

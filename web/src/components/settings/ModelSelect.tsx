@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { ComboBox } from "./ComboBox";
+import { Button } from "../Button";
 
 /**
  * MODEL field with a click-to-open dropdown of available models + a
@@ -110,24 +111,24 @@ export function ModelSelect({
           triggerLabel={`Show model list for ${providerName}`}
           disabled={disabled}
         />
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={() => refresh.mutate()}
           disabled={disabled || refresh.isPending}
           aria-label={`Refresh model list for ${providerName}`}
           title="Fetch the latest model list from the provider"
-          className="text-[12.5px] font-semibold text-mut hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          className="px-3 py-1.5 text-[13px] shrink-0"
         >
           {refresh.isPending ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
       </div>
       {refresh.isError && (
-        <p role="status" className="text-[11px] text-[var(--color-straw)]">
+        <p role="status" className="text-[12.5px] text-straw">
           ✗ Could not fetch models: {refresh.error.message}
         </p>
       )}
       {refreshedModels && !refresh.isPending && (
-        <p className="text-[11px] text-mut">
+        <p className="text-[12.5px] text-mut">
           Showing {refreshedModels.length} live model
           {refreshedModels.length === 1 ? "" : "s"} from the provider.
         </p>

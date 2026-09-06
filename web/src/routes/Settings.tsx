@@ -172,9 +172,9 @@ export function Settings() {
               </div>
             )}
 
-            <div className="pt-4 border-t border-dashed border-line space-y-3">
-              <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey mb-2">
-                Clone a preset →
+            <div className="pt-4 border-t border-line space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-mut mb-2">
+                Clone a preset
               </div>
               <div className="flex flex-wrap gap-2 items-center">
                 {data.presets.map((p) => (
@@ -188,7 +188,7 @@ export function Settings() {
                   <button
                     type="button"
                     onClick={() => setAddingProvider(true)}
-                    className="text-[12.5px] font-semibold text-[var(--color-blue)] hover:underline"
+                    className="inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none border bg-card text-blue border-blue/30 hover:border-blue disabled:opacity-50"
                   >
                     + Add
                   </button>

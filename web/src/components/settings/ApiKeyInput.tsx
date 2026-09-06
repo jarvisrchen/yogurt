@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { TestKeyButton } from "./TestKeyButton";
+import { Button } from "../Button";
 
 /**
  * Password field + "Test" + "Save key" for one provider's stored key.
@@ -93,7 +94,7 @@ export function ApiKeyInput({
           aria-label={`API key for ${providerName}`}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={autoFocus}
-          className="flex-1 font-mono text-sm border border-line rounded px-2 py-1.5 focus:border-[var(--color-blue)] outline-none"
+          className="flex-1 rounded-button border border-line bg-paper px-3 py-2 text-[13.5px] font-mono text-ink placeholder:text-grey placeholder:font-sans focus:border-blue focus:outline-none"
           value={draft}
           onChange={(e) => updateDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -107,22 +108,23 @@ export function ApiKeyInput({
           providerName={providerName}
           draft={draft}
           hasStoredKey={hasStoredKey}
+          compact={false}
         />
-        <button
-          type="button"
+        <Button
+          variant="primary"
           disabled={!draft || setKey.isPending}
           aria-label={`Save API key for ${providerName}`}
-          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-chip disabled:opacity-50 shrink-0"
+          className="shrink-0"
           onClick={() => setKey.mutate(draft)}
         >
           {setKey.isPending ? "Saving…" : "Save key"}
-        </button>
+        </Button>
       </div>
 
       {draft.length > 0 && (
-        <p className="text-[12px] font-mono text-mut">
+        <p className="text-[12.5px] text-mut">
           Will save as{" "}
-          <span className="text-ink">
+          <span className="text-ink font-mono">
             {previewMasked ? `••••${previewTail}` : draft}
           </span>
         </p>

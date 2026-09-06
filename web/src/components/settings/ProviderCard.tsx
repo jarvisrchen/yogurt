@@ -5,6 +5,10 @@ import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelSelect } from "./ModelSelect";
 import { TestKeyButton } from "./TestKeyButton";
+import { Button } from "../Button";
+
+const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-mut";
+const VALUE = "text-[13.5px] text-ink";
 
 /**
  * Active provider card — Phase 5 (Plan 05-03), SET-04.
@@ -88,7 +92,7 @@ export function ProviderCard({
   });
   return (
     <article
-      className="rounded-card border-[1.5px] border-[var(--color-blue)] bg-card p-5 shadow-button-blue space-y-4"
+      className="rounded-card border-[1.5px] border-blue bg-card p-5 shadow-button-blue space-y-4"
       data-testid="active-provider-card"
     >
       <header className="flex items-center justify-between">
@@ -96,25 +100,25 @@ export function ProviderCard({
           <h3 className="heading-card">
             {provider.name}
           </h3>
-          <span className="text-[10px] font-mono uppercase tracking-[0.06em] bg-[var(--color-blsoft)] text-[var(--color-blue)] px-2 py-0.5 rounded">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] bg-blsoft text-blue px-2 py-0.5 rounded">
             Active
           </span>
         </div>
         {!isCli && (
-          <button
-            type="button"
-            className="text-[12.5px] font-semibold text-mut hover:text-ink"
+          <Button
+            variant="ghost"
+            className="px-3 py-1.5 text-[13px]"
             onClick={() => setEditing((e) => !e)}
           >
             {editing ? "Cancel" : "Edit"}
-          </button>
+          </Button>
         )}
       </header>
 
       {isCli ? (
         <div className="space-y-3">
-          <div className="rounded-button bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
-            Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
+          <div className="rounded-button bg-paper px-3 py-2 text-[12.5px] text-mut">
+            Runs <span className={VALUE}>{provider.model}</span>{" "}
             locally via your existing CLI login. No API key or base URL to
             configure.
           </div>
@@ -132,13 +136,13 @@ export function ProviderCard({
                 placeholder="CLI default"
               />
               {updateCliModel.isError && (
-                <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                <p role="status" className="text-[12.5px] text-straw">
                   ✗ Could not save model: {String(updateCliModel.error)}
                 </p>
               )}
             </Field>
           ) : (
-            <p className="text-[11px] text-mut">
+            <p className="text-[12.5px] text-mut">
               Click Test below to confirm the CLI connects - the model
               picker appears once it does.
             </p>
@@ -150,16 +154,16 @@ export function ProviderCard({
             <Field label="BASE URL">
               {editing ? (
                 <input
-                  className="w-full font-mono text-[12.5px] border-b border-line focus:border-[var(--color-blue)] outline-none py-1"
+                  className="w-full text-[13.5px] text-ink border-b border-line focus:border-blue outline-none py-1"
                   value={draft.base_url}
                   onChange={(e) =>
                     setDraft({ ...draft, base_url: e.target.value })
                   }
                 />
               ) : (
-                <code className="font-mono text-[12.5px] text-ink break-all">
+                <span className={`${VALUE} break-all`}>
                   {provider.base_url}
-                </code>
+                </span>
               )}
             </Field>
             <Field label="MODEL">
@@ -173,9 +177,7 @@ export function ProviderCard({
                   apiKeyDraft={apiKeyDraft}
                 />
               ) : (
-                <code className="font-mono text-[12.5px] text-ink">
-                  {provider.model || "—"}
-                </code>
+                <span className={VALUE}>{provider.model || "—"}</span>
               )}
             </Field>
           </div>
@@ -190,28 +192,28 @@ export function ProviderCard({
                   href={docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[11px] text-[var(--color-blue)] hover:underline"
+                  className="text-[12.5px] font-medium text-blue hover:underline"
                 >
                   See all {presetName ?? provider.name} models →
                 </a>
               )}
 
               {editing && (
-                <button
-                  type="button"
-                  className="text-sm bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-chip disabled:opacity-50"
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-[13px]"
                   disabled={update.isPending}
                   onClick={() => update.mutate()}
                 >
                   {update.isPending ? "Saving…" : "Save"}
-                </button>
+                </Button>
               )}
             </div>
           )}
         </>
       )}
 
-      <div className="border-t border-line pt-3 space-y-2">
+      <div className="border-t border-line pt-4 mt-4 space-y-2">
         {isCli ? (
           <TestKeyButton
             providerId={provider.id}
@@ -227,18 +229,16 @@ export function ProviderCard({
           />
         ) : (
           <>
-            <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-              API KEY · stored locally
-            </div>
+            <div className={LABEL}>API KEY · stored locally</div>
             {provider.api_key_masked ? (
-              <div className="flex items-center gap-2 text-[12.5px] font-mono">
-                <span className="text-ink">{provider.api_key_masked}</span>
-                <span className="text-[var(--color-matcha)] font-semibold">
+              <div className="flex items-center gap-2">
+                <span className={VALUE}>{provider.api_key_masked}</span>
+                <span className="text-matcha text-[12.5px] font-medium">
                   ✓ stored
                 </span>
               </div>
             ) : (
-              <div className="text-sm text-mut">No key stored yet.</div>
+              <div className="text-[12.5px] text-mut">No key stored yet.</div>
             )}
             <div className="pt-1">
               <ApiKeyInput
@@ -264,9 +264,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1 min-w-0">
-      <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-        {label}
-      </div>
+      <div className={LABEL}>{label}</div>
       <div>{children}</div>
     </div>
   );
