@@ -51,7 +51,7 @@ function renderSection(general: General) {
   );
 }
 
-describe("AudioSection — AUD-13 mic echo feature toggle", () => {
+describe("AudioSection - AUD-13 mic echo feature toggle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(audioApi.devices).mockResolvedValue([]);

@@ -1077,5 +1077,5 @@ New closed items go at the bottom.
   The echo UI (meeting page "Echo to" column, Settings > Audio echo device and buffer) is shown to everyone though almost nobody routes their mic to a virtual device.
   Add a "Mic echo" toggle in Settings > Audio, default off, and only render the echo controls and auto-start behavior when it is on.
 
-  Landed in this PR. Adds audio_echo_feature (default off) gating the meeting-page echo column, the Settings echo controls, and echo auto-start at recording start.
+  Landed 2026-09-06. Adds audio_echo_feature (default off) gating the meeting-page echo column, the Settings echo controls, and echo auto-start at recording start.
   </details>

@@ -94,7 +94,7 @@ const state = vi.hoisted(() => ({
     started_at: number;
     stt?: "cloud" | "local";
   } | null,
-  // AUD-13: mirrors `general.audio_echo_feature` — off by default, the
+  // AUD-13: mirrors `general.audio_echo_feature` - off by default, the
   // same as a fresh install.
   audioEchoFeature: false,
 }));
@@ -727,7 +727,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
   });
 });
 
-describe("Meeting — echo column gated behind AUD-13 feature toggle", () => {
+describe("Meeting - echo column gated behind AUD-13 feature toggle", () => {
   beforeEach(() => {
     state.meetingRow = undefined;
     state.activeRecording = null;

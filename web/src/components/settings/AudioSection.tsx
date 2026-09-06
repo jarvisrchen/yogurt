@@ -81,7 +81,7 @@ export function AudioSection({ general }: AudioSectionProps) {
           <label className="flex items-center gap-2 text-[13.5px] text-ink">
             <input
               type="checkbox"
-              defaultChecked={general.audio_echo_feature}
+              checked={general.audio_echo_feature}
               onChange={(e) => patchEchoFeature.mutate(e.target.checked)}
               className="h-4 w-4 accent-blue"
             />
