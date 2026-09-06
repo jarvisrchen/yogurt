@@ -150,23 +150,31 @@ async fn it_emits_overload_status_when_backpressured() {
     // Give the adapter a beat to open both WS connections.
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Pump ~200 chunks of mic audio. With the server not reading, the
-    // first ~64 fill the per-channel mpsc and the rest are dropped via
-    // try_send. After 50 consecutive drops, the supervisor emits the
-    // overload status.
-    for i in 0..400 {
-        let _ = audio_tx.send(AudioChunk {
-            channel: Channel::Mic,
-            samples: vec![0i16; 320],
-            ts_ms: i,
-        });
-    }
+    // Keep pumping mic audio while waiting. With the server not reading,
+    // the first ~64 chunks fill the per-channel mpsc and the rest are
+    // dropped via try_send; after 50 consecutive drops the supervisor emits
+    // the overload status. Pumping in every wait iteration, not one burst
+    // up front, keeps backpressure building even when a slow runner is
+    // still opening the sockets when the wait starts.
+    let mut ts_ms = 0u64;
+    let mut pump = |n: u64| {
+        for _ in 0..n {
+            let _ = audio_tx.send(AudioChunk {
+                channel: Channel::Mic,
+                samples: vec![0i16; 320],
+                ts_ms,
+            });
+            ts_ms += 1;
+        }
+    };
+    pump(400);
 
-    // Look for either the overload status OR any disconnect status — both
+    // Look for either the overload status OR any disconnect status - both
     // are valid backpressure-aware behaviors depending on timing.
     let mut saw_status = false;
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while std::time::Instant::now() < deadline {
+        pump(100);
         if let Ok(Ok(ev)) = tokio::time::timeout(Duration::from_millis(200), txn_rx.recv()).await {
             if ev.text.starts_with("[stt") {
                 saw_status = true;
