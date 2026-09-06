@@ -138,7 +138,7 @@ export function SidebarLabelRow({ label }: Props) {
                   type="button"
                   aria-label={`Set color ${c}`}
                   onClick={() => update.mutate({ id: label.id, color: c })}
-                  className={`w-4 h-4 rounded-pill ${
+                  className={`w-4 h-4 rounded-[5px] ${
                     label.color === c ? "ring-2 ring-offset-1 ring-blue" : ""
                   }`}
                   style={{ background: swatch.fg }}
