@@ -95,7 +95,7 @@ export function SidebarLabelRow({ label }: Props) {
           }`
         }
       >
-        <span className="w-2 h-2 rounded-pill shrink-0" style={{ background: tone.fg }} aria-hidden />
+        <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: tone.fg }} aria-hidden />
         <span className="flex-1 truncate">{label.name}</span>
         <span className="text-[11px] text-mut">{label.meeting_count}</span>
         <button
