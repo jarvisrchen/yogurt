@@ -63,14 +63,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   Persist the chosen mode in settings so it survives reloads.
   </details>
 
-- [ ] **UI-13** Show the star icon next to the "Starred" nav item in the left panel
-  <details>
-  <summary>Details</summary>
-
-  The Starred row in `web/src/components/library/Sidebar.tsx` is plain text while `MeetingCard` already draws the lucide `Star` glyph.
-  Render the same filled `Star` before the label, sized to match the row text, so the nav item echoes the affordance on the cards.
-  </details>
-
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings

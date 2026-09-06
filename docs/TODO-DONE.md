@@ -1026,3 +1026,13 @@ New closed items go at the bottom.
 
   Landed 2026-09-06. `tmux new-window -t yogurt:` targets the session, so a window named `yogurt` no longer collides.
   </details>
+
+- [x] **UI-13** Show the star icon next to the "Starred" nav item in the left panel
+  <details>
+  <summary>Details</summary>
+
+  The Starred row in `web/src/components/library/Sidebar.tsx` is plain text while `MeetingCard` already draws the lucide `Star` glyph.
+  Render the same filled `Star` before the label, sized to match the row text, so the nav item echoes the affordance on the cards.
+
+  Landed via the ui-13 PR (2026-09-06). Filled lucide `Star` before the Starred nav text, inheriting the row color.
+  </details>
