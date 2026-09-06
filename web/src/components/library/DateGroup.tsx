@@ -96,7 +96,7 @@ export function DateGroup({ meetings, now = new Date(), activeId }: Props) {
           <h2 className="text-[11px] font-mono uppercase tracking-wider text-mut mb-2">
             {g.label}
           </h2>
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-2">
             {g.meetings.map((m) => (
               <li key={m.id}>
                 <MeetingCard meeting={m} activeId={activeId} />

@@ -1,17 +1,11 @@
 /**
  * Phase 7 (Plan 07-01) — Meeting card.
  *
- * Layout (PRD §5.9 + D-06):
- *   [42px tinted avatar with 2-letter bold initials]
- *   ╎ Title (heading-sm)
- *   ╎ [2:45 PM] [47 min]               ← mono 11px pills (MetaPill); duration
- *   ╎                                     omitted while ended_at is null;
- *   ╎                                     [not enhanced] only for the
- *   ╎                                     exception: ended but never enhanced
- *   [Local · medium.en engine pill, right-aligned; omitted when unknown]
- *
- * Avatar tint is deterministic per id (hash → 3-palette cycle) so the
- * same meeting always shows the same color across reloads.
+ * Layout (PRD §5.9 + D-06, restyled to the Whimsical×Blueberry mock):
+ *   Title (bold) + star            [labels] [engine pill] [llm pill] [actions]
+ *   caption: "2:45 PM · 47 min"        (or a strawberry MetaPill when live)
+ * The card itself is a bordered/shadowed surface (`.mcard` in the mock);
+ * a live meeting gets a strawberry border instead of the neutral one.
  */
 
 import { Link } from "react-router";
@@ -21,33 +15,6 @@ import { LabelChip } from "../labels/LabelChip";
 import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
 import { InlineTitle } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
-
-const PALETTE = [
-  "var(--color-blsoft)", // blueberry-soft
-  "var(--color-mtsoft)", // matcha-soft
-  "var(--color-strsoft)", // strawberry-soft
-];
-
-export function avatarTint(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) {
-    h = (h * 31 + id.charCodeAt(i)) | 0;
-  }
-  // |0 produces a 32-bit signed int — coerce to non-negative.
-  return PALETTE[Math.abs(h) % PALETTE.length]!;
-}
-
-export function initials(title: string): string {
-  const words = title
-    .trim()
-    .split(/\s+/)
-    .filter((w) => w.length > 0);
-  if (words.length === 0) return "·";
-  if (words.length === 1) {
-    return words[0]!.slice(0, 2).toUpperCase();
-  }
-  return (words[0]![0]! + words[1]![0]!).toUpperCase();
-}
 
 /**
  * Card metadata as pills, same visual language as `MeetingMetaPills` in the
@@ -89,6 +56,12 @@ interface Props {
 
 export function MeetingCard({ meeting, activeId }: Props) {
   const isLive = activeId != null && activeId === meeting.id;
+  const parts = metaParts(meeting);
+  const caption = parts
+    .filter((p) => p.tone !== "warn")
+    .map((p) => p.text)
+    .join(" · ");
+  const warnPart = parts.find((p) => p.tone === "warn");
   return (
     <Link
       // A meeting that's still recording routes to the LIVE capture surface
@@ -97,21 +70,16 @@ export function MeetingCard({ meeting, activeId }: Props) {
       // the post-meeting READ view, which hydrates saved notes via
       // GET /api/meetings/:id.
       to={isLive ? `/meeting/${meeting.id}` : `/meeting/${meeting.id}/post`}
-      className="group flex items-center gap-3 py-2 px-2 -mx-2 rounded-button hover:bg-line/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
+      className={`group flex items-start justify-between gap-4 px-[18px] py-4 bg-card border ${
+        isLive ? "border-straw" : "border-line"
+      } rounded-card shadow-card hover:border-grey/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40`}
     >
-      <div
-        className="w-[42px] h-[42px] rounded-button flex items-center justify-center heading-sm shrink-0"
-        style={{ background: avatarTint(meeting.id) }}
-        aria-hidden
-      >
-        {initials(meeting.title || "Untitled meeting")}
-      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <InlineTitle
             id={meeting.id}
             title={meeting.title}
-            className="block min-w-0 text-[15px] font-bold text-ink truncate"
+            className="block min-w-0 text-[15px] font-semibold text-ink truncate"
           />
           {meeting.starred && (
             <Star
@@ -122,8 +90,8 @@ export function MeetingCard({ meeting, activeId }: Props) {
             />
           )}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {isLive ? (
+        {isLive ? (
+          <div className="mt-1">
             <MetaPill tone="warn">
               <span
                 aria-hidden="true"
@@ -131,28 +99,25 @@ export function MeetingCard({ meeting, activeId }: Props) {
               />
               Recording
             </MetaPill>
-          ) : (
-            metaParts(meeting).map((p) => (
-              <MetaPill key={p.text} tone={p.tone}>
-                {p.text}
-              </MetaPill>
-            ))
-          )}
-        </div>
-        {meeting.labels.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {meeting.labels.map((l) => (
-              <LabelChip key={l.id} label={l} size="sm" />
-            ))}
+          </div>
+        ) : (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {caption && <span className="text-[12px] text-mut">{caption}</span>}
+            {warnPart && <MetaPill tone="warn">{warnPart.text}</MetaPill>}
           </div>
         )}
       </div>
-      {/* Same pill as the meeting headers (MeetingMetaPills), so a meeting
-          reads "Local · medium.en" identically in the list and in the note.
-          Nothing for pre-column rows rather than a guessed "Local". */}
-      <EnginePill sttEngine={meeting.stt_engine} />
-      <LlmPill llmModel={meeting.llm_model} />
-      <MeetingCardActions id={meeting.id} starred={meeting.starred} labels={meeting.labels} />
+      <div className="flex items-center gap-1.5 shrink-0">
+        {meeting.labels.map((l) => (
+          <LabelChip key={l.id} label={l} size="sm" />
+        ))}
+        {/* Same pill as the meeting headers (MeetingMetaPills), so a meeting
+            reads "Local · medium.en" identically in the list and in the note.
+            Nothing for pre-column rows rather than a guessed "Local". */}
+        <EnginePill sttEngine={meeting.stt_engine} />
+        <LlmPill llmModel={meeting.llm_model} />
+        <MeetingCardActions id={meeting.id} starred={meeting.starred} labels={meeting.labels} />
+      </div>
     </Link>
   );
 }

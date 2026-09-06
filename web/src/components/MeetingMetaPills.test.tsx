@@ -55,7 +55,7 @@ describe("MeetingMetaPills", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("paints cloud STT as outlined matcha, not filled blueberry", () => {
+  it("paints cloud STT as a neutral card pill, not filled matcha", () => {
     const start = Date.now();
     render(
       <MeetingMetaPills
@@ -65,18 +65,18 @@ describe("MeetingMetaPills", () => {
       />,
     );
     const pill = screen.getByTestId("engine-pill");
-    expect(pill).toHaveClass("text-matcha");
-    expect(pill).not.toHaveClass("bg-blsoft");
-    expect(pill).not.toHaveClass("text-blue");
+    expect(pill).toHaveClass("text-mut");
+    expect(pill).not.toHaveClass("bg-mtsoft");
+    expect(pill).not.toHaveClass("text-ink");
     expect(pill.className).toMatch(/border/);
   });
 
-  it("paints LLM pill as outlined blueberry, not filled", () => {
+  it("paints LLM pill as filled blueberry once enhanced", () => {
     const start = Date.now();
     render(<MeetingMetaPills startedAt={start} llmModel="gpt-5-mini" />);
     const pill = screen.getByTestId("llm-pill");
-    expect(pill).toHaveClass("text-blue");
-    expect(pill.className).not.toMatch(/bg-blsoft/);
-    expect(pill.className).toMatch(/border/);
+    expect(pill).toHaveClass("bg-blsoft");
+    expect(pill).toHaveClass("text-ink");
+    expect(pill.className).not.toMatch(/border/);
   });
 });
