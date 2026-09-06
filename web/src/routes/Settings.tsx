@@ -156,7 +156,7 @@ export function Settings() {
             )}
 
             {inactive.length > 0 && (
-              <div data-testid="inactive-providers">
+              <div data-testid="inactive-providers" className="space-y-3">
                 {inactive.map((p) => (
                   <ProviderRow
                     key={p.id}
