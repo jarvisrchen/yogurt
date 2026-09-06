@@ -14,6 +14,7 @@ import { Pill } from "../components/Pill";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
+import { LABEL } from "../components/settings/labelClass";
 import { ensureSessionToken } from "../lib/session";
 import {
   activeRecordingKey,
@@ -464,7 +465,7 @@ export function Meeting() {
       <main className="max-w-[660px] mx-auto px-10 py-12 space-y-6">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           aria-label="Back to library — recording continues in the background"
           title={
             recording
@@ -558,7 +559,7 @@ export function Meeting() {
           {meetingId && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
               <div className="space-y-1.5">
-                <label className="flex items-center h-5 text-[10px] font-mono uppercase tracking-wider text-mut">
+                <label className={`flex items-center h-5 ${LABEL}`}>
                   Microphone
                 </label>
                 <MicDevicePicker meetingId={meetingId} recording={recording} />
@@ -566,7 +567,7 @@ export function Meeting() {
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center h-5 gap-1.5">
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+                  <label className={LABEL}>
                     Echo to
                   </label>
                   {recording && activeRecording.data?.echo_enabled && (

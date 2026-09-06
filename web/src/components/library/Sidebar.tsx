@@ -25,6 +25,7 @@ import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { SidebarLabelRow } from "./SidebarLabelRow";
 import { Button } from "../Button";
+import { LABEL } from "../settings/labelClass";
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -132,7 +133,7 @@ export function Sidebar() {
       </nav>
 
       {/* Labels */}
-      <div className="px-5 pt-5 pb-1 flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-mut">
+      <div className={`px-5 pt-5 pb-1 flex items-center justify-between ${LABEL}`}>
         <span>Labels</span>
         <button
           type="button"
@@ -169,7 +170,7 @@ export function Sidebar() {
           </div>
         )}
         {(labels.data ?? []).length === 0 && !addingLabel ? (
-          <p className="px-3 py-1 text-[12px] font-mono text-mut">No labels yet</p>
+          <p className="px-3 py-1 text-[12px] text-mut">No labels yet</p>
         ) : (
           (labels.data ?? []).map((l) => <SidebarLabelRow key={l.id} label={l} />)
         )}
@@ -179,7 +180,7 @@ export function Sidebar() {
       <div className="mt-auto px-4 py-4 flex flex-col gap-2">
         {isLocalOnly && (
           <div
-            className="self-start px-2.5 py-1 rounded-pill bg-mtsoft text-matcha text-[11px] font-mono"
+            className="self-start px-2.5 py-1 rounded-pill bg-mtsoft text-matcha text-[11px] font-medium"
           >
             Local-only · on
           </div>

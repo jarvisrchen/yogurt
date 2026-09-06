@@ -12,7 +12,7 @@ import type { ProviderView } from "../../lib/api/settings";
  * Footer:
  * - Green matcha "Local-only · on" pill rendered iff no active provider
  *   has a non-localhost base URL (PRD §5.6 D-14).
- * - JetBrains-Mono caption disclosing where keys and data live. The
+ * - Caption disclosing where keys and data live (paths rendered in mono). The
  *   `→` glyph is U+2192 (never `->` ASCII — UI-SPEC §Copywriting).
  */
 
@@ -46,7 +46,7 @@ export function SidebarNav({ active, onChange, providers }: Props) {
       <header className="px-5 pt-6 pb-2 space-y-3">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           aria-label="Back to library"
         >
           <ArrowLeft size={16} aria-hidden />
@@ -83,10 +83,10 @@ export function SidebarNav({ active, onChange, providers }: Props) {
             Local-only · on
           </span>
         ) : null}
-        <div className="font-mono text-[10.5px] text-mut leading-relaxed">
-          keys → ~/.yogurt/keys.json
+        <div className="text-[13px] text-mut leading-relaxed">
+          keys → <code className="font-mono">~/.yogurt/keys.json</code>
           <br />
-          data → ~/.yogurt/
+          data → <code className="font-mono">~/.yogurt/</code>
         </div>
       </footer>
     </nav>

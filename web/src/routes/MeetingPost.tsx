@@ -623,7 +623,7 @@ export function MeetingPost() {
         <div className="flex items-center gap-4 min-w-0">
           <Link
             to="/"
-            className="inline-flex items-center gap-1.5 shrink-0 text-[12px] font-mono uppercase tracking-wider text-mut hover:text-ink transition-colors"
+            className="inline-flex items-center gap-1.5 shrink-0 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           >
             <ArrowLeft size={14} aria-hidden="true" />
             <span>Library</span>

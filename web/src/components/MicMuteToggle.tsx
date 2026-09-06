@@ -75,7 +75,7 @@ export function MicMuteToggle({ meetingId, recording }: MicMuteToggleProps) {
         )}
       </Button>
       {setMuted.isError && (
-        <p className="mt-1.5 text-[12px] font-mono text-[var(--color-straw)]">
+        <p className="mt-1.5 text-[12px] text-[var(--color-straw)]">
           {setMuted.error instanceof Error
             ? setMuted.error.message
             : "Couldn't update mic"}

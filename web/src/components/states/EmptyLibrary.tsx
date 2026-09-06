@@ -54,8 +54,8 @@ export function EmptyLibrary() {
           ⌘N
         </kbd>
       </Button>
-      <p className="mt-6 text-[11px] font-mono text-mut">
-        notes saved to <code>~/.yogurt/notes/*.md</code>
+      <p className="mt-6 text-[11px] text-mut">
+        notes saved to <code className="font-mono">~/.yogurt/notes/*.md</code>
       </p>
     </div>
   );

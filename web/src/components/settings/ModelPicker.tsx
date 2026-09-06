@@ -136,7 +136,7 @@ export function ModelPicker({
                 m.downloaded ? onSelect(m.name) : onRequestDownload(m.name)
               }
               className={clsx(
-                "text-[11px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full transition-colors",
+                "text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors",
                 // nowrap + shrink-0: when the delete confirm pair appears next
                 // to the pill, the pill must wrap to the next row as a unit,
                 // not squeeze its size chip onto a second line.
@@ -156,7 +156,7 @@ export function ModelPicker({
               </span>
               <span
                 aria-hidden
-                className="text-[10px] font-mono normal-case tracking-normal"
+                className="text-[10px]"
                 title={
                   m.managed_by_homebrew
                     ? `${m.size_mb} MB installed by Homebrew`
@@ -171,7 +171,7 @@ export function ModelPicker({
             {isDownloading ? (
               <span
                 aria-hidden
-                className="text-[10px] font-mono text-[var(--color-matcha)] font-semibold"
+                className="text-[10px] text-[var(--color-matcha)] font-semibold"
                 title="click pill to reopen progress dialog"
               >
                 {pct != null ? `${pct}%` : "…"}
@@ -180,7 +180,7 @@ export function ModelPicker({
             {showSlow && (
               <span
                 title="Slower than real-time on Intel"
-                className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-strsoft text-ink border border-straw/40"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-strsoft text-ink border border-straw/40"
               >
                 slow
               </span>
@@ -188,7 +188,7 @@ export function ModelPicker({
             {m.downloaded && m.managed_by_homebrew ? (
               <span
                 title="Installed by Homebrew - remove it with brew uninstall"
-                className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-line/40 text-mut border border-line"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-line/40 text-mut border border-line"
               >
                 brew
               </span>
@@ -204,7 +204,7 @@ export function ModelPicker({
                       setConfirming(null);
                       onDelete(m.name);
                     }}
-                    className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-strsoft text-ink border border-straw/40 font-semibold whitespace-nowrap hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50"
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-strsoft text-ink border border-straw/40 font-semibold whitespace-nowrap hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50"
                   >
                     Delete?
                   </button>
@@ -214,7 +214,7 @@ export function ModelPicker({
                       e.stopPropagation();
                       setConfirming(null);
                     }}
-                    className="text-[10px] font-mono text-mut hover:text-ink"
+                    className="text-[10px] text-mut hover:text-ink"
                   >
                     Cancel
                   </button>

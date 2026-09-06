@@ -1,7 +1,7 @@
 /**
  * Phase 7 (Plan 07-01) — per-day grouping for the Library feed.
  *
- * Meetings render under uppercase mono day headers:
+ * Meetings render under uppercase day headers:
  *   Today / Yesterday / weekday name (2–6 days back) / "Aug 13"-style
  *   short date beyond that (with the year appended once it differs).
  * Day boundaries are local-time midnight (so "yesterday" doesn't include
@@ -13,6 +13,7 @@
 
 import type { Meeting } from "../../lib/api/meetings";
 import { MeetingCard } from "./MeetingCard";
+import { LABEL } from "../settings/labelClass";
 
 /** Return midnight (00:00:00.000) of the supplied date, in local time. */
 function localMidnight(d: Date): Date {
@@ -93,7 +94,7 @@ export function DateGroup({ meetings, now = new Date(), activeId }: Props) {
     <div className="flex flex-col gap-8">
       {groups.map((g) => (
         <section key={g.key}>
-          <h2 className="text-[11px] font-mono uppercase tracking-wider text-mut mb-2">
+          <h2 className={`${LABEL} mb-2`}>
             {g.label}
           </h2>
           <ul className="flex flex-col gap-2">

@@ -56,7 +56,7 @@ export function MicEchoToggle({ meetingId, recording }: MicEchoToggleProps) {
         )}
       </Button>
       {setEcho.isError && (
-        <p className="mt-1.5 text-[12px] font-mono text-[var(--color-straw)]">
+        <p className="mt-1.5 text-[12px] text-[var(--color-straw)]">
           {setEcho.error instanceof Error ? setEcho.error.message : "Couldn't update echo"}
         </p>
       )}

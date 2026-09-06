@@ -235,7 +235,7 @@ export function ComboBox({
                 e.preventDefault();
                 pick(option);
               }}
-              className={`px-3 py-1.5 font-mono text-[12.5px] cursor-pointer ${
+              className={`px-3 py-1.5 text-[12.5px] cursor-pointer ${
                 idx === highlight
                   ? "bg-[var(--color-blsoft)] text-ink"
                   : "text-ink"

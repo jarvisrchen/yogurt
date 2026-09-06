@@ -34,7 +34,7 @@ export function ModelDownloadStub() {
         />
       </div>
 
-      <p className="text-[11px] font-mono text-mut">
+      <p className="text-[11px] text-mut">
         ~150 MB · stays on this Mac
       </p>
     </div>

@@ -15,6 +15,7 @@ import { Button } from "../components/Button";
 import { Pill, RecordingBadge, ProviderChip } from "../components/Pill";
 import { Card } from "../components/Card";
 import { BrowserChrome } from "../components/BrowserChrome";
+import { LABEL } from "../components/settings/labelClass";
 
 const COLORS: Array<{ token: string; hex: string; use: string }> = [
   { token: "paper",   hex: "#FBF7EF", use: "App background, hero surfaces" },
@@ -117,7 +118,7 @@ export function StyleGuide() {
         <Card padding="lg">
           <div className="space-y-6">
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
+              <p className={LABEL}>
                 Manrope 800 · 44 / 34 / 26
               </p>
               <p className="heading-hero mt-1">
@@ -134,7 +135,7 @@ export function StyleGuide() {
               </p>
             </div>
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
+              <p className={LABEL}>
                 Manrope · 400 / 500 / 600 / 700 / 800
               </p>
               <p className="font-sans font-normal text-[15px] text-ink">
@@ -154,7 +155,7 @@ export function StyleGuide() {
               </p>
             </div>
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide">
+              <p className={LABEL}>
                 JetBrains Mono · 400 / 500 / 600
               </p>
               <p className="font-mono text-[12px] text-ink">$ yogurt start</p>
@@ -401,7 +402,7 @@ export function StyleGuide() {
         <Card padding="lg">
           <div className="space-y-6">
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide mb-3">
+              <p className={`${LABEL} mb-3`}>
                 Inline SVG — brand mark at three sizes
               </p>
               <div className="flex items-end gap-6">
@@ -412,7 +413,7 @@ export function StyleGuide() {
               </div>
             </div>
             <div>
-              <p className="font-mono text-[11px] text-mut uppercase tracking-wide mb-3">
+              <p className={`${LABEL} mb-3`}>
                 Unicode glyphs in context
               </p>
               <div className="flex items-center gap-3 flex-wrap">

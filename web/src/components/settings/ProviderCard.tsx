@@ -6,8 +6,8 @@ import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelSelect } from "./ModelSelect";
 import { TestKeyButton } from "./TestKeyButton";
 import { Button } from "../Button";
+import { LABEL } from "./labelClass";
 
-const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-mut";
 const VALUE = "text-[13.5px] text-ink";
 
 /**

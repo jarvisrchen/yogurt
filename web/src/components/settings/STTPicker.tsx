@@ -24,6 +24,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
 import { LocalSTTCard } from "./LocalSTTCard";
 import { TestKeyButton } from "./TestKeyButton";
+import { LABEL } from "./labelClass";
 
 /** `http()` throws `Error("<status> <statusText>: <raw body>")`. The server's
  *  422 body is `{"error": "<msg>"}` (see settings.rs's `Error::Unprocessable`)
@@ -60,7 +61,7 @@ export function STTPicker() {
 
   if (q.isLoading || !q.data) {
     return (
-      <p className="text-[11px] font-mono text-mut">Loading transcription…</p>
+      <p className="text-[13px] text-mut">Loading transcription…</p>
     );
   }
   const general = q.data.general;
@@ -77,7 +78,7 @@ export function STTPicker() {
           {patchErrorMessage(patch.error)}
         </p>
       )}
-      <p className="text-[11px] font-mono text-mut">
+      <p className="text-[13px] text-mut">
         Changes apply to the next recording.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -93,7 +94,7 @@ export function STTPicker() {
       >
         <header className="flex items-center justify-between">
           <h3 className="heading-card">Cloud</h3>
-          <label className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-[12px] font-medium text-ink cursor-pointer">
             <input
               type="radio"
               name="stt-provider"
@@ -110,12 +111,12 @@ export function STTPicker() {
         </p>
 
         <div className="border-t border-line pt-3 space-y-2">
-          <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-            DEEPGRAM API KEY · stored locally
+          <div className={LABEL}>
+            Deepgram API key · stored locally
           </div>
           {q.data.deepgram_key_masked ? (
-            <div className="flex items-center gap-2 text-[12.5px] font-mono">
-              <span className="text-ink">{q.data.deepgram_key_masked}</span>
+            <div className="flex items-center gap-2 text-[12.5px]">
+              <span className="text-ink font-mono">{q.data.deepgram_key_masked}</span>
               <span className="text-[var(--color-matcha)] font-semibold">
                 ✓ stored
               </span>

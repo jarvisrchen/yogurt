@@ -31,7 +31,7 @@ export function EchoTestButton({
         <span
           role="status"
           title={verdict.text}
-          className={`text-[11px] font-mono truncate ${
+          className={`text-[11px] truncate ${
             verdict.ok ? "text-matcha" : "text-[var(--color-straw)]"
           }`}
         >
@@ -42,7 +42,7 @@ export function EchoTestButton({
         type="button"
         disabled={test.isPending}
         aria-label="Play a test tone on the echo output device"
-        className="text-[11px] font-mono text-mut hover:text-ink px-2 py-0.5 rounded-chip border border-line disabled:opacity-40 shrink-0"
+        className="text-[11px] text-mut hover:text-ink px-2 py-0.5 rounded-chip border border-line disabled:opacity-40 shrink-0"
         onClick={() => test.mutate()}
       >
         {test.isPending ? "Testing…" : "Test"}

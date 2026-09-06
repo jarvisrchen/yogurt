@@ -3,7 +3,7 @@
  *
  * PRD §5.9 + D-03:
  *   - "Good morning, you" via heading-greeting (34px)
- *   - "N meeting{s} · all on this Mac" in JetBrains Mono at 13px
+ *   - "N meeting{s} · all on this Mac" caption at 13px
  */
 
 import { useGreeting } from "../../hooks/useGreeting";
@@ -19,7 +19,7 @@ export function Greeting({ count }: Props) {
   return (
     <header className="mb-8">
       <h1 className="heading-greeting">{greeting}</h1>
-      <p className="mt-1 text-[13px] font-mono text-mut">
+      <p className="mt-1 text-[13px] text-mut">
         {count} {plural} · all on this Mac
       </p>
     </header>

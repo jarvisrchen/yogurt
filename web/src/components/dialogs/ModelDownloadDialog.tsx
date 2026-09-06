@@ -28,7 +28,7 @@ import type { DownloadState } from "../../hooks/useModelDownloadProgress";
 interface ModelDownloadDialogProps {
   /** Model name to download (e.g. "small.en"). `null` → dialog closed. */
   model: string | null;
-  /** Total size in MB to display in the mono caption. */
+  /** Total size in MB to display in the caption. */
   sizeMb: number | null;
   /** Live progress state owned by `LocalSTTCard` (so the subscription
    *  survives dialog open/close cycles). */
@@ -153,7 +153,7 @@ export function ModelDownloadDialog({
             <h3 className="heading-wordmark leading-tight">
               {title}
             </h3>
-            <p className="text-[11px] font-mono uppercase tracking-wider text-mut">
+            <p className="text-[11px] text-mut">
               whisper.cpp · {sizeMb ?? "—"} MB
             </p>
           </div>
@@ -175,7 +175,7 @@ export function ModelDownloadDialog({
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <p className="text-[11px] font-mono text-mut">
+            <p className="text-[11px] text-mut">
               {formatBytes(downloaded)} / {total > 0 ? formatBytes(total) : "—"}
               {" · "}
               {formatRate(state?.bytesPerSec ?? 0)}

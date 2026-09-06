@@ -119,7 +119,7 @@ export function LabelPicker({ meetingId, selected, open, onClose, anchorClassNam
         />
       </div>
       {filtered.length === 0 && !showCreateRow && (
-        <p className="px-3 py-2 text-[12px] font-mono text-mut">
+        <p className="px-3 py-2 text-[12px] text-mut">
           {(labels.data ?? []).length === 0
             ? "No labels yet. Type to create one."
             : "No matches."}

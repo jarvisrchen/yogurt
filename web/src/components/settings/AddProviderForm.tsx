@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { Button } from "../Button";
-
-const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-mut";
+import { LABEL } from "./labelClass";
 
 /**
  * AddProviderForm — inline "+ Add" expansion for the Model section

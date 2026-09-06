@@ -120,7 +120,7 @@ export function Settings() {
                 <h2 className="heading-section">
                   Model
                 </h2>
-                <code className="text-[11px] font-mono text-grey">
+                <code className="text-[11px] text-grey">
                   OpenAI-compatible
                 </code>
               </div>

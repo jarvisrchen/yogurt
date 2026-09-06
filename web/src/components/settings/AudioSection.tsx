@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, type General } from "../../lib/api/settings";
 import { EchoTestButton } from "../EchoTestButton";
 import { RefreshDevicesButton } from "../RefreshDevicesButton";
+import { LABEL } from "./labelClass";
 
 interface AudioSectionProps {
   general: General;
@@ -53,7 +54,7 @@ export function AudioSection({ general }: AudioSectionProps) {
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+          <label className={LABEL}>
             Input device
           </label>
           <RefreshDevicesButton />
@@ -71,7 +72,7 @@ export function AudioSection({ general }: AudioSectionProps) {
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+          <label className={LABEL}>
             Echo output device
           </label>
           <div className="flex items-center gap-1">
@@ -88,14 +89,14 @@ export function AudioSection({ general }: AudioSectionProps) {
           <option value="">System default</option>
           <DeviceOptions devices={outputDevices.data} selected={general.audio_echo_output_device} />
         </select>
-        <p className="text-xs font-mono text-mut">
+        <p className="text-xs text-mut">
           Also changeable from the meeting page. Use a virtual device such as
           BlackHole to hand your mic to Zoom or OBS while yogurt records.
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-[10px] font-mono uppercase tracking-wider text-mut">
+        <label className={`block ${LABEL}`}>
           Echo buffer
         </label>
         <div className="inline-flex rounded-chip border border-line overflow-hidden">
@@ -116,13 +117,13 @@ export function AudioSection({ general }: AudioSectionProps) {
             </button>
           ))}
         </div>
-        <p className="text-xs font-mono text-mut">
+        <p className="text-xs text-mut">
           Frames per callback. 512 is about 10.7 ms at 48 kHz. Larger is
           safer against dropouts.
         </p>
       </div>
 
-      <p className="text-xs font-mono text-mut">
+      <p className="text-xs text-mut">
         System audio is captured via ScreenCaptureKit — no extra setup.
       </p>
     </section>

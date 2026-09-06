@@ -189,14 +189,14 @@ export function Library({ starredOnly = false }: LibraryProps) {
  */
 function NoMatches() {
   return (
-    <div className="text-[13px] font-mono text-mut">No matches</div>
+    <div className="text-[13px] text-mut">No matches</div>
   );
 }
 
 /** Empty state for a `/label/:labelId` filter with zero matches. */
 function NoLabelMeetings() {
   return (
-    <div className="text-[13px] font-mono text-mut">
+    <div className="text-[13px] text-mut">
       No meetings with this label yet.
     </div>
   );
@@ -206,7 +206,7 @@ function NoLabelMeetings() {
  *  `<EmptyLibrary />`; the user already has meetings, just no stars. */
 function NoStarred() {
   return (
-    <div className="text-[13px] font-mono text-mut">
+    <div className="text-[13px] text-mut">
       No starred meetings yet — hover a meeting and click the star.
     </div>
   );

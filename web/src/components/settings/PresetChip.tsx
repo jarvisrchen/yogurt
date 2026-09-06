@@ -5,7 +5,7 @@ import { settingsApi } from "../../lib/api/settings";
 /**
  * Preset chip — Phase 5 (Plan 05-03), SET-06.
  *
- * Dashed-border, font-mono, uppercase pill. Clicking instantiates a new
+ * Dashed-border pill. Clicking instantiates a new
  * inactive provider via `POST /api/settings/providers` with the preset's
  * `name + base_url + default_model`. Activation is a separate explicit
  * action (UI-SPEC §Interaction 6 — no auto-promote).

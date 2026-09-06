@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
 import { getThemePref, setThemePref, type ThemePref } from "../../lib/theme";
+import { LABEL } from "./labelClass";
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: "system", label: "System" },
@@ -38,7 +39,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
       <h2 className="heading-section">General</h2>
 
       <div className="space-y-1.5">
-        <label className="block text-[10px] font-mono uppercase tracking-wider text-mut">
+        <label className={`block ${LABEL}`}>
           Appearance
         </label>
         <div
@@ -72,7 +73,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-mut">
+        <label className={LABEL}>
           Port
         </label>
         <input
@@ -91,9 +92,9 @@ export function GeneralSection({ general }: GeneralSectionProps) {
               patch.mutate({ port: next });
             }
           }}
-          className="block w-32 rounded-chip border border-line bg-card px-3 py-2 text-sm font-mono focus:border-blue focus:outline-none"
+          className="block w-32 rounded-chip border border-line bg-card px-3 py-2 text-sm focus:border-blue focus:outline-none"
         />
-        <p className="text-xs font-mono text-mut">
+        <p className="text-xs text-mut">
           Port change applies on next `yogurt start`.
         </p>
       </div>

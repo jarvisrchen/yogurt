@@ -184,7 +184,7 @@ export function LocalSTTCard({
         <div className="flex flex-col items-end gap-1">
           <label
             className={clsx(
-              "inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider",
+              "inline-flex items-center gap-2 text-[12px] font-medium",
               activateBlocked ? "cursor-not-allowed opacity-50" : "cursor-pointer",
             )}
           >
@@ -204,7 +204,7 @@ export function LocalSTTCard({
             <span>Use Local</span>
           </label>
           {activateBlocked && (
-            <span className="text-[10px] font-mono text-[var(--color-straw)]">
+            <span className="text-[10px] text-[var(--color-straw)]">
               Download the model first
             </span>
           )}
@@ -217,10 +217,10 @@ export function LocalSTTCard({
       </p>
 
       {q.isLoading && (
-        <p className="text-[11px] font-mono text-mut">Loading models…</p>
+        <p className="text-[11px] text-mut">Loading models…</p>
       )}
       {q.isError && (
-        <p className="text-[11px] font-mono text-[var(--color-straw)]">
+        <p className="text-[11px] text-[var(--color-straw)]">
           Failed to load models: {String(q.error)}
         </p>
       )}
@@ -248,14 +248,14 @@ export function LocalSTTCard({
       )}
 
       {del.isError && (
-        <p role="alert" className="text-[11px] font-mono text-[var(--color-straw)]">
+        <p role="alert" className="text-[11px] text-[var(--color-straw)]">
           {deleteErrorMessage(del.error)}
         </p>
       )}
       {showFreed && del.data && (
         <p
           data-testid="model-freed"
-          className="text-[11px] font-mono text-[var(--color-matcha)]"
+          className="text-[11px] text-[var(--color-matcha)]"
         >
           Deleted {del.variables}
           {del.data.freed_bytes > 0
@@ -264,9 +264,9 @@ export function LocalSTTCard({
         </p>
       )}
 
-      <p className="text-[11px] font-mono text-mut pt-1">
+      <p className="text-[11px] text-mut pt-1">
         Models download on first use · stored in{" "}
-        <code className="text-ink">~/.yogurt/models/</code>
+        <code className="font-mono text-ink">~/.yogurt/models/</code>
       </p>
 
       <ModelDownloadDialog

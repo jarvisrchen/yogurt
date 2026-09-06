@@ -64,7 +64,7 @@ export function BrowserChrome({ url, children, className = "" }: BrowserChromePr
             className={[
               "inline-block rounded-pill px-3 py-1",
               "bg-card border border-line",
-              "font-mono text-[11px] text-mut",
+              "text-[11px] text-mut",
             ].join(" ")}
           >
             {url}
