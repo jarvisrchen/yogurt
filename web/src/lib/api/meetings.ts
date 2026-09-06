@@ -17,7 +17,14 @@ import { ensureSessionToken } from "../session";
 // ─── Types (mirror yogurt_db::Meeting) ─────────────────────────────────────
 
 /** Palette keys understood by `LabelChip` — mirrors Rust `labels::COLORS`. */
-export type LabelColor = "blue" | "matcha" | "straw" | "lilac" | "honey" | "slate";
+export type PaletteColor = "blue" | "matcha" | "straw" | "lilac" | "honey" | "slate";
+
+/**
+ * A label color is a palette key or a custom `#rrggbb` hex string
+ * (mirrors Rust `labels::normalize_color`). `string & {}` keeps palette
+ * key autocomplete while still accepting any string.
+ */
+export type LabelColor = PaletteColor | (string & {});
 
 /** Wire shape of one label row, matching `yogurt_db::Label`. */
 export interface Label {

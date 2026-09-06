@@ -16,7 +16,7 @@ import {
   type Label,
 } from "../../lib/api/labels";
 import { useSetMeetingLabels } from "../../lib/api/meetings";
-import { LABEL_COLORS } from "./LabelChip";
+import { labelTone } from "./LabelChip";
 
 interface Props {
   meetingId: string;
@@ -126,7 +126,7 @@ export function LabelPicker({ meetingId, selected, open, onClose, anchorClassNam
         </p>
       )}
       {filtered.map((l) => {
-        const tone = LABEL_COLORS[l.color] ?? { bg: "var(--color-line)", fg: "var(--color-mut)" };
+        const tone = labelTone(l.color);
         const isSelected = selectedIds.has(l.id);
         return (
           <button
