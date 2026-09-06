@@ -17,6 +17,11 @@ export type { Label, LabelColor, PaletteColor };
 
 export interface LabelWithCount extends Label {
   meeting_count: number;
+  /** Custom sidebar order (UI-12), set via `useReorderLabels`. */
+  position: number;
+  /** Unix ms — bumped on rename/recolor and on apply/remove from a
+   *  meeting. Backs the "Last updated" sidebar sort. */
+  updated_at: number;
 }
 
 export const labelsKey = ["labels"] as const;
@@ -34,6 +39,12 @@ export const labelsApi = {
       body: JSON.stringify(patch),
     }),
   delete: (id: string) => json<void>(`/api/labels/${id}`, { method: "DELETE" }),
+  /** `PUT /api/labels/order` — set the Custom sidebar order. */
+  reorder: (ids: string[]) =>
+    json<void>("/api/labels/order", {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }),
 };
 
 /** `GET /api/labels`. */
@@ -87,5 +98,31 @@ export function useDeleteLabel(): UseMutationResult<void, Error, string> {
       qc.invalidateQueries({ queryKey: labelsKey });
       qc.invalidateQueries({ queryKey: meetingsKey });
     },
+  });
+}
+
+/**
+ * `PUT /api/labels/order` — Custom drag-to-reorder. Applies the new
+ * order to the cached list immediately (`onMutate`) so the drag doesn't
+ * visibly snap back while the request is in flight; `onSettled` always
+ * refetches to correct for a failed request or a concurrent change.
+ */
+export function useReorderLabels(): UseMutationResult<void, Error, string[]> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => labelsApi.reorder(ids),
+    onMutate: (ids) => {
+      const prev = qc.getQueryData<LabelWithCount[]>(labelsKey);
+      if (!prev) return;
+      const byId = new Map(prev.map((l) => [l.id, l]));
+      qc.setQueryData(
+        labelsKey,
+        ids.flatMap((id, position) => {
+          const l = byId.get(id);
+          return l ? [{ ...l, position }] : [];
+        }),
+      );
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: labelsKey }),
   });
 }

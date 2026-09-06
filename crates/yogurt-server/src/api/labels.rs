@@ -6,6 +6,7 @@
 //! | POST   | `/api/labels`      | Find-or-create a label by name.       |
 //! | PATCH  | `/api/labels/{id}` | Rename / recolor a label.             |
 //! | DELETE | `/api/labels/{id}` | Remove a label (cascades on meetings).|
+//! | PUT    | `/api/labels/order`| Set the custom sidebar order (UI-12). |
 //!
 //! **Auth:** every route is mounted behind `routes::require_session_token`
 //! by `routes::router`, same as `api::meetings`. Handlers here don't
@@ -14,7 +15,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, patch},
+    routing::{get, patch, put},
     Json, Router,
 };
 use serde::Deserialize;
@@ -26,6 +27,7 @@ use yogurt_db::{Label, LabelWithCount};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/labels", get(list).post(create))
+        .route("/api/labels/order", put(reorder))
         .route("/api/labels/{id}", patch(update).delete(delete_one))
 }
 
@@ -42,6 +44,13 @@ pub struct UpdateBody {
     pub name: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReorderBody {
+    /// Every label id, in the desired display order. `ids[0]` becomes
+    /// position 0, etc.
+    pub ids: Vec<String>,
 }
 
 async fn list(State(s): State<AppState>) -> Result<Json<Vec<LabelWithCount>>, ApiError> {
@@ -114,4 +123,19 @@ async fn delete_one(
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+/// `PUT /api/labels/order` — set the Custom sidebar order (UI-12). An
+/// unknown id in `ids` is a bad request against the otherwise-existing
+/// label set, same as an unknown `label_ids` entry on a meeting PATCH.
+async fn reorder(
+    State(s): State<AppState>,
+    Json(body): Json<ReorderBody>,
+) -> Result<StatusCode, ApiError> {
+    let repo = s.label_repo.clone();
+    tokio::task::spawn_blocking(move || repo.reorder(&body.ids))
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
 }

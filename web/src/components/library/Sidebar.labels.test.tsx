@@ -12,16 +12,19 @@ import {
   useCreateLabel,
   useDeleteLabel,
   useLabels,
+  useReorderLabels,
   useUpdateLabel,
 } from "../../lib/api/labels";
 import { useCreateMeeting } from "../../lib/api/meetings";
 import { settingsApi } from "../../lib/api/settings";
+import { LABEL_SORT_KEY } from "../../lib/labelSort";
 
 vi.mock("../../lib/api/labels", () => ({
   useLabels: vi.fn(),
   useUpdateLabel: vi.fn(),
   useDeleteLabel: vi.fn(),
   useCreateLabel: vi.fn(),
+  useReorderLabels: vi.fn(),
 }));
 
 vi.mock("../../lib/api/meetings", () => ({
@@ -69,6 +72,9 @@ describe("Sidebar — Labels section", () => {
       mutate: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(useReorderLabels).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useReorderLabels>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -102,6 +108,9 @@ describe("Sidebar — Labels section", () => {
       mutate: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(useReorderLabels).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useReorderLabels>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -171,6 +180,9 @@ describe("Sidebar — Labels section", () => {
       mutate: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(useReorderLabels).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useReorderLabels>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -199,6 +211,9 @@ describe("Sidebar — Labels section", () => {
       mutate,
       isPending: false,
     } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(useReorderLabels).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useReorderLabels>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -235,6 +250,9 @@ describe("Sidebar — Labels section", () => {
       mutate,
       isPending: false,
     } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(useReorderLabels).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useReorderLabels>);
     vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
 
     renderSidebar();
@@ -246,5 +264,50 @@ describe("Sidebar — Labels section", () => {
 
     expect(mutate).not.toHaveBeenCalled();
     expect(screen.queryByPlaceholderText("Label name")).not.toBeInTheDocument();
+  });
+
+  it("drags a label to a new position in Custom mode and calls reorder", () => {
+    localStorage.setItem(LABEL_SORT_KEY, "custom");
+    vi.mocked(useLabels).mockReturnValue({
+      data: [
+        { id: "l1", name: "Sales", color: "blue", meeting_count: 3, position: 0, updated_at: 1 },
+        { id: "l2", name: "Support", color: "matcha", meeting_count: 0, position: 1, updated_at: 2 },
+        { id: "l3", name: "Zeta", color: "straw", meeting_count: 0, position: 2, updated_at: 3 },
+      ],
+    } as unknown as ReturnType<typeof useLabels>);
+    vi.mocked(useUpdateLabel).mockReturnValue({
+      mutate: vi.fn(),
+    } as unknown as ReturnType<typeof useUpdateLabel>);
+    vi.mocked(useDeleteLabel).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteLabel>);
+    vi.mocked(useCreateMeeting).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(useCreateLabel).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateLabel>);
+    const reorder = vi.fn();
+    vi.mocked(useReorderLabels).mockReturnValue({
+      mutate: reorder,
+    } as unknown as ReturnType<typeof useReorderLabels>);
+    vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
+
+    renderSidebar();
+
+    const wrapperOf = (name: string) =>
+      screen.getByText(name).closest('[draggable="true"]') as HTMLElement;
+
+    fireEvent.dragStart(wrapperOf("Zeta"));
+    fireEvent.dragOver(wrapperOf("Sales"));
+    fireEvent.drop(wrapperOf("Sales"));
+
+    expect(reorder).toHaveBeenCalledWith(["l3", "l1", "l2"]);
+
+    localStorage.removeItem(LABEL_SORT_KEY);
   });
 });
