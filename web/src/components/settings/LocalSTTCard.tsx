@@ -185,13 +185,21 @@ export function LocalSTTCard({
     >
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <h3 className="heading-card min-w-0">Local · whisper.cpp</h3>
-          {active && !activateBlocked && <Pill tone="matcha">In use</Pill>}
+          <h3 className="heading-card whitespace-nowrap">Local</h3>
+          <Pill tone="neutral">whisper.cpp</Pill>
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
+        {active ? (
+          <Pill tone="matcha" className="shrink-0">
+            <span
+              className="inline-block w-[7px] h-[7px] rounded-pill bg-matcha"
+              aria-hidden
+            />
+            In use
+          </Pill>
+        ) : (
           <Button
-            variant={active ? "secondary" : "primary"}
-            className="px-3 py-1.5 text-[13px] whitespace-nowrap"
+            variant="primary"
+            className="px-3 py-1.5 text-[13px] whitespace-nowrap shrink-0"
             disabled={activateBlocked}
             // `disabled` alone is a UI nicety, not enforcement — guard
             // in the handler too so the activation can't fire via a
@@ -202,13 +210,13 @@ export function LocalSTTCard({
           >
             Use Local
           </Button>
-          {activateBlocked && (
-            <span className="text-[11px] text-straw">
-              Download the model first
-            </span>
-          )}
-        </div>
+        )}
       </header>
+      {activateBlocked && (
+        <span className="text-[11px] text-straw">
+          Download the model first
+        </span>
+      )}
 
       <p className="text-[12.5px] text-mut">
         Whisper.cpp with Metal acceleration. Audio never leaves this Mac.

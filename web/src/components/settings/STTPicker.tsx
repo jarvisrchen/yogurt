@@ -103,7 +103,13 @@ export function STTPicker() {
             <Pill tone="neutral">Deepgram</Pill>
           </div>
           {!isLocal ? (
-            <Pill tone="matcha" className="shrink-0">In use</Pill>
+            <Pill tone="matcha" className="shrink-0">
+              <span
+                className="inline-block w-[7px] h-[7px] rounded-pill bg-matcha"
+                aria-hidden
+              />
+              In use
+            </Pill>
           ) : (
             <Button
               variant="primary"
