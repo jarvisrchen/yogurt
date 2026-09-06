@@ -43,8 +43,7 @@ body{background:#1a1a1c;color:#ddd;font-family:var(--ui);padding:40px 32px 80px}
 .side{width:240px;height:100%;border-right:var(--bw) solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:6px;background:var(--canvas)}
 .side .brand{display:flex;align-items:center;gap:10px;padding:0 8px 14px}
 .side .brand b{font-family:var(--display);font-weight:var(--dw);font-size:20px;letter-spacing:var(--dt)}
-.logo{width:28px;height:28px;border-radius:50%;background:var(--accent-deco);position:relative;overflow:hidden}
-.logo:after{content:"";position:absolute;inset:6px 6px 0 9px;background:var(--surface);border-radius:50% 50% 0 0}
+.logo{width:28px;height:28px;flex:none}
 .side .nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-sm);color:var(--ink2);font-size:14px}
 .side .nav a.on{background:var(--accent-soft);color:var(--ink);font-weight:500}
 .side .sec{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:14px 10px 4px;font-weight:600}
@@ -123,7 +122,7 @@ body{background:#1a1a1c;color:#ddd;font-family:var(--ui);padding:40px 32px 80px}
   </div>
   <p class="mono mute" style="margin-top:26px">2 of 4 complete · continue to Library →</p>
 </div></div></div><div class="shot"><h2>Library<span>/</span></h2><div class="frame"><div class="lib"><aside class="side">
-  <div class="brand"><span class="logo"></span><b>yogurt</b></div>
+  <div class="brand"><svg class="logo" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg><b>yogurt</b></div>
   <a class="btn primary" style="justify-content:space-between">New meeting <span class="kbd" style="color:#fff;border-color:rgba(255,255,255,.4);background:transparent">⌘N</span></a>
   <nav class="nav" style="margin-top:8px;display:flex;flex-direction:column;gap:2px">
     <a class="on">◫ All meetings</a>
@@ -223,7 +222,7 @@ body{background:#1a1a1c;color:#ddd;font-family:var(--ui);padding:40px 32px 80px}
   <div class="tab">Transcript</div>
 </div></div></div><div class="shot"><h2>Settings<span>/settings/model</span></h2><div class="frame"><div class="set">
   <aside class="side">
-    <div class="brand"><span class="logo"></span><b>yogurt</b></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg><b>yogurt</b></div>
     <a class="lbl mute">← Library</a>
     <nav class="nav" style="margin-top:10px;display:flex;flex-direction:column;gap:2px">
       <a class="on">Model</a><a>Transcription</a><a>Audio</a><a>General</a>
