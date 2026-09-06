@@ -323,8 +323,11 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
                 repo.patch(&id_str, patch)
             })
             .await;
-            // Best-effort echo restore; never fails the start.
-            if g.audio_echo_enabled {
+            // Best-effort echo restore; never fails the start. Gated on
+            // the AUD-13 feature toggle - `audio_echo_enabled` alone isn't
+            // enough, since it can be a stale `true` from before the user
+            // turned the feature off.
+            if g.audio_echo_feature && g.audio_echo_enabled {
                 if let Err(e) = state
                     .meetings
                     .set_echo(

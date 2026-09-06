@@ -47,6 +47,11 @@ export interface General {
    *  prompt (and stops a recording once the detected window closes).
    *  Mirrors `crates/yogurt-db::settings::General::meeting_detection`. */
   meeting_detection: boolean;
+  /** AUD-13 - whether the mic echo feature is exposed at all. Off by
+   *  default; the in-meeting echo controls and auto-start only exist
+   *  when this is on. Mirrors
+   *  `crates/yogurt-db::settings::General::audio_echo_feature`. */
+  audio_echo_feature: boolean;
   /** Output device the mic is echoed to, "" means system default. */
   audio_echo_output_device: string;
   /** Whether mic-echo starts enabled on the next recording. */

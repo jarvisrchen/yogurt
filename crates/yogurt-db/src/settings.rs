@@ -66,6 +66,9 @@ pub struct General {
     /// window closes). Defaults to `true`; there is no seed row, so the
     /// projection's fallback is the default.
     pub meeting_detection: bool,
+    /// Whether the mic echo feature is exposed at all. Off by default; the
+    /// in-meeting echo controls and auto-start only exist when this is on.
+    pub audio_echo_feature: bool,
     /// Output device the mic echo plays to. `""` = system default.
     pub audio_echo_output_device: String,
     /// Persisted state of the in-meeting Echo button.
@@ -101,6 +104,10 @@ pub fn load_general(db: &Db) -> Result<General> {
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(true),
+        audio_echo_feature: get(db, "audio.echo_feature")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(false),
         audio_echo_output_device: get(db, "audio.echo_output_device")?.unwrap_or_default(),
         audio_echo_enabled: get(db, "audio.echo_enabled")?
             .as_deref()
@@ -133,6 +140,7 @@ pub struct GeneralPatch {
     /// MTG-11 — Settings → General flips this to silence the
     /// meeting-detected prompt.
     pub meeting_detection: Option<bool>,
+    pub audio_echo_feature: Option<bool>,
     pub audio_echo_output_device: Option<String>,
     pub audio_echo_enabled: Option<bool>,
     pub audio_echo_buffer: Option<u32>,
@@ -170,6 +178,9 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
             "general.meeting_detection",
             if d { "true" } else { "false" },
         )?;
+    }
+    if let Some(f) = patch.audio_echo_feature {
+        set(db, "audio.echo_feature", if f { "true" } else { "false" })?;
     }
     if let Some(d) = patch.audio_echo_output_device {
         set(db, "audio.echo_output_device", &d)?;
