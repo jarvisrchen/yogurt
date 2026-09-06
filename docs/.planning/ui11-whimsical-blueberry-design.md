@@ -2,6 +2,7 @@
 
 Design and implementation plan, not yet implemented.
 Ticket: `docs/TODO.md` UI-11.
+Lavish review surface: [`../.lavish/ui11-whimsical-blueberry-design.html`](../.lavish/ui11-whimsical-blueberry-design.html).
 Mockups: [`../.lavish/design-mockups/whimsical-blueberry.html`](../.lavish/design-mockups/whimsical-blueberry.html) and [`whimsical-blueberry-dark.html`](../.lavish/design-mockups/whimsical-blueberry-dark.html), tokens from [Whimsical on Refero Styles](https://styles.refero.design/style/8e153a14-40a9-4793-b94b-c144d325c730).
 
 Richard picked this direction: Whimsical's type, radii and soft shadows, on yogurt's own Blueberry palette, in both light and dark.

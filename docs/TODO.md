@@ -51,7 +51,7 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
   Richard picked the Whimsical × Blueberry direction from the Refero Styles mockups: Whimsical's type (Manrope), radii and soft shadows on yogurt's existing Blueberry palette, light and dark.
   Mockups: `docs/.lavish/design-mockups/whimsical-blueberry.html` and `whimsical-blueberry-dark.html`.
-  Design and implementation plan: `docs/.planning/ui11-whimsical-blueberry-design.md`.
+  Design and implementation plan: `docs/.planning/ui11-whimsical-blueberry-design.md`, lavish at `docs/.lavish/ui11-whimsical-blueberry-design.html`.
   UI only: no functional change, every screen keeps its behavior and tests.
   </details>
 
