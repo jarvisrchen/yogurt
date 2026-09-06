@@ -45,7 +45,7 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-- [ ] **UI-11** Let a label take a custom hex color, not only a palette key
+- [ ] **UI-14** Let a label take a custom hex color, not only a palette key
   <details>
   <summary>Details</summary>
 

@@ -101,7 +101,9 @@ bootstrap:
             exit 1
         fi
     fi
-    if [ ! -d web/node_modules ]; then
+    # pnpm writes the lockfile it installed from to node_modules/.pnpm/lock.yaml,
+    # so a mismatch means the lockfile moved (a pull, a merge) since the last install.
+    if ! cmp -s web/pnpm-lock.yaml web/node_modules/.pnpm/lock.yaml; then
         echo "bootstrap: installing web deps"
         pnpm --dir web install --frozen-lockfile
     fi
