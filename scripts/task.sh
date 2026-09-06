@@ -315,7 +315,7 @@ cmd_dev_bg() {
 
   if tmux has-session -t yogurt 2>/dev/null; then
     if ! tmux list-windows -t yogurt -F '#{window_name}' 2>/dev/null | grep -qx "$name"; then
-      tmux new-window -t yogurt -n "$name" -c "$PWD" 'just dev'
+      tmux new-window -t yogurt: -n "$name" -c "$PWD" 'just dev'
     fi
   else
     tmux new-session -d -s yogurt -n "$name" -c "$PWD" 'just dev'

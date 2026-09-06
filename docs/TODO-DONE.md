@@ -1015,3 +1015,14 @@ New closed items go at the bottom.
   Landed 2026-09-06.
   Bootstrap now compares web/pnpm-lock.yaml with node_modules/.pnpm/lock.yaml and reinstalls on mismatch, so every entry point that runs bootstrap (just dev, just start) picks up lockfile changes.
   </details>
+
+- [x] **DX-12** `just dev-bg` fails with `create window failed: index 2 in use` when a tmux window is named `yogurt`
+  <details>
+  <summary>Details</summary>
+
+  `scripts/task.sh` runs `tmux new-window -t yogurt`, and tmux resolves a bare `yogurt` as a window name before a session name.
+  Once any window in the session is called `yogurt` (a dev server started from the main checkout), the target becomes that window's index and every other worktree's `just dev-bg` fails.
+  Target the session explicitly with `-t yogurt:` so tmux picks the next free index.
+
+  Landed 2026-09-06. `tmux new-window -t yogurt:` targets the session, so a window named `yogurt` no longer collides.
+  </details>
