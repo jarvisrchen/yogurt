@@ -61,7 +61,7 @@ export function ChatWindow({
     <div
       role="region"
       aria-label="Ask the meeting chat"
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px] max-h-[60vh] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-2xl shadow-pop anim-popUp z-30"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px] max-h-[60vh] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-panel shadow-pop anim-popUp z-30"
     >
       <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)]">
         <div className="flex items-center gap-2">
@@ -81,7 +81,7 @@ export function ChatWindow({
           type="button"
           onClick={onCollapse}
           aria-label="Collapse chat"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-mut)] hover:bg-[var(--color-blsoft)] hover:text-[var(--color-blue)] transition-colors"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-chip text-[var(--color-mut)] hover:bg-[var(--color-blsoft)] hover:text-[var(--color-blue)] transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path

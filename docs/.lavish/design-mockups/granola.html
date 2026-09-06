@@ -1,0 +1,251 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>yogurt × Granola mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#f7f7f2;--surface:#ffffff;--surface2:#eaebe5;--ink:#0e0f0c;--ink2:#454745;--mute:#818179;--mute2:#72726e;
+--line:#e3e3e3;--line2:#d5d5d2;--accent:#5b6f00;--accent-hover:#4c5616;--accent-soft:#e5eacd;--accent-border:#788c15;
+--accent-deco:#b2c248;--ai:#72726e;--danger:#e95d3d;--danger-soft:#fde5df;--ok:#5b6f00;--ok-soft:#e5eacd;
+--r-sm:8px;--r-md:12px;--r-lg:16px;--r-pill:9999px;--bw:0.5px;--shadow:none;--shadow-float:rgba(0,0,0,0.03) 0 0 36px 0;--btn-r:9999px;--card-pad:24px;
+--display:'Playfair Display', Lora, Georgia, serif;--ui:'DM Sans', 'Instrument Sans', system-ui, sans-serif;--dw:400;--dt:-0.015em;--ut:0.01em}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0e0e10;color:#ddd;font-family:var(--ui);padding:40px 32px 80px}
+.meta{max-width:1280px;margin:0 auto 28px}
+.meta h1{font-family:var(--display);font-weight:var(--dw);letter-spacing:var(--dt);font-size:44px;color:#fff;line-height:1.05}
+.meta p{color:#9a9a9a;font-size:14px;margin-top:10px;max-width:760px;line-height:1.5}
+.meta a{color:#bbb}
+.meta .nav{margin-top:14px;font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
+.meta .nav a{color:#8a8a8a;text-decoration:none;border:1px solid #333;padding:4px 10px;border-radius:999px}
+.meta .nav a.on{color:#fff;border-color:#777}
+.shot{max-width:1280px;margin:0 auto 56px}
+.shot>h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#777;margin-bottom:10px;font-weight:600}
+.shot>h2 span{color:#bbb;text-transform:none;letter-spacing:0;font-weight:400;margin-left:10px}
+.frame{width:1280px;height:800px;background:var(--canvas);color:var(--ink);border-radius:12px;overflow:hidden;position:relative;font-size:14px;letter-spacing:var(--ut);box-shadow:0 30px 80px rgba(0,0,0,.5);outline:1px solid #2a2a2e}
+.frame *{font-family:var(--ui)}
+.frame .disp,.frame .disp *{font-family:var(--display);font-weight:var(--dw);letter-spacing:var(--dt)}
+/* atoms */
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:var(--btn-r);padding:9px 18px;font-size:14px;font-weight:500;border:var(--bw) solid transparent;white-space:nowrap}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.ghost{border-color:var(--line2);color:var(--ink);background:var(--surface)}
+.btn.soft{background:var(--accent-soft);color:var(--ink)}
+.btn.danger{background:var(--danger);color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r-pill);padding:3px 10px;font-size:12px;border:var(--bw) solid var(--line2);color:var(--mute);background:var(--surface)}
+.pill.ok{background:var(--ok-soft);border-color:transparent;color:var(--ink2)}
+.pill.ok .dot{background:var(--ok)}
+.pill.acc{background:var(--accent-soft);border-color:transparent;color:var(--ink)}
+.pill.rec{background:var(--danger-soft);border-color:transparent;color:var(--ink)}
+.pill.rec .dot{background:var(--danger)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--mute)}
+.card{background:var(--surface);border:var(--bw) solid var(--line);border-radius:var(--r-md);padding:var(--card-pad);box-shadow:var(--shadow)}
+.hair{border-top:var(--bw) solid var(--line)}
+.mute{color:var(--mute)}.small{font-size:12px}.mono{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.input{border:var(--bw) solid var(--line2);background:var(--surface);border-radius:var(--r-pill);padding:8px 14px;color:var(--mute);font-size:13px;display:flex;align-items:center;gap:8px}
+.kbd{border:var(--bw) solid var(--line2);border-radius:5px;padding:0 5px;font-size:11px;color:var(--mute);background:var(--surface)}
+/* sidebar */
+.side{width:240px;height:100%;border-right:var(--bw) solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:6px;background:var(--canvas)}
+.side .brand{display:flex;align-items:center;gap:10px;padding:0 8px 14px}
+.side .brand b{font-family:var(--display);font-weight:var(--dw);font-size:20px;letter-spacing:var(--dt)}
+.logo{width:28px;height:28px;flex:none}
+.side .nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-sm);color:var(--ink2);font-size:14px}
+.side .nav a.on{background:var(--accent-soft);color:var(--ink);font-weight:500}
+.side .sec{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:14px 10px 4px;font-weight:600}
+.side .lbl{display:flex;align-items:center;gap:10px;padding:6px 10px;font-size:13px;color:var(--ink2)}
+.sw{width:9px;height:9px;border-radius:3px}
+.side .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding:0 4px}
+.row{display:flex;align-items:center;gap:8px}.between{justify-content:space-between}
+/* library */
+.lib{display:flex;height:100%}
+.lib main{flex:1;padding:44px 52px;max-width:860px}
+.greet{font-family:var(--display);font-weight:var(--dw);letter-spacing:var(--dt);font-size:34px;line-height:1.1}
+.date{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:28px 0 10px;font-weight:600}
+.mcard{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 18px;border-radius:var(--r-md);background:var(--surface);border:var(--bw) solid var(--line);margin-bottom:8px;box-shadow:var(--shadow)}
+.mcard h4{font-size:15px;font-weight:600;margin-bottom:6px}
+.mcard.live{border-color:var(--danger);}
+/* meeting */
+.mtg{height:100%;position:relative}
+.mtg .top{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:var(--bw) solid var(--line)}
+.mtg .doc{max-width:660px;margin:0 auto;padding:36px 40px}
+.title{font-family:var(--display);font-weight:var(--dw);letter-spacing:var(--dt);font-size:30px;line-height:1.15}
+.ed{margin-top:26px;line-height:1.7;font-size:15px}
+.ed li{margin-left:20px;margin-bottom:4px}
+.ed .ai{color:var(--ai)}
+.ed .ph{color:var(--mute2);font-style:italic}
+.dock{position:absolute;right:0;top:0;height:100%;width:330px;background:var(--surface);border-left:var(--bw) solid var(--line);display:flex;flex-direction:column;box-shadow:var(--shadow-float)}
+.dock .dh{padding:16px 18px;border-bottom:var(--bw) solid var(--line);display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:13px}
+.dock .lines{padding:14px 18px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.5;overflow:hidden}
+.dock .who{font-size:11px;color:var(--mute);letter-spacing:.04em;margin-bottom:2px;text-transform:uppercase;font-weight:600}
+.dock .them{color:var(--mute2)}
+.dock .me{color:var(--ink2)}
+.tab{position:absolute;right:0;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;padding:14px 8px;background:var(--surface);border:var(--bw) solid var(--line);border-right:0;border-radius:var(--r-sm) 0 0 var(--r-sm);font-size:12px;color:var(--mute);letter-spacing:.04em}
+.ask{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);width:460px;border-radius:var(--r-pill);background:var(--surface);border:var(--bw) solid var(--line2);box-shadow:var(--shadow-float);padding:11px 18px;color:var(--mute);font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);margin-top:14px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:6px}
+.banner{display:flex;align-items:center;gap:12px;padding:10px 28px;background:var(--accent-soft);font-size:13px;color:var(--ink2)}
+.banner .bar{flex:1;height:3px;background:var(--surface);border-radius:2px;overflow:hidden}
+.banner .bar i{display:block;width:62%;height:100%;background:var(--accent)}
+/* settings */
+.set{display:flex;height:100%}
+.set main{flex:1;padding:36px 44px;max-width:760px;display:flex;flex-direction:column;gap:34px;overflow:hidden}
+.set h2{font-family:var(--display);font-weight:var(--dw);letter-spacing:var(--dt);font-size:24px;margin-bottom:4px}
+.set .sub{color:var(--mute);font-size:13px;margin-bottom:14px}
+.prow{display:flex;justify-content:space-between;align-items:center;padding:12px 0}
+.prow+.prow{border-top:var(--bw) solid var(--line)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.radio{width:16px;height:16px;border-radius:50%;border:var(--bw) solid var(--line2);display:inline-block;vertical-align:-3px;margin-right:8px}
+.radio.on{border:5px solid var(--accent)}
+.tog{width:34px;height:20px;border-radius:999px;background:var(--line2);position:relative}
+.tog.on{background:var(--accent)}
+.tog:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.tog.on:after{left:16px}
+/* welcome */
+.wel{height:100%;padding:64px 0;display:flex;flex-direction:column;align-items:center}
+.wel .hero{font-family:var(--display);font-weight:var(--dw);letter-spacing:var(--dt);font-size:52px;line-height:1.05;text-align:center}
+.wel .lead{color:var(--mute);font-size:15px;max-width:460px;text-align:center;margin:16px auto 40px;line-height:1.55}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:820px}
+.step{background:var(--surface);border:var(--bw) solid var(--line);border-radius:var(--r-md);padding:22px;box-shadow:var(--shadow)}
+.step .n{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:8px;font-family:ui-monospace,Menlo,monospace}
+.step h3{font-size:16px;font-weight:600;margin-bottom:6px}
+.step p{color:var(--mute);font-size:13px;line-height:1.5;margin-bottom:14px}
+.recpill{position:absolute;right:24px;bottom:24px;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--r-pill);background:var(--surface);border:var(--bw) solid var(--line2);box-shadow:var(--shadow-float);font-size:13px}
+.recpill .dot{background:var(--danger);animation:p 1.4s infinite}
+@keyframes p{50%{opacity:.35}}
+</style></head><body>
+<div class="meta"><h1>yogurt × Granola</h1><p>Field notes on warm parchment. Serif editorial headlines, humanist UI face, hairline rules, a single olive accent. Tokens from the Refero DESIGN.md: <a href="https://styles.refero.design/style/d6c2a911-45ed-4860-a992-43df22793c2a">https://styles.refero.design/style/d6c2a911-45ed-4860-a992-43df22793c2a</a></p><div class="nav"><a href="index.html">Overview</a><a href="granola.html" class="on">Granola</a><a href="voicenotes.html">Voicenotes</a><a href="whimsical.html">Whimsical</a><a href="whimsical-blueberry.html">Whimsical × Blueberry</a><a href="whimsical-blueberry-dark.html">Whimsical × Blueberry Dark</a></div></div>
+<div class="shot"><h2>Onboarding<span>/welcome</span></h2><div class="frame"><div class="wel">
+  <div class="hero disp">Welcome to yogurt.</div>
+  <p class="lead">Local-first meeting notes. Four quick steps and you are recording, with nothing leaving this Mac unless you say so.</p>
+  <div class="mono mute" style="margin-bottom:14px">Permissions</div>
+  <div class="steps">
+    <div class="step"><div class="n">01</div><h3>Screen Recording</h3><p>Captures the other side of the call from system audio. No bot joins the meeting.</p><span class="pill ok"><span class="dot"></span>Granted</span></div>
+    <div class="step"><div class="n">02</div><h3>Microphone</h3><p>Your side of the conversation. Restart once after granting.</p><span class="btn primary">Grant Microphone</span></div>
+    <div class="step"><div class="n">03</div><h3>Connect your model</h3><p>Bring any OpenAI-compatible LLM you already pay for.</p><div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill">Minimax</span><span class="pill">OpenAI</span><span class="pill">OpenRouter</span><span class="pill">Ollama</span></div></div>
+    <div class="step"><div class="n">04</div><h3>Pick transcription</h3><p>Cloud Deepgram for speed, or fully-local whisper.cpp.</p><div class="row" style="gap:8px"><span class="btn soft" style="padding:6px 14px;font-size:13px">Use Local</span><span class="btn ghost" style="padding:6px 14px;font-size:13px">Use Cloud</span></div></div>
+  </div>
+  <p class="mono mute" style="margin-top:26px">2 of 4 complete · continue to Library →</p>
+</div></div></div><div class="shot"><h2>Library<span>/</span></h2><div class="frame"><div class="lib"><aside class="side">
+  <div class="brand"><svg class="logo" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg><b>yogurt</b></div>
+  <a class="btn primary" style="justify-content:space-between">New meeting <span class="kbd" style="color:#fff;border-color:rgba(255,255,255,.4);background:transparent">⌘N</span></a>
+  <nav class="nav" style="margin-top:8px;display:flex;flex-direction:column;gap:2px">
+    <a class="on">◫ All meetings</a>
+    <a>☆ Starred</a>
+  </nav>
+  <div class="sec">Labels</div>
+  <div class="lbl"><span class="sw" style="background:#8A5BB8"></span>Defakto</div>
+  <div class="lbl"><span class="sw" style="background:#A67C1B"></span>Block</div>
+  <div class="lbl"><span class="sw" style="background:#4E5D6B"></span>1:1s</div>
+  <div class="lbl mute">+ New label</div>
+  <div class="foot">
+    <a class="lbl">⚙ Settings</a>
+    <span class="pill ok" style="align-self:flex-start"><span class="dot"></span>Local-only · on</span>
+  </div>
+</aside>
+<main>
+  <div class="row between" style="align-items:flex-start;margin-bottom:6px">
+    <div><div class="greet">Good morning, you</div><div class="mute" style="margin-top:8px">14 meetings, 3 this week</div></div>
+    <div class="input" style="width:260px">⌕ Search notes &amp; transcripts</div>
+  </div>
+  <div class="date">Today</div>
+  <div class="mcard live">
+  <div><h4>Defakto onboarding sync</h4><div class="row small mute">9:30 AM · recording</div></div>
+  <div class="row"><span class="pill" style="border-color:transparent;background:#F3E8FB;color:#8A5BB8">Defakto</span><span class="pill rec"><span class="dot"></span>Recording</span></div>
+</div>
+  <div class="mcard">
+  <div><h4>Weekly 1:1 with manager</h4><div class="row small mute">8:00 AM · 31 min</div></div>
+  <div class="row"><span class="pill" style="border-color:transparent;background:#E8ECF0;color:#4E5D6B">1:1s</span><span class="pill ok"><span class="dot"></span>Local · medium.en</span><span class="pill acc">Enhanced · MiniMax-M2</span></div>
+</div>
+  <div class="date">Yesterday</div>
+  <div class="mcard">
+  <div><h4>Block L5 team intro</h4><div class="row small mute">3:00 PM · 48 min</div></div>
+  <div class="row"><span class="pill" style="border-color:transparent;background:#FBF0D6;color:#A67C1B">Block</span><span class="pill ok"><span class="dot"></span>Local · medium.en</span><span class="pill acc">Enhanced · MiniMax-M2</span></div>
+</div>
+  <div class="mcard">
+  <div><h4>Untitled meeting</h4><div class="row small mute">11:15 AM · 12 min</div></div>
+  <div class="row"><span class="pill"><span class="dot"></span>Cloud</span></div>
+</div>
+  <div class="date">This week</div>
+  <div class="mcard">
+  <div><h4>SPIRE plugin architecture walkthrough</h4><div class="row small mute">Tue · 2:00 PM · 58 min</div></div>
+  <div class="row"><span class="pill" style="border-color:transparent;background:#F3E8FB;color:#8A5BB8">Defakto</span><span class="pill ok"><span class="dot"></span>Local · medium.en</span><span class="pill acc">Enhanced · MiniMax-M2</span></div>
+</div>
+</main></div></div></div><div class="shot"><h2>Live meeting<span>/meeting/:id</span></h2><div class="frame"><div class="mtg">
+  <div class="top" style="margin-right:330px">
+    <div class="row" style="gap:14px"><span class="mute">← Library</span><span class="pill rec"><span class="dot"></span>Recording · 14:02</span></div>
+    <div class="row" style="gap:10px"><span class="pill"><span class="dot" style="background:var(--ok)"></span>MacBook Pro Microphone ▾</span><span class="btn ghost" style="padding:6px 12px;font-size:13px">🎙 Mute</span><span class="btn danger">End meeting</span></div>
+  </div>
+  <div class="doc" style="margin-right:330px">
+    <div class="title">Defakto onboarding sync</div>
+    <div class="row" style="margin-top:10px;gap:8px"><span class="pill ok"><span class="dot"></span>Local STT · medium.en</span><span class="pill">Will enhance with MiniMax-M2</span></div>
+    <div class="ed">
+      <ul>
+        <li>join token flow, then workload API</li>
+        <li>rotation lives in agent</li>
+        <li>TTL 1h default, shorter for edge</li>
+        <li class="ph">Take sparse notes during the meeting. AI enhances on End.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="dock">
+  <div class="dh"><span>Live transcript</span><span class="mute small">Hide ▸</span></div>
+  <div class="lines">
+    <div><div class="who">Them</div><div class="them">So the agent attests with a join token first, and then the workload API hands out the SVID once the selectors match.</div></div>
+    <div><div class="who">You</div><div class="me">Right, and rotation is handled by the agent, not the workload.</div></div>
+    <div><div class="who">Them</div><div class="them">Exactly. Default TTL is an hour, we usually shorten it for the edge fleet.</div></div>
+    <div><div class="who">You</div><div class="me">Where does the trust bundle get refreshed when we federate?</div></div>
+    <div><div class="who">Them</div><div class="them">Through the bundle endpoint on the server, it polls the peer domain…</div></div>
+    <div class="mute small" style="font-style:italic">Waiting for audio…</div>
+  </div>
+</div>
+</div></div></div><div class="shot"><h2>Post-meeting, enhanced notes<span>/meeting/:id/post</span></h2><div class="frame"><div class="mtg">
+  <div class="banner"><span>Weaving your notes into the transcript…</span><span class="bar"><i></i></span><span class="mono">MiniMax-M2</span></div>
+  <div class="top">
+    <div class="row" style="gap:14px"><span class="mute">← Library</span></div>
+    <div class="row" style="gap:8px"><span class="pill">Format: Auto ▾</span><span class="btn ghost" style="padding:6px 12px;font-size:13px">↻ Re-enhance</span></div>
+  </div>
+  <div class="doc">
+    <div class="title">Weekly 1:1 with manager</div>
+    <div class="row" style="margin-top:10px;gap:8px"><span class="pill ok"><span class="dot"></span>Transcribed on this Mac</span><span class="pill acc">Enhanced by MiniMax-M2</span><span class="pill">31 min</span></div>
+    <div class="legend"><span><i style="background:var(--ink)"></i>Your notes</span><span><i style="background:var(--ai)"></i>AI</span></div>
+    <div class="ed">
+      <p style="font-weight:600;margin-bottom:6px">Priorities this week</p>
+      <ul>
+        <li>ship PWA icon PR <span class="ai">, UI-8 is up and waiting on review; manager will look today</span></li>
+        <li class="ai">Defakto start moved up to Aug 31, block calendar for the laptop pickup</li>
+        <li>Block onboarding docs <span class="ai">, L5 expectations doc shared in the team channel, read before the 14th</span></li>
+      </ul>
+      <p style="font-weight:600;margin:16px 0 6px">Open questions</p>
+      <ul>
+        <li class="ai">Who owns the release cadence once two roles overlap? Manager to confirm by Friday.</li>
+        <li>ask about conference budget</li>
+      </ul>
+    </div>
+  </div>
+  <div class="ask"><span>Ask this meeting…</span><span class="kbd">⌘K</span></div>
+  <div class="tab">Transcript</div>
+</div></div></div><div class="shot"><h2>Settings<span>/settings/model</span></h2><div class="frame"><div class="set">
+  <aside class="side">
+    <div class="brand"><svg class="logo" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill="#5B4FC7"/><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="19" cy="19" r="1.7" fill="#E07A66"/></svg><b>yogurt</b></div>
+    <a class="lbl mute">← Library</a>
+    <nav class="nav" style="margin-top:10px;display:flex;flex-direction:column;gap:2px">
+      <a class="on">Model</a><a>Transcription</a><a>Audio</a><a>General</a>
+    </nav>
+    <div class="foot"><span class="pill ok" style="align-self:flex-start"><span class="dot"></span>Local-only · on</span></div>
+  </aside>
+  <main>
+    <section>
+      <h2>Model</h2><div class="sub">OpenAI-compatible providers. Keys stay in ~/.yogurt/keys.json, never in the database.</div>
+      <div class="card" style="padding:6px var(--card-pad)">
+        <div class="prow"><div><div style="font-weight:600">MiniMax <span class="pill acc" style="margin-left:8px">Active</span></div><div class="small mute">MiniMax-M2 · api.minimax.io · key stored</div></div><div class="row"><span class="btn ghost" style="padding:6px 12px;font-size:13px">Test</span><span class="btn ghost" style="padding:6px 12px;font-size:13px">Edit</span></div></div>
+        <div class="prow"><div><div style="font-weight:600">Ollama</div><div class="small mute">llama3.1:8b · localhost:11434 · no key needed</div></div><div class="row"><span class="btn ghost" style="padding:6px 12px;font-size:13px">Activate</span></div></div>
+        <div class="prow"><div><div style="font-weight:600">OpenRouter</div><div class="small mute">No key stored yet.</div></div><div class="row"><span class="btn ghost" style="padding:6px 12px;font-size:13px">Save key</span></div></div>
+      </div>
+      <div class="chips"><span class="pill">+ OpenAI</span><span class="pill">+ Google Gemini</span><span class="pill">+ Anthropic</span><span class="pill">+ Custom…</span></div>
+    </section>
+    <section>
+      <h2>Transcription</h2><div class="sub">Cloud Deepgram for speed, or fully-local whisper.cpp.</div>
+      <div class="two">
+        <div class="card"><div class="row between"><b>Local</b><span class="pill ok"><span class="dot"></span>In use</span></div><div class="small mute" style="margin:8px 0 12px">whisper.cpp on this Mac. Audio never leaves the machine.</div><div class="row" style="gap:6px"><span class="pill acc">medium.en · 1.5 GB</span><span class="pill">large-v3-turbo ↓</span></div></div>
+        <div class="card"><div class="row between"><b>Cloud</b><span class="pill">Deepgram</span></div><div class="small mute" style="margin:8px 0 12px">Faster first word. Only audio is sent, never notes.</div><div class="row" style="gap:8px"><span class="input" style="flex:1">Paste key…</span><span class="btn ghost" style="padding:6px 12px;font-size:13px">Use Cloud</span></div></div>
+      </div>
+    </section>
+  </main>
+</div></div></div>
+</body></html>

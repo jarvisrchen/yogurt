@@ -89,7 +89,7 @@ export function PermissionDenied() {
         </li>
       </ol>
 
-      <p className="text-[12px] font-mono text-mut mb-6">
+      <p className="text-[12px] text-mut mb-6">
         this is a macOS requirement
       </p>
 

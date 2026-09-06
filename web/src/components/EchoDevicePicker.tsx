@@ -40,11 +40,11 @@ export function EchoDevicePicker({ meetingId, recording }: EchoDevicePickerProps
   });
 
   if (devices.isLoading) {
-    return <span className="text-[12px] font-mono text-mut">Loading devices…</span>;
+    return <span className="text-[13px] text-mut">Loading devices…</span>;
   }
 
   if (devices.isError) {
-    return <span className="text-[12px] font-mono text-mut">Device list unavailable</span>;
+    return <span className="text-[13px] text-mut">Device list unavailable</span>;
   }
 
   const effectiveValue =
@@ -54,7 +54,7 @@ export function EchoDevicePicker({ meetingId, recording }: EchoDevicePickerProps
     <div className="flex items-center gap-1.5 w-full">
       <select
         aria-label="Echo to"
-        className="w-full text-[12px] font-mono rounded-md border border-line px-2 py-1"
+        className="w-full text-[13.5px] text-ink rounded-button border border-line bg-paper px-3 py-2"
         value={effectiveValue}
         disabled={setDevice.isPending}
         onChange={(e) => setDevice.mutate(e.target.value)}
@@ -63,12 +63,12 @@ export function EchoDevicePicker({ meetingId, recording }: EchoDevicePickerProps
         <DeviceOptions devices={devices.data} selected={effectiveValue} />
       </select>
       {setDevice.isPending && (
-        <span className="text-[12px] font-mono text-mut">
+        <span className="text-[13px] text-mut">
           {recording ? "Switching…" : "Saving…"}
         </span>
       )}
       {setDevice.isError && (
-        <span className="text-[12px] font-mono text-[var(--color-straw)]">
+        <span className="text-[13px] text-[var(--color-straw)]">
           {setDevice.error instanceof Error
             ? setDevice.error.message
             : recording

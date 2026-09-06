@@ -44,16 +44,16 @@ const BASE = [
 //   - text-straw on bg-strsoft is ~2.9:1 (fails WCAG AA). Strawberry
 //     soft pills use text-ink for body copy; text-straw is reserved for
 //     the border and the icon dot on those surfaces.
-//   - text-mut on bg-paper is ~4.0:1 (just under AA). Acceptable for
+//   - text-mut on bg-card is ~4.0:1 (just under AA). Acceptable for
 //     small *captions* (>=11px metadata) per PRD §16.6, but never for
 //     body copy. The neutral tone is a caption-only pill (keyboard
 //     hints, mono token labels) — keep text-mut here intentionally.
 //     See 01-UI-SPEC.md "Token usage rules".
 const TONE: Record<Tone, string> = {
-  neutral: "bg-paper text-mut border-line",
-  blue:    "bg-blsoft  text-blue   border-blue/20",
-  matcha:  "bg-mtsoft  text-matcha border-matcha/25",
-  straw:   "bg-strsoft text-ink    border-straw/40",
+  neutral: "bg-card text-mut border-line",
+  blue:    "bg-blsoft  text-blue border-transparent",
+  matcha:  "bg-mtsoft  text-matcha border-transparent",
+  straw:   "bg-strsoft text-ink border-transparent",
 };
 
 /**
@@ -102,7 +102,7 @@ export function RecordingBadge({ elapsed }: RecordingBadgeProps) {
       aria-label={`Recording, ${elapsed}`}
       className={[
         "inline-flex items-center gap-2 rounded-pill px-3 py-1.5",
-        "bg-card text-ink border border-straw",
+        "bg-strsoft text-ink border border-transparent",
         "text-[12px] leading-none",
       ].join(" ")}
     >

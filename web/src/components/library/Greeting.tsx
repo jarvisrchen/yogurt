@@ -2,8 +2,8 @@
  * Phase 7 (Plan 07-01) — Library hero greeting + meeting-count caption.
  *
  * PRD §5.9 + D-03:
- *   - "Good morning, you" in Hanken 700 at 34px
- *   - "N meeting{s} · all on this Mac" in JetBrains Mono at 13px
+ *   - "Good morning, you" via heading-greeting (34px)
+ *   - "N meeting{s} · all on this Mac" caption at 13px
  */
 
 import { useGreeting } from "../../hooks/useGreeting";
@@ -18,8 +18,8 @@ export function Greeting({ count }: Props) {
   const plural = count === 1 ? "meeting" : "meetings";
   return (
     <header className="mb-8">
-      <h1 className="font-bold tracking-tight text-[34px] leading-tight text-ink">{greeting}</h1>
-      <p className="mt-1 text-[13px] font-mono text-mut">
+      <h1 className="heading-greeting">{greeting}</h1>
+      <p className="mt-1 text-[13px] text-mut">
         {count} {plural} · all on this Mac
       </p>
     </header>

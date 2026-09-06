@@ -70,7 +70,7 @@ function MiniMarkdown({ content }: { content: string }) {
  * User bubbles: right-aligned, blueberry background (`--color-blue`),
  * white text. Assistant bubbles: left-aligned, cream `--color-card`
  * background with a `--color-line` border. The asymmetric rounded
- * corners (rounded-br-md / rounded-bl-md) point the speech bubble
+ * corners (rounded-br-chip / rounded-bl-chip) point the speech bubble
  * toward its speaker per PRD §16 chat motif.
  *
  * `isStreaming` only renders the blinking caret on the active assistant
@@ -92,8 +92,8 @@ export function ChatMessage({ message, isStreaming = false }: Props) {
       <div
         className={
           isUser
-            ? "max-w-[78%] px-3 py-2 rounded-2xl rounded-br-md bg-[var(--color-blue)] text-white text-[14px] leading-relaxed"
-            : "max-w-[78%] px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed"
+            ? "max-w-[78%] px-3 py-2 rounded-panel rounded-br-chip bg-[var(--color-blue)] text-white text-[14px] leading-relaxed"
+            : "max-w-[78%] px-3 py-2 rounded-panel rounded-bl-chip bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed"
         }
       >
         {isEmptyFinishedReply ? (

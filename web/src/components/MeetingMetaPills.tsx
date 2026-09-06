@@ -54,7 +54,7 @@ export function formatDuration(startedAt: number, endedAt: number): string | nul
 }
 
 const PILL =
-  "inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-mono leading-none";
+  "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none";
 
 /** Neutral metadata pill (date, time, duration). `tone="warn"` flags an
  *  exception such as "not enhanced" in strawberry. */
@@ -68,7 +68,7 @@ export function MetaPill({
   return (
     <span
       className={`${PILL} ${
-        tone === "warn" ? "bg-strsoft text-straw" : "border border-line bg-paper text-mut"
+        tone === "warn" ? "bg-strsoft text-ink" : "bg-card text-mut border border-line"
       }`}
     >
       {children}
@@ -84,18 +84,19 @@ export function MetaPill({
 export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined }) {
   const engine = parseSttEngine(sttEngine);
   if (!engine) return null;
-  // Option E: STT family is always matcha. Filled = on this Mac,
-  // outlined (#CBE0D2 border per the lavish mockup) = went to a provider.
-  const tone = engine.cloud
-    ? "border border-matcha/40 bg-transparent text-matcha"
-    : "bg-mtsoft text-matcha";
+  // Filled matcha = on this Mac, neutral card = went to a provider.
+  const tone = engine.cloud ? "bg-card text-mut border border-line" : "bg-mtsoft text-ink";
   return (
     <span
       className={`${PILL} ${tone}`}
       data-testid="engine-pill"
       title={engine.cloud ? "Transcribed by cloud STT" : "Transcribed on this Mac"}
     >
-      {engine.cloud ? <Cloud size={11} aria-hidden /> : <HardDrive size={11} aria-hidden />}
+      {engine.cloud ? (
+        <Cloud size={12} aria-hidden />
+      ) : (
+        <HardDrive size={12} aria-hidden className="text-matcha" />
+      )}
       {engine.text}
     </span>
   );
@@ -119,16 +120,17 @@ export function LlmPill({
 }) {
   const model = llmModel?.trim();
   if (!model) return null;
-  // Option E: LLM family is always blueberry. Outlined (#C5BEEF border per
-  // the lavish mockup) reads as "AI touched this" without competing with
-  // the brand-blue button chrome.
+  // Filled blueberry once enhanced ("AI touched this"); outlined while
+  // still pending, mirroring the STT pill's local/cloud filled-vs-outlined
+  // convention for "what already happened" vs. "what's about to run".
+  const tone = pending ? "border border-blue/40 text-blue bg-transparent" : "bg-blsoft text-ink";
   return (
     <span
-      className={`${PILL} border border-blue/40 bg-transparent text-blue`}
+      className={`${PILL} ${tone}`}
       data-testid="llm-pill"
       title={pending ? `Will enhance with ${model}` : `Enhanced by ${model}`}
     >
-      <Sparkles size={11} aria-hidden />
+      <Sparkles size={12} aria-hidden className={pending ? undefined : "text-blue"} />
       {model}
     </span>
   );

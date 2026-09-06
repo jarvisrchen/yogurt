@@ -21,7 +21,7 @@ export function BrowserChrome({ url, children, className = "" }: BrowserChromePr
     <div
       className={[
         "overflow-hidden rounded-card border border-line bg-card",
-        "shadow-[0_26px_60px_-28px_rgba(40,30,15,0.4)]",
+        "shadow-window",
         className,
       ]
         .join(" ")
@@ -64,7 +64,7 @@ export function BrowserChrome({ url, children, className = "" }: BrowserChromePr
             className={[
               "inline-block rounded-pill px-3 py-1",
               "bg-card border border-line",
-              "font-mono text-[11px] text-mut",
+              "text-[11px] text-mut",
             ].join(" ")}
           >
             {url}

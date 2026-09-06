@@ -95,9 +95,9 @@ export function SidebarLabelRow({ label }: Props) {
           }`
         }
       >
-        <span className="w-2 h-2 rounded-pill shrink-0" style={{ background: tone.fg }} aria-hidden />
+        <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: tone.fg }} aria-hidden />
         <span className="flex-1 truncate">{label.name}</span>
-        <span className="font-mono text-[11px] text-mut">{label.meeting_count}</span>
+        <span className="text-[11px] text-mut">{label.meeting_count}</span>
         <button
           type="button"
           aria-label={`${label.name} label options`}
@@ -138,7 +138,7 @@ export function SidebarLabelRow({ label }: Props) {
                   type="button"
                   aria-label={`Set color ${c}`}
                   onClick={() => update.mutate({ id: label.id, color: c })}
-                  className={`w-4 h-4 rounded-pill ${
+                  className={`w-4 h-4 rounded-[5px] ${
                     label.color === c ? "ring-2 ring-offset-1 ring-blue" : ""
                   }`}
                   style={{ background: swatch.fg }}
@@ -172,7 +172,7 @@ export function SidebarLabelRow({ label }: Props) {
                   Cancel
                 </button>
               </div>
-              <p className="text-[11px] font-mono text-mut">
+              <p className="text-[11px] text-mut">
                 Removes the label from {label.meeting_count} meeting
                 {label.meeting_count === 1 ? "" : "s"}
               </p>

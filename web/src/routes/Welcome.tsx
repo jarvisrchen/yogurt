@@ -4,7 +4,7 @@
  * Two-column layout, paper-left / white-right:
  *
  *   ┌──────────────────────────────────┬────────────────────────────────────┐
- *   │  yogurt logo + bold wordmark    │  ONE-TIME SETUP (11px mono caps)   │
+ *   │  yogurt logo + bold wordmark    │  ONE-TIME SETUP (11px caps)         │
  *   │                                   │                                    │
  *   │  "Welcome to yogurt." (52px)     │  [Step 1: Screen Recording]        │
  *   │  Two streams, one set of notes…  │  [Step 2: Microphone]              │
@@ -66,6 +66,7 @@ import {
 } from "../lib/api/settings";
 import { useMicrophoneStatus } from "../hooks/useMicrophoneStatus";
 import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
+import { LABEL } from "../components/settings/labelClass";
 
 const PROVIDER_CHIPS = [
   { id: "lm studio", label: "LM Studio" },
@@ -98,7 +99,7 @@ function ErrorNote({
         <summary className="cursor-pointer text-[11px] text-mut">
           Details
         </summary>
-        <code className="block mt-1 text-[11px] font-mono text-mut break-all">
+        <code className="block mt-1 text-[11px] text-mut break-all">
           {raw}
         </code>
       </details>
@@ -196,7 +197,7 @@ export function Welcome() {
       <section className="bg-paper px-16 py-16 flex flex-col justify-center">
         <div className="flex items-center gap-3 mb-12">
           <Logo size={36} />
-          <span className="font-bold tracking-tight text-[22px] text-ink leading-none">
+          <span className="heading-section">
             yogurt
           </span>
         </div>
@@ -216,7 +217,7 @@ export function Welcome() {
 
       {/* ─── Right: ONE-TIME SETUP card stack + primary CTA ─────────── */}
       <section className="bg-card px-12 py-16 flex flex-col">
-        <p className="text-[11px] font-mono uppercase tracking-wider text-mut mb-4">
+        <p className={`${LABEL} mb-4`}>
           ONE-TIME SETUP
         </p>
 
@@ -306,8 +307,8 @@ export function Welcome() {
                     key={c.id}
                     className={
                       isActive
-                        ? "px-2.5 py-1 rounded-pill text-[12px] font-mono bg-blsoft text-blue border border-blue"
-                        : "px-2.5 py-1 rounded-pill text-[12px] font-mono border border-dashed border-line text-mut"
+                        ? "px-2.5 py-1 rounded-pill text-[12px] font-medium bg-blsoft text-blue border border-blue"
+                        : "px-2.5 py-1 rounded-pill text-[12px] font-medium border border-dashed border-line text-mut"
                     }
                   >
                     {c.label}
@@ -359,7 +360,7 @@ export function Welcome() {
           friendly="Couldn't save that. Your permissions and provider are still set, so try again."
         />
 
-        <p className="mt-4 text-[12px] font-mono text-mut text-center">
+        <p className="mt-4 text-[13px] text-mut text-center">
           Restart once after granting. That one is a macOS quirk.
         </p>
       </section>

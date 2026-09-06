@@ -11,7 +11,7 @@ export function RefreshDevicesButton({ className = "" }: { className?: string })
       type="button"
       aria-label="Refresh device list"
       title="Refresh device list"
-      className={`text-mut hover:text-ink p-0.5 rounded-md ${className}`}
+      className={`text-mut hover:text-ink p-0.5 rounded-chip ${className}`}
       onClick={() => {
         void qc.invalidateQueries({ queryKey: ["audio-devices"] });
         void qc.invalidateQueries({ queryKey: ["audio-output-devices"] });

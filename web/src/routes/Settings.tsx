@@ -120,7 +120,7 @@ export function Settings() {
                 <h2 className="heading-section">
                   Model
                 </h2>
-                <code className="text-[11px] font-mono text-grey">
+                <code className="text-[11px] text-grey">
                   OpenAI-compatible
                 </code>
               </div>
@@ -140,8 +140,8 @@ export function Settings() {
                 defaultCliModel={findPreset(active)?.default_cli_model ?? ""}
               />
             ) : data.providers.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-line bg-card/50 p-6 space-y-1">
-                <p className="font-bold tracking-tight text-[15px] text-ink">
+              <div className="rounded-card border border-dashed border-line bg-card/50 p-6 space-y-1">
+                <p className="heading-sm">
                   No providers configured yet
                 </p>
                 <p className="text-[13px] text-mut">
@@ -156,7 +156,7 @@ export function Settings() {
             )}
 
             {inactive.length > 0 && (
-              <div data-testid="inactive-providers">
+              <div data-testid="inactive-providers" className="space-y-3">
                 {inactive.map((p) => (
                   <ProviderRow
                     key={p.id}
@@ -172,9 +172,9 @@ export function Settings() {
               </div>
             )}
 
-            <div className="pt-4 border-t border-dashed border-line space-y-3">
-              <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey mb-2">
-                Clone a preset →
+            <div className="pt-4 border-t border-line space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-mut mb-2">
+                Clone a preset
               </div>
               <div className="flex flex-wrap gap-2 items-center">
                 {data.presets.map((p) => (
@@ -188,7 +188,7 @@ export function Settings() {
                   <button
                     type="button"
                     onClick={() => setAddingProvider(true)}
-                    className="text-[12.5px] font-semibold text-[var(--color-blue)] hover:underline"
+                    className="inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none border bg-card text-blue border-blue/30 hover:border-blue disabled:opacity-50"
                   >
                     + Add
                   </button>

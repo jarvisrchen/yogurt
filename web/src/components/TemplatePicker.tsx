@@ -31,7 +31,7 @@ export function TemplatePicker({ value, onChange, disabled }: TemplatePickerProp
       disabled={disabled}
       title={current?.when ?? "Let the model pick the format that fits the meeting"}
       onChange={(e) => onChange(e.target.value)}
-      className="h-[34px] rounded-[9px] border border-line bg-paper px-2.5 text-[13px] font-semibold text-ink shadow-[0_1px_2px_rgba(40,30,15,0.06)] transition-colors hover:border-mut focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue disabled:cursor-wait disabled:opacity-70"
+      className="h-[34px] rounded-button border border-line bg-paper px-2.5 text-[13px] font-semibold text-ink shadow-card transition-colors hover:border-mut focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue disabled:cursor-wait disabled:opacity-70"
     >
       <option value={AUTO_TEMPLATE}>Auto</option>
       {list.map((t) => (

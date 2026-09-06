@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { settingsApi, type TestConnectionResult } from "../../lib/api/settings";
+import { Button } from "../Button";
 
 /**
  * "Test" button + its verdict line for one provider's key.
@@ -33,6 +34,11 @@ export function TestKeyButton({
    *  to reveal the MODEL picker once a test actually proves the CLI
    *  connects, instead of showing it unconditionally. */
   onResult,
+  /** `false` when this button sits next to the API key input, so it keeps
+   *  `Button`'s default sizing and lines up with `Save key`. Every other
+   *  placement (a standalone row, or paired with `Replace key`/`Add key`)
+   *  uses the smaller inline-row sizing. */
+  compact = true,
 }: {
   providerId?: string;
   providerName: string;
@@ -41,6 +47,7 @@ export function TestKeyButton({
   alwaysTestable?: boolean;
   testFn?: (key?: string) => Promise<TestConnectionResult>;
   onResult?: (result: TestConnectionResult) => void;
+  compact?: boolean;
 }) {
   const test = useMutation({
     mutationFn: (key: string) => testFn(key || undefined),
@@ -55,23 +62,21 @@ export function TestKeyButton({
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="secondary"
         disabled={!canTest}
         aria-label={`Test connection for ${providerName}`}
-        className="text-sm font-semibold text-mut border border-line rounded-md px-3 py-1.5 hover:text-ink hover:border-grey disabled:opacity-40 shrink-0"
+        className={`shrink-0 ${compact ? "px-3 py-1.5 text-[13px]" : ""}`}
         onClick={() => test.mutate(draft)}
       >
         {test.isPending ? "Testing…" : "Test"}
-      </button>
+      </Button>
 
       {fresh && test.data && (
         <p
           role="status"
           className={`basis-full text-[12.5px] ${
-            test.data.ok
-              ? "text-[var(--color-matcha)]"
-              : "text-[var(--color-straw)]"
+            test.data.ok ? "text-matcha" : "text-straw"
           }`}
         >
           {test.data.ok
@@ -80,10 +85,7 @@ export function TestKeyButton({
         </p>
       )}
       {fresh && test.isError && (
-        <p
-          role="status"
-          className="basis-full text-[12.5px] text-[var(--color-straw)]"
-        >
+        <p role="status" className="basis-full text-[12.5px] text-straw">
           ✗ Could not reach the yogurt server to run the test.
         </p>
       )}

@@ -5,6 +5,10 @@ import { settingsApi } from "../../lib/api/settings";
 import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelSelect } from "./ModelSelect";
 import { TestKeyButton } from "./TestKeyButton";
+import { Button } from "../Button";
+import { LABEL } from "./labelClass";
+
+const VALUE = "text-[13.5px] text-ink";
 
 /**
  * Inactive provider card — mirrors `ProviderCard`'s structure so every
@@ -12,7 +16,7 @@ import { TestKeyButton } from "./TestKeyButton";
  * ACTIVE badge, soft shadow, and Edit toggle are reserved for the active
  * card (UI-SPEC §Visuals + §Accent reservations #1) — the inactive card
  * uses a regular `--color-line` border, no shadow, and exposes
- * `Set active` as the primary footer action instead of Edit.
+ * `Set active` beside the key/test row instead of Edit.
  *
  * BASE URL stays read-only here — it's a structural field the user almost
  * never wants to change after the provider exists. MODEL is editable via
@@ -122,28 +126,28 @@ export function ProviderRow({
 
   return (
     <article
-      className="rounded-xl border border-line bg-card p-5 space-y-4"
+      className="rounded-card border border-line bg-card p-5 space-y-4"
       data-testid="inactive-provider-card"
     >
       <header className="flex items-center justify-between">
         <h3 className="heading-card">
           {provider.name}
         </h3>
-        <button
-          type="button"
-          className="text-[12.5px] font-semibold text-mut hover:text-[var(--color-straw)] disabled:opacity-50"
+        <Button
+          variant="ghost"
+          className="px-3 py-1.5 text-[13px] hover:text-straw"
           onClick={() => remove.mutate()}
           disabled={remove.isPending}
           aria-label={`Remove provider ${provider.name}`}
         >
           Remove
-        </button>
+        </Button>
       </header>
 
       {isCli ? (
         <div className="space-y-3">
-          <div className="rounded-lg bg-[var(--color-paper)] px-3 py-2 text-[12.5px] text-mut">
-            Runs <code className="font-mono text-ink">{provider.model}</code>{" "}
+          <div className="rounded-button bg-paper px-3 py-2 text-[12.5px] text-mut">
+            Runs <span className={VALUE}>{provider.model}</span>{" "}
             locally via your existing CLI login. No API key or base URL to
             configure.
           </div>
@@ -161,13 +165,13 @@ export function ProviderRow({
                 placeholder="CLI default"
               />
               {updateCliModel.isError && (
-                <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                <p role="status" className="text-[12.5px] text-straw">
                   ✗ Could not save model: {String(updateCliModel.error)}
                 </p>
               )}
             </Field>
           ) : (
-            <p className="text-[11px] text-mut">
+            <p className="text-[12.5px] text-mut">
               Click Test below to confirm the CLI connects - the model
               picker appears once it does.
             </p>
@@ -177,9 +181,9 @@ export function ProviderRow({
         <>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
             <Field label="BASE URL">
-              <code className="font-mono text-[12.5px] text-ink break-all">
+              <span className={`${VALUE} break-all`}>
                 {provider.base_url}
-              </code>
+              </span>
             </Field>
             <Field label="MODEL">
               <ModelSelect
@@ -194,7 +198,7 @@ export function ProviderRow({
                 apiKeyDraft={apiKeyDraft}
               />
               {updateModel.isError && (
-                <p role="status" className="text-[11px] text-[var(--color-straw)]">
+                <p role="status" className="text-[12.5px] text-straw">
                   ✗ Could not save model: {String(updateModel.error)}
                 </p>
               )}
@@ -205,7 +209,7 @@ export function ProviderRow({
               href={docsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[11px] text-[var(--color-blue)] hover:underline inline-block"
+              className="text-[12.5px] font-medium text-blue hover:underline inline-block"
             >
               See all {presetName ?? provider.name} models →
             </a>
@@ -213,95 +217,95 @@ export function ProviderRow({
         </>
       )}
 
-      <div className="border-t border-line pt-3 space-y-2">
-        {isCli ? (
-          // No key concept at all - `Test` just confirms the CLI resolves
-          // and answers.
-          <div className="flex flex-wrap items-center gap-3">
-            <TestKeyButton
-              providerId={provider.id}
-              providerName={provider.name}
-              alwaysTestable
-              onResult={(result) => {
-                if (!result.ok) return;
-                setCliTestedOk(true);
-                if (!provider.cli_model && defaultCliModel) {
-                  updateCliModel.mutate(defaultCliModel);
-                }
-              }}
-            />
-          </div>
-        ) : (
-          <>
-            <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-              API KEY · stored locally
+      {/* `items-start`: the left column can grow taller than `Set active`
+          once a Test verdict wraps onto its own line - the button must
+          stay pinned at the top of the row, never pushed down by it. */}
+      <div className="border-t border-line pt-4 mt-4 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
+          {isCli ? (
+            // No key concept at all - `Test` just confirms the CLI resolves
+            // and answers.
+            <div className="flex flex-wrap items-center gap-3">
+              <TestKeyButton
+                providerId={provider.id}
+                providerName={provider.name}
+                alwaysTestable
+                onResult={(result) => {
+                  if (!result.ok) return;
+                  setCliTestedOk(true);
+                  if (!provider.cli_model && defaultCliModel) {
+                    updateCliModel.mutate(defaultCliModel);
+                  }
+                }}
+              />
             </div>
-            {provider.api_key_masked ? (
-              <div className="flex items-center gap-2 text-[12.5px] font-mono">
-                <span className="text-ink">{provider.api_key_masked}</span>
-                <span className="text-[var(--color-matcha)] font-semibold">
-                  ✓ stored
-                </span>
-              </div>
-            ) : (
-              <div className="text-sm text-mut">No key stored yet.</div>
-            )}
-            {keying ? (
-              <div className="pt-1 space-y-2">
-                <ApiKeyInput
-                  providerId={provider.id}
-                  providerName={provider.name}
-                  hasStoredKey={!!provider.api_key_masked}
-                  autoFocus
-                  onSaved={() => {
-                    setKeying(false);
-                    onKeyClosed?.();
-                  }}
-                  onDraftChange={setApiKeyDraft}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setKeying(false);
-                    setApiKeyDraft("");
-                    onKeyClosed?.();
-                  }}
-                  className="text-[12.5px] font-semibold text-mut hover:text-ink"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              // Collapsed: `Test` stays reachable so a provider that is fully
-              // set up can be probed without pretending to replace its key.
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setKeying(true)}
-                  className="text-[12.5px] font-semibold text-mut hover:text-ink"
-                >
-                  {provider.api_key_masked ? "Replace key" : "Add key"}
-                </button>
-                <TestKeyButton
-                  providerId={provider.id}
-                  providerName={provider.name}
-                  hasStoredKey={!!provider.api_key_masked}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          className="text-sm font-semibold bg-[var(--color-blue)] text-white px-3 py-1.5 rounded-md disabled:opacity-50"
+          ) : (
+            <>
+              <div className={LABEL}>API KEY · stored locally</div>
+              {provider.api_key_masked ? (
+                <div className="flex items-center gap-2">
+                  <span className={VALUE}>{provider.api_key_masked}</span>
+                  <span className="text-matcha text-[12.5px] font-medium">
+                    ✓ stored
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[12.5px] text-mut">No key stored yet.</div>
+              )}
+              {keying ? (
+                <div className="space-y-2">
+                  <ApiKeyInput
+                    providerId={provider.id}
+                    providerName={provider.name}
+                    hasStoredKey={!!provider.api_key_masked}
+                    autoFocus
+                    onSaved={() => {
+                      setKeying(false);
+                      onKeyClosed?.();
+                    }}
+                    onDraftChange={setApiKeyDraft}
+                  />
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-[13px]"
+                    onClick={() => {
+                      setKeying(false);
+                      setApiKeyDraft("");
+                      onKeyClosed?.();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                // Collapsed: `Test` stays reachable so a provider that is fully
+                // set up can be probed without pretending to replace its key.
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-[13px]"
+                    onClick={() => setKeying(true)}
+                  >
+                    {provider.api_key_masked ? "Replace key" : "Add key"}
+                  </Button>
+                  <TestKeyButton
+                    providerId={provider.id}
+                    providerName={provider.name}
+                    hasStoredKey={!!provider.api_key_masked}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <Button
+          variant="primary"
+          className="shrink-0"
           onClick={() => activate.mutate()}
           disabled={activate.isPending}
         >
           {activate.isPending ? "Activating…" : "Set active"}
-        </button>
+        </Button>
       </div>
     </article>
   );
@@ -316,9 +320,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1 min-w-0">
-      <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-grey">
-        {label}
-      </div>
+      <div className={LABEL}>{label}</div>
       <div>{children}</div>
     </div>
   );

@@ -17,7 +17,7 @@ export function ModelDownloadStub() {
         <span className="sr-only">Download</span>
       </div>
 
-      <h2 className="font-bold tracking-tight text-[26px] text-ink mb-2">
+      <h2 className="heading-title mb-2">
         Fetching the local model
       </h2>
 
@@ -34,7 +34,7 @@ export function ModelDownloadStub() {
         />
       </div>
 
-      <p className="text-[11px] font-mono text-mut">
+      <p className="text-[11px] text-mut">
         ~150 MB · stays on this Mac
       </p>
     </div>
