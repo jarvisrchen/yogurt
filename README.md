@@ -1,6 +1,8 @@
 # yogurt
 
-<!-- TODO: hero screenshot -->
+<p align="center">
+  <img src="docs/screenshots/notes.png" alt="A finished meeting in yogurt: augmented notes on the left, each AI-added line linking back to its moment in the transcript on the right" width="900">
+</p>
 
 > Local-first, open-source meeting copilot for macOS. Granola's UX, your machine.
 
@@ -17,6 +19,23 @@ Ollama, whatever you already pay for).
 **Status:** 1.0, stable.
 Released as a Homebrew tap and as GitHub Releases tarballs; see [docs/RELEASE-LOG.md](docs/RELEASE-LOG.md) for the release log.
 Building from source still works and is documented below.
+
+## What it looks like
+
+The Library groups every meeting by day, with search over notes and transcripts, stars, and labels in the sidebar.
+
+<p align="center">
+  <img src="docs/screenshots/library.png" alt="The yogurt Library: meetings grouped by day, each card showing its transcription engine and LLM" width="900">
+</p>
+
+During a meeting you type sparse bullets on the left while the transcript streams in on the right, with mic mute and device switching one keystroke away.
+
+<p align="center">
+  <img src="docs/screenshots/live.png" alt="A live meeting in yogurt: notes editor with the live transcript dock open, mic and echo controls above" width="900">
+</p>
+
+After the meeting (top of this page), your bullets stay as you wrote them.
+The grey lines are what the LLM fused in from the transcript, each with a timestamp link that jumps to the moment it came from.
 
 ## Install
 

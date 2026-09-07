@@ -1079,3 +1079,8 @@ New closed items go at the bottom.
 
   Landed 2026-09-06. Adds audio_echo_feature (default off) gating the meeting-page echo column, the Settings echo controls, and echo auto-start at recording start.
   </details>
+
+- [x] **DX-13** Add app screenshots to the README
+  Two shots (library, post-meeting notes with the transcript dock) under `docs/screenshots/`, replacing the hero-screenshot TODO.
+
+  Added docs/screenshots/{library,notes}.png (1440x900 @2x, seeded fixture meetings via POST /api/meetings) and a "What it looks like" README section; the hero TODO is replaced by the notes shot.
