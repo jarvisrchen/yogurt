@@ -28,7 +28,13 @@ The Library groups every meeting by day, with search over notes and transcripts,
   <img src="docs/screenshots/library.png" alt="The yogurt Library: meetings grouped by day, each card showing its transcription engine and LLM" width="900">
 </p>
 
-After a meeting (top of this page), your sparse bullets stay as you wrote them.
+During a meeting you type sparse bullets on the left while the transcript streams in on the right, with mic mute and device switching one keystroke away.
+
+<p align="center">
+  <img src="docs/screenshots/live.png" alt="A live meeting in yogurt: notes editor with the live transcript dock open, mic and echo controls above" width="900">
+</p>
+
+After the meeting (top of this page), your bullets stay as you wrote them.
 The grey lines are what the LLM fused in from the transcript, each with a timestamp link that jumps to the moment it came from.
 
 ## Install
