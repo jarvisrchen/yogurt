@@ -120,6 +120,3 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## Developer experience
 
-- [ ] **DX-13** Add app screenshots to the README
-  Two shots (library, post-meeting notes with the transcript dock) under `docs/screenshots/`, replacing the hero-screenshot TODO.
-
