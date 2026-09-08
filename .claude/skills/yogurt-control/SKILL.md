@@ -1,6 +1,6 @@
 ---
 name: yogurt-control
-description: Read or control a meeting in a running yogurt instance. Use when handed a yogurt meeting URL (http://localhost:7878/meeting/<id>/post) or asked "what was discussed in this meeting", "summarize this yogurt meeting", "what did they say about X" - and for "start a meeting in yogurt", "start recording", "end/stop the meeting", "is yogurt recording".
+description: Read or control a meeting in a running yogurt instance. Use when handed a yogurt meeting URL (http://localhost:7878/meeting/<id>/post) or asked "what was discussed in this meeting", "summarize this yogurt meeting", "what did they say about X" - or a vague reference like "my last meeting with Steven", "my 1:1 with Steven" - and for "start a meeting in yogurt", "start recording", "end/stop the meeting", "is yogurt recording".
 ---
 
 # Read and control yogurt
@@ -26,6 +26,13 @@ Needs yogurt 0.8.0 or newer: check with `yogurt --version`, and run `brew upgrad
 
 [docs/FEATURES.md](../../../docs/FEATURES.md) maps every feature to its UI path, API route, and `ctl` command.
 Reads fall back to the local database (`source: db`) when no server answers, so they still work with yogurt not running.
+
+## Finding a meeting without a URL
+
+`yogurt ctl meeting search <word> --json` is full-text over title, notes, and transcript, newest first among equal matches.
+Search one word (a person's name, a topic), not a phrase - "Steven" matches, "1:1 with Steven" only matches that exact string, and "Steve" does not match "Steven".
+Narrow by date client-side on `started_at`, then read it with `ctl meeting summary <id>`.
+`ctl meeting show last` is the most recent meeting; `ctl meeting list --json` is everything, newest first.
 
 Three rules:
 
