@@ -1084,3 +1084,8 @@ New closed items go at the bottom.
   Two shots (library, post-meeting notes with the transcript dock) under `docs/screenshots/`, replacing the hero-screenshot TODO.
 
   Added docs/screenshots/{library,notes}.png (1440x900 @2x, seeded fixture meetings via POST /api/meetings) and a "What it looks like" README section; the hero TODO is replaced by the notes shot.
+
+- [x] **DX-14** Teach the yogurt-control skill to find a meeting without a URL
+  `ctl meeting search` exists but the skill never mentions it, so an agent asked about "my last meeting with Steven" has no route from a name to an id.
+
+  Added a "Finding a meeting without a URL" section to the yogurt-control skill: `ctl meeting search <word> --json` (one word, prefix FTS over title/notes/transcript), date-narrow on `started_at`, then `ctl meeting summary <id>`; `show last` and `list --json` for the recency cases. Trigger line now includes vague references like "my 1:1 with Steven".
