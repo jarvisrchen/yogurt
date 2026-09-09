@@ -64,8 +64,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
-- [ ] **MTG-15** Add a button to copy the meeting URL, in both the live meeting view and the post-meeting view
-
 - [ ] **MTG-16** Send an app-level popup when a meeting is detected, similar to Granola, to force user attention (focus the app window and/or a system notification prompting to start the meeting)
   <details>
   <summary>Details</summary>

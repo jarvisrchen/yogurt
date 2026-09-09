@@ -1089,3 +1089,7 @@ New closed items go at the bottom.
   `ctl meeting search` exists but the skill never mentions it, so an agent asked about "my last meeting with Steven" has no route from a name to an id.
 
   Added a "Finding a meeting without a URL" section to the yogurt-control skill: `ctl meeting search <word> --json` (one word, prefix FTS over title/notes/transcript), date-narrow on `started_at`, then `ctl meeting summary <id>`; `show last` and `list --json` for the recency cases. Trigger line now includes vague references like "my 1:1 with Steven".
+
+- [x] **MTG-15** Add a button to copy the meeting URL, in both the live meeting view and the post-meeting view
+
+  Landed 2026-09-09. Added `CopyUrlButton` (icon button, checkmark confirmation) to both the live meeting view and the post-meeting view headers; copies `window.location.href` via `navigator.clipboard.writeText`. Auto-revert runs in a `useEffect` so the timer is cleared on unmount, matching `DeleteMeetingConfirm`'s pattern.
