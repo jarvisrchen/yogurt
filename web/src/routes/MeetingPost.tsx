@@ -55,6 +55,7 @@ import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
+import { CopyUrlButton } from "../components/CopyUrlButton";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { useQueryClient } from "@tanstack/react-query";
@@ -646,6 +647,7 @@ export function MeetingPost() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+        {meetingId && <CopyUrlButton />}
         {token && (
           <TemplatePicker
             value={template}
