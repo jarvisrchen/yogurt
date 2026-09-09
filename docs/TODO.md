@@ -45,6 +45,14 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
+- [ ] **UI-15** Suggest starter questions in the chat window's empty state
+  <details>
+  <summary>Details</summary>
+
+  `ChatWindow.tsx`'s empty state (`web/src/components/ChatWindow.tsx`) just shows static copy ("Ask anything about what's been said so far.") with no way to act on it.
+  Add a row of suggested-question chips there, e.g. "Catch me up" and "What did I miss", that populate the input (or send directly) so a user opening the panel mid-meeting doesn't have to think of a prompt from a blank state.
+  </details>
+
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
