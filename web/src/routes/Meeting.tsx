@@ -8,6 +8,7 @@ import { MicMuteToggle } from "../components/MicMuteToggle";
 import { EchoDevicePicker } from "../components/EchoDevicePicker";
 import { EchoTestButton } from "../components/EchoTestButton";
 import { buttonClassName } from "../components/Button";
+import { CopyUrlButton } from "../components/CopyUrlButton";
 import { RefreshDevicesButton } from "../components/RefreshDevicesButton";
 import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
@@ -505,6 +506,9 @@ export function Meeting() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {/* MTG-15 — copies this page's URL so the meeting can be
+                  shared or reopened later. */}
+              {meetingId && <CopyUrlButton />}
               {meetingId && !recording && (
                 <button
                   type="button"

@@ -55,6 +55,7 @@ import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
+import { CopyUrlButton } from "../components/CopyUrlButton";
 import { ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { useQueryClient } from "@tanstack/react-query";
@@ -668,6 +669,9 @@ export function MeetingPost() {
             onError={handleError}
           />
         )}
+        {/* MTG-15 — copies this page's URL so the meeting can be shared
+          or reopened later. */}
+        {meetingId && <CopyUrlButton />}
         {/* Delete lives here too, not just on the Library card — you decide
           a meeting was useless while reading it, not while scanning the
           list. Same confirm + .md checkbox; on success we bounce to the
