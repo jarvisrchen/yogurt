@@ -239,6 +239,46 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
     })
 }
 
+/// Why [`detect_meeting`] could not answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wedged {
+    /// The window-server query did not complete within the timeout.
+    TimedOut,
+    /// A previous query is still hanging; nothing new was started.
+    Busy,
+}
+
+static QUERY_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// [`detect_meeting`] with a deadline. `SCShareableContent::get()` waits on
+/// a completion the window server occasionally never sends (seen during a
+/// live Google Meet call on macOS 26), and an unbounded wait there takes
+/// the whole watcher with it. The hung thread is left to finish on its
+/// own; while it hangs, further calls return [`Wedged::Busy`] instead of
+/// piling up more threads.
+pub fn detect_meeting_bounded(
+    timeout: std::time::Duration,
+) -> Result<Option<DetectedMeeting>, Wedged> {
+    bounded(detect_meeting, timeout)
+}
+
+fn bounded<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+    timeout: std::time::Duration,
+) -> Result<T, Wedged> {
+    use std::sync::atomic::Ordering;
+    if QUERY_IN_FLIGHT.swap(true, Ordering::AcqRel) {
+        return Err(Wedged::Busy);
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let v = f();
+        QUERY_IN_FLIGHT.store(false, Ordering::Release);
+        let _ = tx.send(v);
+    });
+    rx.recv_timeout(timeout).map_err(|_| Wedged::TimedOut)
+}
+
 /// Non-macOS stub — window enumeration is `ScreenCaptureKit`-only.
 #[cfg(not(target_os = "macos"))]
 pub fn detect_meeting() -> Option<DetectedMeeting> {
@@ -300,7 +340,7 @@ pub fn scan_windows() -> Vec<WindowVerdict> {
 
 #[cfg(test)]
 mod tests {
-    use super::match_window;
+    use super::{bounded, match_window, Wedged};
 
     /// Bundle id of Google Meet installed as a Chrome app, as captured
     /// from a live call. The hash is Chrome's, derived from the app, so
@@ -385,6 +425,28 @@ mod tests {
             "how-to-cook",
         ] {
             assert_eq!(match_window("com.google.Chrome", title), None, "{title}");
+        }
+    }
+
+    #[test]
+    fn a_hung_query_times_out_and_blocks_new_ones_until_it_returns() {
+        use std::time::Duration;
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let hung = bounded(move || release_rx.recv().ok(), Duration::from_millis(20));
+        assert_eq!(hung, Err(Wedged::TimedOut));
+        assert_eq!(bounded(|| 1, Duration::from_secs(1)), Err(Wedged::Busy));
+
+        release_tx.send(()).unwrap();
+        // The hung thread clears the flag as it exits; give it a moment.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            match bounded(|| 1, Duration::from_secs(1)) {
+                Ok(1) => break,
+                Err(Wedged::Busy) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                other => panic!("unexpected: {other:?}"),
+            }
         }
     }
 }

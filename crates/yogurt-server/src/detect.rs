@@ -47,6 +47,10 @@ pub const POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// off-screen during a screen-share handoff.
 pub const MISSING_TICKS_BEFORE_STOP: u8 = 3;
 
+/// Longest a single window-server query may take before the tick is
+/// skipped. Normal answers arrive in single-digit milliseconds.
+pub const QUERY_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// The settings key the watcher reads each tick, so toggling the setting
 /// takes effect without a restart.
 pub const SETTING_KEY: &str = "general.meeting_detection";
@@ -218,10 +222,24 @@ pub async fn tick(state: &AppState) {
         return;
     }
 
-    // `detect_meeting` is a blocking window-server call.
-    let found = tokio::task::spawn_blocking(yogurt_audio::detect::detect_meeting)
-        .await
-        .unwrap_or_default();
+    // Bounded: a wedged window-server query skips this tick instead of
+    // freezing the watcher for good. Nothing advances on a blind poll,
+    // so a wedge can neither prompt nor auto-stop.
+    let found = match tokio::task::spawn_blocking(|| {
+        yogurt_audio::detect::detect_meeting_bounded(QUERY_TIMEOUT)
+    })
+    .await
+    {
+        Ok(Ok(found)) => found,
+        Ok(Err(why)) => {
+            tracing::warn!(?why, "meeting detection skipped: window query wedged");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "meeting detection poll panicked");
+            return;
+        }
+    };
     tracing::debug!(found = ?found.as_ref().map(|m| (&m.app, m.window_id)), "detection poll");
     let active = state.meetings.active_recording().await;
 
