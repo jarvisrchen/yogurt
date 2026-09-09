@@ -654,6 +654,9 @@ export function MeetingPost() {
             disabled={bannerVisible}
           />
         )}
+        {/* MTG-15 — copies this page's URL so the meeting can be shared
+          or reopened later. */}
+        {meetingId && <CopyUrlButton />}
         {token && (
           <ReEnhanceButton
             meetingId={meetingId}
@@ -669,9 +672,6 @@ export function MeetingPost() {
             onError={handleError}
           />
         )}
-        {/* MTG-15 — copies this page's URL so the meeting can be shared
-          or reopened later. */}
-        {meetingId && <CopyUrlButton />}
         {/* Delete lives here too, not just on the Library card — you decide
           a meeting was useless while reading it, not while scanning the
           list. Same confirm + .md checkbox; on success we bounce to the
