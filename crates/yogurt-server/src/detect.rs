@@ -52,7 +52,7 @@ pub const MISSING_TICKS_BEFORE_STOP: u8 = 3;
 pub const SETTING_KEY: &str = "general.meeting_detection";
 
 /// MTG-16: the settings key gating whether a newly detected window also
-/// raises the app window (`tick`'s `open::that` call).
+/// raises the installed yogurt app (`tick`'s `open -a yogurt`).
 pub const FOCUS_SETTING_KEY: &str = "general.meeting_detection_focus";
 
 /// Result of one [`DetectState::advance`] call.
@@ -222,6 +222,7 @@ pub async fn tick(state: &AppState) {
     let found = tokio::task::spawn_blocking(yogurt_audio::detect::detect_meeting)
         .await
         .unwrap_or_default();
+    tracing::debug!(found = ?found.as_ref().map(|m| (&m.app, m.window_id)), "detection poll");
     let active = state.meetings.active_recording().await;
 
     // Scoped so the state lock is released before `stop` takes the
@@ -232,14 +233,23 @@ pub async fn tick(state: &AppState) {
     } = state.detect.lock().await.advance(found, active);
 
     if raise && focus_enabled(&state.db) {
-        let port = state.bind_port;
-        // macOS `open` raises the existing tab or installed-PWA window
-        // rather than opening a duplicate, and this is the same
-        // `/usr/bin/open` path `yogurt start` already uses for
-        // open-browser-on-start.
-        tokio::task::spawn_blocking(move || {
-            if let Err(e) = open::that(format!("http://localhost:{port}")) {
-                tracing::warn!(error = %e, "failed to raise app window for detected meeting");
+        // `open -a yogurt` activates the installed yogurt web app (or
+        // launches it) without opening a URL. Opening the URL instead
+        // adds a tab to the frontmost Chrome window, which covers a Meet
+        // call running in that window and un-detects it on the next
+        // poll. A yogurt living only in a regular tab has no raisable
+        // window; the browser notification is the focus path there.
+        tokio::task::spawn_blocking(|| {
+            match std::process::Command::new("open")
+                .args(["-a", "yogurt"])
+                .output()
+            {
+                Ok(out) if out.status.success() => {}
+                Ok(out) => tracing::debug!(
+                    stderr = %String::from_utf8_lossy(&out.stderr).trim(),
+                    "no installed yogurt app to raise"
+                ),
+                Err(e) => tracing::warn!(error = %e, "failed to run open -a yogurt"),
             }
         });
     }

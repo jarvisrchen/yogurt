@@ -1111,6 +1111,6 @@ New closed items go at the bottom.
 
   Two mechanisms, both gated by Settings.
   The SPA fires a browser Notification once per detected window when permission is granted; clicking it focuses the yogurt window.
-  The server raises the app window via the open crate on a newly detected window with no recording active, behind a new general.meeting_detection_focus toggle.
+  The server raises the installed yogurt app with `open -a yogurt` on a newly detected window with no recording active, behind a new general.meeting_detection_focus toggle.
   Native macOS notifications from Rust were rejected: UNUserNotificationCenter needs a bundled app, and osascript would be a real subprocess.
   </details>

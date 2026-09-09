@@ -137,7 +137,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
               }
               className="h-4 w-4 accent-blue"
             />
-            <span>Bring yogurt to the front when a meeting is detected</span>
+            <span>Bring the installed yogurt app to the front when a meeting is detected</span>
           </label>
 
           <p className="text-[12.5px] text-mut">
@@ -153,8 +153,9 @@ export function GeneralSection({ general }: GeneralSectionProps) {
           {!isStandalone() && (
             <p className="text-[12.5px] text-mut">
               Install yogurt as an app (Chrome menu &gt; Cast, save, and
-              share &gt; Install page as app) so alerts carry yogurt's name
-              and keep arriving while the tab is in the background.
+              share &gt; Install page as app) so it can be brought to the
+              front, alerts carry yogurt's name, and they keep arriving while
+              the tab is in the background.
             </p>
           )}
         </div>
