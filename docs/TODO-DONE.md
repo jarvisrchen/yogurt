@@ -1093,3 +1093,13 @@ New closed items go at the bottom.
 - [x] **MTG-15** Add a button to copy the meeting URL, in both the live meeting view and the post-meeting view
 
   Landed 2026-09-09. Added `CopyUrlButton` (icon button, checkmark confirmation) to both the live meeting view and the post-meeting view headers; copies `window.location.href` via `navigator.clipboard.writeText`. Auto-revert runs in a `useEffect` so the timer is cleared on unmount, matching `DeleteMeetingConfirm`'s pattern.
+
+- [x] **UI-15** Suggest starter questions in the chat window's empty state
+  <details>
+  <summary>Details</summary>
+
+  `ChatWindow.tsx`'s empty state (`web/src/components/ChatWindow.tsx`) just shows static copy ("Ask anything about what's been said so far.") with no way to act on it.
+  Add a row of suggested-question chips there, e.g. "Catch me up" and "What did I miss", that populate the input (or send directly) so a user opening the panel mid-meeting doesn't have to think of a prompt from a blank state.
+
+  Added a "Catch me up" / "What did I miss?" chip row to `ChatWindow`'s empty state; clicking a chip calls `onSend` directly. Chips disappear once there are messages. Verified in both light and dark theme against a live backend (fixture meeting via `yogurt ctl meeting new --from-script`).
+  </details>
