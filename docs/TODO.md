@@ -64,13 +64,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
-- [ ] **MTG-16** Send an app-level popup when a meeting is detected, similar to Granola, to force user attention (focus the app window and/or a system notification prompting to start the meeting)
-  <details>
-  <summary>Details</summary>
-
-  jarvisrchen wants a Granola-like "meeting detected" nudge instead of relying on the user to notice and start recording manually.
-  Open question: what's actually achievable given yogurt is a web app running in Chrome, not a native menu-bar app like Granola - scope this by first checking what's available (Web Notifications API from a PWA/service worker, window focus/`window.focus()` limits from a background tab, whether yogurt is installed as a Chrome PWA vs a regular tab) before deciding the mechanism.
-  </details>
 
 ## Audio
 

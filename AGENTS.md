@@ -9,7 +9,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 
 - Audio never leaves the machine unless the user opted into cloud STT (then only audio, never notes); captured audio is deleted after transcription.
 - API keys live only in `~/.yogurt/keys.json` (mode 0600, `FileKeyStore`) - never in SQLite, a response, or a log.
-- One process: no subprocesses, no IPC, no sidecars - except the locked-down `yogurt-llm::CliClient`, an LLM provider only when the user opts in via Settings (see [docs/ARCHITECTURE.md §7.6](docs/ARCHITECTURE.md#76-the-cli-provider-exception-llm-4) for the lockdown and the no-fallback rule); do not generalize this into a pattern for other subprocesses without revisiting this constraint.
+- One process: no subprocesses, no IPC, no sidecars - except the locked-down `yogurt-llm::CliClient`, an LLM provider only when the user opts in via Settings (see [docs/ARCHITECTURE.md §7.6](docs/ARCHITECTURE.md#76-the-cli-provider-exception-llm-4) for the lockdown and the no-fallback rule), and `/usr/bin/open` via the `open` crate, used only to raise the browser (open-on-start and meeting-detected focus) and nothing else; do not generalize either into a pattern for other subprocesses without revisiting this constraint.
 - Zero telemetry of any kind.
 - macOS 13+ only (ScreenCaptureKit).
 - MIT licensed; keep dependencies MIT-compatible.

@@ -48,6 +48,7 @@ fn print_general(json_out: bool, g: &yogurt_db::settings::General) {
         println!("stt_provider: {}", g.stt_provider);
         println!("stt_model: {}", g.stt_model);
         println!("meeting_detection: {}", g.meeting_detection);
+        println!("meeting_detection_focus: {}", g.meeting_detection_focus);
     }
 }
 

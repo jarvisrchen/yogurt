@@ -53,6 +53,10 @@ yogurt-notes = { path = "../yogurt-notes" }
 # spans (data-ai-grey, data-transcript-link).
 ammonia = { workspace = true }
 html-escape = { workspace = true }
+# MTG-16: raises the app window when a new meeting window is detected, via
+# `/usr/bin/open` on `http://localhost:<bind_port>`. Same crate and same
+# `open::that` path `yogurt-cli` already uses for open-browser-on-start.
+open = "5"
 # Phase 6 (Plan 06-01): optional tempdir for the test_support module.
 # Activated by the `test-support` feature; release builds never link it.
 tempfile = { workspace = true, optional = true }

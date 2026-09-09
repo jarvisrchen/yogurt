@@ -60,6 +60,7 @@ describe("MicDevicePicker", () => {
         stt_provider: "cloud",
         stt_model: "nova-3",
         meeting_detection: true,
+        meeting_detection_focus: true,
       },
       providers: [],
       presets: [],
@@ -77,6 +78,7 @@ describe("MicDevicePicker", () => {
       stt_provider: "cloud",
       stt_model: "nova-3",
       meeting_detection: true,
+      meeting_detection_focus: true,
     });
   });
 
@@ -182,6 +184,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
         stt_provider: "cloud",
         stt_model: "nova-3",
         meeting_detection: true,
+        meeting_detection_focus: true,
       },
       providers: [],
       presets: [],
@@ -199,6 +202,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
       stt_provider: "cloud",
       stt_model: "nova-3",
       meeting_detection: true,
+      meeting_detection_focus: true,
     });
   });
 
@@ -238,6 +242,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
         stt_provider: "cloud",
         stt_model: "nova-3",
         meeting_detection: true,
+        meeting_detection_focus: true,
       },
       providers: [],
       presets: [],

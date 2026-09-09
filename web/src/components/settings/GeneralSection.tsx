@@ -1,13 +1,18 @@
 /**
- * GeneralSection — Settings page General section (Phase 5 Plan 05-04, SET-08).
+ * GeneralSection - Settings page General section (Phase 5 Plan 05-04, SET-08).
  *
- * - Port input (number, 1024–65535) persists on blur if changed.
+ * - Port input (number, 1024-65535) persists on blur if changed.
  * - "Open browser on start" checkbox persists on toggle.
  * - Both persist via `PATCH /api/settings` and invalidate `['settings']`.
  *
  * Caption explains that port changes apply on the next `yogurt start`.
  * - Appearance (UI-6) is browser-local (see `lib/theme.ts`), not a server
  *   setting, so it applies instantly and survives reload without a flash.
+ * - MTG-16: below the detection checkboxes, `NotificationPermissionControl`
+ *   surfaces/requests the browser Notification permission the popup in
+ *   `MeetingDetectedBanner` needs, and a standalone-mode hint nudges the
+ *   user to install yogurt as an app so alerts keep arriving in the
+ *   background.
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -123,6 +128,18 @@ export function GeneralSection({ general }: GeneralSectionProps) {
             <span>Offer to record when a meeting is detected</span>
           </label>
 
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              defaultChecked={general.meeting_detection_focus}
+              onChange={(e) =>
+                patch.mutate({ meeting_detection_focus: e.target.checked })
+              }
+              className="h-4 w-4 accent-blue"
+            />
+            <span>Bring yogurt to the front when a meeting is detected</span>
+          </label>
+
           <p className="text-[12.5px] text-mut">
             Detection reads on-screen window titles for known meeting apps
             (Zoom, Google Meet, Teams, Slack huddles). It never starts a
@@ -130,8 +147,66 @@ export function GeneralSection({ general }: GeneralSectionProps) {
             machine, and titles are never saved. While it is on, a recording
             also stops once the meeting window closes.
           </p>
+
+          <NotificationPermissionControl />
+
+          {!isStandalone() && (
+            <p className="text-[12.5px] text-mut">
+              Install yogurt as an app (Chrome menu &gt; Cast, save, and
+              share &gt; Install page as app) so alerts carry yogurt's name
+              and keep arriving while the tab is in the background.
+            </p>
+          )}
         </div>
       </div>
     </section>
+  );
+}
+
+/** `matchMedia` is unimplemented in the jsdom test environment (and in any
+ *  browser too old to have it), so guard it the same way `lib/theme.ts`
+ *  does rather than assuming it exists. */
+function isStandalone(): boolean {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(display-mode: standalone)").matches
+  );
+}
+
+/** MTG-16 - lets the user grant/see the browser Notification permission
+ *  the meeting-detected popup (`MeetingDetectedBanner`) uses. Skipped
+ *  entirely when the browser has no Notification API at all. */
+function NotificationPermissionControl() {
+  const supported = "Notification" in window;
+  const [permission, setPermission] = useState<NotificationPermission | null>(
+    supported ? Notification.permission : null,
+  );
+
+  if (!supported || permission === null) return null;
+
+  if (permission === "granted") {
+    return <p className="text-[12.5px] text-mut">System notifications are on.</p>;
+  }
+
+  if (permission === "denied") {
+    return (
+      <p className="text-[12.5px] text-mut">
+        Notifications are blocked for this site in Chrome. Allow them in the
+        site settings to get alerts.
+      </p>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        const result = await Notification.requestPermission();
+        setPermission(result);
+      }}
+      className="px-3 py-1.5 rounded-button border border-line text-[13px] font-medium hover:bg-line/40 transition-colors"
+    >
+      Enable system notifications
+    </button>
   );
 }

@@ -51,6 +51,24 @@ pub const MISSING_TICKS_BEFORE_STOP: u8 = 3;
 /// takes effect without a restart.
 pub const SETTING_KEY: &str = "general.meeting_detection";
 
+/// MTG-16: the settings key gating whether a newly detected window also
+/// raises the app window (`tick`'s `open::that` call).
+pub const FOCUS_SETTING_KEY: &str = "general.meeting_detection_focus";
+
+/// Result of one [`DetectState::advance`] call.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Advance {
+    /// A linked recording to stop, once its window has been gone long
+    /// enough. See the module doc comment's "It does stop a recording"
+    /// section.
+    pub stop: Option<Uuid>,
+    /// `true` exactly when this poll found a window with a different id
+    /// than the previous poll's, and no recording is currently active -
+    /// `tick`'s cue to raise the app window. One `true` per newly
+    /// detected window, never on a repeat poll of the same one.
+    pub raise: bool,
+}
+
 /// Live detection state. Shared between the watcher task and the
 /// `/api/meetings/detected` handlers.
 #[derive(Debug, Default)]
@@ -87,18 +105,22 @@ impl DetectState {
     }
 
     /// Fold one poll into the state and say whether a recording should
-    /// now be stopped.
+    /// now be stopped and/or the app window should be raised.
     ///
     /// Pure apart from `self`, which is the point: the link/unlink/stop
     /// decision is the only real logic in this module, and it is driven
     /// by a window list and a registry that a unit test cannot conjure.
     /// [`tick`] supplies both and acts on the answer.
-    fn advance(&mut self, found: Option<DetectedMeeting>, active: Option<Uuid>) -> Option<Uuid> {
+    fn advance(&mut self, found: Option<DetectedMeeting>, active: Option<Uuid>) -> Advance {
         // A different window means a different call: un-dismiss.
         let same_window = match (&self.current, &found) {
             (Some(a), Some(b)) => a.window_id == b.window_id,
             _ => false,
         };
+        // One raise per newly detected window: never on a repeat poll of
+        // the same window, and never while a recording is already running
+        // (the user is presumably already in the app).
+        let raise = !same_window && found.is_some() && active.is_none();
         if !same_window {
             self.dismissed = None;
         }
@@ -117,13 +139,15 @@ impl DetectState {
             }
         }
 
-        let (meeting_id, window_id) = self.linked?;
+        let Some((meeting_id, window_id)) = self.linked else {
+            return Advance { stop: None, raise };
+        };
 
         // The user stopped it themselves — nothing left to hold.
         if active != Some(meeting_id) {
             self.linked = None;
             self.missing_ticks = 0;
-            return None;
+            return Advance { stop: None, raise };
         }
 
         if self
@@ -132,27 +156,42 @@ impl DetectState {
             .is_some_and(|m| m.window_id == window_id)
         {
             self.missing_ticks = 0;
-            return None;
+            return Advance { stop: None, raise };
         }
 
         self.missing_ticks = self.missing_ticks.saturating_add(1);
         if self.missing_ticks < MISSING_TICKS_BEFORE_STOP {
-            return None;
+            return Advance { stop: None, raise };
         }
         self.linked = None;
         self.missing_ticks = 0;
-        Some(meeting_id)
+        Advance {
+            stop: Some(meeting_id),
+            raise,
+        }
     }
+}
+
+/// Read a boolean `general.*` setting, defaulting to `true` when absent -
+/// the shared shape behind both [`enabled`] and [`focus_enabled`].
+fn setting_enabled(db: &yogurt_db::Db, key: &str) -> bool {
+    yogurt_db::settings::get(db, key)
+        .ok()
+        .flatten()
+        .is_none_or(|v| v == "true")
 }
 
 /// Is meeting detection enabled? Defaults to `true` — the feature only
 /// ever offers a prompt, so it is discoverable by default and the
 /// Settings toggle is there to silence it.
 pub fn enabled(db: &yogurt_db::Db) -> bool {
-    yogurt_db::settings::get(db, SETTING_KEY)
-        .ok()
-        .flatten()
-        .is_none_or(|v| v == "true")
+    setting_enabled(db, SETTING_KEY)
+}
+
+/// MTG-16: should a newly detected window also raise the app window?
+/// Defaults to `true`, same reasoning as [`enabled`].
+pub fn focus_enabled(db: &yogurt_db::Db) -> bool {
+    setting_enabled(db, FOCUS_SETTING_KEY)
 }
 
 /// Spawn the watcher. Runs for the life of the process.
@@ -187,7 +226,23 @@ pub async fn tick(state: &AppState) {
 
     // Scoped so the state lock is released before `stop` takes the
     // registry locks.
-    let to_stop = state.detect.lock().await.advance(found, active);
+    let Advance {
+        stop: to_stop,
+        raise,
+    } = state.detect.lock().await.advance(found, active);
+
+    if raise && focus_enabled(&state.db) {
+        let port = state.bind_port;
+        // macOS `open` raises the existing tab or installed-PWA window
+        // rather than opening a duplicate, and this is the same
+        // `/usr/bin/open` path `yogurt start` already uses for
+        // open-browser-on-start.
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = open::that(format!("http://localhost:{port}")) {
+                tracing::warn!(error = %e, "failed to raise app window for detected meeting");
+            }
+        });
+    }
 
     if let Some(id) = to_stop {
         tracing::info!(meeting = %id, "detected meeting window closed — stopping recording");
@@ -218,16 +273,16 @@ mod tests {
         let rec = Uuid::now_v7();
 
         // Detected, then the user starts recording: the two link up.
-        assert_eq!(st.advance(window(7), None), None);
-        assert_eq!(st.advance(window(7), Some(rec)), None);
+        assert_eq!(st.advance(window(7), None).stop, None);
+        assert_eq!(st.advance(window(7), Some(rec)).stop, None);
         assert_eq!(st.linked, Some((rec, 7)));
 
         // Call ends. Two polls of grace, stop on the third.
-        assert_eq!(st.advance(None, Some(rec)), None);
-        assert_eq!(st.advance(None, Some(rec)), None);
-        assert_eq!(st.advance(None, Some(rec)), Some(rec));
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
+        assert_eq!(st.advance(None, Some(rec)).stop, Some(rec));
         // ...and only once.
-        assert_eq!(st.advance(None, Some(rec)), None);
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
     }
 
     #[test]
@@ -236,14 +291,14 @@ mod tests {
         let rec = Uuid::now_v7();
         st.advance(window(7), Some(rec));
 
-        assert_eq!(st.advance(None, Some(rec)), None);
-        assert_eq!(st.advance(None, Some(rec)), None);
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
         // Back on screen — the two missed polls must not carry over, or a
         // long call would eventually stop itself.
-        assert_eq!(st.advance(window(7), Some(rec)), None);
-        assert_eq!(st.advance(None, Some(rec)), None);
-        assert_eq!(st.advance(None, Some(rec)), None);
-        assert_eq!(st.advance(None, Some(rec)), Some(rec));
+        assert_eq!(st.advance(window(7), Some(rec)).stop, None);
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
+        assert_eq!(st.advance(None, Some(rec)).stop, None);
+        assert_eq!(st.advance(None, Some(rec)).stop, Some(rec));
     }
 
     #[test]
@@ -253,7 +308,7 @@ mod tests {
         let mut st = DetectState::default();
         let rec = Uuid::now_v7();
         for _ in 0..10 {
-            assert_eq!(st.advance(None, Some(rec)), None);
+            assert_eq!(st.advance(None, Some(rec)).stop, None);
         }
         assert_eq!(st.linked, None);
     }
@@ -264,7 +319,7 @@ mod tests {
         let rec = Uuid::now_v7();
         st.advance(window(7), Some(rec));
         // User hits stop while still in the call.
-        assert_eq!(st.advance(window(7), None), None);
+        assert_eq!(st.advance(window(7), None).stop, None);
         assert_eq!(st.linked, None);
     }
 
@@ -290,5 +345,29 @@ mod tests {
         st.advance(window(7), None);
         assert_eq!(st.prompt(false).map(|m| m.window_id), Some(7));
         assert_eq!(st.prompt(true), None);
+    }
+
+    #[test]
+    fn a_new_window_raises_once_and_the_same_window_does_not() {
+        let mut st = DetectState::default();
+        assert!(st.advance(window(7), None).raise);
+        // Same window on the next poll: no second raise.
+        assert!(!st.advance(window(7), None).raise);
+        assert!(!st.advance(window(7), None).raise);
+
+        // A different window is a different call, so it raises again.
+        assert!(st.advance(window(8), None).raise);
+        // Nothing detected does not raise either.
+        assert!(!st.advance(None, None).raise);
+    }
+
+    #[test]
+    fn no_raise_while_a_recording_is_running() {
+        let mut st = DetectState::default();
+        let rec = Uuid::now_v7();
+        // A window shows up while a recording is already active.
+        assert!(!st.advance(window(7), Some(rec)).raise);
+        // ...and a different window mid-recording still doesn't raise.
+        assert!(!st.advance(window(9), Some(rec)).raise);
     }
 }

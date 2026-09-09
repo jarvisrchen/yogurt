@@ -4086,6 +4086,7 @@ dependencies = [
  "futures-util",
  "html-escape",
  "mime_guess",
+ "open",
  "rand 0.8.6",
  "reqwest",
  "rusqlite",

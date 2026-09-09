@@ -46,6 +46,25 @@ function renderBanner() {
   );
 }
 
+/** Constructor spy carrying a static `.permission` and instance `.close`
+ *  spy, matching the shape `MeetingDetectedBanner` actually touches. */
+function mockNotification(permission: NotificationPermission) {
+  const instances: FakeNotification[] = [];
+  class FakeNotification {
+    static permission = permission;
+    close = vi.fn();
+    onclick: (() => void) | null = null;
+    constructor(
+      public title: string,
+      public options?: NotificationOptions,
+    ) {
+      instances.push(this);
+    }
+  }
+  vi.stubGlobal("Notification", FakeNotification);
+  return instances;
+}
+
 describe("MeetingDetectedBanner", () => {
   it("renders nothing when nothing is detected", () => {
     const { container } = renderBanner();
@@ -86,5 +105,65 @@ describe("MeetingDetectedBanner", () => {
     renderBanner();
     fireEvent.click(screen.getByText("Not now"));
     expect(dismissSpy).toHaveBeenCalled();
+  });
+});
+
+describe("MeetingDetectedBanner system notification (MTG-16)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fires once per window id, not twice for the same id", () => {
+    const instances = mockNotification("granted");
+    state.detected = { window_id: 7, app: "Zoom", title: "Zoom Meeting" };
+    const { rerender } = renderBanner();
+    expect(instances).toHaveLength(1);
+    expect(instances[0].title).toBe("Zoom meeting detected");
+    expect(instances[0].options).toMatchObject({
+      body: "Open yogurt to start recording",
+      tag: "yogurt-meeting-detected",
+    });
+
+    // A repeat poll of the same window must not fire a second notification.
+    state.detected = { window_id: 7, app: "Zoom", title: "Zoom Meeting" };
+    rerender(
+      <MemoryRouter>
+        <MeetingDetectedBanner />
+      </MemoryRouter>,
+    );
+    expect(instances).toHaveLength(1);
+  });
+
+  it("does not fire when permission is default", () => {
+    const instances = mockNotification("default");
+    state.detected = { window_id: 7, app: "Zoom", title: "Zoom Meeting" };
+    renderBanner();
+    expect(instances).toHaveLength(0);
+  });
+
+  it("closes the open notification when detection clears", () => {
+    const instances = mockNotification("granted");
+    state.detected = { window_id: 7, app: "Zoom", title: "Zoom Meeting" };
+    const { rerender } = renderBanner();
+    expect(instances).toHaveLength(1);
+
+    state.detected = null;
+    rerender(
+      <MemoryRouter>
+        <MeetingDetectedBanner />
+      </MemoryRouter>,
+    );
+    expect(instances[0].close).toHaveBeenCalled();
+  });
+
+  it("focuses the window on click", () => {
+    const instances = mockNotification("granted");
+    const focusSpy = vi.spyOn(window, "focus").mockImplementation(() => {});
+    state.detected = { window_id: 7, app: "Zoom", title: "Zoom Meeting" };
+    renderBanner();
+
+    instances[0].onclick?.();
+    expect(focusSpy).toHaveBeenCalled();
+    expect(instances[0].close).toHaveBeenCalled();
   });
 });

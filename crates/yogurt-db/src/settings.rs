@@ -66,6 +66,10 @@ pub struct General {
     /// window closes). Defaults to `true`; there is no seed row, so the
     /// projection's fallback is the default.
     pub meeting_detection: bool,
+    /// MTG-16: whether a newly detected meeting window should also raise
+    /// the app window (`yogurt-server::detect::tick`'s `open::that` call).
+    /// Defaults to `true`, same reasoning as `meeting_detection`.
+    pub meeting_detection_focus: bool,
     /// Whether the mic echo feature is exposed at all. Off by default; the
     /// in-meeting echo controls and auto-start only exist when this is on.
     pub audio_echo_feature: bool,
@@ -101,6 +105,10 @@ pub fn load_general(db: &Db) -> Result<General> {
         stt_provider: get(db, "stt.provider")?.unwrap_or_else(|| "cloud".to_string()),
         stt_model: get(db, "stt.model")?.unwrap_or_else(|| "small.en".to_string()),
         meeting_detection: get(db, "general.meeting_detection")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(true),
+        meeting_detection_focus: get(db, "general.meeting_detection_focus")?
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(true),
@@ -140,6 +148,9 @@ pub struct GeneralPatch {
     /// MTG-11 — Settings → General flips this to silence the
     /// meeting-detected prompt.
     pub meeting_detection: Option<bool>,
+    /// MTG-16 - Settings > General flips this to stop a detected window
+    /// from raising the app window.
+    pub meeting_detection_focus: Option<bool>,
     pub audio_echo_feature: Option<bool>,
     pub audio_echo_output_device: Option<String>,
     pub audio_echo_enabled: Option<bool>,
@@ -176,6 +187,13 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
         set(
             db,
             "general.meeting_detection",
+            if d { "true" } else { "false" },
+        )?;
+    }
+    if let Some(d) = patch.meeting_detection_focus {
+        set(
+            db,
+            "general.meeting_detection_focus",
             if d { "true" } else { "false" },
         )?;
     }

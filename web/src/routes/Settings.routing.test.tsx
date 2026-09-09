@@ -26,6 +26,7 @@ vi.mock("../lib/api/settings", () => {
       stt_provider: "cloud",
       stt_model: "small.en",
       meeting_detection: true,
+      meeting_detection_focus: true,
     },
     providers: [
       {
