@@ -10,6 +10,10 @@ interface Props {
   onCollapse: () => void;
 }
 
+// UI-15: one-tap starters for the empty state, so a user opening the
+// panel mid-meeting has something to click instead of a blank prompt.
+const SUGGESTED_QUESTIONS = ["Catch me up", "What did I miss?"];
+
 /**
  * Phase 6 (Plan 06-02) — expanded chat panel.
  *
@@ -99,9 +103,23 @@ export function ChatWindow({
         className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-[140px]"
       >
         {messages.length === 0 ? (
-          <p className="italic text-[13px] text-center text-[var(--color-mut)] py-6">
-            Ask anything about what&apos;s been said so far.
-          </p>
+          <div className="flex flex-col items-center gap-3 py-6">
+            <p className="italic text-[13px] text-center text-[var(--color-mut)]">
+              Ask anything about what&apos;s been said so far.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SUGGESTED_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => onSend(q)}
+                  className="px-3 py-1.5 rounded-chip text-[13px] text-[var(--color-ink)] bg-[var(--color-blsoft)] hover:bg-[var(--color-blue)] hover:text-white transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           messages.map((m) => (
             <ChatMessage

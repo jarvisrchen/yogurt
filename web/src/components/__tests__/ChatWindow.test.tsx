@@ -74,6 +74,34 @@ describe("ChatWindow", () => {
     expect(input.value).toBe("");
   });
 
+  it("shows suggested-question chips in the empty state and sends on click", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatWindow
+        messages={[]}
+        streamingId={null}
+        onSend={onSend}
+        onCollapse={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Catch me up" }));
+    expect(onSend).toHaveBeenCalledWith("Catch me up");
+  });
+
+  it("does not show suggested-question chips once there are messages", () => {
+    render(
+      <ChatWindow
+        messages={sampleMessages}
+        streamingId={null}
+        onSend={() => {}}
+        onCollapse={() => {}}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Catch me up" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("does NOT call onCollapse when the user clicks outside the window", () => {
     const onCollapse = vi.fn();
     const { container } = render(
