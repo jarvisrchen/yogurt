@@ -647,8 +647,6 @@ export function MeetingPost() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-        {/* MTG-15 — copies this page's URL so the meeting can be shared
-          or reopened later. */}
         {meetingId && <CopyUrlButton />}
         {token && (
           <TemplatePicker

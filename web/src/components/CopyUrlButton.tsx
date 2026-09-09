@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Check, Link2 } from "lucide-react";
 
 /**
- * MTG-15 — icon button that copies the current page URL (the meeting's
- * live or post-meeting URL, whichever route this renders in) to the
- * clipboard, with a ~1.5s checkmark swap as confirmation.
+ * Icon button that copies the current page URL (the meeting's live or
+ * post-meeting URL, whichever route this renders in) to the clipboard,
+ * with a ~1.5s checkmark swap as confirmation.
  *
  * Mirrors the icon-button styling of `DeleteMeetingConfirm`'s `icon`
  * variant. No toast exists anywhere in this app to reuse (see
