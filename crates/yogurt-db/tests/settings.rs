@@ -106,8 +106,6 @@ fn it_patches_stt_provider_and_model() {
     assert_eq!(g.stt_model, "medium.en");
 }
 
-/// MTG-16: no seed row, so the projection's fallback (`true`) is the
-/// default, same as `meeting_detection`.
 #[test]
 fn it_loads_meeting_detection_focus_default_and_patches_it() {
     let db = Db::open_in_memory().unwrap();

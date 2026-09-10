@@ -55,21 +55,15 @@ pub const QUERY_TIMEOUT: Duration = Duration::from_secs(3);
 /// takes effect without a restart.
 pub const SETTING_KEY: &str = "general.meeting_detection";
 
-/// MTG-16: the settings key gating whether a newly detected window also
-/// raises the installed yogurt app (`tick`'s `open -a yogurt`).
+/// Read each tick like [`SETTING_KEY`], so the toggle needs no restart.
 pub const FOCUS_SETTING_KEY: &str = "general.meeting_detection_focus";
 
 /// Result of one [`DetectState::advance`] call.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Advance {
-    /// A linked recording to stop, once its window has been gone long
-    /// enough. See the module doc comment's "It does stop a recording"
-    /// section.
+    /// Linked recording whose window has been gone long enough to stop.
     pub stop: Option<Uuid>,
-    /// `true` exactly when this poll found a window with a different id
-    /// than the previous poll's, and no recording is currently active -
-    /// `tick`'s cue to raise the app window. One `true` per newly
-    /// detected window, never on a repeat poll of the same one.
+    /// A new meeting window appeared with nothing recording: raise the app.
     pub raise: bool,
 }
 
@@ -121,9 +115,6 @@ impl DetectState {
             (Some(a), Some(b)) => a.window_id == b.window_id,
             _ => false,
         };
-        // One raise per newly detected window: never on a repeat poll of
-        // the same window, and never while a recording is already running
-        // (the user is presumably already in the app).
         let raise = !same_window && found.is_some() && active.is_none();
         if !same_window {
             self.dismissed = None;
@@ -176,8 +167,7 @@ impl DetectState {
     }
 }
 
-/// Read a boolean `general.*` setting, defaulting to `true` when absent -
-/// the shared shape behind both [`enabled`] and [`focus_enabled`].
+/// Absent means `true`: both settings are opt-out.
 fn setting_enabled(db: &yogurt_db::Db, key: &str) -> bool {
     yogurt_db::settings::get(db, key)
         .ok()
@@ -192,8 +182,6 @@ pub fn enabled(db: &yogurt_db::Db) -> bool {
     setting_enabled(db, SETTING_KEY)
 }
 
-/// MTG-16: should a newly detected window also raise the app window?
-/// Defaults to `true`, same reasoning as [`enabled`].
 pub fn focus_enabled(db: &yogurt_db::Db) -> bool {
     setting_enabled(db, FOCUS_SETTING_KEY)
 }
@@ -222,9 +210,8 @@ pub async fn tick(state: &AppState) {
         return;
     }
 
-    // Bounded: a wedged window-server query skips this tick instead of
-    // freezing the watcher for good. Nothing advances on a blind poll,
-    // so a wedge can neither prompt nor auto-stop.
+    // A blind poll must not advance state: it could otherwise start the
+    // auto-stop countdown for a call that is still on screen.
     let found = match tokio::task::spawn_blocking(|| {
         yogurt_audio::detect::detect_meeting_bounded(QUERY_TIMEOUT)
     })
@@ -251,12 +238,10 @@ pub async fn tick(state: &AppState) {
     } = state.detect.lock().await.advance(found, active);
 
     if raise && focus_enabled(&state.db) {
-        // `open -a yogurt` activates the installed yogurt web app (or
-        // launches it) without opening a URL. Opening the URL instead
-        // adds a tab to the frontmost Chrome window, which covers a Meet
-        // call running in that window and un-detects it on the next
-        // poll. A yogurt living only in a regular tab has no raisable
-        // window; the browser notification is the focus path there.
+        // By app, never by URL: opening the URL adds a tab to the frontmost
+        // Chrome window, which hides a Meet call running there and
+        // un-detects it on the next poll. Without the installed app there
+        // is nothing to raise; the notification click covers that case.
         tokio::task::spawn_blocking(|| {
             match std::process::Command::new("open")
                 .args(["-a", "yogurt"])

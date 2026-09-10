@@ -77,7 +77,7 @@ describe("GeneralSection appearance (UI-6)", () => {
   });
 });
 
-describe("GeneralSection notification permission (MTG-16)", () => {
+describe("GeneralSection notification permission", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -125,7 +125,7 @@ describe("GeneralSection notification permission (MTG-16)", () => {
   });
 });
 
-describe("GeneralSection standalone install hint (MTG-16)", () => {
+describe("GeneralSection standalone install hint", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });

@@ -35,11 +35,8 @@ import {
  * unsettled — the click did nothing at all, silently. The disabled state
  * on the button is what guards the interval in between.
  *
- * MTG-16: alongside the banner, a system `Notification` fires once per
- * detected window (guarded by a `useRef` set, not local state, so a
- * re-render never re-fires it) when the user has granted permission.
- * Clicking it focuses the window; the notification is closed once the
- * detection clears, whether from the call ending or "Not now".
+ * The system notification is keyed on window id in a ref, not state: a
+ * re-render must never re-fire it, and the poll re-renders every 5s.
  */
 export function MeetingDetectedBanner() {
   const { data } = useDetectedMeeting();
@@ -48,10 +45,7 @@ export function MeetingDetectedBanner() {
   const navigate = useNavigate();
   /** Window id we already started a recording for, if any. */
   const [startedFor, setStartedFor] = useState<number | null>(null);
-  /** Window ids already notified for, so a re-render never double-fires. */
   const notifiedWindowIds = useRef(new Set<number>());
-  /** The currently-open notification, if any, so it can be closed when
-   *  detection clears. */
   const openNotification = useRef<Notification | null>(null);
 
   useEffect(() => {

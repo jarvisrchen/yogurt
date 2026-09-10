@@ -8,11 +8,6 @@
  * Caption explains that port changes apply on the next `yogurt start`.
  * - Appearance (UI-6) is browser-local (see `lib/theme.ts`), not a server
  *   setting, so it applies instantly and survives reload without a flash.
- * - MTG-16: below the detection checkboxes, `NotificationPermissionControl`
- *   surfaces/requests the browser Notification permission the popup in
- *   `MeetingDetectedBanner` needs, and a standalone-mode hint nudges the
- *   user to install yogurt as an app so alerts keep arriving in the
- *   background.
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -164,9 +159,7 @@ export function GeneralSection({ general }: GeneralSectionProps) {
   );
 }
 
-/** `matchMedia` is unimplemented in the jsdom test environment (and in any
- *  browser too old to have it), so guard it the same way `lib/theme.ts`
- *  does rather than assuming it exists. */
+/** Guarded because jsdom has no `matchMedia`, same as `lib/theme.ts`. */
 function isStandalone(): boolean {
   return (
     typeof window.matchMedia === "function" &&
@@ -174,9 +167,6 @@ function isStandalone(): boolean {
   );
 }
 
-/** MTG-16 - lets the user grant/see the browser Notification permission
- *  the meeting-detected popup (`MeetingDetectedBanner`) uses. Skipped
- *  entirely when the browser has no Notification API at all. */
 function NotificationPermissionControl() {
   const supported = "Notification" in window;
   const [permission, setPermission] = useState<NotificationPermission | null>(

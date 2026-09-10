@@ -250,12 +250,10 @@ pub enum Wedged {
 
 static QUERY_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// [`detect_meeting`] with a deadline. `SCShareableContent::get()` waits on
-/// a completion the window server occasionally never sends (seen during a
-/// live Google Meet call on macOS 26), and an unbounded wait there takes
-/// the whole watcher with it. The hung thread is left to finish on its
-/// own; while it hangs, further calls return [`Wedged::Busy`] instead of
-/// piling up more threads.
+/// [`detect_meeting`] with a deadline. The window server occasionally
+/// never sends the completion `SCShareableContent::get()` waits on (seen
+/// mid-call on macOS 26). The hung thread cannot be cancelled, so it is
+/// left to finish and further calls refuse rather than stack up.
 pub fn detect_meeting_bounded(
     timeout: std::time::Duration,
 ) -> Result<Option<DetectedMeeting>, Wedged> {

@@ -108,7 +108,7 @@ describe("MeetingDetectedBanner", () => {
   });
 });
 
-describe("MeetingDetectedBanner system notification (MTG-16)", () => {
+describe("MeetingDetectedBanner system notification", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
