@@ -47,6 +47,9 @@ export interface General {
    *  prompt (and stops a recording once the detected window closes).
    *  Mirrors `crates/yogurt-db::settings::General::meeting_detection`. */
   meeting_detection: boolean;
+  /** Raise the installed app on detection. Only acts while
+   *  `meeting_detection` is also on. */
+  meeting_detection_focus: boolean;
   /** AUD-13 - whether the mic echo feature is exposed at all. Off by
    *  default; the in-meeting echo controls and auto-start only exist
    *  when this is on. Mirrors

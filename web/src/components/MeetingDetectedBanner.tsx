@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   useCreateMeeting,
@@ -34,6 +34,9 @@ import {
  * `useMutation` observer and leaves the in-flight `mutateAsync` promise
  * unsettled — the click did nothing at all, silently. The disabled state
  * on the button is what guards the interval in between.
+ *
+ * The system notification is keyed on window id in a ref, not state: a
+ * re-render must never re-fire it, and the poll re-renders every 5s.
  */
 export function MeetingDetectedBanner() {
   const { data } = useDetectedMeeting();
@@ -42,6 +45,31 @@ export function MeetingDetectedBanner() {
   const navigate = useNavigate();
   /** Window id we already started a recording for, if any. */
   const [startedFor, setStartedFor] = useState<number | null>(null);
+  const notifiedWindowIds = useRef(new Set<number>());
+  const openNotification = useRef<Notification | null>(null);
+
+  useEffect(() => {
+    if (!data) {
+      openNotification.current?.close();
+      openNotification.current = null;
+      return;
+    }
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      return;
+    }
+    if (notifiedWindowIds.current.has(data.window_id)) return;
+    notifiedWindowIds.current.add(data.window_id);
+
+    const notification = new Notification(`${data.app} meeting detected`, {
+      body: "Open yogurt to start recording",
+      tag: "yogurt-meeting-detected",
+    });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+    openNotification.current = notification;
+  }, [data]);
 
   if (!data || data.window_id === startedFor) return null;
 

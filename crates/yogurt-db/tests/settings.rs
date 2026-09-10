@@ -107,6 +107,25 @@ fn it_patches_stt_provider_and_model() {
 }
 
 #[test]
+fn it_loads_meeting_detection_focus_default_and_patches_it() {
+    let db = Db::open_in_memory().unwrap();
+    let g = settings::load_general(&db).unwrap();
+    assert!(g.meeting_detection_focus);
+
+    let patched = settings::save_general_patch(
+        &db,
+        settings::GeneralPatch {
+            meeting_detection_focus: Some(false),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(!patched.meeting_detection_focus);
+    // Survives reload.
+    assert!(!settings::load_general(&db).unwrap().meeting_detection_focus);
+}
+
+#[test]
 fn it_loads_echo_defaults() {
     let db = Db::open_in_memory().unwrap();
     let g = settings::load_general(&db).unwrap();

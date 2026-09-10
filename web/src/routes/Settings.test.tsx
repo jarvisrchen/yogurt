@@ -32,6 +32,7 @@ const { baseFixture } = vi.hoisted(() => {
       stt_provider: "cloud",
       stt_model: "small.en",
       meeting_detection: true,
+      meeting_detection_focus: true,
     },
     providers: [
       {

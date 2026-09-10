@@ -1102,4 +1102,15 @@ New closed items go at the bottom.
   Add a row of suggested-question chips there, e.g. "Catch me up" and "What did I miss", that populate the input (or send directly) so a user opening the panel mid-meeting doesn't have to think of a prompt from a blank state.
 
   Added a "Catch me up" / "What did I miss?" chip row to `ChatWindow`'s empty state; clicking a chip calls `onSend` directly. Chips disappear once there are messages. Verified in both light and dark theme against a live backend (fixture meeting via `yogurt ctl meeting new --from-script`).
+- [x] **MTG-16** Send an app-level popup when a meeting is detected, similar to Granola, to force user attention (focus the app window and/or a system notification prompting to start the meeting)
+  <details>
+  <summary>Details</summary>
+
+  jarvisrchen wants a Granola-like "meeting detected" nudge instead of relying on the user to notice and start recording manually.
+  Open question: what's actually achievable given yogurt is a web app running in Chrome, not a native menu-bar app like Granola - scope this by first checking what's available (Web Notifications API from a PWA/service worker, window focus/`window.focus()` limits from a background tab, whether yogurt is installed as a Chrome PWA vs a regular tab) before deciding the mechanism.
+
+  Two mechanisms, both gated by Settings.
+  The SPA fires a browser Notification once per detected window when permission is granted; clicking it focuses the yogurt window.
+  The server raises the installed yogurt app with `open -a yogurt` on a newly detected window with no recording active, behind a new general.meeting_detection_focus toggle.
+  Native macOS notifications from Rust were rejected: UNUserNotificationCenter needs a bundled app, and osascript would be a real subprocess.
   </details>
