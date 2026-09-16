@@ -64,6 +64,16 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
+- [ ] **MTG-17** Detect when a meeting has actually ended and auto-stop the recording
+  <details>
+  <summary>Details</summary>
+
+  A meeting keeps recording until the user manually stops it, even after the real call has ended, for example when everyone else has left or the meeting app was closed.
+  Explore signals for this: sustained silence on both the mic and system channels, the source app (Zoom, Meet, Slack huddle, etc.) closing or leaving the call window, or the system-audio stream going idle.
+  On detection, auto-stop the meeting the same way a manual stop does, rather than just flagging it, so it stops recording instead of running indefinitely.
+  Needs a false-positive guard, since a pause in talking is not the same as the meeting ending, before this ships.
+  </details>
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
