@@ -1114,3 +1114,19 @@ New closed items go at the bottom.
   The server raises the installed yogurt app with `open -a yogurt` on a newly detected window with no recording active, behind a new general.meeting_detection_focus toggle.
   Native macOS notifications from Rust were rejected: UNUserNotificationCenter needs a bundled app, and osascript would be a real subprocess.
   </details>
+- [x] **MTG-17** Detect when a meeting has actually ended and auto-stop the recording
+  <details>
+  <summary>Details</summary>
+
+  A meeting keeps recording until the user manually stops it, even after the real call has ended, for example when everyone else has left or the meeting app was closed.
+  Explore signals for this: sustained silence on both the mic and system channels, the source app (Zoom, Meet, Slack huddle, etc.) closing or leaving the call window, or the system-audio stream going idle.
+  On detection, auto-stop the meeting the same way a manual stop does, rather than just flagging it, so it stops recording instead of running indefinitely.
+  Needs a false-positive guard, since a pause in talking is not the same as the meeting ending, before this ships.
+
+  Two signals now stop a recording, both behind a new general.meeting_auto_stop toggle (default on).
+  The window-closed stop from MTG-11 was already there but skipped the ended_at stamp and never told the SPA, so both signals now share AppState::stop_meeting.
+  The new silence signal stops a recording after 5 minutes with no peak above 0.02 on either channel, and it runs only while recording.
+  The guard is a warning from 4 minutes (auto_stop_at on GET /api/meetings/active), a Keep recording button (POST /api/meetings/{id}/keep-recording), and any sound resetting the clock.
+  The live meeting page navigates to the post view with autoEnhance when the server ends the recording.
+  The active-recording poll keeps running in a background tab and the warning also posts a browser notification, since the yogurt tab usually sits behind the call.
+  </details>

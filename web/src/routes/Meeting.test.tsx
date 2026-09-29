@@ -93,11 +93,14 @@ const state = vi.hoisted(() => ({
     title: string;
     started_at: number;
     stt?: "cloud" | "local";
+    auto_stop_at?: number | null;
   } | null,
   // AUD-13: mirrors `general.audio_echo_feature` - off by default, the
   // same as a fresh install.
   audioEchoFeature: false,
 }));
+
+const keepRecordingSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("../lib/api/meetings", () => ({
   meetingKey: (id: string) => ["meetings", id],
@@ -115,6 +118,7 @@ vi.mock("../lib/api/meetings", () => ({
     isLoading: false,
     error: null,
   }),
+  useKeepRecording: () => ({ mutate: keepRecordingSpy, isPending: false }),
   // MeetingLabels (mounted in the header) needs this hook to exist.
   useSetMeetingLabels: () => ({ mutate: vi.fn() }),
 }));
@@ -147,9 +151,7 @@ function renderAt(
   routerState?: Record<string, unknown>,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return {
-    qc,
-    ...render(
+  const tree = () => (
     <QueryClientProvider client={qc}>
       <MemoryRouter
         initialEntries={[{ pathname: initialPath, state: routerState }]}
@@ -160,9 +162,10 @@ function renderAt(
           <Route path="/meeting/:id/post" element={<PostViewProbe />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
-    ),
-  };
+    </QueryClientProvider>
+  );
+  const utils = render(tree());
+  return { qc, ...utils, refresh: () => utils.rerender(tree()) };
 }
 
 describe("Meeting — auto-start on '+ New meeting'", () => {
@@ -781,5 +784,126 @@ describe("Meeting - echo column gated behind AUD-13 feature toggle", () => {
     expect(screen.getByTestId("echo-picker")).toBeInTheDocument();
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe("Meeting - server-side auto-stop", () => {
+  const row = {
+    id: "meeting-live",
+    title: "Weekly sync",
+    started_at: 1000,
+    ended_at: null,
+    notes_md: "",
+    enriched_md: null,
+    transcript_json: "[]",
+    starred: false,
+    created_at: "",
+    updated_at: "",
+  };
+  const live = {
+    id: "meeting-live",
+    title: "Weekly sync",
+    started_at: 1000,
+  };
+
+  beforeEach(() => {
+    state.meetingRow = row;
+    state.activeRecording = null;
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ status: "stopped" }))),
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("navigates to the post page with autoEnhance when the server ends the recording", async () => {
+    state.activeRecording = live;
+    const view = renderAt("/meeting/meeting-live");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument(),
+    );
+
+    state.activeRecording = null;
+    view.refresh();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("post-view")).toBeInTheDocument(),
+    );
+    const navState = JSON.parse(
+      screen.getByTestId("post-view").getAttribute("data-state") ?? "null",
+    );
+    expect(navState).toMatchObject({ autoEnhance: { title: "Weekly sync" } });
+  });
+
+  it("does not navigate when a manual Stop is followed by Start", async () => {
+    state.activeRecording = live;
+    const view = renderAt("/meeting/meeting-live");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: /stop recording/i }).click();
+    });
+    state.activeRecording = null;
+    view.refresh();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^start recording$/i }),
+      ).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: /^start recording$/i }).click();
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument(),
+    );
+    view.refresh();
+    expect(screen.queryByTestId("post-view")).toBeNull();
+  });
+
+  it("does not treat a poll that predates the recording as a server stop", async () => {
+    state.activeRecording = null;
+    const view = renderAt("/meeting/meeting-live", { autoStart: true });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument(),
+    );
+    view.refresh();
+    expect(screen.queryByTestId("post-view")).toBeNull();
+  });
+
+  it("shows the silence warning with a countdown and Keep recording", async () => {
+    state.activeRecording = { ...live, auto_stop_at: Date.now() + 42_000 };
+    renderAt("/meeting/meeting-live");
+
+    await waitFor(() =>
+      expect(screen.getByText(/No audio for a few minutes/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/0:4[12]/)).toBeInTheDocument();
+    act(() => {
+      screen.getByRole("button", { name: "Keep recording" }).click();
+    });
+    expect(keepRecordingSpy).toHaveBeenCalledWith("meeting-live");
+  });
+
+  it("shows no warning while auto_stop_at is null", async () => {
+    state.activeRecording = { ...live, auto_stop_at: null };
+    renderAt("/meeting/meeting-live");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/No audio for a few minutes/)).toBeNull();
   });
 });

@@ -135,12 +135,27 @@ export function GeneralSection({ general }: GeneralSectionProps) {
             <span>Bring the installed yogurt app to the front when a meeting is detected</span>
           </label>
 
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              defaultChecked={general.meeting_auto_stop}
+              onChange={(e) =>
+                patch.mutate({ meeting_auto_stop: e.target.checked })
+              }
+              className="h-4 w-4 accent-blue"
+            />
+            <span>Stop recording automatically when the meeting ends</span>
+          </label>
+
           <p className="text-[12.5px] text-mut">
             Detection reads on-screen window titles for known meeting apps
             (Zoom, Google Meet, Teams, Slack huddles). It never starts a
             recording on its own - it offers, you click. Nothing leaves your
-            machine, and titles are never saved. While it is on, a recording
-            also stops once the meeting window closes.
+            machine, and titles are never saved. Automatic stop ends a recording
+            when the detected meeting window closes (needs detection on), or
+            when neither your mic nor the meeting audio has made a sound for 5
+            minutes. A minute before the silence stop, the meeting page warns
+            you and offers Keep recording.
           </p>
 
           <NotificationPermissionControl />

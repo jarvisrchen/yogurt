@@ -69,6 +69,9 @@ pub struct General {
     /// Raise the installed app when a meeting is detected. No seed row;
     /// absent means `true`.
     pub meeting_detection_focus: bool,
+    /// Stop the recording when the meeting window closes or both channels
+    /// stay silent. No seed row; absent means `true`.
+    pub meeting_auto_stop: bool,
     /// Whether the mic echo feature is exposed at all. Off by default; the
     /// in-meeting echo controls and auto-start only exist when this is on.
     pub audio_echo_feature: bool,
@@ -111,6 +114,10 @@ pub fn load_general(db: &Db) -> Result<General> {
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(true),
+        meeting_auto_stop: get(db, "general.meeting_auto_stop")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(true),
         audio_echo_feature: get(db, "audio.echo_feature")?
             .as_deref()
             .map(|s| s == "true")
@@ -148,6 +155,7 @@ pub struct GeneralPatch {
     /// meeting-detected prompt.
     pub meeting_detection: Option<bool>,
     pub meeting_detection_focus: Option<bool>,
+    pub meeting_auto_stop: Option<bool>,
     pub audio_echo_feature: Option<bool>,
     pub audio_echo_output_device: Option<String>,
     pub audio_echo_enabled: Option<bool>,
@@ -191,6 +199,13 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
         set(
             db,
             "general.meeting_detection_focus",
+            if d { "true" } else { "false" },
+        )?;
+    }
+    if let Some(d) = patch.meeting_auto_stop {
+        set(
+            db,
+            "general.meeting_auto_stop",
             if d { "true" } else { "false" },
         )?;
     }

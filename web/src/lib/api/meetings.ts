@@ -421,6 +421,9 @@ export interface ActiveRecording {
    *  recording regardless — this only reflects the mic. */
   mic_muted: boolean;
   echo_enabled: boolean;
+  /** Unix ms at which the server stops this recording for silence. Non-null
+   *  only during the warning window. */
+  auto_stop_at: number | null;
 }
 
 export const activeRecordingKey = ["meetings", "active"] as const;
@@ -437,7 +440,23 @@ export function useActiveRecording(): UseQueryResult<ActiveRecording | null, Err
     queryKey: activeRecordingKey,
     queryFn: () => json<ActiveRecording | null>("/api/meetings/active"),
     refetchInterval: 5_000,
+    // A call keeps this tab in the background, and the silence warning and
+    // server-side stop must still reach the page.
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
+  });
+}
+
+/** `POST /api/meetings/:id/keep-recording` - dismiss the silence warning. */
+export function useKeepRecording(): UseMutationResult<void, Error, string> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await json<{ status: string }>(`/api/meetings/${id}/keep-recording`, {
+        method: "POST",
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: activeRecordingKey }),
   });
 }
 

@@ -38,6 +38,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | POST | `/api/meetings/{id}/stop` | stop recording | `ctl meeting stop` |
 | POST | `/api/meetings/{id}/enhance` | generate notes | `ctl meeting enhance` |
 | GET | `/api/templates` | note formats for enhance | - |
+| POST | `/api/meetings/{id}/keep-recording` | dismiss the silence auto-stop warning | - |
 | POST | `/api/meetings/{id}/mic-muted` | mute/unmute mic | `ctl meeting mute` |
 | POST | `/api/meetings/{id}/echo` | echo mic to an output device: `{enabled?, device?}` | - |
 | GET | `/api/audio/output-devices` | output devices for the echo | - |

@@ -26,6 +26,16 @@
 //! is also true of a meeting the user started by hand mid-call — which is
 //! the behavior they want anyway ("the call ended, stop recording").
 //! Turning the setting off disables both halves.
+//!
+//! **It also stops a silent recording.** Independently of window detection,
+//! [`silence_tick`] stops the active recording once neither the mic nor the
+//! system channel has had a peak above `SILENCE_PEAK` for
+//! [`SilencePolicy::DEFAULT`]`.stop_after` (5 minutes). `GET
+//! /api/meetings/active` reports `auto_stop_at` from the 4 minute mark so the
+//! UI can warn and offer keep-recording. This only runs while recording, so
+//! it never holds a capture stream open to listen. `general.meeting_auto_stop`
+//! gates both this and the window auto-stop, and every auto-stop goes
+//! through [`AppState::stop_meeting`], the same path as the manual stop.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,6 +67,44 @@ pub const SETTING_KEY: &str = "general.meeting_detection";
 
 /// Read each tick like [`SETTING_KEY`], so the toggle needs no restart.
 pub const FOCUS_SETTING_KEY: &str = "general.meeting_detection_focus";
+
+/// Read each tick like [`SETTING_KEY`]. Gates both the window auto-stop and
+/// the silence auto-stop.
+pub const AUTO_STOP_SETTING_KEY: &str = "general.meeting_auto_stop";
+
+/// How long both channels must stay quiet before the warning and the stop.
+#[derive(Debug, Clone, Copy)]
+pub struct SilencePolicy {
+    pub warn_after: Duration,
+    pub stop_after: Duration,
+}
+
+impl SilencePolicy {
+    pub const DEFAULT: Self = Self {
+        warn_after: Duration::from_secs(4 * 60),
+        stop_after: Duration::from_secs(5 * 60),
+    };
+
+    pub fn check(&self, last_audible_ms: u64, now_ms: u64) -> Silence {
+        let quiet = Duration::from_millis(now_ms.saturating_sub(last_audible_ms));
+        if quiet >= self.stop_after {
+            Silence::Expired
+        } else if quiet >= self.warn_after {
+            Silence::Warning {
+                stop_at_ms: last_audible_ms + self.stop_after.as_millis() as u64,
+            }
+        } else {
+            Silence::Audible
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Silence {
+    Audible,
+    Warning { stop_at_ms: u64 },
+    Expired,
+}
 
 /// Result of one [`DetectState::advance`] call.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -182,6 +230,10 @@ pub fn enabled(db: &yogurt_db::Db) -> bool {
     setting_enabled(db, SETTING_KEY)
 }
 
+pub fn auto_stop_enabled(db: &yogurt_db::Db) -> bool {
+    setting_enabled(db, AUTO_STOP_SETTING_KEY)
+}
+
 pub fn focus_enabled(db: &yogurt_db::Db) -> bool {
     setting_enabled(db, FOCUS_SETTING_KEY)
 }
@@ -196,6 +248,7 @@ pub fn spawn(state: AppState) {
         loop {
             ticker.tick().await;
             tick(&state).await;
+            silence_tick(&state, now_ms(), SilencePolicy::DEFAULT).await;
         }
     });
 }
@@ -257,12 +310,45 @@ pub async fn tick(state: &AppState) {
         });
     }
 
-    if let Some(id) = to_stop {
+    if let Some(id) = to_stop.filter(|_| auto_stop_enabled(&state.db)) {
         tracing::info!(meeting = %id, "detected meeting window closed — stopping recording");
-        if let Err(e) = state.meetings.stop(&id).await {
+        if let Err(e) = state.stop_meeting(&id).await {
             tracing::warn!(meeting = %id, error = %e, "auto-stop after meeting window closed failed");
         }
     }
+}
+
+/// Stop the active recording once both channels have been silent for
+/// `policy.stop_after`. Runs independently of meeting detection.
+pub async fn silence_tick(state: &AppState, now_ms: u64, policy: SilencePolicy) {
+    let enabled = auto_stop_enabled(&state.db);
+    let Some(id) = state.meetings.active_recording().await else {
+        return;
+    };
+    let Some(m) = state.meetings.get(&id).await else {
+        return;
+    };
+    if !enabled {
+        // Silence that piled up while the setting was off must not count
+        // once it is turned on.
+        m.last_audible_ms
+            .store(now_ms, std::sync::atomic::Ordering::Relaxed);
+        return;
+    }
+    let last = m.last_audible_ms.load(std::sync::atomic::Ordering::Relaxed);
+    if policy.check(last, now_ms) == Silence::Expired {
+        tracing::info!(meeting = %id, "no audio on either channel, stopping recording");
+        if let Err(e) = state.stop_meeting(&id).await {
+            tracing::warn!(meeting = %id, error = %e, "auto-stop after silence failed");
+        }
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Shared handle type stored on [`AppState`].
@@ -382,5 +468,145 @@ mod tests {
         assert!(!st.advance(window(7), Some(rec)).raise);
         // ...and a different window mid-recording still doesn't raise.
         assert!(!st.advance(window(9), Some(rec)).raise);
+    }
+
+    #[test]
+    fn silence_warns_at_four_minutes_and_expires_at_five() {
+        let p = SilencePolicy::DEFAULT;
+        let min = 60_000;
+        assert_eq!(p.check(1_000, 1_000 + 4 * min - 1), Silence::Audible);
+        assert_eq!(
+            p.check(1_000, 1_000 + 4 * min),
+            Silence::Warning {
+                stop_at_ms: 1_000 + 5 * min
+            }
+        );
+        assert_eq!(p.check(1_000, 1_000 + 5 * min), Silence::Expired);
+    }
+
+    async fn recording_state() -> (AppState, Uuid, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage =
+            Arc::new(crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap());
+        let session =
+            Arc::new(crate::session::load_or_create(&tmp.path().join("session-token")).unwrap());
+        let state = AppState::in_memory(
+            crate::Mode::Release,
+            storage,
+            session,
+            7878,
+            tmp.path().join("notes"),
+        )
+        .unwrap();
+        let m = state.meetings.create().await;
+        state
+            .meeting_repo
+            .create(yogurt_db::NewMeeting {
+                title: "t".into(),
+                started_at_unix_ms: None,
+                id: Some(m.id.to_string()),
+            })
+            .unwrap();
+        // A live supervisor task is what makes the registry call it recording.
+        *m.task.lock().await = Some(tokio::spawn(std::future::pending()));
+        (state, m.id, tmp)
+    }
+
+    const POLICY: SilencePolicy = SilencePolicy {
+        warn_after: Duration::from_millis(40),
+        stop_after: Duration::from_millis(50),
+    };
+
+    #[tokio::test]
+    async fn silence_tick_stops_and_stamps_only_after_the_stop_threshold() {
+        let (state, id, _tmp) = recording_state().await;
+        let last = state
+            .meetings
+            .get(&id)
+            .await
+            .unwrap()
+            .last_audible_ms
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        silence_tick(&state, last + 49, POLICY).await;
+        assert_eq!(state.meetings.active_recording().await, Some(id));
+
+        silence_tick(&state, last + 50, POLICY).await;
+        assert_eq!(state.meetings.active_recording().await, None);
+        let row = state.meeting_repo.get(&id.to_string()).unwrap().unwrap();
+        assert!(row.ended_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn audible_audio_and_keep_recording_reset_the_silence_clock() {
+        let (state, id, _tmp) = recording_state().await;
+        let m = state.meetings.get(&id).await.unwrap();
+        let at = std::sync::atomic::Ordering::Relaxed;
+        let start = m.last_audible_ms.load(at);
+
+        // Sound at start+40 pushes the deadline out, so start+60 is fine.
+        m.last_audible_ms.store(start + 40, at);
+        silence_tick(&state, start + 60, POLICY).await;
+        assert_eq!(state.meetings.active_recording().await, Some(id));
+
+        // Keep-recording is the same store with "now".
+        m.last_audible_ms.store(start + 100, at);
+        silence_tick(&state, start + 149, POLICY).await;
+        assert_eq!(state.meetings.active_recording().await, Some(id));
+    }
+
+    #[tokio::test]
+    async fn silence_never_stops_when_auto_stop_is_off() {
+        let (state, id, _tmp) = recording_state().await;
+        yogurt_db::settings::set(&state.db, AUTO_STOP_SETTING_KEY, "false").unwrap();
+        silence_tick(&state, u64::MAX / 2, POLICY).await;
+        assert_eq!(state.meetings.active_recording().await, Some(id));
+    }
+
+    #[tokio::test]
+    async fn enabling_auto_stop_after_long_silence_gives_a_full_window() {
+        let (state, id, _tmp) = recording_state().await;
+        let last = state
+            .meetings
+            .get(&id)
+            .await
+            .unwrap()
+            .last_audible_ms
+            .load(std::sync::atomic::Ordering::Relaxed);
+        yogurt_db::settings::set(&state.db, AUTO_STOP_SETTING_KEY, "false").unwrap();
+        let ten_min = last + 600_000;
+        silence_tick(&state, ten_min, POLICY).await;
+
+        yogurt_db::settings::set(&state.db, AUTO_STOP_SETTING_KEY, "true").unwrap();
+        silence_tick(&state, ten_min + 1, POLICY).await;
+        assert_eq!(state.meetings.active_recording().await, Some(id));
+        let m = state.meetings.get(&id).await.unwrap();
+        let reset = m.last_audible_ms.load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(POLICY.check(reset, ten_min + 1), Silence::Audible);
+        assert!(matches!(
+            POLICY.check(reset, ten_min + 40),
+            Silence::Warning { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn state_stop_meeting_stamps_ended_at_once() {
+        let (state, id, _tmp) = recording_state().await;
+        state.stop_meeting(&id).await.unwrap();
+        let first = state
+            .meeting_repo
+            .get(&id.to_string())
+            .unwrap()
+            .unwrap()
+            .ended_at;
+        assert!(first.is_some());
+        state.stop_meeting(&id).await.unwrap();
+        let again = state
+            .meeting_repo
+            .get(&id.to_string())
+            .unwrap()
+            .unwrap()
+            .ended_at;
+        assert_eq!(first, again);
     }
 }
