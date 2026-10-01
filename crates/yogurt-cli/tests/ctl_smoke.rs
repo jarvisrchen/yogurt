@@ -1259,11 +1259,12 @@ async fn hw_windows_reports_rows_or_denied() {
     );
 
     if output.status.success() {
-        let rows: serde_json::Value =
-            serde_json::from_str(stdout.trim()).expect("windows --json prints a JSON array");
+        let v: serde_json::Value =
+            serde_json::from_str(stdout.trim()).expect("windows --json prints a JSON object");
+        assert!(v["windows"].is_array(), "expected a windows array; got {v}");
         assert!(
-            rows.is_array(),
-            "expected a JSON array of windows; got {rows}"
+            v["microphone_users"].is_array() || v["microphone_users"].is_null(),
+            "expected microphone_users array or null; got {v}"
         );
     } else {
         assert_eq!(output.status.code(), Some(1));

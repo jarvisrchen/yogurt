@@ -4,6 +4,8 @@
 //! /api/meetings/detected*`), so it needs a running instance. `windows` is
 //! the promoted `meeting_windows` cargo example: in-process `SCShareableContent`
 //! enumeration via `yogurt_audio::detect::scan_windows`, no server involved.
+//! It also lists the processes holding the microphone with their meeting-app
+//! verdict (`yogurt_audio::mic_usage`), the signal auto-stop watches.
 
 use serde_json::json;
 
@@ -74,15 +76,38 @@ pub async fn run_windows(json_out: bool) -> Result<(), CtlError> {
             )
         })?;
 
+    let own_pid = std::process::id() as i32;
+    let mic = tokio::task::spawn_blocking(yogurt_audio::mic_usage::mic_users)
+        .await
+        .map_err(|e| {
+            CtlError::local(
+                format!("microphone scan panicked: {e}"),
+                "retry `yogurt ctl windows`",
+            )
+        })?;
+
     if json_out {
+        let mic_json = mic.as_ref().map(|users| {
+            users
+                .iter()
+                .map(|u| {
+                    json!({
+                        "pid": u.pid,
+                        "bundle": u.bundle_id,
+                        "meeting_app": yogurt_audio::detect::meeting_app_for_process(&u.bundle_id)
+                            .filter(|_| u.pid != own_pid),
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
         println!(
             "{}",
-            serde_json::to_string(&rows).map_err(|e| CtlError::local(
-                format!("could not serialize windows: {e}"),
-                "retry `yogurt ctl windows`"
-            ))?
+            json!({ "windows": rows, "microphone_users": mic_json })
         );
-    } else if rows.is_empty() {
+        return Ok(());
+    }
+
+    if rows.is_empty() {
         println!("no on-screen windows found");
     } else {
         for r in &rows {
@@ -92,6 +117,29 @@ pub async fn run_windows(json_out: bool) -> Result<(), CtlError> {
                 r.bundle,
                 r.title
             );
+        }
+    }
+    println!();
+    match mic {
+        None => println!("microphone usage: unsupported on this macOS"),
+        Some(users) if users.is_empty() => {
+            println!("microphone usage: no process is using the microphone")
+        }
+        Some(users) => {
+            println!("microphone usage:");
+            for u in &users {
+                let verdict = if u.pid == own_pid {
+                    "-"
+                } else {
+                    yogurt_audio::detect::meeting_app_for_process(&u.bundle_id).unwrap_or("-")
+                };
+                let bundle = if u.bundle_id.is_empty() {
+                    "?"
+                } else {
+                    &u.bundle_id
+                };
+                println!("{:<16} {:<40} pid {}", verdict, bundle, u.pid);
+            }
         }
     }
     Ok(())

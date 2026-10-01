@@ -151,9 +151,10 @@ export function GeneralSection({ general }: GeneralSectionProps) {
             Detection reads on-screen window titles for known meeting apps
             (Zoom, Google Meet, Teams, Slack huddles). It never starts a
             recording on its own - it offers, you click. Nothing leaves your
-            machine, and titles are never saved. Automatic stop ends a recording
-            when the detected meeting window closes (needs detection on), or
-            when neither your mic nor the meeting audio has made a sound for 5
+            machine, and titles are never saved. Automatic stop ends a recording when the call app releases the
+            microphone, or when the detected meeting window closes on systems
+            that cannot report microphone use (needs detection on), or when
+            neither your mic nor the meeting audio has made a sound for 5
             minutes. A minute before the silence stop, the meeting page warns
             you and offers Keep recording.
           </p>

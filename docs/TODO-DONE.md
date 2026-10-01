@@ -1129,4 +1129,6 @@ New closed items go at the bottom.
   The guard is a warning from 4 minutes (auto_stop_at on GET /api/meetings/active), a Keep recording button (POST /api/meetings/{id}/keep-recording), and any sound resetting the clock.
   The live meeting page navigates to the post view with autoEnhance when the server ends the recording.
   The active-recording poll keeps running in a background tab and the warning also posts a browser notification, since the yogurt tab usually sits behind the call.
+  A later pass added the microphone-release signal as the preferred stop: yogurt_audio::mic_usage lists processes running input via CoreAudio process objects, and an allowlisted meeting app that held the mic and then let go for 2 polls stops the recording.
+  The window-closed stop remains only where that API is unsupported or no meeting app ever held the mic.
   </details>

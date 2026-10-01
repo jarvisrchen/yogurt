@@ -27,6 +27,19 @@
 //! the behavior they want anyway ("the call ended, stop recording").
 //! Turning the setting off disables both halves.
 //!
+//! **The preferred end-of-call signal is the microphone.** While a recording
+//! runs, [`mic_poll`] asks CoreAudio which processes hold the mic. Once an
+//! allowlisted meeting app (see `yogurt_audio::detect::meeting_app_for_process`)
+//! has held it during this recording and then has not for
+//! [`MIC_RELEASED_TICKS`] polls, the recording stops. A recording no meeting
+//! app ever held the mic for is never stopped this way. This does not depend
+//! on window detection or the `meeting_detection` setting. When the OS cannot
+//! report mic users, the window-gone stop above stays in charge. When it can
+//! and a meeting app has held the mic, the window-gone stop is off, because a
+//! hidden or switched browser tab looks like a closed call. Safari captures in
+//! a WebKit process that never matches, so no meeting app is ever seen and
+//! Safari calls stay on the window signal.
+//!
 //! **It also stops a silent recording.** Independently of window detection,
 //! [`silence_tick`] stops the active recording once neither the mic nor the
 //! system channel has had a peak above `SILENCE_PEAK` for
@@ -128,6 +141,55 @@ pub struct DetectState {
     linked: Option<(Uuid, u32)>,
     /// Polls the linked window has been missing for.
     missing_ticks: u8,
+    /// Microphone-release watch for the current recording.
+    mic: MicWatch,
+    /// The OS can say which processes hold the mic. Once a meeting app has
+    /// held it, the mic signal replaces the window-gone stop, which misfires
+    /// when the user merely switches browser tabs.
+    mic_supported: bool,
+}
+
+/// Consecutive polls with no meeting app on the mic before the stop.
+pub const MIC_RELEASED_TICKS: u8 = 2;
+
+/// Remembers whether a meeting app has held the mic during the current
+/// recording, and stops it once the app lets go.
+#[derive(Debug, Default)]
+pub struct MicWatch {
+    recording: Option<Uuid>,
+    seen: bool,
+    released_ticks: u8,
+}
+
+impl MicWatch {
+    /// `holding` is `None` when the OS cannot report mic users. A recording
+    /// no meeting app ever held the mic for (an in-person meeting) is never
+    /// stopped here.
+    pub fn advance(&mut self, active: Option<Uuid>, holding: Option<bool>) -> Option<Uuid> {
+        if self.recording != active {
+            *self = Self {
+                recording: active,
+                ..Self::default()
+            };
+        }
+        let id = active?;
+        match holding? {
+            true => {
+                self.seen = true;
+                self.released_ticks = 0;
+                None
+            }
+            false if self.seen => {
+                self.released_ticks += 1;
+                if self.released_ticks < MIC_RELEASED_TICKS {
+                    return None;
+                }
+                *self = Self::default();
+                Some(id)
+            }
+            false => None,
+        }
+    }
 }
 
 impl DetectState {
@@ -209,7 +271,7 @@ impl DetectState {
         self.linked = None;
         self.missing_ticks = 0;
         Advance {
-            stop: Some(meeting_id),
+            stop: (!(self.mic_supported && self.mic.seen)).then_some(meeting_id),
             raise,
         }
     }
@@ -247,6 +309,7 @@ pub fn spawn(state: AppState) {
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
+            mic_poll(&state).await;
             tick(&state).await;
             silence_tick(&state, now_ms(), SilencePolicy::DEFAULT).await;
         }
@@ -259,7 +322,12 @@ pub async fn tick(state: &AppState) {
     if !enabled(&state.db) {
         // Drop everything we were holding — including any link, so
         // turning the setting off can never stop a recording later.
-        *state.detect.lock().await = DetectState::default();
+        let mut st = state.detect.lock().await;
+        *st = DetectState {
+            mic: std::mem::take(&mut st.mic),
+            mic_supported: st.mic_supported,
+            ..DetectState::default()
+        };
         return;
     }
 
@@ -314,6 +382,63 @@ pub async fn tick(state: &AppState) {
         tracing::info!(meeting = %id, "detected meeting window closed — stopping recording");
         if let Err(e) = state.stop_meeting(&id).await {
             tracing::warn!(meeting = %id, error = %e, "auto-stop after meeting window closed failed");
+        }
+    }
+}
+
+/// Query the mic users (bounded like the window query) while a recording is
+/// live, then feed [`mic_tick`].
+async fn mic_poll(state: &AppState) {
+    static IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    use std::sync::atomic::Ordering::SeqCst;
+
+    if state.meetings.active_recording().await.is_none() {
+        state.detect.lock().await.mic = MicWatch::default();
+        return;
+    }
+    if IN_FLIGHT.swap(true, SeqCst) {
+        return;
+    }
+    let query = tokio::task::spawn_blocking(|| {
+        // Cleared on drop so a panic in `mic_users` cannot disable the stop.
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                IN_FLIGHT.store(false, SeqCst);
+            }
+        }
+        let _clear = Clear;
+        yogurt_audio::mic_usage::mic_users()
+    });
+    match tokio::time::timeout(QUERY_TIMEOUT, query).await {
+        Ok(Ok(users)) => mic_tick(state, users, std::process::id() as i32).await,
+        _ => tracing::warn!("microphone usage query skipped: wedged or panicked"),
+    }
+}
+
+/// Fold one mic-usage snapshot into the watch and stop the recording when
+/// the meeting app has released the microphone.
+pub async fn mic_tick(
+    state: &AppState,
+    users: Option<Vec<yogurt_audio::mic_usage::MicUser>>,
+    own_pid: i32,
+) {
+    let active = state.meetings.active_recording().await;
+    let stop = {
+        let mut st = state.detect.lock().await;
+        st.mic_supported = users.is_some();
+        if !auto_stop_enabled(&state.db) {
+            st.mic = MicWatch::default();
+            return;
+        }
+        let holding = users
+            .map(|u| !yogurt_audio::mic_usage::meeting_apps_holding_mic(&u, own_pid).is_empty());
+        st.mic.advance(active, holding)
+    };
+    if let Some(id) = stop {
+        tracing::info!(meeting = %id, "meeting app released the microphone, stopping recording");
+        if let Err(e) = state.stop_meeting(&id).await {
+            tracing::warn!(meeting = %id, error = %e, "auto-stop after microphone release failed");
         }
     }
 }
@@ -608,5 +733,110 @@ mod tests {
             .unwrap()
             .ended_at;
         assert_eq!(first, again);
+    }
+
+    #[test]
+    fn mic_watch_stops_after_two_released_ticks_once_a_meeting_app_was_seen() {
+        let mut w = MicWatch::default();
+        let rec = Uuid::now_v7();
+        assert_eq!(w.advance(Some(rec), Some(true)), None);
+        assert_eq!(w.advance(Some(rec), Some(false)), None);
+        assert_eq!(w.advance(Some(rec), Some(false)), Some(rec));
+        assert_eq!(w.advance(Some(rec), Some(false)), None);
+    }
+
+    #[test]
+    fn mic_watch_ignores_a_one_tick_blip() {
+        let mut w = MicWatch::default();
+        let rec = Uuid::now_v7();
+        w.advance(Some(rec), Some(true));
+        assert_eq!(w.advance(Some(rec), Some(false)), None);
+        assert_eq!(w.advance(Some(rec), Some(true)), None);
+        assert_eq!(w.advance(Some(rec), Some(false)), None);
+    }
+
+    #[test]
+    fn mic_watch_never_stops_a_recording_no_meeting_app_held() {
+        let mut w = MicWatch::default();
+        let rec = Uuid::now_v7();
+        for _ in 0..10 {
+            assert_eq!(w.advance(Some(rec), Some(false)), None);
+        }
+    }
+
+    #[test]
+    fn mic_watch_resets_for_a_new_recording() {
+        let mut w = MicWatch::default();
+        let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+        w.advance(Some(a), Some(true));
+        // Recording A ends by hand, B starts with no meeting app.
+        assert_eq!(w.advance(None, Some(false)), None);
+        for _ in 0..5 {
+            assert_eq!(w.advance(Some(b), Some(false)), None);
+        }
+    }
+
+    #[test]
+    fn unsupported_mic_api_keeps_the_window_fallback() {
+        let mut st = DetectState::default();
+        let rec = Uuid::now_v7();
+        st.advance(window(7), Some(rec));
+        st.mic_supported = false;
+        st.advance(None, Some(rec));
+        st.advance(None, Some(rec));
+        assert_eq!(st.advance(None, Some(rec)).stop, Some(rec));
+    }
+
+    #[test]
+    fn tab_switch_does_not_stop_once_a_meeting_app_held_the_mic() {
+        let mut st = DetectState::default();
+        let rec = Uuid::now_v7();
+        st.advance(window(7), Some(rec));
+        st.mic_supported = true;
+        st.mic.advance(Some(rec), Some(true));
+        for _ in 0..5 {
+            assert_eq!(st.advance(None, Some(rec)).stop, None);
+        }
+    }
+
+    #[test]
+    fn supported_mic_without_a_meeting_app_still_allows_the_window_stop() {
+        let mut st = DetectState::default();
+        let rec = Uuid::now_v7();
+        st.advance(window(7), Some(rec));
+        st.mic_supported = true;
+        st.advance(None, Some(rec));
+        st.advance(None, Some(rec));
+        assert_eq!(st.advance(None, Some(rec)).stop, Some(rec));
+    }
+
+    fn chrome_helper() -> Vec<yogurt_audio::mic_usage::MicUser> {
+        vec![yogurt_audio::mic_usage::MicUser {
+            pid: 99,
+            bundle_id: "com.google.Chrome.helper".into(),
+        }]
+    }
+
+    #[tokio::test]
+    async fn mic_tick_stops_and_stamps_after_the_app_releases_the_mic() {
+        let (state, id, _tmp) = recording_state().await;
+        mic_tick(&state, Some(chrome_helper()), 1).await;
+        mic_tick(&state, Some(vec![]), 1).await;
+        assert_eq!(state.meetings.active_recording().await, Some(id));
+        mic_tick(&state, Some(vec![]), 1).await;
+        assert_eq!(state.meetings.active_recording().await, None);
+        let row = state.meeting_repo.get(&id.to_string()).unwrap().unwrap();
+        assert!(row.ended_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn mic_tick_does_nothing_when_auto_stop_is_off() {
+        let (state, id, _tmp) = recording_state().await;
+        yogurt_db::settings::set(&state.db, AUTO_STOP_SETTING_KEY, "false").unwrap();
+        mic_tick(&state, Some(chrome_helper()), 1).await;
+        for _ in 0..3 {
+            mic_tick(&state, Some(vec![]), 1).await;
+        }
+        assert_eq!(state.meetings.active_recording().await, Some(id));
     }
 }
