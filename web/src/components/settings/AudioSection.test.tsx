@@ -37,6 +37,7 @@ function baseGeneral(overrides: Partial<General> = {}): General {
     stt_model: "nova-3",
     meeting_detection: true,
     meeting_detection_focus: true,
+    meeting_auto_stop: true,
     ...overrides,
   };
 }

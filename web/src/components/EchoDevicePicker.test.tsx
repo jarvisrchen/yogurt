@@ -43,6 +43,7 @@ function baseGeneral(overrides: Partial<Record<string, unknown>> = {}) {
     stt_model: "nova-3",
     meeting_detection: true,
     meeting_detection_focus: true,
+    meeting_auto_stop: true,
     ...overrides,
   };
 }

@@ -25,6 +25,7 @@ mod frame;
 #[cfg(target_os = "macos")]
 mod lock;
 mod mic;
+pub mod mic_usage;
 pub mod permission;
 mod resample;
 mod ring;

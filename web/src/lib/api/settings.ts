@@ -50,6 +50,9 @@ export interface General {
   /** Raise the installed app on detection. Only acts while
    *  `meeting_detection` is also on. */
   meeting_detection_focus: boolean;
+  /** Stop the recording when the meeting window closes or both channels stay
+   *  silent for 5 minutes. */
+  meeting_auto_stop: boolean;
   /** AUD-13 - whether the mic echo feature is exposed at all. Off by
    *  default; the in-meeting echo controls and auto-start only exist
    *  when this is on. Mirrors

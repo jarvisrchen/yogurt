@@ -86,6 +86,7 @@ pub fn router(state: AppState) -> Router {
         // axum 0.8 path syntax: `{id}` (not `:id`).
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
+        .route("/api/meetings/{id}/keep-recording", post(keep_recording))
         .route(
             "/api/meetings/{id}/audio-device",
             post(switch_meeting_audio_device),
@@ -409,20 +410,30 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
     // `mic_muted` rides along the same lookup so a page reload or second
     // tab reflects the true mute state within this existing poll, with no
     // new WS plumbing.
-    let (stt, mic_muted, echo_enabled) = match state.meetings.get(&id).await {
+    let (stt, mic_muted, echo_enabled, last_audible) = match state.meetings.get(&id).await {
         Some(m) => (
             *m.stt_engine.lock().await,
             *m.mic_muted.lock().await,
             *m.echo_enabled.lock().await,
+            Some(m.last_audible_ms.load(std::sync::atomic::Ordering::Relaxed)),
         ),
-        None => (None, false, false),
+        None => (None, false, false, None),
     };
+    let auto_stop_at = last_audible
+        .filter(|_| crate::detect::auto_stop_enabled(&state.db))
+        .and_then(|last| {
+            match crate::detect::SilencePolicy::DEFAULT.check(last, now_unix_ms() as u64) {
+                crate::detect::Silence::Warning { stop_at_ms } => Some(stop_at_ms),
+                _ => None,
+            }
+        });
     let mut body = json!({
         "id": id.to_string(),
         "title": title,
         "started_at": started_at,
         "mic_muted": mic_muted,
         "echo_enabled": echo_enabled,
+        "auto_stop_at": auto_stop_at,
     });
     if let Some(engine) = stt {
         body["stt"] = json!(engine);
@@ -634,32 +645,28 @@ async fn set_meeting_echo(
 /// (idempotent). Dropping the supervisor signals the audio thread to drop
 /// the AudioStream (RAII stops cpal + SCK).
 async fn stop_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
-    match state.meetings.stop(&id).await {
-        Ok(_) => {
-            // Stamp ended_at (first stop wins — repeat stops are no-ops) so
-            // the library can show a real duration instead of a dash.
-            let repo = state.meeting_repo.clone();
-            let id_str = id.to_string();
-            let _ = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                if let Some(m) = repo.get(&id_str)? {
-                    if m.ended_at.is_none() {
-                        repo.patch(
-                            &id_str,
-                            yogurt_db::MeetingPatch {
-                                ended_at: Some(Some(now_unix_ms())),
-                                ..Default::default()
-                            },
-                        )?;
-                    }
-                }
-                Ok(())
-            })
-            .await;
-            (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response()
-        }
+    match state.stop_meeting(&id).await {
+        Ok(()) => (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": format!("{e:#}") })),
+        )
+            .into_response(),
+    }
+}
+
+/// `POST /api/meetings/:id/keep-recording` - dismiss the silence warning by
+/// treating the meeting as audible right now.
+async fn keep_recording(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
+    match state.meetings.get(&id).await {
+        Some(m) => {
+            m.last_audible_ms
+                .store(now_unix_ms() as u64, std::sync::atomic::Ordering::Relaxed);
+            (StatusCode::OK, Json(json!({ "status": "ok" }))).into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "meeting not found" })),
         )
             .into_response(),
     }

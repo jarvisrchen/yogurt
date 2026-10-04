@@ -24,6 +24,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex, RwLock};
 use tokio::task::JoinHandle;
@@ -218,6 +219,9 @@ pub struct Meeting {
     pub mic_muted: Mutex<bool>,
     /// Same lifecycle as `mic_muted`: read by `GET /api/meetings/active`.
     pub echo_enabled: Mutex<bool>,
+    /// Wall-clock ms of the last chunk on either channel whose peak cleared
+    /// [`SILENCE_PEAK`]. Reset to now on every start and by keep-recording.
+    pub last_audible_ms: Arc<AtomicU64>,
 }
 
 /// Abort a spawned task when the owner is dropped. Used so the STT session
@@ -251,6 +255,7 @@ impl Meeting {
             stt_engine: Mutex::new(None),
             mic_muted: Mutex::new(false),
             echo_enabled: Mutex::new(false),
+            last_audible_ms: Arc::new(AtomicU64::new(now_ms())),
         }
     }
 }
@@ -561,6 +566,8 @@ impl Registry {
         let audio_tx = m.audio_tx.clone();
         let transcript_tx = m.transcript_tx.clone();
         let events_tx = m.events_tx.clone();
+        let last_audible = m.last_audible_ms.clone();
+        last_audible.store(now_ms(), Ordering::Relaxed);
         // STT subscribes BEFORE the adapter task starts publishing, so no
         // mic chunks are dropped on the wire before Deepgram's WS is ready.
         let audio_rx_for_stt = m.audio_tx.subscribe();
@@ -675,7 +682,7 @@ impl Registry {
                 }
             }));
 
-            pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx).await;
+            pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx, last_audible).await;
             drop(stt_guard);
             drop(relay_guard);
         });
@@ -1387,6 +1394,15 @@ fn peak_amplitude(samples: &[i16]) -> f32 {
     samples.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0) as f32 / 32768.0
 }
 
+/// Peak (0..1) above which a chunk counts as sound rather than room noise.
+pub const SILENCE_PEAK: f32 = 0.02;
+
+fn note_audible(last_audible: &AtomicU64, peak: f32) {
+    if peak > SILENCE_PEAK {
+        last_audible.store(now_ms(), Ordering::Relaxed);
+    }
+}
+
 /// Drain Frame receivers from `yogurt-audio` → publish `AudioChunk`s onto the
 /// meeting's audio broadcast for the STT engine. Lagged receivers warn +
 /// continue.
@@ -1408,6 +1424,7 @@ pub(crate) async fn pump_audio_adapter(
     mut sys_rx: broadcast::Receiver<yogurt_audio::Frame>,
     audio_tx: broadcast::Sender<AudioChunk>,
     events_tx: broadcast::Sender<serde_json::Value>,
+    last_audible: Arc<AtomicU64>,
 ) {
     let mut mic_open = true;
     let mut sys_open = true;
@@ -1417,7 +1434,9 @@ pub(crate) async fn pump_audio_adapter(
         tokio::select! {
             res = mic_rx.recv(), if mic_open => match res {
                 Ok(frame) => {
-                    maybe_emit_audio_level(&events_tx, &mut mic_last_emit, "mic", peak_amplitude(&frame.samples));
+                    let peak = peak_amplitude(&frame.samples);
+                    note_audible(&last_audible, peak);
+                    maybe_emit_audio_level(&events_tx, &mut mic_last_emit, "mic", peak);
                     let chunk = AudioChunk {
                         channel: Channel::Mic,
                         samples: frame.samples,
@@ -1445,7 +1464,9 @@ pub(crate) async fn pump_audio_adapter(
             },
             res = sys_rx.recv(), if sys_open => match res {
                 Ok(frame) => {
-                    maybe_emit_audio_level(&events_tx, &mut sys_last_emit, "system", peak_amplitude(&frame.samples));
+                    let peak = peak_amplitude(&frame.samples);
+                    note_audible(&last_audible, peak);
+                    maybe_emit_audio_level(&events_tx, &mut sys_last_emit, "system", peak);
                     let chunk = AudioChunk {
                         channel: Channel::System,
                         samples: frame.samples,
@@ -1682,7 +1703,13 @@ mod tests {
         // its first recv.
         drop(sys_tx);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
+        let pump = tokio::spawn(pump_audio_adapter(
+            mic_rx,
+            sys_rx,
+            audio_tx,
+            events_tx,
+            Default::default(),
+        ));
 
         // Give the adapter a beat to observe sys closed.
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
@@ -1726,7 +1753,13 @@ mod tests {
 
         drop(mic_tx);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
+        let pump = tokio::spawn(pump_audio_adapter(
+            mic_rx,
+            sys_rx,
+            audio_tx,
+            events_tx,
+            Default::default(),
+        ));
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
 
         sys_tx
@@ -1751,6 +1784,15 @@ mod tests {
             .expect("pump task joined");
     }
 
+    #[test]
+    fn note_audible_ignores_room_noise_and_records_speech() {
+        let last = AtomicU64::new(0);
+        note_audible(&last, peak_amplitude(&[300, -400]));
+        assert_eq!(last.load(Ordering::Relaxed), 0);
+        note_audible(&last, peak_amplitude(&[0, -2000]));
+        assert!(last.load(Ordering::Relaxed) > 0);
+    }
+
     /// Sanity: pump exits cleanly when BOTH channels close from the start.
     #[tokio::test]
     async fn it_exits_when_both_channels_closed() {
@@ -1762,7 +1804,13 @@ mod tests {
         drop(mic_tx);
         drop(sys_tx);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
+        let pump = tokio::spawn(pump_audio_adapter(
+            mic_rx,
+            sys_rx,
+            audio_tx,
+            events_tx,
+            Default::default(),
+        ));
         tokio::time::timeout(std::time::Duration::from_secs(1), pump)
             .await
             .expect("pump must exit promptly when both channels closed")
@@ -1782,7 +1830,13 @@ mod tests {
         let (audio_tx, _audio_rx) = broadcast::channel::<AudioChunk>(64);
         let (events_tx, mut events_rx) = broadcast::channel::<serde_json::Value>(64);
 
-        let pump = tokio::spawn(pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx));
+        let pump = tokio::spawn(pump_audio_adapter(
+            mic_rx,
+            sys_rx,
+            audio_tx,
+            events_tx,
+            Default::default(),
+        ));
 
         // Half-scale mic frame (samples peak at 16384 -> level ~0.5).
         let half_scale = vec![16384i16; 320];

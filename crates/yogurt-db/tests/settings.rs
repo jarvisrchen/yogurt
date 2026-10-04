@@ -126,6 +126,23 @@ fn it_loads_meeting_detection_focus_default_and_patches_it() {
 }
 
 #[test]
+fn it_loads_meeting_auto_stop_default_and_patches_it() {
+    let db = Db::open_in_memory().unwrap();
+    assert!(settings::load_general(&db).unwrap().meeting_auto_stop);
+
+    let patched = settings::save_general_patch(
+        &db,
+        settings::GeneralPatch {
+            meeting_auto_stop: Some(false),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(!patched.meeting_auto_stop);
+    assert!(!settings::load_general(&db).unwrap().meeting_auto_stop);
+}
+
+#[test]
 fn it_loads_echo_defaults() {
     let db = Db::open_in_memory().unwrap();
     let g = settings::load_general(&db).unwrap();

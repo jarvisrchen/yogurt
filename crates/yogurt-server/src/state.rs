@@ -75,6 +75,38 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The one stop path: manual stop and every auto-stop go through here.
+    /// Stamps `ended_at` (first stop wins) so the library shows a real
+    /// duration instead of a dash.
+    pub async fn stop_meeting(&self, id: &uuid::Uuid) -> anyhow::Result<()> {
+        self.meetings.stop(id).await?;
+        let repo = self.meeting_repo.clone();
+        let id_str = id.to_string();
+        let stamped = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            if let Some(m) = repo.get(&id_str)? {
+                if m.ended_at.is_none() {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or(0);
+                    repo.patch(
+                        &id_str,
+                        MeetingPatch {
+                            ended_at: Some(Some(now)),
+                            ..Default::default()
+                        },
+                    )?;
+                }
+            }
+            Ok(())
+        })
+        .await;
+        if !matches!(stamped, Ok(Ok(()))) {
+            tracing::warn!(meeting = %id, ?stamped, "failed to stamp ended_at");
+        }
+        Ok(())
+    }
+
     /// Phase 7 (Plan 07-01) helper: apply a `MeetingPatch` to the SQLite
     /// directory AND re-emit the canonical markdown file in
     /// `~/.yogurt/notes/`. Both layers stay in lockstep so the Phase 4

@@ -27,6 +27,7 @@ function fixture(overrides: Partial<SettingsView> = {}): SettingsView {
       stt_model: "small.en",
       meeting_detection: true,
       meeting_detection_focus: true,
+      meeting_auto_stop: true,
     },
     providers: [],
     presets: [],

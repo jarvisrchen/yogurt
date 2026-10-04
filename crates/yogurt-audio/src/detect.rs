@@ -201,6 +201,22 @@ pub fn match_window(bundle_id: &str, title: &str) -> Option<&'static str> {
         .map(|r| r.label)
 }
 
+/// Meeting-app label for a process that holds the microphone. Unlike
+/// [`match_window`] this keys on the bundle id alone, and a rule bundle also
+/// matches its dotted children, so `com.google.Chrome.helper` (the process
+/// that actually captures in a browser call) counts as Chrome.
+pub fn meeting_app_for_process(bundle_id: &str) -> Option<&'static str> {
+    RULES
+        .iter()
+        .find(|r| {
+            bundle_id == r.bundle
+                || bundle_id
+                    .strip_prefix(r.bundle)
+                    .is_some_and(|rest| rest.starts_with('.'))
+        })
+        .map(|r| r.label)
+}
+
 /// Enumerate on-screen windows and return the first that looks like a
 /// live meeting, or `None`.
 ///
@@ -270,8 +286,16 @@ fn bounded<T: Send + 'static>(
     }
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
+        // Cleared on drop so a panic in `f` cannot wedge every later query.
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                QUERY_IN_FLIGHT.store(false, Ordering::Release);
+            }
+        }
+        let clear = Clear;
         let v = f();
-        QUERY_IN_FLIGHT.store(false, Ordering::Release);
+        drop(clear);
         let _ = tx.send(v);
     });
     rx.recv_timeout(timeout).map_err(|_| Wedged::TimedOut)
@@ -444,6 +468,22 @@ mod tests {
                     std::thread::sleep(Duration::from_millis(5))
                 }
                 other => panic!("unexpected: {other:?}"),
+            }
+        }
+
+        // A panicking query must not leave the flag set forever.
+        let _ = bounded(
+            || -> i32 { panic!("query blew up") },
+            Duration::from_secs(1),
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            match bounded(|| 1, Duration::from_secs(1)) {
+                Ok(1) => break,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                other => panic!("flag stuck after a panic: {other:?}"),
             }
         }
     }

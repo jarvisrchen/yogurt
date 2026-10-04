@@ -43,6 +43,7 @@ function renderSection() {
           stt_model: "",
           meeting_detection: true,
           meeting_detection_focus: true,
+          meeting_auto_stop: true,
         }} />
     </QueryClientProvider>,
   );
@@ -142,5 +143,17 @@ describe("GeneralSection standalone install hint", () => {
     mockStandalone(true);
     renderSection();
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+});
+
+describe("GeneralSection auto-stop", () => {
+  it("shows the auto-stop checkbox on and describes both signals", () => {
+    renderSection();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Stop recording automatically when the meeting ends",
+      }),
+    ).toBeChecked();
+    expect(screen.getByText(/neither your mic nor the meeting audio/)).toBeInTheDocument();
   });
 });

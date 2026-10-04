@@ -12,6 +12,7 @@ import { CopyUrlButton } from "../components/CopyUrlButton";
 import { RefreshDevicesButton } from "../components/RefreshDevicesButton";
 import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
+import { SilenceStopBanner } from "../components/SilenceStopBanner";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
@@ -184,6 +185,24 @@ export function Meeting() {
     }
   }, [meetingId, activeRecording.data]);
 
+  // The server can end a recording on its own (window closed, silence).
+  // `sawActiveRef` keeps a stale poll that predates the start from reading
+  // as a stop, and `stoppingRef` keeps a manual End from also triggering this.
+  const sawActiveRef = useRef<string | null>(null);
+  const stoppingRef = useRef(false);
+  useEffect(() => {
+    if (!meetingId || activeRecording.data === undefined) return;
+    if (activeRecording.data?.id === meetingId) {
+      sawActiveRef.current = meetingId;
+      return;
+    }
+    if (sawActiveRef.current === meetingId && recording && !stoppingRef.current) {
+      sawActiveRef.current = null;
+      void endMeeting();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingId, activeRecording.data, recording]);
+
   const title = meetingId
     ? (meetingRow?.title ?? "Untitled meeting")
     : "New meeting";
@@ -303,7 +322,9 @@ export function Meeting() {
         );
         return;
       }
+      sawActiveRef.current = null;
       setRecording(true);
+      stoppingRef.current = false;
       // /start stamps started_at + stt_engine on the row; refetch so the
       // meta pills reflect the real engine instead of the poll fallback.
       void queryClient.invalidateQueries({ queryKey: meetingKey(id) });
@@ -321,6 +342,7 @@ export function Meeting() {
   async function stopRecording() {
     if (!meetingId) return;
     setErrorMessage(null);
+    stoppingRef.current = true;
     try {
       const res = await fetch(`/api/meetings/${meetingId}/stop`, {
         method: "POST",
@@ -329,8 +351,10 @@ export function Meeting() {
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as ServerError;
         setErrorMessage(body.error ?? `Failed to stop recording (${res.status})`);
+        stoppingRef.current = false;
         return;
       }
+      sawActiveRef.current = null;
       setRecording(false);
       // Clear the active-recording cache HERE, not just on the next poll.
       // `MeetingPost` bounces back to this route while that cached value
@@ -342,6 +366,7 @@ export function Meeting() {
       queryClient.setQueryData(activeRecordingKey, null);
       void queryClient.invalidateQueries({ queryKey: meetingKey(meetingId) });
     } catch (e) {
+      stoppingRef.current = false;
       setErrorMessage(e instanceof Error ? e.message : "Failed to stop recording");
     }
   }
@@ -591,6 +616,16 @@ export function Meeting() {
             </div>
           )}
         </header>
+
+        {recording &&
+          meetingId &&
+          activeRecording.data?.id === meetingId &&
+          activeRecording.data.auto_stop_at != null && (
+            <SilenceStopBanner
+              meetingId={meetingId}
+              autoStopAt={activeRecording.data.auto_stop_at}
+            />
+          )}
 
         {error && (
           <div
