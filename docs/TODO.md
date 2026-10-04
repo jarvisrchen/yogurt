@@ -64,6 +64,15 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
+- [ ] **MTG-18** Show the actual date in meeting cards, not just the time
+  <details>
+  <summary>Details</summary>
+
+  `metaParts` (`web/src/components/library/MeetingCard.tsx:26-44`) only puts the time in the card caption (e.g. "2:45 PM"), relying on the day-group header above it (`dayLabel`, `web/src/components/library/DateGroup.tsx`) for the date, which renders as "Today" / "Yesterday" / a bare weekday name with no date attached.
+  jarvisrchen wants a real date visible on each card, e.g. "9/14/26 Monday" instead of just "Monday" - he currently has to add the date by hand when titling a meeting (`meeting 9/16/26`) because the UI doesn't show it anywhere unambiguous.
+  Likely fix: prepend an `M/D/YY` date to the card caption in `metaParts`, and/or extend `dayLabel` in `DateGroup.tsx` to append the date to its weekday/Today/Yesterday label.
+  </details>
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
