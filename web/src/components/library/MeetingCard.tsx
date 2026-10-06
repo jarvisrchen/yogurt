@@ -13,7 +13,7 @@ import { Star } from "lucide-react";
 import type { Meeting } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
 import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
-import { InlineTitle } from "./InlineTitle";
+import { InlineTitle, shortDate } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
 
 /**
@@ -25,18 +25,13 @@ import { MeetingCardActions } from "./MeetingCardActions";
  * Tagging the normal enhanced case would be noise.
  */
 export function metaParts(m: Meeting): { text: string; tone: "neutral" | "warn" }[] {
-  const started = new Date(m.started_at);
   const parts: { text: string; tone: "neutral" | "warn" }[] = [
     {
-      text: started.toLocaleDateString("en-US", {
-        month: "numeric",
-        day: "numeric",
-        year: "2-digit",
-      }),
+      text: shortDate(m.started_at),
       tone: "neutral",
     },
     {
-      text: started.toLocaleTimeString(undefined, {
+      text: new Date(m.started_at).toLocaleTimeString(undefined, {
         hour: "numeric",
         minute: "2-digit",
       }),
@@ -131,6 +126,7 @@ export function MeetingCard({
           <InlineTitle
             id={meeting.id}
             title={meeting.title}
+            startedAt={meeting.started_at}
             className="block min-w-0 text-[15px] font-semibold text-ink truncate"
           />
           {meeting.starred && (

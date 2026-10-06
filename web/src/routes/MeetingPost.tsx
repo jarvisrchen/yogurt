@@ -633,6 +633,7 @@ export function MeetingPost() {
             <InlineTitle
               id={meetingId}
               title={displayTitle ?? "Untitled meeting"}
+              startedAt={startedAtUnixMs}
               className="block heading-card truncate"
             />
             <div className="mt-1 space-y-1.5">
