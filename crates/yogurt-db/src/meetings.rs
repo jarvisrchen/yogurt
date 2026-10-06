@@ -32,7 +32,7 @@
 use crate::labels::{self, Label};
 use crate::Db;
 use anyhow::{bail, Context, Result};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -373,7 +373,23 @@ impl MeetingRepo {
         // impossible because we trimmed above.
         let escaped = trimmed.replace('"', "\"\"");
         let match_expr = format!("\"{escaped}\"*");
+        // A date-shaped query ("10/6/26") also returns every meeting that
+        // started that local day, ahead of the text matches.
+        let day = parse_short_date(trimmed).and_then(local_day_bounds_ms);
         self.db.with_conn(|conn| -> Result<Vec<Meeting>> {
+            let mut out = Vec::new();
+            if let Some((start, end)) = day {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT id, title, started_at, ended_at, notes_md, enriched_md, \
+                            transcript_json, starred, created_at, updated_at, \
+                            stt_engine, llm_model, template \
+                     FROM meetings WHERE started_at >= ?1 AND started_at < ?2 \
+                     ORDER BY started_at DESC LIMIT ?3",
+                )?;
+                for r in stmt.query_map(params![start, end, limit as i64], row_to_meeting)? {
+                    out.push(r?);
+                }
+            }
             let mut stmt = conn.prepare_cached(
                 "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
                         m.enriched_md, m.transcript_json, m.starred, \
@@ -385,9 +401,11 @@ impl MeetingRepo {
                  LIMIT ?2",
             )?;
             let rows = stmt.query_map(params![match_expr, limit as i64], row_to_meeting)?;
-            let mut out = Vec::new();
             for r in rows {
-                out.push(r?);
+                let m = r?;
+                if out.len() < limit && !out.iter().any(|o| o.id == m.id) {
+                    out.push(m);
+                }
             }
             hydrate_labels(conn, &mut out)?;
             Ok(out)
@@ -404,6 +422,42 @@ impl MeetingRepo {
             Ok(n > 0)
         })
     }
+}
+
+/// `M/D/YY` in local time ("10/6/26"), the date format the user types
+/// into titles and search.
+pub fn short_date(unix_ms: i64) -> String {
+    let d = Local
+        .timestamp_millis_opt(unix_ms)
+        .single()
+        .unwrap_or_else(Local::now);
+    d.format("%-m/%-d/%y").to_string()
+}
+
+/// Parse `M/D/YY` or `M/D/YYYY`. Anything else is `None`.
+fn parse_short_date(q: &str) -> Option<NaiveDate> {
+    let mut it = q.split('/');
+    let (m, d, y) = (it.next()?, it.next()?, it.next()?);
+    if it.next().is_some() {
+        return None;
+    }
+    let y: i32 = match y.len() {
+        2 => 2000 + y.parse::<i32>().ok()?,
+        4 => y.parse().ok()?,
+        _ => return None,
+    };
+    NaiveDate::from_ymd_opt(y, m.parse().ok()?, d.parse().ok()?)
+}
+
+/// `[start, end)` unix ms of the local calendar day `d`.
+fn local_day_bounds_ms(d: NaiveDate) -> Option<(i64, i64)> {
+    let ms = |d: NaiveDate| {
+        Local
+            .from_local_datetime(&d.and_hms_opt(0, 0, 0)?)
+            .earliest()
+            .map(|t| t.timestamp_millis())
+    };
+    Some((ms(d)?, ms(d.succ_opt()?)?))
 }
 
 // ─── Internal SQL ──────────────────────────────────────────────────────────
@@ -974,5 +1028,44 @@ mod tests {
             0,
             "chat_messages must cascade-delete with the parent meeting"
         );
+    }
+
+    #[test]
+    fn date_query_returns_that_local_day_then_text_matches() {
+        let repo = fresh_repo();
+        let at = |y, mo, d, h| {
+            Local
+                .with_ymd_and_hms(y, mo, d, h, 0, 0)
+                .unwrap()
+                .timestamp_millis()
+        };
+        let mk = |title: &str, ms| {
+            repo.create(NewMeeting {
+                title: title.into(),
+                started_at_unix_ms: Some(ms),
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let morning = mk("Standup", at(2026, 10, 6, 0));
+        let night = mk("Retro", at(2026, 10, 6, 23));
+        mk("Next day", at(2026, 10, 7, 0));
+        let typed = mk("Planning 10/6/26", at(2026, 9, 1, 12));
+
+        let ids = |q: &str| -> Vec<String> {
+            repo.search(q, 50)
+                .unwrap()
+                .into_iter()
+                .map(|m| m.id)
+                .collect()
+        };
+        assert_eq!(
+            ids("10/6/26"),
+            vec![night.id.clone(), morning.id.clone(), typed.id]
+        );
+        assert_eq!(ids("10/6/2026")[..2], [night.id, morning.id]);
+        assert_eq!(short_date(at(2026, 10, 6, 9)), "10/6/26");
+        assert_eq!(parse_short_date("13/1/26"), None);
+        assert_eq!(parse_short_date("10/6"), None);
     }
 }

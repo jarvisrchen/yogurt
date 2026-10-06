@@ -1132,3 +1132,15 @@ New closed items go at the bottom.
   A later pass added the microphone-release signal as the preferred stop: yogurt_audio::mic_usage lists processes running input via CoreAudio process objects, and an allowlisted meeting app that held the mic and then let go for 2 polls stops the recording.
   The window-closed stop remains only where that API is unsupported or no meeting app ever held the mic.
   </details>
+
+- [x] **MTG-18** Show the actual date in meeting cards, not just the time
+  <details>
+  <summary>Details</summary>
+
+  `metaParts` (`web/src/components/library/MeetingCard.tsx:26-44`) only puts the time in the card caption (e.g. "2:45 PM"), relying on the day-group header above it (`dayLabel`, `web/src/components/library/DateGroup.tsx`) for the date, which renders as "Today" / "Yesterday" / a bare weekday name with no date attached.
+  jarvisrchen wants a real date visible on each card, e.g. "9/14/26 Monday" instead of just "Monday" - he currently has to add the date by hand when titling a meeting (`meeting 9/16/26`) because the UI doesn't show it anywhere unambiguous.
+  Likely fix: prepend an `M/D/YY` date to the card caption in `metaParts`, and/or extend `dayLabel` in `DateGroup.tsx` to append the date to its weekday/Today/Yesterday label.
+
+  Done 2026-10-06: each card caption now leads with an M/D/YY date ("10/6/26 · 2:45 PM · 47 min").
+  New meetings default to "Meeting 10/6/26" instead of "Untitled meeting", and a date-shaped search ("10/6/26" or "10/6/2026") returns every meeting that started that local day, ahead of the text matches, so renamed meetings still turn up by date.
+  </details>

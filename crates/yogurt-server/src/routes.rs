@@ -481,7 +481,7 @@ pub fn start_stamp_patch(existing: Option<&yogurt_db::Meeting>) -> yogurt_db::Me
     }
 }
 
-fn now_unix_ms() -> i64 {
+pub(crate) fn now_unix_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

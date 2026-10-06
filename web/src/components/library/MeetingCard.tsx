@@ -18,15 +18,25 @@ import { MeetingCardActions } from "./MeetingCardActions";
 
 /**
  * Card metadata as pills, same visual language as `MeetingMetaPills` in the
- * meeting headers. Time only (the list is already grouped by day); duration
+ * meeting headers. Date as M/D/YY (the same form search and default titles
+ * use, so the day header's bare "Monday" is never ambiguous), time; duration
  * once ended; and a strawberry "not enhanced" flag for the one case worth
  * noticing: ended without an enrichment pass (enhance failed or skipped).
  * Tagging the normal enhanced case would be noise.
  */
 export function metaParts(m: Meeting): { text: string; tone: "neutral" | "warn" }[] {
+  const started = new Date(m.started_at);
   const parts: { text: string; tone: "neutral" | "warn" }[] = [
     {
-      text: new Date(m.started_at).toLocaleTimeString(undefined, {
+      text: started.toLocaleDateString("en-US", {
+        month: "numeric",
+        day: "numeric",
+        year: "2-digit",
+      }),
+      tone: "neutral",
+    },
+    {
+      text: started.toLocaleTimeString(undefined, {
         hour: "numeric",
         minute: "2-digit",
       }),
