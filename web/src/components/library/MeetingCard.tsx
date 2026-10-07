@@ -13,18 +13,23 @@ import { Star } from "lucide-react";
 import type { Meeting } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
 import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
-import { InlineTitle } from "./InlineTitle";
+import { InlineTitle, shortDate } from "./InlineTitle";
 import { MeetingCardActions } from "./MeetingCardActions";
 
 /**
  * Card metadata as pills, same visual language as `MeetingMetaPills` in the
- * meeting headers. Time only (the list is already grouped by day); duration
+ * meeting headers. Date as M/D/YY (the same form search and default titles
+ * use, so the day header's bare "Monday" is never ambiguous), time; duration
  * once ended; and a strawberry "not enhanced" flag for the one case worth
  * noticing: ended without an enrichment pass (enhance failed or skipped).
  * Tagging the normal enhanced case would be noise.
  */
 export function metaParts(m: Meeting): { text: string; tone: "neutral" | "warn" }[] {
   const parts: { text: string; tone: "neutral" | "warn" }[] = [
+    {
+      text: shortDate(m.started_at),
+      tone: "neutral",
+    },
     {
       text: new Date(m.started_at).toLocaleTimeString(undefined, {
         hour: "numeric",
@@ -121,6 +126,7 @@ export function MeetingCard({
           <InlineTitle
             id={meeting.id}
             title={meeting.title}
+            startedAt={meeting.started_at}
             className="block min-w-0 text-[15px] font-semibold text-ink truncate"
           />
           {meeting.starred && (

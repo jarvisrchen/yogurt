@@ -64,7 +64,7 @@ pub fn router() -> Router<AppState> {
 
 /// Body for `POST /api/meetings`. Both fields are optional — the Library
 /// sidebar's "+ New meeting" button sends an empty body and gets the
-/// "Untitled meeting" default.
+/// dated "Meeting 10/6/26" default.
 #[derive(Debug, Deserialize, Default)]
 pub struct CreateBody {
     #[serde(default)]
@@ -171,13 +171,16 @@ async fn create(
     body: Option<Json<CreateBody>>,
 ) -> Result<(StatusCode, Json<Meeting>), ApiError> {
     let body = body.map(|Json(b)| b).unwrap_or_default();
+    let started_at = body
+        .started_at_unix_ms
+        .unwrap_or_else(crate::routes::now_unix_ms);
     let title = body
         .title
         .as_deref()
         .map(str::trim)
         .filter(|t| !t.is_empty())
-        .unwrap_or("Untitled meeting")
-        .to_string();
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("Meeting {}", yogurt_db::meetings::short_date(started_at)));
 
     // CLI-5: validate the fixture transcript up front, before touching
     // the DB, so a malformed file never creates a stray meeting row.
@@ -201,7 +204,7 @@ async fn create(
 
     let new = NewMeeting {
         title,
-        started_at_unix_ms: body.started_at_unix_ms,
+        started_at_unix_ms: Some(started_at),
         id: Some(id.clone()),
     };
     let repo = s.meeting_repo.clone();

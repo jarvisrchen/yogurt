@@ -522,6 +522,7 @@ export function Meeting() {
                 <InlineTitle
                   id={meetingId}
                   title={title}
+                  startedAt={meetingRow?.started_at}
                   className="heading-title"
                 />
               ) : (

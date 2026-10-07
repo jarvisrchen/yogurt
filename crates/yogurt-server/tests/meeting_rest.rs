@@ -100,7 +100,11 @@ async fn it_creates_a_meeting_and_returns_an_id() {
             .unwrap_or(false),
         "created_at is a non-empty ISO 8601 string"
     );
-    assert_eq!(body["title"].as_str().unwrap(), "Untitled meeting");
+    let started_at = body["started_at"].as_i64().unwrap();
+    assert_eq!(
+        body["title"].as_str().unwrap(),
+        format!("Meeting {}", yogurt_db::meetings::short_date(started_at))
+    );
 
     handle.abort();
 }
