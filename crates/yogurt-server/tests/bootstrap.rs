@@ -1,17 +1,4 @@
-//! Bootstrap tests — `seed_from_env` env-var → providers + key store mapping.
-//!
-//! Phase 5 (Plan 05-02) Task 3. Asserts:
-//! 1. `YOGURT_MINIMAX_API_KEY` env var seeds a Minimax provider, sets the
-//!    key in the (memory) keystore, and marks the row active.
-//! 2. `seed_from_env` is idempotent — running twice never duplicates rows
-//!    and the second run reports the existing names as skipped.
-//! 3. The first-seeded LLM provider wins the active slot — subsequent
-//!    seeds in the same run do NOT override an already-active provider.
-//!
-//! These tests serialize on `std::env::set_var` / `remove_var` so they MUST
-//! run sequentially (cargo's default for integration tests within a single
-//! file). The mutex below enforces serialization explicitly so flaky
-//! parallel-runner setups don't interleave the env vars.
+//! `seed_from_env` env-var to provider and key store mapping.
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -20,33 +7,20 @@ use tokio::sync::Mutex;
 use yogurt_server::state::AppState;
 use yogurt_server::{bootstrap, session, storage, Mode};
 
-/// Process-global mutex to prevent env-var races even when the test runner
-/// hands tests to parallel threads. Without this, two `set_var` calls from
-/// concurrent tests can leak the wrong key into the wrong assertion.
-///
-/// `tokio::sync::Mutex` (not `std::sync::Mutex`) so the guard can be held
-/// across `seed_from_env(...).await` without tripping
-/// `clippy::await_holding_lock`.
+/// Serializes env-var mutation across parallel tests. A tokio mutex so the guard can be held across `.await` without `clippy::await_holding_lock`.
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
-/// Clear EVERY `YOGURT_*_API_KEY` the bootstrap reads, so a leftover from a
-/// sibling test (or the developer's own shell) cannot seed an unintended
-/// provider and break a "single provider seeded" assertion.
-///
-/// Driven off `bootstrap::env_key_vars()` rather than a hand-written list:
-/// adding a preset used to break these tests only on machines that happened
-/// to export the new key.
+/// Clears every `YOGURT_*_API_KEY` the bootstrap reads so leftovers from sibling tests or the developer's shell cannot seed extra providers.
+/// Driven off `bootstrap::env_key_vars()` so new presets are covered automatically.
 fn clear_provider_env() {
     for var in bootstrap::env_key_vars() {
         std::env::remove_var(var);
     }
 }
 
-/// Create an isolated AppState rooted in a tempdir. Returns the state + the
-/// tempdir guard so the caller can drop it at end-of-test to clean up.
 fn test_state() -> (AppState, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let storage = Arc::new(storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap());
@@ -98,7 +72,6 @@ async fn it_is_idempotent() {
     );
     assert_eq!(second.skipped, vec!["Minimax".to_string()]);
 
-    // Row count must remain at exactly one Minimax row.
     let providers = yogurt_db::providers::list(&state.db).unwrap();
     let minimax_count = providers
         .iter()
@@ -109,14 +82,7 @@ async fn it_is_idempotent() {
     std::env::remove_var("YOGURT_MINIMAX_API_KEY");
 }
 
-/// REGRESSION: if a provider row already exists with NO key in the
-/// key store (e.g. the user clicked a preset chip in Settings to scaffold
-/// the row before adding the env var), the seed MUST backfill the key
-/// instead of silently leaving the row keyless.
-///
-/// The original behavior skipped the entire iteration when a same-named
-/// row existed, which left users staring at "No key stored yet." in
-/// Settings after a `just dev` boot that should have fixed it.
+/// Regression: a provider row that exists with no stored key (created from a Settings preset chip) must get its key backfilled, not skipped.
 #[tokio::test]
 async fn it_backfills_missing_key_when_row_exists() {
     let _guard = env_lock().lock().await;
@@ -124,9 +90,7 @@ async fn it_backfills_missing_key_when_row_exists() {
 
     let (state, _tmp) = test_state();
 
-    // Simulate "user clicked the Minimax preset chip" — insert the row
-    // without ever writing a key. This is the exact state the UI leaves
-    // the DB in after the preset-clone flow.
+    // A row without a key, as the UI preset-clone flow leaves it.
     let id = yogurt_db::providers::insert(
         &state.db,
         yogurt_db::providers::NewProvider {
@@ -143,7 +107,6 @@ async fn it_backfills_missing_key_when_row_exists() {
         "precondition: no key stored"
     );
 
-    // User then adds the env var and re-runs `just dev`.
     std::env::set_var("YOGURT_MINIMAX_API_KEY", "sk-backfilled-12345");
     let report = bootstrap::seed_from_env(&state).await.unwrap();
 
@@ -157,8 +120,6 @@ async fn it_backfills_missing_key_when_row_exists() {
     let stored = state.keys.get(&id).unwrap().expect("key backfilled");
     assert_eq!(stored, "sk-backfilled-12345");
 
-    // Second seed with the key already in place must NOT touch the
-    // key store (no spurious overwrite, no duplicate row).
     let second = bootstrap::seed_from_env(&state).await.unwrap();
     assert!(second.seeded.is_empty(), "second seed should not re-write");
     assert_eq!(second.skipped, vec!["Minimax".to_string()]);
@@ -183,8 +144,6 @@ async fn it_does_not_override_existing_active() {
     let (state, _tmp) = test_state();
     bootstrap::seed_from_env(&state).await.unwrap();
 
-    // Minimax is first in ENV_PRESETS → wins the active slot.
-    // OpenAI is configured but inactive.
     let active = yogurt_db::providers::active(&state.db).unwrap().unwrap();
     assert_eq!(active.name, "Minimax");
 
@@ -195,7 +154,6 @@ async fn it_does_not_override_existing_active() {
         .expect("OpenAI present");
     assert!(!openai.is_active, "OpenAI must not be active");
 
-    // OpenAI's key still got stored.
     let openai_key = state.keys.get(&openai.id).unwrap().expect("openai key");
     assert_eq!(openai_key, "sk-test-openai-67890");
 
@@ -203,31 +161,22 @@ async fn it_does_not_override_existing_active() {
     std::env::remove_var("YOGURT_OPENAI_API_KEY");
 }
 
-/// Release-safety verification (SET-11): the `.env.local` loader in
-/// `yogurt-cli/src/main.rs` must be guarded by an `--dev` arg check, NOT
-/// called unconditionally. A drift here would leak `.env.local` reads into
-/// brew-install release builds. Grep the file contents and assert the
-/// guard is present.
+/// The `.env.local` loader in `yogurt-cli/src/main.rs` must stay behind the `--dev` arg check so release builds never read it.
 #[test]
 fn cli_main_only_loads_env_local_when_dev_flag_passed() {
     let main_rs =
         std::fs::read_to_string("../yogurt-cli/src/main.rs").expect("read yogurt-cli/src/main.rs");
 
-    // Must contain the load call with the exact filename.
     assert!(
         main_rs.contains("dotenvy::from_filename(\".env.local\")"),
         "main.rs must call dotenvy::from_filename(\".env.local\")"
     );
 
-    // Must NOT call the unconditional dotenv()/dotenv_iter() variants.
     assert!(
         !main_rs.contains("dotenvy::dotenv()"),
         "main.rs MUST NOT call dotenvy::dotenv() — that reads .env unconditionally"
     );
 
-    // The from_filename call must appear AFTER a --dev arg check. We check
-    // this conservatively: find the position of the --dev check and ensure
-    // it comes before the loader call.
     let dev_check_pos = main_rs
         .find("std::env::args")
         .or_else(|| main_rs.find(r#""--dev""#))

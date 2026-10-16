@@ -1,8 +1,4 @@
-//! WebSocket auth integration tests (FOUND-05 / D-20 / D-21).
-//!
-//! Strategy: spawn the real server on an ephemeral loopback port using
-//! `RunConfig` with per-test tempdir overrides for both the SQLite path and
-//! the session-token path, then drive `tokio-tungstenite` against `/ws`.
+//! `/ws` auth against the real server on an ephemeral loopback port with tempdir overrides, driven by `tokio-tungstenite`.
 
 use std::net::TcpListener as StdTcpListener;
 use std::path::PathBuf;
@@ -30,15 +26,12 @@ async fn spawn_test_server() -> TestServer {
     let db_path = tmp.path().join("db.sqlite");
     let token_path: PathBuf = tmp.path().join("session-token");
 
-    // Pre-create the session token so the test knows what to send.
     let token = yogurt_server::session::load_or_create(&token_path)
         .expect("seed token")
         .as_str()
         .to_string();
 
-    // Reserve an ephemeral port: bind a std listener to get a free port, drop
-    // it, then ask the server to bind the same port. Race window is tiny on
-    // loopback for test purposes.
+    // Bind a std listener to get a free port, drop it, and have the server bind it. The race window is tiny on loopback.
     let port = {
         let l = StdTcpListener::bind("127.0.0.1:0").expect("ephemeral bind");
         let p = l.local_addr().unwrap().port();
@@ -53,15 +46,12 @@ async fn spawn_test_server() -> TestServer {
         mode: Mode::Release,
         db_path: Some(db_path),
         session_token_path: Some(token_path),
-        // Phase 4 (Plan 04-03): sandbox the per-meeting notes dir.
         notes_dir: Some(tmp.path().join("notes")),
-        // Phase 5 (SET-12): tempdir-isolate the new yogurt-db so parallel
-        // tests do not deadlock on the real user DB's WAL lock.
+        // Parallel tests deadlock on the real user DB's WAL lock.
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
     };
     let join = tokio::spawn(yogurt_server::run_with_config(cfg));
 
-    // Wait for the server to be listening.
     for _ in 0..50 {
         if tokio::net::TcpStream::connect(addr).await.is_ok() {
             break;
@@ -121,9 +111,7 @@ async fn it_rejects_ws_without_token() {
 
 #[tokio::test]
 async fn it_rejects_ws_with_subprotocol_only_no_query_token() {
-    // BL-02: the `Sec-WebSocket-Protocol: yogurt.<token>` auth path was
-    // removed. Even with the correct token in the subprotocol header, auth
-    // must fail because only `?token=` is honored now.
+    // Only `?token=` is honored: the correct token in the `Sec-WebSocket-Protocol` header must still fail auth.
     let server = spawn_test_server().await;
     let url = format!("ws://127.0.0.1:{}/ws", server.port);
 
@@ -149,13 +137,9 @@ async fn it_rejects_ws_with_subprotocol_only_no_query_token() {
 
 #[tokio::test]
 async fn it_rejects_ws_with_header_injection_attempt_in_query() {
-    // Header-injection regression: a token value containing CR/LF must not
-    // allow a downstream HTTP header to be smuggled. axum's Query extractor
-    // and hyper's URL decoding both reject control chars, but assert the
-    // end-to-end behavior here so a future router change can't regress it.
+    // A token containing CR/LF must not smuggle a downstream HTTP header.
     let server = spawn_test_server().await;
-    // %0D%0A = CRLF. Tungstenite's IntoClientRequest will refuse to construct
-    // a URL with a raw newline, so we percent-encode it.
+    // %0D%0A is CRLF, percent-encoded because tungstenite refuses a raw newline in a URL.
     let url = format!(
         "ws://127.0.0.1:{}/ws?token={}%0D%0AX-Injected:%20yes",
         server.port, server.token
@@ -167,9 +151,7 @@ async fn it_rejects_ws_with_header_injection_attempt_in_query() {
         HeaderValue::from_str(&format!("http://localhost:{}", server.port)).unwrap(),
     );
 
-    // Server must reject (token mismatch — the decoded value is not the real
-    // token). The important behavior is "no 101 upgrade" — we just want to
-    // assert auth fails.
+    // Must reject with no 101 upgrade (the decoded value is not the real token).
     let err = tokio_tungstenite::connect_async(req)
         .await
         .expect_err("header-injection token must be rejected");
@@ -216,7 +198,6 @@ async fn it_accepts_ws_with_correct_origin_and_token() {
         "expected 101 Switching Protocols"
     );
 
-    // Round-trip a message to confirm the socket is usable.
     use futures_util::{SinkExt, StreamExt};
     socket
         .send(tokio_tungstenite::tungstenite::Message::Text(

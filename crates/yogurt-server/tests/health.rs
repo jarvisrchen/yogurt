@@ -1,8 +1,4 @@
 //! Smoke test for the unauthenticated `/api/health` endpoint.
-//!
-//! Phase 5 (SET-12) refactor: use `run_with_config` with tempdir +
-//! ephemeral-port isolation so the test no longer touches the real
-//! `~/.yogurt/db.sqlite` and no longer collides on a hardcoded port.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -24,14 +20,12 @@ async fn it_responds_to_health() {
         db_path: Some(tmp.path().join("yogurt-test.db")),
         session_token_path: Some(tmp.path().join("session-token")),
         notes_dir: Some(tmp.path().join("notes")),
-        // Phase 5 (SET-12): tempdir-isolate the new yogurt-db.
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
     };
     let handle = tokio::spawn(async move {
         let _ = run_with_config(cfg).await;
     });
 
-    // Poll until the server is up.
     for _ in 0..50 {
         if reqwest::get(format!("http://{addr}/api/health"))
             .await
@@ -52,7 +46,7 @@ async fn it_responds_to_health() {
 
     assert_eq!(body["status"], "ok");
     assert_eq!(body["service"], "yogurt-server");
-    // CLI-4 / D5: `yogurt ctl` tells instances apart by version + mode.
+    // `yogurt ctl` tells instances apart by version + mode.
     assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(body["mode"], "release");
     handle.abort();

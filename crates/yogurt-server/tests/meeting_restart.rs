@@ -1,23 +1,7 @@
-//! Regression tests for the "stop, then restart the SAME meeting"
-//! data-loss bug: a second recording session used to overwrite
-//! `started_at` (routes.rs's `start_meeting` handler), leave a stale
-//! `ended_at` behind, and (separately, covered in `meetings.rs`'s own test
-//! module) blow away the first session's `transcript_json`.
+//! Regression: stopping then restarting the same meeting must not overwrite `started_at` or leave a stale `ended_at`.
 //!
-//! `POST /api/meetings/:id/start` cannot be driven end-to-end here: it
-//! opens real ScreenCaptureKit + cpal audio capture on a dedicated thread,
-//! which has no fake/mock mode and cannot succeed without Screen Recording
-//! permission — unavailable in this sandboxed test runner. That's also why
-//! the pre-existing `tests/meeting_rest.rs::it_rejects_start_without_api_key`
-//! only ever exercises `/start`'s FAILURE path.
-//!
-//! Instead, these tests drive `start_stamp_patch` — the exact pure
-//! decision function `start_meeting`'s success branch calls to compute the
-//! patch — re-exported for tests via `__test_only_start_stamp`, against a
-//! real `MeetingRepo` row reached through the real REST surface. The only
-//! thing not under test is the literal HTTP round trip through the
-//! audio-gated handler body; the row state, the patch computation, and the
-//! tri-state `ended_at` semantics are all real.
+//! `POST /api/meetings/:id/start` cannot run here: it opens real ScreenCaptureKit and cpal capture, which needs Screen Recording permission.
+//! These tests drive `start_stamp_patch` (re-exported as `__test_only_start_stamp`), the pure function `start_meeting` calls, against a real `MeetingRepo` row.
 
 use yogurt_server::__test_only_start_stamp::start_stamp_patch;
 use yogurt_server::test_support::{run_with_mock_llm, seed_meeting};
@@ -28,8 +12,6 @@ async fn restart_preserves_started_at_and_clears_ended_at() {
     let id = seed_meeting(&server.state).await;
     let id_str = id.to_string();
 
-    // Simulate "session 1 completed": a real first start stamped
-    // `started_at`, a real stop stamped `ended_at`.
     let original_started_at = 1_000_000_i64;
     let stale_ended_at = 2_000_000_i64;
     server
@@ -45,8 +27,6 @@ async fn restart_preserves_started_at_and_clears_ended_at() {
         )
         .expect("seed session-1-completed state");
 
-    // Exactly what `start_meeting`'s Ok(_) branch does: read the pre-start
-    // row, compute the patch, apply it.
     let before = server
         .state
         .meeting_repo
@@ -60,7 +40,6 @@ async fn restart_preserves_started_at_and_clears_ended_at() {
         .patch(&id_str, patch)
         .expect("apply start_stamp_patch");
 
-    // Assert over the real REST surface, not just the repo directly.
     let client = reqwest::Client::new();
     let after: serde_json::Value = client
         .get(format!("http://{}/api/meetings/{id_str}", server.addr))

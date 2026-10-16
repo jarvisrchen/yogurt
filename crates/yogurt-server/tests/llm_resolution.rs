@@ -1,16 +1,6 @@
-//! Integration coverage for `llm_openai::resolve`'s priority chain:
-//! `state.llm_override` -> `YOGURT_LLM_*` env vars -> active provider row +
-//! stored key -> `MockLlm` fallback.
-//!
-//! `resolve` lives in a `pub(crate)` module, so this file reaches it via
-//! `yogurt_server::test_support::resolve` — a one-line re-export added
-//! specifically so integration tests can exercise the real chain instead of
-//! re-implementing it.
-//!
-//! These tests mutate process-wide `YOGURT_LLM_*` env vars, so (mirroring
-//! `tests/bootstrap.rs`) they serialize on a process-global mutex. Other
-//! integration-test *files* run as separate processes and cannot interleave
-//! with these env mutations.
+//! Priority chain of `llm_openai::resolve`: `state.llm_override`, `YOGURT_LLM_*` env vars, active provider row + stored key, then `MockLlm`.
+//! Reaches the `pub(crate)` module through `yogurt_server::test_support::resolve`.
+//! Tests mutate process-wide env vars, so they serialize on a global mutex.
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -64,8 +54,7 @@ fn insert_active_provider(state: &AppState, with_key: bool) -> String {
     id
 }
 
-/// (a) Nothing configured at all -> `resolve` must fall back to `MockLlm`
-/// (identified by its stable `model: "mock-llm"` marker on `complete`).
+/// Nothing configured: falls back to `MockLlm` (identified by `model: "mock-llm"`).
 #[tokio::test]
 async fn no_provider_configured_resolves_to_mock() {
     let _guard = env_lock().lock().await;
@@ -88,7 +77,6 @@ async fn no_provider_configured_resolves_to_mock() {
     );
 }
 
-/// (b) Active provider row + a key in the (memory) key store -> Ok.
 #[tokio::test]
 async fn active_provider_with_key_resolves_ok() {
     let _guard = env_lock().lock().await;
@@ -96,15 +84,13 @@ async fn active_provider_with_key_resolves_ok() {
     let (state, _tmp) = test_state();
     insert_active_provider(&state, true);
 
-    // `Arc<dyn LlmClient>` isn't `Debug`, so match explicitly rather than
-    // using `assert!(result.is_ok(), "{result:?}")`.
+    // `Arc<dyn LlmClient>` isn't `Debug`, so match explicitly.
     if let Err(e) = test_support::resolve(&state).await {
         panic!("provider + key must resolve Ok, got error: {e}");
     }
 }
 
-/// (c) Active provider row but NO key -> hard Err naming the provider
-/// (never a silent mock fallback).
+/// Active provider row but no key: hard Err naming the provider, never a silent mock fallback.
 #[tokio::test]
 async fn active_provider_without_key_errors_naming_provider() {
     let _guard = env_lock().lock().await;
@@ -112,8 +98,7 @@ async fn active_provider_without_key_errors_naming_provider() {
     let (state, _tmp) = test_state();
     insert_active_provider(&state, false);
 
-    // `Arc<dyn LlmClient>` isn't `Debug`, so match explicitly rather than
-    // using `Result::expect_err` (which requires `T: Debug`).
+    // `Result::expect_err` requires `T: Debug`, so match explicitly.
     let err = match test_support::resolve(&state).await {
         Ok(_) => panic!("missing key must be a hard Err, not a silent mock fallback"),
         Err(e) => e,
@@ -125,9 +110,7 @@ async fn active_provider_without_key_errors_naming_provider() {
     );
 }
 
-/// (d) `state.llm_override` wins even when both env vars AND an active
-/// provider + key are configured — override is the highest-priority link
-/// in the chain.
+/// `state.llm_override` wins over env vars and an active provider + key.
 #[tokio::test]
 async fn llm_override_wins_over_env_and_provider() {
     let _guard = env_lock().lock().await;

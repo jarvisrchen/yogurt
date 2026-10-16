@@ -1,9 +1,4 @@
-//! Integration tests for the Granola-style meeting labels REST surface
-//! (`/api/labels*` + `label_ids` on `PATCH /api/meetings/:id`).
-//!
-//! Mirrors `tests/meetings_api.rs`'s `spawn_server` helper — a real axum
-//! server bound to an ephemeral 127.0.0.1 port, tempdir-isolated SQLite +
-//! session token + notes directory per test.
+//! Meeting labels REST surface (`/api/labels*` + `label_ids` on `PATCH /api/meetings/:id`).
 
 use std::time::Duration;
 
@@ -72,7 +67,6 @@ async fn it_finds_or_creates_and_lists_with_counts() {
     let created: serde_json::Value = create_resp.json().await.unwrap();
     let lid = created["id"].as_str().unwrap().to_string();
 
-    // Same name, different case -> 200, same id.
     let dup_resp = client
         .post(format!("http://{addr}/api/labels"))
         .bearer_auth(&token)
@@ -164,7 +158,6 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
         .unwrap();
     assert_eq!(list_resp[0]["labels"][0]["id"].as_str().unwrap(), lid);
 
-    // Rename + recolor via PATCH /api/labels/:id — meeting reflects it.
     let rename_resp = client
         .patch(format!("http://{addr}/api/labels/{lid}"))
         .bearer_auth(&token)
@@ -186,7 +179,6 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
     assert_eq!(reloaded["labels"][0]["name"].as_str().unwrap(), "Customers");
     assert_eq!(reloaded["labels"][0]["color"].as_str().unwrap(), "straw");
 
-    // Unknown label id on a meeting PATCH -> 400.
     let bad_patch = client
         .patch(format!("http://{addr}/api/meetings/{mid}"))
         .bearer_auth(&token)
@@ -196,7 +188,6 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
         .unwrap();
     assert_eq!(bad_patch.status(), 400);
 
-    // Delete the label -> 204; meeting now has empty labels; delete again -> 404.
     let del_resp = client
         .delete(format!("http://{addr}/api/labels/{lid}"))
         .bearer_auth(&token)
@@ -280,7 +271,6 @@ async fn it_reorders_labels_via_put_order() {
     assert_eq!(position_of(&ids[0]), 1);
     assert_eq!(position_of(&ids[1]), 2);
 
-    // Unknown id -> 400.
     let bad = client
         .put(format!("http://{addr}/api/labels/order"))
         .bearer_auth(&token)

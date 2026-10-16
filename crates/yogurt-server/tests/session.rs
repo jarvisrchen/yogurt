@@ -1,4 +1,4 @@
-//! Session-token persistence + corruption-handling tests (BL-01, MD-05, MD-06).
+//! Session-token persistence and corruption handling.
 
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -29,9 +29,7 @@ fn it_round_trips_an_existing_token() {
 
 #[test]
 fn it_fails_loud_on_empty_token_file() {
-    // BL-01 regression: an empty file (simulating a crash mid-write) must NOT
-    // silently regenerate. Silent regeneration rotates the token and DoS's
-    // every active session.
+    // An empty file (crash mid-write) must not silently regenerate: that rotates the token and DoS's every active session.
     let (_tmp, p) = tmp_token_path();
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, "").expect("create empty file");
@@ -42,7 +40,6 @@ fn it_fails_loud_on_empty_token_file() {
         msg.contains("empty"),
         "error should mention 'empty'; got: {msg}"
     );
-    // Confirm the file was NOT overwritten with a new token.
     let raw = std::fs::read_to_string(&p).unwrap();
     assert!(
         raw.is_empty(),
@@ -52,7 +49,6 @@ fn it_fails_loud_on_empty_token_file() {
 
 #[test]
 fn it_fails_loud_on_malformed_token() {
-    // MD-05 regression: a short / wrong-charset token must be rejected loudly.
     let (_tmp, p) = tmp_token_path();
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, "hello").expect("write malformed token");
@@ -67,7 +63,6 @@ fn it_fails_loud_on_malformed_token() {
 
 #[test]
 fn it_persists_with_no_tmp_file_left_behind() {
-    // BL-01: the atomic write-rename pattern must clean up its tmp file.
     let (_tmp, p) = tmp_token_path();
     let _tok = session::load_or_create(&p).expect("first load");
     let tmp_path = p.with_extension("tmp");
@@ -90,7 +85,6 @@ fn it_creates_token_file_at_mode_0600() {
 #[cfg(unix)]
 #[test]
 fn it_creates_parent_dir_at_mode_0700() {
-    // MD-06 regression: ~/.yogurt/ must NOT be world-readable.
     use std::os::unix::fs::PermissionsExt;
     let (_tmp, p) = tmp_token_path();
     let _tok = session::load_or_create(&p).expect("first load");
@@ -102,7 +96,6 @@ fn it_creates_parent_dir_at_mode_0700() {
 #[cfg(unix)]
 #[test]
 fn it_tightens_a_preexisting_loose_parent_dir() {
-    // If ~/.yogurt/ already exists at 0755, load_or_create must tighten it.
     use std::os::unix::fs::PermissionsExt;
     let tmp = TempDir::new().unwrap();
     let parent = tmp.path().join("yogurt-dir");

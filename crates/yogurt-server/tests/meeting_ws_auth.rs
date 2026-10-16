@@ -1,11 +1,5 @@
-//! BL-01 regression: `/ws/meetings/{id}` requires Origin allowlist +
-//! session-token, matching the Phase 0 `/ws` endpoint's auth contract.
-//!
-//! Four cases:
-//!   (a) missing Origin     → 403
-//!   (b) wrong Origin       → 403
-//!   (c) missing/wrong token → 403
-//!   (d) correct both       → 101 upgrade + transcript frame round-trip
+//! `/ws/meetings/{id}` requires an Origin allowlist match and a session token.
+//! Missing or wrong Origin, and missing or wrong token, give 403. Both correct gives a 101 upgrade and a transcript frame round-trip.
 
 use futures_util::StreamExt;
 use std::sync::Arc;
@@ -54,17 +48,11 @@ async fn spawn() -> TestSetup {
         meetings: meetings::Registry::new(),
         markdown_exporter,
         prompts,
-        // Phase 5 (Plan 05-02): test wiring uses in-memory yogurt-db +
-        // MemoryKeyStore so this test doesn't touch the real key file.
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
-        // Phase 6 (Plan 06-01): test wiring uses MockLlm.
         llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
-        // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
         label_repo,
-        // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
-        // here but required by the AppState struct.
         app_events_tx: tokio::sync::broadcast::channel(64).0,
         detect: Default::default(),
     };
@@ -73,8 +61,7 @@ async fn spawn() -> TestSetup {
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.ok();
     });
-    // No readiness sleep needed: the listener is bound before the serve
-    // task is spawned, so connections queue in the accept backlog.
+    // The listener is bound before the serve task spawns, so connections queue in the accept backlog and no readiness sleep is needed.
 
     TestSetup {
         addr,
@@ -96,13 +83,9 @@ async fn it_rejects_meeting_ws_without_origin() {
         s.token
     );
 
-    // tungstenite always emits some Origin header by default; explicitly
-    // strip it so the server sees "" and rejects.
+    // tungstenite adds a default Origin; strip it so the server sees "" and rejects.
     let mut req = url.into_client_request().expect("build req");
     req.headers_mut().remove("origin");
-    // tungstenite's default Origin set by IntoClientRequest is the URL host;
-    // by removing we force the server-side `headers.get("origin")` to None
-    // which the handler maps to "" → not in allowlist → 403.
 
     let err = tokio_tungstenite::connect_async(req)
         .await
@@ -145,7 +128,6 @@ async fn it_rejects_meeting_ws_with_wrong_origin() {
 async fn it_rejects_meeting_ws_without_token() {
     let s = spawn().await;
     let m = s.state.meetings.create().await;
-    // No `?token=...` query.
     let url = format!("ws://127.0.0.1:{}/ws/meetings/{}", s.addr.port(), m.id);
 
     let mut req = url.into_client_request().expect("build req");
@@ -212,8 +194,6 @@ async fn it_accepts_meeting_ws_with_correct_origin_and_token() {
         .expect("ws upgrade should succeed");
     assert_eq!(response.status().as_u16(), 101);
 
-    // Deterministic subscribe signal: poll the broadcast's receiver count
-    // instead of a fixed sleep (flake source on slow CI).
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while m.transcript_tx.receiver_count() == 0 {
         assert!(
