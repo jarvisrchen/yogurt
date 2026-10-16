@@ -1,16 +1,11 @@
-//! Plan 05-01 Task 1 acceptance tests for the non-streaming
-//! `OpenAiCompatClient` (`LlmClient::complete`) against a wiremock
-//! stand-in OpenAI server.
+//! Non-streaming `OpenAiCompatClient::complete` against a wiremock stand-in OpenAI server.
 
 use serde_json::json;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 use yogurt_llm::{ChatMessage, ChatRequest, LlmClient, OpenAiCompatClient};
 
-/// Matches only when no `authorization` header is present at all. Used to
-/// assert local-runtime providers (Ollama, LM Studio) get no auth header
-/// when the stored key is empty - wiremock has no built-in "header
-/// absent" matcher.
+/// Matches only when no `authorization` header is present (wiremock has no built-in absent-header matcher).
 struct NoAuthHeader;
 
 impl wiremock::Match for NoAuthHeader {
@@ -33,8 +28,7 @@ impl wiremock::Match for ReasoningSplit {
     }
 }
 
-/// Matches a body whose `thinking.type` equals the given value, or - for
-/// `None` - a body with no `thinking` key at all.
+/// Matches a body whose `thinking.type` equals the given value, or with `None` a body with no `thinking` key.
 struct Thinking(Option<&'static str>);
 
 impl wiremock::Match for Thinking {
@@ -54,8 +48,7 @@ impl wiremock::Match for Thinking {
 #[tokio::test]
 async fn it_sends_messages_and_returns_assistant_content() {
     let server = MockServer::start().await;
-    // Assert Bearer auth + POST to /chat/completions, expect exactly one
-    // call (the .expect(1) fires on Mock drop if the call never happens).
+    // `.expect(1)` fires on Mock drop if the call never happens.
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
         .and(header("authorization", "Bearer sk-test"))
@@ -115,10 +108,7 @@ async fn minimax_requests_separate_reasoning() {
     assert_eq!(response.content, "## Final");
 }
 
-/// Regression for the bug where reasoning models leak
-/// `<think>…</think>` inline in `message.content` despite the wire
-/// request carrying `reasoning_split: true`. The model-agnostic backstop
-/// in `complete()` must scrub any leaked reasoning before returning.
+/// A reasoning model's leaked `<think>…</think>` must be scrubbed even though the request carried `reasoning_split: true`.
 #[tokio::test]
 async fn complete_strips_think_block_when_provider_leaks_it() {
     let server = MockServer::start().await;
@@ -151,8 +141,7 @@ async fn complete_strips_think_block_when_provider_leaks_it() {
     );
 }
 
-/// Unknown sibling fields such as `reasoning_content` are ignored and never
-/// leak into the visible response.
+/// Unknown sibling fields such as `reasoning_content` never leak into the response.
 #[tokio::test]
 async fn complete_discards_separate_reasoning_content_field() {
     let server = MockServer::start().await;
@@ -204,8 +193,6 @@ async fn it_surfaces_4xx_as_error() {
         .await
         .expect_err("should fail");
     let msg = format!("{err:#}");
-    // Either the HTTP status code or the upstream error body must surface
-    // so the operator can act on it.
     assert!(
         msg.contains("401") || msg.contains("Invalid API key"),
         "expected status or upstream message in error, got: {msg}"
@@ -214,9 +201,7 @@ async fn it_surfaces_4xx_as_error() {
 
 #[tokio::test]
 async fn it_strips_trailing_slash_from_base_url() {
-    // Regression guard: a Settings UI paste like "https://api.minimaxi.chat/v1/"
-    // must not produce "https://api.minimaxi.chat/v1//chat/completions" on the
-    // wire. wiremock would 404 such a request — green test == single slash.
+    // A pasted trailing slash must not produce `//chat/completions` on the wire.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))

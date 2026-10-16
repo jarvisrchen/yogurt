@@ -1,22 +1,5 @@
-//! Yogurt LLM client crate (Phase 5, Plan 05-01).
-//!
-//! Promotes Phase 4's hardcoded `OpenAiCompatClient` (`yogurt-server/src/
-//! llm_openai.rs`) behind the `LlmClient` trait. No axum / no web deps —
-//! Phase 6's chat handler consumes `stream()` directly from this crate
-//! without going through the HTTP layer.
-//!
-//! ## Design (CONTEXT D-01..D-03)
-//!
-//! - **D-01:** `LlmClient` is dyn-compatible. Two methods: `complete` for
-//!   one-shot JSON round-trips and `stream` for SSE. Phase 8 will implement
-//!   the same trait against `whisper-rs`-shaped local models.
-//! - **D-02:** `OpenAiCompatClient` is the only impl shipped in this plan.
-//!   `base_url` is supplied by the caller (Phase 5 Settings UI reads it
-//!   from the `providers` SQLite table) — there is intentionally no
-//!   hardcoded `api.openai.com` / `api.minimaxi.chat` host anywhere in
-//!   this crate or its callers.
-//! - **D-03:** Tested via `wiremock` against an in-memory HTTP server
-//!   (see `tests/mock_server.rs` and `tests/streaming.rs`).
+//! LLM client behind the dyn-compatible [`LlmClient`] trait. No axum or web deps.
+//! `base_url` always comes from the caller, so no provider host is hardcoded here.
 
 mod cli;
 mod streaming;
@@ -32,78 +15,40 @@ use async_trait::async_trait;
 use futures_util::stream::BoxStream;
 use std::time::Duration;
 
-/// BL-5 (Phase 4 carry-over): hard upper bound on a single LLM HTTP
-/// round-trip. A wedged provider (OpenAI 500 loop, Minimax cold-start,
-/// Ollama tying up all CPU) would otherwise hang the enhance handler
-/// indefinitely. 60s is generous for chat completion at o(1k–2k) tokens
-/// and aggressive enough that the user notices a stall before refreshing.
+/// Hard upper bound on a single LLM HTTP round-trip, so a wedged provider cannot hang the enhance handler.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Budget for a [`LlmClient`] whose `stream` does not actually stream and
-/// so must finish generating before it yields anything (today: the agent
-/// CLIs in `cli.rs`).
+/// Budget for a client whose `stream` does not actually stream and must finish generating before it yields (the agent CLIs in `cli.rs`).
 ///
-/// `HTTP_TIMEOUT` is the wrong number for those, and the difference is not
-/// a matter of degree. Against an HTTP provider, `stream()` resolves once
-/// the response *headers* land, and everything after that is governed by
-/// the caller's per-chunk idle timeout - so 60 s is generous for what it
-/// covers. `CliClient::stream` runs the subprocess to completion and
-/// replays the answer as one delta, so the same 60 s has to cover full
-/// generation instead of a handshake.
-///
-/// That gap is what made LLM-5 look like a hang: `claude --model haiku`
-/// ignores `--effort low` and spent ~10k thinking tokens (94 s) on a
-/// 300-character extraction answer, so every enhance died at exactly 60 s
-/// while the identical prompt on sonnet finished in 4 s. Sizing this for
-/// generation lets a slow model be slow instead of being reported as
-/// broken; a genuinely wedged process is still bounded, by the adapter's
-/// own `CLI_TIMEOUT` inside `run`.
+/// Against an HTTP provider `stream()` resolves at the response headers, so `HTTP_TIMEOUT` only has to cover a handshake.
+/// `CliClient::stream` runs the subprocess to completion first, so the budget has to cover full generation.
+/// `claude --model haiku` ignores `--effort low` and can spend 90+ s thinking on a short answer.
+/// A wedged process is still bounded by the adapter's own `CLI_TIMEOUT`.
 const GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Lower bound on connect (DNS + TCP + TLS) for `OpenAiCompatClient`.
-/// Surfaces a clear error when the caller pasted a typo'd base_url
-/// instead of stalling for the full `HTTP_TIMEOUT`.
+/// Connect (DNS + TCP + TLS) bound, so a typo'd base_url fails fast instead of stalling for `HTTP_TIMEOUT`.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Dyn-compatible LLM-client surface. Both methods consume a `ChatRequest`
-/// by value so callers can build the request once and choose streaming vs.
-/// non-streaming based on the caller's UI affordances.
 #[async_trait]
 pub trait LlmClient: Send + Sync {
-    /// One-shot non-streaming completion. Implementations MUST set
-    /// `stream=false` on the wire regardless of `req.stream`.
+    /// Must set `stream=false` on the wire regardless of `req.stream`.
     async fn complete(&self, req: ChatRequest) -> Result<ChatResponse>;
 
-    /// Streaming completion. Implementations MUST set `stream=true` on
-    /// the wire regardless of `req.stream`. The returned stream is
-    /// `Send + 'static` so the caller can spawn it onto a tokio task.
+    /// Must set `stream=true` on the wire regardless of `req.stream`.
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>>;
 
-    /// The model name this client sends on the wire, for provenance
-    /// stamps (`meetings.llm_model`). Mocks return a fixed marker.
+    /// The model name sent on the wire, stamped into `meetings.llm_model`.
     fn model_name(&self) -> String;
 
-    /// How long a caller should wait on this client before calling it
-    /// failed - both for `stream()` to resolve and between chunks.
+    /// How long a caller should wait before calling this client failed, both for `stream()` to resolve and between chunks.
     ///
-    /// On the trait rather than a constant at the call site because the
-    /// right number depends on what the implementation *does* per await
-    /// point, which only the implementation knows: an HTTP client resolves
-    /// `stream()` at the response headers, while a CLI client has to
-    /// finish generating first. See [`GENERATION_TIMEOUT`].
+    /// A trait method because only the implementation knows what each await point covers. See [`GENERATION_TIMEOUT`].
     fn response_timeout(&self) -> Duration {
         HTTP_TIMEOUT
     }
 }
 
-/// OpenAI-compatible HTTP adapter. Speaks the `/chat/completions` shape —
-/// works against OpenAI proper, Minimax (`api.minimaxi.chat/v1`), Ollama
-/// (`localhost:11434/v1`), LM Studio (`localhost:1234/v1`), vLLM,
-/// llama.cpp server, OpenRouter, Groq, Together, Fireworks.
-///
-/// Fields are intentionally private; `streaming.rs` reaches them through
-/// the four `_for_streaming` accessors below to avoid leaking the internal
-/// layout while still allowing module-local composition.
+/// OpenAI-compatible HTTP adapter for the `/chat/completions` shape (OpenAI, MiniMax, Ollama, LM Studio, vLLM, OpenRouter, and similar).
 #[derive(Clone)]
 pub struct OpenAiCompatClient {
     base_url: String,
@@ -113,14 +58,9 @@ pub struct OpenAiCompatClient {
 }
 
 impl OpenAiCompatClient {
-    /// Construct from raw `base_url` (e.g. `https://api.minimaxi.chat/v1`)
-    /// + `api_key` (Bearer token) + `model` (provider-specific name).
+    /// Trailing `/` on `base_url` is stripped so the endpoint has exactly one separator.
     ///
-    /// Trailing `/` on `base_url` is stripped so `format!("{base_url}/
-    /// chat/completions")` always produces exactly one separator.
-    ///
-    /// Reqwest client build "should never fail" with default config — we
-    /// fall back to `Client::new()` on the impossible-in-practice error
+    /// A failed client build falls back to `Client::new()` rather than panicking in a constructor.
     /// path rather than panic in a library constructor.
     pub fn new(base_url: String, api_key: String, model: String) -> Self {
         let http = reqwest::Client::builder()
@@ -140,11 +80,7 @@ impl OpenAiCompatClient {
         format!("{}/chat/completions", self.base_url)
     }
 
-    // ── Internal accessors for the sibling `streaming` module ──────────────
-    // Marked `#[doc(hidden)]` so they stay off the public docs surface
-    // while remaining `pub` (necessary because `streaming.rs` is in a
-    // sibling module, not a child; making fields `pub(crate)` would also
-    // work but exposes them to any other module added later).
+    // `pub` because `streaming` is a sibling module, not a child.
 
     #[doc(hidden)]
     pub fn http_for_streaming(&self) -> &reqwest::Client {
@@ -171,31 +107,19 @@ impl OpenAiCompatClient {
         self.model.to_ascii_lowercase().starts_with("minimax-")
     }
 
-    /// MiniMax reasoning models (M3 measured 2026-08-29) spend an
-    /// unpredictable 700-5700 hidden reasoning tokens per enhance call,
-    /// which is what pushes the fat tail past the HTTP timeout. Enhance and
-    /// chat are extraction jobs, not reasoning jobs, so switch thinking off:
-    /// same output quality, ~2x faster median, no tail. `reasoning_effort`
-    /// is ignored by their API; only `thinking.type = "disabled"` works.
+    /// MiniMax reasoning models spend an unpredictable 700-5700 hidden reasoning tokens per call, which pushes the tail past the HTTP timeout.
+    /// Enhance and chat are extraction jobs, so thinking is switched off.
+    /// `reasoning_effort` is ignored by their API; only `thinking.type = "disabled"` works.
     #[doc(hidden)]
     pub(crate) fn thinking(&self) -> Option<types::Thinking> {
         self.split_reasoning()
             .then_some(types::Thinking { r#type: "disabled" })
     }
 
-    /// Probe the provider's `/models` endpoint and return the list of model
-    /// ids it advertises. Used by the Settings page's `Refresh` button to
-    /// populate the MODEL datalist with the live, authoritative list
-    /// (presets ship a static hint; this overrides it once a key is on
-    /// file). Errors are surfaced as-is - the UI shows them inline.
+    /// List the model ids the provider's `/models` endpoint advertises.
     ///
-    /// Auth is only attached when `api_key` is non-empty: local runtimes
-    /// (Ollama, LM Studio) don't need one and would otherwise get a
-    /// `Bearer ` header with an empty token.
-    ///
-    /// Google's OpenAI-compat shim returns ids like `models/gemini-2.5-flash`;
-    /// the leading `models/` is stripped so ids match the plain form used
-    /// everywhere else (presets, the saved `model` field).
+    /// Auth is attached only for a non-empty key: local runtimes (Ollama, LM Studio) need none.
+    /// Google's compat shim returns ids like `models/gemini-2.5-flash`, so the `models/` prefix is stripped.
     pub async fn list_models(&self) -> Result<Vec<String>> {
         let url = format!("{}/models", self.base_url);
         let mut req = self.http.get(&url);
@@ -220,13 +144,9 @@ impl OpenAiCompatClient {
             .collect())
     }
 
-    /// Replace every occurrence of this client's API key in `text` with
-    /// `[key redacted]`. Providers routinely quote the offending key back
-    /// in error bodies ("Incorrect API key provided: sk-abc..."); this
-    /// keeps that from smuggling the raw key into an HTTP response.
+    /// Replace this client's API key in `text` with `[key redacted]`, since providers quote the key back in error bodies.
     ///
-    /// Keys under 4 chars are skipped - too short to be a real secret, and
-    /// substring-replacing them would shred unrelated error text.
+    /// Keys under 4 chars are skipped: substring-replacing them would shred unrelated text.
     fn scrub(&self, text: &str) -> String {
         if self.api_key.len() < 4 {
             return text.to_string();
@@ -258,9 +178,6 @@ impl LlmClient for OpenAiCompatClient {
             .await?;
         let status = resp.status();
         if !status.is_success() {
-            // Drain the body for the error message - providers' error
-            // payloads usually contain the actionable detail (rate limit
-            // window, invalid model name, account suspended).
             let body = resp.text().await.unwrap_or_default();
             return Err(anyhow!("LLM call failed: {status} - {}", self.scrub(&body)));
         }

@@ -1,9 +1,4 @@
-//! Plan 05-01 Task 2: SSE streaming round-trip against a wiremock
-//! stand-in OpenAI server. Verifies that:
-//! - `LlmClient::stream` opens a stream successfully on 200 + SSE body.
-//! - Mid-stream `content` deltas accumulate to the expected text.
-//! - The terminal `[DONE]` event surfaces as `ChatChunk { done: true }`.
-//! - Leading `<think>...</think>` blocks are stripped from the stream.
+//! SSE streaming round-trip against a wiremock stand-in OpenAI server.
 
 use futures_util::StreamExt;
 use wiremock::matchers::{method, path};
@@ -12,11 +7,7 @@ use yogurt_llm::{ChatMessage, ChatRequest, LlmClient, OpenAiCompatClient};
 
 #[tokio::test]
 async fn it_streams_sse_chunks_into_chat_chunks() {
-    // Hand-crafted OpenAI SSE body. Each event is `data: {json}\n\n`,
-    // terminated by `data: [DONE]\n\n`. The fourth event carries
-    // `finish_reason: "stop"` with an empty delta — a real provider
-    // sends this immediately before `[DONE]` to signal "this was the
-    // last content chunk".
+    // The fourth event carries `finish_reason: "stop"` with an empty delta, as real providers send just before `[DONE]`.
     let body = concat!(
         "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n",
         "data: {\"choices\":[{\"delta\":{\"content\":\"lo \"},\"finish_reason\":null}]}\n\n",
@@ -70,9 +61,7 @@ async fn it_streams_sse_chunks_into_chat_chunks() {
 
 #[tokio::test]
 async fn it_surfaces_non_2xx_stream_open_as_error() {
-    // If the provider rejects the stream-open request (auth, model not
-    // found, rate limit), `stream()` itself must error — the caller
-    // should not get back an empty `BoxStream` that simply ends.
+    // A rejected stream-open must make `stream()` itself error, not return an empty stream.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
@@ -81,8 +70,7 @@ async fn it_surfaces_non_2xx_stream_open_as_error() {
         .await;
 
     let client = OpenAiCompatClient::new(server.uri(), "sk-bad".into(), "m".into());
-    // `BoxStream` is not `Debug`, so `.expect_err` (which requires the Ok
-    // variant to be Debug) won't compile — match by hand.
+    // `BoxStream` is not `Debug`, so `.expect_err` won't compile.
     let result = client
         .stream(ChatRequest {
             messages: vec![ChatMessage::user("hi")],
@@ -100,17 +88,10 @@ async fn it_surfaces_non_2xx_stream_open_as_error() {
     );
 }
 
-/// Regression for the chat bug where MiniMax M3 (and any other reasoning
-/// model) leaks `<think>…</think>` into the streamed `delta.content`.
-/// `reasoning_split: true` on the request side is honored by some
-/// providers and ignored by others, so this is the model-agnostic
-/// backstop: every visible delta must arrive at the chat handler with
-/// the think block removed.
+/// Reasoning models leak `<think>…</think>` into `delta.content` when the provider ignores `reasoning_split`, so the stream must strip it.
 #[tokio::test]
 async fn it_strips_leading_think_blocks_from_streamed_deltas() {
-    // Single chunk carries the full think block followed by the visible
-    // answer — the most common shape when the provider ignores
-    // `reasoning_split` and stuffs the whole response into one delta.
+    // The whole think block plus the visible answer in one delta.
     let body = concat!(
         "data: {\"choices\":[{\"delta\":{\"content\":\"<think>\\nlet me think...\\n</think>\\n\\n\"},\"finish_reason\":null}]}\n\n",
         "data: {\"choices\":[{\"delta\":{\"content\":\"They agreed on 25% Monday.\"},\"finish_reason\":null}]}\n\n",
@@ -150,9 +131,7 @@ async fn it_strips_leading_think_blocks_from_streamed_deltas() {
     );
 }
 
-/// Regression for the chunk-boundary edge case: a think-tag opening
-/// (`<th` and `ink>…`) is split across two SSE deltas. The stripper must
-/// buffer across chunks so the user never sees the partial tag.
+/// A think-tag opening split across two SSE deltas must be buffered so the user never sees the partial tag.
 #[tokio::test]
 async fn it_strips_think_tags_split_across_chunk_boundaries() {
     let body = concat!(

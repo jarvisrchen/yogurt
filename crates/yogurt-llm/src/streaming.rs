@@ -1,21 +1,3 @@
-//! SSE streaming for `OpenAiCompatClient` (Plan 05-01 Task 2).
-//!
-//! Pipeline: `reqwest::Response::bytes_stream()` →
-//! `eventsource_stream::Eventsource` adapter → `StreamExt::map` projection
-//! into `ChatChunk`. The terminal `[DONE]` SSE event maps to
-//! `ChatChunk { delta: "", done: true }`; mid-stream chunks emit the
-//! delta text and set `done` to whether the upstream chunk's
-//! `finish_reason` is non-null.
-//!
-//! Why we don't use the `async-openai` crate even though PRD §STACK calls
-//! it out: that crate is excellent for the OpenAI API surface specifically
-//! but its types are coupled to OpenAI's struct names. Our adapter needs
-//! to work against Minimax, Ollama, LM Studio, vLLM, llama.cpp server,
-//! OpenRouter, Groq, Together, Fireworks — all of which speak roughly
-//! the same JSON but with provider-specific extensions. Hand-rolling the
-//! 50 LOC of `reqwest + eventsource-stream` keeps the surface narrow and
-//! the dependency list short.
-
 use crate::thinking::ThinkStripper;
 use crate::{types, ChatChunk, ChatRequest, OpenAiCompatClient};
 use anyhow::{anyhow, Result};
@@ -47,10 +29,6 @@ pub(crate) async fn stream(
 
     let status = resp.status();
     if !status.is_success() {
-        // Drain body for the operator-actionable error (rate limit,
-        // invalid model, account suspended). The Phase 4 enhance handler
-        // converts this into an `enhance_progress { phase: "error" }`
-        // WebSocket event.
         let body = resp.text().await.unwrap_or_default();
         return Err(anyhow!(
             "LLM stream open failed: {status} - {}",
@@ -61,22 +39,9 @@ pub(crate) async fn stream(
     let byte_stream = resp.bytes_stream();
     let events = byte_stream.eventsource();
 
-    // `events` is the SSE event stream; map each event into our public
-    // `ChatChunk`. We box the result so the caller gets a single concrete
-    // `BoxStream<'static, ...>` type regardless of internal pipeline
-    // shape (the boxed stream is `Send + 'static` so it can be spawned
-    // onto a tokio task, e.g. by Phase 6's chat WebSocket handler).
-    //
-    // A `ThinkStripper` removes leading `<think>...</think>` content before
-    // any response text leaves the crate.
     let mapped = events.map(|ev| -> Result<ChatChunk> {
         let ev = ev.map_err(|e| anyhow!("SSE parse error: {e}"))?;
-        // OpenAI terminates streams with `data: [DONE]` — emit a final
-        // chunk with `done=true` and empty delta so accumulators close
-        // cleanly. Some providers also send a content-bearing chunk with
-        // `finish_reason` set just before `[DONE]`; that chunk emits its
-        // own `done=true` and the `[DONE]` emits a second `done=true` —
-        // accumulator-side this is idempotent.
+        // `[DONE]` terminates the stream. A `finish_reason` chunk may already have set `done`, so consumers must treat repeats as idempotent.
         if ev.data.trim() == "[DONE]" {
             return Ok(ChatChunk {
                 delta: String::new(),
@@ -90,19 +55,13 @@ pub(crate) async fn stream(
                 choice.delta.content.unwrap_or_default(),
                 choice.finish_reason.is_some(),
             ),
-            // No choices means a heartbeat / metadata-only frame.
-            // Surface as an empty mid-stream chunk so the caller can
-            // tick its activity timer without treating it as EOS.
+            // Heartbeat or metadata-only frame: empty mid-stream chunk so the caller can tick its activity timer.
             None => (String::new(), false),
         };
         Ok(ChatChunk { delta, done })
     });
 
-    // Wrap the stream so each chunk's `delta` passes through the
-    // think-block stripper before reaching the caller. The stripper
-    // holds its own state across chunks so a tag split across the
-    // chunk boundary is handled correctly (see `ThinkStripper` docs).
-    //
+    // Stateful so a tag split across chunk boundaries is still stripped.
     let mut stripper = ThinkStripper::new();
     let stripped = mapped.map(move |chunk_res| {
         let mut chunk = chunk_res?;
