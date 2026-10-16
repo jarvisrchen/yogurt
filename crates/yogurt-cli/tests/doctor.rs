@@ -1,8 +1,4 @@
-//! Integration tests for `yogurt doctor` (Phase 9, Plan 09-03 / DIST-08).
-//!
-//! SET-12 follow-up pattern (see tests/cli.rs): redirect HOME to a tempdir
-//! so the spawned `yogurt` subprocess never touches the developer's real
-//! `~/.yogurt/db.sqlite`.
+//! HOME points at a tempdir so the spawned `yogurt` never touches the real `~/.yogurt/db.sqlite`.
 
 use assert_cmd::Command;
 

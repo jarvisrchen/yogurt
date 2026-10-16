@@ -1,9 +1,5 @@
-//! `yogurt ctl provider` (CLI-6 / D1 second slice) -- list, activate, and
-//! test configured LLM providers. Never prints a key value, only whether
-//! one is stored (`key: set` / `key: missing`) -- there is no `ctl
-//! provider key set` and there never will be (keys would land in shell
-//! history and transcripts, see `docs/.planning/agent-workflow.md`
-//! section 5's "do not build" list).
+//! Never prints a key value, only `key: set` / `key: missing`.
+//! There is no `ctl provider key set` on purpose: keys would land in shell history and transcripts.
 
 use clap::Subcommand;
 use serde::Deserialize;
@@ -30,10 +26,8 @@ pub async fn run(cmd: ProviderCmd, port: Option<u16>, json_out: bool) -> Result<
     }
 }
 
-/// Wire shape of `GET /api/settings/providers` -- mirrors
-/// `crate::api::settings::ProviderView` on the server. Deliberately does
-/// NOT carry `api_key_masked` any further than [`key_state`] -- even the
-/// masked form never gets printed, only "set"/"missing".
+/// Wire shape of `GET /api/settings/providers`.
+/// Never carries `api_key_masked` past [`key_state`]; even the masked form is not printed.
 #[derive(Debug, Deserialize)]
 struct ProviderRow {
     id: String,
@@ -148,9 +142,7 @@ async fn test(port: Option<u16>, json_out: bool, name: Option<String>) -> Result
             result.model.as_deref().unwrap_or("?")
         );
     } else {
-        // Not a `CtlError` -- the server treats a rejected key as a
-        // successful probe (it answered the question asked), so this is
-        // exit 0 informational output, not an `error:`/`help:` failure.
+        // Not a `CtlError`: the server treats a rejected key as a successful probe, so this is exit 0 informational output.
         println!(
             "failed: {}: {}",
             row.name,

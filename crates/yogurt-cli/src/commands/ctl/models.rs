@@ -1,7 +1,3 @@
-//! `yogurt ctl models` (CLI-6 / D1 second slice) -- whisper.cpp STT model
-//! management: list, download (optionally following progress on the
-//! app-wide `/ws` socket), delete.
-
 use clap::Subcommand;
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -38,9 +34,7 @@ pub async fn run(cmd: ModelsCmd, port: Option<u16>, json_out: bool) -> Result<()
     }
 }
 
-/// Mirrors `crate::api::stt_models::ModelView` on the server (skips
-/// `intel_supported`, which no `ctl` output needs -- serde ignores the
-/// extra JSON field on deserialize).
+/// Mirrors the server's `ModelView`; serde ignores the extra `intel_supported` field.
 #[derive(Debug, Deserialize, serde::Serialize)]
 struct ModelRow {
     name: String,
@@ -85,9 +79,7 @@ async fn download(
     wait: bool,
 ) -> Result<(), CtlError> {
     let c = Client::discover(port).await?;
-    // A clear "no such model" beats the server's generic 404 for a typo'd
-    // name, and doubles as the existence check `--wait`'s frame filter
-    // (matched on `model`) implicitly relies on.
+    // Beats the server's generic 404 for a typo'd name, and `--wait`'s frame filter relies on the model existing.
     let models: Vec<ModelRow> = c.get("/api/stt/models").await?;
     find(&models, name)?;
     c.post_no_body(&format!("/api/stt/models/{name}/download"))
@@ -103,10 +95,7 @@ async fn download(
     Ok(())
 }
 
-/// Follows the model's `stt_model_download_*` frames on the app-wide
-/// `/ws` socket (`crates/yogurt-server/src/ws.rs`'s `WsEvent`), printing
-/// progress to stderr per the ticket's spec, until `..._complete` /
-/// `..._error` or an internal safety timeout.
+/// Follows the model's `stt_model_download_*` frames on `/ws`, printing progress to stderr until complete, error, or timeout.
 async fn wait_for_download(c: &Client, name: &str, json_out: bool) -> Result<(), CtlError> {
     let mut stream = super::ws::connect(c, "/ws").await?;
     // ponytail: a flat cap rather than a `--timeout` flag nobody asked

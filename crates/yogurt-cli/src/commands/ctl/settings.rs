@@ -1,8 +1,4 @@
-//! `yogurt ctl settings` (CLI-6 / D1 second slice) -- read and write the
-//! general settings the server exposes at `/api/settings`. Never touches a
-//! provider or STT key -- that's `provider.rs`, and there is no `ctl`
-//! subcommand that ever sets or reveals one (see
-//! `docs/.planning/agent-workflow.md` section 5's "do not build" list).
+//! Never touches a provider or STT key. That is `provider.rs`, and no `ctl` subcommand sets or reveals one.
 
 use clap::Subcommand;
 use serde_json::{json, Map, Value};
@@ -30,8 +26,7 @@ pub async fn run(cmd: SettingsCmd, port: Option<u16>, json_out: bool) -> Result<
     }
 }
 
-/// Just the `general` half of `GET /api/settings` -- `providers` and
-/// `presets` are `provider.rs`'s concern.
+/// Just the `general` half; `providers` and `presets` belong to `provider.rs`.
 #[derive(Debug, serde::Deserialize)]
 struct SettingsGetView {
     general: yogurt_db::settings::General,
@@ -60,13 +55,8 @@ async fn get(port: Option<u16>, json_out: bool) -> Result<(), CtlError> {
     Ok(())
 }
 
-/// `key=value` -> a JSON field. `value` coerces to a bool/number when it
-/// parses as one (`open_browser_on_start=true`, `port=7878`); anything
-/// else, including a bare word like `cloud`, is sent as a plain JSON
-/// string. The server owns the actual schema (`GeneralPatch`) and rejects
-/// what it doesn't like -- see `validate_stt_patch` in
-/// `crates/yogurt-server/src/api/settings.rs` -- so this never duplicates
-/// that validation locally.
+/// `key=value` to a JSON field. `value` coerces to bool or number when it parses as one, else it is a plain string.
+/// The server owns the schema and rejects bad values, so nothing is validated here.
 fn parse_pair(s: &str) -> Result<(String, Value), CtlError> {
     let (k, v) = s
         .split_once('=')

@@ -1,8 +1,5 @@
-//! DX-4: keeps the yogurt-control skill's command block honest against the
-//! real `--help` output, and catches doc mentions of a subcommand that
-//! doesn't exist. `yogurt-cli` has no `[lib]` target (see Cargo.toml), so
-//! `assert_cmd` against the built binary is the only way to introspect the
-//! clap tree from a test.
+//! Keeps the yogurt-control skill's command block in line with the real `--help` output.
+//! yogurt-cli has no lib target, so the built binary is the only way to introspect the clap tree.
 
 use assert_cmd::Command;
 use std::fs;
@@ -18,10 +15,7 @@ fn run_help(args: &[&str]) -> String {
     String::from_utf8(output.get_output().stdout.clone()).expect("help output is utf8")
 }
 
-/// Parses a clap `--help` output's "Commands:" section into subcommand
-/// names, dropping the auto-generated `help` entry. Works at any depth:
-/// pass the output of `yogurt --help` for the top level, or of
-/// `yogurt <sub> --help` for that subcommand's children.
+/// Parses the "Commands:" section of a clap `--help` into subcommand names, dropping `help`.
 fn subcommands(help: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut in_commands = false;
@@ -44,13 +38,10 @@ fn subcommands(help: &str) -> Vec<String> {
     names
 }
 
-/// The about text clap prints above `Usage:` - the first line of `--help`.
 fn about(help: &str) -> String {
     help.lines().next().unwrap_or("").trim().to_string()
 }
 
-/// One line per subcommand (`yogurt <sub>` plus its about text), nested one
-/// level for subcommands that have their own subcommands.
 fn generate_block() -> String {
     let mut out = String::new();
     for name in subcommands(&run_help(&[])) {
@@ -98,8 +89,6 @@ fn generated_block_matches_skill_md() {
     );
 }
 
-/// Every backticked `yogurt <word>` mention (in prose, or as the first word
-/// of a fenced shell line) must be a real subcommand or a flag.
 #[test]
 fn every_yogurt_word_in_docs_is_a_real_subcommand() {
     let real = subcommands(&run_help(&[]));
@@ -117,9 +106,7 @@ fn every_yogurt_word_in_docs_is_a_real_subcommand() {
                 continue;
             }
             let words: Vec<String> = if in_fence {
-                // A real invocation starts the (trimmed) line; a bare
-                // mention of "yogurt" mid-line (e.g. inside an echo string)
-                // is not a command.
+                // A bare mention of "yogurt" mid-line (e.g. in an echo string) is not a command.
                 first_word_after(line.trim_start(), "yogurt")
                     .into_iter()
                     .collect()
@@ -139,14 +126,11 @@ fn every_yogurt_word_in_docs_is_a_real_subcommand() {
     }
 }
 
-/// If `line` starts with `"{prefix} "`, returns the next whitespace-delimited word.
 fn first_word_after(line: &str, prefix: &str) -> Option<String> {
     let rest = line.strip_prefix(prefix)?.strip_prefix(' ')?;
     rest.split_whitespace().next().map(str::to_string)
 }
 
-/// Finds every backtick-quoted span starting with `"{prefix} "` and returns
-/// the word right after the prefix in each.
 fn backticked_words_after(line: &str, prefix: &str) -> Vec<String> {
     let mut out = Vec::new();
     let needle = format!("`{prefix} ");

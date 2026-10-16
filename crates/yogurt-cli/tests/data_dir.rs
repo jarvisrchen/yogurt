@@ -1,11 +1,4 @@
-//! Integration tests for CLI-7 (`yogurt start --data-dir` / `$YOGURT_DATA_DIR`).
-//!
-//! Shaped like `tests/cli.rs`: spawn the real binary with a temp `HOME`
-//! (every `~/.yogurt` path resolves through `BaseDirs`, so `HOME` is the
-//! shared-database isolation mechanism the existing tests already use) on
-//! an ephemeral port. Here `HOME` and the `--data-dir` override are
-//! DIFFERENT tempdirs, so the assertions can tell whether the database
-//! actually moved.
+//! HOME and the `--data-dir` override are different tempdirs, so assertions can tell whether the database moved.
 
 use assert_cmd::Command;
 use std::net::TcpListener as StdTcpListener;
@@ -57,8 +50,6 @@ async fn data_dir_flag_relocates_the_database() {
 
     child.kill().await.ok();
 
-    // `yogurt doctor --json` with $YOGURT_DATA_DIR set (no server running)
-    // must report the same relocated path.
     let mut cmd = Command::cargo_bin("yogurt").expect("binary exists");
     cmd.args(["doctor", "--json"])
         .env("HOME", home.path())
@@ -90,7 +81,6 @@ fn env_var_relocates_doctor_db_path_with_no_flag() {
         serde_json::from_str(&stdout).expect("doctor --json must emit valid JSON");
     let expected = data_dir.path().join("db.sqlite");
     assert_eq!(json["db_path"], expected.display().to_string());
-    // YOGURT_DATA_DIR must be created even though the DB is never opened
-    // (doctor never creates db.sqlite as a side effect).
+    // The data dir is created even though doctor never opens the DB.
     assert!(data_dir.path().is_dir());
 }

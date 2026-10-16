@@ -1,33 +1,18 @@
-//! CLI-7: resolves the directory holding yogurt's SQLite database
-//! (`~/.yogurt/db.sqlite` by default), so `--data-dir` / `$YOGURT_DATA_DIR`
-//! can point a worktree instance at its own copy instead of sharing the one
-//! the main binary is running against.
+//! Resolves the directory holding yogurt's SQLite database, so `--data-dir` / `$YOGURT_DATA_DIR` can give a worktree instance its own copy.
+//! Only the database moves. `yogurt-server::storage` and `yogurt-db` both migrate `db.sqlite`, so a branch carrying a migration would otherwise upgrade the real database under the main binary.
+//! Keys, models, and notes stay under `~/.yogurt`.
 //!
-//! Scope is the actual hazard only (`docs/.planning/agent-workflow.md`
-//! section 4D, D6): `yogurt-server::storage` and `yogurt-db` both migrate
-//! `~/.yogurt/db.sqlite` independently ("whichever runner fires first
-//! wins" -- `crates/yogurt-db/src/migrations.rs`), so a branch carrying a
-//! migration can silently upgrade the real database out from under the
-//! main binary. Keys (`~/.yogurt/keys.json`), models, and notes are NOT
-//! part of this -- they stay under `~/.yogurt` per the keys-live-in-one-
-//! file constraint (AGENTS.md).
-//!
-//! `start`, `doctor`, and `ctl meeting`'s local-DB read fallback all call
-//! [`resolve`] so they can never disagree about where the database lives.
+//! `start`, `doctor`, and `ctl meeting`'s local-DB fallback all call [`resolve`] so they agree on the location.
 
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-/// `--data-dir` beats `$YOGURT_DATA_DIR`. Pure so it's unit-testable
-/// without touching the process env (same pattern as
-/// `ctl::client::port_precedence`).
+/// `--data-dir` beats `$YOGURT_DATA_DIR`. Pure so it is testable without touching the process env.
 fn precedence(flag: Option<PathBuf>, env: Option<PathBuf>) -> Option<PathBuf> {
     flag.or(env)
 }
 
-/// Resolve an override for `~/.yogurt`, creating the directory if it
-/// doesn't exist yet. `None` means "no override -- caller falls back to
-/// its own `~/.yogurt` default."
+/// Creates the directory if missing. `None` means no override.
 pub fn resolve(flag: Option<PathBuf>) -> Result<Option<PathBuf>> {
     let env = std::env::var_os("YOGURT_DATA_DIR").map(PathBuf::from);
     let Some(dir) = precedence(flag, env) else {
@@ -38,10 +23,7 @@ pub fn resolve(flag: Option<PathBuf>) -> Result<Option<PathBuf>> {
     Ok(Some(dir))
 }
 
-/// The SQLite file inside an overridden data dir. `RunConfig::db_path`
-/// (`yogurt-server::storage`) and `RunConfig::app_db_path` (`yogurt-db`)
-/// point at the SAME file when overridden -- mirroring the production
-/// default, where both already resolve to `~/.yogurt/db.sqlite`.
+/// `RunConfig::db_path` and `app_db_path` point at this same file, matching the production default.
 pub fn db_path(dir: &Path) -> PathBuf {
     dir.join("db.sqlite")
 }

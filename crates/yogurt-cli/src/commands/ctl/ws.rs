@@ -1,17 +1,5 @@
-//! `yogurt ctl ws` (CLI-6 / D1 second slice) -- subscribes to the server's
-//! WebSocket and prints one JSON frame per line, until Ctrl-C or `--count`.
-//!
-//! `tokio-tungstenite` + `futures-util` are already compiled into the
-//! `yogurt` binary through `yogurt-server` (Deepgram STT speaks WS too) --
-//! adding them to `yogurt-cli`'s own `[dependencies]` links no new crate
-//! into the build, it just makes an already-resolved one callable from
-//! this file. Both are pinned at the workspace's existing versions
-//! (`tokio-tungstenite` 0.24, `futures-util` 0.3), so this is the
-//! "smallest one already in Cargo.lock" the ticket asks for when a new
-//! dependency can't be avoided -- here it isn't even new.
-//!
-//! [`connect`] is also used by `models.rs`'s `download --wait` to follow
-//! `stt_model_download_*` progress on the same app-wide `/ws` socket.
+//! `yogurt ctl ws`: prints one JSON frame per line until Ctrl-C or `--count`.
+//! [`connect`] is also used by `models.rs`'s `download --wait`.
 
 use futures_util::StreamExt;
 use serde_json::Value;
@@ -25,17 +13,12 @@ use super::meeting::{client_for_ref, MeetingRef};
 
 pub type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
-/// Open a WS connection to `path` (`/ws` or `/ws/meetings/:id`) on `c`'s
-/// instance, presenting the same `Origin: http://127.0.0.1:<port>` header
-/// a real browser tab would send -- `enforce_ws_auth` on the server side
-/// checks it before the token.
+/// Open a WS connection to `path`, sending the `Origin: http://127.0.0.1:<port>` header a browser tab would.
+/// `enforce_ws_auth` checks it before the token.
 pub(super) async fn connect(c: &Client, path: &str) -> Result<WsStream, CtlError> {
     let url = c.ws_url(path);
-    // Never interpolate `url` itself into a message -- it carries the
-    // session token in `?token=...` (the WS auth contract; see
-    // `crate::ws`'s doc comment on the server side), and every `CtlError`
-    // message reaches stdout. Reuses the server's own redaction helper
-    // rather than a second copy of the same string-scrubbing logic.
+    // Never interpolate `url` into a message: it carries the session token in `?token=` and every `CtlError` message reaches stdout.
+    // Reuse the server's redaction helper.
     let redacted = yogurt_server::ws::redact_token_in_uri(&url);
     let mut req = url.clone().into_client_request().map_err(|e| {
         CtlError::local(
@@ -64,11 +47,7 @@ pub async fn run(
     port_flag: Option<u16>,
     _json_out: bool,
 ) -> Result<(), CtlError> {
-    // `ws` frames are already JSON text off the wire; there is no
-    // meaningful "compact text" projection across the heterogeneous frame
-    // shapes (transcript / enhance_progress / chat_chunk / stt model
-    // download events), so this ignores --json and always prints the raw
-    // frame -- one JSON object per line either way.
+    // Frames are already JSON text and their shapes differ too much for a compact projection, so --json is ignored and the raw frame is always printed.
     let (c, path) = match &meeting {
         Some(m) => {
             let r = MeetingRef::parse(m);
