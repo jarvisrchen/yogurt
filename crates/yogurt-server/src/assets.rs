@@ -33,17 +33,12 @@ pub async fn serve_embedded(uri: Uri) -> Response {
 
     let candidate = if path.is_empty() { "index.html" } else { path };
 
-    // MD-02: `.expect("...")` documents the panic conditions explicitly
-    // -- mime_guess always returns ASCII MIME strings, and Body::from
-    // accepts arbitrary bytes, so the builder cannot fail here.
+    // The expect cannot fire: MIME strings are ASCII and Body::from takes any bytes.
     match WebDist::get(candidate) {
-        Some(file) => {
-            let mime = mime_guess::from_path(candidate).first_or_octet_stream();
-            Response::builder()
-                .header(header::CONTENT_TYPE, mime.as_ref())
-                .body(Body::from(file.data.into_owned()))
-                .expect("response builder: static MIME from mime_guess is always valid")
-        }
+        Some(file) => Response::builder()
+            .header(header::CONTENT_TYPE, file.metadata.mimetype())
+            .body(Body::from(file.data.into_owned()))
+            .expect("response builder: embedded MIME is always valid"),
         None => match WebDist::get("index.html") {
             Some(idx) => Response::builder()
                 .header(header::CONTENT_TYPE, "text/html")

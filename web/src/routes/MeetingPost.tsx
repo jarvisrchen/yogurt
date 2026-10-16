@@ -56,7 +56,7 @@ import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
 import { CopyUrlButton } from "../components/CopyUrlButton";
-import { ensureSessionToken } from "../lib/session";
+import { bearerFetch, ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -248,8 +248,7 @@ export function MeetingPost() {
       let cancelled = false;
       (async () => {
         try {
-          const res = await fetch(`/api/meetings/${meetingId}`, {
-            headers: { Authorization: `Bearer ${token}` },
+          const res = await bearerFetch(`/api/meetings/${meetingId}`, {
             signal: abortCtrl.signal,
           });
           // HI-2: discard if a newer operation has bumped the generation
@@ -503,7 +502,6 @@ export function MeetingPost() {
             transcript_json: "[]",
             title: autoEnhance.title,
           },
-          token,
         );
         handleEnhanced(response);
         if (response.too_short) setTooShort(true);
@@ -665,7 +663,6 @@ export function MeetingPost() {
             startedAtUnixMs={startedAtUnixMs}
             endedAtUnixMs={endedAtUnixMs}
             template={template === AUTO_TEMPLATE ? undefined : template}
-            token={token}
             onEnhanced={handleEnhanced}
             onEnhancing={handleEnhancing}
             onError={handleError}

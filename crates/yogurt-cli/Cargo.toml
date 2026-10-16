@@ -30,41 +30,29 @@ anyhow = { workspace = true }
 # ever comes back.
 yogurt-server = { path = "../yogurt-server" }
 open = "5"
-# Phase 5 (Plan 05-02): .env.local dev-mode loader. Gated on the `--dev`
-# flag at the top of main() — release builds NEVER read .env.local
-# (SET-11). See main.rs and tests/dev_env_local.rs.
+# Gated on the `--dev` flag at the top of main(). Release builds never read
+# .env.local. See main.rs and tests/dev_env_local.rs.
 dotenvy = { workspace = true }
-# Phase 9 (Plan 09-03): `yogurt doctor` reads provider names + active STT
-# from the real SQLite settings store, and screen-recording permission
-# from the real TCC check. Both crates are already in the dependency
-# graph via yogurt-server, so this adds no new linkage.
+# `yogurt doctor` reads provider names and the active STT from the real SQLite
+# settings store, and screen-recording permission from the real TCC check.
 yogurt-db = { path = "../yogurt-db" }
 yogurt-audio = { path = "../yogurt-audio" }
-# AUD-4: `doctor` must resolve models the same way the app does, or it
-# reports "none downloaded" for a Homebrew-installed model the app is
-# happily transcribing with. `local-stt` is already in the graph via
-# yogurt-server, so this adds no compile cost.
+# `doctor` must resolve models the same way the app does, or it reports
+# "none downloaded" for a Homebrew-installed model the app is transcribing with.
 yogurt-stt = { path = "../yogurt-stt", features = ["local-stt"] }
 # Same `directories` crate yogurt-db/yogurt-stt use for `~/.yogurt`
 # resolution (do NOT use the unmaintained `dirs` crate).
 directories = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# CLI-4: `yogurt ctl` talks HTTP to the running server. Moved out of
-# dev-dependencies -- it was already compiled into the binary through
-# yogurt-server's own [dependencies], so this adds no new linkage.
+# `yogurt ctl` talks HTTP to the running server.
 reqwest = { workspace = true }
-# CLI-6: `yogurt ctl ws` (and `models download --wait`) speak the server's
-# WebSocket surface. Both are already compiled into the binary through
-# yogurt-server/yogurt-stt's own [dependencies] (Deepgram STT uses the same
-# WS client) -- pulling them into yogurt-cli's own [dependencies] adds no
-# new crate to the build, it only makes an already-resolved one callable
-# from this crate.
+# `yogurt ctl ws` and `models download --wait` speak the server's WebSocket surface.
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
-# SET-12 follow-up: cli tests redirect HOME to a tempdir so spawned
-# subprocesses don't touch the developer's real ~/.yogurt/db.sqlite.
+# CLI tests redirect HOME to a tempdir so spawned subprocesses don't touch the
+# developer's real ~/.yogurt/db.sqlite.
 tempfile = { workspace = true }

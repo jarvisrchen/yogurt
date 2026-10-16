@@ -37,8 +37,6 @@ export interface ReEnhanceButtonProps {
   endedAtUnixMs?: number;
   /** Note format id to force; undefined lets the model auto-detect. */
   template?: string;
-  /** Session token from ensureSessionToken(). */
-  token: string;
   /** Called with the enriched markdown when the POST succeeds. */
   onEnhanced: (response: EnhanceResponse) => void;
   /** Called with `true` on click, `false` when the POST resolves/throws. */
@@ -56,7 +54,6 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
     startedAtUnixMs,
     endedAtUnixMs,
     template,
-    token,
     onEnhanced,
     onEnhancing,
     onError,
@@ -77,7 +74,7 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
         ended_at_unix_ms: endedAtUnixMs,
         template,
       };
-      const response = await postEnhance(meetingId, body, token);
+      const response = await postEnhance(meetingId, body);
       onEnhanced(response);
     } catch (e) {
       const message =

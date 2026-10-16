@@ -32,7 +32,7 @@ pub fn hash_file(path: &Path) -> std::io::Result<String> {
         }
         hasher.update(&buf[..n]);
     }
-    Ok(hex::encode(hasher.finalize()))
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// In-memory SHA256 of a byte slice. Convenience wrapper used by tests
@@ -41,7 +41,7 @@ pub fn hash_file(path: &Path) -> std::io::Result<String> {
 pub fn hash_bytes(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
-    hex::encode(h.finalize())
+    format!("{:x}", h.finalize())
 }
 
 #[cfg(test)]

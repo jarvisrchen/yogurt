@@ -8,7 +8,7 @@
  */
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { ensureSessionToken } from "../session";
+import { bearerFetch } from "../session";
 
 /** Wire shape of one row, matching `yogurt_prompts::Template`. */
 export interface Template {
@@ -25,10 +25,7 @@ export const AUTO_TEMPLATE = "auto";
 export const templatesKey = ["templates"] as const;
 
 export async function fetchTemplates(): Promise<Template[]> {
-  const token = await ensureSessionToken();
-  const res = await fetch("/api/templates", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await bearerFetch("/api/templates");
   if (!res.ok) throw new Error(`templates: ${res.status} ${res.statusText}`);
   const body: unknown = await res.json();
   return Array.isArray(body) ? (body as Template[]) : [];

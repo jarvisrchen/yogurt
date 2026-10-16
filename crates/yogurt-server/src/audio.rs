@@ -19,9 +19,6 @@
 //!   started and the prompt never appeared.
 //! - `GET /api/audio/devices` — enumerates input devices for the Phase 5
 //!   settings dropdown (PRD §5.6).
-//! - [`start_meeting_recording`] — Phase 3's hook into the audio pipeline.
-//!   Called from `POST /api/meetings/:id/start` once that lands. Returns
-//!   the `AudioStream` Phase 3 STT will fan-in via `tokio::select!`.
 //!
 //! [`AudioErrorWrap`] maps the typed [`AudioError`] variants onto HTTP
 //! status codes — Phase 3 / Phase 7 handlers compose this into their own
@@ -36,8 +33,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use yogurt_audio::{
     has_microphone_permission, has_screen_recording_permission, list_input_devices, play_test_tone,
-    request_microphone_permission, request_screen_recording_permission, start_capture, AudioError,
-    AudioStream, DeviceInfo, PermissionStatus,
+    request_microphone_permission, request_screen_recording_permission, AudioError, DeviceInfo,
+    PermissionStatus,
 };
 use yogurt_db::settings;
 
@@ -193,16 +190,6 @@ pub async fn test_echo(
             error: Some(e.to_string()),
         },
     }))
-}
-
-/// Begin recording. Phase 3 will wire this into `POST /api/meetings/:id/start`.
-///
-/// Surfaces [`AudioError::PermissionDenied`] for the §5.11 recovery flow.
-/// The returned [`AudioStream`] holds RAII guards over both cpal and SCK
-/// producers — dropping it terminates the OS-level capture handles
-/// cleanly (AUDIO-06 / D-26).
-pub fn start_meeting_recording(mic_device: Option<&str>) -> Result<AudioStream, AudioError> {
-    start_capture(mic_device)
 }
 
 /// Newtype wrapper that gives [`AudioError`] an [`IntoResponse`] impl

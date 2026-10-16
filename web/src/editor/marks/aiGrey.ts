@@ -16,10 +16,6 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 
-export interface AiGreyAttrs {
-  transcriptTs?: number;
-}
-
 export const AiGreyPluginKey = new PluginKey("aiGreyPromote");
 
 export const AiGrey = Mark.create<{}, { transcriptTs: number | null }>({

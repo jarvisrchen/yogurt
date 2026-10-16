@@ -70,6 +70,11 @@ vi.mock("../components/MicEchoToggle", () => ({
 }));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
+  bearerFetch: (input: string, init?: RequestInit) =>
+    fetch(input, {
+      ...init,
+      headers: { ...(init?.headers as object), Authorization: "Bearer test-token" },
+    }),
 }));
 vi.mock("../lib/ws", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/ws")>();

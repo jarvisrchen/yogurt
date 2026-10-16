@@ -12,7 +12,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { ensureSessionToken } from "../session";
+import { bearerFetch, bearerJson } from "../session";
 
 // ─── Types (mirror yogurt_db::Meeting) ─────────────────────────────────────
 
@@ -90,28 +90,7 @@ export const meetingKey = (id: string) => ["meetings", id] as const;
 
 // ─── HTTP helper ────────────────────────────────────────────────────────────
 
-/**
- * Thin `fetch` wrapper that attaches the bootstrap session token and
- * throws on non-2xx, returns `undefined` for 204, otherwise parses JSON.
- *
- * The token is fetched lazily via `ensureSessionToken()` (Phase 0 helper)
- * and cached for the lifetime of the page.
- */
-export async function json<T>(input: string, init?: RequestInit): Promise<T> {
-  const token = await ensureSessionToken();
-  const headers = new Headers(init?.headers ?? {});
-  headers.set("Authorization", `Bearer ${token}`);
-  if (init?.body != null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const res = await fetch(input, { ...init, headers });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
-  }
-  if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
-}
+export const json = bearerJson;
 
 // ─── Raw API (exported for non-hook callers + tests) ───────────────────────
 
@@ -381,10 +360,7 @@ export function useUpdateMeetingTitle(): UseMutationResult<
  * yogurt runs on localhost so the secure-context requirement is satisfied.
  */
 export async function copyMeetingMarkdown(id: string): Promise<void> {
-  const token = await ensureSessionToken();
-  const res = await fetch(`/api/meetings/${id}/markdown`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await bearerFetch(`/api/meetings/${id}/markdown`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${res.status} ${res.statusText}: ${body}`);

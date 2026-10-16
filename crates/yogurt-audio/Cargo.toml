@@ -10,7 +10,6 @@ description = "macOS audio capture (mic + system loopback) for yogurt — 16 kHz
 [dependencies]
 tokio = { workspace = true }
 tracing = { workspace = true }
-anyhow = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 cpal = { workspace = true }
@@ -18,17 +17,12 @@ rubato = { workspace = true }
 rtrb = { workspace = true }
 parking_lot = { workspace = true }
 
-# screencapturekit is gated to macOS because the crate links the Swift bridge
-# against the macOS-only ScreenCaptureKit.framework.
+# screencapturekit links the Swift bridge against the macOS-only
+# ScreenCaptureKit.framework.
 #
-# objc2 + objc2-av-foundation + block2 are macOS-only Objective-C interop
-# crates used by `permission::has_microphone_permission` /
-# `permission::request_microphone_permission` to call
-# `AVCaptureDevice.authorizationStatus(for:)` and
-# `AVCaptureDevice.requestAccess(for:completionHandler:)` (DD-01 of
-# docs/archive/.planning/v1/quick/260628-g71-…/260628-g71-PLAN.md). AVFoundation is an
-# Objective-C framework with no C shim, so a typed binding is the
-# idiomatic Rust path — see PLAN's DD-01 rationale.
+# objc2 + objc2-av-foundation + block2 call `AVCaptureDevice.authorizationStatus`
+# and `requestAccess` for the microphone permission check. AVFoundation has no
+# C shim, so a typed Objective-C binding is the only route.
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = { workspace = true }
 objc2 = "0.6"
@@ -39,20 +33,19 @@ libc = "0.2"
 
 [dev-dependencies]
 tokio = { workspace = true }
+anyhow = { workspace = true }
 tracing-subscriber = { workspace = true }
-# WAV writer for the 30-second dual-channel ear-test acceptance gate
-# (Phase 2 success criterion #1 — `examples/wav_eartest.rs`).
+# WAV writer for `examples/wav_eartest.rs`.
 hound = "3.5"
 
 [features]
 default = []
 # Enable the synthetic sine-wave generator outside of `cargo test`.
-# Phase 5 settings may surface this as a debug-input source.
 synthetic = []
 
 # tests/synthetic.rs reaches into the synthetic module via the public API; the
 # integration-test crate does not inherit the lib's `cfg(test)` gate, so it
-# needs the feature explicitly. (Phase 3 deferred D-INT-01.)
+# needs the feature explicitly.
 [[test]]
 name = "synthetic"
 required-features = ["synthetic"]

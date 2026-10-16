@@ -22,7 +22,7 @@ pub mod deepgram;
 
 // Phase 8 (Plan 08-01): streaming SHA256 helper used by the model download
 // flow (Plan 08-02). Gated behind `local-stt` so the default build does NOT
-// pull in `sha2` / `hex` — keeping the no-default-features check fast.
+// pull in `sha2` — keeping the no-default-features check fast.
 #[cfg(feature = "local-stt")]
 pub mod sha256;
 

@@ -12,6 +12,8 @@
 // endpoint is mounted behind `require_session_token` (WR-06), so every
 // request MUST send `Authorization: Bearer <token>`.
 
+import { bearerFetch } from "./session";
+
 export interface HealthResponse {
   status: string;
   service: string;
@@ -43,16 +45,9 @@ export async function postChatMessage(
   content: string,
   token: string,
 ): Promise<{ message_id: string }> {
-  const res = await fetch(
+  const res = await bearerFetch(
     `/api/meetings/${meetingId}/chat?token=${encodeURIComponent(token)}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ content }),
-    },
+    { method: "POST", body: JSON.stringify({ content }) },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -69,9 +64,8 @@ export async function fetchChatHistory(
   meetingId: string,
   token: string,
 ): Promise<ChatMessage[]> {
-  const res = await fetch(
+  const res = await bearerFetch(
     `/api/meetings/${meetingId}/chat?token=${encodeURIComponent(token)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -157,13 +151,11 @@ const ENHANCE_FETCH_TIMEOUT_MS = 15 * 60_000;
  *
  * @param meetingId The meeting's UUID (returned by POST /api/meetings).
  * @param body      The enhance payload (see `EnhanceRequestBody`).
- * @param token     The session token (from `ensureSessionToken()`).
  * @param signal    Optional external AbortSignal — used by future cancel UI.
  */
 export async function postEnhance(
   meetingId: string,
   body: EnhanceRequestBody,
-  token: string,
   signal?: AbortSignal,
 ): Promise<EnhanceResponse> {
   const ctrl = new AbortController();
@@ -175,12 +167,8 @@ export async function postEnhance(
     else signal.addEventListener("abort", externalAbort);
   }
   try {
-    const res = await fetch(`/api/meetings/${meetingId}/enhance`, {
+    const res = await bearerFetch(`/api/meetings/${meetingId}/enhance`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });

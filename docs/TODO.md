@@ -120,4 +120,3 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## Developer experience
 
-

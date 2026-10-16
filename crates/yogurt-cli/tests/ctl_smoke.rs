@@ -45,14 +45,11 @@ async fn spawn_server(home: &Path) -> (ServerGuard, u16) {
         .spawn()
         .expect("spawn yogurt start");
 
-    // DX-1: this file spawns 21 real servers per full run, one per test
-    // (see the module doc comment) -- under the full workspace's default
-    // thread-per-core parallelism that is enough concurrent `cargo test`
-    // + `yogurt start` boots to occasionally blow the original 5s budget
-    // and flake. 10s gives real headroom without slowing a healthy run
-    // (the loop still breaks the instant health responds).
+    // This file spawns a real server per test, so a loaded full-workspace run
+    // can exceed a short boot budget. The loop still breaks the instant health
+    // responds, so a healthy run is not slowed by the 30s ceiling.
     let mut healthy = false;
-    for _ in 0..200 {
+    for _ in 0..600 {
         if let Ok(resp) = reqwest::get(format!("http://127.0.0.1:{port}/api/health")).await {
             if resp.status().is_success() {
                 healthy = true;

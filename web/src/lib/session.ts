@@ -46,14 +46,6 @@ export function ensureSessionToken(): Promise<string> {
 }
 
 /**
- * Test-only: drop the cached token so the next `ensureSessionToken()` call
- * re-fetches. Not used in production code.
- */
-export function _resetSessionTokenCache(): void {
-  cached = null;
-}
-
-/**
  * Shared `fetch` wrapper that attaches `Authorization: Bearer <token>` after
  * waiting on `ensureSessionToken()`. Use this for every `/api/*` call except
  * the bootstrap `/api/session-token` itself (which acquires the token).

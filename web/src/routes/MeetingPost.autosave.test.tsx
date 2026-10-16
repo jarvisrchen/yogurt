@@ -23,6 +23,11 @@ vi.mock("../components/AskExperience", () => ({
 }));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
+  bearerFetch: (input: string, init?: RequestInit) =>
+    fetch(input, {
+      ...init,
+      headers: { ...(init?.headers as object), Authorization: "Bearer test-token" },
+    }),
 }));
 vi.mock("../lib/ws", () => ({
   useEnhanceProgress: () => ({

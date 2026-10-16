@@ -21,6 +21,11 @@ vi.mock("../components/AskExperience", () => ({
 }));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
+  bearerFetch: (input: string, init?: RequestInit) =>
+    fetch(input, {
+      ...init,
+      headers: { ...(init?.headers as object), Authorization: "Bearer test-token" },
+    }),
 }));
 // Stateful, test-controllable mock for the streaming-preview tests below —
 // the default matches the old static shape (no streaming activity) so every

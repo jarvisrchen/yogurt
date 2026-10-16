@@ -8,27 +8,17 @@ repository.workspace = true
 description = "Pluggable speech-to-text trait + adapters for yogurt."
 
 [features]
-# Phase 8 (Plan 08-01): gate the whisper.cpp / VAD / hashing toolchain
-# behind an opt-in flag so the default build stays fast (~30 s) and
-# CI doesn't pay the ~2 min whisper.cpp CMake price on every job that
-# doesn't actually need the local STT path.
-#
-# `default = []` is deliberate — `cargo check -p yogurt-stt` with no
-# extra flags must NOT trigger the whisper.cpp build. The source-plan
-# task description suggested `default = ["local-stt"]`, but that
-# defeats the whole point of the feature flag (LOCAL-05 / Phase 8
-# success criterion #5). Anyone who wants the local adapter passes
-# `--features local-stt` explicitly.
+# Gates the whisper.cpp / VAD / hashing toolchain so the default build stays
+# fast (~30 s) and CI skips the ~2 min whisper.cpp CMake build when the local
+# STT path is not needed. `default = []` is deliberate: `cargo check -p
+# yogurt-stt` with no flags must not trigger that build.
 default = []
 local-stt = [
     "dep:whisper-rs",
     "dep:webrtc-vad",
     "dep:sha2",
-    "dep:hex",
-    # Plan 08-02: model registry (directories) + download manager
-    # (reqwest streaming, thiserror) live behind `local-stt` too —
-    # the default build must NOT pull in reqwest + rustls just to
-    # use the Deepgram cloud adapter.
+    # The model registry and download manager live behind `local-stt` too, so
+    # the Deepgram-only build does not pull in reqwest + rustls.
     "dep:directories",
     "dep:reqwest",
     "dep:thiserror",
@@ -39,27 +29,19 @@ tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 async-trait = { workspace = true }
-url = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Phase 8 (Plan 08-01) — gated behind `local-stt`. All four are
-# `optional = true` so the default build genuinely skips them.
-# `tracing_backend` is what makes `install_logging_hooks()` (called in
-# `whisper_local::WhisperLocal::load`) route whisper.cpp and ggml's C-side
-# logs into `tracing` rather than swallowing them. Without it the hooks
-# still silence stderr, but the output is gone for good instead of being
-# reachable with `RUST_LOG=whisper_rs=debug`.
+# Gated behind `local-stt`. `tracing_backend` makes `install_logging_hooks()`
+# route whisper.cpp and ggml's C-side logs into `tracing`. Without it the hooks
+# silence stderr and the output is gone instead of reachable with
+# `RUST_LOG=whisper_rs=debug`.
 whisper-rs = { workspace = true, features = ["metal", "tracing_backend"], optional = true }
 webrtc-vad = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
-hex = { workspace = true, optional = true }
 
-# Phase 8 (Plan 08-02) — model registry + download manager.  All
-# gated behind `local-stt` so the default Deepgram-cloud build
-# doesn't pull in rustls or the directories crate.
 directories = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
@@ -67,15 +49,8 @@ thiserror = { workspace = true, optional = true }
 [dev-dependencies]
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
-# Phase 8 (Plan 08-01): sha256 file-roundtrip test writes a 200 KB
-# payload to a NamedTempFile to assert hash_file == hash_bytes.
 tempfile = { workspace = true }
-# Phase 8 (Plan 08-01): smoke test uses directories::ProjectDirs to
-# resolve ~/.yogurt/models/ggml-small.en.bin. Dev-dep only because
-# the production whisper_local module takes the path as input.
 directories = { workspace = true }
-# Phase 8 (Plan 08-02 Task 3): in-test mock HTTP server for the model
-# download flow — serves a 600 KB deterministic payload with proper
-# Range: header semantics so we can test full / resume / bad-hash
-# paths against real reqwest, not a mocked HTTP client.
+# In-test HTTP server for the model download flow, with Range semantics so
+# full / resume / bad-hash paths run against real reqwest.
 axum = { workspace = true }

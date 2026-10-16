@@ -14,10 +14,9 @@
 //! single-writer surface.
 
 use anyhow::{Context, Result};
+use chrono::DateTime;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use time::macros::format_description;
-use time::OffsetDateTime;
 
 pub struct MarkdownExporter {
     notes_dir: PathBuf,
@@ -51,7 +50,7 @@ impl MarkdownExporter {
     /// Returns the same filename `write()` would produce for the same
     /// inputs — same `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md` derivation —
     /// so it's safe to use as a pure lookup. Returns an error only if
-    /// `started_at_unix_ms` is outside the legal `OffsetDateTime` range.
+    /// `started_at_unix_ms` is outside the legal `DateTime` range.
     pub fn path_for(&self, m: &Meeting<'_>) -> Result<PathBuf> {
         let fname = filename_for(m)?;
         Ok(self.notes_dir.join(fname))
@@ -117,11 +116,8 @@ impl MarkdownExporter {
 
 fn filename_for(m: &Meeting<'_>) -> Result<String> {
     let secs = m.started_at_unix_ms / 1000;
-    let dt = OffsetDateTime::from_unix_timestamp(secs).context("invalid started_at")?;
-    // Compile-time format description (avoids the deprecated runtime
-    // `format_description::parse`).
-    let fmt = format_description!("[year]-[month]-[day]-[hour][minute]");
-    let stamp = dt.format(&fmt).context("format dt")?;
+    let dt = DateTime::from_timestamp(secs, 0).context("invalid started_at")?;
+    let stamp = dt.format("%Y-%m-%d-%H%M");
     let slug = slugify(m.title);
     // HI-6: append a 6-char id prefix so two meetings in the same minute
     // with the same slug ("Sync"-titled standups) don't silently
