@@ -1,54 +1,31 @@
-//! Meeting-detection watcher (MTG-11).
+//! Meeting-detection watcher.
 //!
-//! Polls [`yogurt_audio::detect::detect_meeting`] on a fixed interval and
-//! holds the result in [`DetectState`] so `GET /api/meetings/detected` can
-//! answer without doing a window-server round trip per request.
+//! Polls [`yogurt_audio::detect::detect_meeting`] on a fixed interval and holds the result in
+//! [`DetectState`] so `GET /api/meetings/detected` needs no window-server round trip.
 //!
-//! ## What it will and will not do
+//! It never starts a recording. A false positive must not silently record a room, so detection
+//! only offers a prompt and the user's click goes through the normal `/meeting/new` path.
 //!
-//! **It never starts a recording.** Detection only makes the UI offer a
-//! prompt; the user clicks, and the click goes through the exact same
-//! `/meeting/new` path as "+ New meeting". Auto-starting on a heuristic
-//! would mean the first false positive silently records a room, which is
-//! not a thing a privacy-first app gets to do by default.
+//! It does stop a recording, which is the safe direction: the failure is a call to restart,
+//! not an unnoticed recording. Every auto-stop goes through [`AppState::stop_meeting`] and is
+//! gated by `general.meeting_auto_stop`.
 //!
-//! **It does stop a recording**, once, under a narrow rule: while a
-//! detected meeting window is on screen and a recording is running, the
-//! two are linked; when that window has been gone for
-//! [`MISSING_TICKS_BEFORE_STOP`] consecutive polls, the recording stops.
-//! Stopping is the safe direction — the failure mode is a call you have
-//! to restart, not a room you did not know was being taped — and without
-//! it an unattended recording runs until someone notices.
+//! Window signal: any recording live while a detection is live is linked to that call. Once the
+//! window has been gone for [`MISSING_TICKS_BEFORE_STOP`] polls, the recording stops.
 //!
-//! The link is inferred rather than passed through from the UI: any
-//! recording that is live while a detection is live is the recording for
-//! that call. That is one rule, no plumbing through create/start, and it
-//! is also true of a meeting the user started by hand mid-call — which is
-//! the behavior they want anyway ("the call ended, stop recording").
-//! Turning the setting off disables both halves.
+//! Mic signal (preferred): while recording, [`mic_poll`] asks CoreAudio which processes hold the
+//! mic. Once an allowlisted meeting app (`yogurt_audio::detect::meeting_app_for_process`) has
+//! held it and then released it for [`MIC_RELEASED_TICKS`] polls, the recording stops. A
+//! recording no meeting app ever held the mic for is never stopped this way. When the OS cannot
+//! report mic users, the window signal stays in charge. When a meeting app has held the mic, the
+//! window signal is off, because a hidden or switched browser tab looks like a closed call.
+//! Safari captures in a WebKit process that never matches, so Safari calls stay on the window
+//! signal.
 //!
-//! **The preferred end-of-call signal is the microphone.** While a recording
-//! runs, [`mic_poll`] asks CoreAudio which processes hold the mic. Once an
-//! allowlisted meeting app (see `yogurt_audio::detect::meeting_app_for_process`)
-//! has held it during this recording and then has not for
-//! [`MIC_RELEASED_TICKS`] polls, the recording stops. A recording no meeting
-//! app ever held the mic for is never stopped this way. This does not depend
-//! on window detection or the `meeting_detection` setting. When the OS cannot
-//! report mic users, the window-gone stop above stays in charge. When it can
-//! and a meeting app has held the mic, the window-gone stop is off, because a
-//! hidden or switched browser tab looks like a closed call. Safari captures in
-//! a WebKit process that never matches, so no meeting app is ever seen and
-//! Safari calls stay on the window signal.
-//!
-//! **It also stops a silent recording.** Independently of window detection,
-//! [`silence_tick`] stops the active recording once neither the mic nor the
-//! system channel has had a peak above `SILENCE_PEAK` for
-//! [`SilencePolicy::DEFAULT`]`.stop_after` (5 minutes). `GET
-//! /api/meetings/active` reports `auto_stop_at` from the 4 minute mark so the
-//! UI can warn and offer keep-recording. This only runs while recording, so
-//! it never holds a capture stream open to listen. `general.meeting_auto_stop`
-//! gates both this and the window auto-stop, and every auto-stop goes
-//! through [`AppState::stop_meeting`], the same path as the manual stop.
+//! Silence: [`silence_tick`] stops the recording once neither channel has had a peak above
+//! `SILENCE_PEAK` for [`SilencePolicy::DEFAULT`]`.stop_after` (5 minutes). `GET
+//! /api/meetings/active` reports `auto_stop_at` from the 4 minute mark so the UI can warn. It
+//! only reads streams already open for a recording, so it never captures while idle.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,30 +36,20 @@ use yogurt_audio::detect::DetectedMeeting;
 
 use crate::state::AppState;
 
-/// How often to look at the window list. Long enough to be invisible in
-/// `top`, short enough that the prompt shows up while you are still
-/// staring at the "join" screen.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
-/// Consecutive polls a linked window must be absent before the recording
-/// is stopped. Three ticks (~15s) rides out a window that is merely
-/// being reopened, resized onto another display, or briefly reported as
-/// off-screen during a screen-share handoff.
+/// Three ticks (~15s) rides out a window that is reopened, moved to another display, or
+/// briefly off-screen during a screen-share handoff.
 pub const MISSING_TICKS_BEFORE_STOP: u8 = 3;
 
-/// Longest a single window-server query may take before the tick is
-/// skipped. Normal answers arrive in single-digit milliseconds.
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// The settings key the watcher reads each tick, so toggling the setting
-/// takes effect without a restart.
+/// Settings keys are read each tick, so toggles need no restart.
 pub const SETTING_KEY: &str = "general.meeting_detection";
 
-/// Read each tick like [`SETTING_KEY`], so the toggle needs no restart.
 pub const FOCUS_SETTING_KEY: &str = "general.meeting_detection_focus";
 
-/// Read each tick like [`SETTING_KEY`]. Gates both the window auto-stop and
-/// the silence auto-stop.
+/// Gates both the window auto-stop and the silence auto-stop.
 pub const AUTO_STOP_SETTING_KEY: &str = "general.meeting_auto_stop";
 
 /// How long both channels must stay quiet before the warning and the stop.
@@ -119,7 +86,6 @@ pub enum Silence {
     Expired,
 }
 
-/// Result of one [`DetectState::advance`] call.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Advance {
     /// Linked recording whose window has been gone long enough to stop.
@@ -128,8 +94,6 @@ pub struct Advance {
     pub raise: bool,
 }
 
-/// Live detection state. Shared between the watcher task and the
-/// `/api/meetings/detected` handlers.
 #[derive(Debug, Default)]
 pub struct DetectState {
     /// The meeting window seen on the most recent poll.
@@ -193,9 +157,7 @@ impl MicWatch {
 }
 
 impl DetectState {
-    /// What the prompt should show, or `None` when there is nothing to
-    /// offer: no meeting seen, the user dismissed this one, or a
-    /// recording is already running.
+    /// `None` when no meeting is seen, the user dismissed it, or a recording is running.
     pub fn prompt(&self, recording: bool) -> Option<&DetectedMeeting> {
         if recording {
             return None;
@@ -207,20 +169,13 @@ impl DetectState {
         Some(current)
     }
 
-    /// Suppress the prompt for whatever meeting is on screen right now.
     pub fn dismiss_current(&mut self) {
         self.dismissed = self.current.as_ref().map(|m| m.window_id);
     }
 
-    /// Fold one poll into the state and say whether a recording should
-    /// now be stopped and/or the app window should be raised.
-    ///
-    /// Pure apart from `self`, which is the point: the link/unlink/stop
-    /// decision is the only real logic in this module, and it is driven
-    /// by a window list and a registry that a unit test cannot conjure.
-    /// [`tick`] supplies both and acts on the answer.
+    /// Pure apart from `self` so the link/unlink/stop decision is unit-testable without a
+    /// window list or registry. [`tick`] supplies both and acts on the answer.
     fn advance(&mut self, found: Option<DetectedMeeting>, active: Option<Uuid>) -> Advance {
-        // A different window means a different call: un-dismiss.
         let same_window = match (&self.current, &found) {
             (Some(a), Some(b)) => a.window_id == b.window_id,
             _ => false,
@@ -231,8 +186,6 @@ impl DetectState {
         }
         self.current = found;
 
-        // Link: a recording running while a meeting window is on screen
-        // is the recording for that call.
         if self.linked.is_none() {
             if let (Some(id), Some(m)) = (active, self.current.as_ref()) {
                 tracing::debug!(
@@ -248,7 +201,6 @@ impl DetectState {
             return Advance { stop: None, raise };
         };
 
-        // The user stopped it themselves — nothing left to hold.
         if active != Some(meeting_id) {
             self.linked = None;
             self.missing_ticks = 0;
@@ -285,9 +237,6 @@ fn setting_enabled(db: &yogurt_db::Db, key: &str) -> bool {
         .is_none_or(|v| v == "true")
 }
 
-/// Is meeting detection enabled? Defaults to `true` — the feature only
-/// ever offers a prompt, so it is discoverable by default and the
-/// Settings toggle is there to silence it.
 pub fn enabled(db: &yogurt_db::Db) -> bool {
     setting_enabled(db, SETTING_KEY)
 }
@@ -300,12 +249,10 @@ pub fn focus_enabled(db: &yogurt_db::Db) -> bool {
     setting_enabled(db, FOCUS_SETTING_KEY)
 }
 
-/// Spawn the watcher. Runs for the life of the process.
 pub fn spawn(state: AppState) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(POLL_INTERVAL);
-        // The window list is a snapshot, not a queue: a tick we were too
-        // busy to service is worthless, so skip it rather than burst.
+        // A missed tick is worthless, so delay rather than burst.
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
@@ -316,12 +263,10 @@ pub fn spawn(state: AppState) {
     });
 }
 
-/// One poll. Split out from [`spawn`] so it can be driven directly in
-/// tests without waiting on wall-clock intervals.
+/// One poll, split from [`spawn`] so tests can drive it without wall-clock waits.
 pub async fn tick(state: &AppState) {
     if !enabled(&state.db) {
-        // Drop everything we were holding — including any link, so
-        // turning the setting off can never stop a recording later.
+        // Drops any link too, so turning the setting off can never stop a recording later.
         let mut st = state.detect.lock().await;
         *st = DetectState {
             mic: std::mem::take(&mut st.mic),
@@ -331,8 +276,7 @@ pub async fn tick(state: &AppState) {
         return;
     }
 
-    // A blind poll must not advance state: it could otherwise start the
-    // auto-stop countdown for a call that is still on screen.
+    // A blind poll must not advance state, or it could start the stop countdown for a live call.
     let found = match tokio::task::spawn_blocking(|| {
         yogurt_audio::detect::detect_meeting_bounded(QUERY_TIMEOUT)
     })
@@ -351,18 +295,15 @@ pub async fn tick(state: &AppState) {
     tracing::debug!(found = ?found.as_ref().map(|m| (&m.app, m.window_id)), "detection poll");
     let active = state.meetings.active_recording().await;
 
-    // Scoped so the state lock is released before `stop` takes the
-    // registry locks.
+    // The state lock must drop before `stop` takes the registry locks.
     let Advance {
         stop: to_stop,
         raise,
     } = state.detect.lock().await.advance(found, active);
 
     if raise && focus_enabled(&state.db) {
-        // By app, never by URL: opening the URL adds a tab to the frontmost
-        // Chrome window, which hides a Meet call running there and
-        // un-detects it on the next poll. Without the installed app there
-        // is nothing to raise; the notification click covers that case.
+        // By app, never by URL: a URL adds a tab to the frontmost Chrome window, which hides a
+        // Meet call there and un-detects it. Without the installed app the notification click covers it.
         tokio::task::spawn_blocking(|| {
             match std::process::Command::new("open")
                 .args(["-a", "yogurt"])
@@ -386,8 +327,6 @@ pub async fn tick(state: &AppState) {
     }
 }
 
-/// Query the mic users (bounded like the window query) while a recording is
-/// live, then feed [`mic_tick`].
 async fn mic_poll(state: &AppState) {
     static IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     use std::sync::atomic::Ordering::SeqCst;
@@ -416,8 +355,6 @@ async fn mic_poll(state: &AppState) {
     }
 }
 
-/// Fold one mic-usage snapshot into the watch and stop the recording when
-/// the meeting app has released the microphone.
 pub async fn mic_tick(
     state: &AppState,
     users: Option<Vec<yogurt_audio::mic_usage::MicUser>>,
@@ -443,8 +380,6 @@ pub async fn mic_tick(
     }
 }
 
-/// Stop the active recording once both channels have been silent for
-/// `policy.stop_after`. Runs independently of meeting detection.
 pub async fn silence_tick(state: &AppState, now_ms: u64, policy: SilencePolicy) {
     let enabled = auto_stop_enabled(&state.db);
     let Some(id) = state.meetings.active_recording().await else {
@@ -454,8 +389,7 @@ pub async fn silence_tick(state: &AppState, now_ms: u64, policy: SilencePolicy) 
         return;
     };
     if !enabled {
-        // Silence that piled up while the setting was off must not count
-        // once it is turned on.
+        // Silence from while the setting was off must not count once it is on.
         m.last_audible_ms
             .store(now_ms, std::sync::atomic::Ordering::Relaxed);
         return;
@@ -476,7 +410,6 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Shared handle type stored on [`AppState`].
 pub type SharedDetectState = Arc<Mutex<DetectState>>;
 
 #[cfg(test)]
@@ -496,16 +429,13 @@ mod tests {
         let mut st = DetectState::default();
         let rec = Uuid::now_v7();
 
-        // Detected, then the user starts recording: the two link up.
         assert_eq!(st.advance(window(7), None).stop, None);
         assert_eq!(st.advance(window(7), Some(rec)).stop, None);
         assert_eq!(st.linked, Some((rec, 7)));
 
-        // Call ends. Two polls of grace, stop on the third.
         assert_eq!(st.advance(None, Some(rec)).stop, None);
         assert_eq!(st.advance(None, Some(rec)).stop, None);
         assert_eq!(st.advance(None, Some(rec)).stop, Some(rec));
-        // ...and only once.
         assert_eq!(st.advance(None, Some(rec)).stop, None);
     }
 
@@ -517,8 +447,7 @@ mod tests {
 
         assert_eq!(st.advance(None, Some(rec)).stop, None);
         assert_eq!(st.advance(None, Some(rec)).stop, None);
-        // Back on screen — the two missed polls must not carry over, or a
-        // long call would eventually stop itself.
+        // The two missed polls must not carry over, or a long call would eventually stop itself.
         assert_eq!(st.advance(window(7), Some(rec)).stop, None);
         assert_eq!(st.advance(None, Some(rec)).stop, None);
         assert_eq!(st.advance(None, Some(rec)).stop, None);
@@ -527,8 +456,7 @@ mod tests {
 
     #[test]
     fn a_recording_started_before_any_detection_is_never_stopped() {
-        // Nothing was ever detected, so there is nothing to infer a link
-        // from — a hand-started recording must outlive any number of polls.
+        // A hand-started recording with no detection must outlive any number of polls.
         let mut st = DetectState::default();
         let rec = Uuid::now_v7();
         for _ in 0..10 {
@@ -542,7 +470,6 @@ mod tests {
         let mut st = DetectState::default();
         let rec = Uuid::now_v7();
         st.advance(window(7), Some(rec));
-        // User hits stop while still in the call.
         assert_eq!(st.advance(window(7), None).stop, None);
         assert_eq!(st.linked, None);
     }
@@ -554,11 +481,9 @@ mod tests {
         st.dismiss_current();
         assert_eq!(st.prompt(false), None);
 
-        // Same window, still dismissed.
         st.advance(window(7), None);
         assert_eq!(st.prompt(false), None);
 
-        // New call, new window id — prompt again.
         st.advance(window(8), None);
         assert_eq!(st.prompt(false).map(|m| m.window_id), Some(8));
     }
@@ -575,13 +500,10 @@ mod tests {
     fn a_new_window_raises_once_and_the_same_window_does_not() {
         let mut st = DetectState::default();
         assert!(st.advance(window(7), None).raise);
-        // Same window on the next poll: no second raise.
         assert!(!st.advance(window(7), None).raise);
         assert!(!st.advance(window(7), None).raise);
 
-        // A different window is a different call, so it raises again.
         assert!(st.advance(window(8), None).raise);
-        // Nothing detected does not raise either.
         assert!(!st.advance(None, None).raise);
     }
 
@@ -589,9 +511,7 @@ mod tests {
     fn no_raise_while_a_recording_is_running() {
         let mut st = DetectState::default();
         let rec = Uuid::now_v7();
-        // A window shows up while a recording is already active.
         assert!(!st.advance(window(7), Some(rec)).raise);
-        // ...and a different window mid-recording still doesn't raise.
         assert!(!st.advance(window(9), Some(rec)).raise);
     }
 
@@ -669,12 +589,10 @@ mod tests {
         let at = std::sync::atomic::Ordering::Relaxed;
         let start = m.last_audible_ms.load(at);
 
-        // Sound at start+40 pushes the deadline out, so start+60 is fine.
         m.last_audible_ms.store(start + 40, at);
         silence_tick(&state, start + 60, POLICY).await;
         assert_eq!(state.meetings.active_recording().await, Some(id));
 
-        // Keep-recording is the same store with "now".
         m.last_audible_ms.store(start + 100, at);
         silence_tick(&state, start + 149, POLICY).await;
         assert_eq!(state.meetings.active_recording().await, Some(id));

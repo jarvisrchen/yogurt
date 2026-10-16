@@ -1,37 +1,20 @@
-// Phase 5 (Plan 05-03): new API surfaces added after Phase 4 live under
-// `api/`. Currently houses `api::settings::router()` for the
-// `/api/settings*` endpoints.
 mod api;
 mod assets;
 pub mod audio;
 mod detect;
 mod dev_proxy;
-// Phase 4 (Plan 04-03) augmented-notes enhance endpoint handler. Wires
-// prompts → LLM → merge → persistence → WS progress events end-to-end.
 pub(crate) mod enhance;
-// Phase 4 (Plan 04-01) tactical LLM client + mock fallback. Crate-private
-// modules — Plan 04-03's enhance handler consumes them directly. NO
-// `LlmClient` trait yet — Phase 5 introduces it (CONTEXT D-19 / D-21).
 pub(crate) mod llm_mock;
 pub(crate) mod llm_openai;
 pub(crate) mod markdown_exporter;
 pub mod meetings;
 mod routes;
-// Phase 4 BL-2 (XSS hardening): HTML allowlist sanitizer applied to the
-// final enriched_md before it leaves the enhance handler. Re-exported as
-// `__test_only_sanitize` for test access.
 pub(crate) mod sanitize;
 pub mod session;
-// Phase 5 (Plan 05-02): `AppState` lives here so it can carry the new
-// `yogurt-db::Db` + `Arc<dyn ApiKeyStore>` fields alongside the Phase 4
-// fields. Re-exported below as `pub use state::AppState`.
 pub mod state;
 pub mod storage;
 pub mod ws;
 
-// Phase 5 (Plan 05-02): bootstrap providers from `YOGURT_*_API_KEY` env
-// vars on first run. Idempotent; release builds never read `.env.local`
-// (the loader is gated on `--dev` in `yogurt-cli/src/main.rs`).
 pub mod bootstrap;
 
 #[doc(hidden)]
@@ -39,48 +22,27 @@ pub mod __test_only_sanitize {
     pub use crate::sanitize::sanitize_enriched_md;
 }
 
-/// Test-only re-export of `routes::start_stamp_patch` — the pure decision
-/// function `start_meeting` uses to compute the `started_at`/`ended_at`
-/// patch after a successful `Registry::start()`. `POST
-/// /api/meetings/:id/start` opens real ScreenCaptureKit + cpal audio
-/// capture, which has no fake/mock mode and cannot succeed in a sandboxed
-/// test runner without Screen Recording permission — so integration tests
-/// exercise this function directly against a real `MeetingRepo` row rather
-/// than driving the audio-gated HTTP handler end-to-end. Hidden from docs.
+/// `POST /api/meetings/:id/start` opens real ScreenCaptureKit capture, which cannot succeed
+/// without Screen Recording permission, so tests call this pure patch function directly.
 #[doc(hidden)]
 pub mod __test_only_start_stamp {
     pub use crate::routes::start_stamp_patch;
 }
 
-/// Phase 6 (Plan 06-01) test-only re-export of the deterministic mock LLM.
-/// Integration tests that construct `AppState { ... }` directly need to fill
-/// the new `llm` field without taking a dependency on `yogurt-llm`'s real
-/// `OpenAiCompatClient`. Hidden from docs.
 #[doc(hidden)]
 pub mod __test_only_llm_mock {
     pub use crate::llm_mock::MockLlm;
 }
 
-/// Phase 6 (Plan 06-01) chat integration-test support. Compiled only when
-/// `cargo test`-driven dev-dependencies activate the `test-support` feature
-/// — release builds never see this code.
+/// Compiled only for tests or the `test-support` feature.
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
-/// Phase 4 (Plan 04-02) test-only re-export of the otherwise crate-private
-/// `markdown_exporter` module. Wiring (call from the enhance handler) lands
-/// in Plan 04-03; until then the module surface is exercised only by
-/// `tests/markdown_exporter.rs`. `#[doc(hidden)]` keeps it out of the
-/// public docs.
 #[doc(hidden)]
 pub mod __test_only_markdown_exporter {
     pub use crate::markdown_exporter::{MarkdownExporter, Meeting};
 }
 
-/// Phase 4 (Plan 04-03) test-only helper to build the auxiliary `AppState`
-/// fields that the integration tests (`tests/meeting_ws*.rs`,
-/// `tests/e2e_synthetic_audio.rs`) need. Hidden from docs — production
-/// code constructs them inline inside `run_with_config`.
 #[doc(hidden)]
 pub fn __test_only_aux_state(
     notes_dir: std::path::PathBuf,
@@ -100,39 +62,25 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 pub use session::SessionToken;
-// Phase 5 (Plan 05-02): canonical `AppState` lives in `state.rs`. Re-exported
-// here so existing call sites (`use crate::AppState`) keep compiling.
 pub use state::AppState;
 pub use storage::Storage;
 
-/// Server runtime mode.
-///
-/// In `Dev`, non-API requests proxy to a Vite dev server on :5173.
-/// In `Release`, non-API requests serve embedded `web/dist` assets via
-/// `rust-embed` with an SPA fallback to `index.html`.
+/// `Dev` proxies non-API requests to Vite on :5173. `Release` serves the embedded `web/dist`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Dev,
     Release,
 }
 
-/// Configuration for `run` that can be overridden in tests (custom DB +
-/// session-token paths so tests do not clobber the developer's real
-/// `~/.yogurt/`).
+/// Path overrides let tests avoid clobbering the real `~/.yogurt/`.
 pub struct RunConfig {
     pub addr: SocketAddr,
     pub mode: Mode,
     pub db_path: Option<PathBuf>,
     pub session_token_path: Option<PathBuf>,
-    /// Phase 4 (Plan 04-03): override the per-meeting markdown notes
-    /// directory. Defaults to `~/.yogurt/notes/`. Tests pass a tempdir.
     pub notes_dir: Option<PathBuf>,
-    /// Phase 5 collateral fix (SET-12): override path for the new
-    /// `yogurt-db` SQLite file (providers + settings). Threaded through to
-    /// `ProductionConfig::app_db_path`. Defaults to
-    /// `~/.yogurt/db.sqlite` via `Db::open_default()`. Tests pass a
-    /// tempdir-scoped path so parallel suites do not collide on the WAL
-    /// lock on the developer's real user DB.
+    /// Separate from `db_path`: the `yogurt-db` file (providers, settings). Tests pass a
+    /// tempdir so parallel suites do not collide on the WAL lock.
     pub app_db_path: Option<PathBuf>,
 }
 
@@ -149,13 +97,10 @@ impl RunConfig {
     }
 }
 
-/// Default entry point. Uses real `~/.yogurt/` paths.
 pub async fn run(addr: SocketAddr, mode: Mode) -> Result<()> {
     run_with_config(RunConfig::new(addr, mode)).await
 }
 
-/// Configurable entry point — accepts overrides for DB path and session
-/// token path (used by tests).
 pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     let db_path = match cfg.db_path {
         Some(p) => p,
@@ -169,7 +114,6 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     };
     let session = Arc::new(session::load_or_create(&token_path)?);
 
-    // Phase 4 (Plan 04-03): per-meeting markdown exporter (STORE-03/04).
     let notes_dir = match cfg.notes_dir {
         Some(p) => p,
         None => default_notes_dir()?,
@@ -184,9 +128,7 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         app_db_path: cfg.app_db_path,
     })?;
 
-    // Phase 5 (Plan 05-02): seed providers from `YOGURT_*_API_KEY` env vars
-    // (loaded from .env.local in dev mode by yogurt-cli). Idempotent —
-    // existing providers are skipped, never overridden.
+    // .env.local is loaded only in dev mode, by yogurt-cli.
     match bootstrap::seed_from_env(&state).await {
         Ok(report) => {
             if !report.seeded.is_empty() {
@@ -201,17 +143,13 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         }
     }
 
-    // Deepgram STT key: same .env.local convention as the LLM providers.
     bootstrap::seed_stt_key_from_env(&state);
 
-    // Repair enriched_md rows corrupted by the pre-260813 escaped-span
-    // enhance bug — idempotent, no-op on clean databases.
     if let Err(e) = bootstrap::repair_escaped_span_rows(&state) {
         tracing::warn!(error = %e, "escaped-span repair failed; continuing");
     }
 
-    // MTG-11: meeting detection watcher. Reads its own enable flag every
-    // tick, so it is cheap and instantly togglable when disabled.
+    // Reads its enable flag every tick, so toggling takes effect immediately.
     detect::spawn(state.clone());
 
     let app = routes::router(state);
@@ -221,8 +159,6 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     Ok(())
 }
 
-/// Default per-meeting markdown notes directory: `~/.yogurt/notes/`.
-/// Tests override via `RunConfig::notes_dir`.
 fn default_notes_dir() -> Result<PathBuf> {
     use directories::BaseDirs;
     let base =
@@ -230,10 +166,6 @@ fn default_notes_dir() -> Result<PathBuf> {
     Ok(base.home_dir().join(".yogurt").join("notes"))
 }
 
-/// Construct a router with a custom AppState, for tests that want to reach
-/// into the registry directly instead of going through the REST surface.
-///
-/// Not part of the stable public API — leading underscore communicates that.
 #[doc(hidden)]
 pub fn __test_router(state: AppState) -> axum::Router {
     routes::router(state)

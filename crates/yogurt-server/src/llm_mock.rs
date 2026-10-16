@@ -1,20 +1,5 @@
-//! Deterministic mock LLM (CONTEXT D-20).
-//!
-//! Phase 5 update (Plan 05-01): now implements `yogurt_llm::LlmClient` so
-//! the enhance handler can hold an `Arc<dyn LlmClient>` and swap mock vs.
-//! real adapter without branching at call-sites. The mock still produces
-//! the same wire-format output (USER notes verbatim + one AI bullet per
-//! transcript segment) so Phase 4 fixture tests keep passing.
-//!
-//! Used by:
-//! - The enhance handler when `YOGURT_LLM_*` env vars are not set (and
-//!   Plan 05-02's `AppState.keys` lookup also misses) — so first-time
-//!   developers get a working hero experience without a real provider.
-//! - Tests that need a reproducible enriched-markdown output.
-//!
-//! `streaming` is intentionally minimal here — Phase 6 will exercise the
-//! real `OpenAiCompatClient::stream` directly; the mock returning a
-//! single chunk is enough to satisfy the trait bound.
+//! Deterministic mock LLM: user notes verbatim plus one AI bullet per transcript segment.
+//! Used when no provider is configured and by tests that need reproducible output.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -22,7 +7,6 @@ use futures_util::stream::{self, BoxStream, StreamExt};
 use serde::Deserialize;
 use yogurt_llm::{ChatChunk, ChatRequest, ChatResponse, LlmClient};
 
-/// Trait impl of the Phase 4 mock — re-shaped per CONTEXT D-21.
 #[derive(Default, Clone)]
 pub struct MockLlm;
 
@@ -33,10 +17,7 @@ impl LlmClient for MockLlm {
     }
 
     async fn complete(&self, req: ChatRequest) -> Result<ChatResponse> {
-        // Phase 4 wraps the user-facing payload as a single `user`-role
-        // message containing the rendered enhance.md prompt. We rebuild
-        // the legacy prompt string by concatenating user-role contents
-        // (system messages are advisory only for the mock).
+        // System messages are ignored by the mock.
         let user_text = req
             .messages
             .iter()
@@ -52,9 +33,7 @@ impl LlmClient for MockLlm {
     }
 
     async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
-        // Single-shot stream: emit the full mock content as one delta then
-        // terminate with `done=true`. Sufficient for Phase 4-compatible
-        // tests that just want to round-trip through the trait surface.
+        // One delta, then the terminal chunk.
         let full = self.complete(req).await?.content;
         let s = stream::iter(vec![
             Ok(ChatChunk {
@@ -70,21 +49,17 @@ impl LlmClient for MockLlm {
     }
 }
 
-/// Phase 4-shape mock output: echo user notes verbatim, then emit one
-/// `<span data-ai-grey>` bullet per transcript segment with a trailing
-/// `<span data-transcript-link>↳ HH:MM</span>`. Public-in-module so the
-/// trait impl can reuse it; not exported from the crate.
+/// Echoes user notes, then one `<span data-ai-grey>` bullet per transcript segment ending in a
+/// `<span data-transcript-link>` timestamp.
 fn build_mock_output(user: &str) -> String {
     let has_markers = user.contains("<user_notes>");
     let (notes, transcript_json) = split_prompt(user);
     let transcript: Vec<Seg> = serde_json::from_str(transcript_json).unwrap_or_default();
 
     let mut out = String::new();
-    // LLM-9: the prompt asks the model to name the note format on the first
-    // line. The mock "detects" a standup from the word alone so the
-    // auto-detect path is exercised end to end; everything else is general.
-    // Skipped on a marker-less prompt so a malformed prompt still yields an
-    // empty document.
+    // The prompt asks the model to name the note format on the first line. The mock picks
+    // standup from the word alone to exercise auto-detect. Skipped on a marker-less prompt so
+    // a malformed prompt still yields an empty document.
     if has_markers {
         let standup = transcript
             .iter()
@@ -95,10 +70,6 @@ fn build_mock_output(user: &str) -> String {
             "template: general\n\n"
         });
     }
-    // User notes preserved verbatim — the merge layer treats them as
-    // user-source markdown and pulldown-cmark escapes any HTML on parse.
-    // BL-2 sanitization happens at the enrich-handler layer via
-    // `ammonia::clean` on the final enriched_md.
     out.push_str(notes.trim_start());
     if !out.ends_with('\n') {
         out.push('\n');
@@ -109,12 +80,9 @@ fn build_mock_output(user: &str) -> String {
     for seg in &transcript {
         let ts = seg.ts_ms / 1000;
         let stamp = format!("{:02}:{:02}", ts / 60, ts % 60);
-        // Mock "summary" = first 8 words of the segment.
         let words: Vec<&str> = seg.text.split_whitespace().take(8).collect();
         let summary_raw = words.join(" ");
-        // BL-2: escape transcript-derived text BEFORE interpolating into
-        // the wire-format span. Transcript text is network-fed (Deepgram)
-        // and untrusted.
+        // Transcript text is network-fed and untrusted, so escape it before it enters the span.
         let summary = html_escape::encode_safe(&summary_raw);
         out.push_str(&format!(
             "- <span data-ai-grey data-ts=\"{ts}\">{summary} <span data-transcript-link data-ts=\"{ts}\">↳ {stamp}</span></span>\n"
@@ -124,13 +92,9 @@ fn build_mock_output(user: &str) -> String {
 }
 
 fn split_prompt(user: &str) -> (&str, &str) {
-    // The enhance template wraps inputs in `<user_notes>`/`<transcript>`
-    // tags. `rfind` because the template's RULES also mention the literal
-    // tag names (in backticks) well before the real wrappers appear.
+    // `rfind` because the template's rules mention the literal tag names before the real wrappers.
     let notes = match (user.rfind("<user_notes>"), user.rfind("</user_notes>")) {
         (Some(start), Some(end)) if start < end => &user[start + "<user_notes>".len()..end],
-        // Defensive — if the prompt format changes, return empty/empty so
-        // the caller still gets a valid (if uninformative) markdown doc.
         _ => return ("", "[]"),
     };
     let transcript = match (user.rfind("<transcript>"), user.rfind("</transcript>")) {
@@ -141,7 +105,6 @@ fn split_prompt(user: &str) -> (&str, &str) {
         }
         _ => "[]",
     };
-    // Trim outer whitespace but PRESERVE leading `-` bullets in user notes.
     (notes.trim(), transcript.trim())
 }
 

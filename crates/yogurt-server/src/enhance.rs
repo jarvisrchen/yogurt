@@ -1,30 +1,6 @@
-//! Phase 4 hero augmented-notes endpoint (CONTEXT D-22 / D-23).
+//! `POST /api/meetings/{id}/enhance`: merges the user's notes with the LLM's output and streams `enhance_progress` frames.
 //!
-//! `POST /api/meetings/{id}/enhance` accepts the user's raw notes plus the
-//! transcript-so-far in the request body, renders the bundled `enhance.md`
-//! prompt (with one note format forced, or all of them offered for the
-//! model to pick from - LLM-9), calls the LLM (env-var override, else the configured active
-//! provider + stored key, else the deterministic `MockLlm` when nothing
-//! is configured), runs `yogurt_notes::merge_notes` over
-//! the result, persists `enriched_md` + `enriched_doc_json` to SQLite and
-//! to a per-meeting markdown file under `~/.yogurt/notes/`, and emits
-//! `enhance_progress` WebSocket events on the meeting's events broadcast:
-//! one `sending` frame, then repeated `streaming` frames (each carrying a
-//! `text` snapshot of the accumulated LLM output so far, throttled to
-//! roughly every 80 ms), then one `done` frame.
-//!
-//! ## Why the body carries `notes_md` + `transcript_json`
-//!
-//! The in-memory `Meeting` struct (`meetings.rs`) holds only the live audio
-//! and transcript broadcasts plus capture handles. It does NOT store the
-//! user's raw notes or a serialized transcript snapshot. Adding those
-//! fields would require persisting transcript-events as they arrive (out
-//! of scope for Plan 04-03) plus a contract for client-side notes-edit
-//! WS frames (Phase 4 deferred). The pragmatic adaptation is to let the
-//! browser send both as the enhance request body; Phase 5+ replaces this
-//! with server-side accumulation. The endpoint itself is the contract that
-//! matters: request body, persistence, WS events, and response shape are
-//! all on the public surface from day one.
+//! The request body carries `notes_md` and `transcript_json` because the in-memory `Meeting` stores neither.
 
 use axum::{
     extract::{Path, State},
@@ -45,39 +21,21 @@ use yogurt_llm::{ChatMessage, ChatRequest};
 use yogurt_notes::{merge_notes, TranscriptSegment};
 use yogurt_prompts::{split_template_line, EnhanceCtx, Template, TEMPLATE_IDS};
 
-/// A meeting with no typed notes AND a transcript under this many words has
-/// nothing meaningful for the LLM to work with - an accidental start/stop,
-/// a few seconds of silence, a stray "hello?". Word count (not char count)
-/// so a handful of filler words can't dodge the check by being long.
-///
-/// Deliberately low, not the ~20 words a first cut might reach for: any
-/// real notes at all skip this path entirely (see the
-/// `notes_md.trim().is_empty()` guard below), so the only meetings this
-/// gate can catch are ones with ZERO typed notes - and a real single
-/// sentence ("today is my last day, thanks everyone") is common there and
-/// must still enhance. Bump this if "too short" starts firing on genuine
-/// short meetings; nothing below depends on the exact value.
+/// A meeting with no typed notes and fewer transcript words than this is an
+/// accidental start/stop. Deliberately low: a real single sentence
+/// ("today is my last day, thanks everyone") must still enhance.
 const TOO_SHORT_TRANSCRIPT_WORDS: usize = 6;
 
 #[derive(Debug, Deserialize)]
 pub struct EnhanceRequest {
-    /// User's raw markdown notes — preserved verbatim across the merge.
     pub notes_md: String,
-    /// JSON-serialized transcript segments (the same shape `yogurt_notes`
-    /// already parses: `[{ts_ms, channel, text}]`). Empty array if the
-    /// meeting has no transcript yet (the LLM still gets the notes).
+    /// `[{ts_ms, channel, text}]`, the shape `yogurt_notes` parses.
     pub transcript_json: String,
-    /// Optional meeting title — drives the markdown file slug. Defaults
-    /// to `"untitled"` if absent or blank.
+    /// Drives the markdown file slug. Defaults to `"untitled"`.
     #[serde(default)]
     pub title: Option<String>,
-    /// Optional meeting start time (unix ms). Defaults to the meeting's
-    /// in-memory `created_at_ms` so the filename always reflects when
-    /// recording started.
     #[serde(default)]
     pub started_at_unix_ms: Option<i64>,
-    /// Optional meeting end time (unix ms). Persisted to the YAML
-    /// front-matter; `null` if not provided.
     #[serde(default)]
     pub ended_at_unix_ms: Option<i64>,
     /// Note format to shape the summary into, an id from
@@ -90,34 +48,21 @@ pub struct EnhanceRequest {
 
 #[derive(Debug, Serialize)]
 pub struct EnhanceResponse {
-    /// Wire-format enriched markdown — `<span data-ai-grey…>` /
-    /// `<span data-transcript-link…>` spans embedded inline. The browser
-    /// loads this into the YogurtEditor via `setContent(html, false)`.
+    /// Markdown with inline `<span data-ai-grey>` / `<span data-transcript-link>` spans.
     pub enriched_md: String,
-    /// Path on disk where the per-meeting markdown file was written.
-    /// Mostly useful for the integration test; the browser ignores it.
     pub notes_file: String,
-    /// True when the meeting had no notes and a trivial transcript, so the
-    /// server skipped the LLM/merge/persist pipeline entirely - `enriched_md`
-    /// and `notes_file` are both empty in that case. The browser shows a
-    /// "Meeting too short" state and returns to the library instead of
-    /// rendering a near-empty post-meeting editor.
+    /// The LLM/merge/persist pipeline was skipped, so `enriched_md` and `notes_file` are empty.
     #[serde(default)]
     pub too_short: bool,
-    /// Model that produced `enriched_md` (same value stamped on the
-    /// meeting row's `llm_model`), so the post-meeting header can update
-    /// its "Enhanced" pill without refetching. `None` when `too_short`.
+    /// `None` when `too_short`.
     #[serde(default)]
     pub llm_model: Option<String>,
-    /// Note format that shaped `enriched_md` - the one requested, or the
-    /// one the model picked when the request left it to auto-detect
-    /// (falling back to `general` when the reply named nothing usable).
+    /// The requested format, or the one the model picked (`general` if it named nothing usable).
     /// `None` when `too_short`.
     #[serde(default)]
     pub template: Option<String>,
 }
 
-/// `GET /api/templates` - every note format, in picker order.
 pub async fn list_templates(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Template>>, (StatusCode, String)> {
@@ -128,33 +73,16 @@ pub async fn list_templates(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("templates: {e}")))
 }
 
-/// `POST /api/meetings/{id}/enhance`.
-///
-/// Auth is enforced one layer up by `routes::require_session_token`.
-/// On success: HTTP 200 + `EnhanceResponse`. On failure: a tuple of
-/// `(StatusCode, plaintext-message)` that axum converts to a JSON-friendly
-/// error body.
 pub async fn enhance(
     State(state): State<AppState>,
     Path(meeting_id): Path<Uuid>,
     Json(req): Json<EnhanceRequest>,
 ) -> Result<Json<EnhanceResponse>, (StatusCode, String)> {
-    // 1) Look up the meeting.
-    //
-    // HI-9: in-memory Registry is wiped on server restart, but Phase 4-03's
-    // UPSERT persists the meeting row to SQLite on first enhance. After a
-    // restart, a previously-enhanced meeting that the user reaches via
-    // direct link / refresh would 404 on Re-enhance because the in-memory
-    // lookup misses. Fall back to re-hydrating from SQLite: if the row
-    // exists there, materialize a fresh in-memory Meeting (with empty
-    // broadcasts — the user can't get live transcript on a stopped meeting
-    // anyway, but Re-enhance still works because it only needs events_tx).
+    // The in-memory registry is wiped on restart, so Re-enhance falls back to
+    // re-hydrating from SQLite.
     let meeting = match state.meetings.get(&meeting_id).await {
         Some(m) => m,
         None => {
-            // Probe SQLite via the read pool. If the row exists, register a
-            // transient Meeting so the rest of the handler (including the
-            // events_tx broadcast) operates normally.
             let id_str = meeting_id.to_string();
             let reader = state.storage.read();
             let exists = {
@@ -174,19 +102,14 @@ pub async fn enhance(
                     format!("meeting {meeting_id} not found"),
                 ));
             }
-            // Hydrate a fresh Meeting and insert it into the registry so
-            // subsequent calls (including the WS broadcast subscribers) see
-            // the same one. No audio/transcript broadcasts will ever fire —
-            // recording is over — but events_tx works for enhance_progress.
+            // No audio/transcript broadcasts will fire, but events_tx carries enhance_progress.
             state.meetings.hydrate(meeting_id).await
         }
     };
 
     let user_notes = req.notes_md.clone();
 
-    // 1a) Resolve the requested note format. `None` here means "let the
-    // model choose"; a name that is not a known template is the caller's
-    // mistake, not something to silently fall back from.
+    // `None` means "let the model choose". An unknown name is a 400, not a silent fallback.
     let forced_template: Option<&'static str> = match req.template.as_deref().map(str::trim) {
         None | Some("") | Some("auto") => None,
         Some(id) => match TEMPLATE_IDS.iter().copied().find(|t| *t == id) {
@@ -203,11 +126,8 @@ pub async fn enhance(
         },
     };
 
-    // 1b) Resolve the transcript. The server-side STT persistence task
-    // (meetings.rs) is the source of truth for what was said; the client
-    // no longer carries the transcript in the request body. Prefer the
-    // stored row whenever the request's copy is empty so Re-enhance and
-    // the normal end-of-meeting flow both see the real transcript.
+    // The server-side STT persistence task (meetings.rs) is the source of truth.
+    // Use the stored row whenever the request's copy is empty.
     let transcript_json = {
         let req_empty = matches!(req.transcript_json.trim(), "" | "[]");
         if req_empty {
@@ -226,11 +146,6 @@ pub async fn enhance(
         }
     };
 
-    // 1c) Skip the LLM entirely when there's nothing meaningful to enhance:
-    // no user notes AND a trivial transcript (see `TOO_SHORT_TRANSCRIPT_WORDS`
-    // above). Running the LLM - and writing a near-empty markdown file - on
-    // an accidental one-second recording just produces noise; the caller
-    // shows a "Meeting too short" state and bounces to the library instead.
     let transcript_word_count: usize =
         serde_json::from_str::<Vec<TranscriptSegment>>(&transcript_json)
             .unwrap_or_default()
@@ -238,11 +153,8 @@ pub async fn enhance(
             .map(|seg| seg.text.split_whitespace().count())
             .sum();
     if user_notes.trim().is_empty() && transcript_word_count < TOO_SHORT_TRANSCRIPT_WORDS {
-        // Drop the row `POST /api/meetings` created up front, so an
-        // accidental start/stop doesn't leave an "Untitled meeting" stub in
-        // the library the user has to clean up by hand. Never touches a
-        // meeting that already carries an enriched body - Re-enhance on a
-        // previously enhanced meeting must not destroy it.
+        // Drop the stub row from an accidental start/stop, but never a meeting
+        // that already has an enriched body.
         let repo = state.meeting_repo.clone();
         let exporter = state.markdown_exporter.clone();
         let id = meeting_id.to_string();
@@ -286,7 +198,6 @@ pub async fn enhance(
         }));
     }
 
-    // 2) Render the user prompt.
     let user_prompt = state
         .prompts
         .render_enhance(&EnhanceCtx {
@@ -301,44 +212,19 @@ pub async fn enhance(
             )
         })?;
 
-    // 3) Emit `enhance_progress` — sending. `send` returns Err only when
-    // there are no subscribers; that's fine, the user just doesn't have
-    // a WS open. Don't fail the request on it.
+    // `send` errs only when no WS is subscribed, which is fine.
     let _ = meeting
         .events_tx
         .send(serde_json::json!({"type": "enhance_progress", "phase": "sending"}));
 
-    // 4) Call the LLM via the `yogurt_llm::LlmClient` trait (Plan 05-01).
+    // A configured provider whose key can't be read is a hard 502, never a silent mock fallback.
     //
-    // Provider resolution is a three-tier priority chain:
-    //   1. `YOGURT_LLM_*` env vars (developer override, highest priority).
-    //   2. Active provider row (`providers` table) + its stored key via
-    //      `llm_openai::from_active_provider`. A configured provider whose
-    //      key can't be read is a hard 502 — never a silent mock fallback.
-    //   3. `MockLlm` only when nothing is configured at all, so first-run
-    //      users still get a working hero experience (logged as a warn).
+    // The timeout bounds opening the stream and then each chunk (idle timeout),
+    // so a long healthy stream is not cut off. It comes from the client because
+    // `stream()` resolves at response headers for HTTP but after full generation
+    // for a CLI provider, so no single constant fits both.
     //
-    // BL-5: wrap opening the stream with a hard timeout. If reqwest's own
-    // timeout fires we catch it via Err(...). If the future just stalls
-    // (e.g. an in-process mock that .await's forever), tokio::time::timeout
-    // brings us back. On either failure path emit `enhance_progress { phase:
-    // "error" }` so the browser banner transitions to an error state instead
-    // of spinning forever. Once the stream is open, the SAME budget is
-    // reused per-chunk as an IDLE timeout (BL-5 continued below) — a long
-    // healthy stream must not be cut off at that total.
-    //
-    // LLM-5: the budget comes from the client, not from a constant here.
-    // These two await points mean different things per adapter: for an HTTP
-    // provider `stream()` resolves at the response headers, but a CLI
-    // provider finishes generating first, so one number cannot be right for
-    // both. Hardcoding the HTTP figure is what made a merely-slow model
-    // (`claude --model haiku`, which ignores `--effort low` and thinks for
-    // ~90s) report as a hang at exactly 60s.
-    //
-    // System message is intentionally empty here — Phase 4's `enhance.md`
-    // prompt is rendered as the whole user payload; introducing a real
-    // system message requires moving the prompt split logic into
-    // `yogurt-prompts`.
+    // No system message: `enhance.md` is rendered as the whole user payload.
     let llm = match crate::llm_openai::resolve(&state).await {
         Ok(c) => c,
         Err(e) => {
@@ -364,11 +250,6 @@ pub async fn enhance(
     let llm_timeout = llm.response_timeout();
     let llm_started = Instant::now();
 
-    // The four failure branches below (open-error, open-timeout, chunk-
-    // error, chunk-timeout) all do the same three things - trace, emit an
-    // `enhance_progress { phase: "error" }` frame, build a (StatusCode,
-    // message) pair - differing only in the message/status per failure
-    // kind. Collapsed into two closures so each branch is one line.
     let llm_failed = |error: &anyhow::Error| -> (StatusCode, String) {
         let msg = format!("llm stream failed: {error}");
         tracing::error!(
@@ -395,11 +276,7 @@ pub async fn enhance(
             timeout_secs = llm_timeout.as_secs(),
             "enhance LLM request timed out"
         );
-        // Name the model. A timeout here is far more often "this model is
-        // slow for this prompt" than "the provider is down", and the old
-        // wording ("LLM timed out — try Re-enhance") pointed at neither -
-        // it invited a retry that would fail identically, with nothing to
-        // suggest that the model choice was the variable worth changing.
+        // A timeout is far more often a slow model than a provider outage, so name the model.
         let _ = meeting.events_tx.send(serde_json::json!({
             "type": "enhance_progress",
             "phase": "error",
@@ -419,17 +296,11 @@ pub async fn enhance(
 
     let mut stream = match tokio::time::timeout(llm_timeout, llm.stream(chat_req)).await {
         Ok(Ok(s)) => s,
-        // LLM returned an error opening the stream (HTTP non-2xx, parse
-        // failure, etc.).
         Ok(Err(error)) => return Err(llm_failed(&error)),
-        // tokio::time::timeout fired opening the stream.
         Err(_elapsed) => return Err(llm_timed_out()),
     };
 
-    // Cap how often a `streaming` snapshot frame goes out. 80ms keeps the
-    // browser-side TipTap `setContent` calls at roughly 12 Hz - fast enough
-    // to feel live, not so fast it thrashes the editor on a token-per-chunk
-    // provider.
+    // Roughly 12 Hz keeps the browser-side TipTap `setContent` calls from thrashing the editor.
     const STREAM_SNAPSHOT_INTERVAL: Duration = Duration::from_millis(80);
 
     let mut llm_output = String::new();
@@ -439,15 +310,9 @@ pub async fn enhance(
     loop {
         let chunk = match tokio::time::timeout(llm_timeout, stream.next()).await {
             Ok(Some(Ok(c))) => c,
-            // LLM returned an error mid-stream (dropped connection,
-            // malformed SSE frame, etc.) - same 502 path as a failed
-            // stream open.
             Ok(Some(Err(error))) => return Err(llm_failed(&error)),
-            // Stream ended without a terminal `done` chunk - treat it as
-            // complete with whatever was accumulated so far.
+            // Stream ended without a `done` chunk: keep what was accumulated.
             Ok(None) => break,
-            // No chunk arrived within the timeout - idle timeout, not a
-            // total-call budget.
             Err(_elapsed) => return Err(llm_timed_out()),
         };
 
@@ -459,9 +324,7 @@ pub async fn enhance(
                 Some(t) => now.duration_since(t) >= STREAM_SNAPSHOT_INTERVAL,
             };
             if should_emit {
-                // The prompt asks for a `template: <id>` first line; the
-                // browser previews the document, not the marker, and the
-                // banner's count describes what it shows.
+                // The browser previews the document, not the `template: <id>` marker line.
                 let text = split_template_line(&llm_output).1;
                 let _ = meeting.events_tx.send(serde_json::json!({
                     "type": "enhance_progress",
@@ -479,10 +342,8 @@ pub async fn enhance(
         }
     }
 
-    // Deltas may have arrived after the last throttled emit (or the loop's
-    // very last chunk may itself carry the final delta) - make sure the
-    // last frame a WS subscriber sees always matches the full accumulated
-    // text, since the broadcast channel has no replay for a late joiner.
+    // Throttling may have dropped the tail. The broadcast channel has no replay,
+    // so the last frame must match the full text.
     if llm_output.len() != last_emitted_len {
         let text = split_template_line(&llm_output).1;
         let _ = meeting.events_tx.send(serde_json::json!({
@@ -493,20 +354,10 @@ pub async fn enhance(
         }));
     }
 
-    // 6) Server-side structural diff (Plan 04-02). Returns a MergedDoc
-    // tagging each block User vs. AiGrey + timestamp.
-    // BL-5: on merge failure (malformed user_md / enriched_md from a buggy
-    // LLM) also emit `error` so the banner exits the spinner state.
-    // Some models (observed live with MiniMax-Text-01) emit CP1252-mangled
-    // punctuation as literal tokens — "â€¦" where "…" belongs. Our own
-    // pipeline is UTF-8-clean end to end; this scrubs the model's junk so
-    // the stored document isn't permanently ugly. The same model also
-    // sometimes echoes the prompt's section scaffolding into the output
-    // despite the hard rules — strip that too.
-    // LLM-9: peel the `template: <id>` marker off first. A forced format
-    // wins over whatever the model wrote; in auto mode an unknown or
-    // missing id falls back to `general` rather than failing the whole
-    // enhance over one line - the document that follows is still good.
+    // Some models (MiniMax-Text-01) emit CP1252-mangled punctuation and echo the
+    // prompt's section scaffolding, so scrub both before storing.
+    // A forced format wins over the model's `template:` line. In auto mode an
+    // unknown or missing id falls back to `general` since the document is still good.
     let llm_output = strip_model_reasoning(&fix_model_mojibake(&llm_output));
     let (picked, body) = split_template_line(&llm_output);
     let template: &str = match forced_template {
@@ -529,12 +380,8 @@ pub async fn enhance(
     };
     let llm_output = strip_prompt_scaffolding(body);
 
-    // LLM-8: an empty reply must fail loudly. `merge_notes(notes, "")`
-    // happily yields the user's notes untouched, and that got persisted and
-    // shown as the "enhanced" document - the notes echoed back, no error
-    // anywhere, and only Re-enhance revealed the model had said nothing.
-    // Same error shape as the other LLM failures so the banner shows the
-    // message and Re-enhance stays available.
+    // `merge_notes(notes, "")` returns the notes untouched, which would be
+    // persisted as the "enhanced" document with no error, so fail loudly.
     if llm_output.trim().is_empty() {
         tracing::error!(
             event = "enhance_llm_empty_reply",
@@ -577,13 +424,8 @@ pub async fn enhance(
         }
     };
     let rendered_md = yogurt_notes::render::to_markdown(&merged);
-    // BL-2 (XSS hardening): run the rendered markdown through ammonia with a
-    // tight allowlist so anything the LLM hallucinated (script/img/iframe/
-    // on* handlers/javascript: URLs) is stripped BEFORE we persist to SQLite
-    // or write to disk. The wire-format spans (<span data-ai-grey>, <span
-    // data-transcript-link>) survive. Layered with render::wrap_ai's
-    // html-escape of inner text, this neutralizes the stored-XSS path
-    // documented in 04-REVIEW.md BL-2.
+    // Strip LLM-hallucinated script/img/iframe/on* handlers/javascript: URLs before
+    // persisting. The wire-format spans survive.
     let enriched_md = crate::sanitize::sanitize_enriched_md(&rendered_md);
     let enriched_doc_json = serde_json::to_string(&merged).map_err(|e| {
         (
@@ -592,13 +434,8 @@ pub async fn enhance(
         )
     })?;
 
-    // 7a/7b) Persist to SQLite + per-meeting markdown file inside a single
-    // spawn_blocking. BL-1: rusqlite is synchronous (std::sync::Mutex +
-    // libsqlite3 calls) and the markdown exporter does std::fs::write +
-    // std::fs::rename (and now fsync, per HI-5). All of those block the
-    // executor thread for the duration of the disk write. Putting them on
-    // a blocking pool keeps the tokio worker free to drive other meetings'
-    // WS frames + /api/health probes while a slow disk pauses one enhance.
+    // rusqlite and the markdown exporter's fs writes are synchronous, so run them
+    // on the blocking pool to keep the tokio worker free.
     let title = req.title.as_deref().unwrap_or("untitled").to_string();
     let started_at_unix_ms = req
         .started_at_unix_ms
@@ -617,9 +454,7 @@ pub async fn enhance(
 
     let notes_path =
         tokio::task::spawn_blocking(move || -> Result<PathBuf, (StatusCode, String)> {
-            // SQLite UPSERT inside its own lock scope so the lock is released
-            // BEFORE the filesystem write begins. Other writers can proceed
-            // while this task is in std::fs::rename.
+            // Release the DB lock before the filesystem write begins.
             {
                 let writer = storage.writer();
                 let conn = writer
@@ -651,10 +486,8 @@ pub async fn enhance(
                     ],
                 )
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db upsert: {e}")))?;
-                // lock released on scope exit
             }
 
-            // Filesystem write (atomic tmp+rename+fsync) — see markdown_exporter.
             exporter
                 .write(&ExpMeeting {
                     id: &meeting_id_for_blocking,
@@ -672,8 +505,6 @@ pub async fn enhance(
         })
         .await;
 
-    // BL-5: surface persistence failures to the browser as an error event
-    // so the EnhancingBanner exits its spinning state.
     let notes_path: PathBuf = match notes_path {
         Ok(Ok(p)) => p,
         Ok(Err((code, msg))) => {
@@ -709,13 +540,8 @@ pub async fn enhance(
         }
     };
 
-    // 7c) Phase 7 (Plan 07-01): the Library REST surface (`GET /api/meetings`)
-    // reads from `yogurt_db::MeetingRepo`, not from Phase 0 storage. Mirror
-    // the post-enhance state (title, enriched_md, ended_at,
-    // started_at, notes_md, transcript_json) into the Library directory so
-    // the two layers don't diverge. Creates the row on the fly if the user
-    // enhanced a meeting that was never seen by the Library (e.g.
-    // pre-Phase-7 row). The repo bumps `updated_at` so the Library re-sorts.
+    // `GET /api/meetings` reads from `yogurt_db::MeetingRepo`, so mirror the
+    // post-enhance state there. Creates the row if the Library never saw it.
     {
         let id = meeting_id_str.clone();
         let title = title.clone();
@@ -724,18 +550,12 @@ pub async fn enhance(
         let enriched_md_for_repo = enriched_md.clone();
         let llm_model = llm.model_name();
         let started_at_fallback = started_at_unix_ms;
-        // Timestamp tri-state: only touch the repo's timestamps when the
-        // REQUEST explicitly carried them. The normal flow stamps
-        // started_at on /start and ended_at on /stop — mapping an absent
-        // request field to `Some(None)` here used to CLEAR the ended_at
-        // that /stop had just written, which is why every meeting showed
-        // a dash duration in the library.
+        // Only touch the repo's timestamps when the request carried them. An absent
+        // field must not map to `Some(None)`, which would clear the ended_at /stop wrote.
         let started_at_patch = req.started_at_unix_ms;
         let ended_at_patch = req.ended_at_unix_ms.map(Some);
         let state2 = state.clone();
         let mirror_result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            // Ensure the row exists before patching — older meetings
-            // pre-date the Library surface entirely.
             if state2.meeting_repo.get(&id)?.is_none() {
                 state2.meeting_repo.create(yogurt_db::NewMeeting {
                     title: title.clone(),
@@ -779,7 +599,6 @@ pub async fn enhance(
         }
     }
 
-    // 8) Emit `enhance_progress` — done.
     let _ = meeting
         .events_tx
         .send(serde_json::json!({"type": "enhance_progress", "phase": "done"}));
@@ -803,13 +622,9 @@ pub async fn enhance(
     }))
 }
 
-/// Drop lines where the model echoed the enhance prompt's own scaffolding
-/// into its output (section wrappers, instruction parentheticals, `---`
-/// separators). Observed live with MiniMax-Text-01 even under explicit
-/// hard rules - a prompt-shape fix reduces it, this backstop removes what
-/// slips through. Lines are judged on their text content with any
-/// `<...>` tags removed, so a scaffold header the model wrapped in marker
-/// spans is still caught.
+/// Drop lines where the model echoed the enhance prompt's scaffolding (section
+/// wrappers, instruction parentheticals, `---` separators). Lines are judged with
+/// `<...>` tags removed, so a header wrapped in marker spans is still caught.
 fn strip_prompt_scaffolding(s: &str) -> String {
     fn without_tags(line: &str) -> String {
         let mut out = String::new();
@@ -826,8 +641,7 @@ fn strip_prompt_scaffolding(s: &str) -> String {
     }
     s.lines()
         .filter(|line| {
-            // The bare scaffold wrapper tags, before tag-stripping (they
-            // strip to an empty line and would otherwise be kept).
+            // Checked before tag-stripping, which would reduce these to kept blank lines.
             let raw = line.trim().to_lowercase();
             if matches!(
                 raw.as_str(),
@@ -838,15 +652,12 @@ fn strip_prompt_scaffolding(s: &str) -> String {
             let flat = without_tags(line);
             let flat = flat.trim();
             if flat.is_empty() {
-                // Blank only if it was blank BEFORE tag-stripping too -
-                // a line of pure markup (e.g. an empty marker span) is
-                // scaffolding noise either way.
+                // Pure markup (e.g. an empty marker span) is dropped; real blanks are kept.
                 return line.trim().is_empty();
             }
             let lower = flat.to_lowercase();
-            // `---` separators: dashes alone, as a bullet/heading, or
-            // followed only by a `\u{21b3} mm:ss` transcript-link stub the
-            // model attached to the separator it copied.
+            // `---` separators: alone, as a bullet/heading, or followed only by a
+            // `\u{21b3} mm:ss` transcript-link stub.
             let residue: String = flat
                 .chars()
                 .filter(|c| {
@@ -866,30 +677,16 @@ fn strip_prompt_scaffolding(s: &str) -> String {
         .join("\n")
 }
 
-/// Strip model-side chain-of-thought reasoning blocks (`<think>…</think>`)
-/// from `s`. Model-agnostic — works against any provider whose response
-/// carries inline reasoning markers (DeepSeek R1, MiniMax M3, Qwen QwQ).
-///
-/// We delegate to [`yogurt_llm::strip_thinking`] (the canonical
-/// implementation, also used by the chat path) instead of running a
-/// private copy here so the two LLM consumers never drift in their
-/// tag handling. The original `strip_model_reasoning` lived only in this
-/// file and predated the chat path's adoption of the same backstop.
 pub(crate) fn strip_model_reasoning(s: &str) -> String {
     yogurt_llm::strip_thinking(s)
 }
 
-/// Repair mojibake the model emits as literal tokens: UTF-8 bytes of a
-/// character re-decoded as Latin-1/CP1252 somewhere in the model's own
-/// training data (observed live from MiniMax: both the CP1252 form
-/// "\u{e2}\u{20ac}\u{a6}" and the Latin-1 form with raw C1 controls
-/// "\u{e2}\u{80}\u{a6}"). Instead of a lookup table, reverse the
-/// mis-decoding: map each char back to the byte it came from, and when a
-/// run of such bytes forms valid multi-byte UTF-8, emit the decoded text.
-/// Plain ASCII and legitimate accented text pass through untouched - a
-/// lone "\u{e2}" followed by ASCII never forms a valid sequence.
+/// Repair mojibake the model emits as literal tokens (observed from MiniMax in both
+/// the CP1252 form "\u{e2}\u{20ac}\u{a6}" and the Latin-1 form with raw C1 controls).
+/// Maps each char back to its source byte and decodes runs that form valid UTF-8.
+/// ASCII and legitimate accented text pass through, since a lone "\u{e2}" followed
+/// by ASCII never forms a valid sequence.
 fn fix_model_mojibake(s: &str) -> String {
-    // The byte this char would have been under a Latin-1/CP1252 decode.
     fn mangled_byte(c: char) -> Option<u8> {
         let u = c as u32;
         if (0x80..=0xFF).contains(&u) {
@@ -933,8 +730,6 @@ fn fix_model_mojibake(s: &str) -> String {
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
-        // A mangled UTF-8 sequence starts with a char whose byte is a
-        // UTF-8 lead byte (0xC2..=0xF4).
         let lead = mangled_byte(c).filter(|b| (0xC2..=0xF4).contains(b));
         if let Some(lead_byte) = lead {
             let need = match lead_byte {
@@ -976,7 +771,6 @@ mod tests {
 
     #[test]
     fn scrubs_cp1252_variant() {
-        // \u{20ac} / \u{2122} style: bytes decoded as Windows-1252.
         let got = fix_model_mojibake(
             "October.\u{e2}\u{20ac}\u{a6} then \u{e2}\u{20ac}\u{153}ship\u{e2}\u{20ac}\u{9d}",
         );
@@ -985,17 +779,12 @@ mod tests {
 
     #[test]
     fn scrubs_latin1_control_variant() {
-        // Raw C1 controls: exactly what MiniMax emitted for "let's" and
-        // "and\u{2026}" in the 2026-08-28 live recording (meeting 01a0497f).
         let got = fix_model_mojibake("let\u{e2}\u{80}\u{99}s see and\u{e2}\u{80}\u{a6} done");
         assert_eq!(got, "let\u{2019}s see and\u{2026} done");
     }
 
     #[test]
     fn strips_echoed_prompt_scaffolding() {
-        // Exactly what MiniMax emitted on the 2026-08-28 re-enhance: the
-        // prompt's section headers echoed as output headings, plus a
-        // marker-wrapped `---` separator bullet.
         let raw = "## USER NOTES (preserve verbatim, do not wrap)\n\n                   <span data-ai-grey data-ts=\"3\">--- <span data-transcript-link data-ts=\"3\">\u{21b3} 00:03</span></span>\n\n                   ## TRANSCRIPT (source for your additions; ts_ms is millis since meeting start)\n\n                   - <span data-ai-grey data-ts=\"30\">12:00: Staff meeting <span data-transcript-link data-ts=\"30\">\u{21b3} 00:30</span></span>\n                   <user_notes>\n</user_notes>";
         let got = super::strip_prompt_scaffolding(raw);
         assert!(!got.contains("USER NOTES"), "got: {got}");
@@ -1018,7 +807,6 @@ mod tests {
     fn clean_text_passes_through_untouched() {
         let s = "normal text with real \u{2026} and \u{201c}quotes\u{201d} and \u{21b3} 00:16";
         assert_eq!(fix_model_mojibake(s), s);
-        // Legit accented text is not a valid mangled sequence.
         let fr = "c\u{e2}ble and caf\u{e9} \u{e0} Paris";
         assert_eq!(fix_model_mojibake(fr), fr);
     }

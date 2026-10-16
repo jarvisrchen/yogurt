@@ -1,17 +1,3 @@
-//! Granola-style meeting labels — REST surface.
-//!
-//! | Method | Path               | Purpose                              |
-//! |--------|--------------------|---------------------------------------|
-//! | GET    | `/api/labels`      | List all labels with meeting counts.  |
-//! | POST   | `/api/labels`      | Find-or-create a label by name.       |
-//! | PATCH  | `/api/labels/{id}` | Rename / recolor a label.             |
-//! | DELETE | `/api/labels/{id}` | Remove a label (cascades on meetings).|
-//! | PUT    | `/api/labels/order`| Set the custom sidebar order (UI-12). |
-//!
-//! **Auth:** every route is mounted behind `routes::require_session_token`
-//! by `routes::router`, same as `api::meetings`. Handlers here don't
-//! repeat that check.
-
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -48,8 +34,7 @@ pub struct UpdateBody {
 
 #[derive(Debug, Deserialize)]
 pub struct ReorderBody {
-    /// Every label id, in the desired display order. `ids[0]` becomes
-    /// position 0, etc.
+    /// Every label id in display order.
     pub ids: Vec<String>,
 }
 
@@ -62,9 +47,7 @@ async fn list(State(s): State<AppState>) -> Result<Json<Vec<LabelWithCount>>, Ap
     Ok(Json(xs))
 }
 
-/// `POST /api/labels` — find-or-create semantics. 201 when a new label
-/// row was inserted, 200 when an existing (case-insensitive name match)
-/// label was returned unchanged.
+/// 201 when a label was inserted, 200 when a case-insensitive name match was returned.
 async fn create(
     State(s): State<AppState>,
     Json(body): Json<CreateBody>,
@@ -101,9 +84,7 @@ async fn update(
     .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?;
     match result {
         Ok(label) => Ok(Json(label)),
-        // Unlike a meeting PATCH's `label_ids` (where "label not found"
-        // means a bad reference against an existing meeting), here the id
-        // in the URL path itself is the label — unknown means 404.
+        // The path id is the label itself, so unknown is 404 (unlike a meeting PATCH's `label_ids`).
         Err(e) if e.to_string().contains("label not found") => Err(ApiError::NotFound),
         Err(e) => Err(ApiError::from(e)),
     }
@@ -125,9 +106,7 @@ async fn delete_one(
     }
 }
 
-/// `PUT /api/labels/order` — set the Custom sidebar order (UI-12). An
-/// unknown id in `ids` is a bad request against the otherwise-existing
-/// label set, same as an unknown `label_ids` entry on a meeting PATCH.
+/// An unknown id in `ids` is a 400, same as an unknown `label_ids` entry on a meeting PATCH.
 async fn reorder(
     State(s): State<AppState>,
     Json(body): Json<ReorderBody>,

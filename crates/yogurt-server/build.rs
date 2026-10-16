@@ -1,24 +1,10 @@
-//! Build script for `yogurt-server`.
+//! A dependency's `cargo:rustc-link-arg` does not reach a downstream binary's `LC_RPATH`,
+//! so this crate emits the Swift rpath itself or every binary linking it dies with
+//! `dyld: Library not loaded: @rpath/libswift_Concurrency.dylib`.
 //!
-//! `yogurt-server` transitively links the `screencapturekit` 8.x crate
-//! through its dependency on `yogurt-audio`. `cargo:rustc-link-arg`
-//! emitted by a dependency's build script does NOT propagate to a
-//! downstream binary's `LC_RPATH` table — each final-binary-producing
-//! package must emit the rpath flag itself.
-//!
-//! Without this, every test binary, every server binary, and every
-//! example that links `yogurt-server` dies at load with:
-//!
-//!     dyld: Library not loaded: @rpath/libswift_Concurrency.dylib
-//!
-//! See `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` ("What
-//! didn't work" #1) and `crates/yogurt-audio/build.rs` for the full
-//! discovery story.
-//!
-//! Do **not** add Xcode's swift-5.5 toolchain path as a second fallback —
-//! combining the two loads two copies of the dylib, triggers
-//! `objc[]: Class … is implemented in both …` warnings, and causes a
-//! spurious `SCShareableContent::get()` "TCC declined" failure.
+//! Do not add Xcode's swift-5.5 toolchain path as a second fallback. Two copies of the dylib
+//! load, which logs `objc[]: Class ... is implemented in both` and fails
+//! `SCShareableContent::get()` with a spurious "TCC declined".
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
