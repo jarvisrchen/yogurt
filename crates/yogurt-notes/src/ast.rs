@@ -1,10 +1,5 @@
-//! A tiny block-level markdown AST tailored for the diff/merge use case.
-//!
-//! pulldown-cmark gives us an event stream. We collapse it into a list of
-//! `Block`s where each block is a top-level structural unit (heading, paragraph,
-//! list item, list, blockquote, code fence). Inline content is kept as the
-//! reconstructed markdown source for that block — we do not need to model
-//! inline marks because the merge happens at block granularity.
+//! Block-level markdown AST for diff/merge.
+//! Inline content stays as reconstructed markdown source because the merge happens at block granularity.
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
@@ -19,29 +14,15 @@ pub enum Block {
     Hr,
 }
 
-/// A canonical "key" we use to decide if two blocks are "the same block"
-/// across user_md and enriched_md. It deliberately ignores trailing
-/// whitespace, transcript-link spans, and our ai-grey marker spans —
-/// because the LLM may add those to a user line, and we still want
-/// to recognize the underlying line as the user's.
-///
-/// HI-3: ListItem keys DELIBERATELY ignore depth. LLMs frequently flatten
-/// nested lists (depth-1 sub-bullets re-emitted as depth-0 top-level
-/// items); without depth-agnostic matching, the merge would treat the
-/// flattened LLM bullet as a NEW AI block and silently drop the user's
-/// depth-1 sub-bullet text. By matching on cleaned-text-only, the diff
-/// recognizes the bullet as the same content; `diff::merge` then preserves
-/// the USER's original depth (see fixture `04-nested-list-flattened`).
+/// Decides whether two blocks are the same across user_md and enriched_md.
+/// It ignores trailing whitespace and our wire-format spans, which the model may add to a user line.
+/// `ListItem` keys ignore depth because models flatten nested lists, and `diff::merge` then keeps the user's depth.
 pub fn block_key(b: &Block) -> String {
     let raw = match b {
         Block::Heading { level, text } => format!("h{level}:{text}"),
-        // Paragraph and ListItem share a key: models routinely re-emit a
-        // user's bare line as a bullet (or vice versa), and without this the
-        // merge tags the model's copy AiGrey AND appends the user's original,
-        // so the same sentence shows up twice. `diff::merge` keeps the
-        // user's own block on a match, so the user's shape wins.
+        // Paragraph and ListItem share a key because models re-emit a bare line as a bullet or vice versa.
+        // Otherwise the model's copy is tagged AiGrey and the user's original is appended, duplicating the sentence.
         Block::Paragraph { md } => format!("t:{md}"),
-        // HI-3: depth intentionally omitted from key — see doc comment above.
         Block::ListItem { md, .. } => format!("t:{md}"),
         Block::CodeBlock { lang, body } => {
             format!("code:{}:{body}", lang.as_deref().unwrap_or(""))
@@ -52,22 +33,11 @@ pub fn block_key(b: &Block) -> String {
     strip_markers(&raw).trim().to_ascii_lowercase()
 }
 
-/// HI-4: HTML-aware wire-format span stripper. The previous regex-based
-/// stripper (three `regex_lite::Regex::new`s on every call — also LO-1)
-/// had two related bugs:
-///   1. `</span>` was stripped GLOBALLY. With nested wire-format spans
-///      (outer `data-ai-grey`, inner `data-transcript-link`), the regex
-///      stripped BOTH closing tags, leaving phantom transcript-link
-///      content inside the user-block key — so a re-enhance flow couldn't
-///      recognize previously-promoted user content.
-///   2. Regex compilation happened on every call (LO-1) — wasted cycles.
-///
-/// The replacement is a single linear scan that walks `<span ...>` open +
-/// matching `</span>` close pairs, deletes BOTH for any span carrying our
-/// wire-format attribute, and leaves anything else (raw user-typed span,
-/// other markup) intact. Compiled regexes are cached in `OnceLock`.
+/// Removes our wire-format spans in one linear scan, leaving other markup intact.
+/// A `data-ai-grey` span keeps its inner text, which holds the user's bullet content.
+/// A `data-transcript-link` span is dropped whole, including its `↳ HH:MM` text.
+/// Stripping `</span>` globally would leave link text behind when the spans nest.
 pub(crate) fn strip_markers(s: &str) -> String {
-    // Fast path: nothing to strip.
     if !s.contains("<span") && !s.contains("</span>") {
         return s.to_string();
     }
@@ -75,42 +45,22 @@ pub(crate) fn strip_markers(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        // Look for `<span` opening.
         if bytes[i] == b'<' && bytes[i..].starts_with(b"<span") {
-            // Find the closing `>`.
             if let Some(open_end_rel) = s[i..].find('>') {
-                let open_end = i + open_end_rel + 1; // index AFTER `>`
+                let open_end = i + open_end_rel + 1;
                 let open_tag = &s[i..open_end];
                 let is_wire_format =
                     open_tag.contains("data-ai-grey") || open_tag.contains("data-transcript-link");
                 if is_wire_format {
-                    // Different handling depending on which wire-format
-                    // attribute matched:
-                    //   - data-ai-grey: PRESERVE the inner text (the user's
-                    //     real bullet content lives there — block_key needs
-                    //     it for matching). Skip any nested transcript-link
-                    //     spans (their `↳ HH:MM` content is just chrome,
-                    //     not user text).
-                    //   - data-transcript-link: DROP the entire span including
-                    //     its `↳ HH:MM` content (it's not part of the
-                    //     user's bullet body).
                     let is_link_span = open_tag.contains("data-transcript-link");
                     let mut depth = 1;
                     let mut j = open_end;
                     while j < bytes.len() && depth > 0 {
                         if bytes[j] == b'<' && s[j..].starts_with("<span") {
                             depth += 1;
-                            // Skip past this nested open's `>`. Mark it as
-                            // a transcript-link span if relevant so we
-                            // suppress its inner text too.
                             if let Some(rel) = s[j..].find('>') {
-                                // Determine if this nested span is a
-                                // transcript-link; if so, skip its inner
-                                // content entirely.
                                 let nested_open = &s[j..j + rel + 1];
                                 if nested_open.contains("data-transcript-link") {
-                                    // Skip to its matching close at this
-                                    // depth.
                                     let mut k = j + rel + 1;
                                     let mut inner_depth = 1;
                                     while k < bytes.len() && inner_depth > 0 {
@@ -146,9 +96,6 @@ pub(crate) fn strip_markers(s: &str) -> String {
                             continue;
                         }
                         if !is_link_span && depth == 1 {
-                            // Inside the OUTER ai-grey span: preserve the
-                            // inner bullet text. For a transcript-link
-                            // outer span, suppress everything.
                             let c = char_at(s, j);
                             out.push(c);
                             j += c.len_utf8();
@@ -159,14 +106,12 @@ pub(crate) fn strip_markers(s: &str) -> String {
                     i = j;
                     continue;
                 } else {
-                    // Non-wire-format span: keep it verbatim.
                     out.push_str(open_tag);
                     i = open_end;
                     continue;
                 }
             }
         }
-        // Lone closing `</span>` outside any matched open — drop quietly.
         if bytes[i] == b'<' && s[i..].starts_with("</span>") {
             i += "</span>".len();
             continue;
@@ -178,17 +123,12 @@ pub(crate) fn strip_markers(s: &str) -> String {
     out
 }
 
-/// The char starting at byte index `i`. Every caller only lands on `i`
-/// after advancing by whole chars or past ASCII markers, so `i` is always
-/// a char boundary. Copying `bytes[i] as char` instead was the 2026-08-29
-/// mojibake bug: it turned each byte of a multi-byte UTF-8 char into its
-/// own Latin-1 char ("\u{2019}" became "\u{e2}\u{80}\u{99}").
+/// Copying `bytes[i] as char` instead turns each byte of a multi-byte char into its own Latin-1 char.
 fn char_at(s: &str, i: usize) -> char {
     s[i..].chars().next().expect("i < s.len()")
 }
 
-/// Parse markdown into our flat block list. Lists are flattened — each
-/// `<li>` becomes its own `Block::ListItem` with a depth attribute.
+/// Lists are flattened, each `<li>` becoming a `Block::ListItem` with a depth.
 pub fn parse(md: &str) -> Vec<Block> {
     let parser = Parser::new_ext(md, Options::all());
     let mut blocks: Vec<Block> = Vec::new();
@@ -223,21 +163,14 @@ pub fn parse(md: &str) -> Vec<Block> {
                 }
             }
             Event::Start(Tag::List(_)) => {
-                // HI-3: when a NESTED list opens inside an Item whose buf is
-                // populated, flush the outer item NOW before its children
-                // overwrite buf. pulldown-cmark emits Start(List) inside an
-                // Item without an intermediate End(Item), and the cleared buf
-                // when the nested Item starts would otherwise erase the
-                // outer item's text content.
+                // pulldown-cmark emits Start(List) inside an Item with no End(Item) first,
+                // so flush the outer item now or the nested item's `buf.clear()` erases its text.
                 if let Some(ParseState::ListItem(d)) = state.as_ref().copied() {
                     if !buf.trim().is_empty() {
                         blocks.push(Block::ListItem {
                             md: std::mem::take(&mut buf),
                             depth: d,
                         });
-                        // Keep state as-is so End(Item) below knows we
-                        // already flushed and avoids emitting a duplicate
-                        // empty bullet (the `take()` returns None then).
                         state = None;
                     }
                 }
@@ -252,9 +185,7 @@ pub fn parse(md: &str) -> Vec<Block> {
             }
             Event::End(TagEnd::Item) => {
                 if let Some(ParseState::ListItem(d)) = state.take() {
-                    // HI-3: skip flushing an empty item — this fires for the
-                    // outer item whose body we already pre-flushed at the
-                    // nested-list Start above.
+                    // Empty for an outer item already flushed at the nested-list Start.
                     let md = std::mem::take(&mut buf);
                     if !md.trim().is_empty() {
                         blocks.push(Block::ListItem { md, depth: d });
@@ -295,14 +226,7 @@ fn heading_level_to_u8(l: HeadingLevel) -> u8 {
 mod tests {
     use super::*;
 
-    /// HI-4: nested wire-format spans (transcript-link inside ai-grey) must
-    /// strip both spans cleanly without leaving phantom `↳ HH:MM` text in
-    /// the block key. The old global `</span>` regex stripped both closers
-    /// and left the transcript-link text glued onto the user's bullet
-    /// content, breaking re-enhance matching on previously-promoted lines.
-    /// Non-ASCII text must survive the scan byte-for-byte: it is copied as
-    /// whole chars, never as `byte as char`. Regression for the 2026-08-29
-    /// post-view mojibake ("user\u{2019}s" rendered as "userâ\u{80}\u{99}s").
+    /// Non-ASCII text must survive as whole chars, never `byte as char`.
     #[test]
     fn strip_markers_preserves_non_ascii() {
         let input = "- Today is the user\u{2019}s last day <span data-ai-grey data-ts=\"4\">caf\u{e9} \u{2026} \u{4f1a}\u{8b70} <span data-transcript-link data-ts=\"4\">\u{21b3} 00:04</span></span> done";
@@ -317,8 +241,6 @@ mod tests {
     fn strip_markers_handles_nested_wire_format_spans() {
         let input = r#"<span data-ai-grey data-ts="120">pricing <span data-transcript-link data-ts="120">↳ 02:00</span></span>"#;
         let stripped = strip_markers(input);
-        // The user's text "pricing" must survive (with optional trailing
-        // whitespace), and the transcript-link content `↳ 02:00` must NOT.
         assert!(
             stripped.contains("pricing"),
             "outer ai-grey text preserved, got: {stripped:?}"
@@ -331,7 +253,6 @@ mod tests {
             !stripped.contains("02:00"),
             "transcript timestamp must be removed, got: {stripped:?}"
         );
-        // No leftover span tags either.
         assert!(
             !stripped.contains("<span"),
             "open spans removed, got: {stripped:?}"
@@ -342,10 +263,6 @@ mod tests {
         );
     }
 
-    /// HI-3 + parser fix: a parent ListItem whose body has text AND nested
-    /// children must still appear as its own block (it would have been
-    /// silently dropped before the parse() fix because the nested
-    /// child's `buf.clear()` clobbered the parent's content).
     #[test]
     fn block_key_matches_a_paragraph_the_model_turned_into_a_bullet() {
         let user = Block::Paragraph {
@@ -362,7 +279,6 @@ mod tests {
     fn parse_preserves_parent_item_with_nested_children() {
         let md = "- pricing\n  - tiered\n  - discount\n";
         let blocks = parse(md);
-        // 3 items: pricing (depth 0), tiered (depth 1), discount (depth 1).
         assert_eq!(blocks.len(), 3, "expected 3 ListItems, got: {blocks:?}");
         let texts: Vec<_> = blocks
             .iter()
