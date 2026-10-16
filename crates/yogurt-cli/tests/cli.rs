@@ -152,3 +152,42 @@ async fn it_does_not_suggest_port_0_at_upper_boundary() {
         "stderr should suggest lsof at boundary; got: {stderr}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn it_writes_a_log_file_under_the_data_dir() {
+    let home = tempfile::tempdir().expect("HOME tempdir");
+    let data = tempfile::tempdir().expect("data dir tempdir");
+    let probe = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+    let port = probe.local_addr().expect("local_addr").port();
+    drop(probe);
+
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+        .args(["start", "--port", &port.to_string(), "--no-open"])
+        .env("HOME", home.path())
+        .env("YOGURT_DATA_DIR", data.path())
+        .env("YOGURT_MEMORY_KEYSTORE", "1")
+        .spawn()
+        .expect("spawn yogurt");
+
+    // The file appender flushes on a background thread, so poll for the line.
+    let logs = data.path().join("logs");
+    let mut text = String::new();
+    for _ in 0..100 {
+        text = std::fs::read_dir(&logs)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+            .collect();
+        if text.contains("yogurt is starting") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    child.kill().await.ok();
+    assert!(
+        text.contains("yogurt is starting"),
+        "no startup line under {}: {text:?}",
+        logs.display()
+    );
+}

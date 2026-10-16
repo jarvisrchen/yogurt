@@ -546,6 +546,17 @@ interface SttErrorEvent {
   message: string;
 }
 
+/** `system_audio_status` WS frame — see `crates/yogurt-server/src/meetings.rs::relay_system_status`. */
+interface SystemAudioStatusEvent {
+  type: "system_audio_status";
+  state: "stalled" | "recovered" | "failed";
+}
+
+const SYSTEM_STALLED_MSG =
+  "System audio stopped. Restarting capture. Your mic is still recording.";
+const SYSTEM_FAILED_MSG =
+  "System audio could not be restored. Your mic is still recording. Stop and start the meeting to retry.";
+
 export interface UseSttErrorResult {
   /** Most recent `stt_error` message, or null once dismissed / not yet fired. */
   message: string | null;
@@ -554,8 +565,8 @@ export interface UseSttErrorResult {
 }
 
 /**
- * Meeting.tsx task 6 — subscribe to `stt_error` frames on the per-meeting
- * WS. Fired when the STT engine dies mid-recording (bad Deepgram key,
+ * Meeting.tsx task 6 — subscribe to `stt_error` (and `system_audio_status`)
+ * frames on the per-meeting WS. Fired when the STT engine dies mid-recording (bad Deepgram key,
  * local model load failure); recording keeps running (audio capture is
  * independent of STT) so the user needs a visible, dismissible signal
  * that transcription itself has stopped.
@@ -612,6 +623,12 @@ export function useSttError(
           const frame = JSON.parse(event.data as string) as { type?: string };
           if (frame.type === "stt_error") {
             setMessage((frame as SttErrorEvent).message);
+          } else if (frame.type === "system_audio_status") {
+            // Rides the same banner. Recovery only clears its own notice.
+            const { state } = frame as SystemAudioStatusEvent;
+            if (state === "stalled") setMessage(SYSTEM_STALLED_MSG);
+            else if (state === "failed") setMessage(SYSTEM_FAILED_MSG);
+            else setMessage((m) => (m === SYSTEM_STALLED_MSG ? null : m));
           }
         } catch {
           // Ignore non-JSON / malformed frames.

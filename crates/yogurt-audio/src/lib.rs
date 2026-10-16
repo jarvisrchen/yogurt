@@ -42,7 +42,7 @@ pub use permission::{
     has_microphone_permission, has_screen_recording_permission, request_microphone_permission,
     request_screen_recording_permission, PermissionStatus,
 };
-pub use system::{spawn_system_capture, SystemCapture};
+pub use system::{spawn_system_capture, SystemCapture, SystemStatus};
 
 use tokio::sync::broadcast;
 
@@ -116,6 +116,11 @@ impl AudioStream {
     /// Subscribe a new consumer to the system audio channel.
     pub fn subscribe_system(&self) -> broadcast::Receiver<Frame> {
         self.system_tx.subscribe()
+    }
+
+    /// Stall / recovery / failure notices for the system-audio stream.
+    pub fn subscribe_system_status(&self) -> broadcast::Receiver<SystemStatus> {
+        self._system.subscribe_status()
     }
 
     /// Hot-swap the mic producer in place, leaving `mic_tx`, system audio,
