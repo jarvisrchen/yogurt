@@ -1,15 +1,8 @@
-//! Link the Clang runtime library alongside whisper.cpp's Metal backend.
+//! Link the Clang runtime library for whisper.cpp's Metal backend.
 //!
-//! `ggml-metal.m` guards newer Metal APIs with `@available`. Because our
-//! deployment target is macOS 13 (the project floor) while those guards probe
-//! macOS 14+, Clang cannot fold them at compile time and lowers each one to a
-//! call to `__isPlatformVersionAtLeast`. That symbol lives in
-//! `libclang_rt.osx.a`, but rustc links with `-nodefaultlibs` and Rust's
-//! `compiler_builtins` does not carry it - so the final binary ends up with an
-//! undefined reference unless we pull the Clang runtime in ourselves.
-//!
-//! Only relevant when `local-stt` is on (that is what builds whisper.cpp) and
-//! only on macOS, which is the only platform yogurt targets anyway.
+//! `ggml-metal.m` guards macOS 14+ APIs with `@available`, and with a macOS 13 deployment target Clang lowers each guard to `__isPlatformVersionAtLeast`.
+//! That symbol lives in `libclang_rt.osx.a`, which neither rustc's `-nodefaultlibs` link nor `compiler_builtins` provides.
+//! Only needed when `local-stt` is on.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -43,18 +36,12 @@ fn main() {
     }
 
     println!("cargo:rustc-link-search=native={}", runtime_dir.display());
-    // `-bundle` matters: the default (`+bundle`) copies every member of the
-    // archive into our rlib, including the `compiler_rt` builtins (`adddf3`,
-    // `ashldi3`, ...) that Rust's own `compiler_builtins` already provides.
-    // With `-bundle` the archive is left on the final link line instead, so the
-    // linker pulls only the members that resolve a genuinely undefined symbol -
-    // usually just `os_version_check`, and nothing at all on toolchains that
-    // never emit the availability call.
+    // `-bundle` keeps the archive on the final link line instead of copying its members into our rlib,
+    // where its `compiler_rt` builtins would duplicate the ones `compiler_builtins` already provides.
     println!("cargo:rustc-link-lib=static:-bundle=clang_rt.osx");
 }
 
-/// Ask the C compiler where its runtime libraries live, honouring `CC` so this
-/// tracks whatever toolchain actually compiled whisper.cpp.
+/// Ask the C compiler (honouring `CC`) where its runtime libraries live.
 fn clang_runtime_dir() -> Option<PathBuf> {
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
     let output = Command::new(cc).arg("--print-runtime-dir").output().ok()?;

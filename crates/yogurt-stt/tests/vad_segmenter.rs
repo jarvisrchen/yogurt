@@ -1,16 +1,7 @@
-//! Integration tests for the VAD-driven sliding-window segmenter.
+//! Integration tests pinning the segmenter's contract on synthetic 16 kHz mono i16 PCM.
 //!
-//! Plan 08-02 Task 1 (TDD): these tests pin the segmenter's *contract* on
-//! synthetic 16 kHz mono i16 PCM.  We do NOT test webrtc-vad's tone response
-//! directly — instead we test that the *segmenter*'s `MIN_SPEECH_MS`,
-//! `SILENCE_HANG_MS`, and segment-emission state machine behave per spec
-//! when fed alternating speech/silence runs.
-//!
-//! Per the plan's "KNOWN BRITTLENESS" note: webrtc-vad does not reliably
-//! classify pure sine waves as speech.  We use deterministic white noise
-//! (`(i % 251) * 64` mod-folded) as our "speech" signal — it carries the
-//! broadband energy webrtc-vad keys off, and it stays deterministic so the
-//! tests don't flake across runs.
+//! webrtc-vad does not reliably classify pure sine waves as speech, so deterministic white noise stands in for speech.
+//! The tests target `MIN_SPEECH_MS`, `SILENCE_HANG_MS` and segment emission, not webrtc-vad's tone response.
 
 #![cfg(feature = "local-stt")]
 
@@ -18,15 +9,13 @@ use yogurt_stt::vad::{Segmenter, SegmenterEvent};
 
 const SR: usize = 16_000;
 
-/// Deterministic white-noise "speech" — `(i % 251) * 64` folds into the
-/// i16 range without ever clipping (max 250 * 64 = 16000).  webrtc-vad
-/// reliably classifies this as voice in Aggressive mode.
+/// Deterministic white-noise "speech" that never clips (max 250 * 64 = 16000) and that webrtc-vad classifies as voice in Aggressive mode.
 fn tone(seconds: f32) -> Vec<i16> {
     let n = (SR as f32 * seconds) as usize;
     (0..n).map(|i| ((i % 251) as i16) * 64).collect()
 }
 
-/// Pure silence — `vec![0i16; n]`.  webrtc-vad classifies as non-voice.
+/// Pure silence, which webrtc-vad classifies as non-voice.
 fn silence(seconds: f32) -> Vec<i16> {
     let n = (SR as f32 * seconds) as usize;
     vec![0i16; n]
@@ -48,9 +37,7 @@ fn count_segments(events: &[SegmenterEvent]) -> usize {
 
 #[test]
 fn it_emits_one_segment_for_speech_then_silence() {
-    // 1.5 s "speech" (white noise) followed by 1 s silence.  The
-    // 1 s silence is well over SILENCE_HANG_MS (600 ms) so the segmenter
-    // must flush exactly one segment with > 1 s of audio inside.
+    // 1 s of silence exceeds `SILENCE_HANG_MS`, so exactly one segment with over 1 s of audio flushes.
     let mut pcm = tone(1.5);
     pcm.extend(silence(1.0));
 
@@ -89,9 +76,7 @@ fn it_emits_one_segment_for_speech_then_silence() {
 
 #[test]
 fn it_splits_two_speech_runs_separated_by_silence() {
-    // 0.8 s speech / 0.8 s silence / 0.8 s speech / 0.8 s silence.
-    // The 0.8 s silence between runs exceeds SILENCE_HANG_MS (600 ms)
-    // so the segmenter must emit two distinct segments.
+    // The silence between runs exceeds `SILENCE_HANG_MS`, so two segments are emitted.
     let mut pcm = tone(0.8);
     pcm.extend(silence(0.8));
     pcm.extend(tone(0.8));
@@ -108,8 +93,7 @@ fn it_splits_two_speech_runs_separated_by_silence() {
 
 #[test]
 fn pure_silence_emits_no_segments() {
-    // 3 s of pure silence — webrtc-vad must classify every frame as
-    // non-voice and the segmenter must emit zero segments.
+    // Every frame is non-voice, so zero segments.
     let pcm = silence(3.0);
     let events = collect_segments(&pcm);
     assert_eq!(
@@ -122,10 +106,7 @@ fn pure_silence_emits_no_segments() {
 
 #[test]
 fn very_short_speech_blips_are_ignored() {
-    // 0.1 s "speech" + 1 s silence.  100 ms < MIN_SPEECH_MS (250 ms),
-    // so the speech run is filtered as a cough/click and zero segments
-    // are emitted.  This is the MIN_SPEECH_MS boundary, not a VAD
-    // tone-response test (see module docs).
+    // 100 ms is under `MIN_SPEECH_MS`, so the run is filtered as a cough or click.
     let mut pcm = tone(0.1);
     pcm.extend(silence(1.0));
 
@@ -138,17 +119,6 @@ fn very_short_speech_blips_are_ignored() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// `pending()` - the in-flight utterance the partial ticker previews (AUD-1).
-//
-// The bug these pin: the whisper partial ticker used to keep its own rolling
-// 5 s window instead of reading the segmenter, so once an utterance ran past
-// five seconds each re-decode saw *less* audio than the one before and the
-// on-screen partial shrank mid-sentence. Reading `pending()` makes growth a
-// property of the segmenter rather than a rule the ticker has to follow, so
-// that is where the assertions live.
-// ---------------------------------------------------------------------------
-
 /// Length of `pending()`'s PCM, or 0 when nothing is in flight.
 fn pending_len(seg: &Segmenter) -> usize {
     seg.pending().map(|(pcm, _)| pcm.len()).unwrap_or(0)
@@ -158,21 +128,15 @@ fn pending_len(seg: &Segmenter) -> usize {
 fn pending_is_none_between_utterances() {
     let mut seg = Segmenter::new(SR);
 
-    // Before any audio at all.
     assert!(seg.pending().is_none(), "pending before any push");
 
-    // Silence only - never entered speech.
     seg.push(&silence(1.0), |_| {});
     assert!(seg.pending().is_none(), "pending during opening silence");
 
-    // Speech - now in flight.
     seg.push(&tone(1.0), |_| {});
     assert!(seg.pending().is_some(), "pending mid-utterance");
 
-    // Trailing silence past SILENCE_HANG_MS flushes the segment, which must
-    // hand the buffer off and leave nothing pending. This is what stops the
-    // next utterance's partial from starting out carrying the previous one,
-    // and what stops the ticker burning a decode on silence.
+    // A flush hands off the buffer and leaves nothing pending, so the next partial does not carry the previous utterance and the ticker skips silence.
     let mut segments = 0;
     seg.push(&silence(1.0), |e| {
         if matches!(e, SegmenterEvent::Segment { .. }) {
@@ -190,9 +154,7 @@ fn pending_is_none_between_utterances() {
 fn pending_grows_monotonically_and_past_the_old_five_second_window() {
     let mut seg = Segmenter::new(SR);
 
-    // 12 s of continuous speech, fed in 0.5 s pushes so we can watch the
-    // buffer between them. Well under MAX_SEGMENT_MS (25 s), so the segmenter
-    // stays in one utterance throughout and emits nothing.
+    // Fed in 0.5 s pushes to watch the buffer. 12 s is under `MAX_SEGMENT_MS`, so it stays one utterance.
     let mut last = 0usize;
     let mut samples = Vec::new();
     for _ in 0..24 {
@@ -211,8 +173,7 @@ fn pending_grows_monotonically_and_past_the_old_five_second_window() {
         "12 s of unbroken speech should not flush a segment",
     );
 
-    // The old ticker capped at 5 s and dropped everything older. Past that
-    // point it started shrinking; `pending()` must not.
+    // Growth must continue past 5 s, where a rolling window would start shrinking.
     assert!(
         last > SR * 5,
         "pending capped at {last} samples, expected > {} (5 s)",
@@ -228,8 +189,7 @@ fn pending_grows_monotonically_and_past_the_old_five_second_window() {
 fn pending_start_ms_matches_the_final_segment() {
     let mut seg = Segmenter::new(SR);
 
-    // Lead with silence so a correct start_ms is distinguishable from 0 -
-    // the value the ticker used to hardcode into every partial.
+    // Lead with silence so a correct `start_ms` is distinguishable from 0.
     seg.push(&silence(1.0), |_| {});
     seg.push(&tone(1.5), |_| {});
 
@@ -246,8 +206,7 @@ fn pending_start_ms_matches_the_final_segment() {
         }
     });
 
-    // Same utterance, same timestamp: this is what keeps the transcript line
-    // from jumping when the final replaces the partial in place.
+    // Same utterance, same timestamp, so the line does not jump when the final replaces the partial.
     assert_eq!(
         final_start,
         Some(pending_start),
@@ -258,10 +217,8 @@ fn pending_start_ms_matches_the_final_segment() {
 fn buffer_is_bounded_in_wall_clock_not_just_voice_time() {
     let mut seg = Segmenter::new(SR);
     let mut max_pending = 0usize;
-    // Speech with pauses just under SILENCE_HANG_MS: 300 ms voice, 500 ms
-    // silence, repeated. Every voice frame resets silence_ms, so the
-    // segmenter never flushes on silence, and speech_ms advances at only
-    // 37.5% of wall-clock - so MAX_SEGMENT_MS takes 66 s of audio to trip.
+    // 300 ms voice and 500 ms silence repeated: every voice frame resets `silence_ms`, and `speech_ms` advances at 37.5% of wall-clock,
+    // so `MAX_SEGMENT_MS` alone takes 66 s of audio to trip.
     for _ in 0..100 {
         seg.push(&tone(0.3), |_| {});
         seg.push(&silence(0.5), |_| {});
