@@ -1,12 +1,5 @@
-//! Providers CRUD + built-in presets.
-//!
-//! `providers` rows describe an OpenAI-compatible LLM endpoint the user has
-//! configured (base URL + model + active flag). API keys are NOT stored
-//! here - they live in `~/.yogurt/keys.json` via the [`crate::keys`] module.
-//!
-//! The "single active LLM provider" invariant is enforced by a partial
-//! unique index in `V001__initial.sql`:
-//! `CREATE UNIQUE INDEX ... ON providers(kind) WHERE is_active = 1`.
+//! `providers` rows describe an LLM endpoint or CLI the user configured. API keys live in `~/.yogurt/keys.json` via [`crate::keys`], never here.
+//! A partial unique index in `V001__initial.sql` enforces a single active LLM provider.
 
 use crate::Db;
 use anyhow::Result;
@@ -14,68 +7,39 @@ use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 
-/// Built-in provider presets surfaced as dashed-border chips in the Model
-/// section's "CLONE A PRESET" row (PRD §5.6).
+/// Built-in provider presets, shown as chips in the Model section's "CLONE A PRESET" row.
 pub struct Preset {
     pub name: &'static str,
     pub base_url: &'static str,
     pub default_model: &'static str,
-    /// Static list of popular model ids for this preset. Used by the
-    /// Settings UI's MODEL `<datalist>` so a freshly-cloned provider has
-    /// autocomplete suggestions before the user pastes a key. `default_model`
-    /// is always included here so the initial state of the dropdown matches
-    /// what gets saved. The user can still type any custom model - this is
-    /// autocomplete, not a hard constraint.
+    /// Popular model ids for the Settings UI's MODEL `<datalist>`, so a freshly-cloned provider has suggestions before a key is pasted.
+    /// Includes `default_model`; the user can type any model.
     ///
-    /// Lists go stale when a provider ships a new model; the Settings page
-    /// exposes a `Refresh` button that replaces the datalist with the live
-    /// `GET {base_url}/models` response (requires a stored key) and a
-    /// `docs_url` link for when `/models` is wrong / missing / behind auth.
+    /// Lists go stale, so the Settings page offers `Refresh` (live `GET {base_url}/models`, needs a stored key) and a `docs_url` link.
     pub models: &'static [&'static str],
-    /// Public URL of the provider's "available models" page. Rendered by
-    /// the Settings page as a small `See all models →` link next to the
-    /// MODEL field - useful both as a Refresh fallback (some providers
-    /// don't expose `/v1/models`) and as a discovery surface for preview /
-    /// regional models the static list will never have. Empty for a `cli`
-    /// preset - there is no model catalog page to link to.
+    /// Public URL of the provider's "available models" page, shown next to the MODEL field as a Refresh fallback and for models the static list lacks.
+    /// Empty for a `cli` preset.
     pub docs_url: &'static str,
-    /// `"http"` (`OpenAiCompatClient` against `base_url`, a stored API key)
-    /// or `"cli"` (`yogurt_llm::CliClient`, no key or base URL - see
-    /// [`Adapter::CLI`]). Added for LLM-4.
+    /// `"http"` (`OpenAiCompatClient` against `base_url`, a stored API key) or `"cli"` (`yogurt_llm::CliClient`, no key or base URL, see [`Adapter::CLI`]).
     pub adapter: &'static str,
-    /// `cli`-adapter only: the suggested default `--model` value. The
-    /// Settings UI seeds this into `cli_model` the first time a `Test`
-    /// proves the CLI connects (not on clone - there's nothing to default
-    /// until connectivity is proven). `"haiku"` for claude: enhance/chat
-    /// are simple extraction calls, not reasoning-heavy, so a cheap/fast
-    /// tier is the sensible default rather than whatever the CLI's own
-    /// interactive default happens to be. `"auto"` for cursor-agent: the
-    /// one model guaranteed to work on every plan (a free-tier account
-    /// naming anything else gets `ActionRequiredError: Named models
-    /// unavailable`, confirmed live). Empty only for `http` presets.
+    /// `cli`-adapter only: the suggested default `--model`. The Settings UI seeds `cli_model` with it the first time a `Test` proves the CLI connects (not on clone).
+    /// `"haiku"` for claude since enhance/chat are simple extraction calls.
+    /// `"auto"` for cursor-agent, the one model that works on every plan (free tiers get `ActionRequiredError: Named models unavailable` otherwise).
+    /// Empty only for `http` presets.
     pub default_cli_model: &'static str,
 }
 
-/// `Preset::adapter` / `Provider::adapter` values. Not an `enum` on the
-/// wire (SQLite has no enum type, and the two REST DTOs already pass
-/// `adapter` as a plain string) - these consts are the single place the
-/// literal strings are spelled, so a typo fails to compile everywhere else.
+/// `Preset::adapter` / `Provider::adapter` values. Consts rather than an enum because SQLite has no enum type and the REST DTOs pass `adapter` as a string.
+/// They are the one place the literals are spelled, so a typo fails to compile.
 pub mod adapter {
     pub const HTTP: &str = "http";
     pub const CLI: &str = "cli";
 }
 
-/// Built-in presets. Order matters: it's the order chips appear in the UI.
-/// Cloud majors first, then local runtimes, then the aggregator, then the
-/// local agent CLIs (LLM-4).
+/// Built-in presets, in UI chip order: cloud majors, local runtimes, the aggregator, then local agent CLIs.
 ///
-/// Every `adapter: "http"` entry must speak the OpenAI `/chat/completions`
-/// shape, because `OpenAiCompatClient` is the only HTTP client `yogurt-llm`
-/// ships - a preset like that is purely a saved base URL + model, never a
-/// new adapter. An `adapter: "cli"` entry is different: `base_url` is
-/// unused (empty) and `default_model` is repurposed to hold the CLI
-/// program id `yogurt_llm::CliProgram::parse` expects ("claude" |
-/// "cursor-agent" | "opencode"), not a model name.
+/// Every `adapter: "http"` entry must speak the OpenAI `/chat/completions` shape, since `OpenAiCompatClient` is the only HTTP client `yogurt-llm` ships.
+/// For an `adapter: "cli"` entry `base_url` is empty and `default_model` holds the CLI program id `yogurt_llm::CliProgram::parse` expects ("claude" | "cursor-agent" | "opencode").
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Minimax",
@@ -107,10 +71,8 @@ pub const PRESETS: &[Preset] = &[
         adapter: adapter::HTTP,
         default_cli_model: "",
     },
-    // Google exposes Gemini through an OpenAI-compatible shim; the native
-    // `generativeLanguage` REST shape is NOT what we speak. The trailing
-    // slash is load-bearing upstream but harmless here - `OpenAiCompatClient`
-    // trims it before appending `/chat/completions`.
+    // Google exposes Gemini through an OpenAI-compatible shim, not the native `generativeLanguage` REST shape.
+    // `OpenAiCompatClient` trims the trailing slash before appending `/chat/completions`.
     Preset {
         name: "Google Gemini",
         base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -140,12 +102,7 @@ pub const PRESETS: &[Preset] = &[
         name: "Ollama (local)",
         base_url: "http://localhost:11434/v1",
         default_model: "llama3.2",
-        // Ollama models depend entirely on what the user has pulled
-        // locally, so these are hints, not a guarantee - a few common
-        // `ollama pull` targets to seed the datalist before the user has
-        // pulled anything. Ollama needs no key, so Refresh (live
-        // `GET /v1/models`) is one click away and always wins once
-        // there's a real local list to show.
+        // Hints only: models depend on what the user has pulled locally. Refresh (live `GET /v1/models`) wins once there is a real list.
         models: &["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2"],
         docs_url: "https://ollama.com/library",
         adapter: adapter::HTTP,
@@ -155,10 +112,7 @@ pub const PRESETS: &[Preset] = &[
         name: "LM Studio (local)",
         base_url: "http://localhost:1234/v1",
         default_model: "",
-        // Empty, unlike Ollama: LM Studio has no well-known model names to
-        // hint at, since whatever's loaded is purely local (a GGUF the
-        // user downloaded). Refresh is the only way this datalist ever
-        // gets populated.
+        // Empty: LM Studio has no well-known model names, so Refresh is the only way this datalist gets populated.
         models: &[],
         docs_url: "https://lmstudio.ai/models",
         adapter: adapter::HTTP,
@@ -179,19 +133,14 @@ pub const PRESETS: &[Preset] = &[
         adapter: adapter::HTTP,
         default_cli_model: "",
     },
-    // LLM-4: explicit local-agent-CLI providers. `default_model` is the
-    // `yogurt_llm::CliProgram` id, not a model name. `models` is repurposed
-    // too: for a `cli` preset it lists suggested `cli_model` (`--model`)
-    // aliases, not a model catalog - no Refresh/datalist live-probe applies
-    // either way, since there is no `/models` endpoint.
+    // Explicit local-agent-CLI providers. `default_model` is the `yogurt_llm::CliProgram` id, and `models` lists suggested `cli_model` (`--model`) aliases.
+    // No live `/models` probe applies.
     Preset {
         name: "Claude Code (local CLI)",
         base_url: "",
         default_model: "claude",
-        // Documented aliases (`claude --help`): 'fable', 'opus', 'sonnet' -
-        // plus 'haiku', confirmed live (`claude --model haiku` resolves to
-        // claude-haiku-4-5). Cheapest/fastest first: enhance/chat are
-        // extraction calls, not reasoning-heavy.
+        // Aliases from `claude --help`: 'fable', 'opus', 'sonnet', plus 'haiku' (`claude --model haiku` resolves to claude-haiku-4-5).
+        // Cheapest first since enhance/chat are extraction calls.
         models: &["haiku", "sonnet", "opus", "fable"],
         docs_url: "",
         adapter: adapter::CLI,
@@ -201,31 +150,20 @@ pub const PRESETS: &[Preset] = &[
         name: "Cursor Agent (local CLI)",
         base_url: "",
         default_model: "cursor-agent",
-        // `cursor-agent --list-models` returns 50+ account- and
-        // plan-dependent entries (verified live) - too many, and too
-        // likely to include names a given account can't actually use, to
-        // hardcode as suggestions. "auto" is the one entry guaranteed to
-        // work on every plan (confirmed live: naming any other model on a
-        // free-tier account fails with "ActionRequiredError: Named models
-        // unavailable, Free plans can only use Auto"), so it's the only
-        // static suggestion offered.
+        // `cursor-agent --list-models` returns 50+ account- and plan-dependent entries, so only "auto" is suggested.
+        // It works on every plan, while free tiers reject other models with "ActionRequiredError: Named models unavailable".
         models: &["auto"],
         docs_url: "",
         adapter: adapter::CLI,
         default_cli_model: "auto",
     },
-    // LLM-7. Unlike the other two CLIs, opencode is a front-end to many
-    // providers rather than one vendor's own agent, so `cli_model` here is
-    // a fully qualified `<provider>/<model>` id, not a short alias.
+    // opencode fronts many providers, so `cli_model` is a fully qualified `<provider>/<model>` id, not a short alias.
     Preset {
         name: "OpenCode (local CLI)",
         base_url: "",
         default_model: "opencode",
-        // `opencode models` returns every model of every provider the user
-        // has configured (370 on a live account, verified) - far too many,
-        // and too account-specific, to hardcode. Refresh is how this list
-        // gets real; the default is the only static suggestion, same
-        // reasoning as cursor-agent above.
+        // `opencode models` lists every model of every configured provider (370 on one account), too many to hardcode.
+        // Refresh fills the list; the default is the only static suggestion.
         models: &["minimax-coding-plan/MiniMax-M3"],
         docs_url: "",
         adapter: adapter::CLI,
@@ -241,7 +179,7 @@ pub struct Provider {
     pub model: String,
     pub is_active: bool,
     pub created_at: i64,
-    /// `"http"` or `"cli"` - see [`adapter`].
+    /// `"http"` or `"cli"`, see [`adapter`].
     pub adapter: String,
     /// `cli`-adapter only: the `--model` value to pass to the CLI. Empty
     /// means "use the CLI's own default model". Meaningless for `http`.
@@ -253,8 +191,7 @@ pub struct NewProvider {
     pub name: String,
     pub base_url: String,
     pub model: String,
-    /// `"http"` or `"cli"`. Defaults to `"http"` so any caller that still
-    /// sends the pre-LLM-4 three-field body keeps working unchanged.
+    /// `"http"` or `"cli"`. Defaults to `"http"` so older three-field request bodies keep working.
     #[serde(default = "default_adapter")]
     pub adapter: String,
     #[serde(default)]
@@ -319,7 +256,6 @@ pub fn list_names(db: &Db) -> Result<Vec<String>> {
     .map_err(Into::into)
 }
 
-/// Return the active LLM provider, or `None` if none.
 pub fn active(db: &Db) -> Result<Option<Provider>> {
     db.with_conn(|conn| {
         conn.query_row(
@@ -345,10 +281,7 @@ pub fn active(db: &Db) -> Result<Option<Provider>> {
 }
 
 /// Atomically deactivate all LLM providers and activate `id`.
-///
-/// Wrapped in `BEGIN IMMEDIATE` so a partial failure rolls back (the partial
-/// unique index would otherwise reject the second UPDATE mid-transaction
-/// and leave the table in a no-active state).
+/// Runs in `BEGIN IMMEDIATE` so a failure rolls back; otherwise the partial unique index would reject the second UPDATE and leave no active provider.
 pub fn set_active(db: &Db, id: &str) -> Result<()> {
     db.with_conn(|conn| -> rusqlite::Result<()> {
         conn.execute_batch("BEGIN IMMEDIATE")?;

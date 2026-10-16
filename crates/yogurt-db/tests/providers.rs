@@ -74,15 +74,9 @@ fn it_exposes_presets_as_a_const_slice() {
     assert!(names.contains(&"OpenCode (local CLI)"));
 }
 
-/// Every `adapter: "http"` preset must be a usable base URL for
-/// `OpenAiCompatClient`, which builds its endpoint as
-/// `{base_url}/chat/completions`. `adapter: "cli"` presets are exempt -
-/// `base_url` is unused for them (see `providers::adapter`).
+/// Every `adapter: "http"` preset must be a usable base URL for `OpenAiCompatClient`, which builds its endpoint as `{base_url}/chat/completions`. `cli` presets are exempt.
 ///
-/// The trap this guards: Google documents its OpenAI shim WITH a trailing
-/// slash (`.../v1beta/openai/`). Pasting that verbatim into a preset yields
-/// `.../openai//chat/completions` for anyone reading `base_url` without
-/// going through the client's trimming constructor.
+/// Trap: Google documents its OpenAI shim with a trailing slash (`.../v1beta/openai/`), which yields `.../openai//chat/completions` for anyone reading `base_url` without the client's trimming constructor.
 #[test]
 fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
     for p in providers::PRESETS {
@@ -111,14 +105,8 @@ fn preset_base_urls_are_absolute_and_have_no_trailing_slash() {
     }
 }
 
-/// Each `adapter: "http"` preset's `default_model` is what gets written
-/// into the providers table on clone, so it MUST appear in the preset's
-/// `models` datalist - otherwise the initial state of the dropdown
-/// wouldn't match what was saved and the user would see "Saved as X,
-/// suggested Y" confusion. For an `adapter: "cli"` preset, `models` means
-/// something different (suggested `cli_model` aliases, not a model
-/// catalog) - the same "what gets saved must appear in the list" rule
-/// applies to `default_cli_model` there instead.
+/// An `adapter: "http"` preset's `default_model` is written to the providers table on clone, so it must appear in the preset's `models` datalist,
+/// or the dropdown would show a different value than what was saved. For `cli` presets the same rule applies to `default_cli_model`.
 #[test]
 fn preset_default_model_appears_in_its_models_list() {
     for p in providers::PRESETS {
@@ -135,7 +123,6 @@ fn preset_default_model_appears_in_its_models_list() {
             continue;
         }
         if p.default_model.is_empty() {
-            // LM Studio starts blank; nothing to assert.
             continue;
         }
         assert!(
@@ -148,14 +135,8 @@ fn preset_default_model_appears_in_its_models_list() {
     }
 }
 
-/// Every `adapter: "cli"` preset's `default_model` must be a program id
-/// `yogurt_llm::CliProgram::parse` recognizes - if it doesn't,
-/// `from_active_provider` would reject a freshly-cloned, never-edited
-/// provider row as having an "unrecognized CLI program", which should be
-/// impossible. Spelled out as a literal list rather than depending on
-/// `yogurt_llm` from this crate just to call `parse` - `yogurt-db` sits
-/// below the LLM-client layer in the dependency graph and should stay
-/// there; keep this list in sync with `CliProgram::parse` by hand.
+/// Every `adapter: "cli"` preset's `default_model` must be a program id `yogurt_llm::CliProgram::parse` recognizes, or `from_active_provider` would reject a freshly-cloned provider.
+/// A literal list because `yogurt-db` sits below the LLM-client layer and should not depend on `yogurt_llm`; keep it in sync with `CliProgram::parse` by hand.
 #[test]
 fn cli_preset_default_models_parse_as_a_known_cli_program() {
     const KNOWN_CLI_PROGRAM_IDS: &[&str] = &["claude", "cursor-agent", "opencode"];

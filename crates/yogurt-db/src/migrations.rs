@@ -1,106 +1,58 @@
-//! Embedded migrations for the yogurt-db crate.
-//!
-//! Migrations are compiled into the binary via `include_str!` so the single
-//! static-binary distribution model holds (no on-disk migration files
-//! shipped). Phase 6 adds V002; Phase 7 adds V003 (meetings repo + FK
-//! retrofit on chat_messages).
+//! Migrations are compiled in via `include_str!` so the single static binary ships no migration files.
 
 use anyhow::Result;
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
 
-/// Build the migration set. Held as a function (not a `static`) so
-/// `include_str!` resolves relative to this file at compile time.
+/// A function rather than a `static` so `include_str!` resolves relative to this file.
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(include_str!("../migrations/V001__initial.sql")),
-        // Phase 6 (Plan 06-01): chat_messages table for in-meeting chat.
-        // Coexists with `yogurt-server::storage::migrations`' identical
-        // `CREATE TABLE IF NOT EXISTS chat_messages` (whichever runner fires
-        // first wins; the schemas agree at the column level — the FK
-        // cascade gap is closed in V003b).
+        // Also created by `yogurt-server::storage::migrations` (`IF NOT EXISTS`). Whichever runner fires first wins and the columns agree.
         M::up(include_str!("../migrations/V002__chat_messages.sql")),
-        // Phase 7 (Plan 07-01): promote the Phase-3 in-memory meeting
-        // registry to a SQLite-backed repo powering the Library route.
-        // The CREATE TABLE IF NOT EXISTS is a no-op on user DBs that
-        // already have the Phase 0 `meetings` table — the column
-        // backfill for `starred`, `created_at`, `updated_at` happens in
-        // [`backfill_phase7_meeting_columns`] which runs immediately
-        // after this migration.
+        // `CREATE TABLE IF NOT EXISTS` is a no-op on DBs that already have the older `meetings` table,
+        // so [`backfill_phase7_meeting_columns`] adds `starred`, `created_at`, `updated_at` right after.
         M::up(include_str!("../migrations/V003__meetings.sql")),
-        // Phase 7 (Plan 07-01) part B: rebuild `chat_messages` so its FK
-        // on `meetings(id)` is ON DELETE CASCADE. Phase-0 storage
-        // declared the table without the cascade, and yogurt-db V002's
-        // `CREATE TABLE IF NOT EXISTS` made the cascade declaration a
-        // no-op when storage migrated first. Rebuild fixes that.
+        // Rebuild `chat_messages` so its FK on `meetings(id)` is ON DELETE CASCADE. The older storage migration declared it without the cascade,
+        // and V002's `IF NOT EXISTS` kept that when storage migrated first.
         M::up(include_str!(
             "../migrations/V003b__chat_messages_cascade.sql"
         )),
-        // Phase 7 (Plan 07-02): FTS5 keyword search across title +
-        // notes_md + transcript_text (LIB-07). The triggers in the SQL
-        // keep the index in sync on INSERT/UPDATE/DELETE; the
-        // `transcript_text` column is explicitly maintained by
-        // MeetingRepo::patch because the trigger only knows how to
-        // mirror the base columns and would otherwise leave the
-        // searchable transcript blank.
+        // FTS5 keyword search across title, notes_md, transcript_text. Triggers keep the index in sync,
+        // but `transcript_text` is maintained explicitly by MeetingRepo::patch because the triggers only mirror base columns.
         M::up(include_str!("../migrations/V004__meetings_fts.sql")),
-        // Phase 8 (Plan 08-03): seed `stt.provider` + `stt.model` KV rows
-        // so `meetings/start.rs` can branch between the Deepgram cloud
-        // adapter and the WhisperLocal adapter without a settings null
-        // check.  Defaults: provider=cloud, model=small.en (D-02).
+        // Seed `stt.provider` (cloud) and `stt.model` (small.en) so `meetings/start.rs` can pick an STT adapter without a null check.
         M::up(include_str!("../migrations/V005__stt_provider_model.sql")),
-        // Feature: per-meeting STT engine provenance. Nullable TEXT so old
-        // rows read back as None; new recordings get stamped in
-        // routes.rs::start_meeting.
+        // Per-meeting STT engine provenance. Nullable so old rows read back as None.
         M::up(include_str!("../migrations/V006__meetings_stt_engine.sql")),
-        // Feature: Granola-style meeting labels. `labels` (workspace-level
-        // named tags) + `meeting_labels` (many-to-many join, cascades on
-        // either side).
+        // Meeting labels: `labels` plus a `meeting_labels` join table that cascades on either side.
         M::up(include_str!("../migrations/V007__labels.sql")),
-        // Feature: per-meeting LLM provenance. Nullable TEXT stamped by
-        // enhance.rs with the model that produced `enriched_md`.
+        // Per-meeting LLM provenance: the model that produced `enriched_md`. Nullable.
         M::up(include_str!("../migrations/V008__meetings_llm_model.sql")),
-        // Feature (LLM-4): `providers.adapter` ('http' | 'cli') so a row
-        // can be driven by a local agent CLI instead of an HTTP endpoint.
+        // `providers.adapter` ('http' | 'cli'): a row can be driven by a local agent CLI instead of an HTTP endpoint.
         M::up(include_str!("../migrations/V009__providers_adapter.sql")),
-        // Feature (LLM-4 follow-up): `providers.cli_model`, the `--model`
-        // override for a `cli`-adapter row's agent CLI.
+        // `providers.cli_model`, the `--model` override for a `cli`-adapter row.
         M::up(include_str!("../migrations/V010__providers_cli_model.sql")),
-        // Feature (LLM-9): `meetings.template`, the enhance note format that
-        // shaped `enriched_md` - picked by the model or forced by the user.
+        // `meetings.template`, the enhance note format, picked by the model or forced by the user.
         M::up(include_str!("../migrations/V011__meetings_template.sql")),
-        // Feature (UI-12): `labels.position` (custom sidebar order) +
-        // `labels.updated_at` (last-updated sidebar order).
+        // `labels.position` (custom sidebar order) and `labels.updated_at` (last-updated order).
         M::up(include_str!(
             "../migrations/V012__labels_position_updated_at.sql"
         )),
     ])
 }
 
-/// Run pending migrations on `conn` (idempotent — safe to call repeatedly).
-///
-/// Phase 7 collateral: after the V003 migration creates / harmonizes the
-/// `meetings` schema, run a code-driven backfill that adds the three new
-/// Phase 7 columns (`starred`, `created_at`, `updated_at`) to any user DB
-/// where the table was originally created by Phase 0 storage (which
-/// predates those columns). SQLite has no `ALTER TABLE ADD COLUMN IF NOT
-/// EXISTS`, so the existence check happens in Rust here and the ALTER is
-/// skipped when the column is already present.
+/// Idempotent. After V003, adds `starred`, `created_at`, `updated_at` to `meetings` where an older storage migration created the table without them.
+/// SQLite has no `ADD COLUMN IF NOT EXISTS`, so the existence check happens in Rust.
 pub fn run(conn: &mut Connection) -> Result<()> {
     migrations().to_latest(conn)?;
     backfill_phase7_meeting_columns(conn)?;
     Ok(())
 }
 
-/// Phase 7 (Plan 07-01): add `starred`, `created_at`, `updated_at` to the
-/// `meetings` table if they are missing. Idempotent — re-running over a DB
-/// that already has the columns is a no-op.
 fn backfill_phase7_meeting_columns(conn: &Connection) -> Result<()> {
     let existing = existing_columns(conn, "meetings")?;
-    // The defaults match the V003 CREATE TABLE statement above so a
-    // fresh DB (which already has the columns from CREATE) and a
-    // back-filled DB (where ALTER runs here) end up with identical
-    // schemas.
+    // Defaults match the V003 CREATE TABLE so fresh and back-filled DBs end up with identical schemas.
     if !existing.contains(&"starred".to_string()) {
         conn.execute_batch("ALTER TABLE meetings ADD COLUMN starred INTEGER NOT NULL DEFAULT 0")?;
     }
@@ -114,18 +66,11 @@ fn backfill_phase7_meeting_columns(conn: &Connection) -> Result<()> {
             "ALTER TABLE meetings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
         )?;
     }
-    // Index on the now-present `starred` column. The CREATE INDEX is
-    // idempotent thanks to IF NOT EXISTS — runs on every boot but never
-    // duplicates the index.
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_meetings_starred \
          ON meetings(starred) WHERE starred = 1",
     )?;
-    // notes_md / transcript_json default-tightening: the Phase 0 schema
-    // declared these as nullable; the Phase 7 repo treats them as
-    // non-null. New writes go through MeetingRepo which always supplies
-    // a value, so no backfill query is needed for legacy rows — the
-    // repo coerces SQL NULL → "" / "[]" at read time.
+    // `notes_md` / `transcript_json` were nullable in the older schema. No backfill is needed: MeetingRepo always writes a value and coerces NULL to "" / "[]" at read time.
     Ok(())
 }
 
