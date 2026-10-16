@@ -1,21 +1,12 @@
-/**
- * `GET /api/templates` - the note formats enhance can shape a summary
- * into (`crates/yogurt-prompts/templates/enhance/*.md`), in picker order.
- *
- * Self-contained rather than built on `./meetings`'s `json` helper so the
- * post-meeting route's tests, which replace that module wholesale, still
- * exercise the real fetch here.
- */
+// Self-contained rather than built on `./meetings`'s `json` helper, so post-meeting route tests that replace
+// that module wholesale still exercise the real fetch here.
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { bearerFetch } from "../session";
 
-/** Wire shape of one row, matching `yogurt_prompts::Template`. */
 export interface Template {
   id: string;
-  /** Display name, e.g. "Design review". */
   name: string;
-  /** One line on when the format fits - the picker's tooltip. */
   when: string;
 }
 

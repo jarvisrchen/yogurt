@@ -1,10 +1,3 @@
-/**
- * Typed fetch wrappers + TanStack-Query hooks for the Phase 7 Library
- * REST surface (`/api/meetings*` from `crates/yogurt-server/src/api/meetings.rs`).
- *
- * Phase 7 / Plan 07-01.
- */
-
 import {
   useMutation,
   useQuery,
@@ -14,46 +7,29 @@ import {
 } from "@tanstack/react-query";
 import { bearerFetch, bearerJson } from "../session";
 
-// ─── Types (mirror yogurt_db::Meeting) ─────────────────────────────────────
-
-/** Palette keys understood by `LabelChip` — mirrors Rust `labels::COLORS`. */
 export type PaletteColor = "blue" | "matcha" | "straw" | "lilac" | "honey" | "slate";
 
-/**
- * A label color is a palette key or a custom `#rrggbb` hex string
- * (mirrors Rust `labels::normalize_color`). `string & {}` keeps palette
- * key autocomplete while still accepting any string.
- */
+/** A palette key or a custom `#rrggbb` hex string. `string & {}` keeps palette autocomplete. */
 export type LabelColor = PaletteColor | (string & {});
 
-/** Wire shape of one label row, matching `yogurt_db::Label`. */
 export interface Label {
   id: string;
   name: string;
   color: LabelColor;
 }
 
-/**
- * Wire shape of one meeting row, matching `yogurt_db::Meeting` after serde
- * serialization. The server stamps `created_at` / `updated_at` as ISO 8601
- * UTC strings; everything else is a primitive.
- */
 export interface Meeting {
   id: string;
   title: string;
-  /** Unix milliseconds — recording-start clock. */
+  /** Unix ms. */
   started_at: number;
-  /** Unix milliseconds; null while the meeting is live. */
+  /** Unix ms; null while the meeting is live. */
   ended_at: number | null;
   notes_md: string;
   enriched_md: string | null;
   transcript_json: string;
   starred: boolean;
-  /**
-   * Which STT engine transcribed this meeting, e.g. "local · small.en" or
-   * "cloud · nova-3". `null` for meetings recorded before this field
-   * existed, or if the best-effort stamp on start failed.
-   */
+  /** E.g. "local · small.en". `null` for meetings recorded before this field existed or when the stamp failed. */
   stt_engine: string | null;
   /** LLM that produced `enriched_md` (e.g. "MiniMax-Text-01"); `null` until enhanced. */
   llm_model: string | null;
@@ -63,11 +39,10 @@ export interface Meeting {
   created_at: string;
   /** ISO 8601 UTC string. */
   updated_at: string;
-  /** Labels attached to this meeting, sorted by name. */
   labels: Label[];
 }
 
-/** Patch shape — see Rust `MeetingPatch` for the tri-state semantics. */
+/** See Rust `MeetingPatch` for the tri-state semantics. */
 export interface MeetingPatch {
   title?: string;
   started_at?: number;
@@ -77,22 +52,15 @@ export interface MeetingPatch {
   enriched_md?: string | null;
   ended_at?: number | null;
   starred?: boolean;
-  /** Plain optional semantics (not tri-state) — mirrors Rust `notes_md`. */
+  /** Plain optional semantics (not tri-state). */
   stt_engine?: string;
-  /** Replace this meeting's label set with exactly these ids. */
   label_ids?: string[];
 }
-
-// ─── Cache keys ────────────────────────────────────────────────────────────
 
 export const meetingsKey = ["meetings"] as const;
 export const meetingKey = (id: string) => ["meetings", id] as const;
 
-// ─── HTTP helper ────────────────────────────────────────────────────────────
-
 export const json = bearerJson;
-
-// ─── Raw API (exported for non-hook callers + tests) ───────────────────────
 
 export const meetingsApi = {
   list: () => json<Meeting[]>("/api/meetings"),
@@ -113,13 +81,6 @@ export const meetingsApi = {
     }),
 };
 
-// ─── React-Query hooks ─────────────────────────────────────────────────────
-
-/**
- * `GET /api/meetings`. 5s staleTime — the Library re-fetches lazily as
- * the user creates / deletes meetings via the other hooks (which
- * invalidate this key).
- */
 export function useMeetings(): UseQueryResult<Meeting[], Error> {
   return useQuery({
     queryKey: meetingsKey,
@@ -128,7 +89,6 @@ export function useMeetings(): UseQueryResult<Meeting[], Error> {
   });
 }
 
-/** `GET /api/meetings/:id`. Useful for direct-link hydration. */
 export function useMeeting(id: string | undefined): UseQueryResult<Meeting, Error> {
   return useQuery({
     queryKey: id ? meetingKey(id) : ["meetings", "__missing"],
@@ -138,7 +98,6 @@ export function useMeeting(id: string | undefined): UseQueryResult<Meeting, Erro
   });
 }
 
-/** `POST /api/meetings`. Invalidates the list on success. */
 export function useCreateMeeting(): UseMutationResult<
   Meeting,
   Error,
@@ -154,22 +113,10 @@ export function useCreateMeeting(): UseMutationResult<
   });
 }
 
-// ─── Phase 7 Plan 07-02 — FTS5 search ──────────────────────────────────────
-
-/** Cache key for `useMeetingsSearch`. Includes the trimmed query so each
- *  distinct search has its own cache slot (and clearing the input falls
- *  through to the chronological `useMeetings` cache). */
 export const meetingsSearchKey = (q: string) =>
   ["meetings", "search", q] as const;
 
-/**
- * `GET /api/meetings/search?q=…`. Empty / whitespace-only `q` disables the
- * query — the Library route then renders the `useMeetings()` chronological
- * feed instead. 5s staleTime matches `useMeetings`.
- *
- * The hook uses the same `json<T>()` wrapper as the other meeting hooks
- * so the bootstrap session token is attached automatically.
- */
+/** An empty or whitespace-only `q` disables the query, so the Library renders the chronological feed instead. */
 export function useMeetingsSearch(
   q: string,
 ): UseQueryResult<Meeting[], Error> {
@@ -183,7 +130,6 @@ export function useMeetingsSearch(
   });
 }
 
-/** `DELETE /api/meetings/:id`. Invalidates list + the specific row. */
 export function useDeleteMeeting(): UseMutationResult<
   void,
   Error,
@@ -200,11 +146,6 @@ export function useDeleteMeeting(): UseMutationResult<
   });
 }
 
-/**
- * `PATCH /api/meetings/:id { starred }` — star / unstar a meeting from
- * the Library card hover actions. Invalidates the list and primes the
- * individual cache so a follow-up `useMeeting(id)` doesn't refetch.
- */
 export function useToggleStarred(): UseMutationResult<
   Meeting,
   Error,
@@ -220,12 +161,7 @@ export function useToggleStarred(): UseMutationResult<
   });
 }
 
-/**
- * `PATCH /api/meetings/:id { label_ids }` — replace a meeting's label set.
- * Invalidates the meetings list (covers search keys via shared prefix) AND
- * the labels list (label counts change), and primes the individual
- * meeting cache with the returned row.
- */
+/** Invalidating `meetingsKey` also covers search keys via the shared prefix. Label counts change too. */
 export function useSetMeetingLabels(): UseMutationResult<
   Meeting,
   Error,
@@ -236,24 +172,16 @@ export function useSetMeetingLabels(): UseMutationResult<
     mutationFn: ({ id, label_ids }) => meetingsApi.patch(id, { label_ids }),
     onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: meetingsKey });
-      // Literal (not imported from ./labels) to avoid a meetings.ts <->
-      // labels.ts circular import — TanStack matches query keys
-      // structurally, so this still invalidates `labelsKey` there.
+      // Literal rather than imported from ./labels to avoid a circular import. TanStack matches keys structurally.
       qc.invalidateQueries({ queryKey: ["labels"] });
       qc.setQueryData(meetingKey(m.id), m);
     },
   });
 }
 
-// ─── MTG-14 - Library multi-select bulk actions ────────────────────────────
-//
-// No bulk server route: both hooks fan out over the existing per-meeting
-// endpoints with `Promise.allSettled`, then invalidate once regardless of
-// partial failure - a rejected `Promise.all` would abort the whole batch,
-// leaving meetings that *did* succeed server-side stuck in a stale cache
-// (and a stale `selected` set) with no error ever surfaced to the caller.
-
-/** `DELETE /api/meetings/:id` for every selected id. */
+// No bulk server route: both hooks fan out over the per-meeting endpoints with `Promise.allSettled` and invalidate
+// once regardless of partial failure. A rejected `Promise.all` would abort the batch and leave meetings that
+// succeeded server-side stale in the cache.
 export function useBulkDeleteMeetings(): UseMutationResult<
   void,
   Error,
@@ -282,12 +210,7 @@ export function useBulkDeleteMeetings(): UseMutationResult<
   });
 }
 
-/**
- * Adds or removes one label across several meetings via
- * `PATCH /api/meetings/:id { label_ids }` per meeting. Each meeting's next
- * label set is computed from its own current labels, so it's safe to run
- * over meetings that already have (or lack) the label.
- */
+/** Each meeting's next label set is computed from its own labels, so it is safe over meetings that already have or lack the label. */
 export function useBulkSetLabel(): UseMutationResult<
   void,
   Error,
@@ -319,16 +242,7 @@ export function useBulkSetLabel(): UseMutationResult<
   });
 }
 
-// ─── Phase 7 Plan 07-03 — inline-edit title + Copy markdown + Reveal ───────
-
-/**
- * `PATCH /api/meetings/:id` specialized for inline title rename.
- *
- * Empty / whitespace-only input is normalized to "Untitled meeting" on the
- * client so the optimistic cache write reflects the same fallback the
- * server applies (LIB-08). Invalidates the list and primes the individual
- * cache so a follow-up `useMeeting(id)` doesn't refetch.
- */
+/** Blank input becomes "Untitled meeting" so the optimistic cache write matches the server's fallback. */
 export function useUpdateMeetingTitle(): UseMutationResult<
   Meeting,
   Error,
@@ -347,18 +261,7 @@ export function useUpdateMeetingTitle(): UseMutationResult<
   });
 }
 
-/**
- * `GET /api/meetings/:id/markdown` → `navigator.clipboard.writeText`.
- *
- * Returns the on-disk Phase-4 MarkdownExporter file contents (YAML
- * front-matter + body). Uses the bearer-token-attached `fetch` path
- * directly rather than `json<T>()` because the response is `text/markdown`,
- * not JSON.
- *
- * Throws on non-2xx so callers can surface a toast. Clipboard write may
- * throw on browsers without `navigator.clipboard` (HTTP/non-localhost) —
- * yogurt runs on localhost so the secure-context requirement is satisfied.
- */
+/** Uses `bearerFetch` directly because the response is `text/markdown`. The clipboard write needs a secure context, which localhost satisfies. */
 export async function copyMeetingMarkdown(id: string): Promise<void> {
   const res = await bearerFetch(`/api/meetings/${id}/markdown`);
   if (!res.ok) {
@@ -369,32 +272,19 @@ export async function copyMeetingMarkdown(id: string): Promise<void> {
   await navigator.clipboard.writeText(md);
 }
 
-/**
- * `POST /api/meetings/:id/reveal` — server shells out to `open -R` on
- * macOS to reveal the on-disk markdown file in Finder. Returns 204; no
- * body to parse.
- */
+/** The server shells out to `open -R` on macOS to reveal the file in Finder. */
 export async function revealMeetingInFinder(id: string): Promise<void> {
   await json<void>(`/api/meetings/${id}/reveal`, { method: "POST" });
 }
 
-// ─── "Return to recording" floating pill ───────────────────────────────────
-
-/** Wire shape of `GET /api/meetings/active`'s non-null body. */
 export interface ActiveRecording {
   id: string;
   title: string;
-  /** Unix milliseconds — recording-start clock. */
+  /** Unix ms. */
   started_at: number;
-  /**
-   * Which STT engine `select_stt` actually resolved to for this recording.
-   * Omitted (not `null`) when the server hasn't recorded one yet. Settings
-   * only apply at the *next* start, so this can differ from the current
-   * Settings page value mid-recording — this field is the truthful one.
-   */
+  /** The engine `select_stt` resolved to. Settings only apply at the next start, so this can differ from the current Settings value mid-recording. */
   stt?: "cloud" | "local";
-  /** AUD-6: whether the mic is currently paused. `Channel::System` keeps
-   *  recording regardless — this only reflects the mic. */
+  /** `Channel::System` keeps recording while the mic is paused. */
   mic_muted: boolean;
   echo_enabled: boolean;
   /** Unix ms at which the server stops this recording for silence. Non-null
@@ -404,13 +294,7 @@ export interface ActiveRecording {
 
 export const activeRecordingKey = ["meetings", "active"] as const;
 
-/**
- * `GET /api/meetings/active` — the single currently-recording meeting, if
- * any. Powers `<RecordingPill>` so the user always has a way back to a live
- * recording after navigating elsewhere (recording continues server-side
- * regardless of what the browser is showing). Polls every 5s and on window
- * focus so the pill appears promptly.
- */
+/** Powers `<RecordingPill>`. Recording continues server-side regardless of the browser, so this is the way back to it. */
 export function useActiveRecording(): UseQueryResult<ActiveRecording | null, Error> {
   return useQuery({
     queryKey: activeRecordingKey,
@@ -423,7 +307,7 @@ export function useActiveRecording(): UseQueryResult<ActiveRecording | null, Err
   });
 }
 
-/** `POST /api/meetings/:id/keep-recording` - dismiss the silence warning. */
+/** `POST /api/meetings/:id/keep-recording`: dismiss the silence warning. */
 export function useKeepRecording(): UseMutationResult<void, Error, string> {
   const qc = useQueryClient();
   return useMutation({
@@ -436,10 +320,6 @@ export function useKeepRecording(): UseMutationResult<void, Error, string> {
   });
 }
 
-// ─── "Meeting detected" prompt (MTG-11) ────────────────────────────────────
-
-/** Wire shape of `GET /api/meetings/detected`'s non-null body — mirrors
- *  `yogurt_audio::detect::DetectedMeeting`. */
 export interface DetectedMeeting {
   /** `CGWindowID` of the matched window. Identity for "same call". */
   window_id: number;
@@ -451,15 +331,7 @@ export interface DetectedMeeting {
 
 export const detectedMeetingKey = ["meetings", "detected"] as const;
 
-/**
- * `GET /api/meetings/detected` — the meeting-app window the server's
- * detection watcher last saw, or `null` when there is nothing to offer.
- *
- * The server already returns `null` while a recording is running and while
- * the current window is dismissed, so the component has no "should this
- * show" logic of its own. Same 5s cadence as `useActiveRecording` — it is
- * bounded by the watcher's own poll interval anyway.
- */
+/** The server already returns `null` while recording and while the current window is dismissed, so the component needs no "should this show" logic. */
 export function useDetectedMeeting(): UseQueryResult<DetectedMeeting | null, Error> {
   return useQuery({
     queryKey: detectedMeetingKey,
@@ -469,7 +341,7 @@ export function useDetectedMeeting(): UseQueryResult<DetectedMeeting | null, Err
   });
 }
 
-/** `POST /api/meetings/detected/dismiss` — silence the prompt for the call
+/** `POST /api/meetings/detected/dismiss`: silence the prompt for the call
  *  currently on screen. The next different meeting window prompts again. */
 export function useDismissDetectedMeeting(): UseMutationResult<void, Error, void> {
   const qc = useQueryClient();

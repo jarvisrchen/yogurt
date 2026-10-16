@@ -1,12 +1,5 @@
-/**
- * UI-12: sidebar Labels sort mode.
- *
- * Persisted in localStorage rather than server settings - same call as
- * `theme.ts`: a purely client-side display preference with no reason to
- * round-trip through SQLite. "Custom" mode itself is backed by the
- * server-side `position` column (set via `useReorderLabels`); this file
- * only remembers which *mode* the sidebar is in.
- */
+// Sidebar Labels sort mode. Persisted in localStorage like `theme.ts` (client-side display preference).
+// "Custom" order itself lives in the server-side `position` column; this file only remembers the mode.
 import type { LabelWithCount } from "./api/labels";
 
 export type LabelSortMode = "alpha" | "updated" | "custom";
@@ -32,7 +25,6 @@ export function setLabelSortMode(mode: LabelSortMode): void {
 
 type Sortable = Pick<LabelWithCount, "name" | "position" | "updated_at">;
 
-/** Pure sort - same list, ordered per `mode`. Never mutates `labels`. */
 export function sortLabels<T extends Sortable>(labels: T[], mode: LabelSortMode): T[] {
   const sorted = [...labels];
   switch (mode) {

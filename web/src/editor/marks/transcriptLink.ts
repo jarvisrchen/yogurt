@@ -1,14 +1,5 @@
-// `transcriptLink` TipTap inline atom node (CONTEXT D-03).
-//
-// Wire format: `<span data-transcript-link data-ts="N" class="transcript-link"
-// role="link" tabIndex="0">↳ HH:MM</span>`.
-//
-// Critically a **node**, not a mark — the link surface is a non-editable
-// inline atom so the user cannot accidentally split it mid-word (caret cannot
-// land inside the rendered token).
-//
-// Click + keyboard activation are owned by the host (`YogurtEditor`'s event
-// delegation on `editor.view.dom`). This node only renders.
+// A node, not a mark: the link is a non-editable inline atom so the caret cannot land inside the token.
+// Click and keyboard activation are handled by the host editor's event delegation.
 
 import { Node, mergeAttributes } from "@tiptap/core";
 

@@ -5,28 +5,6 @@ import {
   postChatMessage,
 } from "../lib/api";
 
-/**
- * Phase 6 (Plan 06-02) — chat send + stream + history hook.
- *
- * Owns:
- *   1. Initial `fetchChatHistory` on mount + when `meetingId` changes.
- *   2. A dedicated `/ws/meetings/{id}` subscription that watches for
- *      `chat_chunk` frames (`{type:"chat_chunk", message_id, delta,
- *      done}`). Each frame is merged into the matching assistant
- *      message's `content`; `done: true` clears `streamingId`.
- *   3. `send(content)` — optimistic user bubble, POST + return
- *      `message_id`, pre-create the assistant placeholder so chunks
- *      have a render target.
- *
- * Subscribe pattern mirrors Phase 3/4 hooks (`useTranscriptWs`,
- * `useEnhanceProgress`): one WS per hook. The server fans out to one
- * broadcast subscriber per WS, so opening a second connection is safe
- * and decouples the chat lifecycle from the transcript dock's connection.
- *
- * `streamingIdRef` is the canonical source of truth inside the WS
- * onmessage callback — `useState` alone would observe a stale closure
- * (the listener is captured on first attach).
- */
 export interface UseChatResult {
   messages: ChatMessage[];
   send: (content: string) => Promise<void>;
@@ -50,13 +28,13 @@ export function useChat(
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Ref because the WS onmessage closure is captured once and would see a stale streamingId.
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     streamingIdRef.current = streamingId;
   }, [streamingId]);
 
-  // Hydrate history on mount / meeting change.
   useEffect(() => {
     if (!meetingId || !token) {
       setMessages([]);
@@ -80,8 +58,6 @@ export function useChat(
     };
   }, [meetingId, token]);
 
-  // Subscribe to chat_chunk frames on the per-meeting WS. Mirrors
-  // useEnhanceProgress's open/reconnect lifecycle.
   useEffect(() => {
     if (!meetingId || !token) return;
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -139,9 +115,7 @@ export function useChat(
             };
             return copy;
           }
-          // No bubble yet — stub one in. This is a defensive branch; the
-          // optimistic-update path in `send` pre-creates the placeholder
-          // so chunks always have a target.
+          // Defensive: `send` normally pre-creates the placeholder.
           return [
             ...prev,
             {
@@ -205,10 +179,7 @@ export function useChat(
 
       try {
         const { message_id } = await postChatMessage(meetingId, trimmed, token);
-        // Pre-create the assistant bubble so streaming chunks always find a
-        // target. The server already inserted the row; we mirror it locally
-        // so the bubble paints immediately at opacity-1 (no flicker on the
-        // first chunk landing).
+        // Pre-create the assistant bubble so streaming chunks have a target.
         setMessages((prev) => [
           ...prev,
           {
@@ -221,7 +192,6 @@ export function useChat(
         ]);
         setStreamingId(message_id);
       } catch (e) {
-        // Roll back the optimistic user bubble.
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setError(e instanceof Error ? e.message : "Failed to send message");
       }

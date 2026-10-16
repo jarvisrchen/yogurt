@@ -1,36 +1,22 @@
 @import "tailwindcss";
 
-/* ────────────────────────────────────────────────────────────────────────────
- * Yogurt design tokens — PRD §16 (Blueberry theme, the default and only v1 theme).
- * Strawberry and Matcha-dark themes are documented in §16.2 but deferred
- * (see §15 — "Blueberry only in v1"). UI-6 adds a dark variant of Blueberry:
- * the same tokens, re-pointed under `:root[data-theme="dark"]` below.
- *
- * The `@theme` directive is Tailwind 4's CSS-first config replacement for
- * tailwind.config.ts. Every variable here becomes a Tailwind utility:
- *   --color-paper   → bg-paper, text-paper, border-paper, etc.
- *   --radius-card   → rounded-card
- *   --shadow-card   → shadow-card
- *   --ease-slide    → ease-slide (used in transition-timing)
- *   --animate-recpulse → animate-recpulse
- * ──────────────────────────────────────────────────────────────────────────── */
+/* Tokens become Tailwind utilities via `@theme`. The dark variant re-points them under `:root[data-theme="dark"]`. */
 
 @theme {
-  /* ─── Color (PRD §16.2) ──────────────────────────────────────────────── */
   --color-paper:   #FBF7EF;  /* app background, hero surfaces             */
   --color-card:    #FFFFFF;  /* cards, surfaces over paper                */
   --color-ink:     #211D18;  /* user notes, headings, primary text        */
   --color-grey:    #A89F90;  /* secondary captions, transcript "Them"     */
-  --color-ai:      #7A7264;  /* AI-added text (UI-7: 4.5:1 on paper)      */
+  --color-ai:      #7A7264;  /* AI-added text (4.5:1 on paper)            */
   --color-line:    #EBE3D5;  /* borders, dividers                         */
-  --color-blue:    #5B4FC7;  /* primary blueberry — buttons, transcript   */
-  --color-blsoft:  #ECE9FB;  /* soft blueberry — active-nav, pill bg      */
+  --color-blue:    #5B4FC7;  /* primary blueberry: buttons, transcript   */
+  --color-blsoft:  #ECE9FB;  /* soft blueberry: active-nav, pill bg      */
   --color-straw:   #E07A66;  /* recording indicator, error accent         */
-  --color-strsoft: #FBE6E0;  /* soft strawberry — error/warning bg        */
+  --color-strsoft: #FBE6E0;  /* soft strawberry: error/warning bg        */
   --color-matcha:  #5E9E73;  /* local-only / privacy / success            */
-  --color-mtsoft:  #E7F0E8;  /* soft matcha — local-mode badges           */
+  --color-mtsoft:  #E7F0E8;  /* soft matcha: local-mode badges           */
   --color-mut:     #8A8174;  /* muted text on cards                       */
-  /* Label chip palette (LabelChip.tsx) - the three non-brand label colors. */
+  /* Label chip palette (LabelChip.tsx): the three non-brand label colors. */
   --color-lilac:     #8A5BB8;
   --color-lilacsoft: #F3E8FB;
   --color-honey:     #A67C1B;
@@ -38,28 +24,23 @@
   --color-slate:     #4E5D6B;
   --color-slatesoft: #E8ECF0;
 
-  /* ─── Type families (PRD §16.3) ──────────────────────────────────────── */
   --font-sans:  "Manrope", "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  /* ─── Border radius (PRD §16.4) ──────────────────────────────────────── */
   --radius-chip:   8px;    /* small chip                                    */
   --radius-button: 12px;   /* buttons, inputs, nav rows                     */
   --radius-card:   16px;   /* cards                                         */
   --radius-panel:  24px;   /* floating panels: chat window, dialogs, dock   */
   --radius-pill:   999px;  /* pills, recording badge                        */
 
-  /* ─── Elevation (PRD §16.4) ──────────────────────────────────────────── */
   --shadow-card:   0 16px 32px -4px rgba(33, 29, 24, 0.06);
   --shadow-pop:    0 12px 16px -4px rgba(33, 29, 24, 0.18);
   --shadow-window: 0 24px 48px -8px rgba(33, 29, 24, 0.22);
   --shadow-button-blue: 0 8px 16px -6px rgba(91, 79, 199, 0.35);
 
-  /* ─── Motion easings (PRD §16.5) ─────────────────────────────────────── */
   --ease-pop:   cubic-bezier(0, 0, 0.2, 1);          /* popUp 260ms        */
   --ease-slide: cubic-bezier(0.2, 0.7, 0.2, 1);      /* slideInRight 340ms */
 
-  /* ─── Animations (PRD §16.5) ─────────────────────────────────────────── */
   --animate-recpulse:  recpulse 1.4s ease-in-out infinite;
   --animate-blink:     blink    1.0s step-end infinite;
   --animate-shimmer:   shimmer  1.25s linear infinite;
@@ -70,7 +51,6 @@
   --animate-staggered-reveal: staggered-reveal 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-/* ─── Keyframes (referenced by --animate-* above) ─────────────────────────── */
 @keyframes recpulse {
   0%, 100% { opacity: 1;   transform: scale(1);    }
   50%      { opacity: 0.55; transform: scale(1.15); }
@@ -104,15 +84,10 @@
   100% { opacity: 1; transform: translateY(0);    }
 }
 
-/* ─── Base resets ─────────────────────────────────────────────────────────── */
 :root { color-scheme: light; }
 
-/* === UI-6: dark mode ======================================================
- * `data-theme` is stamped on <html> by the inline script in index.html
- * (pre-paint) and kept current by `web/src/lib/theme.ts`. Tailwind 4 emits
- * `var(--color-*)` in every utility, so overriding the tokens here restyles
- * the whole app; components must not hardcode palette hex values.
- * ========================================================================== */
+/* `data-theme` is stamped on <html> by the inline script in index.html (pre-paint) and kept current by
+ * `web/src/lib/theme.ts`. Components must not hardcode palette hex values, since utilities read `var(--color-*)`. */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --color-paper:   #1B1815;
@@ -139,11 +114,6 @@
   --shadow-window: 0 24px 48px -8px rgba(0, 0, 0, 0.6);
 }
 
-/* === Heading scale (PRD §16.3: section title 24-30, card title 16-21) ====
- * Named recipes for the bold Manrope headings that were being re-typed as
- * `font-bold tracking-tight text-[Npx] ...` at every call site (and drifting:
- * the 18px card title had two line-heights).
- * ========================================================================== */
 @utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
 @utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
 @utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
@@ -165,8 +135,6 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* === Phase 3: live transcript dock motion (PRD §16.5) ===================== */
-
 @keyframes slideInRight {
   from { transform: translateX(100%); }
   to   { transform: translateX(0); }
@@ -185,16 +153,8 @@ html, body {
   animation: slideOutRight 340ms cubic-bezier(.2, .7, .2, 1) both;
 }
 
-/* === Phase 4: hero augmented-notes swatch contract (PRD §16.7 / CONTEXT D-31)
- *
- * `.ai-grey` is the LLM-added run color: the `--color-ai` token (`#7A7264`
- *   light / `#A69D90` dark). It was `--color-grey` until UI-7; that token is
- *   now captions only, so AI prose can sit higher-contrast than a caption
- *   while staying clearly lighter than `--color-ink` user notes.
- * `.transcript-link` is the `↳ HH:MM` deep-link affordance: blueberry text
- *   (`--color-blue` = `#5B4FC7`) with a 1.5px dotted lilac underline.
- * `.yogurt-editor` enforces the 660px hero column width (NOTES-01).
- * ========================================================================== */
+/* `.ai-grey` uses `--color-ai`, not `--color-grey`, so AI prose sits higher-contrast than a caption
+ * while staying lighter than `--color-ink` user notes. */
 
 .ai-grey {
   color: var(--color-ai);
@@ -217,29 +177,17 @@ html, body {
   margin: 0 auto;
 }
 
-/* === Phase 5: streaming enhance preview ===================================
- *
- * `[data-streaming]` is stamped on the YogurtEditor wrapper (see
- * `web/src/editor/index.tsx`) while the raw markdown preview is being
- * replaced snapshot-by-snapshot from the WS `enhance_progress` stream. The
- * whole preview reads as AI text (matching the Legend's grey swatch), and a
- * pulsing caret on the last block signals "still writing". The swap to the
- * final merged document (with real `.ai-grey` spans) is instant - no
- * transition on settle.
- * ========================================================================== */
+/* Streaming preview: the whole preview reads as AI text and a pulsing caret on the last block signals
+ * "still writing". The swap to the final document is instant. */
 
 [data-streaming] .ProseMirror,
 .yogurt-editor[data-streaming] .ProseMirror :is(h1, h2, h3) {
-  /* The second selector out-specifies the `.yogurt-editor .ProseMirror h1`
-   * ink rule below so headings go grey with the rest of the preview. */
+  /* The second selector out-specifies the `.yogurt-editor .ProseMirror h1` ink rule below. */
   color: var(--color-grey);
 }
 
-/* The prompt asks for `data-ts` in seconds but models sometimes emit the raw
- * `ts_ms` (observed live: MiniMax-M3 wrote 27300 for 00:27, rendering as
- * 455:00). The server-side merge re-derives every timestamp from the
- * transcript, so hide the deep-links until the merged document lands rather
- * than show wrong ones. */
+/* Models sometimes emit raw `ts_ms` instead of seconds, which renders wrong timestamps. The server-side
+ * merge re-derives them, so hide deep-links until the merged document lands. */
 [data-streaming] [data-transcript-link] {
   display: none;
 }
@@ -255,25 +203,10 @@ html, body {
   animation: recpulse 1s steps(2) infinite;
 }
 
-/* === Phase 4 Plan 04-04: enhancing-state UI (CONTEXT D-28 / D-29 / D-30) ===
- *
- * The shimmer + dot-pulse + progress-bar durations are LOAD-BEARING per
- * PRD §16.5 motion tokens. Do not round, do not interpolate.
- *
- *   .shimmer            — 1.25s linear infinite gradient sweep (CONTEXT D-29)
- *   .enhancing-dot      — 1.4s recpulse ease-in-out infinite  (CONTEXT D-28)
- *   .enhancing-bar-fill — 1.8s ease-in-out infinite slide      (CONTEXT D-28)
- *
- * `--animate-shimmer` and `--animate-recpulse` are defined in the Phase 1
- * `@theme` block above; we reference those keyframes by name here. The
- * `enhancing-bar` keyframes are local to this section because no other
- * surface needs the 1.8s slide.
- * ========================================================================== */
+/* Shimmer, dot-pulse and bar durations are fixed by the PRD motion tokens. Do not round or interpolate. */
 
 .shimmer {
-  /* Phase 1's `@keyframes shimmer` sweeps from -200% → 200% — the gradient
-   * needs `background-size: 200% 100%` so the sweep covers the full width
-   * with overlap. */
+  /* The gradient needs `background-size: 200% 100%` so the shimmer keyframes sweep the full width with overlap. */
   background: linear-gradient(
     90deg,
     var(--color-line) 0%,
@@ -281,10 +214,6 @@ html, body {
     var(--color-line) 100%
   );
   background-size: 200% 100%;
-  /* Duration / timing 1.25s linear infinite is load-bearing (CONTEXT D-29
-   * + PRD §16.5). Phase 1's `--animate-shimmer` already encodes this, but
-   * we spell it out here for grep-ability — the acceptance gate searches
-   * for the literal string "1.25s linear infinite". */
   animation: shimmer 1.25s linear infinite;
 }
 
@@ -293,7 +222,6 @@ html, body {
   height: 8px;
   border-radius: 999px;
   background: var(--color-blue, #5B4FC7);
-  /* 1.4s recpulse is load-bearing (CONTEXT D-28 + PRD §16.5). */
   animation: recpulse 1.4s ease-in-out infinite;
 }
 
@@ -310,53 +238,23 @@ html, body {
   100% { transform: translateX(400%); }
 }
 
-
-/* --- Phase 6: chat window pop animation (PRD §16.5) --- */
-/* Centering is owned by the Tailwind v4 `translate` property
-   (-translate-x-1/2) on the element - the keyframes must NOT repeat the
-   -50% shift in `transform`, or both apply at once and the panel opens a
-   full panel-width left of its anchor (observed live: chat window jumped
-   left of the Ask pill on open). */
+/* Centering comes from the Tailwind v4 `translate` property (-translate-x-1/2) on the element. The keyframes
+   must not repeat the -50% shift in `transform`, or the panel opens a full width left of its anchor. */
 @keyframes popUp {
   0%   { transform: translateY(8px) scale(0.96); opacity: 0; }
   100% { transform: translateY(0)   scale(1);    opacity: 1; }
 }
 .anim-popUp { animation: popUp 260ms ease-out both; }
 
-/* Pop-shadow used by ChatWindow (PRD §16.4 elevation: Pop) */
 .shadow-pop { box-shadow: 0 12px 30px -10px rgba(40, 30, 15, 0.22); }
 
-/* === Phase 7 Plan 07-04: EmptyLibrary floating logo ====================== *
- *
- * `.float-3500` — 3.5s ease-in-out infinite gentle vertical drift. The class
- * name encodes the duration (3.5s = 3500ms); do NOT parameterize it. PRD
- * §16.5 locks the cadence and the EmptyLibrary CSS contract grep searches
- * for the literal animation shorthand below — exactly one occurrence in
- *
- * The shared `@keyframes float` block lives above; this just binds it to a
- * single load-bearing utility used by `EmptyLibrary.tsx`.
- * ========================================================================= */
+/* The class name encodes the duration (3.5s). The PRD locks this cadence. */
 .float-3500 {
   animation: float 3.5s ease-in-out infinite;
 }
 
-/* === Editor typography — TipTap content inside `.yogurt-editor` ===========
- *
- * Tailwind 4 preflight zeroes list markers, heading sizes, and margins,
- * which left the TipTap `.ProseMirror` contenteditable rendering markdown
- * as undifferentiated 15px lines. Restore a minimal, token-driven document
- * style scoped to the editor mounts only (TipTap stamps `.ProseMirror` on
- * the contenteditable it renders inside `.yogurt-editor`).
- * ========================================================================== */
-
-/* Docs/TODO.md "thick blue/purple ring" bug: the browser's default
- * text-field focus outline paints on the `.ProseMirror` contenteditable the
- * instant it's clicked into. Because user notes and AI-grey content share
- * this one contenteditable (aiGrey is an inline mark, not a separate
- * wrapper), that outline draws around the whole document - reading as if
- * the AI content itself got focused. The blinking caret already shows
- * where typing lands, same as any other doc-style editor, so drop the
- * native outline rather than replace it with another ring. */
+/* Drop the native focus outline: user notes and AI-grey content share this one contenteditable, so the
+ * ring would read as the AI content being focused. The caret already shows where typing lands. */
 .yogurt-editor .ProseMirror {
   outline: none;
 }
@@ -389,7 +287,6 @@ html, body {
   margin: 0;
 }
 
-/* Heading scale: 24 / 19 / 16 within the PRD §16.3 card-title band. */
 .yogurt-editor .ProseMirror h1,
 .yogurt-editor .ProseMirror h2,
 .yogurt-editor .ProseMirror h3 {
@@ -441,10 +338,7 @@ html, body {
   font-size: inherit;
 }
 
-/* Meeting.tsx task 3 — @tiptap/extension-placeholder's empty-doc hook.
- * Muted --color-mut so it reads as an affordance, not real content (the
- * old approach seeded literal prose into the doc, which got sent to the
- * LLM verbatim on End meeting). */
+/* Muted so the placeholder reads as an affordance, not real content. */
 .yogurt-editor .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
@@ -453,9 +347,7 @@ html, body {
   color: var(--color-mut);
 }
 
-/* MeetingPost.tsx task 10 — brief highlight when a `↳ HH:MM` deep-link
- * scrolls the transcript dock to the nearest segment. Fades from
- * --color-blsoft back to transparent over 1.5s. */
+/* Brief highlight when a deep-link scrolls the transcript dock to the nearest segment. */
 @keyframes transcript-highlight-fade {
   0%   { background-color: var(--color-blsoft); }
   100% { background-color: transparent; }

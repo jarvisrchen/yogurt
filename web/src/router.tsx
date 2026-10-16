@@ -14,40 +14,8 @@ import { useFirstRunRedirect } from "./hooks/useFirstRunRedirect";
 import { RecordingPill } from "./components/RecordingPill";
 import { MeetingDetectedBanner } from "./components/MeetingDetectedBanner";
 
-/**
- * Top-level route table.
- *
- *   "/"                    — Phase 7 Library (sidebar + date-grouped meeting cards)
- *   "/starred"             — Library filtered to starred meetings
- *   "/label/:labelId"      — Library filtered to meetings carrying a label
- *   "/welcome"             — Phase 7 Plan 07-04 onboarding flow (PRD §5.10)
- *   "/style-guide"         — Phase 1 design-system showcase
- *   "/meeting/new"         — Phase 4 bootstrap: POSTs /api/meetings then
- *                            redirects to /meeting/:id (replace).
- *   "/meeting/:id"         — Phase 3 in-meeting view (notes editor + dock).
- *   "/meeting/:id/post"    — Phase 4 hero post-meeting view (YogurtEditor +
- *                            EnhancingBanner + Re-enhance + Legend).
- *   "/settings"            — Phase 5 (Plan 05-03) Settings page.
- *
- * The Library route shape was kept at `/meeting/:id` instead of the
- * plan-suggested `/m/:id` to keep the Phase-3/4 surface stable. Same
- * conceptual link, smaller blast radius. (Auto-fix Rule 3.)
- *
- * `<Shell>` mounts `useFirstRunRedirect` at the top of the route tree —
- * the hook only redirects when `pathname === "/"`, so deep links to
- * `/settings` / `/meeting/:id` continue to work pre-onboarding. We use a
- * pathless wrapper route (no `path`) so every child renders inside the
- * shell without an extra URL segment.
- *
- * `<Shell>` also mounts `<RecordingPill>` alongside `<Outlet>` so the
- * "return to recording" affordance is available on every route (it hides
- * itself on the live meeting view — see `RecordingPill.tsx`).
- *
- * `<MeetingDetectedBanner>` (MTG-11) shares that slot: the server returns
- * no detection while a recording is live, so exactly one of the two can
- * be on screen at a time.
- */
-
+// Pathless Shell wraps every route. useFirstRunRedirect only gates `/`, so deep links work before onboarding.
+// The banner and pill can never show together: the server reports no detection while a recording is live.
 function Shell() {
   useFirstRunRedirect();
   return (
