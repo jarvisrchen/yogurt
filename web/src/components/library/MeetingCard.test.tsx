@@ -1,12 +1,3 @@
-/**
- * MeetingCard — render coverage for the live-recording-aware `Link` target
- * (see `metaParts` pure-function tests in `MeetingCard.test.ts`).
- *
- * A meeting still recording server-side must route to the LIVE capture
- * surface (`/meeting/:id`, controls + live transcript) instead of the
- * frozen post view (`/meeting/:id/post`) — and shows a pulsing-dot
- * "Recording" indicator in place of its time/duration meta line.
- */
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";

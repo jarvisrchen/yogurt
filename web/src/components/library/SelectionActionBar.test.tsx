@@ -1,10 +1,3 @@
-/**
- * `SelectionActionBar` - MTG-14 floating bulk-action bar. Covers the
- * rendering the ticket calls out explicitly: the "N selected" count,
- * Clear, Select all, and the Delete confirm step (irreversible action -
- * must not fire on the first click). API hooks are mocked the same way
- * `LabelPicker.test.tsx` mocks them - no real network calls.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -84,8 +77,7 @@ describe("SelectionActionBar", () => {
   it("confirming Delete? fires the bulk mutation with every selected id", async () => {
     renderBar(2);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    // ConfirmPanel's buttons carry `role="menuitem"` (see
-    // DeleteMeetingConfirm.test.tsx) - same reused component here.
+    // ConfirmPanel buttons carry `role="menuitem"`.
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete?" }));
     expect(bulkDeleteMutateAsync).toHaveBeenCalledWith({
       ids: ["m0", "m1"],

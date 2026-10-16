@@ -86,7 +86,6 @@ describe("MeetingDetectedBanner", () => {
     renderBanner();
     fireEvent.click(screen.getByText("Start recording"));
 
-    // Create still in flight: the prompt must still be on screen.
     expect(screen.getByText("Zoom")).toBeInTheDocument();
     expect(navigateSpy).not.toHaveBeenCalled();
 
@@ -96,7 +95,6 @@ describe("MeetingDetectedBanner", () => {
         state: { autoStart: true },
       }),
     );
-    // ...and only then does it get out of the way.
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
   });
 
@@ -124,7 +122,6 @@ describe("MeetingDetectedBanner system notification", () => {
       tag: "yogurt-meeting-detected",
     });
 
-    // A repeat poll of the same window must not fire a second notification.
     state.detected = { window_id: 7, app: "Zoom", title: "Zoom Meeting" };
     rerender(
       <MemoryRouter>

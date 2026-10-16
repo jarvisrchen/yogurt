@@ -1,12 +1,3 @@
-// Round-trip: plain markdown → TipTap doc → markdown returns the original.
-//
-// Per CONTEXT D-05 / D-06, the round-trip surface that matters is
-// `markdownToHtml` (consumed by editor.commands.setContent) + `docToMarkdown`
-// (the writer). The plan-template's simple round-trip test ("Hello world"
-// → doc → "Hello world") is satisfied below by spinning up a real TipTap
-// editor with `yogurtExtensions()`, applying the HTML, then serializing
-// back.
-
 import { describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/core";
 import { yogurtExtensions } from "./extensions";

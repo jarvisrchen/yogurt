@@ -3,11 +3,6 @@ import { render, screen, act, waitFor } from "@testing-library/react";
 import { TranscriptDock } from "./TranscriptDock";
 import type { StoredTranscriptSegment, TranscriptEvent } from "../lib/ws";
 
-/**
- * Mock WebSocket shared by every dock test. Same shape as ws.test.ts —
- * intentionally duplicated rather than factored out so each test file
- * stays self-contained.
- */
 class MockWebSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -15,12 +10,8 @@ class MockWebSocket {
   static readonly CLOSED = 3;
 
   static lastInstance: MockWebSocket | null = null;
-  // Live mode now opens two independent WS connections (transcript +
-  // useAudioLevels), so tests that need the transcript socket specifically
-  // must pick it out by creation order rather than assume `lastInstance`
-  // is it. `useTranscriptWs`'s effect runs before `useAudioLevels`'s (hook
-  // declaration order in TranscriptDock), so `instances[0]` is always the
-  // transcript socket when both are open.
+  // Live mode opens two WS connections (transcript + useAudioLevels). The transcript
+  // socket is `instances[0]` because its effect runs first.
   static instances: MockWebSocket[] = [];
 
   url: string;
@@ -100,7 +91,6 @@ describe("TranscriptDock", () => {
     const panel = screen.getByTestId("transcript-dock-panel");
     expect(panel).toBeInTheDocument();
     expect(panel.className).toMatch(/dock-open/);
-    // After opening the button label flips to "Hide live transcript".
     expect(
       screen.getByRole("button", { name: /hide live transcript/i }),
     ).toBeInTheDocument();
@@ -116,8 +106,6 @@ describe("TranscriptDock", () => {
       screen.getByRole("button", { name: /show live transcript/i }).click();
     });
 
-    // Wait for both WS connections to open (transcript + audio levels) and
-    // grab the transcript one specifically — see the `instances` comment above.
     await waitFor(() => expect(MockWebSocket.instances.length).toBeGreaterThanOrEqual(2));
     const ws = MockWebSocket.instances[0];
 
@@ -138,7 +126,6 @@ describe("TranscriptDock", () => {
     const rows = await screen.findAllByText(/hi there|hello back/);
     expect(rows.length).toBeGreaterThanOrEqual(2);
 
-    // Inspect the data-channel rows.
     const dataRows = document.querySelectorAll("[data-channel]");
     expect(dataRows.length).toBe(2);
 
@@ -148,14 +135,13 @@ describe("TranscriptDock", () => {
     expect(firstLabel.textContent).toBe("Me");
     expect(secondLabel.textContent).toBe("Them");
 
-    // Tokens, not hex, so the labels follow dark mode (UI-6).
+    // Tokens, not hex, so the labels follow dark mode.
     expect(firstLabel.style.color).toBe("var(--color-ink)");
     expect(secondLabel.style.color).toBe("var(--color-grey)");
   });
 
   it("keeps the header icon-free and shows the shortened 'Transcript' label on the collapsed tab in live mode", async () => {
     render(<TranscriptDock meetingId="meeting-wave" token="test-token" />);
-    // Collapsed tab: shortened label, no overflow-prone "Live transcript" text.
     const btn = screen.getByRole("button", { name: /show live transcript/i });
     expect(btn.textContent).toContain("Transcript");
     expect(btn.textContent).not.toContain("Live transcript");
@@ -163,9 +149,6 @@ describe("TranscriptDock", () => {
     act(() => {
       btn.click();
     });
-    // Header still says "Live transcript" (unchanged) and now renders the
-    // wave icon (aria-hidden presentation span) instead of the old static
-    // equalizer glyph.
     const panel = screen.getByTestId("transcript-dock-panel");
     expect(panel.textContent).toContain("Live transcript");
     const waveIcons = panel.querySelectorAll('[role="presentation"]');
@@ -192,8 +175,6 @@ describe("TranscriptDock", () => {
         .getByRole("button", { name: /hide live transcript/i })
         .click();
     });
-    // Symmetric close: the panel stays mounted mid-animation with the
-    // dock-closed (slideOutRight) class instead of vanishing instantly.
     expect(screen.getByTestId("transcript-dock-panel").className).toMatch(
       /dock-closed/,
     );
@@ -276,9 +257,7 @@ describe("TranscriptDock — static mode (MeetingPost task 9)", () => {
       />,
     );
 
-    // MeetingPost dispatches this the instant the user clicks a deep-link,
-    // BEFORE React has re-rendered the dock as open — so no matching DOM
-    // nodes exist yet.
+    // Dispatched on click, before React re-renders the dock as open.
     act(() => {
       window.dispatchEvent(
         new CustomEvent("yogurt:transcript:scrollTo", { detail: { ts: 61 } }),
@@ -286,8 +265,6 @@ describe("TranscriptDock — static mode (MeetingPost task 9)", () => {
     });
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
-    // Now the dock actually opens (MeetingPost's `transcriptOpen` state
-    // flips true right after the dispatch above).
     rerender(
       <TranscriptDock
         meetingId={null}

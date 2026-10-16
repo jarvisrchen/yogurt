@@ -1,20 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * MTG-1: a live meeting's transcript dock must still show the persisted
- * history after navigating to the Library and back.
- *
- * The bug was a token race, and it only reproduces through a real
- * client-side navigation: the second visit renders with React Query's
- * cache already warm (so `transcript_json` seeds the dock on the very
- * first render) while `/api/session-token` has not resolved yet (so
- * `token` is still null). The connect effect used to clear `events` on
- * that null token, wiping the seed a tick after it landed. A hard
- * refresh hid the bug because the cold cache made the seed land after
- * the token instead.
- *
- * Same browser-level backend mock as `library-navigation.spec.ts` — no
- * keychain, no audio, no live STT.
+ * A live meeting's transcript dock must keep its persisted history across a
+ * client-side navigation. The second visit renders with a warm React Query
+ * cache (so `transcript_json` seeds the dock immediately) while
+ * `/api/session-token` is still unresolved. The connect effect once cleared
+ * `events` on that null token. A hard refresh hides the bug because the cold
+ * cache seeds after the token.
  */
 
 const MEETING_ID = "019f0000-0000-7000-8000-000000000042";
@@ -25,7 +17,6 @@ const TRANSCRIPT = [
   { ts_ms: 4_000, channel: "them", text: "and the reply that followed" },
 ];
 
-/** Recording in progress: `started_at` stamped, `ended_at` still null. */
 const MEETING = {
   id: MEETING_ID,
   title: "Standup in progress",
@@ -96,8 +87,7 @@ async function mockBackend(page: Page) {
   await page.route("**/api/audio/permission", (r) =>
     r.fulfill({ json: { screen_recording: "granted", microphone: "granted" } }),
   );
-  // This meeting is the one currently recording, so MeetingCard links to
-  // the LIVE route (`/meeting/:id`) and Meeting.tsx skips its POST /start.
+  // The recording meeting's card links to the live route, so Meeting.tsx skips POST /start.
   await page.route(/\/api\/meetings\/active(\?|$)/, (r) =>
     r.fulfill({
       json: { id: MEETING_ID, title: MEETING.title, started_at: MEETING.started_at, stt: "local" },
@@ -124,8 +114,7 @@ test("live transcript history survives a Library round trip (MTG-1)", async ({
   await expect(panel.getByText("spoken before the navigation")).toBeVisible();
   await expect(panel.getByText("and the reply that followed")).toBeVisible();
 
-  // Client-side nav out and back - the whole point of the test. The
-  // Library link, not a reload: a reload repopulates the dock either way.
+  // Navigate client-side via the Library link: a reload repopulates the dock either way.
   await page.getByRole("link", { name: /Back to library/ }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.getByText("Standup in progress").first().click();

@@ -1,26 +1,9 @@
-/**
- * Phase 7 Plan 07-04 — `useFirstRunRedirect` redirects the SPA from `/`
- * to `/welcome` when ANY of the four onboarding predicates fails:
- *   • `first_run_completed=false`
- *   • Screen Recording denied
- *   • Microphone denied (added by quick task 260628-g71)
- *   • No active provider
- *
- * The test renders a tiny shell that mounts the hook and prints
- * `useLocation().pathname` via a `<Probe>`. We mock the three upstream
- * hooks (`useSettings`, `useScreenRecordingStatus`, `useMicrophoneStatus`)
- * so each case can dial in the exact predicate combination without
- * touching the network or the React-Query cache.
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import { useFirstRunRedirect } from "./useFirstRunRedirect";
 
-// ─── Hoisted mock state ─────────────────────────────────────────────────────
-// `vi.mock` factories run before the module imports, so we expose a couple
-// of `vi.hoisted` slots that each test can overwrite per-case.
+// `vi.mock` factories run before imports, so per-test state lives in `vi.hoisted` slots.
 
 const state = vi.hoisted(() => ({
   settings: undefined as unknown,
@@ -39,8 +22,6 @@ vi.mock("./useScreenRecordingStatus", () => ({
 vi.mock("./useMicrophoneStatus", () => ({
   useMicrophoneStatus: () => state.mic,
 }));
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function Probe() {
   const { pathname } = useLocation();
@@ -94,8 +75,6 @@ function screenRecLoaded(granted: boolean) {
 function micLoaded(granted: boolean) {
   return { granted, status: granted ? "granted" : "denied", isLoading: false, error: null };
 }
-
-// ─── Cases ──────────────────────────────────────────────────────────────────
 
 describe("useFirstRunRedirect", () => {
   beforeEach(() => {

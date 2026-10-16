@@ -1,13 +1,3 @@
-/**
- * ModelPicker test suite (Phase 8 Plan 08-03).
- *
- * Verifies the two click-routing branches:
- *   - a downloaded pill click → `onSelect(name)` (and NOT `onRequestDownload`)
- *   - an undownloaded pill click → `onRequestDownload(name)` (and NOT `onSelect`)
- *
- * Visual / a11y assertions are out of scope for this suite — those are
- * the M1-Air bench's job.
- */
 import { describe, it, expect, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ModelPicker } from "./ModelPicker";
@@ -133,8 +123,7 @@ describe("ModelPicker", () => {
   });
 
   it("shows a brew chip instead of a trash for a Homebrew-managed model", () => {
-    // AUD-4: the server refuses to delete out of Homebrew's prefix, so
-    // the picker must not offer an affordance that can only 409.
+    // The server refuses to delete out of Homebrew's prefix, so offer no affordance that can only 409.
     render(
       <ModelPicker
         models={MODELS.map((m) =>
@@ -150,7 +139,6 @@ describe("ModelPicker", () => {
       screen.queryByRole("button", { name: /delete medium\.en/i }),
     ).not.toBeInTheDocument();
     expect(screen.getByTitle(/remove it with brew uninstall/i)).toBeInTheDocument();
-    // A normally-downloaded model keeps its trash.
     expect(
       screen.getByRole("button", { name: /delete tiny\.en/i }),
     ).toBeInTheDocument();

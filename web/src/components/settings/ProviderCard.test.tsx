@@ -1,13 +1,3 @@
-/**
- * ProviderCard - cli adapter (LLM-4) rendering coverage.
- *
- * The http-adapter branch already has indirect regression coverage via
- * `Settings.test.tsx` (its fixture's active provider is http-adapter
- * Ollama). This file covers the new cli-adapter branch specifically: no
- * BASE URL field, no Edit button (nothing editable there), no API KEY
- * section, a Test button reachable with no key at all, and a `--model`
- * override picker gated behind a successful Test.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

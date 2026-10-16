@@ -1,16 +1,3 @@
-/**
- * ComboBox - text input + clickable dropdown of suggestions.
- *
- * Replaces the `<input list>` + `<datalist>` pattern that ships with
- * every browser but renders inconsistently on Safari/macOS (no dropdown
- * arrow, click does nothing in some versions). The combo-box gives the
- * user a real "click to see options" affordance with the same free-text
- * escape hatch as the native autocomplete.
- *
- * `onChange` fires on every keystroke (the parent's draft state); `onCommit`
- * fires once when the user actually commits to a value - a pick, an Enter
- * that isn't opening the popup, or a blur outside the component.
- */
 import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";

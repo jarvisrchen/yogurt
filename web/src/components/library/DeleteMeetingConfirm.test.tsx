@@ -1,18 +1,6 @@
 /**
- * DeleteMeetingConfirm tests.
- *
- * Covers:
- *   - icon-variant confirm overlays the trashcan instead of replacing it
- *     (the post-meeting topbar used to reflow when the confirm UI expanded)
- *   - menuitem-variant confirm still replaces the menuitem (existing behavior)
- *   - Cancel reverts without mutating
- *   - Delete? calls the mutation with the right args
- *
- * Note: the confirm-panel buttons carry `role="menuitem"` from the original
- * menu-context implementation. The post-meeting topbar technically isn't a
- * menu, but the role is harmless outside a `role="menu"` parent (screen
- * readers ignore orphaned menuitems). Tests query them via that role since
- * it's the most reliable discriminator between the panel and the trashcan.
+ * The confirm-panel buttons carry `role="menuitem"`, which is harmless outside a
+ * `role="menu"` parent. Tests query by it to tell the panel from the trashcan.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -50,7 +38,6 @@ describe("DeleteMeetingConfirm — icon variant", () => {
     expect(
       screen.getByRole("button", { name: /delete meeting/i }),
     ).toBeInTheDocument();
-    // Confirm panel is not present until the trashcan is clicked.
     expect(screen.queryByRole("menuitem", { name: /^delete\?$/i })).toBeNull();
   });
 
@@ -58,11 +45,9 @@ describe("DeleteMeetingConfirm — icon variant", () => {
     renderIcon();
     fireEvent.click(screen.getByRole("button", { name: /delete meeting/i }));
 
-    // Trashcan still present - confirm UI must not replace it.
     expect(
       screen.getByRole("button", { name: /delete meeting/i }),
     ).toBeInTheDocument();
-    // Confirm panel reachable.
     expect(screen.getByRole("menuitem", { name: /^delete\?$/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /^cancel$/i })).toBeInTheDocument();
   });
@@ -81,7 +66,6 @@ describe("DeleteMeetingConfirm — icon variant", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /^cancel$/i }));
 
     expect(mutateAsync).not.toHaveBeenCalled();
-    // Back to rest state: trashcan only, no confirm panel.
     expect(
       screen.getByRole("button", { name: /delete meeting/i }),
     ).toBeInTheDocument();

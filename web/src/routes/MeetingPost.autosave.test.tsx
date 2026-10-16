@@ -1,14 +1,7 @@
 /**
- * MeetingPost.tsx — enriched-autosave data-loss regression.
- *
- * Reproduces the observed live bug: a post-view mount that merely LOADS a
- * meeting (user never touches the editor) must NEVER fire an enriched_md
- * PATCH — not on the debounce tick and not on unmount. Before the
- * userEdited gate, a stale mount flushed `enriched_md: ""` on unmount and
- * destroyed a real enhanced document.
- *
- * Also covers the empty-summary state: raw notes remain available in their
- * own document rather than being presented as generated output.
+ * A post-view mount that only loads a meeting must never PATCH `enriched_md`, on the
+ * debounce tick or on unmount. A stale mount once flushed `enriched_md: ""` on unmount
+ * and destroyed a real enhanced document.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -104,16 +97,13 @@ describe("MeetingPost enriched autosave data-loss guard", () => {
     });
     const view = renderPost();
 
-    // Let hydration fully settle (fetch + state + editor swap).
     await waitFor(() => {
       expect(screen.getByText(/content/)).toBeInTheDocument();
     });
 
-    // Sit past the 1s debounce window.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 1300));
     });
-    // Unmount (the path that destroyed data before the fix).
     view.unmount();
 
     const enrichedPatches = patchMock.mock.calls.filter(

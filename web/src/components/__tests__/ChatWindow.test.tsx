@@ -119,7 +119,6 @@ describe("ChatWindow", () => {
     fireEvent.mouseUp(screen.getByTestId("outside"));
     fireEvent.click(screen.getByTestId("outside"));
     expect(onCollapse).not.toHaveBeenCalled();
-    // Sanity: the window itself is in the DOM.
     expect(
       container.querySelector('[aria-label="Ask the meeting chat"]'),
     ).not.toBeNull();

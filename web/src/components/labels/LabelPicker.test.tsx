@@ -1,8 +1,3 @@
-/**
- * `LabelPicker` — covers the three core interactions: rendering existing
- * labels with the correct checked state, creating a brand-new label via
- * Enter, and toggling an existing label on/off.
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";

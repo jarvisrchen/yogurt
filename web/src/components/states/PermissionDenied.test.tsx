@@ -1,12 +1,3 @@
-/**
- * PermissionDenied honesty-pass test (fast task).
- *
- * The old "Restart Yogurt" button just called `window.location.reload()` —
- * a lie, since reloading the browser tab restarts nothing on the backend.
- * Asserts the replacement "Check again" button instead triggers a
- * refetch of the shared permission query, and that the copy no longer
- * tells the user to "Toggle Yogurt on".
- */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -27,9 +18,7 @@ describe("PermissionDenied", () => {
 
   it("'Check again' refetches the permission query instead of reloading the page", async () => {
     const qc = new QueryClient();
-    // Seed an active query under `permissionsKey` so refetchQueries has
-    // something to act on (mirrors how Library.tsx keeps the hook mounted
-    // alongside this component).
+    // Seed an active query so refetchQueries has something to act on.
     qc.setQueryData(permissionsKey, {
       screen_recording: "denied",
       microphone: "granted",
