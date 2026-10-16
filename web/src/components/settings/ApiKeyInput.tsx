@@ -4,25 +4,8 @@ import { settingsApi } from "../../lib/api/settings";
 import { TestKeyButton } from "./TestKeyButton";
 import { Button } from "../Button";
 
-/**
- * Password field + "Test" + "Save key" for one provider's stored key.
- *
- * Shared by `ProviderCard` (always visible on the active provider) and
- * `ProviderRow` (revealed on demand for an inactive one). Before this
- * existed only the ACTIVE card could take a key, so cloning a preset chip
- * left you with a keyless row and no way to fill it — you had to activate
- * the keyless provider first, breaking whatever LLM was working.
- *
- * "Test" runs one real completion against the provider BEFORE the key is
- * committed, which is the point: pasting a key and finding out it was
- * wrong at the next enhance is a bad trade. The draft is sent to the
- * server for the test but never stored by it, so a failed test leaves the
- * provider exactly as it was.
- *
- * The raw key never survives a save: `setDraft("")` runs in `onSuccess`,
- * and the masked view re-renders from the invalidated query rather than
- * from React state.
- */
+// The raw key never survives a save: the draft clears in onSuccess and the
+// masked view re-renders from the invalidated query.
 export function ApiKeyInput({
   providerId,
   providerName,
@@ -32,32 +15,14 @@ export function ApiKeyInput({
   onDraftChange,
 }: {
   providerId: string;
-  /**
-   * Only used for the accessible names. The Settings page can render two of
-   * these at once (active card + an expanded inactive row), so a bare
-   * "API key" label would be ambiguous to a screen reader.
-   */
+  // Used for accessible names: two of these can render at once, so a bare "API key" label is ambiguous.
   providerName: string;
-  /**
-   * Enables "Test" with an empty field — there is a stored key worth
-   * testing. Without a stored key and without a draft there is nothing to
-   * test, so the button stays disabled.
-   */
+  // Enables "Test" with an empty field when a stored key exists to test.
   hasStoredKey?: boolean;
   onSaved?: () => void;
   autoFocus?: boolean;
-  /**
-   * Reports the current draft value (the unmasked key in the password
-   * field) up to the parent on every keystroke. Used by the card to
-   * pass the draft into the MODEL `Refresh` button so the user can
-   * discover available models *before* committing the key — necessary
-   * when the saved `model` is the only thing wrong with the provider
-   * (Google's frequent deprecations being the canonical case).
-   *
-   * The draft never reaches this component's onSaved path without an
-   * explicit `Save key` click, so the parent's read of it stays
-   * read-only from the key store's perspective.
-   */
+  // Lets the parent pass the unsaved draft to the model Refresh button, so models
+  // can be listed before the key is committed.
   onDraftChange?: (draft: string) => void;
 }) {
   const qc = useQueryClient();
@@ -77,11 +42,7 @@ export function ApiKeyInput({
     },
   });
 
-  // Mirror the backend's mask shape (`••••XXXX`, last 4 chars visible) so
-  // the user can confirm they pasted the right key BEFORE clicking Save
-  // — the password field hides the rest, but a key paste where the last
-  // four characters don't match what they copied is a common typo class
-  // (trailing whitespace, accidental caps lock, partial paste).
+  // Mirrors the backend mask (last 4 chars) so a mistyped paste is visible before Save.
   const previewMasked = draft.length >= 4;
   const previewTail = draft.slice(-4);
 

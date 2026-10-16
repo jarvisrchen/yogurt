@@ -1,11 +1,3 @@
-/**
- * AudioSection — Settings page Audio section (Phase 5 Plan 05-04, SET-08).
- *
- * Renders a `<select>` of audio input devices fetched from Phase 2's
- * `GET /api/audio/devices`. Persists selection via
- * `PATCH /api/settings { audio_input_device }` and invalidates the
- * `['settings']` query so the rest of the page re-reads.
- */
 import { DeviceOptions } from "../DeviceOptions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, type General } from "../../lib/api/settings";

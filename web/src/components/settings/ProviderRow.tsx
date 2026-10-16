@@ -10,28 +10,9 @@ import { LABEL } from "./labelClass";
 
 const VALUE = "text-[13.5px] text-ink";
 
-/**
- * Inactive provider card — mirrors `ProviderCard`'s structure so every
- * provider (active or not) reads as a card. The 1.5px blueberry border,
- * ACTIVE badge, soft shadow, and Edit toggle are reserved for the active
- * card (UI-SPEC §Visuals + §Accent reservations #1) — the inactive card
- * uses a regular `--color-line` border, no shadow, and exposes
- * `Set active` beside the key/test row instead of Edit.
- *
- * BASE URL stays read-only here — it's a structural field the user almost
- * never wants to change after the provider exists. MODEL is editable via
- * the `ModelSelect` dropdown (preset hints + live `/v1/models` after a
- * key is stored) and persists on selection, so the user can switch from
- * `gemini-2.5-flash` to `gemini-2.5-pro` before activating without first
- * promoting the provider to active. The API KEY section is collapsible so
- * the card stays compact until the user opts into keying — but `Test`
- * sits next to `Replace key` in the collapsed state, because a provider
- * that is already keyed is the one most worth probing.
- *
- * `autoOpenKey` opens the key input on first mount and seeds its
- * `autoFocus`, so cloning a preset chip lands the user at the key field
- * with the cursor already there — the obvious next action.
- */
+// The inactive card has a plain line border and no shadow. The 1.5px blueberry
+// border, ACTIVE badge and Edit toggle are reserved for the active card.
+// `Test` sits next to `Replace key` while collapsed so a keyed provider can still be probed.
 
 export function ProviderRow({
   provider,
@@ -46,43 +27,25 @@ export function ProviderRow({
   autoOpenKey?: boolean;
   presetModels?: string[];
   docsUrl?: string;
-  /** Brand name from the matching built-in preset (e.g. "Google Gemini").
-   *  Used as the visible text of the docs link — the user-chosen
-   *  `provider.name` would read badly there. */
+  // Visible text of the docs link. The user-chosen `provider.name` would read badly there.
   presetName?: string;
-  /** `cli`-adapter only: the preset's suggested `--model` (e.g. "haiku"),
-   *  seeded into `cli_model` the first time a Test proves the CLI
-   *  connects. Empty for a preset with no sensible default. */
+  // `cli` only: seeded into `cli_model` the first time a Test proves the CLI connects.
   defaultCliModel?: string;
-  /** Called whenever the API key section collapses (Save or Cancel), so
-   *  the page can drop its one-shot auto-open hint (`autoOpenKey`) for
-   *  this provider. */
+  // Lets the page drop its one-shot `autoOpenKey` hint for this provider.
   onKeyClosed?: () => void;
 }) {
   const isCli = provider.adapter === "cli";
   const qc = useQueryClient();
-  // A `cli` provider has no key section to auto-open - `autoOpenKey` only
-  // ever applies to a freshly-cloned `http` provider.
   const [keying, setKeying] = useState(autoOpenKey && !isCli);
   const [modelDraft, setModelDraft] = useState(provider.model);
   const [cliModelDraft, setCliModelDraft] = useState(provider.cli_model);
-  // The MODEL picker is gated behind proof the CLI actually connects - a
-  // freshly-cloned row has no `cli_model` yet, and it stays hidden until a
-  // Test comes back `ok`. `!!provider.cli_model` alone would cover a row
-  // that already picked a model in an earlier session; the local flag
-  // covers the same session's just-passed Test before that PATCH lands.
+  // The MODEL picker stays hidden until a Test proves the CLI connects. The local
+  // flag covers a Test that passed before the `cli_model` PATCH lands.
   const [cliTestedOk, setCliTestedOk] = useState(false);
   const cliVerified = !!provider.cli_model || cliTestedOk;
-  // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
-  // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
-  // The whole point: if the saved `model` is the only thing wrong with
-  // the provider (Google's `gemini-2.5-flash` deprecation is the
-  // canonical case), the user needs to see what IS available before
-  // they can pick a replacement.
+  // Lifted out of `ApiKeyInput` so Refresh can list models before the key is saved,
+  // which matters when the saved model is the only thing wrong (a deprecated model).
   const [apiKeyDraft, setApiKeyDraft] = useState("");
-  // Sync the local draft when the cached provider model changes (after a
-  // successful PATCH invalidates the query, or when this row is reused for
-  // a different provider by some future code path).
   useEffect(() => {
     setModelDraft(provider.model);
   }, [provider.model]);
@@ -97,10 +60,7 @@ export function ProviderRow({
     mutationFn: () => settingsApi.deleteProvider(provider.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
-  // PATCH on commit - a pick from the dropdown, pressing Enter, or blurring
-  // the field - never per keystroke, so free typing doesn't fire a PATCH
-  // per character. `provider.model` is the source of truth; we only PATCH
-  // when the committed value actually differs from it.
+  // PATCH on commit, never per keystroke, and only when the value differs.
   const updateModel = useMutation({
     mutationFn: (next: string) =>
       settingsApi.updateProvider(provider.id, {
@@ -110,9 +70,7 @@ export function ProviderRow({
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
-  // Same PATCH-on-commit shape as `updateModel`, but for the CLI's
-  // `--model` override. `model` is sent back unchanged - it holds the
-  // CLI program id ("claude"/"cursor-agent"), never user-edited.
+  // `model` is sent back unchanged: it holds the CLI program id, never user-edited.
   const updateCliModel = useMutation({
     mutationFn: (next: string) =>
       settingsApi.updateProvider(provider.id, {
@@ -217,14 +175,10 @@ export function ProviderRow({
         </>
       )}
 
-      {/* `items-start`: the left column can grow taller than `Set active`
-          once a Test verdict wraps onto its own line - the button must
-          stay pinned at the top of the row, never pushed down by it. */}
+      {/* items-start keeps `Set active` pinned to the top when a Test verdict wraps. */}
       <div className="border-t border-line pt-4 mt-4 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-2">
           {isCli ? (
-            // No key concept at all - `Test` just confirms the CLI resolves
-            // and answers.
             <div className="flex flex-wrap items-center gap-3">
               <TestKeyButton
                 providerId={provider.id}
@@ -278,8 +232,6 @@ export function ProviderRow({
                   </Button>
                 </div>
               ) : (
-                // Collapsed: `Test` stays reachable so a provider that is fully
-                // set up can be probed without pretending to replace its key.
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     variant="secondary"

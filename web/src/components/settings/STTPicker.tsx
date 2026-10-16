@@ -1,30 +1,4 @@
-/**
- * STTPicker — Transcription section card pair (Phase 8 Plan 08-03).
- *
- * Wires the previously visual-only Phase-5 stub to the real STT settings
- * surface. Renders a 2-column grid with `CloudSTTCard` (Deepgram-only —
- * see below) on the left and `LocalSTTCard` (whisper.cpp picker + download
- * dialog) on the right. Clicking "Use Cloud" / "Use Local" PATCHes
- * `stt_provider`; clicking a downloaded local-model pill PATCHes
- * `stt_model`.
- *
- * Backward-compat: `<STTPicker />` is still mounted by
- * `web/src/routes/Settings.tsx`; the surface is now data-driven instead
- * of static.
- *
- * Card language matches `ProviderCard`: the selected card gets the
- * 1.5px blueberry border + `shadow-button-blue`, the other stays a plain
- * `border-line` card. The selected card shows an "In use" pill instead of
- * a switch button; the other card's switch action ("Use Cloud"/"Use
- * Local") is the one primary `Button` in the pair.
- *
- * Fast task (deepgram key UX) — the Cloud card only ever supported
- * Deepgram server-side, so the AssemblyAI/Groq pills that used to sit
- * next to it were pure decoration for providers that don't exist. Removed
- * them and replaced the pill row with the same masked-key UX
- * `<ProviderCard>` uses for LLM providers: `deepgram_key_masked` from
- * `GET /api/settings`, a paste-key input, and `POST /api/settings/stt/key`.
- */
+// The Cloud card is Deepgram only because the server supports no other cloud STT.
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
@@ -34,11 +8,8 @@ import { Button } from "../Button";
 import { Pill } from "../Pill";
 import { LABEL } from "./labelClass";
 
-/** `http()` throws `Error("<status> <statusText>: <raw body>")`. The server's
- *  422 body is `{"error": "<msg>"}` (see settings.rs's `Error::Unprocessable`)
- *  — pull just the message out so the UI shows the actual sentence instead
- *  of a status-code-prefixed JSON blob. Falls back to the raw message for
- *  anything that isn't that shape. */
+// http() throws "<status> <statusText>: <body>". The 422 body is {"error": "<msg>"},
+// so show just the message and fall back to the raw text for any other shape.
 function patchErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const jsonStart = raw.indexOf("{");
@@ -87,7 +58,6 @@ export function STTPicker() {
         Changes apply to the next recording.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {/* ─── Cloud card ─────────────────────────────────────────────── */}
       <article
         data-testid="cloud-stt-card"
         className={
@@ -166,7 +136,6 @@ export function STTPicker() {
         </div>
       </article>
 
-      {/* ─── Local card ─────────────────────────────────────────────── */}
       <LocalSTTCard
         active={isLocal}
         selectedModel={selectedModel}

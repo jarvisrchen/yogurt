@@ -4,60 +4,24 @@ import { settingsApi } from "../../lib/api/settings";
 import { ComboBox } from "./ComboBox";
 import { Button } from "../Button";
 
-/**
- * MODEL field with a click-to-open dropdown of available models + a
- * Refresh button.
- *
- * Shared by `ProviderCard` (active) and `ProviderRow` (inactive) so they
- * speak the same vocabulary. The input is wrapped in a `ComboBox` -
- * a clickable dropdown trigger that lists every available model - so
- * the user gets a real "click to see options" affordance (native
- * `<input list>` + `<datalist>` is famously unreliable on Safari/macOS).
- * Free text is always allowed; the dropdown is just a picker over
- * known suggestions.
- *
- * Suggestions come from `presetModels` (the static hint shipped with
- * the preset) and any `refreshedModels` returned by the live probe. The
- * current model is always in the list so a value the user typed earlier
- * still shows up.
- *
- * Shared with `cli`-adapter rows, where the same `Refresh` asks the
- * local binary (`cursor-agent --list-models`, `opencode models`)
- * instead of an HTTP endpoint. That catalog is not entitlement-filtered - a free Cursor
- * plan lists every model and then refuses each named one at call time -
- * so Refresh deliberately shows the whole list and lets `Test` be the
- * thing that says whether a pick actually works.
- *
- * `Refresh` calls `POST /api/settings/providers/:id/models`. If the
- * parent passes an `apiKeyDraft` (the unmasked key sitting in the API
- * KEY field), that draft is sent in the request body and used for the
- * probe - the button is useful *before* the key is saved, which matters
- * when the saved `model` is the only thing wrong with the provider
- * (Google deprecates tiers often enough that this is a real flow). The
- * backend supports a keyless probe for local runtimes (Ollama, LM
- * Studio) that need no key at all, so Refresh is only ever disabled by
- * `disabled` (the field is read-only) or while a request is in flight.
- */
+// For `cli` rows, Refresh asks the local binary instead of an HTTP endpoint. That
+// catalog is not entitlement-filtered (a free Cursor plan lists every model and
+// refuses each at call time), so Refresh shows the whole list and Test says whether a pick works.
+// A key draft is sent with Refresh so models can be listed before the key is saved.
+// The backend supports a keyless probe for local runtimes, so Refresh is disabled only
+// by `disabled` or while a request is in flight.
 
 interface Props {
   providerId: string;
   providerName: string;
   value: string;
   onChange: (next: string) => void;
-  /** Fires once when the user commits to a model - picking an option,
-   *  pressing Enter, or blurring - as opposed to `onChange`'s per-
-   *  keystroke updates. */
   onCommit?: (next: string) => void;
   presetModels: string[];
-  /**
-   * Draft key currently typed in the sibling API KEY field. Preferred
-   * over the stored key for the `Refresh` call so the user can fetch
-   * available models before committing the key. Never persisted.
-   */
+  // Preferred over the stored key for Refresh. Never persisted.
   apiKeyDraft?: string;
   disabled?: boolean;
-  /** Empty-field hint. `cli` rows say "CLI default" - leaving it blank
-   *  there means "whatever a bare `claude -p` picks", not "unset". */
+  // `cli` rows say "CLI default": blank means whatever a bare `claude -p` picks.
   placeholder?: string;
 }
 
@@ -85,12 +49,8 @@ export function ModelSelect({
     onSuccess: (models) => setRefreshedModels(models),
   });
 
-  // Order: live results first (they override the static hint), then the
-  // preset list, then the current value as a self-suggestion. Dedup,
-  // case-sensitive - providers don't agree on casing so we don't try to
-  // be clever. Memoized so a sibling keystroke (the API KEY field bubbles
-  // its draft up through the parent) doesn't hand `ComboBox` a fresh
-  // array every render.
+  // Live results override the static hint. Memoized so a sibling API KEY keystroke
+  // does not hand ComboBox a fresh array every render.
   const suggestions = useMemo(() => {
     const source = refreshedModels ?? presetModels;
     return Array.from(

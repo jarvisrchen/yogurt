@@ -3,19 +3,9 @@ import { ArrowLeft } from "lucide-react";
 import type { ProviderView } from "../../lib/api/settings";
 import { Pill } from "../Pill";
 
-/**
- * Settings page left rail — Phase 5 (Plan 05-03), SET-01..SET-03.
- *
- * Width: load-bearing `212px` (PRD §5.6 / §16.8 / 05-UI-SPEC.md). This is
- * the same width the Phase 7 library sidebar will use, but the two
- * components are deliberately NOT shared — the section list differs.
- *
- * Footer:
- * - Green matcha "Local-only · on" pill rendered iff no active provider
- *   has a non-localhost base URL (PRD §5.6 D-14).
- * - Caption disclosing where keys and data live (paths rendered in mono). The
- *   `→` glyph is U+2192 (never `->` ASCII — UI-SPEC §Copywriting).
- */
+// The 212px width matches the Library sidebar, but the components are deliberately
+// not shared because the section lists differ.
+// The `→` in the caption is U+2192, never ASCII `->`.
 
 export type SettingsSection = "model" | "transcription" | "audio" | "general";
 
@@ -33,8 +23,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
 ];
 
 export function SidebarNav({ active, onChange, providers }: Props) {
-  // "Local-only" is true iff no active provider points to a non-localhost
-  // host. Matches the server-side privacy posture (UI-SPEC §Interaction 1).
+  // Local-only holds iff no active provider points to a non-localhost host.
   const localOnly = !providers.some(
     (p) => p.is_active && !/localhost|127\.0\.0\.1/.test(p.base_url),
   );

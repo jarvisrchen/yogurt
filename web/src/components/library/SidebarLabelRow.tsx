@@ -1,12 +1,3 @@
-/**
- * `SidebarLabelRow` — one label row in the Sidebar's Labels section.
- *
- * Extracted from `Sidebar.tsx` (per the plan's ~250-line guidance) because
- * the interactive states — rename, recolor swatches, delete confirm — are
- * substantial on their own. Mirrors `MeetingCardActions`' inline
- * "Delete?" / "Cancel" confirm pattern (auto-reverts after 3s, no modal).
- */
-
 import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router";
 import { MoreHorizontal } from "lucide-react";
@@ -20,8 +11,6 @@ import { isHexColor, labelTone } from "../labels/LabelChip";
 
 const SWATCH_COLORS: PaletteColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
 
-/** Starting point shown in the custom-color inputs for a label that
- *  doesn't have a hex color yet. */
 const DEFAULT_CUSTOM_COLOR = "#8a8fa3";
 
 interface Props {
@@ -162,10 +151,7 @@ export function SidebarLabelRow({ label }: Props) {
             <input
               type="color"
               aria-label="Custom label color"
-              // Falls back past a not-yet-valid `customColor` draft (e.g.
-              // mid-typed hex in the text field below) so this native input
-              // never gets fed an invalid value, which browsers silently
-              // render as black.
+              // Falls back past a half-typed hex: browsers render an invalid color input value as black.
               value={
                 isHexColor(label.color)
                   ? label.color

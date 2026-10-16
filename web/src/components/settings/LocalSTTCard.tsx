@@ -1,54 +1,8 @@
-/**
- * LocalSTTCard — Settings → Transcription "Local · whisper.cpp" card
- * (Phase 8 Plan 08-03, PRD §5.6 / D-12).
- *
- * Replaces the Phase-7 STATE-04 "Coming in v1" stub.  Renders:
- *   - card chrome matching `ProviderCard`: blueberry border + shadow when
- *     `active`, a plain line border otherwise
- *   - header with the title + a "Use Local" button (an "In use" pill
- *     replaces it once the card is active and unblocked)
- *   - explanatory body copy
- *   - a `<ModelPicker />` row driven by `useModels()`, with live `⟳ NN%`
- *     progress on the pill of any currently-downloading model
- *   - inline `<ModelDownloadDialog />` opened by `↓`-pill clicks (or by
- *     re-clicking an in-progress pill to see byte/rate/ETA detail)
- *   - a mono footer noting the models directory
- *
- * State strategy:
- *   - `activeDownload` is THE truth about "is a download in flight?".
- *     Set when a download starts, cleared 600 ms after complete/error so
- *     the user sees 100% momentarily. Survives the dialog closing —
- *     that's the entire point of "Run in background".
- *   - `dialogOpen` is JUST about whether the modal is currently visible.
- *     Closing the modal does NOT cancel the download; it just hides the
- *     modal. The pill keeps showing `⟳ NN%` until completion.
- *   - The WS hook lives at this level (not inside the dialog) so the
- *     subscription persists across dialog open/close cycles. On
- *     `_complete` it invalidates `sttKeys.models` and the picker pill
- *     flips from `↓` to `✓` automatically.
- *
- * V1 limitation: only one concurrent download is tracked in the UI. The
- * server happily runs N parallel downloads (each `tokio::spawn`), but
- * clicking a second pill while one is in flight replaces the tracked
- * download — the original still completes server-side and its pill
- * flips to ✓ via cache invalidation.
- *
- * "Use Local" guard (fast task) — activating local STT with a model that
- * was never downloaded used to be possible from this card even though
- * recording would then fail at meeting start. The "Use Local" button is
- * now disabled unless the currently-selected model's `downloaded` flag
- * (from `useModels()`, already fetched for the pill row) is true, with a
- * "Download the model first" hint next to it.
- *
- * Delete affordance - `ModelPicker` renders a trash icon next to every
- * downloaded, non-active model pill. Confirming wires to
- * `useDeleteModel()`; the active model (whichever `stt_model` is
- * selected while local is in use) is never offered, since the server
- * 409s that case anyway. A 409/other error renders as a `role="alert"`
- * line via `deleteErrorMessage`, which strips the `http()` helper's
- * `"<status> <statusText>: "` prefix; a success renders a transient
- * "Deleted <name> - freed <size>" line for 4s.
- */
+// `activeDownload` is the truth about an in-flight download and survives the
+// dialog closing. `dialogOpen` only tracks modal visibility.
+// The WS hook lives here, not in the dialog, so progress persists across open/close.
+// Only one download is tracked in the UI. A second pill click replaces it,
+// though the server still finishes the first.
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { useModels, useDeleteModel, formatBytes } from "../../lib/api/stt";
@@ -60,9 +14,7 @@ import { TestKeyButton } from "./TestKeyButton";
 import { Button } from "../Button";
 import { Pill } from "../Pill";
 
-/** `http()` throws `Error("<status> <statusText>: <raw body>")`. The
- *  delete endpoint's 409 body is a plain sentence (not JSON) - strip the
- *  status prefix so the user sees just that sentence. */
+// http() throws "<status> <statusText>: <body>". The 409 body is a plain sentence, so strip the prefix.
 function deleteErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   // `[^:]*` not `+`: HTTP/2 has no reason phrase, so the prefix can be "409 : ".
@@ -70,13 +22,9 @@ function deleteErrorMessage(err: unknown): string {
 }
 
 interface LocalSTTCardProps {
-  /** `true` when `settings.stt_provider === "local"`. */
   active: boolean;
-  /** Currently selected model name (e.g. "small.en"). */
   selectedModel: string;
-  /** Called when the user clicks a downloaded model pill. */
   onSelectModel: (name: string) => void;
-  /** Called when the user clicks the "Use Local" radio. */
   onActivate: () => void;
 }
 
@@ -88,9 +36,7 @@ export function LocalSTTCard({
 }: LocalSTTCardProps) {
   const q = useModels();
   const del = useDeleteModel();
-  // Success line clears itself 4s after a delete resolves; tracked
-  // separately from `del.isSuccess` so a later error doesn't leave a
-  // stale "Deleted…" line hanging around forever.
+  // Tracked apart from `del.isSuccess` so a later error leaves no stale "Deleted" line.
   const [showFreed, setShowFreed] = useState(false);
   useEffect(() => {
     if (!del.isSuccess) return;
@@ -98,35 +44,16 @@ export function LocalSTTCard({
     const t = window.setTimeout(() => setShowFreed(false), 4000);
     return () => window.clearTimeout(t);
   }, [del.isSuccess, del.data]);
-  // The download we're currently tracking (survives dialog close).
   const [activeDownload, setActiveDownload] = useState<{
     name: string;
     sizeMb: number;
   } | null>(null);
-  // Whether the modal is currently open.  Closes via Cancel / Run in
-  // background / Escape; reopens when the user re-clicks the pill.
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Subscribe at THIS level so progress keeps flowing even when the
-  // dialog is closed.  Subscription drops when activeDownload is null,
-  // i.e. nothing in flight.
   const progress = useModelDownloadProgress(activeDownload?.name ?? null);
 
-  // 600 ms after the download completes successfully, clear
-  // activeDownload so the pill stops showing `⟳ NN%`. The models cache
-  // has already been invalidated by the hook, so the pill will read
-  // `downloaded:true` by the time this fires and renders as ✓.
-  //
-  // DO NOT auto-clear on error — the user needs to SEE the error.  On
-  // error, we keep activeDownload alive so:
-  //   - the pill stays `⟳ NN%` styled (a follow-up commit could flip
-  //     to a `⚠ failed` look but for v1 leaving the pill as-is is fine)
-  //   - re-clicking the pill reopens the dialog with the error visible
-  //   - the user can read the SHA mismatch / network error message and
-  //     decide whether to retry (which resumes from the partial file)
-  //     or report it.
-  // The user dismisses the error explicitly via the dialog's Cancel
-  // button, which clears activeDownload via the onClose path below.
+  // Clear 600 ms after success so 100% shows briefly. Never auto-clear on error:
+  // the pill stays reopenable so the user can read it and retry (resumes the partial file).
   useEffect(() => {
     if (!progress?.complete) return;
     const t = window.setTimeout(() => setActiveDownload(null), 600);
@@ -136,38 +63,24 @@ export function LocalSTTCard({
   const startOrReopenDownload = (name: string) => {
     const m = q.data?.find((x) => x.name === name);
     if (!m) return;
-    // If this pill is already the active download, just reopen the dialog.
     if (activeDownload?.name === name) {
       setDialogOpen(true);
       return;
     }
-    // Otherwise start a new download (replaces the tracked one).
     setActiveDownload({ name: m.name, sizeMb: m.size_mb });
     setDialogOpen(true);
   };
 
-  // The model backing `selectedModel` must actually be on disk — otherwise
-  // recording fails at meeting start with a backend error the user can't
-  // self-serve from here. Guard-gap fix: this used to be `!active &&
-  // !selectedModelDownloaded`, so once `stt_provider` was ALREADY "local"
-  // the `!active` short-circuit made the guard permanently false — a
-  // persisted-but-broken combo (e.g. the active model got deleted, or a
-  // bad row predates this guard) rendered as if nothing were wrong: no
-  // warning, and the radio looked normally enabled. Dropping `!active`
-  // makes the warning + disabled state track disk truth regardless of
-  // which provider is currently active.
+  // The selected model must be on disk or recording fails at meeting start.
+  // Deliberately not gated on `active`, so a provider already set to local
+  // with a deleted model still shows the warning.
   const selectedModelDownloaded =
     q.data?.find((m) => m.name === selectedModel)?.downloaded ?? false;
   const activateBlocked = !selectedModelDownloaded;
 
   const handleDialogClose = () => {
     setDialogOpen(false);
-    // If the user is closing the dialog while an error is visible, treat
-    // that as dismissing the failed-download state — clear activeDownload
-    // so the pill returns to its idle ↓ form. Without this the pill is
-    // stuck in the ⟳ state forever after a failure.
-    // Running download with no error: leave activeDownload alive so the
-    // pill keeps ticking and the user can reopen the dialog for detail.
+    // Closing on an error dismisses the failed download. A running download stays tracked.
     if (progress?.error) {
       setActiveDownload(null);
     }
@@ -201,9 +114,7 @@ export function LocalSTTCard({
             variant="primary"
             className="px-3 py-1.5 text-[13px] whitespace-nowrap shrink-0"
             disabled={activateBlocked}
-            // `disabled` alone is a UI nicety, not enforcement — guard
-            // in the handler too so the activation can't fire via a
-            // synthetic/programmatic click on a disabled button.
+            // Guard in the handler too so a synthetic click on a disabled button cannot activate.
             onClick={() => {
               if (!activateBlocked) onActivate();
             }}

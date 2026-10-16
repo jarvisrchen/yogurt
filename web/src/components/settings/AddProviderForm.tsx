@@ -4,27 +4,9 @@ import { settingsApi } from "../../lib/api/settings";
 import { Button } from "../Button";
 import { LABEL } from "./labelClass";
 
-/**
- * AddProviderForm — inline "+ Add" expansion for the Model section
- * (fast task: the `+ Add` button in Settings.tsx used to be dead).
- *
- * No modal library — this renders as an inline card in the same spot the
- * button sat, matching `ProviderCard`'s rounded-card/border-line/bg-card
- * chrome. `POST /api/settings/providers` inserts the row inactive
- * (`is_active=0`, same as `PresetChip`), so on success it shows up as an
- * inactive `ProviderRow` card in the list — the footer `Set active`
- * action promotes it to `ProviderCard`, whose card UX already handles
- * pasting the key. This form does not duplicate that key UI.
- */
 
 interface Props {
   onDone: () => void;
-  /**
-   * Reports the new provider's id back to the page so the freshly-created
-   * card can auto-open its API key input — same affordance as cloning a
-   * preset chip, since the form's only purpose is to set up a new provider
-   * the user is about to key.
-   */
   onCreated?: (id: string) => void;
 }
 

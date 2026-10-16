@@ -10,20 +10,7 @@ import { LABEL } from "./labelClass";
 
 const VALUE = "text-[13.5px] text-ink";
 
-/**
- * Active provider card — Phase 5 (Plan 05-03), SET-04.
- *
- * The 1.5px blueberry border is the **load-bearing visual signature** that
- * "this is the live LLM" (UI-SPEC §Visuals + §Accent reservations #1).
- * Half-step off 1px / 2px is intentional — do not round.
- *
- * The masked-key UX: when a key is stored, the field shows the canonical
- * `••••XXXX` form (server-derived from the last 4 chars) followed by a
- * green matcha `✓ stored` badge. The raw key NEVER lives in React state
- * after `setProviderKey` resolves — see `ApiKeyInput`, which clears its
- * own draft on success so the masked view re-renders from the invalidated
- * query rather than from React state.
- */
+// The 1.5px blueberry border marks the live LLM. The half-step is intentional, do not round.
 
 interface Props {
   provider: ProviderView;
@@ -38,15 +25,9 @@ export function ProviderCard({
 }: Props & {
   presetModels?: string[];
   docsUrl?: string;
-  /**
-   * Brand name from the matching built-in preset (e.g. "Google Gemini").
-   * Used as the visible text of the docs link — the user-chosen
-   * `provider.name` ("My workspace") would read badly there.
-   */
+  // Visible text of the docs link. The user-chosen `provider.name` would read badly there.
   presetName?: string;
-  /** `cli`-adapter only: the preset's suggested `--model` (e.g. "haiku"),
-   *  seeded into `cli_model` the first time a Test proves the CLI
-   *  connects. Empty for a preset with no sensible default. */
+  // `cli` only: seeded into `cli_model` the first time a Test proves the CLI connects.
   defaultCliModel?: string;
 }) {
   const isCli = provider.adapter === "cli";
@@ -57,19 +38,13 @@ export function ProviderCard({
     base_url: provider.base_url,
     model: provider.model,
   });
-  // Draft key lifted out of `ApiKeyInput` so the MODEL `Refresh` button
-  // can probe `/v1/models` with it BEFORE the user clicks `Save key`.
-  // See the matching comment in `ProviderRow` for the rationale.
+  // Lifted out of `ApiKeyInput` so Refresh can probe with it before Save key.
   const [apiKeyDraft, setApiKeyDraft] = useState("");
-  // `cli` rows skip the `editing`/`Save` flow entirely (no `Edit` button is
-  // rendered for them - see the header below), so the model picker commits
-  // straight to a PATCH, same as `ProviderRow`'s CLI branch.
+  // `cli` rows have no Edit/Save flow, so the model picker PATCHes on commit.
   const [cliModelDraft, setCliModelDraft] = useState(provider.cli_model);
   useEffect(() => {
     setCliModelDraft(provider.cli_model);
   }, [provider.cli_model]);
-  // Same gating as `ProviderRow`: no MODEL picker until a Test proves the
-  // CLI connects. See the matching comment there for the rationale.
   const [cliTestedOk, setCliTestedOk] = useState(false);
   const cliVerified = !!provider.cli_model || cliTestedOk;
 
@@ -181,10 +156,7 @@ export function ProviderCard({
               )}
             </Field>
           </div>
-          {/* One flex row, not two bare siblings: the card's `space-y-4`
-              only sets `margin-top`, and both the docs link and `Save`
-              are inline-level, so they share a line box and render
-              flush against each other with no gap (UI-5). */}
+          {/* One flex row: as bare inline siblings the docs link and Save would touch with no gap. */}
           {(docsUrl || editing) && (
             <div className="flex flex-wrap items-center gap-3">
               {docsUrl && (
