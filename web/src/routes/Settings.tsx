@@ -20,32 +20,9 @@ function isValidSection(s: unknown): s is SettingsSection {
 }
 
 /**
- * `/settings/:section` page - Phase 5 (Plan 05-03), satisfies SET-01..SET-06.
- *
- * Layout: 212px sidebar + flexible main content. The Model section is
- * fully wired to `/api/settings*` in this plan; Transcription / Audio /
- * General render placeholder text - those sections land in plan 05-04.
- *
- * State strategy:
- * - `useQuery(["settings"])` is the single source of truth for the entire
- *   page. Every mutation (`updateProvider`, `setProviderKey`,
- *   `activateProvider`, `deleteProvider`, `createProvider`) invalidates
- *   that key, triggering a single refetch + cascaded re-render.
- * - Section selection is URL-driven (`/settings/:section`). Reading
- *   `useParams` keeps a refresh on the same surface; clicking a sidebar
- *   item pushes a new path rather than mutating local state.
- * - `newlyCreatedProviderId` is a one-shot hint: when `createProvider`
- *   returns, the chip/form hands the new id up here, and the matching
- *   `ProviderRow` mounts with its API key input already expanded and
- *   focused so the user lands at the cursor instead of clicking again.
- *   The hint is overwritten on the next create; non-matching rows see
- *   `autoOpenKey={false}` and behave normally. `ProviderRow` calls
- *   `onKeyClosed` (passed here) when its key section collapses (Save
- *   or Cancel), which resets this back to `null` so the hint doesn't
- *   linger and re-trigger the auto-open on some later re-render.
- * - Falls back to "model" when `:section` is missing or invalid so the
- *   component still renders sensibly if mounted outside the route table
- *   (e.g. older tests).
+ * `newlyCreatedProviderId` is a one-shot hint: the matching `ProviderRow`
+ * mounts with its API key input open. `onKeyClosed` resets it to `null` so
+ * a later re-render doesn't re-trigger the auto-open.
  */
 export function Settings() {
   const params = useParams<{ section: string }>();
@@ -54,11 +31,7 @@ export function Settings() {
     ? params.section
     : "model";
   const [addingProvider, setAddingProvider] = useState(false);
-  // Tracks the most recently created provider so its card can auto-open
-  // the API key input. Reset on the next user action that suggests the
-  // auto-open was consumed (the row's own dismiss/save, or starting a new
-  // form). Cleared eagerly here so a rapid second create doesn't point
-  // the auto-open at a stale id.
+  // Cleared eagerly so a rapid second create doesn't auto-open a stale id.
   const [newlyCreatedProviderId, setNewlyCreatedProviderId] = useState<
     string | null
   >(null);
@@ -90,12 +63,8 @@ export function Settings() {
   const data = q.data!;
   const active = data.providers.find((p) => p.is_active);
   const inactive = data.providers.filter((p) => !p.is_active);
-  // Match a saved provider to its built-in preset so the card can show the
-  // preset's model hint and docs link. `http` providers match by base_url
-  // - if the user pastes a custom URL we just don't show the hint, same
-  // behavior as before the preset metadata existed. `cli` providers have
-  // no base_url to match on (it's always empty), so they match by `model`
-  // instead, which holds the CLI program id and is never user-edited.
+  // `cli` providers have an empty base_url, so they match on `model`, which
+  // holds the CLI program id and is never user-edited.
   const findPreset = (provider: ProviderView): Preset | undefined =>
     provider.adapter === "cli"
       ? data.presets.find(
