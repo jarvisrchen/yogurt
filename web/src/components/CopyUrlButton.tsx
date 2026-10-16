@@ -1,23 +1,10 @@
 import { useEffect, useState } from "react";
 import { Check, Link2 } from "lucide-react";
 
-/**
- * Icon button that copies the current page URL (the meeting's live or
- * post-meeting URL, whichever route this renders in) to the clipboard,
- * with a ~1.5s checkmark swap as confirmation.
- *
- * Mirrors the icon-button styling of `DeleteMeetingConfirm`'s `icon`
- * variant. No toast exists anywhere in this app to reuse (see
- * `copyMeetingMarkdown`'s doc comment for the aspirational one that was
- * never built) — the icon swap is a self-contained substitute.
- */
 export function CopyUrlButton({ className = "" }: { className?: string }) {
   const [copied, setCopied] = useState(false);
 
-  // Auto-revert lives in an effect (not the click handler) so unmounting
-  // mid-flight - e.g. clicking Copy on the live Meeting view then
-  // immediately End meeting, which navigates away - clears the timer
-  // instead of firing against a discarded instance.
+  // Revert in an effect, not the click handler, so unmounting mid-flight (End meeting navigates away) clears the timer.
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1500);

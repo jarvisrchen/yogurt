@@ -1,9 +1,3 @@
-/**
- * `MeetingLabels` — chips for a meeting's labels + a "+ Label" ghost
- * button that opens `LabelPicker`. Mounted in the live meeting header
- * (`routes/Meeting.tsx`) and the post-meeting header (`routes/MeetingPost.tsx`).
- */
-
 import { useState } from "react";
 import { Tag } from "lucide-react";
 import { useMeeting, useSetMeetingLabels } from "../../lib/api/meetings";

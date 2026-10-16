@@ -10,29 +10,9 @@ interface Props {
   onCollapse: () => void;
 }
 
-// UI-15: one-tap starters for the empty state, so a user opening the
-// panel mid-meeting has something to click instead of a blank prompt.
 const SUGGESTED_QUESTIONS = ["Catch me up", "What did I miss?"];
 
-/**
- * Phase 6 (Plan 06-02) — expanded chat panel.
- *
- * Anchored fixed bottom-center at 480px wide (same horizontal anchor as
- * `<AskPill />` so the popUp keyframe reads as a single morph).
- *
- * Sticky semantics (CHAT spec): outside-click does NOT collapse the
- * window — only the chevron caret in the header does. We deliberately
- * do not attach a document mousedown listener. Escape does collapse it
- * (task NOTES-12(b)) — a keyboard user shouldn't need to tab to the caret.
- *
- * Auto-scroll-to-bottom keeps the latest streamed bubble in view when
- * new content arrives.
- *
- * Task NOTES-12(a): the input autofocuses on mount so a user who just hit
- * ⌘K or clicked the pill can start typing immediately — previously the
- * panel opened with focus left on whatever the user last clicked, so the
- * first few keystrokes went nowhere.
- */
+/** Sticky: outside-click does not collapse the window (no document mousedown listener). Only the header caret and Escape do. */
 export function ChatWindow({
   messages,
   streamingId,
@@ -69,10 +49,7 @@ export function ChatWindow({
     >
       <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)]">
         <div className="flex items-center gap-2">
-          {/* Phase 6 placeholder for the yogurt swirl logo (brand asset
-              lands as a Phase 9 polish item). The blueberry dot is the
-              same shape + tone the AskPill arrow circle uses, so the
-              swap is a one-line change. */}
+          {/* Placeholder for the swirl logo: same shape and tone as the AskPill arrow circle. */}
           <div
             aria-hidden="true"
             className="h-5 w-5 rounded-full bg-[var(--color-blue)]"

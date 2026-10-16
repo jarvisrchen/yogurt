@@ -1,19 +1,6 @@
 /**
- * `MeetingMetaPills` - the meeting's metadata as a row of small pills:
- *
- *   [Aug 28 · 1:08 PM] [8 min] [Local · small.en]
- *
- * Shared by the live meeting header and the post-meeting header so both
- * views read the same facts the same way. Everything comes from the
- * persisted meeting row (`started_at`, `ended_at`, `stt_engine`), so the
- * engine pill keeps showing after recording stops - it is meeting
- * metadata, not a live status indicator.
- *
- * `stt_engine` is stamped at recording start as "local · <model>" or
- * "cloud · <model>" (routes.rs `start_meeting`). Meetings recorded before
- * that column existed have `null` and simply get no engine pill. A bare
- * provider ("local" / "cloud", from the active-recording poll before the
- * row refetches) renders as "Local STT" / "Cloud STT".
+ * `stt_engine` is stamped at recording start as "local · <model>" or "cloud · <model>". Older meetings have `null` and get no engine pill.
+ * A bare "local" / "cloud" (from the active-recording poll before the row refetches) renders as "Local STT" / "Cloud STT".
  */
 
 import { Cloud, HardDrive, Sparkles } from "lucide-react";
@@ -56,8 +43,6 @@ export function formatDuration(startedAt: number, endedAt: number): string | nul
 const PILL =
   "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none";
 
-/** Neutral metadata pill (date, time, duration). `tone="warn"` flags an
- *  exception such as "not enhanced" in strawberry. */
 export function MetaPill({
   children,
   tone = "neutral",
@@ -76,11 +61,6 @@ export function MetaPill({
   );
 }
 
-/**
- * The STT engine pill on its own - shared with the Library card so the
- * same meeting reads identically everywhere. Renders nothing for `null`
- * (meetings recorded before the column existed) rather than guessing.
- */
 export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined }) {
   const engine = parseSttEngine(sttEngine);
   if (!engine) return null;
@@ -102,15 +82,7 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
   );
 }
 
-/**
- * The LLM pill - which model fused the notes with the transcript. The
- * row's `llm_model` is stamped by enhance.rs after a successful enhance
- * (bare model name, e.g. "gpt-5-mini"). The live meeting header instead
- * passes the active provider's model with `pending`, mirroring the STT
- * pill's "what is running right now" reading; a stored meeting with no
- * stamp renders nothing rather than a guessed model. The LLM is always a
- * BYO OpenAI-compatible endpoint, so there is no local/cloud split.
- */
+/** `llm_model` is stamped by enhance.rs after a successful enhance. The live header passes the active model with `pending`. */
 export function LlmPill({
   llmModel,
   pending = false,
@@ -120,9 +92,7 @@ export function LlmPill({
 }) {
   const model = llmModel?.trim();
   if (!model) return null;
-  // Filled blueberry once enhanced ("AI touched this"); outlined while
-  // still pending, mirroring the STT pill's local/cloud filled-vs-outlined
-  // convention for "what already happened" vs. "what's about to run".
+  // Filled once enhanced, outlined while pending; mirrors the STT pill's filled-vs-outlined convention.
   const tone = pending ? "border border-blue/40 text-blue bg-transparent" : "bg-blsoft text-ink";
   return (
     <span

@@ -1,21 +1,10 @@
 import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 
 interface AskPillProps {
-  /** Invoked on click OR when ⌘K / Ctrl+K is pressed. */
   onExpand: () => void;
 }
 
-/**
- * Phase 6 (Plan 06-02) — collapsed "Ask this meeting…" floating pill.
- *
- * Geometry per PRD §16.8 + UI spec: 480px wide, fixed bottom-center,
- * 24px above the viewport bottom edge, on top of the meeting view with
- * `z-30`. Tap or ⌘K expands into the full `<ChatWindow />`.
- *
- * The `translate(-50%)` plays nicely with the popUp keyframe used by the
- * expanded window — both surfaces share the same horizontal anchor so the
- * 260ms transition reads as a single morph rather than a re-center.
- */
+/** Shares ChatWindow's bottom-center anchor so the popUp keyframe reads as one morph, not a re-center. */
 export function AskPill({ onExpand }: AskPillProps) {
   useKeyboardShortcut({ key: "k", metaOrCtrl: true }, onExpand);
   return (

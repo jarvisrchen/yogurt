@@ -1,15 +1,9 @@
-// TemplatePicker - which note format the next Re-enhance uses.
-//
-// A native <select> next to the Re-enhance button: "Auto" lets the model
-// pick the best fit (the default flow), and after an enhance the value
-// shows the format that was actually used, so the next Re-enhance keeps
-// it unless the user changes it back to Auto. Native so it costs no
-// dependency and inherits keyboard and screen-reader behavior for free.
+// Native <select> for the note format of the next Re-enhance. After an enhance it shows the format actually used,
+// so the next Re-enhance keeps it unless the user picks Auto.
 
 import { AUTO_TEMPLATE, useTemplates } from "../lib/api/templates";
 
 export interface TemplatePickerProps {
-  /** `AUTO_TEMPLATE` or a template id. */
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;

@@ -1,30 +1,10 @@
 interface LogoProps {
-  /** Render size in CSS pixels. Default 44 (matches the brand mark). */
   size?: number;
-  /**
-   * Accessible name for the SVG. Omit for decorative use (default).
-   *
-   * A11y rule: pass `ariaLabel` ONLY when the Logo is the sole brand
-   * identifier on the screen. When adjacent visible text already says
-   * "yogurt" (header wordmark, hero heading, captioned showcase cell),
-   * omit `ariaLabel` so the SVG gets `aria-hidden="true"` and the
-   * screenreader is not redundant.
-   */
+  /** Omit when adjacent visible text already says "yogurt", so the SVG is aria-hidden. */
   ariaLabel?: string;
-  /** Optional className for spacing/positioning. */
   className?: string;
 }
 
-/**
- * Yogurt logo — the "spoon & swirl" mark (PRD §16.1).
- * Blueberry circle, white spoon-curve, strawberry dot at the spoon tip.
- * The viewBox is locked to 44×44; pass `size` to scale.
- *
- * Default usage is decorative (`aria-hidden="true"`); pass `ariaLabel`
- * only when this is the sole brand identifier on the screen. The SVG
- * also carries `focusable="false"` for defensive IE/legacy-Edge
- * tab-order behavior (MD-09).
- */
 export function Logo({ size = 44, ariaLabel, className }: LogoProps) {
   const a11yProps = ariaLabel
     ? { role: "img" as const, "aria-label": ariaLabel }

@@ -12,65 +12,24 @@ import { AudioWaveIcon } from "./AudioWaveIcon";
 const INK = "var(--color-ink)";
 const GREY = "var(--color-grey)";
 const LINE = "var(--color-line)";
-const PAPER = "var(--color-card)"; // Panel surface sits above app paper (D-14).
+const PAPER = "var(--color-card)";
 const MATCHA = "var(--color-matcha)";
 
 /**
- * Right-edge collapsible transcript dock.
- *
- * Layout (Phase 3 D-13 / D-14 / D-15):
- *   - Fixed to the right edge, full-height, z-30 — overlays the notes column
- *     without reflowing it (the notes wrapper reserves `pr-7` for the tab
- *     gutter).
- *   - Collapsed state: vertical tab, always rendered so the user can
- *     re-collapse the panel from outside.
- *   - Open state: 330px-wide panel that slides in via the `.dock-open`
- *     keyframe (340ms cubic-bezier(.2,.7,.2,1) — TRANS-04 + PRD §16.5) and
- *     slides out via `.dock-closed` before unmounting (task NOTES-14 —
- *     symmetric open/close motion).
- *
- * Two modes:
- *   - Live (default): `segments` is omitted. Subscribes to the per-meeting
- *     WS via `useTranscriptWs` — connection chip + "Live transcript" label.
- *   - Static (MeetingPost task 9): caller passes the meeting's persisted
- *     `transcript_json` rows. No WS connection, no connection chip, label
- *     reads "Transcript", empty state differs.
- *
- * Auto-scroll (Phase 3 D-17 / TRANS-06):
- *   - `stickyRef` starts true; auto-scrolls to bottom on each new event.
- *   - User scrolling up beyond 24px from the bottom flips it false;
- *     returning to within 24px flips it back. New events arriving while
- *     paused preserve the user's read position.
+ * Right-edge dock that overlays the notes column without reflowing it (the notes wrapper reserves `pr-7` for the tab gutter).
+ * Live mode (no `segments`) subscribes via `useTranscriptWs`. Static mode renders the persisted `segments` with no WS.
+ * Auto-scroll sticks to the bottom until the user scrolls more than 24px up, and resumes within 24px.
  */
 export interface TranscriptDockProps {
   meetingId: string | null;
-  // WR-06: session token threaded from Meeting.tsx (fetched via ensureSessionToken).
-  // The WS hook waits until token is non-null before connecting; passing null is
-  // valid during the brief bootstrap window before /api/session-token resolves.
+  // The WS hook waits for a non-null token; null is valid while /api/session-token resolves.
   token: string | null;
-  /**
-   * Phase 4 NOTES-11: when the editor's `↳ HH:MM` link is clicked, the
-   * post-meeting route flips this prop to `true` to force-open the dock
-   * even if the user had collapsed it. `onOpenChange` keeps the caller's
-   * mirror in sync when the user clicks the tab themselves.
-   */
+  /** Force-opens the dock (editor timestamp links). `onOpenChange` keeps the caller in sync with tab clicks. */
   forceOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /**
-   * Static mode (MeetingPost task 9): pre-recorded segments parsed from
-   * the meeting row's `transcript_json`. When provided, the dock renders
-   * these instead of subscribing to the live WS — no connection chip, no
-   * "Waiting for audio…" (the meeting is over, not live).
-   */
+  /** Static mode: renders these persisted segments instead of subscribing to the live WS. */
   segments?: StoredTranscriptSegment[];
-  /**
-   * Live-mode history seed: the meeting's persisted transcript (also from
-   * `transcript_json`, via `storedSegmentToEvent`) so navigating away from
-   * a live meeting and back doesn't show an empty dock that only fills
-   * with new lines. Unlike `segments`, this does NOT switch the dock into
-   * static mode — the live WS still connects and appends on top. Seeded
-   * once per `meetingId` by `useTranscriptWs`.
-   */
+  /** Seeds live-mode history (once per meetingId) without switching to static mode. The WS still connects and appends. */
   history?: TranscriptEvent[];
 }
 
@@ -85,7 +44,6 @@ export function TranscriptDock({
   history,
 }: TranscriptDockProps) {
   const [openLocal, setOpenLocal] = useState(false);
-  // `open` is controlled by `forceOpen` if provided, else local state.
   const open = forceOpen ?? openLocal;
   const setOpen = (next: boolean | ((prev: boolean) => boolean)) => {
     setOpenLocal((prev) => {
@@ -96,9 +54,7 @@ export function TranscriptDock({
   };
 
   const isStatic = segments !== undefined;
-  // In static mode the live WS is never opened (`useTranscriptWs` is a
-  // no-op when meetingId/token are null) — the meeting is over, there's
-  // nothing to subscribe to.
+  // Static mode never opens the WS: useTranscriptWs is a no-op when meetingId/token are null.
   const { events: liveEvents, connected } = useTranscriptWs(
     isStatic ? null : meetingId,
     isStatic ? null : token,
@@ -109,16 +65,13 @@ export function TranscriptDock({
     : liveEvents;
   const label = isStatic ? "Transcript" : "Live transcript";
 
-  // Real amplitude wave (Feature A) — only subscribed in live mode; static
-  // playback has no audio on the wire.
+  // Only subscribed in live mode; static playback has no audio on the wire.
   const audioLevels = useAudioLevels(
     isStatic ? null : meetingId,
     isStatic ? null : token,
   );
 
-  // Task NOTES-14: symmetric open/close animation. `phase` lags `open` by
-  // one animation — closing plays `.dock-closed` (slideOutRight) and only
-  // unmounts once `onAnimationEnd` fires, instead of the old hard cut.
+  // `phase` lags `open` by one animation so `.dock-closed` plays before unmount.
   const [phase, setPhase] = useState<DockPhase>("closed");
   useEffect(() => {
     if (open) {
@@ -129,13 +82,9 @@ export function TranscriptDock({
   }, [open]);
   const mounted = phase !== "closed";
 
-  // Sticky auto-scroll ref. `true` = follow new events, `false` = user
-  // has scrolled up and is reading history.
   const stickyRef = useRef(true);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // After every events change: if we're sticky and the list is mounted,
-  // pin to bottom. Runs after layout so scrollHeight is up to date.
   useEffect(() => {
     if (stickyRef.current && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -148,10 +97,7 @@ export function TranscriptDock({
     stickyRef.current = atBottom;
   }
 
-  // Task NOTES-10 (MeetingPost deep links): find the transcript line
-  // closest to `ts` (seconds) and scroll to it with a brief highlight.
-  // Returns false if the panel isn't mounted yet (caller retries once
-  // `mounted` flips true — see the pending-scroll effect below).
+  // Scroll to the line closest to `ts` (seconds). Returns false while the panel is unmounted so the caller can retry.
   function tryScrollTo(ts: number): boolean {
     const root = listRef.current;
     if (!root) return false;
@@ -173,18 +119,14 @@ export function TranscriptDock({
     }
     if (!bestEl) return false;
     bestEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    // Brief 1.5s bg tint (CSS keyframe in index.css) so the user's eye
-    // lands on the right line even mid-smooth-scroll.
+    // Brief tint (CSS keyframe) so the eye lands on the line mid-smooth-scroll.
     bestEl.classList.add("transcript-highlight");
     const el = bestEl;
     setTimeout(() => el.classList.remove("transcript-highlight"), 1500);
     return true;
   }
 
-  // A scrollTo request that arrives while the dock is still closed (the
-  // common case — MeetingPost force-opens the dock and dispatches the
-  // event in the same tick) can't find any DOM nodes yet. Stash it and
-  // retry once the panel mounts.
+  // A request arriving while the dock is closed (MeetingPost force-opens and dispatches in the same tick) finds no DOM nodes. Stash it and retry on mount.
   const pendingScrollRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -211,8 +153,7 @@ export function TranscriptDock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Flush a pending scroll request once the panel is actually in the DOM.
-  // rAF gives the browser one paint so `scrollIntoView` has real layout.
+  // rAF gives one paint so scrollIntoView has real layout.
   useEffect(() => {
     if (!mounted || pendingScrollRef.current === null) return;
     const ts = pendingScrollRef.current;
@@ -229,12 +170,7 @@ export function TranscriptDock({
       data-testid="transcript-dock"
     >
       <div className="relative h-full flex pointer-events-auto">
-        {/* Collapsed tab — always rendered. Click toggles `open`. Sized to
-         * fit its own content (no fixed h-24 — "Transcript" at 12px in
-         * vertical-rl needs ~110px, the old fixed 96px let letters
-         * protrude past the pill). `overflow: hidden` + auto width/height
-         * from padding is the actual fix; the shortened label + AudioWaveIcon
-         * (live only) keep the pill compact. */}
+        {/* Collapsed tab, always rendered. Auto width/height with overflow hidden keeps the vertical-rl label from protruding past the pill. */}
         <button
           type="button"
           aria-label={open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
@@ -262,8 +198,7 @@ export function TranscriptDock({
           </span>
         </button>
 
-        {/* Sliding panel — mounted while `phase !== "closed"` so the
-         * slide-out keyframe gets to play before unmount (NOTES-14). */}
+        {/* Mounted while phase !== "closed" so the slide-out keyframe plays before unmount. */}
         {mounted && (
           <aside
             className={`${phase === "closing" ? "dock-closed" : "dock-open"} w-[330px] h-full flex flex-col`}

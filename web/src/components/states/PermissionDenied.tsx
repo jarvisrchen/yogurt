@@ -1,40 +1,10 @@
 /**
- * Phase 7 (Plan 07-04) — PermissionDenied state (STATE-02).
- *
- * Rendered by `<Library />` (and any in-meeting route that needs system
- * audio) when `GET /api/audio/permission` reports `denied`. PRD §5.11 + the
- * `useScreenRecordingStatus` hook drive the gating.
- *
- * The "Open System Settings" anchor's `href` is a load-bearing string:
- *
- *   `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`
- *
- * Do NOT alter the casing, query-string key, or scheme — macOS only opens
- * the Screen Recording pane when the URI matches exactly. The plan's
- * acceptance criteria grep this file verbatim.
- *
- * Honesty pass (fast task) — this card used to say "Toggle Yogurt on" and
- * ship a "Restart Yogurt" button that just called `window.location.reload()`.
- * Both were wrong:
- *
- *   - The System Settings list shows whichever process actually asked for
- *     Screen Recording — the yogurt binary when launched directly (e.g.
- *     `just release`), or Terminal/iTerm when launched via `just dev`
- *     (the shell is the requesting process, not "Yogurt"). There is no
- *     single toggle labeled "Yogurt" to find.
- *   - Reloading the browser tab does nothing: the backend process is what
- *     needs the TCC grant, and macOS only re-reads it on that process's
- *     *next launch* (see `crates/yogurt-audio/src/permission.rs`). Worse,
- *     granting the permission causes macOS to immediately quit the
- *     process that asked for it — so by the time the user is back here,
- *     the server may already be down and reload would just hit a dead
- *     connection.
- *
- * Replaced with an honest flow: explicit copy about which app to look
- * for and that granting quits the process, static relaunch instructions
- * (no button can relaunch a process from inside the browser sandbox),
- * and a "Check again" button that re-fetches the permission query instead
- * of reloading the page — useful once the user has actually relaunched.
+ * The "Open System Settings" href must match exactly (casing, query key, scheme) or macOS will not open the Screen Recording pane:
+ * `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`
+ * The System Settings list shows whichever process asked (the yogurt binary when launched directly, Terminal/iTerm under `just dev`), so there is no "Yogurt" toggle.
+ * Reloading the tab cannot help: macOS re-reads the TCC grant only on the process's next launch (see `crates/yogurt-audio/src/permission.rs`),
+ * and granting makes macOS quit the asking process, so the server may already be down.
+ * Hence static relaunch instructions (a browser cannot relaunch a process) and a "Check again" button that re-fetches the permission query.
  */
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";

@@ -7,36 +7,11 @@ import {
 } from "../lib/api/meetings";
 
 /**
- * Floating "meeting detected" prompt (MTG-11).
- *
- * The server's detection watcher notices a meeting-app window on screen
- * and this offers to record it. It never records on its own: "Start
- * recording" runs the exact same create-then-`autoStart` navigation the
- * sidebar's "+ New meeting" button does, so there is one
- * recording-start flow rather than two.
- *
- * Mounted globally by the router `Shell`, alongside `<RecordingPill>`,
- * whose slot it shares — `GET /api/meetings/detected` returns `null`
- * while a recording is live, so the two are never on screen together.
- *
- * "Not now" dismisses server-side rather than in local state: the
- * decision has to outlive a page reload and apply to every open tab, and
- * it is keyed to the window so the *next* call still prompts.
- *
- * "Start recording" is the mirror image and stays local. The server does
- * stop reporting a detection once recording begins, but the poll can
- * land in the gap between the click and the recording actually starting,
- * which put the prompt back on the screen it had just opened. Remembering
- * the window we acted on closes that race without waiting on any poll.
- *
- * That flag is only set once the create has RETURNED. Setting it first
- * hides the banner, which unmounts this component, which drops the
- * `useMutation` observer and leaves the in-flight `mutateAsync` promise
- * unsettled — the click did nothing at all, silently. The disabled state
- * on the button is what guards the interval in between.
- *
- * The system notification is keyed on window id in a ref, not state: a
- * re-render must never re-fire it, and the poll re-renders every 5s.
+ * "Not now" dismisses server-side so the decision survives reloads and applies to every tab.
+ * "Start recording" tracks the acted-on window locally: the detection poll can land between the click and the recording starting, and would re-show the prompt.
+ * That flag is set only after the create has returned. Setting it first hides the banner, which unmounts this component and drops the `useMutation` observer,
+ * leaving the `mutateAsync` promise unsettled. The button's disabled state guards the interval.
+ * The notification is keyed on window id in a ref, not state: the poll re-renders every 5s and must not re-fire it.
  */
 export function MeetingDetectedBanner() {
   const { data } = useDetectedMeeting();

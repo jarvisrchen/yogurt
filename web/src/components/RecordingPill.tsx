@@ -2,20 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useActiveRecording } from "../lib/api/meetings";
 
-/**
- * Floating "Return to recording" pill (Granola-style discoverability).
- *
- * Recording continues server-side across navigation — the supervisor task
- * lives in the backend `Registry`, not tied to any route — so this widget's
- * only job is making sure the user always sees a way back to it. Mounted
- * globally by the router `Shell` (see `router.tsx`).
- *
- * Hides itself:
- *   - while `GET /api/meetings/active` reports nothing recording
- *   - on the live meeting view for that same recording (`/meeting/:id`) —
- *     "return to recording" is noise on the screen that already IS the
- *     recording. It still shows on `/meeting/:id/post` and everywhere else.
- */
+/** Hidden on the live view of the same recording, where "return to recording" is noise. */
 export function RecordingPill() {
   const { data } = useActiveRecording();
   const location = useLocation();

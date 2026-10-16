@@ -6,12 +6,7 @@ interface Props {
   isStreaming?: boolean;
 }
 
-/**
- * Inline bold: splits on `**text**` and wraps matches in `<strong>`. No
- * other inline syntax (italic, links, code) — the LLM's chat replies only
- * ever reach for bold + bullets in practice, and a fuller parser is more
- * surface than a 480px chat bubble needs.
- */
+/** Bold only (`**text**`): chat replies don't use other inline syntax. */
 function renderInline(text: string, keyPrefix: string): ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((p) => p !== "");
   return parts.map((part, i) =>
@@ -23,13 +18,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode {
   );
 }
 
-/**
- * Task NOTES-12(c) — smallest-correct assistant-reply renderer: newlines
- * become paragraph breaks, consecutive `- `/`* ` lines become a `<ul>`,
- * everything else gets bold-inline handling. Deliberately not a general
- * markdown parser (no headings/links/code) — chat replies are short
- * conversational answers, not documents.
- */
+/** Deliberately not a markdown parser: paragraphs, `- `/`* ` bullet lists and bold cover short chat replies. */
 function MiniMarkdown({ content }: { content: string }) {
   const blocks: ReactNode[] = [];
   let bulletBuf: string[] = [];
@@ -64,27 +53,10 @@ function MiniMarkdown({ content }: { content: string }) {
   return <>{blocks}</>;
 }
 
-/**
- * Phase 6 (Plan 06-02) — single chat bubble.
- *
- * User bubbles: right-aligned, blueberry background (`--color-blue`),
- * white text. Assistant bubbles: left-aligned, cream `--color-card`
- * background with a `--color-line` border. The asymmetric rounded
- * corners (rounded-br-chip / rounded-bl-chip) point the speech bubble
- * toward its speaker per PRD §16 chat motif.
- *
- * `isStreaming` only renders the blinking caret on the active assistant
- * bubble — never on user bubbles. The caret uses the shared `animate-blink`
- * token (index.css `--animate-blink`, 1.0s step-end) rather than Tailwind's
- * built-in `animate-pulse` so it reads as the same cursor-blink motif as
- * the notes editor (task NOTES-12(d)).
- */
 export function ChatMessage({ message, isStreaming = false }: Props) {
   const isUser = message.role === "user";
-  // A finished assistant turn whose content is empty/whitespace (the model
-  // returned nothing — e.g. a question with no transcript to answer from)
-  // would otherwise render as a blank box that reads as a hung request.
-  // Show a muted placeholder instead. Never applies while still streaming.
+  // A finished turn with empty content (e.g. no transcript to answer from) would render a blank box that reads as a hung request.
+  // Show a muted placeholder instead. Never while streaming.
   const isEmptyFinishedReply =
     !isUser && !isStreaming && message.content.trim() === "";
   return (

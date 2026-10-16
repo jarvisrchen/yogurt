@@ -1,23 +1,10 @@
-// Legend — top-right swatch contract per PRD §5.3 + NOTES-02.
-//
-// Two rows:
-//
-//   ■ your notes      (ink #211D18 — what the user typed)
-//   ■ AI              (ai #7A7264 - what the LLM added)
-//
-// Tokens, not hex: the swatches must track the editor's `.ai-grey` /
-// ink colors in both light and dark (UI-6).
+// Swatches use tokens, not hex, so they track the editor's ink and `.ai-grey` colors in light and dark.
 
-const INK = "var(--color-ink)"; // user
-const AI = "var(--color-ai)"; // AI
-const MUT = "var(--color-mut)"; // muted caption text
+const INK = "var(--color-ink)";
+const AI = "var(--color-ai)";
+const MUT = "var(--color-mut)";
 
 export interface LegendProps {
-  /**
-   * When the Legend lives inside a `position: relative` host, default
-   * absolute placement (top-right) is correct. Override with `inline` to
-   * render in normal flow (useful for tests / inspectors).
-   */
   inline?: boolean;
 }
 
