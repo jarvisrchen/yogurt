@@ -9,9 +9,6 @@
 //! a peak amplitude above ~1000 when you're speaking near the microphone.
 //! If you see ~250 frames but peak ~0, the device is enumerating but no PCM
 //! is making it through — check macOS Sound Settings → Input level meter.
-//!
-//! Not run by `cargo test`. This exists for human verification of the
-//! cpal → Downmix → broadcast path.
 
 use std::time::Duration;
 use tokio::sync::broadcast;

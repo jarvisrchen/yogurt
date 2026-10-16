@@ -8,8 +8,6 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Live echo output stream. Drop to stop it (RAII, same pattern as
-/// `MicCapture`).
 pub struct MicEcho {
     _stream: cpal::Stream,
     device_name: String,
@@ -23,11 +21,8 @@ impl std::fmt::Debug for MicEcho {
     }
 }
 
-/// Resolve an output device and a usable stream config. Honors
-/// `preferred_rate` when the device supports it (so a matching rate needs no
-/// resampling), otherwise falls back to the device's own default config. A
-/// `preferred_rate` of 0 always takes the default. Returns the device, its
-/// name, the fixed-buffer config, its sample format, and the actual rate.
+/// `preferred_rate` of 0 always takes the device default.
+/// A matching rate needs no resampling, and a device that does not support it falls back to its own rate.
 fn choose_output_config(
     device_name: Option<&str>,
     buffer: u32,
@@ -79,9 +74,7 @@ fn choose_output_config(
 /// upgrade path if fidelity ever matters is resample.rs's rubato.
 struct LinearResampler<F> {
     pull: F,
-    /// Source samples advanced per output sample (`src_rate / dst_rate`).
     step: f64,
-    /// Fractional position between `a` and `b`, in `[0, 1)` before `next`.
     t: f64,
     a: f32,
     b: f32,
@@ -117,9 +110,7 @@ impl<F: FnMut() -> f32> LinearResampler<F> {
     }
 }
 
-/// Next sample of a 440 Hz sine at amplitude 0.2, advancing `phase` by one
-/// sample at `sample_rate`. `phase` wraps at `2*PI` so it never grows
-/// unbounded across a long-running callback.
+/// `phase` wraps at `2*PI` so it stays bounded in a long-running callback.
 fn tone_sample(phase: &mut f32, sample_rate: u32) -> f32 {
     const FREQ_HZ: f32 = 440.0;
     const AMPLITUDE: f32 = 0.2;
@@ -131,10 +122,8 @@ fn tone_sample(phase: &mut f32, sample_rate: u32) -> f32 {
     sample
 }
 
-/// Play a 440 Hz test tone on `device` (`None`/`""` = system default output)
-/// for 700 ms, at the device's own default sample rate. Blocks the calling
-/// thread; callers run it via `spawn_blocking`. Returns the resolved device
-/// name.
+/// Plays a 440 Hz tone for 700 ms and returns the resolved device name.
+/// Blocks, so callers run it via `spawn_blocking`.
 pub fn play_test_tone(device: Option<&str>, buffer: u32) -> Result<String> {
     let (_, _, _, _, rate) = choose_output_config(device, buffer, 0)?;
     let mut phase = 0.0_f32;
@@ -152,9 +141,6 @@ impl MicEcho {
         &self.device_name
     }
 
-    /// Open an output stream on `device_name` (`None`/`""` = system default
-    /// output) that plays back `consumer`'s mono sample stream, resampling
-    /// from `mic_rate` to whatever rate the device supports.
     pub(crate) fn start(
         device_name: Option<&str>,
         buffer: u32,
@@ -189,10 +175,7 @@ impl MicEcho {
         Self::start_with_source(device_name, buffer, mic_rate, source)
     }
 
-    /// Shared build path for both the mic-echo stream and the test-tone
-    /// stream: opens `device_name`, picks a config near `preferred_rate`,
-    /// and fans `next_sample`'s output to every channel. `next_sample` must
-    /// produce at the resolved device rate.
+    /// `next_sample` must produce at the resolved device rate.
     fn start_with_source(
         device_name: Option<&str>,
         buffer: u32,
@@ -282,7 +265,7 @@ mod tests {
     fn fans_one_mono_sample_across_all_channels() {
         let samples = [1.0_f32, 2.0, 3.0];
         let mut it = samples.into_iter();
-        let mut out = [0.0_f32; 6]; // 2 frames x 3 channels
+        let mut out = [0.0_f32; 6];
         fan_out(&mut out, 3, false, || it.next());
         assert_eq!(out, [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]);
     }
@@ -290,7 +273,7 @@ mod tests {
     #[test]
     fn zero_fills_on_underrun() {
         let mut it = std::iter::once(1.0_f32);
-        let mut out = [9.0_f32; 4]; // 2 frames x 2 channels, only 1 sample available
+        let mut out = [9.0_f32; 4];
         fan_out(&mut out, 2, false, || it.next());
         assert_eq!(out, [1.0, 1.0, 0.0, 0.0]);
     }
@@ -323,7 +306,6 @@ mod tests {
 
     #[test]
     fn resampler_downsamples_by_taking_fewer_output_samples() {
-        // 48k -> 24k: two source samples per output sample.
         let mut n = 0.0_f32;
         let mut r = LinearResampler::new(
             move || {
@@ -363,7 +345,6 @@ mod tests {
             "phase 0 should be ~0, got {first}"
         );
 
-        // One quarter period in: sin(pi/2) * 0.2 == 0.2.
         let quarter_samples = sample_rate / 440 / 4;
         let mut phase = 0.0_f32;
         let mut last = 0.0;
@@ -387,10 +368,7 @@ mod tests {
 
     #[test]
     fn unsupported_preferred_rate_falls_back_instead_of_erroring() {
-        // The bug the user hit: a Bluetooth output whose supported range
-        // excludes 48 kHz. Simulate with a rate no device advertises and
-        // assert we fall back to the device's own rate rather than
-        // returning OutputUnavailable. Skips with no output device.
+        // A Bluetooth output can exclude 48 kHz. Skips when there is no output device.
         let host = cpal::default_host();
         let Some(device) = host.default_output_device() else {
             return;
