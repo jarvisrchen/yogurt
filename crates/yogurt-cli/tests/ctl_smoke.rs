@@ -34,32 +34,38 @@ impl Drop for ServerGuard {
 }
 
 async fn spawn_server(home: &Path) -> (ServerGuard, u16) {
-    let probe = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
-    let port = probe.local_addr().expect("local_addr").port();
-    drop(probe);
+    // The probe port is released before the child binds it, so a parallel test can
+    // take it in between. A child that exits early is retried on a fresh port.
+    let mut last_stderr = String::new();
+    for _ in 0..3 {
+        let probe = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+        let port = probe.local_addr().expect("local_addr").port();
+        drop(probe);
 
-    let child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
-        .args(["start", "--port", &port.to_string(), "--no-open"])
-        .env("HOME", home)
-        .env("YOGURT_MEMORY_KEYSTORE", "1")
-        .spawn()
-        .expect("spawn yogurt start");
+        let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+            .args(["start", "--port", &port.to_string(), "--no-open"])
+            .env("HOME", home)
+            .env("YOGURT_MEMORY_KEYSTORE", "1")
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn yogurt start");
 
-    // This file spawns a real server per test, so a loaded full-workspace run
-    // can exceed a short boot budget. The loop still breaks the instant health
-    // responds, so a healthy run is not slowed by the 30s ceiling.
-    let mut healthy = false;
-    for _ in 0..600 {
-        if let Ok(resp) = reqwest::get(format!("http://127.0.0.1:{port}/api/health")).await {
-            if resp.status().is_success() {
-                healthy = true;
+        for _ in 0..600 {
+            if child.try_wait().expect("try_wait").is_some() {
                 break;
             }
+            if let Ok(resp) = reqwest::get(format!("http://127.0.0.1:{port}/api/health")).await {
+                if resp.status().is_success() {
+                    return (ServerGuard { child }, port);
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        let _ = child.start_kill();
+        let out = child.wait_with_output().await.expect("wait_with_output");
+        last_stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     }
-    assert!(healthy, "server on port {port} never reported healthy");
-    (ServerGuard { child }, port)
+    panic!("server never reported healthy; last stderr:\n{last_stderr}");
 }
 
 fn ctl_cmd(port: u16, home: &Path, args: &[&str]) -> Command {
