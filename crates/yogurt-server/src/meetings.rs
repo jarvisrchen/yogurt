@@ -432,6 +432,7 @@ impl Registry {
             Result<(
                 broadcast::Receiver<yogurt_audio::Frame>,
                 broadcast::Receiver<yogurt_audio::Frame>,
+                broadcast::Receiver<yogurt_audio::SystemStatus>,
             )>,
         >();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -474,10 +475,11 @@ impl Registry {
                 };
                 let mic_rx = stream.subscribe_mic();
                 let sys_rx = stream.subscribe_system();
+                let sys_status_rx = stream.subscribe_system_status();
                 let Some(tx) = ready_tx_slot.take() else {
                     return;
                 };
-                if tx.send(Ok((mic_rx, sys_rx))).is_err() {
+                if tx.send(Ok((mic_rx, sys_rx, sys_status_rx))).is_err() {
                     // Supervisor task vanished before we reported ready —
                     // just drop the stream (RAII stops capture) and exit.
                     return;
@@ -558,7 +560,7 @@ impl Registry {
         });
 
         // Await capture readiness — propagates audio open failure as Result.
-        let (mic_rx, sys_rx) = ready_rx
+        let (mic_rx, sys_rx, sys_status_rx) = ready_rx
             .await
             .context("audio capture thread exited before reporting readiness")?
             .context("audio capture failed to open")?;
@@ -682,7 +684,12 @@ impl Registry {
                 }
             }));
 
+            let status_guard = AbortOnDrop(tokio::spawn(relay_system_status(
+                sys_status_rx,
+                events_tx.clone(),
+            )));
             pump_audio_adapter(mic_rx, sys_rx, audio_tx, events_tx, last_audible).await;
+            drop(status_guard);
             drop(stt_guard);
             drop(relay_guard);
         });
@@ -1216,6 +1223,27 @@ fn send_stt_error(events_tx: &broadcast::Sender<serde_json::Value>, message: &st
     }));
 }
 
+/// Forward the system-audio watchdog's notices to the meeting's WS clients as
+/// `system_audio_status` frames (`state` is `stalled`, `recovered` or `failed`).
+/// The mic keeps recording through all of them.
+pub async fn relay_system_status(
+    mut rx: broadcast::Receiver<yogurt_audio::SystemStatus>,
+    events_tx: broadcast::Sender<serde_json::Value>,
+) {
+    use yogurt_audio::SystemStatus;
+    while let Ok(status) = rx.recv().await {
+        let state = match status {
+            SystemStatus::Stalled => "stalled",
+            SystemStatus::Recovered => "recovered",
+            SystemStatus::Failed => "failed",
+        };
+        let _ = events_tx.send(serde_json::json!({
+            "type": "system_audio_status",
+            "state": state,
+        }));
+    }
+}
+
 /// Stored-transcript segment shape — matches `yogurt_notes::TranscriptSegment`
 /// and the `meetings.transcript_json` rows the enhance/chat prompts parse.
 /// Mic audio is the user ("me"); system audio is everyone else ("them").
@@ -1419,7 +1447,7 @@ fn note_audible(last_audible: &AtomicU64, peak: f32) {
 ///
 /// Extracted from the inline supervisor loop so the BL-04 behavior is unit-
 /// testable without spinning up real SCK + cpal streams.
-pub(crate) async fn pump_audio_adapter(
+pub async fn pump_audio_adapter(
     mut mic_rx: broadcast::Receiver<yogurt_audio::Frame>,
     mut sys_rx: broadcast::Receiver<yogurt_audio::Frame>,
     audio_tx: broadcast::Sender<AudioChunk>,
@@ -1430,6 +1458,9 @@ pub(crate) async fn pump_audio_adapter(
     let mut sys_open = true;
     let mut mic_last_emit: Option<std::time::Instant> = None;
     let mut sys_last_emit: Option<std::time::Instant> = None;
+    let pump_started = std::time::Instant::now();
+    let mut sys_lag_warned: Option<std::time::Instant> = None;
+    let mut sys_lagged: u64 = 0;
     while mic_open || sys_open {
         tokio::select! {
             res = mic_rx.recv(), if mic_open => match res {
@@ -1478,7 +1509,17 @@ pub(crate) async fn pump_audio_adapter(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::debug!(n, "audio adapter: system lagged");
+                    // Startup bursts stay at debug (CLI-2). Lag past the first
+                    // 30 s is sustained, so warn, at most once per 30 s.
+                    sys_lagged += n;
+                    let due = sys_lag_warned.is_none_or(|t| t.elapsed() >= SYS_LAG_WARN_EVERY);
+                    if pump_started.elapsed() >= SYS_LAG_WARN_EVERY && due {
+                        tracing::warn!(lagged_frames = sys_lagged, "audio adapter: system lagging");
+                        sys_lag_warned = Some(std::time::Instant::now());
+                        sys_lagged = 0;
+                    } else {
+                        tracing::debug!(n, "audio adapter: system lagged");
+                    }
                 }
                 Err(broadcast::error::RecvError::Closed) => {
                     tracing::debug!("audio adapter: system stream closed — continuing with mic only");
@@ -1489,6 +1530,8 @@ pub(crate) async fn pump_audio_adapter(
     }
     tracing::debug!("audio adapter: both channels closed, terminating");
 }
+
+const SYS_LAG_WARN_EVERY: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn now_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};

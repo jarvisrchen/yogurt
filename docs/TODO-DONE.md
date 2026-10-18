@@ -1148,3 +1148,14 @@ New closed items go at the bottom.
 - [x] **DX-15** Remove unused dependencies and dead code found by the ponytail audit
 
   Removed unused Rust and web dependencies (thiserror, tracing, insta, tower, tower-http, url, regex-lite, time, mime_guess, hex, msw, prosemirror-model), deleted dead code (start_meeting_recording, ModelDownloadStub, _resetSessionTokenCache, AiGreyAttrs), routed hand-built bearer fetches through the session helpers, and dropped change-narrative comments from the Cargo manifests.
+
+- [x] **AUD-14** Restart system audio capture when it stalls mid-meeting, and keep a log file
+  <details>
+  <summary>Details</summary>
+
+  During Zoom calls the "Them" channel sometimes stops while the mic keeps working.
+  `crates/yogurt-audio/src/system.rs` built the `SCStream` with no delegate, pinned it to the first display at start, and never noticed a stopped stream, so downstream only saw silence.
+  Add a stop delegate and a watchdog that rebuilds the stream in place, surface stalls to the UI, log capture health, and write the server log to `<data dir>/logs/` so it can be pulled from another machine.
+
+  Landed with a stop delegate and a watchdog on the system SCStream, a `system_audio_status` WS notice, and a daily-rotated server log at `<data dir>/logs/yogurt.log.YYYY-MM-DD`.
+  </details>

@@ -661,7 +661,7 @@ export function Meeting() {
             <button
               type="button"
               onClick={sttError.dismiss}
-              aria-label="Dismiss transcription error"
+              aria-label="Dismiss notice"
               className="shrink-0 text-mut hover:text-ink"
             >
               ✕

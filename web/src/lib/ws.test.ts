@@ -448,6 +448,31 @@ describe("useSttError", () => {
     expect(result.current.message).toBeNull();
   });
 
+  it("shows a notice while system audio is stalled and clears it on recovery", async () => {
+    const { result } = renderHook(() => useSttError("meeting-3", "test-token"));
+    await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+    const send = (data: unknown) =>
+      act(() => {
+        ws.onmessage?.call(
+          ws as unknown as WebSocket,
+          new MessageEvent("message", { data: JSON.stringify(data) }),
+        );
+      });
+
+    send({ type: "system_audio_status", state: "stalled" });
+    expect(result.current.message).toMatch(/System audio stopped/);
+    send({ type: "system_audio_status", state: "recovered" });
+    expect(result.current.message).toBeNull();
+
+    send({ type: "stt_error", message: "Deepgram key invalid" });
+    send({ type: "system_audio_status", state: "recovered" });
+    expect(result.current.message).toBe("Deepgram key invalid");
+
+    send({ type: "system_audio_status", state: "failed" });
+    expect(result.current.message).toMatch(/could not be restored/);
+  });
+
   it("ignores non-stt_error frames on the shared socket", async () => {
     const { result } = renderHook(() => useSttError("meeting-2", "test-token"));
     await waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());

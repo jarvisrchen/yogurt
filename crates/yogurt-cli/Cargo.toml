@@ -21,6 +21,7 @@ tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
 anyhow = { workspace = true }
 # No `version =` on this path dep on purpose. It would have to be bumped by
 # hand every release, and forgetting breaks `cargo update --workspace` with

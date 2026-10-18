@@ -78,6 +78,23 @@ where meetings.id = '<meeting-id>';
 
 ---
 
+## Grab the server log
+
+`yogurt start` writes a second copy of its log to `<data dir>/logs/yogurt.log.YYYY-MM-DD`, rotated daily with the newest 14 files kept.
+The data dir is `~/.yogurt`, or `--data-dir` / `$YOGURT_DATA_DIR` when set.
+The file holds yogurt's own `info` events and up. It never holds API keys, the session token, transcript text or notes.
+`RUST_LOG` changes the level for the file and stderr alike.
+
+To send logs from another machine:
+
+```sh
+tar czf yogurt-logs.tgz -C ~/.yogurt logs
+```
+
+System audio health shows up as `system audio summary (last 30s)` lines (SCK buffers, ring drops, restarts), plus `system audio stalled` and `system audio recovered` when the watchdog restarts capture.
+
+---
+
 ## Known reasons the dock and the DB disagree
 
 Work down this list before assuming a new bug.

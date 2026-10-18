@@ -1,5 +1,6 @@
 mod commands;
 mod data_dir;
+mod logging;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -86,26 +87,13 @@ async fn main() -> anyhow::Result<()> {
     // otherwise leak into help output.
     let cli = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                // EnvFilter matches targets by prefix, so `yogurt=info` already
-                // covers `yogurt_server`, `yogurt_audio`, `yogurt_stt`, and every
-                // other `yogurt_*` crate - no per-crate directive needed.
-                //
-                // `whisper_rs=error` covers the C-side logs that
-                // `install_logging_hooks()` redirects into `tracing`: ggml and
-                // whisper.cpp emit their backend/model banners at INFO on every
-                // decode, which is noise. CLI-2 dropped their WARN level too -
-                // the one that actually shows up is ggml's
-                // `tensor API disabled for pre-M5 and pre-A19 devices`, a
-                // hardware-capability note on every load of every model on
-                // this machine. A real decode failure still surfaces as an
-                // ERROR here, and as an `stt_error` frame in the UI.
-                // `RUST_LOG=whisper_rs=debug` brings the whole stream back.
-                .unwrap_or_else(|_| "yogurt=info,whisper_rs=error".into()),
-        )
-        .init();
+    let _log_guard = logging::init(
+        matches!(cli.command, Cmd::Start(_)),
+        match &cli.command {
+            Cmd::Start(args) => args.data_dir.clone(),
+            _ => None,
+        },
+    );
 
     match cli.command {
         Cmd::Start(args) => {
