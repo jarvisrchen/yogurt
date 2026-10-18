@@ -1,11 +1,5 @@
-//! `yogurt ctl detect [dismiss]` and `yogurt ctl windows` (CLI-4).
-//!
-//! `detect` reflects the *server's* MTG-11 polling loop (`GET`/`POST
-//! /api/meetings/detected*`), so it needs a running instance. `windows` is
-//! the promoted `meeting_windows` cargo example: in-process `SCShareableContent`
-//! enumeration via `yogurt_audio::detect::scan_windows`, no server involved.
-//! It also lists the processes holding the microphone with their meeting-app
-//! verdict (`yogurt_audio::mic_usage`), the signal auto-stop watches.
+//! `detect` reflects the server's polling loop and needs a running instance.
+//! `windows` enumerates in-process via `scan_windows` with no server, and lists mic-holding processes with their meeting-app verdict.
 
 use serde_json::json;
 
@@ -55,10 +49,7 @@ pub async fn run_windows(json_out: bool) -> Result<(), CtlError> {
             "run this on macOS",
         ));
     }
-    // MTG-11: a Denied grant makes every SCK window title come back
-    // redacted, so `scan_windows` would silently return an empty list --
-    // indistinguishable from "no meeting-looking windows exist". Bail with
-    // the exact reason instead, matching `detect_meeting`'s own guard.
+    // A Denied grant redacts every SCK window title, so `scan_windows` would return an empty list indistinguishable from "no meeting windows". Bail with the reason.
     use yogurt_audio::permission::{has_screen_recording_permission, PermissionStatus};
     if has_screen_recording_permission() == PermissionStatus::Denied {
         return Err(CtlError::local(

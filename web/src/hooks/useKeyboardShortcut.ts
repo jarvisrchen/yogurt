@@ -1,32 +1,9 @@
 import { useEffect } from "react";
 
-/**
- * Phase 6 (Plan 06-02) — generic keyboard-shortcut hook.
- *
- * Attaches a `keydown` listener on `window` that fires `handler(e)` when
- * the configured key (case-insensitive) is pressed, optionally requiring
- * the platform meta key (⌘ on macOS, Ctrl on Windows/Linux). The handler
- * receives the raw `KeyboardEvent` so consumers can `preventDefault`,
- * `stopPropagation`, or read modifier state if they need to — the hook
- * also calls `e.preventDefault()` BEFORE invoking `handler` so the browser
- * default for ⌘K (focus the URL bar in some browsers) does not interfere.
- *
- * The dependency array intentionally includes `handler` so consumers
- * passing inline arrow functions get the latest closure each render —
- * mirrors the React docs' recommendation for event-listener effects.
- */
 export interface UseKeyboardShortcutOptions {
-  /** The key as it appears in `KeyboardEvent.key` (case-insensitive). */
   key: string;
-  /** Require ⌘ on macOS or Ctrl on Windows/Linux. Defaults to `false`. */
   metaOrCtrl?: boolean;
-  /** When `false`, the listener is detached. Defaults to `true`. */
   enabled?: boolean;
-  /**
-   * When `true`, the shortcut does not fire (and does not
-   * `preventDefault`) while an input, textarea, select, or
-   * contenteditable element has focus. Defaults to `false`.
-   */
   ignoreWhenTyping?: boolean;
 }
 
@@ -50,8 +27,6 @@ export function useKeyboardShortcut(
   }, [key, metaOrCtrl, enabled, ignoreWhenTyping, handler]);
 }
 
-/** `<input>` types that aren't text entry - a focused checkbox or radio
- *  (e.g. right after a click) shouldn't count as "typing". */
 const NON_TEXT_INPUT_TYPES = new Set([
   "checkbox",
   "radio",
@@ -64,10 +39,6 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "image",
 ]);
 
-/** True when the event target is a text-entry surface (a text-like input,
- *  textarea, select, or a contenteditable region such as the TipTap
- *  editor) - as opposed to e.g. a checkbox, which is an `<input>` too but
- *  captures no text. */
 function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   if (t.isContentEditable || t.tagName === "TEXTAREA" || t.tagName === "SELECT") {

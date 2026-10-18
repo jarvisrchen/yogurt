@@ -1144,3 +1144,7 @@ New closed items go at the bottom.
   Done 2026-10-06: each card caption now leads with an M/D/YY date ("10/6/26 · 2:45 PM · 47 min").
   New meetings default to "Meeting 10/6/26" instead of "Untitled meeting", and a date-shaped search ("10/6/26" or "10/6/2026") returns every meeting that started that local day, ahead of the text matches, so renamed meetings still turn up by date.
   </details>
+
+- [x] **DX-15** Remove unused dependencies and dead code found by the ponytail audit
+
+  Removed unused Rust and web dependencies (thiserror, tracing, insta, tower, tower-http, url, regex-lite, time, mime_guess, hex, msw, prosemirror-model), deleted dead code (start_meeting_recording, ModelDownloadStub, _resetSessionTokenCache, AiGreyAttrs), routed hand-built bearer fetches through the session helpers, and dropped change-narrative comments from the Cargo manifests.

@@ -1,11 +1,3 @@
-/**
- * STTPicker test suite (fast task: Deepgram key field + fake-pill removal).
- *
- * Covers:
- *  - AssemblyAI/Groq pills are gone (only Deepgram is real).
- *  - `deepgram_key_masked` renders the masked-key UX (mirrors ProviderCard).
- *  - Pasting a key + clicking "Save key" posts via `settingsApi.setSttKey`.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -58,13 +50,9 @@ vi.mock("../../lib/api/stt", () => ({
     isError: false,
     error: null,
   })),
-  // LocalSTTCard renders <ModelDownloadDialog>, which calls
-  // useDownloadModel() unconditionally — stub it so the module mock is
-  // complete even though no test here triggers a download.
+  // LocalSTTCard calls useDownloadModel() unconditionally.
   useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-  // LocalSTTCard also calls useDeleteModel() unconditionally for the
-  // ModelPicker trash affordance - stub it even though no test here
-  // deletes a model.
+  // ...and useDeleteModel() for the ModelPicker trash.
   useDeleteModel: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,
@@ -147,9 +135,7 @@ describe("STTPicker — Cloud card", () => {
     renderPicker();
     await waitFor(() => screen.getByTestId("cloud-stt-card"));
 
-    // "small.en" is downloaded per `modelsFixture`, so "Use Local" is the
-    // switch action rendered on the non-selected card given the fixture's
-    // default `stt_provider: "cloud"`.
+    // "small.en" is downloaded in `modelsFixture`, so "Use Local" shows on the non-selected card.
     fireEvent.click(screen.getByRole("button", { name: /use local/i }));
 
     await waitFor(() => {

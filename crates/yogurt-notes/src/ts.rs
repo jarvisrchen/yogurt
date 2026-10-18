@@ -1,9 +1,6 @@
-//! Transcript timestamp inference for AI-added blocks.
-//!
-//! Strategy: word-overlap heuristic. For each transcript segment, count how
-//! many >3-char words from the segment also appear in the block. Pick the
-//! segment with the highest count; tie-break to earliest ts. If no overlap
-//! and the transcript is non-empty, fall back to the first segment.
+//! Word-overlap timestamp inference for AI-added blocks.
+//! Picks the segment sharing the most words longer than 3 chars, ties to the earliest.
+//! With no overlap it falls back to the first segment.
 
 use crate::TranscriptSegment;
 

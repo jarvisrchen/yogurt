@@ -1,19 +1,6 @@
-//! Bundled LLM prompt templates for yogurt.
-//!
-//! Ships `enhance.md` (hero augmented-notes prompt, takes `{notes}` +
-//! `{transcript}` + `{format}` placeholders per CONTEXT D-16), one note
-//! format per file under `enhance/` (the "templates" a user sees in the
-//! post-meeting picker, see [`TEMPLATE_IDS`]), and `chat-system.md`
-//! (static in-meeting chat system prompt, consumed by Phase 6).
-//!
-//! Two loading modes (CONTEXT D-15, D-17):
-//! - `Mode::Release` reads embedded templates once at `Prompts::load`. The
-//!   `rust-embed` derive bakes the on-disk `templates/` into the binary at
-//!   `cargo build` time so a `cargo build --release` followed by a binary
-//!   restart picks up any edits — that satisfies PROMPT-04 for release.
-//! - `Mode::Dev` re-reads from `CARGO_MANIFEST_DIR/templates/` on every call
-//!   so a power user editing the template file sees the new text on the
-//!   very next request without rebuilding.
+//! Bundled LLM prompt templates.
+//! `Mode::Release` serves the copy `rust-embed` bakes in at build time.
+//! `Mode::Dev` re-reads `templates/` on every call so edits show up without rebuilding.
 
 mod ctx;
 pub use ctx::EnhanceCtx;
@@ -29,9 +16,8 @@ use tinytemplate::TinyTemplate;
 #[folder = "templates/"]
 struct Embedded;
 
-/// Every note format, in the order the UI lists them. The first entry is
-/// the fallback when auto-detection names nothing recognizable. Each id
-/// is the stem of `templates/enhance/<id>.md`.
+/// In UI order. The first entry is the fallback when auto-detection names nothing recognizable.
+/// Each id is the stem of `templates/enhance/<id>.md`.
 pub const TEMPLATE_IDS: [&str; 7] = [
     "general",
     "standup",
@@ -42,32 +28,23 @@ pub const TEMPLATE_IDS: [&str; 7] = [
     "interview",
 ];
 
-/// One note format as the UI and the prompt see it.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Template {
     pub id: &'static str,
-    /// Display name, e.g. "Design review".
     pub name: String,
-    /// One line on when the format fits - shown as a hint in the picker
-    /// and given to the model to choose by.
+    /// Shown as a picker hint and given to the model to choose by.
     pub when: String,
-    /// The section outline and per-section guidance, markdown.
     #[serde(skip)]
     pub body: String,
 }
 
-/// Where to load templates from in dev mode (relative to the crate root).
-/// In release builds, this is ignored — `RustEmbed` serves from the binary.
 fn dev_template_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates")
 }
 
-/// Source of the template bytes.
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
-    /// Read templates from disk on every call. For `cargo run`.
     Dev,
-    /// Read once at construction from the embedded copy.
     Release,
 }
 
@@ -94,14 +71,8 @@ impl Prompts {
         Ok(p)
     }
 
-    /// Render `enhance.md` with the given context. Disables HTML-escaping
-    /// because the rendered output flows to an LLM prompt, not to a browser
-    /// (CONTEXT D-16).
-    ///
-    /// `ctx.template` of `None` renders every format with an instruction to
-    /// pick one; `Some(id)` renders just that format. An unknown id is an
-    /// error - callers validate against [`TEMPLATE_IDS`] first so this only
-    /// fires on a programming mistake.
+    /// `None` renders every format with an instruction to pick one, `Some(id)` renders just that one.
+    /// An unknown id is an error, since callers validate against [`TEMPLATE_IDS`] first.
     pub fn render_enhance(&self, ctx: &EnhanceCtx<'_>) -> Result<String> {
         let format = match ctx.template {
             Some(id) => {
@@ -150,12 +121,10 @@ impl Prompts {
         )
     }
 
-    /// Return the static `chat-system.md` prompt body. No templating.
     pub fn chat_system(&self) -> Result<String> {
         self.read("chat-system.md")
     }
 
-    /// Every note format, in [`TEMPLATE_IDS`] order.
     pub fn templates(&self) -> Result<Vec<Template>> {
         TEMPLATE_IDS
             .iter()
@@ -166,7 +135,6 @@ impl Prompts {
             .collect()
     }
 
-    /// One note format by id; `None` for an id not in [`TEMPLATE_IDS`].
     pub fn template(&self, id: &str) -> Result<Option<Template>> {
         let Some(id) = TEMPLATE_IDS.iter().copied().find(|t| *t == id) else {
             return Ok(None);
@@ -188,9 +156,7 @@ impl Prompts {
     }
 }
 
-/// The part of the format instruction that is the same whether the model
-/// picks the format or has it forced: the first-line marker
-/// [`split_template_line`] parses, plus the section rules.
+/// Shared by the pick and forced paths: the first-line marker [`split_template_line`] parses, plus the section rules.
 const OUTPUT_CONTRACT: &str =
     "Your output's first line must be exactly `template: <id>` on its own \
     line, followed by a blank line, then the document. Keep the user's own headings if they wrote \
@@ -201,8 +167,7 @@ fn template_file(id: &str) -> String {
     format!("enhance/{id}.md")
 }
 
-/// Parse a `templates/enhance/<id>.md` file: a `name:` line, a `when:`
-/// line, a blank line, then the body.
+/// Expects a `name:` line, a `when:` line, a blank line, then the body.
 fn parse_template(id: &'static str, raw: &str) -> Result<Template> {
     let mut lines = raw.lines();
     let field = |lines: &mut std::str::Lines<'_>, key: &str| -> Result<String> {
@@ -233,15 +198,9 @@ fn parse_template(id: &'static str, raw: &str) -> Result<Template> {
     })
 }
 
-/// Split the `template: <id>` marker the enhance prompt asks for off the
-/// model's output. Returns the id named (not validated against
-/// [`TEMPLATE_IDS`] - the caller decides what an unknown id means) and the
-/// document that follows it, leading blank lines dropped. A reply without
-/// the marker comes back as `(None, text)` untouched.
-///
-/// Also safe on a streaming prefix: while the first line is still being
-/// generated (`"templ"`, `"template: stand"`) the whole prefix is treated
-/// as the marker so a live preview never flashes it.
+/// Splits the `template: <id>` marker off the model's output, without validating the id.
+/// A reply without the marker returns `(None, text)`.
+/// A streaming prefix of the marker (`"templ"`) is treated as the marker so a live preview never flashes it.
 pub fn split_template_line(text: &str) -> (Option<&str>, &str) {
     const MARKER: &str = "template:";
     let start = text.trim_start();
@@ -259,7 +218,6 @@ pub fn split_template_line(text: &str) -> (Option<&str>, &str) {
         };
         return (id, rest.trim_start_matches(['\n', '\r']));
     }
-    // A streaming prefix of the marker, still incomplete: hide it.
     if rest.is_empty() && !lower.is_empty() && MARKER.starts_with(&lower) {
         return (None, "");
     }
@@ -273,9 +231,7 @@ fn read_embedded(name: &str) -> Result<String> {
 
 fn render<S: Serialize>(template: &str, name: &str, ctx: &S) -> Result<String> {
     let mut tt = TinyTemplate::new();
-    // tinytemplate HTML-escapes by default. We want raw insertion because
-    // notes/transcript are markdown going *into* a prompt, not HTML headed
-    // for a browser.
+    // Output goes into an LLM prompt, not a browser, so skip tinytemplate's HTML escaping.
     tt.set_default_formatter(&tinytemplate::format_unescaped);
     tt.add_template(name, template)?;
     Ok(tt.render(name, ctx)?)
@@ -311,7 +267,6 @@ mod tests {
         assert_eq!(split_template_line("templ"), (None, ""));
         assert_eq!(split_template_line("template: stand"), (Some("stand"), ""));
         assert_eq!(split_template_line("template:"), (None, ""));
-        // Not a prefix of the marker: a normal first line stays visible.
         assert_eq!(split_template_line("## Dec"), (None, "## Dec"));
     }
 }

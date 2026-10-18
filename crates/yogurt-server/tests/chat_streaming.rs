@@ -1,9 +1,4 @@
-//! Phase 6 (Plan 06-01) — chat REST + WS streaming integration tests.
-//!
-//! Exercises the full happy path against a deterministic `MockChunksLlm`:
-//! POST returns a ULID `message_id`, and a WS subscriber sees an ordered
-//! sequence of `chat_chunk` frames whose concatenated `delta`s equal the
-//! mock's pre-canned text.
+//! Chat REST + WS streaming against a deterministic `MockChunksLlm`.
 
 use std::time::Duration;
 
@@ -53,12 +48,9 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
         .get(&meeting_id)
         .await
         .expect("meeting in registry");
-    // Baseline before our WS client connects; the handler's subscription
-    // bumps this by one.
     let baseline_subscribers = meeting.events_tx.receiver_count();
 
-    // Connect a WS client first so we don't miss the chunks emitted by the
-    // detached spawn_stream task.
+    // Connect first so chunks from the detached stream task are not missed.
     let ws_url = format!(
         "ws://{}/ws/meetings/{}?token={}",
         srv.addr, meeting_id, srv.token
@@ -73,9 +65,7 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
         .expect("ws connect");
     let (mut ws_write, mut ws_read) = ws_stream.split();
 
-    // Deterministic ready signal: wait until the WS handler has actually
-    // subscribed to events_tx before we post and trigger the broadcast.
-    // Bounded retry loop instead of a fixed sleep (flake source on slow CI).
+    // Wait for the WS handler to subscribe before posting.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while meeting.events_tx.receiver_count() <= baseline_subscribers {
         assert!(
@@ -85,7 +75,6 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
-    // POST the chat request.
     let post_url = format!(
         "http://{}/api/meetings/{}/chat?token={}",
         srv.addr, meeting_id, srv.token
@@ -103,8 +92,6 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
         .expect("message_id string")
         .to_string();
 
-    // Collect chat_chunk events for 3s (mock is instantaneous; this is
-    // headroom for slow CI).
     let mut accumulated = String::new();
     let mut saw_done = false;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
@@ -120,8 +107,6 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
         };
         let text = match frame {
             Message::Text(t) => t,
-            // tungstenite ping/pong frames are auto-handled; ignore anything
-            // else that comes through.
             _ => continue,
         };
         let value: serde_json::Value = match serde_json::from_str(&text) {
@@ -144,7 +129,6 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
         }
     }
 
-    // Politely close the WS.
     let _ = ws_write.send(Message::Close(None)).await;
 
     assert!(saw_done, "expected at least one chunk with done=true");
@@ -156,19 +140,14 @@ async fn it_streams_chat_chunks_in_order_over_ws() {
     server_task.abort();
 }
 
-/// HI-9 for the meeting WS: a meeting that exists ONLY in SQLite (the
-/// in-memory registry was wiped by a server restart — every post-meeting
-/// view) must still get a working WS. Before the fix the handler hard-
-/// closed with 4404, so chat chunks streamed into the void and the UI
-/// spinner never resolved.
+/// A meeting that exists only in SQLite (registry wiped by a restart) must still get a working WS, not a 4404 close.
 #[tokio::test(flavor = "multi_thread")]
 async fn ws_attaches_to_sqlite_only_meeting_and_streams_chat() {
     let (srv, server_task) = run_with_mock_llm(&["resurrected"])
         .await
         .expect("boot server");
 
-    // Row in the repo + Phase 0 storage, but NOT in the in-memory registry
-    // (simulates post-restart state).
+    // In the repo but not the in-memory registry, as after a restart.
     let meeting_id = uuid::Uuid::now_v7();
     let id_str = meeting_id.to_string();
     {
@@ -194,7 +173,6 @@ async fn ws_attaches_to_sqlite_only_meeting_and_streams_chat() {
         "precondition: registry must not know this meeting"
     );
 
-    // Connect the WS — must hydrate and stay open, not close with 4404.
     let ws_url = format!(
         "ws://{}/ws/meetings/{}?token={}",
         srv.addr, meeting_id, srv.token
@@ -209,8 +187,6 @@ async fn ws_attaches_to_sqlite_only_meeting_and_streams_chat() {
         .expect("ws connect");
     let (_ws_write, mut ws_read) = ws_stream.split();
 
-    // The handler hydrates the meeting on attach; wait until it shows up
-    // and has our subscriber (bounded, deterministic).
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let meeting = loop {
         if let Some(m) = srv.state.meetings.get(&meeting_id).await {
@@ -226,7 +202,6 @@ async fn ws_attaches_to_sqlite_only_meeting_and_streams_chat() {
     };
     drop(meeting);
 
-    // Chat against the hydrated meeting streams chunks to this socket.
     let post_url = format!(
         "http://{}/api/meetings/{}/chat?token={}",
         srv.addr, meeting_id, srv.token

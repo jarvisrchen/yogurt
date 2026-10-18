@@ -1,40 +1,17 @@
 /**
- * ModelDownloadDialog — STATE-04 first-time model download modal
- * (Phase 8 Plan 08-03, PRD §5.11).
- *
- * Renders a native `<dialog>` element so we get correct focus trap,
- * Escape-to-close, and backdrop semantics for free.  Wires
- * `useModelDownloadProgress(model)` for live byte / rate / ETA from the
- * `/ws` channel, and fires `POST /api/stt/models/:name/download` once
- * on open.
- *
- * Lifecycle:
- *   - `model === null` → dialog is closed (`d.close()`).
- *   - `model !== null` → `d.showModal()` and call `startDownload(model)`
- *     the first time we observe this `model` value.
- *   - On `state.complete` → `setTimeout(onClose, 600)` so the user sees
- *     100% momentarily before the dialog auto-closes.
- *   - On `state.error` → keep the dialog open with the error text; user
- *     can Cancel to dismiss, or hit Retry to re-fire the download.
- *
- * V1 limitation (CONTEXT D-13): the Cancel button just closes the
- * dialog — the background download keeps running.  True cancellation
- * (plumbing a cancel-token into `download_to`) is deferred to v1.1.
+ * Native `<dialog>` for free focus trap, Escape-to-close and backdrop semantics.
+ * Cancel only closes the dialog: the background download keeps running, since there is no cancel token into `download_to` yet.
+ * On `state.complete` it auto-closes after 600ms so the user sees 100% briefly.
  */
 import { useEffect, useRef } from "react";
 import { useDownloadModel } from "../../lib/api/stt";
 import type { DownloadState } from "../../hooks/useModelDownloadProgress";
 
 interface ModelDownloadDialogProps {
-  /** Model name to download (e.g. "small.en"). `null` → dialog closed. */
   model: string | null;
-  /** Total size in MB to display in the caption. */
   sizeMb: number | null;
-  /** Live progress state owned by `LocalSTTCard` (so the subscription
-   *  survives dialog open/close cycles). */
+  /** Owned by `LocalSTTCard` so the subscription survives dialog open/close. */
   progress: DownloadState | null;
-  /** Called when the user clicks Cancel / Run in background, or when
-   *  the download completes (auto-close after a 600 ms peek at 100%). */
   onClose: () => void;
 }
 
@@ -70,39 +47,25 @@ export function ModelDownloadDialog({
   const ref = useRef<HTMLDialogElement | null>(null);
   const startedRef = useRef<string | null>(null);
   const dl = useDownloadModel();
-  // Progress is owned by the parent (LocalSTTCard) so it survives the
-  // dialog closing. Local alias kept for readability with the original
-  // render code below.
   const state = progress;
 
-  // Open / close the native dialog as `model` flips, and kick off the
-  // download POST once per model open.
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
     if (model) {
       if (!d.open) d.showModal();
-      // POST /download only once per (browser session × model). If the
-      // user reopens the dialog for an already-running download (clicked
-      // the ⟳ pill while progress was streaming), don't re-POST — the
-      // worker is already running and the WS state is already current.
+      // POST /download once per browser session and model: reopening for an already-running download must not re-POST.
       if (startedRef.current !== model) {
         startedRef.current = model;
         dl.mutate(model);
       }
     } else {
       if (d.open) d.close();
-      // INTENTIONALLY do NOT reset startedRef here. The parent
-      // (LocalSTTCard) keeps the underlying download alive when the
-      // dialog closes via Run-in-background, so reopening the dialog
-      // for the same model must NOT re-POST to /download — that would
-      // spawn a duplicate server-side worker that races on the same
-      // file path. startedRef only flips when the parent actually
-      // switches to a different model (the `!== model` check above).
+      // Do NOT reset startedRef here. The parent keeps the download alive after Run-in-background,
+      // and a re-POST on reopen would spawn a duplicate worker racing on the same file.
     }
   }, [model, dl]);
 
-  // Auto-close 600 ms after completion so the user sees 100% momentarily.
   useEffect(() => {
     if (!state?.complete) return;
     const t = window.setTimeout(onClose, 600);
@@ -110,8 +73,7 @@ export function ModelDownloadDialog({
   }, [state?.complete, onClose]);
 
   if (!model) {
-    // Render an empty `<dialog>` so the ref is stable; this branch
-    // matters on first mount before `model` is ever non-null.
+    // Empty `<dialog>` keeps the ref stable before `model` is first non-null.
     return (
       <dialog
         ref={ref}

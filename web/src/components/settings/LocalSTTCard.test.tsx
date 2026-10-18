@@ -1,11 +1,3 @@
-/**
- * LocalSTTCard "Use Local" guard test (fast task).
- *
- * Local STT could previously be activated with a model that was never
- * downloaded — recording then failed at meeting start. The button must be
- * disabled (and show a "Download the model first" hint) until the
- * currently-selected model's `downloaded` flag is true.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -102,13 +94,7 @@ describe("LocalSTTCard — Use Local guard", () => {
   });
 
   it("still shows the hint when local is already active but the model isn't downloaded", () => {
-    // Regression for the guard gap: `activateBlocked` used to short-circuit
-    // to `false` whenever `active` was already true, so a persisted-but-
-    // broken combo (model deleted after activation, or a bad row from
-    // before this guard existed) rendered as if nothing were wrong. The
-    // guard must track disk truth regardless of which provider is active.
-    // The card is active, so the header shows "In use" and no "Use Local"
-    // button — the hint is the only observable signal here.
+    // The guard must track disk truth even for the active card. Its header shows "In use" with no "Use Local" button, so the hint is the only signal.
     renderCard({ active: true, selectedModel: "small.en" });
 
     expect(

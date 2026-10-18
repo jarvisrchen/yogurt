@@ -1,10 +1,5 @@
-//! `yogurt ctl meeting *` (CLI-4 / D1).
-//!
-//! Mutations (`new`, `start`, `stop`, `enhance`) always need a live server.
-//! Reads (`list`, `show`, `summary`, `transcript`) fall back to the local
-//! SQLite directory when discovery finds no server, printing `source: db`
-//! (text: stderr; JSON: a field) so the reader knows the answer may be
-//! stale relative to a server that's merely on a different port.
+//! Mutations always need a live server.
+//! Reads fall back to the local SQLite directory when discovery finds no server, printing `source: db` (text: stderr; JSON: a field) since the answer may be stale.
 
 use std::path::{Path, PathBuf};
 
@@ -37,13 +32,9 @@ pub enum MeetingCmd {
         /// created already ended.
         #[arg(long, conflicts_with = "from_script")]
         transcript_file: Option<PathBuf>,
-        /// Seed a finished fixture meeting by converting a
-        /// scripts/eval-style conversation (`A:`/`B:` lines, `PAUSE
-        /// <seconds>`, `#` comments -- see scripts/eval/conversation.txt)
-        /// into `me`/`them` segments with synthetic timestamps: 4 seconds
-        /// per spoken line, plus any `PAUSE` seconds, so the eval ground
-        /// truth doubles as a fixture without needing to actually speak
-        /// and record it. Implies the meeting is created already ended.
+        /// Seed a finished fixture meeting by converting a scripts/eval-style conversation
+        /// (`A:`/`B:` lines, `PAUSE <seconds>`, `#` comments, see scripts/eval/conversation.txt)
+        /// into `me`/`them` segments with synthetic timestamps. Implies the meeting is created already ended.
         #[arg(long)]
         from_script: Option<PathBuf>,
         /// Seed the user's raw notes from a markdown file. With
@@ -156,8 +147,6 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
     }
 }
 
-// ─── <id|url|last> ──────────────────────────────────────────────────────
-
 #[derive(Debug, PartialEq)]
 pub(super) enum MeetingRef {
     Id(String),
@@ -193,8 +182,7 @@ struct ActiveRef {
     id: String,
 }
 
-/// Resolve a ref to a live client + id. Mutation path -- never falls back
-/// to the DB, since there's nothing to mutate there.
+/// Mutation path: never falls back to the DB.
 pub(super) async fn client_for_ref(
     port_flag: Option<u16>,
     r: &MeetingRef,
@@ -218,8 +206,7 @@ enum Resolved {
     Db(yogurt_db::Db, String),
 }
 
-/// Read path: same as [`client_for_ref`], but a [`CtlError::NoServer`]
-/// falls back to the local database instead of propagating.
+/// Read path: like [`client_for_ref`], but [`CtlError::NoServer`] falls back to the local database.
 async fn resolve_read(port_flag: Option<u16>, r: &MeetingRef) -> Result<Resolved, CtlError> {
     match client_for_ref(port_flag, r).await {
         Ok((c, id)) => Ok(Resolved::Server(c, id)),
@@ -246,10 +233,7 @@ async fn resolve_read(port_flag: Option<u16>, r: &MeetingRef) -> Result<Resolved
 }
 
 fn open_db_readonly() -> Result<yogurt_db::Db, CtlError> {
-    // CLI-7: honor $YOGURT_DATA_DIR (no --data-dir flag on ctl itself) so
-    // this read-through-DB fallback agrees with wherever `yogurt start
-    // --data-dir` / $YOGURT_DATA_DIR put the database -- otherwise `ctl
-    // meeting list` with no server running would read the wrong one.
+    // No --data-dir flag on ctl, so honor $YOGURT_DATA_DIR to agree with where `yogurt start` put the database.
     let dir = match crate::data_dir::resolve(None) {
         Ok(Some(dir)) => dir,
         Ok(None) => client::yogurt_home()?,
@@ -285,8 +269,6 @@ fn get_or_not_found(
         )
     })
 }
-
-// ─── list ───────────────────────────────────────────────────────────────
 
 async fn list(
     port_flag: Option<u16>,
@@ -331,8 +313,6 @@ async fn list(
     Ok(())
 }
 
-// ─── new ────────────────────────────────────────────────────────────────
-
 async fn new(
     port_flag: Option<u16>,
     json_out: bool,
@@ -342,12 +322,8 @@ async fn new(
     from_script: Option<PathBuf>,
     notes_file: Option<PathBuf>,
 ) -> Result<(), CtlError> {
-    // CLI-5: `--transcript-file` is forwarded to the server byte-for-shape
-    // untouched (read as a bare `serde_json::Value`, not parsed into our
-    // own segment type) so a malformed file fails on the server's own
-    // validation and the caller sees the server's message, and so a
-    // well-formed file round-trips exactly. `--from-script` has no
-    // existing JSON to forward, so it's built into segments here.
+    // `--transcript-file` is forwarded as a bare `serde_json::Value` so a malformed file fails on the server's own validation
+    // and a well-formed one round-trips exactly. `--from-script` has no JSON to forward, so it is built into segments here.
     let transcript_json = match (&transcript_file, &from_script) {
         (Some(p), _) => Some(read_json_file(p)?),
         (None, Some(p)) => Some(
@@ -397,9 +373,7 @@ async fn new(
     Ok(())
 }
 
-/// One `--transcript-file` / `--from-script` segment. Mirrors the
-/// `{ts_ms, channel, text}` shape `docs/DEBUGGING-TRANSCRIPTS.md`
-/// documents and the server validates on `POST /api/meetings`.
+/// One `--transcript-file` / `--from-script` segment, matching the shape the server validates on `POST /api/meetings`.
 #[derive(Debug, serde::Serialize)]
 struct FixtureSegment {
     ts_ms: i64,
@@ -407,11 +381,7 @@ struct FixtureSegment {
     text: String,
 }
 
-/// Read `--transcript-file` as raw JSON, no shape validation -- the
-/// server is the one place that owns `transcript_json`'s shape (see
-/// AGENTS.md), so a malformed file is rejected there and this command
-/// surfaces the server's own message rather than a second, possibly
-/// divergent, local check.
+/// Raw JSON with no shape validation: the server owns `transcript_json`'s shape, so a malformed file is rejected there with its message.
 fn read_json_file(path: &Path) -> Result<serde_json::Value, CtlError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         CtlError::local(
@@ -430,12 +400,8 @@ fn read_json_file(path: &Path) -> Result<serde_json::Value, CtlError> {
     })
 }
 
-/// Convert an eval-style script (`A:`/`B:` lines, `PAUSE <seconds>`, `#`
-/// comments -- see `scripts/eval/conversation.txt`) into `me`/`them`
-/// segments. Timestamps are synthetic: 4 seconds per spoken line (long
-/// enough to separate turns without parsing word counts to estimate a
-/// speaking rate) plus any `PAUSE` seconds, so a longer silence in the
-/// script still shows up as a gap between segments.
+/// Convert an eval-style script into `me`/`them` segments.
+/// Timestamps are synthetic: 4 seconds per spoken line plus any `PAUSE` seconds, so a longer silence still shows as a gap.
 fn segments_from_script(path: &Path) -> Result<Vec<FixtureSegment>, CtlError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         CtlError::local(
@@ -479,8 +445,7 @@ fn segments_from_script(path: &Path) -> Result<Vec<FixtureSegment>, CtlError> {
     Ok(segments)
 }
 
-/// Returns `true` if this call actually started recording, `false` if it
-/// was already active (idempotent no-op per CLI-4's spec).
+/// `true` if this call started recording, `false` if it was already active.
 async fn start_meeting(c: &Client, id: &str) -> Result<bool, CtlError> {
     match c
         .post_empty::<serde_json::Value>(&format!("/api/meetings/{id}/start"))
@@ -491,8 +456,6 @@ async fn start_meeting(c: &Client, id: &str) -> Result<bool, CtlError> {
         Err(e) => Err(e),
     }
 }
-
-// ─── start ──────────────────────────────────────────────────────────────
 
 async fn start(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(), CtlError> {
     let r = MeetingRef::parse(meeting);
@@ -510,8 +473,6 @@ async fn start(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<
     }
     Ok(())
 }
-
-// ─── stop ───────────────────────────────────────────────────────────────
 
 async fn stop(
     port_flag: Option<u16>,
@@ -544,8 +505,6 @@ async fn stop(
     }
     Ok(())
 }
-
-// ─── show ───────────────────────────────────────────────────────────────
 
 async fn show(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(), CtlError> {
     let r = MeetingRef::parse(meeting);
@@ -587,8 +546,6 @@ async fn show(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(
     Ok(())
 }
 
-// ─── summary ────────────────────────────────────────────────────────────
-
 async fn summary(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Result<(), CtlError> {
     let r = MeetingRef::parse(meeting);
     let (body, source) = match resolve_read(port_flag, &r).await? {
@@ -614,9 +571,7 @@ async fn summary(port_flag: Option<u16>, json_out: bool, meeting: &str) -> Resul
     Ok(())
 }
 
-/// Strip `<span data-ai-grey ...>` / `<span data-transcript-link ...>`
-/// wrappers the enhance renderer embeds (see `docs/AI-INTEGRATION.md`'s
-/// `sed -E 's/<[^>]+>//g'` recipe, which this replaces).
+/// Strip the `<span data-ai-grey ...>` / `<span data-transcript-link ...>` wrappers the enhance renderer embeds.
 fn strip_tags(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_tag = false;
@@ -630,8 +585,6 @@ fn strip_tags(s: &str) -> String {
     }
     out
 }
-
-// ─── transcript ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 struct Segment {
@@ -717,11 +670,8 @@ async fn transcript(
     Ok(())
 }
 
-/// Polls rather than opening a WebSocket -- `tokio-tungstenite` is not a
-/// `yogurt-cli` dependency (CLI-4's spec caps new dependencies at
-/// `reqwest`), so `--follow` re-fetches the meeting row on an interval and
-/// prints whatever segments are new. Stops once the meeting has an
-/// `ended_at` and a poll produced nothing new, or on Ctrl-C.
+/// Polls the meeting row on an interval and prints new segments.
+/// Stops once the meeting has an `ended_at` and a poll produced nothing new, or on Ctrl-C.
 async fn follow_transcript(
     c: &Client,
     id: &str,
@@ -750,15 +700,8 @@ async fn follow_transcript(
     Ok(())
 }
 
-// ─── enhance ────────────────────────────────────────────────────────────
-
-/// Blocks for the whole LLM generation. CLI-4's spec asks for the
-/// server's `enhance_progress` WS frames forwarded to stderr as
-/// `phase: ...` lines; that needs a WS client this binary doesn't carry
-/// (see `follow_transcript` above for the same constraint), so this
-/// prints `phase: sending` up front and a `phase: waiting` heartbeat
-/// every 5s instead of going silent -- the documented deviation, so an
-/// agent driving this doesn't read a long pause as hung and retry.
+/// Blocks for the whole LLM generation. Prints `phase: sending` up front and a `phase: waiting` heartbeat every 5s,
+/// so a caller does not read a long pause as hung and retry.
 async fn enhance(
     port_flag: Option<u16>,
     json_out: bool,
@@ -810,15 +753,8 @@ async fn enhance(
     Ok(())
 }
 
-// ─── mute ───────────────────────────────────────────────────────────────
-
-/// `POST /api/meetings/:id/mic-muted` (AUD-6) -- pauses/resumes the mic on
-/// an actively-recording meeting. It 409s against a meeting that isn't
-/// currently recording (there is no capture thread to command); that
-/// propagates as a normal `CtlError::Server`, same as any other server
-/// rejection. No `<id|url|last>` given defaults to whatever is currently
-/// recording, same as bare `stop` -- `last` (most recently *created*)
-/// would usually be the wrong meeting to mute.
+/// `POST /api/meetings/:id/mic-muted`. It 409s for a meeting that is not recording (no capture thread to command), which propagates as `CtlError::Server`.
+/// No ref defaults to the currently recording meeting like bare `stop`, since `last` (most recently created) would usually be the wrong one.
 async fn mute(port_flag: Option<u16>, json_out: bool, action: MuteAction) -> Result<(), CtlError> {
     let (muted, meeting) = match action {
         MuteAction::On { meeting } => (true, meeting),
@@ -855,14 +791,8 @@ async fn mute(port_flag: Option<u16>, json_out: bool, action: MuteAction) -> Res
     Ok(())
 }
 
-// ─── search ─────────────────────────────────────────────────────────────
-
-/// Percent-encodes a query-string value. Only the handful of workspace
-/// dependencies `ctl` already pulls in are fair game (see AGENTS.md's
-/// "shortest diff" rule) and none of them expose a URL encoder at this
-/// layer, so this is the whole thing: byte-wise, `+` for space, `%XX`
-/// otherwise -- correct for UTF-8 since multi-byte chars just become
-/// several escaped bytes.
+/// Percent-encodes a query-string value: byte-wise, `+` for space, `%XX` otherwise, which is correct for UTF-8.
+/// No workspace dependency exposes an encoder here.
 fn encode_query(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -907,8 +837,6 @@ async fn search(
     }
     Ok(())
 }
-
-// ─── delete ─────────────────────────────────────────────────────────────
 
 async fn delete(
     port_flag: Option<u16>,
@@ -996,8 +924,7 @@ mod tests {
 
     #[test]
     fn a_non_meeting_url_falls_back_to_a_bare_id() {
-        // Not a parseable URL, not "last" -- treated as a literal id, same
-        // as any other free-text string a caller might pass.
+        // Not a parseable URL or "last": treat as a literal id.
         assert_eq!(
             MeetingRef::parse("not a url or id"),
             MeetingRef::Id("not a url or id".to_string())

@@ -1,8 +1,3 @@
-//! Broadcast-plumbing integration tests using the synthetic sine-wave
-//! generator. These run on every platform and verify the
-//! producer/consumer contract Plan 02 will reuse for real mic + system
-//! capture.
-
 use std::time::Duration;
 use tokio::sync::broadcast;
 use yogurt_audio::{
@@ -22,7 +17,6 @@ async fn it_emits_correct_length_frames_at_the_expected_cadence() {
         tx,
     );
 
-    // Collect 5 frames (~100 ms of audio).
     let mut frames = Vec::with_capacity(5);
     for _ in 0..5 {
         let f = tokio::time::timeout(Duration::from_millis(500), rx.recv())
@@ -38,8 +32,6 @@ async fn it_emits_correct_length_frames_at_the_expected_cadence() {
         assert_eq!(f.samples.len(), FRAME_SAMPLES);
     }
 
-    // Monotonic time should increase by roughly 20 ms per frame. CR-01:
-    // field is now `monotonic_micros`; expect ~20_000 µs between frames.
     for w in frames.windows(2) {
         let dt_us = w[1].monotonic_micros.saturating_sub(w[0].monotonic_micros);
         assert!(
@@ -48,7 +40,6 @@ async fn it_emits_correct_length_frames_at_the_expected_cadence() {
         );
     }
 
-    // Sine wave should produce non-zero, non-constant samples.
     let s = &frames[0].samples;
     assert!(
         s.iter().any(|&x| x != 0),

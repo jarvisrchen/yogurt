@@ -3,11 +3,6 @@ import { defineConfig, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// Vitest 2.1 ships vite 5 peer types; we run vite 6. Casting the config to
-// `UserConfig & { test: unknown }` keeps the editor + tsc --noEmit happy while
-// still letting Vitest pick the `test:` block up at runtime. The triple-slash
-// reference above pulls vitest/config's TestUserConfig type into the project
-// so `globals: true` enables `describe`/`it`/`expect` ambient globals.
 // Dev-server port. `just dev` resolves a free (vite, backend) pair and
 // passes the vite half down as YOGURT_VITE_PORT, so two worktrees can run
 // side by side; the backend proxy is pointed at the same number via
@@ -17,18 +12,14 @@ const PORT = Number(process.env.YOGURT_VITE_PORT ?? 5173);
 // the backend the same way, so a worktree pair stays self-consistent.
 const BACKEND = Number(process.env.YOGURT_BACKEND_PORT ?? 7878);
 
+// Vitest ships vite 5 peer types but we run vite 6, so the cast keeps tsc happy while Vitest still reads `test:`.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: PORT,
     strictPort: true,
-    // Pin the HMR client to Vite's own port so it doesn't try the
-    // page-origin (the backend's port, when served via the yogurt proxy).
-    // Without this, Vite's HMR client guesses `window.location.host`,
-    // yogurt's dev_proxy rejects it ("vite proxy: refusing websocket
-    // upgrade -- use the Vite URL for HMR"), Vite falls back
-    // — and the user sees a noisy `WebSocket connection failed` plus
-    // a "Direct websocket connection fallback" warning in the console.
+    // Pin the HMR client to Vite's own port. Otherwise it targets the page origin (the backend port behind
+    // the yogurt proxy), the proxy refuses the websocket upgrade, and the console fills with connection warnings.
     hmr: {
       host: "127.0.0.1",
       clientPort: PORT,
@@ -42,8 +33,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/vitest.setup.ts"],
-    // `e2e/*.spec.ts` are Playwright specs, not vitest — keep vitest out of
-    // them (its default include otherwise matches `.spec.ts`).
+    // `e2e/*.spec.ts` are Playwright specs; vitest's default include would otherwise match them.
     exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
   },
 } as UserConfig);

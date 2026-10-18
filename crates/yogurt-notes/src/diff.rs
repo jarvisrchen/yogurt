@@ -1,17 +1,8 @@
-//! Structural block-level diff/merge between user_md and enriched_md.
-//!
-//! Algorithm:
-//!   1. Build a HashMap of `block_key(b) -> &Block` for every user block.
-//!   2. Walk enriched_blocks in order:
-//!        - If the key is in user_set, emit `Source::User` using the user's
-//!          exact block text (preserves trailing whitespace / formatting).
-//!        - Otherwise emit `Source::AiGrey { transcript_ts_sec }` with a
-//!          best-effort transcript ts from `ts::guess_ts_sec`.
-//!   3. Inline pass: for every AiGrey paragraph / list item, find each user
-//!      line woven into it (`weave::find_user_line`) and record the byte
-//!      ranges as `user_runs`; a line found this way counts as kept.
-//!   4. Append any user blocks the LLM dropped at the end as `Source::User`
-//!      (defensive — never lose user text).
+//! Structural block diff/merge between user_md and enriched_md.
+//! An enriched block whose key matches a user block is emitted as `Source::User` with the user's exact text.
+//! Any other block is `Source::AiGrey` with a best-effort transcript timestamp.
+//! An inline pass then records the user's lines woven into AI blocks as `user_runs`.
+//! Finally, user blocks the model dropped are appended so user text is never lost.
 
 use crate::ast::{block_key, strip_markers, Block};
 use crate::{ts, weave, MergedBlock, Source, TranscriptSegment};
@@ -35,12 +26,8 @@ pub fn merge(
         let k = block_key(b);
         if let Some(user_block) = user_by_key.get(&k) {
             seen_user_keys.insert(k);
-            // The user's exact text always wins. The user's block SHAPE wins
-            // too (HI-3: keep their nesting depth when the model flattens),
-            // with one exception: a bare line the user typed that the model
-            // filed as a bullet stays a bullet, so their note sits in the
-            // list with the AI additions instead of floating beside it as
-            // a lone paragraph.
+            // The user's block shape wins too, keeping nesting depth when the model flattens.
+            // A bare paragraph the model filed as a bullet stays a bullet, so the note sits in the list.
             let block = match (*user_block, b) {
                 (Block::Paragraph { md }, Block::ListItem { depth, .. }) => Block::ListItem {
                     md: md.clone(),
@@ -66,7 +53,6 @@ pub fn merge(
         }
     }
 
-    // Inline pass: the user's lines woven into AI bullets.
     let user_lines: Vec<(String, String)> = user
         .iter()
         .filter_map(|b| match b {
@@ -96,8 +82,7 @@ pub fn merge(
         mb.user_runs = weave::merge_ranges(runs);
     }
 
-    // Defensive: append any user blocks the LLM dropped - unless their words
-    // live on inside an AI bullet, which is the whole point of weaving.
+    // Skip user blocks whose words live on inside an AI bullet.
     for b in user {
         let k = block_key(b);
         if !seen_user_keys.contains(&k) && !absorbed.contains(&k) {
@@ -156,9 +141,6 @@ mod tests {
         assert!(matches!(out[1].source, Source::AiGrey { .. }));
     }
 
-    /// LLM-8 (meeting 01a05a46): notes `247k` / `464k RSU`, model output
-    /// `- Base salary: 247k`. The one-word line used to come back grey
-    /// inside the bullet and then AGAIN as a bare paragraph at the end.
     #[test]
     fn one_word_note_folded_into_an_ai_bullet_is_painted_not_appended() {
         let user = vec![
@@ -201,7 +183,6 @@ mod tests {
         assert_eq!(out.len(), 2, "{out:?}");
         assert!(matches!(out[0].source, Source::AiGrey { .. }));
         assert_eq!(out[0].user_runs, vec![(9, 22)]);
-        // the unrelated line still gets the defensive append
         assert_eq!(out[1].source, Source::User);
         assert_eq!(
             out[1].block,

@@ -47,7 +47,7 @@ describe("dayLabel", () => {
   });
 
   it("labels a week or more back with a short date", () => {
-    const d = new Date("2026-06-18T12:00:00"); // exactly 7 days back
+    const d = new Date("2026-06-18T12:00:00");
     expect(dayLabel(d, now)).toBe(
       d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
     );

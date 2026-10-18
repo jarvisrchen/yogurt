@@ -1,19 +1,4 @@
-/**
- * Phase 7 Plan 07-04 — Welcome left-column terminal mockup (PRD §5.10).
- *
- * Visual: a small macOS-style window with three traffic-light dots and a
- * 4-line boot sequence. The copy is fixed — it's a *mockup*, not a live
- * tail — and intentionally encodes the CLI-first launch story:
- *
- *   $ yogurt start
- *   ✓ server live on :7878
- *   ✓ opening your browser…
- *   → waiting for screen-recording grant
- *
- * Colors come straight from the macOS traffic-light spec (#FF5F57, #FEBC2E,
- * #28C840). The panel background `#211D18` matches `--color-ink` so the
- * mock feels native to the Yogurt palette without going truly black.
- */
+/** The boot-sequence copy is fixed: it is a mockup, not a live tail. */
 
 const TRAFFIC_LIGHTS = [
   { color: "#FF5F57", label: "close" },

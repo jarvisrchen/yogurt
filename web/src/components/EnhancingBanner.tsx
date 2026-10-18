@@ -1,52 +1,17 @@
-// EnhancingBanner — sticky lilac banner shown while the LLM is enriching
-// the user's notes. PRD §5.11 + §16.5, CONTEXT D-28.
-//
-// Layout (left → right):
-//
-//   ● Weaving your notes into the transcript…   ▭▭▭▭▭▭▭▭▭▭▭     1,234 chars
-//   ↑                                            ↑               ↑
-//   pulse dot (1.4s recpulse)                    progress bar    JetBrains
-//   blueberry (#5B4FC7)                          (1.8s)          Mono count
-//
-// Background: --color-blsoft (#ECE9FB) per CONTEXT D-28.
-//
-// Visibility: parent owns the `visible` boolean and toggles it on/off as the
-// `enhance_progress` WS event stream advances (sending → streaming → done).
-// `chars` is shown when defined and > 0; it formats with locale separators
-// (en-US comma grouping) so 1234 → "1,234".
-
-// Hex literals match the Phase 1 `@theme` tokens (--color-blsoft, --color-blue,
-// --color-ink, --color-mut) — duplicated as JS constants so the inline styles
-// below stay self-documenting. The actual blue is consumed via CSS (the
-// `.enhancing-dot` and `.enhancing-bar-fill` rules in index.css), so no JS
-// constant for it is needed here.
 const LILAC = "var(--color-blsoft)";
-// Soft lilac track for the animated bar (CONTEXT D-28); mixed from the
-// accent so it sits right on both light and dark surfaces (UI-6).
+// Lilac track mixed from the accent so it works on light and dark surfaces.
 const TRACK = "color-mix(in srgb, var(--color-blue) 22%, transparent)";
 const INK = "var(--color-ink)";
 const MUT = "var(--color-mut)";
-const STRAW = "var(--color-straw)"; // error accent (PRD §16)
+const STRAW = "var(--color-straw)";
 const STRAW_SOFT = "var(--color-strsoft)";
 
 export interface EnhancingBannerProps {
-  /** When false, the banner is unmounted (no empty container in the DOM). */
   visible: boolean;
-  /** Optional running character count from `enhance_progress.chars`. */
   chars?: number;
-  /**
-   * Copy can be overridden in tests; default matches PRD §5.11 verbatim
-   * including the unicode ellipsis (the user-prompt spec calls this out
-   * as the load-bearing string).
-   */
   copy?: string;
-  /**
-   * BL-5: if non-null, the banner switches from the spinning lilac state to
-   * a static strawberry error state with the supplied message + a Retry
-   * button (only rendered when `onRetry` is provided).
-   */
+  /** If non-null, shows a static error state with a Retry button (when `onRetry` is set). */
   errorMessage?: string | null;
-  /** Click handler for the Retry button in the error state. */
   onRetry?: () => void;
 }
 
@@ -59,10 +24,7 @@ export function EnhancingBanner({
   errorMessage,
   onRetry,
 }: EnhancingBannerProps) {
-  // BL-5: the error state takes precedence over the spinning state. Even if
-  // the parent passes `visible={false}` once it sees the error, this lets
-  // the parent leave `visible={true}` and let the banner render the error
-  // pill until the user retries or navigates away.
+  // The error state wins over `visible`, so the parent can leave `visible` true until retry.
   if (errorMessage) {
     return (
       <div
@@ -109,8 +71,7 @@ export function EnhancingBanner({
   }
 
   if (!visible) {
-    // Render an empty fragment so tests asserting "no children" pass and
-    // so the layout doesn't reserve any vertical space.
+    // Empty fragment: reserves no vertical space.
     return null;
   }
 
@@ -136,14 +97,10 @@ export function EnhancingBanner({
         fontWeight: 600,
       }}
     >
-      {/* Pulsing dot — 1.4s recpulse per CONTEXT D-28 / PRD §16.5. */}
       <span className="enhancing-dot" aria-hidden="true" />
 
       <span style={{ flex: "0 1 auto" }}>{copy}</span>
 
-      {/* Progress track + animated fill — the bar's job is "the AI is
-        working" rather than a literal percentage. 1.8s enhancing-bar
-        keyframes (defined below in index.css). */}
       <div
         aria-hidden="true"
         style={{
@@ -159,8 +116,6 @@ export function EnhancingBanner({
         <div className="enhancing-bar-fill" />
       </div>
 
-      {/* Character count — JetBrains Mono, --color-mut. Only rendered when
-        a streaming event has supplied a numeric count. */}
       {hasChars && (
         <span
           data-testid="enhancing-char-count"

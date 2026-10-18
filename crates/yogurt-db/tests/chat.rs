@@ -1,24 +1,12 @@
-//! Integration tests for the Phase 6 `chat_messages` CRUD surface on `Db`.
-//!
-//! V002 of the yogurt-db migration adds `chat_messages` alongside the
-//! Phase 5 providers + settings tables. Phase 6's REST handler in
-//! yogurt-server is the production consumer; these tests exercise the
-//! storage surface in isolation against `Db::open_in_memory()`.
-//!
-//! The `meetings(id)` FK target lives in `yogurt-server::storage::migrations`
-//! (Phase 0). When `Db` is opened in-memory here, that table does NOT exist,
-//! so the V002 migration uses `meetings(id)` as a soft reference — the FK is
-//! defined but not enforced (sqlite parses FK syntax without requiring the
-//! parent table to exist). In production both runners apply against the same
-//! file, so the constraint is real at runtime.
+//! Exercises the `chat_messages` storage surface in isolation against `Db::open_in_memory()`.
+//! The `meetings(id)` FK target is created by `yogurt-server::storage::migrations`, which is absent here, so the FK is defined but not enforced.
+//! In production both runners apply to the same file, so the constraint is real.
 
 use yogurt_db::chat::{ChatMessage, Role};
 use yogurt_db::Db;
 
 fn seed_meeting(db: &Db, id: &str) {
-    // Create a minimal meetings table inside the in-memory db so the FK
-    // (when foreign_keys=ON) has a valid parent row. Schema matches
-    // Phase 0 storage::migrations exactly so insert columns line up.
+    // Create a minimal meetings table so the FK has a valid parent row. The schema matches `storage::migrations`.
     db.conn()
         .execute_batch(
             r#"
@@ -51,9 +39,7 @@ fn it_inserts_and_lists_messages_in_chronological_order() {
     let m1 = ChatMessage::new(meeting_id, Role::User, "hello");
     db.insert_chat_message(&m1).expect("insert user msg");
 
-    // Bump the next message's timestamp to guarantee chronological order
-    // even when the test runs faster than 1 ms — `chrono::now()` resolution
-    // can collapse two `new()` calls onto the same millisecond.
+    // Bump the next message's timestamp so ordering holds even when two `new()` calls land in the same millisecond.
     std::thread::sleep(std::time::Duration::from_millis(2));
 
     let m2 = ChatMessage::new(meeting_id, Role::Assistant, "hi there");
@@ -73,14 +59,12 @@ fn it_inserts_and_lists_messages_in_chronological_order() {
     assert_eq!(listed[0].content, "hello");
     assert_eq!(listed[1].content, "hi there");
 
-    // get_chat_message returns the exact row by id.
     let fetched = db
         .get_chat_message(&m1.id)
         .expect("get_chat_message ok")
         .expect("row exists");
     assert_eq!(fetched.content, "hello");
 
-    // update_chat_message_content replaces content for the row.
     db.update_chat_message_content(&m2.id, "hi there, friend")
         .expect("update content");
     let after = db

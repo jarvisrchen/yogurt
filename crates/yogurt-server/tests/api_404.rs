@@ -1,8 +1,4 @@
-//! Regression: unknown `/api/*` paths must return an honest JSON 404 —
-//! never a dev-mode 502 (Vite proxy miss) or a release-mode `index.html`
-//! SPA fallback. `routes::router` mounts `/api/{*rest}` -> `api_not_found`
-//! as the catch-all after every real `/api/*` route; this test exercises
-//! it end-to-end against a real server.
+//! Unknown `/api/*` paths return a JSON 404, never a dev-mode 502 or the release SPA `index.html` fallback.
 
 use std::time::Duration;
 

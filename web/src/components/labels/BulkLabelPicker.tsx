@@ -1,14 +1,4 @@
-/**
- * `BulkLabelPicker` - thin multi-meeting sibling of `LabelPicker` for the
- * Library's multi-select action bar (MTG-14).
- *
- * `LabelPicker` replaces ONE meeting's full label set and shows a
- * checkmark against that meeting's current labels. Across a bulk
- * selection there's no single "current labels" to check against, so this
- * picker skips the checkmark and just fans a single add/remove over every
- * selected meeting via `useBulkSetLabel` (no bulk server route - the
- * existing per-meeting PATCH, `Promise.all`'d).
- */
+/** Unlike `LabelPicker`, no checkmark: a bulk selection has no single current label set. Fans one add/remove over every selected meeting via `useBulkSetLabel` (no bulk server route). */
 
 import { useEffect, useRef, useState } from "react";
 import { useCreateLabel, useLabels } from "../../lib/api/labels";

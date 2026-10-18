@@ -1,5 +1,3 @@
-// Font registration — side-effect imports register @font-face rules.
-// Order matters only for CSS dedup; functionally all are independent.
 import "@fontsource/manrope/400.css";
 import "@fontsource/manrope/500.css";
 import "@fontsource/manrope/600.css";
@@ -19,9 +17,6 @@ import { queryClient } from "./lib/queryClient";
 import { initTheme } from "./lib/theme";
 import "./index.css";
 
-// Phase 5 (Plan 05-03): wrap the SPA in <QueryClientProvider> so the
-// Settings page (and any future TanStack-Query consumer) can use
-// `useQuery` / `useMutation`. The devtools panel is dev-only.
 initTheme();
 
 createRoot(document.getElementById("root")!).render(

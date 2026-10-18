@@ -39,8 +39,6 @@ describe("clickSelect", () => {
     const s1 = clickSelect(EMPTY_SELECTION, "a", IDS, false);
     const withB = clickSelect(s1, "d", IDS, false); // plain click moves anchor to d, drops nothing
     const ranged = clickSelect(withB, "e", IDS, true);
-    // "a" from the first plain click stays selected even though it's
-    // outside the d..e range.
     expect([...ranged.selected].sort()).toEqual(["a", "d", "e"]);
   });
 

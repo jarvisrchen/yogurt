@@ -1,25 +1,5 @@
-//! Phase 7 (Plan 07-01) — Library REST surface.
-//!
-//! Endpoints:
-//!
-//! | Method  | Path                  | Purpose                                  |
-//! |---------|-----------------------|------------------------------------------|
-//! | GET     | `/api/meetings`       | List all meetings newest-first.          |
-//! | POST    | `/api/meetings`       | Create a new meeting (Library + stream). |
-//! | GET     | `/api/meetings/:id`   | Fetch one meeting.                       |
-//! | PATCH   | `/api/meetings/:id`   | Update title / notes / starred / etc.    |
-//! | DELETE  | `/api/meetings/:id`   | Remove SQLite row + cascade chat rows.   |
-//!
-//! **Auth:** every route is mounted behind `routes::require_session_token`
-//! by `routes::router`. Handlers here don't repeat that check.
-//!
-//! **Markdown side-effect:** create + patch funnel through
-//! `MarkdownExporter::write` so the canonical `~/.yogurt/notes/<…>.md` file
-//! is always in sync with the SQLite row. DELETE removes the markdown file
-//! only when the caller passes `?delete_file=true`; the default stays false
-//! so the file remains the user's grep-able source of truth (D-10 / PRD
-//! §5.7) unless deletion is explicitly asked for. The Library UI checkbox
-//! defaults to checked, so the common path does delete both.
+//! Create and patch write the markdown file through `MarkdownExporter` so it stays in sync with the row.
+//! DELETE removes the file only with `?delete_file=true`, since the file is the user's grep-able source of truth.
 
 use axum::{
     extract::{Path, Query, State},
@@ -34,67 +14,39 @@ use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
 use yogurt_db::{Meeting, MeetingPatch, NewMeeting};
 
-/// Build the Library REST router. Mounted in `routes::router` *behind* the
-/// session-token middleware; this function only returns the raw route table
-/// so the caller can compose auth + tracing layers around it.
 pub fn router() -> Router<AppState> {
     Router::new()
-        // Phase 7 Plan 07-02: register `/api/meetings/search` BEFORE the
-        // `/api/meetings/{id}` route so the axum 0.8 matcher dispatches
-        // literal-path matches ahead of the path-param fallback. Axum 0.8
-        // does the right thing here regardless of registration order
-        // (literals beat params), but the explicit ordering keeps the
-        // intent legible at the route table.
         .route("/api/meetings/search", get(search))
         .route("/api/meetings", get(list).post(create))
         .route(
             "/api/meetings/{id}",
             get(get_one).patch(patch_one).delete(delete_one),
         )
-        // Phase 7 Plan 07-03 — per-meeting markdown affordances.
-        // `GET /:id/markdown` returns the on-disk Phase-4 MarkdownExporter
-        // file (front-matter + body) so the kebab-menu "Copy markdown"
-        // copies the exact bytes the user would see if they opened the
-        // file in Finder. `POST /:id/reveal` shells out to `open -R` on
-        // macOS — registered as POST (not GET) because it has an
-        // observable side-effect (Finder activation).
         .route("/api/meetings/{id}/markdown", get(get_markdown))
         .route("/api/meetings/{id}/reveal", post(reveal_in_finder))
 }
 
-/// Body for `POST /api/meetings`. Both fields are optional — the Library
-/// sidebar's "+ New meeting" button sends an empty body and gets the
-/// dated "Meeting 10/6/26" default.
+/// Every field is optional. An empty body gets the dated "Meeting 10/6/26" default.
 #[derive(Debug, Deserialize, Default)]
 pub struct CreateBody {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
     pub started_at_unix_ms: Option<i64>,
-    /// CLI-5 fixture support: an array of transcript segments in exactly
-    /// the shape the `transcript_json` column already stores (see
-    /// `docs/DEBUGGING-TRANSCRIPTS.md`). Kept as a raw `Value` rather than
-    /// `Vec<FixtureSegment>` so a badly shaped array fails validation as
-    /// an `ApiError::BadRequest` (a real `{"error": "..."}` body) instead
-    /// of axum's generic JSON-rejection text, which `ctl` has no way to
-    /// surface a message from.
+    /// Fixture transcript segments in the shape of the `transcript_json` column.
+    /// A raw `Value` so a bad shape fails as `ApiError::BadRequest` with an `{"error"}` body
+    /// that `ctl` can surface, instead of axum's generic JSON rejection text.
     #[serde(default)]
     pub transcript_json: Option<serde_json::Value>,
-    /// CLI-5: stamp `ended_at` at creation time so `ctl meeting new
-    /// --transcript-file` seeds a finished, never-recorded meeting
-    /// instead of a live one.
+    /// Stamp `ended_at` at creation so a `ctl meeting new` fixture is finished, not live.
     #[serde(default)]
     pub ended: Option<bool>,
-    /// LLM-8 fixture support: the user's raw notes, so `ctl meeting new
-    /// --notes-file` can stage exactly what End meeting hands to enhance
-    /// (notes on the row, transcript on the row) without a browser.
+    /// Fixture raw notes, so `ctl meeting new --notes-file` can stage an enhance input without a browser.
     #[serde(default)]
     pub notes_md: Option<String>,
 }
 
-/// One `transcript_json` entry, validated on the way in. Same three
-/// fields `ctl`'s own transcript reader and `DEBUGGING-TRANSCRIPTS.md`'s
-/// `json_extract` recipe expect.
+/// One `transcript_json` entry. Same fields `ctl`'s transcript reader expects.
 #[derive(Debug, Deserialize, Serialize)]
 struct FixtureSegment {
     ts_ms: i64,
@@ -102,10 +54,8 @@ struct FixtureSegment {
     text: String,
 }
 
-/// Body for `PATCH /api/meetings/:id`. Mirrors `yogurt_db::MeetingPatch`
-/// but exposed at this layer so we can normalize empty-title inputs to
-/// the "Untitled meeting" fallback before the repo's stricter validation
-/// rejects them (LIB-08 inline-rename UX).
+/// Mirrors `yogurt_db::MeetingPatch` so an empty title can fall back to
+/// "Untitled meeting" before the repo's validation rejects it.
 #[derive(Debug, Deserialize, Default)]
 pub struct PatchBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -124,19 +74,12 @@ pub struct PatchBody {
     pub starred: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stt_engine: Option<String>,
-    /// Replace this meeting's label set with exactly these ids. `None`
-    /// leaves labels alone; `Some(vec![])` clears them.
+    /// Replaces the label set. `None` leaves labels alone, `Some(vec![])` clears them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_ids: Option<Vec<String>>,
 }
 
-// ─── Handlers ──────────────────────────────────────────────────────────────
-
-/// Query string for `GET /api/meetings/search`. `q` is the user's
-/// free-text query (empty falls through to the chronological list);
-/// `limit` caps the result count at the server side (defaults to 50,
-/// hard-capped at 200 to keep payloads bounded even if a script asks
-/// for more).
+/// An empty `q` falls through to the chronological list. `limit` defaults to 50 and is capped at 200.
 #[derive(Debug, Deserialize)]
 struct SearchQuery {
     q: String,
@@ -182,8 +125,7 @@ async fn create(
         .map(str::to_string)
         .unwrap_or_else(|| format!("Meeting {}", yogurt_db::meetings::short_date(started_at)));
 
-    // CLI-5: validate the fixture transcript up front, before touching
-    // the DB, so a malformed file never creates a stray meeting row.
+    // Validate before touching the DB so a malformed fixture never creates a stray row.
     let segments = body
         .transcript_json
         .map(|v| {
@@ -194,11 +136,8 @@ async fn create(
     let ended = body.ended.unwrap_or(false);
     let notes_md = body.notes_md;
 
-    // Bootstrap an in-memory streaming Meeting first so the SQLite row
-    // shares the same id (UUID v7) as the registry entry. Without this
-    // alignment, the existing `/api/meetings/:id/start` route — which
-    // parses the path param as `Uuid` — would never find a freshly
-    // created Library meeting.
+    // The SQLite row must share the registry entry's UUID v7 id, or
+    // `/api/meetings/:id/start` (which parses the id as `Uuid`) cannot find it.
     let live = s.meetings.create().await;
     let id = live.id.to_string();
 
@@ -211,13 +150,7 @@ async fn create(
     let exporter = s.markdown_exporter.clone();
     let m = tokio::task::spawn_blocking(move || -> anyhow::Result<Meeting> {
         let mut m = repo.create(new)?;
-        // CLI-5: apply the fixture transcript / ended stamp as a second
-        // write through the same repo `create` already uses, rather than
-        // widening `NewMeeting` — the two optional fields are rare enough
-        // (and this handler is already the one place that owns the
-        // create-then-export sequence) that a follow-up `patch` is the
-        // smaller change. No `stt_engine` is stamped, matching a fixture
-        // that was never actually recorded.
+        // No `stt_engine` is stamped: a fixture was never recorded.
         if segments.is_some() || ended || notes_md.is_some() {
             let transcript_json = segments.as_ref().map(serde_json::to_string).transpose()?;
             let ended_at = ended.then(|| {
@@ -237,11 +170,7 @@ async fn create(
                 },
             )?;
         }
-        // Side-effect: write the canonical markdown file. The body is
-        // empty until the user types into the notes editor — Phase 4
-        // MarkdownExporter still emits the YAML front-matter envelope
-        // so the file exists on disk from day one (Reveal-in-Finder
-        // from a never-edited meeting still works).
+        // Writes the file with an empty body so Reveal in Finder works from day one.
         exporter.write(&ExpMeeting {
             id: &m.id,
             title: &m.title,
@@ -276,12 +205,8 @@ async fn patch_one(
     body: Option<Json<PatchBody>>,
 ) -> Result<Json<Meeting>, ApiError> {
     let mut body = body.map(|Json(b)| b).unwrap_or_default();
-    // DATA-LOSS GUARD (defense-in-depth; the client autosave has its own):
-    // never let a PATCH replace a non-empty enriched document with an
-    // empty one. The enriched body is only ever produced by enhance — an
-    // empty overwrite is always a client bug (observed live: a stale
-    // post-view mount flushing `""` on unmount), never user intent. The
-    // user-intent path for removing content is deleting the meeting.
+    // Never let a PATCH blank a non-empty enriched document. Only enhance produces it,
+    // so an empty overwrite is a client bug (a stale post-view mount flushing `""`).
     if matches!(&body.enriched_md, Some(Some(md)) if md.trim().is_empty()) {
         let repo = s.meeting_repo.clone();
         let id_probe = id.clone();
@@ -301,9 +226,7 @@ async fn patch_one(
             body.enriched_md = None;
         }
     }
-    // LIB-08: empty-title → "Untitled meeting" fallback. Done at the API
-    // layer so the repo's empty-title rejection still protects the DB
-    // invariant for non-Library callers.
+    // Done here so the repo's empty-title rejection still protects other callers.
     let title = body.title.as_deref().map(|t| {
         let t = t.trim();
         if t.is_empty() {
@@ -336,10 +259,7 @@ async fn patch_one(
     Ok(Json(m))
 }
 
-/// Build the borrowed `ExpMeeting` view the `MarkdownExporter` accepts.
-/// Mirrors `AppState::patch_and_export` — prefer the enriched body over
-/// raw notes when both exist, so the on-disk file represents the latest
-/// LLM-augmented output (matches Phase 4 §5.7 invariant).
+/// Mirrors `AppState::patch_and_export`: the enriched body wins over raw notes.
 fn exporter_view(m: &Meeting) -> ExpMeeting<'_> {
     ExpMeeting {
         id: &m.id,
@@ -350,11 +270,7 @@ fn exporter_view(m: &Meeting) -> ExpMeeting<'_> {
     }
 }
 
-/// `GET /api/meetings/{id}/markdown` — return the on-disk Phase-4
-/// MarkdownExporter file for this meeting as `text/markdown`. If the
-/// file is missing (hand-deleted, fresh meeting that never funneled
-/// through the exporter), we lazily re-emit it via `MarkdownExporter::write`
-/// so the kebab-menu Copy never silently returns stale content.
+/// Returns the on-disk markdown file, re-emitting it first if it is missing.
 async fn get_markdown(
     State(s): State<AppState>,
     Path(id): Path<String>,
@@ -367,9 +283,6 @@ async fn get_markdown(
             .get(&id_for_blocking)?
             .ok_or_else(|| anyhow::anyhow!("meeting not found"))?;
         let path = exporter.path_for(&exporter_view(&m))?;
-        // Idempotent: write if missing (covers the rare case where the
-        // user hand-deleted the file from ~/.yogurt/notes/ but the
-        // SQLite row survived).
         if !path.exists() {
             exporter.write(&exporter_view(&m))?;
         }
@@ -389,11 +302,7 @@ async fn get_markdown(
     Ok((h, body))
 }
 
-/// `POST /api/meetings/{id}/reveal` — open Finder with the on-disk
-/// markdown file selected (`open -R <path>`). 204 on success. macOS-only
-/// per project constraints; on non-macOS the endpoint still returns
-/// 204 after locating/writing the file (no-op shell out is cleaner than
-/// a 501 for cross-platform devs running the test suite).
+/// Reveals the markdown file in Finder (`open -R`). Non-macOS returns 204 without revealing.
 async fn reveal_in_finder(
     State(s): State<AppState>,
     Path(id): Path<String>,
@@ -417,12 +326,7 @@ async fn reveal_in_finder(
 
     #[cfg(target_os = "macos")]
     {
-        // `open -R <path>` reveals (and selects) the file in Finder.
-        // We deliberately don't pipe through `open -a Finder <path>` —
-        // that would *open* the file in the default editor, not reveal
-        // it in Finder. Shell out off the tokio reactor via
-        // spawn_blocking; `open` returns quickly but the syscall is
-        // technically blocking.
+        // `open -a Finder <path>` would open the file in the default editor, not reveal it.
         let status = tokio::task::spawn_blocking(move || {
             std::process::Command::new("open")
                 .arg("-R")
@@ -438,8 +342,6 @@ async fn reveal_in_finder(
             )));
         }
     }
-    // On non-macOS we intentionally swallow the reveal — the path
-    // exists, the SQLite row exists, and there's no Finder to talk to.
     #[cfg(not(target_os = "macos"))]
     {
         let _ = path;
@@ -447,12 +349,9 @@ async fn reveal_in_finder(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Query string for `DELETE /api/meetings/:id`.
 #[derive(Debug, Default, Deserialize)]
 pub struct DeleteQuery {
-    /// Also unlink `~/.yogurt/notes/<…>.md`. Defaults to false: an absent
-    /// flag must never destroy a file, so the destructive behaviour is
-    /// opt-in at the API layer even though the UI checkbox pre-checks it.
+    /// Also unlink the markdown file. Opt-in so an absent flag never destroys a file.
     #[serde(default)]
     delete_file: bool,
 }
@@ -464,9 +363,7 @@ async fn delete_one(
 ) -> Result<StatusCode, ApiError> {
     let repo = s.meeting_repo.clone();
     let exporter = s.markdown_exporter.clone();
-    // Resolve the markdown path BEFORE dropping the row — `path_for` needs
-    // the meeting's fields to rebuild the filename, and after the delete
-    // there's nothing left to derive it from.
+    // `path_for` needs the row's fields, so resolve the path before deleting it.
     let removed = tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
         let path = if q.delete_file {
             repo.get(&id)?
@@ -475,12 +372,8 @@ async fn delete_one(
         } else {
             None
         };
-        // SQLite cascade purges the chat rows.
         let removed = repo.delete(&id)?;
-        // Only unlink once the row is actually gone, so a failed delete
-        // never leaves the library pointing at a missing file. A missing
-        // file is not an error — the exporter writes lazily, so a meeting
-        // that was never enhanced has no .md to remove.
+        // Unlink only after the row is gone. A missing file is fine since the exporter writes lazily.
         if removed {
             if let Some(path) = path {
                 match std::fs::remove_file(&path) {

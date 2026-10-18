@@ -1,15 +1,7 @@
-//! Granola-style meeting labels — workspace-level named tags with a color.
-//!
-//! A meeting can carry any number of labels (many-to-many via
-//! `meeting_labels`). Labels are matched case-insensitively on name so
-//! "Sales" and "sales" are the same label (`find_or_create` returns the
-//! existing row rather than erroring or duplicating).
-//!
-//! `color` is either a palette *key* (one of [`COLORS`]) or a custom
-//! `#rrggbb` hex string. Hex input is normalized to lowercase before
-//! storage. The web `LabelChip` component owns the palette-key -> hex
-//! mapping so a future palette refresh only touches one file; a hex
-//! `color` is rendered as-is.
+//! Meeting labels: workspace-level named tags with a color, many-to-many via `meeting_labels`.
+//! Names match case-insensitively, so `find_or_create` returns the existing row for "sales" vs "Sales".
+//! `color` is a palette key (one of [`COLORS`]) or a `#rrggbb` hex string, normalized to lowercase.
+//! The web `LabelChip` owns the key -> hex mapping, so a palette refresh touches one file.
 
 use crate::Db;
 use anyhow::{bail, Context, Result};
@@ -26,10 +18,9 @@ pub struct Label {
     pub id: String,
     pub name: String,
     pub color: String,
-    /// Custom sidebar order (UI-12), set via `LabelRepo::reorder`.
+    /// Custom sidebar order, set via `LabelRepo::reorder`.
     pub position: i64,
-    /// Unix ms, touched on rename/recolor and on apply/remove from a
-    /// meeting (UI-12) — backs the "Last updated" sidebar sort.
+    /// Unix ms, touched on rename/recolor and on apply/remove from a meeting. Backs the "Last updated" sidebar sort.
     pub updated_at: i64,
 }
 
@@ -40,7 +31,6 @@ pub struct LabelWithCount {
     pub meeting_count: i64,
 }
 
-/// CRUD facade over the `labels` + `meeting_labels` tables.
 #[derive(Clone)]
 pub struct LabelRepo {
     db: Db,
@@ -51,9 +41,7 @@ impl LabelRepo {
         Self { db }
     }
 
-    /// All labels, name ASC (case-insensitive), with a `meeting_count` via
-    /// a `LEFT JOIN meeting_labels ... GROUP BY` so labels with zero
-    /// meetings still show up (with count 0).
+    /// All labels, name ASC (case-insensitive), with a `meeting_count`. `LEFT JOIN` keeps labels with zero meetings.
     pub fn list_with_counts(&self) -> Result<Vec<LabelWithCount>> {
         self.db.with_conn(|conn| {
             let mut stmt = conn.prepare_cached(
@@ -83,11 +71,7 @@ impl LabelRepo {
         })
     }
 
-    /// Trim `name`; bail on empty or > 40 chars. If a label with the same
-    /// name (case-insensitive) already exists, return it unchanged
-    /// (`created = false`). Otherwise insert a fresh row (`created =
-    /// true`) with a ULID id, the given `color` (or the next palette color
-    /// by rotation), and `created_at = now`.
+    /// Trims `name`; bails on empty or > 40 chars. A case-insensitive match returns the existing row (`created = false`).
     pub fn find_or_create(&self, name: &str, color: Option<&str>) -> Result<(Label, bool)> {
         let name = validate_name(name)?;
         let color = color.map(normalize_color).transpose()?;
@@ -141,9 +125,7 @@ impl LabelRepo {
         })
     }
 
-    /// Update name and/or color. Same validation as create. A duplicate
-    /// name (case-insensitive, different id) bails "label name already
-    /// exists"; an unknown id bails "label not found".
+    /// Same validation as create. A duplicate name bails "label name already exists"; an unknown id bails "label not found".
     pub fn update(&self, id: &str, name: Option<&str>, color: Option<&str>) -> Result<Label> {
         let name = name.map(validate_name).transpose()?;
         let color = color.map(normalize_color).transpose()?;
@@ -176,11 +158,9 @@ impl LabelRepo {
         })
     }
 
-    /// Set the custom sidebar order: `ids[0]` gets position 0, `ids[1]`
-    /// position 1, etc. An id that doesn't exist bails "label not found"
-    /// (same wording `set_for_meeting_conn` uses, so `ApiError::from`
-    /// maps it to 400 the same way). Does not touch `updated_at` —
-    /// reordering isn't a content change.
+    /// Set the custom sidebar order: `ids[0]` gets position 0, and so on.
+    /// An unknown id bails "label not found" (same wording as `set_for_meeting_conn`, so `ApiError::from` maps it to 400).
+    /// Does not touch `updated_at`.
     pub fn reorder(&self, ids: &[String]) -> Result<()> {
         self.db.with_conn(|conn| {
             let tx = conn.unchecked_transaction().context("begin reorder tx")?;
@@ -208,19 +188,15 @@ impl LabelRepo {
         })
     }
 
-    /// Replace `meeting_id`'s label set with exactly `label_ids`, inside
-    /// one transaction. Unknown label ids bail "label not found". Does
-    /// NOT touch `meetings.updated_at` — callers (e.g. `MeetingRepo::patch`)
-    /// own that.
+    /// Replace `meeting_id`'s label set inside one transaction. Unknown label ids bail "label not found".
+    /// Does not touch `meetings.updated_at`; callers (e.g. `MeetingRepo::patch`) own that.
     pub fn set_for_meeting(&self, meeting_id: &str, label_ids: &[String]) -> Result<()> {
         self.db
             .with_conn(|conn| set_for_meeting_conn(conn, meeting_id, label_ids))
     }
 }
 
-/// Shared implementation used by both `LabelRepo::set_for_meeting` and
-/// `MeetingRepo::patch` (label-only patches) so there is exactly one
-/// place that knows how to rewrite a meeting's label set.
+/// Shared by `LabelRepo::set_for_meeting` and `MeetingRepo::patch` so one place rewrites a meeting's label set.
 pub(crate) fn set_for_meeting_conn(
     conn: &rusqlite::Connection,
     meeting_id: &str,
@@ -253,9 +229,7 @@ pub(crate) fn set_for_meeting_conn(
             params![meeting_id, lid],
         )?;
     }
-    // UI-12: touch `updated_at` on every label whose association with
-    // this meeting just changed (applied or removed), so "Last updated"
-    // sidebar sort reflects it.
+    // Touch `updated_at` on every label whose association just changed, for the "Last updated" sort.
     let touched = before
         .iter()
         .filter(|l| !label_ids.contains(l))
@@ -332,8 +306,6 @@ fn find_by_id(conn: &rusqlite::Connection, id: &str) -> rusqlite::Result<Option<
     )
     .optional()
 }
-
-// ─── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

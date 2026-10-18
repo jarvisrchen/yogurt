@@ -17,29 +17,17 @@ use crate::{audio, AppState, Mode};
 pub fn router(state: AppState) -> Router {
     let mode = state.mode;
 
-    // Audio capture surface for Phase 5 settings + Phase 7 onboarding.
-    // WR-08: require the same session token the /ws endpoint validates
-    // (Phase 0 ws_auth pattern). Without auth, any localhost-reaching page
-    // can enumerate the user's audio hardware (device names are fingerprint
-    // material) or probe TCC state. Localhost-bind alone is not sufficient
-    // defense against image-preload / iframe / SSRF-via-link-preview
-    // attacks that can hit GETs without CORS protection.
+    // Session token required: device names are fingerprint material and TCC state is probeable.
+    // A localhost bind alone does not stop image-preload / iframe / SSRF-via-link-preview GETs.
     let audio_routes = Router::new()
         .route("/api/audio/devices", get(audio::get_devices))
         .route("/api/audio/output-devices", get(audio::get_output_devices))
         .route("/api/audio/echo/test", post(audio::test_echo))
         .route("/api/audio/permission", get(audio::get_permission))
-        // Quick task 260628-g71 DD-05: dedicated POST to fire the macOS
-        // microphone permission dialog from the Welcome "Grant Microphone"
-        // button. Idempotent / fire-and-forget; returns the combined
-        // permission snapshot.
         .route(
             "/api/audio/microphone/request",
             post(audio::request_microphone),
         )
-        // Quick task 260701-vjb: dedicated POST to fire the macOS Screen
-        // Recording TCC prompt from the Welcome "Grant Screen Recording"
-        // button. Fire-and-forget; returns the combined permission snapshot.
         .route(
             "/api/audio/screen-recording/request",
             post(audio::request_screen_recording),
@@ -49,41 +37,22 @@ pub fn router(state: AppState) -> Router {
             require_session_token,
         ));
 
-    // WR-06: meeting lifecycle REST routes require the same session token
-    // as `/api/audio/*`. Without auth, any localhost-reachable page
-    // (image preload, third-party tab, SSRF-via-link-preview) could
-    // create / start / stop meetings and exhaust Deepgram quota or seed
-    // bogus history.
-    //
-    // Phase 7 (Plan 07-01) split the meeting REST surface:
-    //   - The Library CRUD (`GET/POST /api/meetings`, `GET/PATCH/DELETE
-    //     /api/meetings/:id`) now lives in `api::meetings` and goes
-    //     through the SQLite-backed `MeetingRepo`. POST also registers
-    //     a fresh streaming Meeting in the in-memory registry so the
-    //     existing `/start` route can find it by id.
-    //   - The streaming + chat routes (`/start`, `/stop`, `/enhance`,
-    //     `/chat`) keep their Phase-3-shaped handlers below.
+    // Session token required: otherwise any localhost-reachable page could create, start,
+    // or stop meetings, exhaust Deepgram quota, or seed bogus history.
+    // Library CRUD lives in `api::meetings`. POST there also registers a streaming Meeting
+    // in the in-memory registry so `/start` can find it by id.
     let meeting_routes = Router::new()
         .merge(crate::api::meetings::router())
-        // Granola-style meeting labels — same auth group as the Library
-        // CRUD surface above.
         .merge(crate::api::labels::router())
-        // Floating "Return to recording" pill (discoverability for
-        // navigate-away-while-recording). Static segment — axum 0.8's
-        // matchit router prefers literal segments over the `{id}` param
-        // matcher in `api::meetings::router()` regardless of registration
-        // order (same guarantee the `/api/meetings/search` route already
-        // relies on), so `active` can never be swallowed as an id.
-        // `route_order_guard` in tests/meetings_api.rs asserts this holds.
+        // axum 0.8 prefers literal segments over `{id}` regardless of registration order,
+        // so `active` and `detected` are never swallowed as ids.
+        // `route_order_guard` in tests/meetings_api.rs asserts this.
         .route("/api/meetings/active", get(active_recording))
-        // MTG-11: the meeting-detection prompt. Literal segments beat
-        // `{id}` in axum 0.8's matcher, same guarantee `active` relies on.
         .route("/api/meetings/detected", get(detected_meeting))
         .route(
             "/api/meetings/detected/dismiss",
             post(dismiss_detected_meeting),
         )
-        // axum 0.8 path syntax: `{id}` (not `:id`).
         .route("/api/meetings/{id}/start", post(start_meeting))
         .route("/api/meetings/{id}/stop", post(stop_meeting))
         .route("/api/meetings/{id}/keep-recording", post(keep_recording))
@@ -93,14 +62,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/meetings/{id}/mic-muted", post(set_meeting_mic_muted))
         .route("/api/meetings/{id}/echo", post(set_meeting_echo))
-        // Phase 4 (Plan 04-03): hero augmented-notes endpoint.
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
-        // LLM-9: the note formats enhance can shape a summary into, for
-        // the post-meeting picker.
         .route("/api/templates", get(crate::enhance::list_templates))
-        // Phase 6 (Plan 06-01): in-meeting chat REST surface.
-        // POST inserts a user + placeholder assistant row and spawns the
-        // LLM streaming task; GET hydrates the chat window on remount.
+        // POST inserts a user + placeholder assistant row and spawns the LLM streaming task.
         .route(
             "/api/meetings/{id}/chat",
             post(crate::api::chat::post_chat).get(crate::api::chat::get_chat_history),
@@ -110,28 +74,13 @@ pub fn router(state: AppState) -> Router {
             require_session_token,
         ));
 
-    // Phase 5 (Plan 05-03): `/api/settings*` REST surface.
-    //
-    // Hardening (2026-08-13, E2E security finding): these routes now require
-    // the same session token as `/api/audio/*` and the meeting surface.
-    // Previously they were left unauthed so `tests/settings_api.rs` could hit
-    // them via plain `reqwest::get`; that left an exploitable gap — any
-    // localhost-reaching page could POST `/api/settings/providers` to point
-    // the active LLM provider at an attacker `base_url` (confirmed via an
-    // unauthenticated cross-origin curl). The frontend already sends the
-    // token on every settings call (`api/settings.ts` → `bearerFetch`), so
-    // only the integration-test fixtures needed updating (in lockstep). The
-    // `api_responses_never_include_the_raw_api_key` invariant is unchanged —
-    // that test now authenticates but still asserts the raw key never leaves
-    // the server.
+    // Session token required: otherwise any localhost-reaching page could POST
+    // `/api/settings/providers` and point the active LLM provider at an attacker `base_url`.
     let settings_routes = crate::api::settings::router().layer(middleware::from_fn_with_state(
         state.clone(),
         require_session_token,
     ));
 
-    // Phase 8 (Plan 08-03): whisper.cpp model management REST surface.
-    // Same auth as `settings_routes` — the frontend (`api/stt.ts`) already
-    // attaches the token via `bearerFetch`.
     let stt_models_routes = crate::api::stt_models::router().layer(middleware::from_fn_with_state(
         state.clone(),
         require_session_token,
@@ -141,29 +90,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/health", get(health))
         .merge(settings_routes)
         .merge(stt_models_routes)
-        // WR-06: bootstrap endpoint the SPA fetches once on boot to learn
-        // the session token. Gated by Origin allowlist ONLY (no token —
-        // it IS the token-handout endpoint). Origin check blocks
-        // third-party-tab and image-preload exploits (those cannot
-        // forge an Origin header from a browser context).
+        // Gated by the Origin allowlist only, since it hands out the token.
         .route("/api/session-token", get(get_session_token))
-        // Phase 3: per-meeting transcript WebSocket (D-09 / D-10).
-        // The handshake is GET; WebSocketUpgrade extraction rejects other
-        // methods automatically. Mounted on the same router so AppState
-        // (incl. meetings registry) is available via State extraction.
         .route("/ws/meetings/{id}", get(ws_meeting_handler))
         .merge(meeting_routes)
         .merge(audio_routes)
-        // MD-07: use `any()` so OPTIONS / POST / etc. against /ws ALSO go
-        // through the Origin+token check rather than falling through to the
-        // SPA handler (which would happily return index.html on OPTIONS /ws).
-        // The handshake itself still requires GET; non-GET methods will be
-        // rejected by ws_handler when WebSocketUpgrade extraction fails.
+        // `any()` so non-GET methods hit the Origin+token check instead of falling
+        // through to the SPA handler, which would return index.html.
         .route("/ws", any(crate::ws::ws_handler))
-        // Unknown /api/* paths must be an honest JSON 404, never fall
-        // through to the SPA handler (in dev that meant a confusing
-        // "cannot reach vite" 502 for a typo'd endpoint; in release it
-        // returned index.html to an API client).
+        // Unknown /api/* paths get a JSON 404 rather than the SPA handler
+        // (a confusing vite 502 in dev, index.html in release).
         .route("/api/{*rest}", any(api_not_found))
         .with_state(state);
 
@@ -180,13 +116,8 @@ async fn api_not_found(Path(rest): Path<String>) -> impl IntoResponse {
     )
 }
 
-/// `GET /api/health` - unauthenticated liveness + identity probe.
-///
-/// `version` and `mode` are additive (CLI-4 / D5): `yogurt ctl` needs a way
-/// to tell instances apart when a port scan finds more than one, and
-/// `version` also answers "which binary is this" without a separate
-/// `doctor` round trip. No `pid` - that would be new unauthenticated
-/// information about the host with no consumer asking for it.
+/// Unauthenticated, so it carries no `pid`. `version` and `mode` let `yogurt ctl`
+/// tell instances apart when a port scan finds several.
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "status": "ok",
@@ -199,38 +130,18 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
     }))
 }
 
-/// `GET /api/session-token` — bootstrap endpoint the SPA fetches once on
-/// boot to learn the session token, which it then attaches to subsequent
-/// REST + WS calls.
-///
-/// **Auth model (WR-06):** This is the token-handout endpoint, so it
-/// CANNOT itself require the token. Instead it is gated by the same
-/// Origin allowlist that protects the WS endpoint. Concretely:
-///
-/// - A real browser page on `http://localhost:<bind_port>` (or 127.0.0.1)
-///   will attach the matching `Origin` header automatically — request
-///   succeeds.
-/// - A third-party tab / image preload / `<form>` POST from a different
-///   origin will have its `Origin` header set by the browser to the
-///   attacker's origin — request gets 403. Browsers will not let
-///   attacker JS forge the Origin header.
-/// - A non-browser caller (`curl`, malicious local process) CAN forge any
-///   Origin header it likes, but that caller is already inside the trust
-///   boundary (it has filesystem access to read `~/.yogurt/session-token`
-///   directly). The PRD §7 trust model puts local-process attackers out
-///   of scope for v1.
+/// Hands the SPA its session token, so it cannot require one. Gated by the Origin
+/// allowlist instead: browsers set the attacker's Origin on cross-origin requests and
+/// attacker JS cannot forge it. A non-browser caller can forge Origin but already has
+/// filesystem access to the token file, and local-process attackers are out of scope.
 async fn get_session_token(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let allowed = allowed_origins_for_port(state.bind_port);
     let origin = headers
         .get("origin")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
-    // Browsers omit the `Origin` header on same-origin GET requests (per
-    // Fetch spec) — without a fallback gate the SPA bootstrap 403s and the
-    // app never loads. `Sec-Fetch-Site: same-origin` is sent by every
-    // modern browser (Chrome 76+, Firefox 90+, Safari 16+) on every fetch
-    // and cannot be forged by attacker JS, so it preserves the CSRF intent
-    // for the empty-Origin case.
+    // Browsers omit `Origin` on same-origin GETs, so fall back to `Sec-Fetch-Site`,
+    // which attacker JS cannot forge.
     let sec_fetch_site = headers
         .get("sec-fetch-site")
         .and_then(|h| h.to_str().ok())
@@ -252,15 +163,9 @@ fn allowed_origins_for_port(port: u16) -> std::collections::HashSet<String> {
     set
 }
 
-/// `POST /api/meetings/:id/start` — open audio capture + spawn the
-/// configured STT session.  Phase 8 (Plan 08-03) reads
-/// `settings.stt_provider` + `stt.model` from the DB and routes to
-/// either `DeepgramStt` (cloud) or `WhisperLocal` (local).
+/// `POST /api/meetings/:id/start`: open audio capture and spawn the STT session
+/// chosen by `settings.stt_provider`.
 async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
-    // Load the user's stored settings.  Defaults to cloud/small.en via
-    // V005 seed rows + load_general fallbacks; also carries the persisted
-    // `audio_input_device` so a new recording opens the user's chosen mic
-    // instead of always the OS default.
     let g = match yogurt_db::settings::load_general(&state.db) {
         Ok(g) => g,
         Err(e) => {
@@ -276,10 +181,7 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
     } else {
         Some(g.audio_input_device.clone())
     };
-    // Deepgram key resolution: env var (dev override) → key file (the
-    // Settings → Transcription field stores it there). Release builds have
-    // no .env.local, so without the stored-key path cloud STT — the seeded
-    // default — was unusable in the shipped binary.
+    // Env var (dev override), then the key file. Release builds have no .env.local.
     let mut stt_settings = crate::meetings::SttSettings::from(&g);
     if stt_settings.stt_provider == "cloud" && stt_settings.deepgram_api_key.is_none() {
         stt_settings.deepgram_api_key = state
@@ -299,17 +201,10 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
         .await
     {
         Ok(_) => {
-            // Stamp the actual recording start so the library shows a real
-            // duration once the meeting ends — but only on a genuine first
-            // start; see `start_stamp_patch`. Best-effort: the row exists
-            // for meetings created via POST /api/meetings; older/direct
-            // registry meetings simply skip the stamp.
+            // Best-effort: registry meetings without a row skip the stamp.
             let repo = state.meeting_repo.clone();
             let id_str = id.to_string();
-            // Feature: per-meeting STT engine provenance. Mirrors the model
-            // resolution in `DeepgramStt::new` (crates/yogurt-stt/src/deepgram.rs)
-            // — env override, default "nova-3" — so the stamped string always
-            // matches what the cloud adapter actually connected with.
+            // Mirrors the model resolution in `DeepgramStt::new` (env override, default "nova-3").
             let stt_engine = if g.stt_provider == "cloud" {
                 let model =
                     std::env::var("YOGURT_DEEPGRAM_MODEL").unwrap_or_else(|_| "nova-3".into());
@@ -324,10 +219,8 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
                 repo.patch(&id_str, patch)
             })
             .await;
-            // Best-effort echo restore; never fails the start. Gated on
-            // the AUD-13 feature toggle - `audio_echo_enabled` alone isn't
-            // enough, since it can be a stale `true` from before the user
-            // turned the feature off.
+            // Best-effort. `audio_echo_enabled` can be a stale `true` from before the
+            // feature was turned off, so also gate on the feature toggle.
             if g.audio_echo_feature && g.audio_echo_enabled {
                 if let Err(e) = state
                     .meetings
@@ -356,17 +249,8 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
     }
 }
 
-/// `GET /api/meetings/active` — the single currently-recording meeting, if
-/// any. Backs the floating "Return to recording" pill (PRD discoverability
-/// requirement: recording continues server-side across navigation, so the
-/// UI needs a global way back). Polled every 5s by the frontend, so this
-/// always returns `200` — `null` when nothing is recording, never `404`
-/// (a 404 would just be constant background noise in the network log).
-/// `GET /api/meetings/detected` — MTG-11. The meeting-looking window the
-/// watcher last saw, or `null`.
-///
-/// Returns `null` while a recording is already running: "start
-/// recording?" is noise once the answer is obviously yes.
+/// The meeting-looking window the watcher last saw, or `null`.
+/// Also `null` while recording, when a "start recording?" prompt is noise.
 async fn detected_meeting(State(state): State<AppState>) -> impl IntoResponse {
     let recording = state.meetings.active_recording().await.is_some();
     let st = state.detect.lock().await;
@@ -376,23 +260,19 @@ async fn detected_meeting(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-/// `POST /api/meetings/detected/dismiss` — MTG-11. Suppress the prompt
-/// for the call currently on screen. The next *different* meeting window
-/// prompts again (see `DetectState::dismissed`).
+/// Suppress the prompt for the call on screen. The next different meeting window prompts again.
 async fn dismiss_detected_meeting(State(state): State<AppState>) -> impl IntoResponse {
     state.detect.lock().await.dismiss_current();
     (StatusCode::OK, Json(json!({ "status": "dismissed" })))
 }
 
+/// The currently-recording meeting, for the "Return to recording" pill.
+/// Polled every 5s, so it returns `200` with `null` rather than a noisy `404`.
 async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
     let Some(id) = state.meetings.active_recording().await else {
         return (StatusCode::OK, Json(Value::Null)).into_response();
     };
-    // Best-effort title/started_at lookup — the SQLite row always exists in
-    // practice (POST /api/meetings creates it before the registry entry can
-    // start recording), but if it's ever missing, fall back to a generic
-    // title and "just started" so the pill still renders something sane
-    // rather than erroring the poll.
+    // The row should always exist, but fall back rather than error the poll.
     let repo = state.meeting_repo.clone();
     let id_str = id.to_string();
     let row = tokio::task::spawn_blocking(move || repo.get(&id_str))
@@ -404,12 +284,7 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
         Some(m) => (m.title, m.started_at),
         None => ("Recording".to_string(), now_unix_ms()),
     };
-    // Truthful engine badge (not the Settings row, which may have been
-    // flipped mid-recording and won't apply until the next start) — read
-    // straight off the `Meeting` that `Registry::start` stamped. AUD-6:
-    // `mic_muted` rides along the same lookup so a page reload or second
-    // tab reflects the true mute state within this existing poll, with no
-    // new WS plumbing.
+    // Read the engine off the `Meeting`, not Settings, which may have changed mid-recording.
     let (stt, mic_muted, echo_enabled, last_audible) = match state.meetings.get(&id).await {
         Some(m) => (
             *m.stt_engine.lock().await,
@@ -441,31 +316,15 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
     (StatusCode::OK, Json(body)).into_response()
 }
 
-/// Compute the `MeetingPatch` fields `start_meeting` applies to the SQLite
-/// row after a successful `Registry::start()` call.
+/// The `MeetingPatch` `start_meeting` applies after a successful start.
 ///
-/// `existing` is the row's state read immediately before this call (`None`
-/// only if the row vanished between `Registry::start()` succeeding and this
-/// read — best-effort, falls back to treating it as a first start).
+/// A first start (no prior `ended_at`) stamps `started_at = now`, replacing the row's
+/// creation-time placeholder. A restart leaves `started_at` alone, since it feeds the
+/// continuation-session clock (`meetings::session_offset_ms`), and clears the stale
+/// `ended_at` so the next `/stop` stamps a fresh one.
 ///
-/// - **Genuine first start** (no prior `ended_at`): stamp `started_at =
-///   now`. This is the only authoritative source of the real recording
-///   start time — the row's placeholder `started_at` from `POST
-///   /api/meetings` is just the row's creation time.
-/// - **Restart** (the meeting has an `ended_at` from a prior stop): leave
-///   `started_at` untouched — overwriting it here IS the data-loss bug
-///   this function exists to prevent, since a corrupted `started_at` also
-///   fed the continuation-session clock (`meetings::session_offset_ms`) —
-///   and clear the stale `ended_at` (`Some(None)`, the tri-state patch's
-///   "explicitly clear" form) so the next `/stop` call stamps a fresh one.
-///
-/// The schema's own "unstarted" sentinel is `started_at = 0` (see
-/// `V003__meetings.sql`), checked here as a belt-and-suspenders condition:
-/// test fixtures (`test_support::seed_meeting`) seed rows exactly this way,
-/// but `MeetingRepo::create` itself currently falls back to "now" rather
-/// than the schema default, so `0` alone is not a reliable signal in real
-/// usage — a set `ended_at` is what actually distinguishes "restarting" a
-/// real meeting.
+/// `started_at = 0` is the schema's "unstarted" sentinel, but `MeetingRepo::create`
+/// writes "now" instead, so a set `ended_at` is what actually marks a restart.
 pub fn start_stamp_patch(existing: Option<&yogurt_db::Meeting>) -> yogurt_db::MeetingPatch {
     let is_restart = existing.is_some_and(|m| m.started_at != 0 && m.ended_at.is_some());
     if is_restart {
@@ -489,9 +348,7 @@ pub(crate) fn now_unix_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// `POST /api/meetings/:id/audio-device` — hot-swap the mic device on an
-/// actively-recording meeting. Returns the resolved device name so the
-/// toolbar picker can reflect the actual active device.
+/// `POST /api/meetings/:id/audio-device`: hot-swap the mic device on a recording meeting.
 #[derive(Deserialize)]
 struct SwitchDeviceRequest {
     device_id: String,
@@ -525,8 +382,7 @@ async fn switch_meeting_audio_device(
     }
 }
 
-/// `POST /api/meetings/:id/mic-muted` — pause or resume the mic on an
-/// actively-recording meeting (AUD-6). `Channel::System` is untouched.
+/// `POST /api/meetings/:id/mic-muted`: pause or resume the mic. `Channel::System` is untouched.
 #[derive(Deserialize)]
 struct SetMicMutedRequest {
     muted: bool,
@@ -560,9 +416,8 @@ async fn set_meeting_mic_muted(
     }
 }
 
-/// `POST /api/meetings/:id/echo` - open/close/hot-swap the mic echo on an
-/// actively-recording meeting. An omitted field falls back to the
-/// persisted setting.
+/// `POST /api/meetings/:id/echo` - open/close/hot-swap the mic echo.
+/// An omitted field falls back to the persisted setting.
 #[derive(Deserialize, Default)]
 struct SetEchoRequest {
     enabled: Option<bool>,
@@ -641,9 +496,8 @@ async fn set_meeting_echo(
     }
 }
 
-/// `POST /api/meetings/:id/stop` — abort the meeting's supervisor task
-/// (idempotent). Dropping the supervisor signals the audio thread to drop
-/// the AudioStream (RAII stops cpal + SCK).
+/// Idempotent. Dropping the supervisor makes the audio thread drop the AudioStream,
+/// which stops cpal + SCK.
 async fn stop_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match state.stop_meeting(&id).await {
         Ok(()) => (StatusCode::OK, Json(json!({ "status": "stopped" }))).into_response(),
@@ -655,8 +509,7 @@ async fn stop_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> im
     }
 }
 
-/// `POST /api/meetings/:id/keep-recording` - dismiss the silence warning by
-/// treating the meeting as audible right now.
+/// Dismisses the silence warning by treating the meeting as audible now.
 async fn keep_recording(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     match state.meetings.get(&id).await {
         Some(m) => {
@@ -672,22 +525,13 @@ async fn keep_recording(State(state): State<AppState>, Path(id): Path<Uuid>) -> 
     }
 }
 
-/// Query-string carrier for `?token=<token>` on `/api/audio/*`. Matches the
-/// WS endpoint's convention so the UI has one mental model for "how do I
-/// authenticate to yogurt-server" (see `ws.rs` for the WS handler's use).
 #[derive(Deserialize)]
 struct AuthQuery {
     token: Option<String>,
 }
 
-/// Middleware: require a valid session token on every protected request.
-///
-/// Token sources (checked in order):
-///   1. `Authorization: Bearer <token>` header — preferred for REST clients.
-///   2. `?token=<token>` query string — matches the WS endpoint convention.
-///
-/// A `403 Forbidden` is returned for missing or mismatched tokens. The
-/// candidate value is never logged (BL-02 — see `ws.rs`).
+/// Accepts `Authorization: Bearer <token>`, else `?token=<token>` (the WS convention).
+/// Returns 403 on a missing or mismatched token and never logs the candidate.
 async fn require_session_token(
     State(state): State<AppState>,
     Query(q): Query<AuthQuery>,

@@ -1,19 +1,4 @@
-//! Phase 6 (Plan 06-01) test-support module.
-//!
-//! Provides:
-//! - [`MockChunksLlm`] — a deterministic `LlmClient` that yields a
-//!   pre-canned sequence of `&'static str` chunks, then a terminal
-//!   `done = true`. Used by `tests/chat_streaming.rs` and any future
-//!   test that needs to assert against exact token boundaries.
-//! - [`run_with_mock_llm`] — boot a full axum server (per-test isolated
-//!   tempdir for storage + session token) wired with a `MockChunksLlm`.
-//!   Returns the bound `SocketAddr`, the session token, the AppState
-//!   handle (so the test can pre-create the meeting), and a tempdir
-//!   guard.
-//!
-//! The whole module is feature-gated under the `test-support` cargo
-//! feature so it only compiles into integration tests; release builds
-//! never see this code.
+//! Test support: [`MockChunksLlm`] and [`run_with_mock_llm`], gated behind the `test-support` feature.
 
 use std::sync::Arc;
 
@@ -28,15 +13,10 @@ use crate::session::{load_or_create, SessionToken};
 use crate::storage::Storage;
 use crate::{AppState, Mode};
 
-/// Test-only bridge to the crate-private LLM resolution chain
-/// (`llm_openai::resolve`: override -> `YOGURT_LLM_*` env -> active
-/// provider + stored key -> `MockLlm`). `llm_openai` is `pub(crate)`, so
-/// this one-line re-export is what lets `tests/llm_resolution.rs` exercise
-/// the real priority chain instead of duplicating its logic.
+/// Lets `tests/llm_resolution.rs` reach the `pub(crate)` resolution chain.
 pub use crate::llm_openai::resolve;
 
-/// Pre-canned-chunks mock LLM. Each `stream` call replays `chunks` once,
-/// then emits the terminal `done = true` frame.
+/// Each `stream` call replays `chunks` once, then emits the terminal frame.
 #[derive(Clone)]
 pub struct MockChunksLlm {
     chunks: Vec<String>,
@@ -82,8 +62,7 @@ impl LlmClient for MockChunksLlm {
     }
 }
 
-/// Handle returned by [`run_with_mock_llm`]. Owns the tempdir; drop to
-/// clean up the per-test storage + session-token files.
+/// Owns the tempdir; dropping it cleans up storage and the session token.
 pub struct TestServer {
     pub addr: std::net::SocketAddr,
     pub token: String,
@@ -91,9 +70,7 @@ pub struct TestServer {
     pub _tmp: tempfile::TempDir,
 }
 
-/// Boot a server wired with [`MockChunksLlm`] and a fresh tempdir-scoped
-/// storage handle. The caller is responsible for creating meetings,
-/// seeding rows, and aborting the returned task.
+/// The caller creates meetings and aborts the returned task.
 pub async fn run_with_mock_llm(
     chunks: &[&str],
 ) -> Result<(TestServer, tokio::task::JoinHandle<()>)> {
@@ -148,19 +125,12 @@ pub async fn run_with_mock_llm(
     ))
 }
 
-/// Seed a meeting row in BOTH the in-memory registry (so the WS handler
-/// can attach) AND the SQLite-backed `MeetingRepo` (so the FK on
-/// `chat_messages.meeting_id` resolves). Returns the minted meeting
-/// `Uuid`.
-///
-/// Phase 7 (Plan 07-01) update: the inline `CREATE TABLE meetings` against
-/// the yogurt-db in-memory connection is gone — V003 now creates the
-/// table inside that DB at `Db::open_in_memory()` time.
+/// Seeds the meeting in the in-memory registry (so the WS handler can attach) and in
+/// `MeetingRepo` (so the `chat_messages.meeting_id` FK resolves).
 pub async fn seed_meeting(state: &AppState) -> Uuid {
     let m = state.meetings.create().await;
     let id_str = m.id.to_string();
-    // Phase 0 storage meetings row — kept because enhance.rs hydrates
-    // from it on Re-enhance (HI-9).
+    // enhance.rs hydrates from this row on re-enhance.
     let writer = state.storage.writer();
     let conn = writer.lock().expect("writer lock");
     conn.execute(
@@ -170,7 +140,6 @@ pub async fn seed_meeting(state: &AppState) -> Uuid {
     )
     .expect("seed storage meetings row");
     drop(conn);
-    // yogurt-db meetings row — required so chat_messages FK passes.
     state
         .meeting_repo
         .create(yogurt_db::NewMeeting {

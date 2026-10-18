@@ -1,28 +1,16 @@
-//! Which processes currently hold the microphone open (MTG-17).
-//!
-//! CoreAudio exposes one audio object per client process. Each reports its
-//! pid, its bundle id, and whether it is running input right now. A call app
-//! releases the mic within about a second of hanging up, which is a much
-//! faster and less ambiguous "the call ended" signal than a window title.
-//!
-//! The process-object properties are not annotated with an availability in
-//! the SDK header and are not expected on older macOS releases. An OSStatus
-//! error on the process list is reported as `None` so the caller can fall
-//! back to another signal.
-//!
-//! Safari captures in a WebKit process whose bundle id never matches a
-//! meeting app, so Safari calls stay on the window-title fallback.
+//! Which processes currently hold the microphone open.
+//! A call app releases the mic within about a second of hanging up, a faster signal than a window title.
+//! The process-object properties are absent on older macOS, so an OSStatus error yields `None`.
+//! Safari captures in a WebKit process whose bundle id never matches a meeting app.
 
 use crate::detect::meeting_app_for_process;
 
-/// A process that is running audio input.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct MicUser {
     pub pid: i32,
     pub bundle_id: String,
 }
 
-/// Meeting-app labels among `users`, ignoring `own_pid`. Pure.
 pub fn meeting_apps_holding_mic(users: &[MicUser], own_pid: i32) -> Vec<&'static str> {
     users
         .iter()
@@ -31,8 +19,7 @@ pub fn meeting_apps_holding_mic(users: &[MicUser], own_pid: i32) -> Vec<&'static
         .collect()
 }
 
-/// Every process currently running input, or `None` when the process list
-/// is unavailable (older macOS, non-macOS, or a CoreAudio error).
+/// `None` when the process list is unavailable.
 #[cfg(target_os = "macos")]
 pub fn mic_users() -> Option<Vec<MicUser>> {
     use std::ffi::{c_char, c_void};

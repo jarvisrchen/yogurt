@@ -1,95 +1,38 @@
-//! Meeting detection (MTG-11) — "is a call happening right now?"
+//! Meeting detection: is a call happening right now?
 //!
-//! ## Why this lives in `yogurt-audio`
+//! It lives in `yogurt-audio` because the signal comes from `ScreenCaptureKit`, which this crate already depends on.
+//! The Screen Recording grant needed for system-audio loopback also makes `SCWindow::title()` non-`None`,
+//! so detection adds no dependency and no TCC prompt.
 //!
-//! It is not audio. It lives here because the signal comes from
-//! `ScreenCaptureKit`, and `yogurt-audio` is the crate that already
-//! depends on `screencapturekit` and already carries the macOS `cfg`
-//! gating plus the Screen Recording permission check. Detection costs
-//! zero new dependencies and zero new TCC prompts: the Screen Recording
-//! grant yogurt already needs for system-audio loopback is the same
-//! grant that makes `SCWindow::title()` non-`None`.
+//! Calendar (EventKit) needs a new TCC permission and misses ad-hoc calls.
+//! A system-audio heuristic would hold an `SCStream` open while not recording, which the AGENTS.md privacy constraint forbids.
+//! No window title is persisted. The title is held in memory and handed to the local UI.
 //!
-//! ## Why windows and not the alternatives
+//! Matching is a small allow-list of (bundle id, title shape) pairs, because "Zoom is running" is not "you are in a call".
+//! Only the Google Meet rule has been checked against a live call.
+//! The Zoom, Teams, and Slack shapes are inferred from documented window naming.
+//! Capture the real title with `yogurt ctl windows` before trusting them or retuning after a vendor renames a window.
+//! A miss means the user clicks "+ New meeting". A false positive means a dismissable prompt.
 //!
-//! The MTG-11 ticket left the signal open between a calendar read,
-//! window/app detection, and a system-audio heuristic:
-//!
-//! - **Calendar (EventKit)** needs a *new* TCC permission, fires on
-//!   events you decline or skip, and misses every ad-hoc call.
-//! - **System audio** would mean holding an `SCStream` open around the
-//!   clock just to listen for speech — capturing audio while not
-//!   recording, which is exactly what the AGENTS.md privacy constraint
-//!   exists to prevent.
-//! - **Windows** is a read of already-authorized metadata, costs one
-//!   cheap call every few seconds, and needs nothing new.
-//!
-//! Nothing here leaves the machine, and no window title is ever
-//! persisted — the detected title is held in memory and handed to the
-//! local UI so the prompt can say *which* meeting it saw.
-//!
-//! ## Accuracy
-//!
-//! Matching is a deliberately small allow-list of (bundle id, title
-//! shape) pairs, because "Zoom is running" is not "you are in a call".
-//! The title shapes are the part that distinguishes the two, and they
-//! are vendor UI strings that can change without notice.
-//!
-//! **Only the Google Meet rule has been checked against a live call**
-//! (2026-09-01). The Zoom, Teams, and Slack shapes below are inferred
-//! from their documented window naming and have not been observed
-//! firing. An earlier Meet rule was written the same way and was wrong
-//! twice over - it assumed the `com.google.Chrome` bundle id (an
-//! installed Chrome app reports `com.google.Chrome.app.<hash>`) and a
-//! `"Meet - "` title prefix (the real one is
-//! `"Google Meet - Meet - <code>"`). Treat the unverified rules with
-//! that in mind, and capture the real title with `yogurt ctl windows`
-//! before trusting any of them. A miss means
-//! the user clicks "+ New meeting" like they do today; a false positive
-//! means a dismissable prompt. Neither starts a recording on its own —
-//! see `yogurt_server::detect`.
-//!
-//! Known blind spot: a browser window's title is its *active tab's*
-//! title, so a Google Meet call sitting in a background tab is invisible
-//! here. Seeing it would mean reading tab state, which needs
-//! Accessibility permission — a bigger grant than this feature is worth.
-//!
-//! `yogurt ctl windows` dumps the live window list with each row's
-//! verdict; that is the tool for retuning these patterns when a vendor
-//! renames a window.
+//! Blind spot: a browser window's title is its active tab's, so a Meet call in a background tab is invisible.
+//! Reading tab state needs Accessibility permission, which is a bigger grant than this feature is worth.
 
-/// A meeting-looking window observed on screen.
-///
-/// `Deserialize` (CLI-4): `yogurt ctl status`/`detect` parse this straight
-/// back out of the server's `GET /api/meetings/detected` JSON body.
+/// `Deserialize` because `yogurt ctl status`/`detect` parse this back out of `GET /api/meetings/detected`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DetectedMeeting {
-    /// `CGWindowID` of the matched window. Stable for the window's
-    /// lifetime, which is what lets the caller tell "still the same
-    /// call" from "a second call started".
+    /// `CGWindowID`. Stable for the window's lifetime, so a second call is distinguishable from the same one.
     pub window_id: u32,
-    /// Human-facing app name for the prompt, e.g. `"Zoom"`.
     pub app: String,
-    /// The matched window title, e.g. `"Meet - abc-defg-hij"`.
     pub title: String,
 }
 
-/// One entry in the allow-list: which app, and what its window title
-/// looks like *while a call is live* (as opposed to merely open).
 struct AppRule {
-    /// Matched exactly, or against `<bundle>.app.<hash>` — a site
-    /// installed as a Chrome app ("PWA") runs under its own generated
-    /// bundle id, so a plain `com.google.Chrome` comparison misses the
-    /// installed Google Meet entirely. That is not an exotic setup; it
-    /// is what the "Install Google Meet" button produces.
+    /// Matched exactly or as `<bundle>.app.<hash>`, because a Chrome-installed site (PWA) runs under its own generated bundle id.
     bundle: &'static str,
-    /// Display name for the prompt.
     label: &'static str,
     matches: fn(&str) -> bool,
 }
 
-/// Does `actual` name this rule's browser, whether it is the browser
-/// proper or one of its installed-app profiles?
 fn bundle_matches(rule: &str, actual: &str) -> bool {
     actual == rule
         || (actual.len() > rule.len()
@@ -97,29 +40,21 @@ fn bundle_matches(rule: &str, actual: &str) -> bool {
             && actual[rule.len()..].starts_with(".app."))
 }
 
-/// Vendors write these titles with an en dash as often as a hyphen;
-/// normalize so one pattern covers both.
+/// Vendors use en dashes as often as hyphens.
 fn norm(title: &str) -> String {
     title.replace(['\u{2013}', '\u{2014}'], "-")
 }
 
 const RULES: &[AppRule] = &[
-    // Zoom's idle window is "Zoom Workplace" / "Zoom"; the in-call
-    // window is titled "Zoom Meeting" (or "Zoom Webinar").
+    // The idle window is "Zoom Workplace" or "Zoom".
     AppRule {
         bundle: "us.zoom.xos",
         label: "Zoom",
         matches: |t| t.starts_with("Zoom Meeting") || t.starts_with("Zoom Webinar"),
     },
-    // Browsers, including their installed-app profiles. Verified
-    // against a live call on 2026-09-01: the installed Google Meet app
-    // reports bundle `com.google.Chrome.app.kjgfgld…` and title
-    // "Google Meet - Meet - wbj-wqgz-pju 🔊", while the landing page is
-    // "Google Meet" and the join-in-progress state is
-    // "Google Meet - Meet". Matching a prefix like "Meet - " gets all
-    // three wrong; matching the meeting *code* separates "in a call"
-    // from "Meet is open" regardless of which of those title shapes a
-    // given Chrome version emits.
+    // Verified live: the installed Meet app reports `com.google.Chrome.app.<hash>` and title
+    // "Google Meet - Meet - wbj-wqgz-pju". The landing page and join-in-progress titles
+    // lack a meeting code, so matching the code separates "in a call" from "Meet is open".
     AppRule {
         bundle: "com.google.Chrome",
         label: "Google Meet",
@@ -140,9 +75,7 @@ const RULES: &[AppRule] = &[
         label: "Google Meet",
         matches: has_meet_code,
     },
-    // Teams (new client and classic). The idle window is
-    // "Chat | Microsoft Teams"; a call window leads with the meeting
-    // subject and the "Meeting" / "Call" noun.
+    // The idle window is "Chat | Microsoft Teams".
     AppRule {
         bundle: "com.microsoft.teams2",
         label: "Microsoft Teams",
@@ -153,7 +86,7 @@ const RULES: &[AppRule] = &[
         label: "Microsoft Teams",
         matches: is_teams_meeting_title,
     },
-    // Slack huddles open their own window titled "Huddle …".
+    // Huddles open their own window titled "Huddle ...".
     AppRule {
         bundle: "com.tinyspeck.slackmacgap",
         label: "Slack huddle",
@@ -161,8 +94,7 @@ const RULES: &[AppRule] = &[
     },
 ];
 
-/// Is `tok` a Google Meet meeting code — three, four, then three
-/// lowercase letters (`wbj-wqgz-pju`)?
+/// Three, four, then three lowercase letters, like `wbj-wqgz-pju`.
 fn is_meet_code(tok: &str) -> bool {
     let mut parts = tok.split('-');
     let (Some(a), Some(b), Some(c), None) =
@@ -176,11 +108,7 @@ fn is_meet_code(tok: &str) -> bool {
             .all(|s| s.bytes().all(|ch| ch.is_ascii_lowercase()))
 }
 
-/// A meeting code in the title is the signal that a Meet call is
-/// actually joined. Meet only puts one there once you are in the call,
-/// so this distinguishes a live call from an open tab without depending
-/// on the surrounding title text, which differs between a plain tab, an
-/// installed app, and Chrome versions.
+/// Meet only puts a code in the title once you are in the call, whatever the tab, app, or Chrome version.
 fn has_meet_code(title: &str) -> bool {
     title
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
@@ -191,8 +119,6 @@ fn is_teams_meeting_title(t: &str) -> bool {
     t.contains("| Microsoft Teams") && (t.contains("Meeting") || t.contains("Call"))
 }
 
-/// Match one window against the allow-list. Pure — this is the part
-/// under test; the SCK enumeration around it is not.
 pub fn match_window(bundle_id: &str, title: &str) -> Option<&'static str> {
     let title = norm(title);
     RULES
@@ -201,10 +127,8 @@ pub fn match_window(bundle_id: &str, title: &str) -> Option<&'static str> {
         .map(|r| r.label)
 }
 
-/// Meeting-app label for a process that holds the microphone. Unlike
-/// [`match_window`] this keys on the bundle id alone, and a rule bundle also
-/// matches its dotted children, so `com.google.Chrome.helper` (the process
-/// that actually captures in a browser call) counts as Chrome.
+/// Keys on the bundle id alone, and a rule bundle also matches its dotted children,
+/// so `com.google.Chrome.helper` (which captures in a browser call) counts as Chrome.
 pub fn meeting_app_for_process(bundle_id: &str) -> Option<&'static str> {
     RULES
         .iter()
@@ -217,20 +141,12 @@ pub fn meeting_app_for_process(bundle_id: &str) -> Option<&'static str> {
         .map(|r| r.label)
 }
 
-/// Enumerate on-screen windows and return the first that looks like a
-/// live meeting, or `None`.
-///
-/// Cheap enough to poll (`SCShareableContent::get()` is a synchronous
-/// window-server round trip, single-digit milliseconds), but it IS
-/// blocking — callers on an async runtime must wrap it in
-/// `spawn_blocking`.
+/// Blocking, a window-server round trip, so async callers wrap it in `spawn_blocking`.
 #[cfg(target_os = "macos")]
 pub fn detect_meeting() -> Option<DetectedMeeting> {
     use screencapturekit::shareable_content::SCShareableContent;
 
-    // No Screen Recording grant means no window titles (macOS redacts
-    // them), so every rule would miss. Bail before the SCK call rather
-    // than reporting a confident "no meeting".
+    // Without the grant macOS redacts titles, so bail rather than report a confident "no meeting".
     if crate::permission::has_screen_recording_permission()
         == crate::permission::PermissionStatus::Denied
     {
@@ -239,8 +155,7 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
 
     let content = SCShareableContent::get().ok()?;
     content.windows().into_iter().find_map(|w| {
-        // Layer 0 is the normal document layer; anything else is menu
-        // bars, wallpaper, notification overlays and friends.
+        // Layer 0 is the document layer. Other layers are menu bars, wallpaper, and overlays.
         if !w.is_on_screen() || w.window_layer() != 0 {
             return None;
         }
@@ -255,21 +170,17 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
     })
 }
 
-/// Why [`detect_meeting`] could not answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Wedged {
-    /// The window-server query did not complete within the timeout.
     TimedOut,
-    /// A previous query is still hanging; nothing new was started.
+    /// A previous query is still hanging.
     Busy,
 }
 
 static QUERY_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// [`detect_meeting`] with a deadline. The window server occasionally
-/// never sends the completion `SCShareableContent::get()` waits on (seen
-/// mid-call on macOS 26). The hung thread cannot be cancelled, so it is
-/// left to finish and further calls refuse rather than stack up.
+/// The window server occasionally never completes the `SCShareableContent::get()` call (seen mid-call on macOS 26).
+/// The hung thread cannot be cancelled, so further calls refuse rather than stack up.
 pub fn detect_meeting_bounded(
     timeout: std::time::Duration,
 ) -> Result<Option<DetectedMeeting>, Wedged> {
@@ -301,14 +212,11 @@ fn bounded<T: Send + 'static>(
     rx.recv_timeout(timeout).map_err(|_| Wedged::TimedOut)
 }
 
-/// Non-macOS stub — window enumeration is `ScreenCaptureKit`-only.
 #[cfg(not(target_os = "macos"))]
 pub fn detect_meeting() -> Option<DetectedMeeting> {
     None
 }
 
-/// One on-screen window plus its [`match_window`] verdict - `None` when
-/// nothing in `RULES` matched.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WindowVerdict {
     pub verdict: Option<&'static str>,
@@ -316,17 +224,8 @@ pub struct WindowVerdict {
     pub title: String,
 }
 
-/// Enumerate on-screen windows with each one's [`match_window`] verdict.
-/// CLI-4: backs `yogurt ctl windows`, which replaced the
-/// `yogurt-audio/examples/meeting_windows.rs` this function's body used to
-/// live in - that was the tool for retuning `RULES` when a vendor renames
-/// a window; `yogurt ctl windows` is now.
-///
-/// Blocking, same caveat as [`detect_meeting`]. Returns an empty vec on a
-/// SCK enumeration failure - callers that care about "denied" vs
-/// "genuinely no meeting-looking windows" should check
-/// [`crate::permission::has_screen_recording_permission`] first (`yogurt
-/// ctl windows` does, so it never reads as an empty "no meetings").
+/// Backs `yogurt ctl windows`. Blocking, and returns empty on an SCK failure,
+/// so callers should check the Screen Recording permission first to tell "denied" from "no windows".
 #[cfg(target_os = "macos")]
 pub fn scan_windows() -> Vec<WindowVerdict> {
     use screencapturekit::shareable_content::SCShareableContent;
@@ -354,7 +253,6 @@ pub fn scan_windows() -> Vec<WindowVerdict> {
         .collect()
 }
 
-/// Non-macOS stub, mirroring [`detect_meeting`].
 #[cfg(not(target_os = "macos"))]
 pub fn scan_windows() -> Vec<WindowVerdict> {
     Vec::new()
@@ -364,11 +262,7 @@ pub fn scan_windows() -> Vec<WindowVerdict> {
 mod tests {
     use super::{bounded, match_window, Wedged};
 
-    /// Bundle id of Google Meet installed as a Chrome app, as captured
-    /// from a live call. The hash is Chrome's, derived from the app, so
-    /// it is stable — but nothing here depends on that: `bundle_matches`
-    /// keys off the `com.google.Chrome.app.` prefix, so any installed
-    /// app under any Chrome profile is covered.
+    /// Google Meet installed as a Chrome app, captured from a live call.
     const MEET_PWA: &str = "com.google.Chrome.app.kjgfgldnnfoeklkmfkjfagphfepbbdan";
 
     #[test]
@@ -376,15 +270,13 @@ mod tests {
         for (bundle, title, want) in [
             ("us.zoom.xos", "Zoom Meeting", "Zoom"),
             ("us.zoom.xos", "Zoom Meeting ID: 123", "Zoom"),
-            // Captured from a real joined call on 2026-09-01. The
-            // trailing speaker glyph appears while audio is playing.
+            // The trailing speaker glyph appears while audio is playing.
             (
                 MEET_PWA,
                 "Google Meet - Meet - wbj-wqgz-pju \u{1f50a}",
                 "Google Meet",
             ),
             (MEET_PWA, "Google Meet - Meet - wbj-wqgz-pju", "Google Meet"),
-            // Same call in a plain tab rather than the installed app.
             ("com.google.Chrome", "Meet - wbj-wqgz-pju", "Google Meet"),
             ("com.apple.Safari", "Meet - abc-defg-hij", "Google Meet"),
             (
@@ -408,20 +300,15 @@ mod tests {
 
     #[test]
     fn merely_open_apps_do_not_match() {
-        // The whole point of matching on titles: an app being open is
-        // not a call. Every one of these is a false positive if the
-        // rules ever degrade to bundle-id-only matching.
         for (bundle, title) in [
             ("us.zoom.xos", "Zoom Workplace"),
             ("us.zoom.xos", "Zoom"),
-            // The two pre-join states of the installed Meet app, both
-            // captured live. Neither carries a meeting code.
+            // Pre-join states, neither carries a meeting code.
             (MEET_PWA, "Google Meet"),
             (MEET_PWA, "Google Meet - Meet"),
             ("com.google.Chrome", "Google Meet"),
             ("com.google.Chrome", "Inbox (12) - Gmail"),
-            // A different Chrome installed app must not inherit Meet's
-            // rule just by sharing the `.app.` prefix.
+            // Sharing the `.app.` prefix must not inherit Meet's rule.
             (
                 "com.google.Chrome.app.kjbdgfilnfhdoflbpgamdcdgpehopbep",
                 "Google Calendar - Week of August 31, 2026",
@@ -436,8 +323,6 @@ mod tests {
 
     #[test]
     fn meeting_code_shape_is_specific() {
-        // A hyphenated word in an unrelated page title must not read as
-        // a meeting code, or every blog post becomes a meeting.
         for title in [
             "abc-defg-hi",      // wrong last segment length
             "abcd-defg-hij",    // wrong first segment length
@@ -459,7 +344,6 @@ mod tests {
         assert_eq!(bounded(|| 1, Duration::from_secs(1)), Err(Wedged::Busy));
 
         release_tx.send(()).unwrap();
-        // The hung thread clears the flag as it exits; give it a moment.
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         loop {
             match bounded(|| 1, Duration::from_secs(1)) {

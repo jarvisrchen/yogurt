@@ -1,12 +1,4 @@
-/**
- * `LabelPicker` — popover to search/create labels and toggle them on one
- * meeting. Reusable across the Library card hover actions, the live
- * meeting header, and the post-meeting header (`MeetingLabels` mounts it).
- *
- * Visual language matches the kebab menu in `MeetingCardActions`. Every
- * click inside `stopPropagation`s + `preventDefault`s so the picker can
- * live inside a card `<Link>` without triggering navigation.
- */
+/** Every click stops propagation and prevents default so the picker can live inside a card `<Link>` without navigating. */
 
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";

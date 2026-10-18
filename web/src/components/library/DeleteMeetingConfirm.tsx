@@ -1,33 +1,10 @@
-/**
- * Shared delete affordance — the inline "Delete?" / "Cancel" confirm plus
- * the "also delete .md" checkbox. Used by both the Library card kebab
- * (`MeetingCardActions`) and the post-meeting header (`MeetingPost`), so
- * the confirm semantics live in exactly one place.
- *
- * D-10 / PRD §5.7: the SQLite row and the on-disk markdown in
- * `~/.yogurt/notes/` are separate deletes. The checkbox is pre-checked —
- * a meeting you're purging almost never has notes worth keeping — but
- * unchecking preserves the grep-able file the decision was written for.
- *
- * The confirm auto-reverts after 3s of inaction; toggling the checkbox
- * re-arms that timer so it can't vanish mid-decision.
- *
- * `ConfirmPanel` is exported so the bulk-delete action bar (MTG-14) can
- * reuse the same confirm surface for the "delete N meetings" case.
- */
-
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useDeleteMeeting } from "../../lib/api/meetings";
 
 interface Props {
   id: string;
-  /** Called after the delete resolves — close a menu, navigate away, … */
   onDeleted?: () => void;
-  /**
-   * `menuitem` renders a full-width row for a `role="menu"` dropdown.
-   * `icon` renders a compact trash button for a page header.
-   */
   variant: "menuitem" | "icon";
 }
 
@@ -37,6 +14,7 @@ export function DeleteMeetingConfirm({ id, onDeleted, variant }: Props) {
   const del = useDeleteMeeting();
   const isIcon = variant === "icon";
 
+  // Auto-cancel after 3s. Toggling the checkbox re-arms the timer.
   useEffect(() => {
     if (!confirming) return;
     const t = setTimeout(() => setConfirming(false), 3000);
@@ -50,8 +28,7 @@ export function DeleteMeetingConfirm({ id, onDeleted, variant }: Props) {
 
   const onOpen = (e: React.MouseEvent) => {
     stop(e);
-    // Re-arm the checkbox on every open so an uncheck never leaks into an
-    // unrelated delete later in the session.
+    // Reset on every open so an uncheck never leaks into a later delete.
     setDeleteFile(true);
     setConfirming(true);
   };
@@ -63,11 +40,8 @@ export function DeleteMeetingConfirm({ id, onDeleted, variant }: Props) {
     onDeleted?.();
   };
 
-  // Wrapper is `relative` in the icon variant so the absolute-positioned
-  // confirm popover anchors under the trashcan instead of pushing the
-  // surrounding topbar around (which is what shifted the Enhance button
-  // before this fix). Menuitem variant preserves the existing
-  // kebab-menu "morph" behavior - the row replaces, no overlay.
+  // The icon variant anchors the confirm popover absolutely so it cannot
+  // shift the surrounding topbar. The menuitem variant replaces its row.
   return isIcon ? (
     <div className="relative inline-block">
       <button
@@ -124,11 +98,6 @@ export interface ConfirmPanelProps {
   isPending: boolean;
 }
 
-/**
- * Exported so the Library's bulk-delete action bar (MTG-14) can reuse the
- * exact same "Delete? / Cancel" + "also delete .md" confirm surface -
- * only the mutation it's wired to differs (bulk vs. single meeting).
- */
 export function ConfirmPanel({
   testId,
   containerClassName,

@@ -2,42 +2,20 @@ import { useMutation } from "@tanstack/react-query";
 import { settingsApi, type TestConnectionResult } from "../../lib/api/settings";
 import { Button } from "../Button";
 
-/**
- * "Test" button + its verdict line for one provider's key.
- *
- * Extracted out of `ApiKeyInput` because `ProviderRow` keeps the key
- * section collapsed until the user clicks `Add key` / `Replace key` —
- * which made `Test` unreachable for exactly the providers most worth
- * testing: the ones already set up, with a stored key, quietly failing.
- * Collapsed cards now render this on its own, testing the stored key.
- *
- * Renders as a fragment: the button plus a `basis-full` verdict line, so
- * a `flex flex-wrap` parent drops the verdict onto its own row underneath
- * instead of squeezing it into the button row.
- */
+// Renders a fragment: the button plus a `basis-full` verdict line, so a
+// `flex flex-wrap` parent drops the verdict onto its own row.
 export function TestKeyButton({
   providerId = "",
   providerName,
-  /** Unsaved key from the password field. Empty → test the stored key. */
+  // Unsaved key from the password field. Empty tests the stored key.
   draft = "",
-  /** Without a stored key and without a draft there is nothing to test. */
   hasStoredKey,
-  /** LLM-4: a `cli`-adapter provider has no key at all, so the normal
-   *  "needs a draft or a stored key" gate never applies to it - `Test`
-   *  is always reachable (it just resolves the CLI on `$PATH`). */
+  // A `cli` provider has no key, so Test is always reachable.
   alwaysTestable = false,
-  /** Override for non-provider callers (e.g. the Deepgram STT key), which
-   *  hit a different endpoint with no provider id. Defaults to testing
-   *  `providerId` against the LLM provider endpoint. */
+  // Override for non-provider callers such as the Deepgram STT key.
   testFn = (key?: string) => settingsApi.testProvider(providerId, key),
-  /** Fires with every test verdict (ok or not) - LLM-4's cli rows use this
-   *  to reveal the MODEL picker once a test actually proves the CLI
-   *  connects, instead of showing it unconditionally. */
   onResult,
-  /** `false` when this button sits next to the API key input, so it keeps
-   *  `Button`'s default sizing and lines up with `Save key`. Every other
-   *  placement (a standalone row, or paired with `Replace key`/`Add key`)
-   *  uses the smaller inline-row sizing. */
+  // `false` beside the API key input keeps `Button`'s default sizing to line up with Save key.
   compact = true,
 }: {
   providerId?: string;
@@ -54,9 +32,7 @@ export function TestKeyButton({
     onSuccess: (result) => onResult?.(result),
   });
 
-  // A verdict describes the key that was in the box when it ran; a green
-  // tick sitting next to text the user has since edited is a lie, so the
-  // verdict is only shown while the draft still matches what was tested.
+  // Hide the verdict once the draft is edited, so a green tick never sits beside an untested key.
   const fresh = test.variables === draft;
   const canTest = (alwaysTestable || !!draft || !!hasStoredKey) && !test.isPending;
 

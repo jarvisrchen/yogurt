@@ -1,49 +1,20 @@
 //! LLM client resolution for the enhance handler.
 //!
-//! The hardcoded ~50 LOC OpenAI-compat client originally lived here. Plan
-//! 05-01 promoted it into the new `yogurt-llm` crate behind the
-//! `LlmClient` trait. This module now re-exports the canonical adapter
-//! plus two constructors:
-//!
-//! - [`from_env`] — developer override via `YOGURT_LLM_*` env vars
-//!   (highest priority, checked first).
-//! - `from_active_provider` (private) — the production path: active
-//!   provider row from the `providers` table, branching on its `adapter`
-//!   (LLM-4). An `http` row builds `OpenAiCompatClient` from its stored API
-//!   key; a `cli` row `yogurt_llm::CliClient::locate`s the named program
-//!   (`claude` | `cursor-agent` | `opencode`) and needs no key at all.
-//!
-//! There is deliberately no automatic fallback from an unreachable `http`
-//! provider to a local CLI. An earlier draft of this module did exactly
-//! that (LLM-1) - wrap the active provider in a combinator that retried
-//! through whichever CLI happened to be on `$PATH` on a connect-class
-//! failure - and it was reverted: silently rerouting a meeting's real
-//! content to a different, unvetted backend because of a network hiccup is
-//! a behavior change a user should opt into, not one that happens to them.
-//! The CLI is reachable only by explicitly picking it as the active
-//! provider (LLM-4).
+//! There is deliberately no automatic fallback from an unreachable `http` provider to a
+//! local CLI. Silently rerouting a meeting's content to an unvetted backend because of a
+//! network hiccup is a change the user must opt into by picking the CLI as the active provider.
 
 use std::sync::Arc;
 
-// Re-export the canonical adapter from `yogurt-llm`.
 pub use yogurt_llm::OpenAiCompatClient;
 
-/// Resolve the LLM client for a request. Single source of truth shared by
-/// the enhance handler AND the chat handler so they can never disagree
-/// about which model answers (the original Phase 6 bug: chat pinned to
-/// `MockLlm` while enhance resolved the real provider).
+/// Shared by enhance and chat so they always use the same model.
 ///
-/// Priority chain:
-///   1. `state.llm_override` — test injection, never set in production.
-///   2. `YOGURT_LLM_*` env vars — developer override.
-///   3. Active provider row, branching on `adapter` (LLM-4):
-///      - `http`: `OpenAiCompatClient` + stored key. A key that can't be
-///        read is a hard `Err`.
-///      - `cli`: the located `CliClient` directly. Its program not being
-///        on `$PATH` is the same hard-`Err` contract as a missing key —
-///        never a silent fallback to anything else.
-///   4. `MockLlm` when nothing is configured at all (logged as a warn) so
-///      first-run users still see the hero flow work.
+/// Priority:
+///   1. `state.llm_override`, test injection only.
+///   2. `YOGURT_LLM_*` env vars.
+///   3. Active provider row. An unreadable key or a CLI missing from `$PATH` is a hard `Err`.
+///   4. `MockLlm` when nothing is configured, so first-run users still see the hero flow.
 pub async fn resolve(
     state: &crate::state::AppState,
 ) -> anyhow::Result<std::sync::Arc<dyn yogurt_llm::LlmClient>> {
@@ -62,11 +33,8 @@ pub async fn resolve(
     }
 }
 
-/// `.env`-based developer override. Returns `None` if any of the three
-/// `YOGURT_LLM_*` env vars is missing; the enhance handler then falls
-/// through to [`from_active_provider`] (and finally `MockLlm`). When set,
-/// `YOGURT_LLM_BASE_URL` + `YOGURT_LLM_API_KEY` + `YOGURT_LLM_MODEL` win
-/// over the configured provider row.
+/// Developer override. `None` unless all of `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`
+/// and `YOGURT_LLM_MODEL` are set.
 pub fn from_env() -> Option<OpenAiCompatClient> {
     let base_url = std::env::var("YOGURT_LLM_BASE_URL").ok()?;
     let api_key = std::env::var("YOGURT_LLM_API_KEY").ok()?;
@@ -74,16 +42,9 @@ pub fn from_env() -> Option<OpenAiCompatClient> {
     Some(OpenAiCompatClient::new(base_url, api_key, model))
 }
 
-/// Production resolution path: build a client from the active provider row
-/// (`providers` table), branching on its `adapter` (LLM-4).
-///
-/// Contract (the enhance handler maps each arm directly):
-/// - `Ok(None)` — no active provider configured; caller falls back to mock.
-/// - `Ok(Some(_))` — active provider ready to use.
-/// - `Err(_)` — active provider exists but isn't usable right now (an
-///   `http` provider whose key can't be read, or a `cli` provider whose
-///   program isn't on `$PATH`); caller must surface this (502), never
-///   silently fall back to mock.
+/// `Ok(None)` means no active provider, so the caller falls back to mock.
+/// `Err` means the active provider is unusable (unreadable key, CLI not on `$PATH`) and the
+/// caller must surface it (502) rather than fall back.
 async fn from_active_provider(
     db: &yogurt_db::Db,
     keys: std::sync::Arc<dyn yogurt_db::keys::ApiKeyStore>,
@@ -112,7 +73,7 @@ async fn from_active_provider(
         return Ok(Some(Arc::new(client)));
     }
     let key = keys.get(&provider.id)?;
-    // T-x3u-01: error names the provider only — never the key value.
+    // The error names the provider, never the key.
     match key {
         Some(key) => Ok(Some(Arc::new(OpenAiCompatClient::new(
             provider.base_url,
@@ -186,8 +147,7 @@ mod tests {
         let (db, keys) = fixture();
         let id = insert_active_provider(&db);
         keys.set(&id, "sk-test").unwrap();
-        // `Arc<dyn LlmClient>` isn't `Debug`, so match explicitly rather
-        // than `Result::unwrap` chains that would require it.
+        // `Arc<dyn LlmClient>` isn't `Debug`, so `unwrap` is unavailable.
         let client = match from_active_provider(&db, keys).await {
             Ok(Some(c)) => c,
             other => panic!("expected Ok(Some(_)), got {}", other.is_ok()),
@@ -205,17 +165,10 @@ mod tests {
         };
         let msg = err.to_string();
         assert!(msg.contains("Minimax"), "error should name provider: {msg}");
-        // T-x3u-01: message must never contain a key value; here just assert
-        // it points the user at re-entering the key.
         assert!(msg.to_lowercase().contains("key"), "actionable msg: {msg}");
     }
 
-    // ── LLM-4: explicit CLI provider selection ─────────────────────────
-
-    /// Deterministic regardless of whether `claude`/`cursor-agent` happen
-    /// to be installed on the machine running this test - an unrecognized
-    /// `model` value on a `cli`-adapter row can never resolve, on any
-    /// machine.
+    /// An unrecognized program never resolves, whatever CLIs the machine has installed.
     #[tokio::test]
     async fn cli_provider_with_unrecognized_program_errors_naming_provider() {
         let (db, keys) = fixture();
@@ -235,13 +188,8 @@ mod tests {
         );
     }
 
-    /// A `cli`-adapter row with a recognized program (`claude` |
-    /// `cursor-agent` | `opencode`) either resolves `Ok(Some(_))` when that binary
-    /// happens to be on this machine's `$PATH`, or a hard `Err` naming the
-    /// provider when it isn't - never a silent `Ok(None)` mock fallback,
-    /// matching the missing-HTTP-key contract. Both branches are asserted
-    /// so the test is meaningful on a machine with `claude` installed
-    /// (mine) and one without (CI).
+    /// Resolves when `claude` is on `$PATH` and errors otherwise, never `Ok(None)`.
+    /// Both branches are asserted so it passes on CI and on a machine with `claude`.
     #[tokio::test]
     async fn cli_provider_with_recognized_program_resolves_or_errors_naming_provider() {
         let (db, keys) = fixture();

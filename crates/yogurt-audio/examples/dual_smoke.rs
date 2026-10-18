@@ -9,12 +9,6 @@
 //!
 //! Expected over 10 seconds: ~500 frames per channel; peak amplitude > 1000
 //! on both channels when both audio sources are active.
-//!
-//! This is NOT the Phase 2 ear-test gate — Plan 02-03 will model that as a
-//! `checkpoint:human-verify` task (the human listens to a WAV produced from
-//! these frames and confirms both channels are audible, not silent, not
-//! clipped, not swapped). This smoke just proves the broadcast plumbing
-//! is alive.
 
 use std::time::Duration;
 use yogurt_audio::{start_capture, Channel};

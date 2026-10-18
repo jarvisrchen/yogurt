@@ -1,9 +1,3 @@
-/**
- * MicPermissionDenied honesty-pass test (fast task) — parallel to
- * PermissionDenied.test.tsx. Same bug, same fix: "Restart Yogurt" used to
- * just reload the page; "Check again" now refetches the shared
- * permission query.
- */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

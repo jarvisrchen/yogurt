@@ -1,25 +1,14 @@
-//! Regression (2026-08-29, meeting 01a04c36): the post view showed
-//! "userâ\u{80}\u{99}s" even though `fix_model_mojibake` repairs that form.
-//! The fixer was fine; `yogurt_notes::ast::strip_markers` re-mangled the
-//! clean "\u{2019}" afterwards by copying bytes with `byte as char`, which
-//! only triggers when a bullet carries an inline wire-format span.
-//!
-//! Drives the real `/enhance` handler against a fake OpenAI-compatible
-//! server with a canned completion, then reads `enriched_md` back out of
-//! SQLite so the assertion covers the whole write path. Its own test
-//! binary because it sets the `YOGURT_LLM_*` env vars, which would race
-//! with `enhance_endpoint.rs` (that file removes them).
+//! Regression: `yogurt_notes::ast::strip_markers` re-mangled a clean "\u{2019}" by copying bytes with `byte as char`, which only triggers when a bullet carries an inline wire-format span.
+//! Drives the real `/enhance` handler against a fake OpenAI-compatible server and reads `enriched_md` from SQLite.
+//! Its own test binary because it sets `YOGURT_LLM_*` env vars, which would race with `enhance_endpoint.rs`.
 
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use yogurt_server::{run_with_config, Mode, RunConfig};
 
-/// Minimal OpenAI-compatible chat endpoint: ignores the request, answers
-/// with an SSE stream carrying `content` as a single `delta` chunk (the
-/// enhance handler now calls `LlmClient::stream`, so a plain non-streaming
-/// JSON body no longer parses as any `ChatChunk`s). Serves one request per
-/// accepted connection, forever.
+/// Minimal OpenAI-compatible endpoint: answers every request with an SSE stream carrying `content` as one `delta` chunk.
+/// Serves one request per accepted connection, forever.
 async fn spawn_fake_llm(content: String) -> std::net::SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -31,8 +20,7 @@ async fn spawn_fake_llm(content: String) -> std::net::SocketAddr {
             };
             let content = content.clone();
             tokio::spawn(async move {
-                // Read headers + body (small; one read is enough after the
-                // headers arrive, but loop until we see the JSON close).
+                // Read headers and body; loop until the JSON closes.
                 let mut buf = Vec::new();
                 let mut tmp = [0u8; 4096];
                 loop {
@@ -57,9 +45,7 @@ async fn spawn_fake_llm(content: String) -> std::net::SocketAddr {
                         }
                     }
                 }
-                // Single content-bearing chunk (finish_reason set) then the
-                // terminal `[DONE]` — see `yogurt_llm::streaming::stream`
-                // for how these two lines get parsed into `ChatChunk`s.
+                // One content chunk with finish_reason set, then the terminal `[DONE]`.
                 let chunk = serde_json::json!({
                     "choices": [{
                         "delta": { "content": content },
@@ -122,9 +108,7 @@ async fn spawn_server() -> (
     panic!("server did not become reachable");
 }
 
-/// Run one enhance against a fake LLM returning `llm_content`; return the
-/// `enriched_md` persisted in SQLite (not the HTTP response) so the
-/// assertion covers the whole write path.
+/// Runs one enhance against a fake LLM and returns the `enriched_md` persisted in SQLite, so the assertion covers the whole write path.
 async fn enhance_with(llm_content: &str) -> String {
     let llm = spawn_fake_llm(llm_content.to_string()).await;
     // SAFETY: this test binary owns these vars; nothing else in the
@@ -174,13 +158,10 @@ async fn enhance_with(llm_content: &str) -> String {
     .unwrap()
 }
 
-/// One test, two cases in sequence: `enhance_with` sets process-wide
-/// `YOGURT_LLM_*` env vars, so parallel test fns would race each other's
-/// fake LLM and assert against the wrong canned output.
+/// One test with two cases in sequence: `enhance_with` sets process-wide `YOGURT_LLM_*` env vars, so parallel tests would race.
 #[tokio::test(flavor = "multi_thread")]
 async fn model_mojibake_is_repaired_before_persist() {
-    // Latin-1 form, exactly the chars stored for meeting 01a04c36:
-    // U+00E2 U+0080 U+0099.
+    // Latin-1 form: U+00E2 U+0080 U+0099.
     let stored = enhance_with(
         "## Final Day\n\n- Today is the user\u{e2}\u{80}\u{99}s last day <span data-ai-grey data-ts=\"4\">User submitted their two weeks\u{e2}\u{80}\u{99} notice</span>\n",
     )
@@ -194,7 +175,6 @@ async fn model_mojibake_is_repaired_before_persist() {
         "expected curly apostrophe: {stored:?}"
     );
 
-    // Clean UTF-8 must pass through untouched.
     let stored = enhance_with("## Final Day\n\n- Today is the user\u{2019}s last day\n").await;
     assert!(
         stored.contains("user\u{2019}s"),

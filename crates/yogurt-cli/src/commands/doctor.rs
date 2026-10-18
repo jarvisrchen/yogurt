@@ -1,17 +1,6 @@
-//! `yogurt doctor` — diagnostic dump + repair actions.
-//!
-//! Ships four things (DIST-08 / ROADMAP Phase 9 Success Criterion 4):
-//! 1. A default diagnostic dump (rust, macOS, Screen Recording permission,
-//!    db path, configured providers, active STT, downloaded whisper models).
-//! 2. `--json` for machine-readable bug reports.
-//! 3. `--reset-screen-recording` — `tccutil reset ScreenCapture ai.yogurt.app`.
-//! 4. `--check-port` and `--redownload-model <name>` repair actions.
-//!
-//! Reads the SAME `~/.yogurt/db.sqlite` settings store and the SAME
-//! `yogurt_audio::permission` TCC check the running app uses — no separate
-//! `config.toml` scrape, so this never drifts from what `yogurt start`
-//! actually sees. NEVER prints API key values, only provider names
-//! (D-12 / providers::list_names already excludes secrets by construction).
+//! `yogurt doctor`: diagnostic dump plus repair actions.
+//! Reads the same settings DB and `yogurt_audio::permission` TCC check the running app uses, so it never drifts from what `yogurt start` sees.
+//! Never prints API key values, only provider names.
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -20,11 +9,9 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Bundle ID pinned across the notarization config (plan 09-01) and this
-/// TCC reset — they must match for the reset to actually clear TCC state.
+/// Must match the notarization config's bundle ID for the TCC reset to clear state.
 const BUNDLE_ID: &str = "ai.yogurt.app";
 
-/// Port `yogurt start` binds to by default; used by `--check-port`.
 const DEFAULT_PORT: u16 = 7878;
 
 pub struct DoctorArgs {
@@ -32,7 +19,7 @@ pub struct DoctorArgs {
     pub reset_screen_recording: bool,
     pub check_port: bool,
     pub redownload_model: Option<String>,
-    /// CLI-7: report the database under this directory instead of `~/.yogurt`.
+    /// Report the database under this directory instead of `~/.yogurt`.
     pub data_dir: Option<PathBuf>,
 }
 
@@ -51,10 +38,7 @@ struct Report {
 }
 
 /// One locally-available whisper.cpp model.
-///
-/// `path` is load-bearing in a bug report: AUD-4 lets a model come from
-/// a Homebrew prefix as well as `~/.yogurt/models`, and "which copy is
-/// it actually loading" is the first question when a model misbehaves.
+/// `path` matters in a bug report: a model can come from a Homebrew prefix as well as `~/.yogurt/models`.
 #[derive(Debug, Serialize)]
 struct ModelReport {
     name: &'static str,
@@ -129,10 +113,7 @@ fn redownload_model(name: &str) -> Result<()> {
     // next `is_downloaded_at` fast-path answer for bytes that are gone.
     let _ = std::fs::remove_file(format!("{}.sha256", path.display()));
 
-    // AUD-4: removing our copy does not necessarily force a re-download -
-    // a Homebrew-installed one still resolves. Announcing the outcome
-    // AFTER the removal, rather than promising it before, is the only way
-    // these lines cannot contradict each other.
+    // Removing our copy does not force a re-download when a Homebrew copy still resolves, so announce the outcome after the removal.
     let elsewhere = yogurt_stt::models::lookup(name).and_then(yogurt_stt::models::resolve_model);
     match elsewhere {
         Some(other) => println!(
@@ -150,20 +131,13 @@ fn yogurt_home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|b| b.home_dir().join(".yogurt"))
 }
 
-/// Collect the diagnostic report. Never fails outright -- every field
-/// degrades to a "couldn't determine" string/empty value on error, so a
-/// broken environment is exactly the case this command needs to survive.
+/// Never fails: every field degrades to a placeholder, since a broken environment is the case this command must survive.
 fn build_report(data_dir: Option<&Path>) -> Report {
-    // CLI-7: --data-dir / $YOGURT_DATA_DIR (already resolved by the
-    // caller) reports the database `yogurt start` would actually use,
-    // instead of always assuming `~/.yogurt`.
     let dir = data_dir.map(Path::to_path_buf).or_else(yogurt_home);
     let db_path = dir.as_ref().map(|d| d.join("db.sqlite"));
     let db_exists = db_path.as_ref().is_some_and(|p| p.exists());
 
-    // Only open (and thus run migrations against) the DB if it already
-    // exists -- a diagnostic command must not create `db.sqlite` as a
-    // side effect on a machine that has never run `yogurt start`.
+    // Only open (and migrate) the DB if it exists, so doctor never creates `db.sqlite` on a machine that has never run `yogurt start`.
     let (providers, stt) = if let (true, Some(path)) = (db_exists, db_path.as_ref()) {
         match yogurt_db::Db::open(path) {
             Ok(db) => {
@@ -182,11 +156,7 @@ fn build_report(data_dir: Option<&Path>) -> Report {
         )
     };
 
-    // Resolve through the same function the server uses, so doctor can
-    // never disagree with what `yogurt start` will actually load. A raw
-    // `read_dir` of `~/.yogurt/models` used to do this, and it both
-    // missed Homebrew-installed copies and counted corrupt files as
-    // present, since it matched on filename alone.
+    // Same resolver as the server, so Homebrew copies count and corrupt files don't.
     let models: Vec<ModelReport> = yogurt_stt::models::REGISTRY
         .iter()
         .filter_map(|spec| {

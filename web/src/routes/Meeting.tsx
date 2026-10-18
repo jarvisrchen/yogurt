@@ -17,7 +17,7 @@ import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { LABEL } from "../components/settings/labelClass";
-import { ensureSessionToken } from "../lib/session";
+import { bearerFetch, ensureSessionToken } from "../lib/session";
 import {
   activeRecordingKey,
   detectedMeetingKey,
@@ -286,10 +286,6 @@ export function Meeting() {
     };
   }, []);
 
-  function authedHeaders(): Record<string, string> {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
   // Guards the auto-start-on-mount call (below) against StrictMode's
   // dev-only double-invoke of effects — a second POST /start on an
   // already-started meeting would 400 ("meeting already started") and
@@ -310,10 +306,7 @@ export function Meeting() {
     if (!id) return;
     setErrorMessage(null);
     try {
-      const res = await fetch(`/api/meetings/${id}/start`, {
-        method: "POST",
-        headers: authedHeaders(),
-      });
+      const res = await bearerFetch(`/api/meetings/${id}/start`, { method: "POST" });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as ServerError;
         setErrorMessage(
@@ -344,10 +337,7 @@ export function Meeting() {
     setErrorMessage(null);
     stoppingRef.current = true;
     try {
-      const res = await fetch(`/api/meetings/${meetingId}/stop`, {
-        method: "POST",
-        headers: authedHeaders(),
-      });
+      const res = await bearerFetch(`/api/meetings/${meetingId}/stop`, { method: "POST" });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as ServerError;
         setErrorMessage(body.error ?? `Failed to stop recording (${res.status})`);
@@ -382,10 +372,7 @@ export function Meeting() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/meetings", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await bearerFetch("/api/meetings", { method: "POST" });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as ServerError;
           if (!cancelled) {

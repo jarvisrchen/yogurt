@@ -1,14 +1,3 @@
-/**
- * Style guide — visual proof that every PRD §16 token and every Phase-1
- * component primitive is wired correctly. A single long scrollable page;
- * intentionally no nav. Section helper at the bottom keeps headings
- * consistent.
- *
- * Iconography note (DESIGN-06): Phase 1 demonstrates the icon strategy
- * with inline SVGs (Logo, BrowserChrome traffic lights) and Unicode
- * glyphs (⌘ ✓ + → ↳ ⌄ ✨ ⚙). Full Lucide vs Phosphor library selection
- * is deferred to Phase 7 per CONTEXT D-13.
- */
 import type { ReactNode } from "react";
 import { Logo } from "../components/Logo";
 import { Button } from "../components/Button";
@@ -61,7 +50,6 @@ const MOTION: Array<{ name: string; duration: string; use: string; className: st
 export function StyleGuide() {
   return (
     <main className="mx-auto max-w-5xl px-8 py-12 space-y-16">
-      {/* Header */}
       <header className="flex items-center gap-4">
         {/* Decorative — adjacent <h1>Yogurt style guide</h1> already names it. */}
         <Logo size={60} />
@@ -77,7 +65,6 @@ export function StyleGuide() {
         </div>
       </header>
 
-      {/* ─── Color tokens ─────────────────────────────────────────────── */}
       <Section
         title="Color tokens (PRD §16.2)"
         caption="Blueberry theme — the only v1 theme."
@@ -85,12 +72,8 @@ export function StyleGuide() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {COLORS.map((c) => (
             <Card key={c.token} padding="sm">
-              {/* LO-04: swatch paints from the live CSS variable so token
-                  changes in index.css's @theme automatically reflect here
-                  without an unrelated edit to this file. The hex value
-                  displayed below is the canonical PRD spec; if it ever
-                  diverges from the rendered swatch, the @theme block
-                  has drifted from the spec. */}
+              {/* The swatch reads the live CSS variable, so a mismatch with the
+                  hex shown below means @theme drifted from the spec. */}
               <div
                 className="h-16 w-full rounded-chip border border-line"
                 style={{ background: `var(--color-${c.token})` }}
@@ -110,7 +93,6 @@ export function StyleGuide() {
         </div>
       </Section>
 
-      {/* ─── Typography ───────────────────────────────────────────────── */}
       <Section
         title="Typography (PRD §16.3)"
         caption="Three families. Use them deliberately."
@@ -171,7 +153,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Spacing ──────────────────────────────────────────────────── */}
       <Section
         title="Spacing (PRD §16.4)"
         caption="4-base scale. Nothing off-scale."
@@ -192,7 +173,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Border radius ────────────────────────────────────────────── */}
       <Section
         title="Border radius (PRD §16.4)"
         caption="Four scales — pick the right one."
@@ -216,7 +196,6 @@ export function StyleGuide() {
         </div>
       </Section>
 
-      {/* ─── Elevation ────────────────────────────────────────────────── */}
       <Section
         title="Elevation (PRD §16.4)"
         caption="Three depths. Use sparingly."
@@ -234,7 +213,6 @@ export function StyleGuide() {
         </div>
       </Section>
 
-      {/* ─── Motion ───────────────────────────────────────────────────── */}
       <Section
         title="Motion (PRD §16.5)"
         caption="Each animation, live. Don't add new ones."
@@ -265,7 +243,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Logo at multiple sizes ──────────────────────────────────── */}
       <Section
         title="Logo (PRD §16.1)"
         caption="Renders cleanly from 19px to 60px."
@@ -283,7 +260,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Buttons ──────────────────────────────────────────────────── */}
       <Section
         title="Buttons (PRD §16.6)"
         caption="Three variants. Primary is the action; secondary is the alternative; ghost is the dismissal."
@@ -315,7 +291,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Pills ────────────────────────────────────────────────────── */}
       <Section
         title="Pills, badges, chips (PRD §16.6)"
         caption="Pill is the base; RecordingBadge and ProviderChip are named wrappers."
@@ -344,7 +319,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Cards ────────────────────────────────────────────────────── */}
       <Section title="Cards" caption="Three paddings; optional active border.">
         <div className="grid gap-4 md:grid-cols-3">
           <Card padding="sm">
@@ -374,7 +348,6 @@ export function StyleGuide() {
         </div>
       </Section>
 
-      {/* ─── BrowserChrome ───────────────────────────────────────────── */}
       <Section
         title="BrowserChrome"
         caption="Fake-Safari wrapper for marketing mockups."
@@ -394,7 +367,6 @@ export function StyleGuide() {
         </BrowserChrome>
       </Section>
 
-      {/* ─── Iconography demo (DESIGN-06) ────────────────────────────── */}
       <Section
         title="Iconography (DESIGN-06, Phase-1 strategy)"
         caption="Inline SVGs + Unicode glyphs. Full Lucide / Phosphor library selection deferred to Phase 7 per CONTEXT D-13."
@@ -435,7 +407,6 @@ export function StyleGuide() {
         </Card>
       </Section>
 
-      {/* ─── Footer ──────────────────────────────────────────────────── */}
       <footer className="border-t border-line pt-6">
         <p className="font-mono text-[11px] text-mut">
           PRD §16 · Phase 1 · last updated{" "}

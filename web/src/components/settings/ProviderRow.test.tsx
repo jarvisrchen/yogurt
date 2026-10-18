@@ -1,13 +1,3 @@
-/**
- * ProviderRow - review-fix regression coverage.
- *
- * Covers the two bugs the review found in the MODEL field's PATCH flow
- * (typing a full model id used to fire a PATCH per keystroke via the old
- * `ComboBox` "pick on Enter with nothing highlighted" bug) and the
- * abandoned-draft-key bug (Cancel left the draft in `apiKeyDraft` state,
- * so a later Refresh would still probe with a key the user just backed
- * out of).
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

@@ -4,8 +4,6 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { routes } from "./router";
 
-// The Library route (now mounted at "/") fetches /api/meetings on render.
-// Stub the meetings api so the test doesn't hit a real backend.
 vi.mock("./lib/api/meetings", async () => {
   const actual =
     await vi.importActual<typeof import("./lib/api/meetings")>(
@@ -26,10 +24,7 @@ vi.mock("./lib/api/meetings", async () => {
   };
 });
 
-// The Sidebar fetches /api/settings via useQuery (raw settingsApi) and
-// Plan 07-04 added `useSettings` / `useSetFirstRunCompleted` for the
-// Welcome flow. Stub everything so the Shell's `useFirstRunRedirect`
-// sees a fully-set-up user (no redirect away from `/`).
+// Stub settings so the Shell's `useFirstRunRedirect` sees a set-up user.
 vi.mock("./lib/api/settings", () => {
   const fixture = {
     general: {
@@ -70,7 +65,7 @@ vi.mock("./lib/api/settings", () => {
   };
 });
 
-// Plan 07-04 hook — `granted=true` means the Shell never redirects.
+// `granted=true` so the Shell never redirects.
 vi.mock("./hooks/useScreenRecordingStatus", () => ({
   useScreenRecordingStatus: () => ({
     granted: true,

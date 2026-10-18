@@ -1,25 +1,8 @@
-//! WebSocket endpoint with Origin allowlist + session-token auth (D-20 / D-21).
+//! WebSocket endpoints behind an Origin allowlist and session-token auth.
 //!
-//! Phase 0 scope: lock down the upgrade path. The actual WS payload protocol
-//! lands in Phase 3 — for now we just echo any messages we receive so the
-//! transport surface can be smoke-tested.
-//!
-//! ## Auth contract (BL-02 resolution)
-//!
-//! The browser `WebSocket` API has no way to set arbitrary headers, so the
-//! `Sec-WebSocket-Protocol`-based auth path described in earlier drafts cannot
-//! be exercised by the production client. Rather than ship a half-broken
-//! subprotocol-echo flow (which violates RFC 6455 if not echoed correctly),
-//! Phase 0 declares **`?token=<token>` query param as the SOLE auth path**.
-//!
-//! Tradeoffs we accepted:
-//!   - Tokens appear in URLs. We mitigate by REDACTING `?token=...` from
-//!     tracing logs (see `redact_token_in_uri`).
-//!   - Tokens may appear in browser devtools network panel — acceptable for
-//!     a localhost-only single-user app (PRD §7 trust assumption).
-//!
-//! This shrinks attack surface (no header-injection ambiguity from multi-
-//! valued `Sec-WebSocket-Protocol`) and avoids the RFC 6455 echo-back bug.
+//! The browser `WebSocket` API cannot set headers, so `?token=<token>` is the sole auth path.
+//! Tokens are redacted from tracing logs (see `redact_token_in_uri`).
+//! They may show in devtools, which is acceptable for a localhost-only single-user app.
 
 use axum::{
     extract::{
@@ -35,33 +18,19 @@ use uuid::Uuid;
 
 use crate::AppState;
 
-/// Typed WS event surface introduced in Phase 6.
-///
-/// Phase 0/3 used ad-hoc `serde_json::Value` frames over the per-meeting
-/// `events_tx` broadcast (see `meetings.rs`). Phase 6 introduces this
-/// `WsEvent` enum for new typed surfaces — currently only `ChatChunk` —
-/// while leaving the Phase 4 `enhance_progress` `serde_json::Value` path
-/// untouched. Both surfaces share the same WebSocket and the same
-/// `{"type": "<snake_case>", ...}` discriminator convention so the browser
-/// sees one homogeneous stream.
+/// Typed frames sharing the `{"type": "<snake_case>", ...}` convention of the ad-hoc
+/// `serde_json::Value` frames (e.g. `enhance_progress`) on the per-meeting `events_tx`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsEvent {
-    /// Per-token chat streaming chunk. Emitted by `api::chat::spawn_stream`
-    /// for each chunk returned by `LlmClient::stream`. Terminates with a
-    /// `done: true` chunk (possibly with `delta = ""`) so the browser can
-    /// release the streaming-caret state.
+    /// Terminates with a `done: true` chunk (possibly with an empty `delta`).
     ChatChunk {
         message_id: String,
         delta: String,
         #[serde(default)]
         done: bool,
     },
-    /// Phase 8 (Plan 08-03): live model download progress for a
-    /// whisper.cpp model.  Fanned out on the app-wide
-    /// `AppState::app_events_tx` broadcast so the Settings page can show
-    /// a matcha progress bar without a meeting being open.  Emitted every
-    /// ~500 ms during a download by `api::stt_models::download_task`.
+    /// Sent on the app-wide `AppState::app_events_tx` so Settings sees it with no meeting open.
     SttModelDownloadProgress {
         model: String,
         bytes_downloaded: u64,
@@ -69,28 +38,20 @@ pub enum WsEvent {
         bytes_per_sec: u64,
         eta_seconds: Option<u64>,
     },
-    /// Phase 8 (Plan 08-03): a model download finished successfully —
-    /// SHA256 verified, file persisted at `~/.yogurt/models/<filename>`.
-    /// The download dialog auto-closes ~600 ms after seeing this event.
-    SttModelDownloadComplete { model: String },
-    /// Phase 8 (Plan 08-03): a model download failed (HTTP error,
-    /// hash mismatch, IO error).  The download dialog stays open with
-    /// the error message so the user can retry.
-    SttModelDownloadError { model: String, error: String },
+    /// SHA256 verified and the file persisted.
+    SttModelDownloadComplete {
+        model: String,
+    },
+    SttModelDownloadError {
+        model: String,
+        error: String,
+    },
 }
 
-/// Phase 8 (Plan 08-03): app-wide event broadcaster.  The chat path
-/// already uses per-meeting `events_tx` channels; this is the
-/// **meeting-independent** sibling that surfaces things like model
-/// downloads on the global `/ws` endpoint.
-///
-/// Capacity 64 — STT model downloads emit ~2 events/sec; the cushion
-/// absorbs slow consumers without blocking the writer.
+/// Meeting-independent sibling of the per-meeting `events_tx`, surfaced on the global `/ws`.
 pub type AppEventTx = tokio::sync::broadcast::Sender<serde_json::Value>;
 
-/// Phase 8 (Plan 08-03): broadcast a `SttModelDownloadProgress` frame on
-/// the app-wide event channel.  Errors are swallowed — a quiet WS (no
-/// subscriber) is fine; downloads keep working regardless.
+/// Send errors (no subscriber) are ignored.
 pub fn send_stt_model_download_progress(
     tx: &AppEventTx,
     model: &str,
@@ -111,7 +72,6 @@ pub fn send_stt_model_download_progress(
     }
 }
 
-/// Phase 8 (Plan 08-03): broadcast a `SttModelDownloadComplete` frame.
 pub fn send_stt_model_download_complete(tx: &AppEventTx, model: &str) {
     let ev = WsEvent::SttModelDownloadComplete {
         model: model.to_string(),
@@ -121,7 +81,6 @@ pub fn send_stt_model_download_complete(tx: &AppEventTx, model: &str) {
     }
 }
 
-/// Phase 8 (Plan 08-03): broadcast a `SttModelDownloadError` frame.
 pub fn send_stt_model_download_error(tx: &AppEventTx, model: &str, error: &str) {
     let ev = WsEvent::SttModelDownloadError {
         model: model.to_string(),
@@ -134,11 +93,10 @@ pub fn send_stt_model_download_error(tx: &AppEventTx, model: &str, error: &str) 
 
 #[derive(Deserialize)]
 pub struct WsParams {
-    /// Session-token query param: `/ws?token=<token>`. Required.
     pub token: Option<String>,
 }
 
-// Manual Debug impl: never leak the token into tracing output (BL-02).
+// Manual Debug impl: never leak the token into tracing output.
 impl std::fmt::Debug for WsParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WsParams")
@@ -150,8 +108,6 @@ impl std::fmt::Debug for WsParams {
     }
 }
 
-/// Axum handler for `GET /ws`. Performs the Origin + token check before
-/// upgrading the connection.
 pub async fn ws_handler(
     State(state): State<AppState>,
     Query(params): Query<WsParams>,
@@ -161,24 +117,16 @@ pub async fn ws_handler(
     if let Err(resp) = enforce_ws_auth(&state, &headers, &params, "ws") {
         return resp;
     }
-    // Phase 8 (Plan 08-03): subscribe to the app-wide event broadcaster
-    // so the Settings page can receive STT model download progress
-    // without a meeting being open.  Pre-upgrade subscription is
-    // important — the receiver must exist before the first frame.
+    // Subscribe before the upgrade so the receiver exists before the first frame.
     let app_rx = state.app_events_tx.subscribe();
     ws.on_upgrade(move |socket| handle_socket(socket, app_rx))
 }
 
-/// Shared Origin-allowlist + session-token check for all WS upgrade handlers.
+/// Returns a 403 response on any auth failure.
+/// The `endpoint` label only appears in tracing warnings, so never put token material in it.
 ///
-/// Returns `Err(403 response)` on any auth failure; `Ok(())` if the request
-/// may proceed to `ws.on_upgrade(...)`. The `endpoint` label only appears in
-/// tracing warnings — never include token material here (BL-02).
-///
-/// `axum::response::Response` is large (~144 bytes) so clippy warns about
-/// the Result<(), Response> shape. We deliberately accept the size: the
-/// auth path runs once per upgrade (not in a hot loop), and the alternative
-/// (boxing the response) obscures the call site without a real perf win.
+/// `Response` is large, which trips `clippy::result_large_err`. The auth path runs once
+/// per upgrade, so boxing it would only obscure the call site.
 #[allow(clippy::result_large_err)]
 pub(crate) fn enforce_ws_auth(
     state: &AppState,
@@ -202,8 +150,7 @@ pub(crate) fn enforce_ws_auth(
     };
 
     if !state.session.validate(candidate) {
-        // Do NOT log the candidate or the stored token. The mismatch fact is
-        // enough; the actual values are credentials.
+        // Never log the candidate or the stored token.
         tracing::warn!(%endpoint, "ws: rejected — session token mismatch");
         return Err((StatusCode::FORBIDDEN, "forbidden: bad token").into_response());
     }
@@ -212,15 +159,12 @@ pub(crate) fn enforce_ws_auth(
 }
 
 /// Replace any `token=<value>` query string in a URI with `token=<REDACTED>`.
-/// Public helper so future request-logging middleware can also use it.
 pub fn redact_token_in_uri(uri: &str) -> String {
-    // Cheap string-level redaction; we don't need a full URL parser for this.
     let mut out = String::with_capacity(uri.len());
     let mut rest = uri;
     while let Some(idx) = rest.find("token=") {
         out.push_str(&rest[..idx]);
         out.push_str("token=<REDACTED>");
-        // Skip past "token=" and any value chars until next '&' or end.
         let after = &rest[idx + "token=".len()..];
         match after.find('&') {
             Some(amp) => rest = &after[amp..],
@@ -234,19 +178,13 @@ pub fn redact_token_in_uri(uri: &str) -> String {
     out
 }
 
-/// Phase 0 stub → Phase 8 (Plan 08-03) extension:
-///
-/// Inbound text messages are still echoed (smoke-test surface preserved),
-/// but the handler now ALSO forwards `AppState::app_events_tx`
-/// broadcasts as Text frames so the Settings page can listen for
-/// STT model download progress on the single global `/ws` socket.
+/// Echoes inbound text and forwards `AppState::app_events_tx` broadcasts as Text frames.
 async fn handle_socket(
     mut socket: WebSocket,
     mut app_rx: tokio::sync::broadcast::Receiver<serde_json::Value>,
 ) {
     loop {
         tokio::select! {
-            // Server → Client: app-wide events (STT model downloads, etc.).
             ev = app_rx.recv() => match ev {
                 Ok(value) => {
                     let frame = match serde_json::to_string(&value) {
@@ -265,14 +203,10 @@ async fn handle_socket(
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    // App-events channel closed (shutdown). The WS itself
-                    // can stay open as long as inbound traffic continues;
-                    // just stop polling this branch.
                     tracing::debug!("ws: app_events stream ended");
                     return;
                 }
             },
-            // Client → Server: Phase 0 echo + control frames.
             msg = socket.recv() => match msg {
                 None => return,
                 Some(Err(_)) => return,
@@ -287,7 +221,6 @@ async fn handle_socket(
                     }
                 }
                 Some(Ok(Message::Close(_))) => return,
-                // Binary / Pong: nothing to do.
                 Some(Ok(_)) => {}
             },
         }
@@ -320,10 +253,7 @@ fn allowed_origins(port: u16, mode: crate::Mode) -> HashSet<String> {
     let mut set = HashSet::new();
     set.insert(format!("http://localhost:{port}"));
     set.insert(format!("http://127.0.0.1:{port}"));
-    // Dev mode: the SPA may be served straight from Vite (its proxy
-    // forwards /ws to us but keeps the page's Origin header), so that
-    // origin is legitimate. Release builds serve embedded assets from our
-    // own port only - no extra origins there.
+    // In dev the SPA may be served from Vite, whose proxy keeps the page's Origin header.
     if mode == crate::Mode::Dev {
         let vite = vite_dev_port();
         set.insert(format!("http://localhost:{vite}"));
@@ -332,28 +262,7 @@ fn allowed_origins(port: u16, mode: crate::Mode) -> HashSet<String> {
     set
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 3: per-meeting transcript WebSocket
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// `/ws/meetings/:id` — upgrades the HTTP request, looks up the meeting in
-// the registry, subscribes to its transcript broadcast, then loops:
-// for each `TranscriptEvent`, serialize as JSON and push as `Message::Text`.
-//
-// S→C JSON frames per PRD §10 + CONTEXT D-10:
-//   { "type": "transcript", "payload": { ts_ms, channel, text, is_final } }
-// C→S frames in v1: none yet (Phase 4 adds `notes_edit`, Phase 6 adds
-// `chat_send`); inbound frames are read-and-discarded so the WS stays
-// bidirectionally healthy.
-//
-// If the meeting id is unknown, close with code 4404 + reason
-// `"meeting not found"` (CONTEXT D-09).
-
-/// Axum handler for `GET /ws/meetings/:id`. Enforces the same Origin
-/// allowlist + session-token check as the Phase 0 `/ws` endpoint
-/// (BL-01: this is the most privacy-sensitive surface in the product —
-/// transcript frames carry every word the user speaks, so the same auth
-/// gate that protects `/ws` must also gate this route).
+/// Transcript frames carry every word the user speaks, so this route needs the same auth gate as `/ws`.
 pub async fn ws_meeting_handler(
     State(state): State<AppState>,
     Query(params): Query<WsParams>,
@@ -368,22 +277,12 @@ pub async fn ws_meeting_handler(
 }
 
 async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState) {
-    // Two broadcast subscriptions per WS connection:
-    //   - transcript events (Phase 3, owned by the STT pump);
-    //   - JSON meeting events (Phase 4: `enhance_progress`).
-    // Both are fanned into the same socket, just wrapped in different
-    // top-level `type` discriminators on the JSON frame.
     let m = match state.meetings.get(&id).await {
         Some(m) => m,
         None => {
-            // HI-9 (same rule as the enhance handler): the in-memory
-            // registry is wiped on restart, but chat chunks and
-            // enhance_progress still ride this socket for meetings that
-            // only exist in SQLite (every post-meeting view). Hydrate a
-            // transient Meeting when the row exists; hard-close only for
-            // genuinely unknown ids. Without this, chat on a post-meeting
-            // view after a server restart streamed into the void — the UI
-            // spinner never resolved.
+            // The registry is wiped on restart, but chat chunks and enhance_progress still
+            // ride this socket for SQLite-only meetings. Hydrate when the row exists and
+            // close only for unknown ids, else chat streams into the void.
             let id_str = id.to_string();
             let repo = state.meeting_repo.clone();
             let exists = tokio::task::spawn_blocking(move || repo.get(&id_str))
@@ -409,7 +308,6 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
 
     loop {
         tokio::select! {
-            // Server → Client: transcript events.
             ev = rx.recv() => match ev {
                 Ok(ev) => {
                     let frame = match serde_json::to_string(&serde_json::json!({
@@ -436,9 +334,6 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                     return;
                 }
             },
-            // Server → Client: Phase 4 enhance_progress (and future meeting
-            // events). The value is already a fully-formed JSON object
-            // (`{type, phase, …}`) so we serialize it directly.
             ev = events_rx.recv() => match ev {
                 Ok(value) => {
                     let frame = match serde_json::to_string(&value) {
@@ -457,22 +352,17 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
                     tracing::warn!(meeting=%id, n, "ws/meetings: events lagged");
                     continue;
                 }
-                // Events channel closing is non-fatal — keep the WS alive
-                // for the transcript stream.
+                // Non-fatal: keep the WS alive for the transcript stream.
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     tracing::debug!(meeting=%id, "ws/meetings: events stream ended");
                 }
             },
-            // Client → Server: drained so the WS stays healthy.
             msg = socket.recv() => match msg {
                 Some(Ok(Message::Close(_))) | None => {
                     tracing::debug!(meeting=%id, "ws/meetings: client closed");
                     return;
                 }
-                Some(Ok(_)) => {
-                    // Ignore for now — Phase 4 (notes_edit) and Phase 6 (chat_send)
-                    // will route here.
-                }
+                Some(Ok(_)) => {}
                 Some(Err(e)) => {
                     tracing::warn!(meeting=%id, ?e, "ws/meetings: client recv error");
                     return;
@@ -486,9 +376,6 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
 mod tests {
     use super::*;
 
-    /// Dev mode must accept the Vite origin (:5173) - the SPA can be
-    /// served straight from Vite, whose proxy forwards /ws but keeps
-    /// the page's Origin header. Release must NOT accept it.
     #[test]
     fn allowed_origins_includes_vite_only_in_dev() {
         let dev = allowed_origins(7878, crate::Mode::Dev);
@@ -503,19 +390,13 @@ mod tests {
         assert!(!release.contains("http://127.0.0.1:5173"));
     }
 
-    /// CLI-3: `just dev` moves both ports when :5173 / :7878 are busy (a
-    /// second worktree), so the dev allowlist has to follow Vite rather
-    /// than assume 5173.
     #[test]
     fn vite_port_follows_env_then_falls_back() {
-        // Neither set: the historical default.
         assert_eq!(vite_port_from(None, None), 5173);
-        // The explicit knob wins over the base URL.
         assert_eq!(
             vite_port_from(Some("5273".into()), Some("http://127.0.0.1:5999".into())),
             5273
         );
-        // Base URL alone, with and without a trailing slash.
         assert_eq!(
             vite_port_from(None, Some("http://127.0.0.1:5273".into())),
             5273
@@ -524,18 +405,11 @@ mod tests {
             vite_port_from(None, Some("http://127.0.0.1:5273/".into())),
             5273
         );
-        // Garbage in either falls back rather than panicking or
-        // misparsing the host as a port.
         assert_eq!(vite_port_from(Some("nope".into()), None), 5173);
         assert_eq!(vite_port_from(None, Some("http://127.0.0.1".into())), 5173);
     }
 
-    /// Phase 8 (Plan 08-03) wire-shape gate: the browser-side
-    /// `useModelDownloadProgress` hook switches on
-    /// `ev.type === "stt_model_download_progress"` (and the two terminal
-    /// variants) and reads `model`, `bytes_downloaded`, `total_bytes`,
-    /// `bytes_per_sec`, `eta_seconds`. Any rename here breaks the
-    /// Settings download dialog silently.
+    /// The browser's `useModelDownloadProgress` hook reads these exact names, so a rename breaks it silently.
     #[test]
     fn dl_progress_serializes_with_tag() {
         let ev = WsEvent::SttModelDownloadProgress {
@@ -576,9 +450,7 @@ mod tests {
         assert_eq!(json["error"], "hash mismatch");
     }
 
-    /// Phase 6 (Plan 06-01) wire-shape gate: the browser-side `useChat`
-    /// hook switches on `ev.type === "chat_chunk"` and reads `message_id`,
-    /// `delta`, `done`. Any rename here breaks the frontend silently.
+    /// The browser's `useChat` hook reads these exact names, so a rename breaks it silently.
     #[test]
     fn it_serializes_chat_chunk_with_expected_keys() {
         let ev = WsEvent::ChatChunk {

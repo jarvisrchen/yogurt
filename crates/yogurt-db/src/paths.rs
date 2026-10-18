@@ -1,17 +1,10 @@
-//! Filesystem paths for the yogurt SQLite + assets directory.
-//!
-//! Phase 0's `yogurt-server::storage::default_db_path` resolves the same
-//! `~/.yogurt/db.sqlite` path with the same `directories` crate. The two
-//! modules are intentionally independent so neither crate depends on the
-//! other for path resolution — keep them in sync if either ever moves.
+//! Resolved independently of `yogurt-server::storage::default_db_path` so neither crate depends on the other; keep the two in sync if either moves.
 
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 
-/// Returns `~/.yogurt/` and creates the directory if missing.
-///
-/// Uses `directories::BaseDirs::home_dir()` per the PRD; do not switch to
-/// `dirs::home_dir()` (the `dirs` crate is unmaintained).
+/// Creates the directory if missing.
+/// Uses `directories::BaseDirs::home_dir()` because the `dirs` crate is unmaintained.
 pub fn yogurt_dir() -> Result<PathBuf> {
     let base = directories::BaseDirs::new()
         .ok_or_else(|| anyhow!("could not resolve user home directory"))?;
@@ -20,12 +13,11 @@ pub fn yogurt_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Default SQLite path: `~/.yogurt/db.sqlite`. Shared with Phase 0 storage.
+/// Default SQLite path: `~/.yogurt/db.sqlite`.
 pub fn db_path() -> Result<PathBuf> {
     Ok(yogurt_dir()?.join("db.sqlite"))
 }
 
-/// API-key file: `~/.yogurt/keys.json` (mode 0600, see `crate::keys`).
 pub fn keys_path() -> Result<PathBuf> {
     Ok(yogurt_dir()?.join("keys.json"))
 }

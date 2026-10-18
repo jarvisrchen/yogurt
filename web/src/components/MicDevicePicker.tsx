@@ -1,23 +1,7 @@
 /**
- * MicDevicePicker — mic device dropdown in the meeting toolbar (quick task
- * 260709-wnn; extended to the stopped-but-open state per the follow-up UX
- * fix below).
- *
- * Visible whenever a meeting is open, recording or stopped (`Meeting.tsx`
- * gates the mount on `meetingId` alone and passes the live `recording`
- * flag). The two states write through different paths:
- *   - recording: a selection hot-swaps the live capture device via
- *     `POST /:id/audio-device` (quick task 260709-wnn).
- *   - stopped: a selection instead `PATCH`es `settings.audio_input_device`
- *     — the exact field `POST /:id/start` reads to pick the mic for the
- *     *next* recording (same mechanism `AudioSection.tsx` uses on the
- *     Settings page). This is the only way to change the device before a
- *     meeting has ever recorded, or between recordings in the same
- *     meeting.
- * Shares the `["audio-devices"]` query key with `AudioSection.tsx` so the
- * two share one cached `GET /api/audio/devices` fetch. Session-token auth
- * is resolved internally by `http()`/`bearerFetch` — no token prop needed,
- * matching `AudioSection.tsx`'s pattern.
+ * While recording, a selection hot-swaps the live device (`POST /:id/audio-device`).
+ * Otherwise it PATCHes `settings.audio_input_device`, which the next `POST /:id/start` reads.
+ * Shares the `["audio-devices"]` query key with `AudioSection.tsx` for one cached fetch.
  */
 import { useState } from "react";
 import { DeviceOptions } from "./DeviceOptions";
@@ -26,8 +10,7 @@ import { audioApi, settingsApi, settingsKey } from "../lib/api/settings";
 
 interface MicDevicePickerProps {
   meetingId: string;
-  /** `true` while the meeting is actively recording — selects the
-   *  live-hot-swap write path instead of the persisted-setting one. */
+  /** True while recording: hot-swap instead of persisting the setting. */
   recording: boolean;
 }
 
@@ -38,19 +21,14 @@ export function MicDevicePicker({ meetingId, recording }: MicDevicePickerProps) 
     queryFn: audioApi.devices,
   });
 
-  // Only needed to seed the picker's default selection while stopped (so
-  // it shows what will actually be used on the next Start, not just the
-  // OS default) — the live hot-swap path never reads it, so it's disabled
-  // while recording.
+  // Seeds the default selection while stopped, so it shows what the next Start will use. Disabled while recording, where hot-swap never reads it.
   const settings = useQuery({
     queryKey: settingsKey,
     queryFn: settingsApi.get,
     enabled: !recording,
   });
 
-  // Distinct from whichever device the OS reports as `is_default` — this
-  // is set only on a successful write, so the picker reflects the actual
-  // chosen device rather than resetting to the default on every re-render.
+  // Set only on a successful write, so the picker keeps the chosen device instead of reverting to the OS default.
   const [activeDevice, setActiveDevice] = useState<string | null>(null);
 
   const setDevice = useMutation({

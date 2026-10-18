@@ -1,46 +1,28 @@
-//! Measures greedy ("partial preview") decode wall time against the amount
-//! of audio handed to it, for one local model.
+//! Measures greedy (partial preview) decode wall time against the amount of audio handed to it, for one local model.
 //!
-//! This exists because the partial ticker in `whisper_local.rs` decodes the
-//! whole in-flight utterance once a second, and "does that still fit inside
-//! the 1 s tick" is a per-machine, per-model question that a comment cannot
-//! answer on its own. AUD-1 chose round-robin over decoding both channels
-//! every tick on the strength of these numbers; a future model with a fatter
-//! decoder could change that answer, so leave a way to re-measure.
+//! The partial ticker in `whisper_local.rs` decodes the in-flight utterance once a second, and whether that fits the 1 s tick depends on the machine and model.
 //!
-//! Real speech matters here. A tone or white noise decodes to almost no
-//! tokens, which hides the decoder-side cost entirely and makes the curve
-//! look flat. Render some:
+//! Real speech matters: a tone or white noise decodes to almost no tokens, which hides the decoder cost and flattens the curve.
 //!
 //! ```sh
 //! head -c 3000 scripts/eval/conversation.txt | tr '\n' ' ' > /tmp/speech.txt
 //! say -f /tmp/speech.txt -o /tmp/speech.aiff
 //! afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/speech.aiff /tmp/speech.wav
-//! ```
-//!
-//! Then:
-//!
-//! ```sh
 //! cargo run --release -p yogurt-stt --features local-stt \
 //!     --example partial_decode_cost -- large-v3-turbo /tmp/speech.wav
 //! ```
 //!
-//! Reading the output: the cost is `fixed encoder + per-token decoder`. The
-//! fixed part dominates because whisper.cpp pads every input to a 30 s mel
-//! window, so handing it 25 s of audio instead of 5 s costs far less than 5x.
-//! What matters for the ticker is only that the `MAX_SEGMENT_MS` row stays
-//! comfortably under 1000 ms.
+//! Cost is a fixed encoder part plus a per-token decoder part.
+//! The fixed part dominates because whisper.cpp pads input to a 30 s mel window.
+//! The `MAX_SEGMENT_MS` row should stay comfortably under 1000 ms.
 
 use std::time::Instant;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-/// Sample counts to probe, in seconds. 25 s is `vad::MAX_SEGMENT_MS`, the
-/// largest buffer the ticker can ever be handed; 30 s is whisper's own
-/// window, included to show where the padding stops helping.
+/// Seconds of audio to probe. 25 s is `vad::MAX_SEGMENT_MS`, the largest buffer the ticker is handed, and 30 s is whisper's own window.
 const PROBE_SECONDS: [usize; 8] = [1, 3, 5, 10, 15, 20, 25, 30];
 
-/// Repeats per probe. We report the best, not the mean — we are after the
-/// cost of the work, not of whatever else the machine was doing.
+/// Repeats per probe. The best is reported, to measure the work rather than machine noise.
 const REPEATS: usize = 3;
 
 fn main() {
@@ -80,9 +62,7 @@ fn main() {
         let mut words = 0usize;
         for _ in 0..REPEATS {
             let t = Instant::now();
-            // Mirror `WhisperLocal::decode(.., fast = true)` exactly — any
-            // divergence here makes the numbers a measurement of something
-            // the ticker does not actually run.
+            // Must mirror `WhisperLocal::decode(.., fast = true)` exactly, or the numbers measure something the ticker does not run.
             let mut state = ctx.create_state().expect("create state");
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
             params.set_language(Some("en"));
@@ -108,10 +88,7 @@ fn main() {
     }
 }
 
-/// Minimal WAV reader: seek the `data` chunk, then reinterpret the rest as
-/// little-endian i16. Deliberately not a dependency — this example only ever
-/// reads files the header comment tells you how to produce, and `hound` is
-/// not otherwise in the tree.
+/// Minimal WAV reader that seeks the `data` chunk and reinterprets the rest as little-endian i16, avoiding a `hound` dependency.
 fn read_wav_mono_16k(path: &str) -> Vec<f32> {
     let bytes = std::fs::read(path).expect("read wav");
     let data = bytes

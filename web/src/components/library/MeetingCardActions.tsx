@@ -1,32 +1,3 @@
-/**
- * Phase 7 (Plan 07-03) — hover actions for a meeting card: star toggle +
- * kebab-overflow menu.
- *
- * Star toggle:
- *   - `PATCH /api/meetings/:id { starred }` via `useToggleStarred`.
- *   - Hidden until the card is hovered / focused, except when already
- *     starred (then it stays visible, filled strawberry).
- *
- * Menu items (in display order):
- *   - Copy markdown    — `GET /api/meetings/:id/markdown` → clipboard.
- *   - Reveal in Finder — `POST /api/meetings/:id/reveal` → `open -R`.
- *   - Delete           — inline confirm: the row morphs into a
- *     "Delete?" / "Cancel" pair that auto-reverts after 3s. No modal,
- *     no `window.confirm`.
- *
- * Layout invariants:
- *   - Wrapped in a positioned `<div>` so the dropdown is anchored to the
- *     kebab button (top-right of the card).
- *   - Every click handler `stopPropagation`s so the surrounding `<Link>`
- *     in MeetingCard doesn't navigate into `/meeting/:id` while the user
- *     is trying to use the actions.
- *   - `role="menu"` / `role="menuitem"` on the dropdown items so VoiceOver
- *     announces it as a menu (matches PRD §16 accessibility posture).
- *
- * The Delete item + its confirm live in `DeleteMeetingConfirm`, shared
- * with the post-meeting header so both surfaces delete identically.
- */
-
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Star, Tag } from "lucide-react";
 import {
@@ -50,8 +21,6 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const star = useToggleStarred();
 
-  // Click-outside closes the menu so it doesn't get marooned open when
-  // the user clicks elsewhere on the page.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -112,10 +81,8 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
       <button
         type="button"
         aria-label="Edit labels"
-        // Also stop mousedown (not just click) so LabelPicker's own
-        // outside-click listener — which fires on mousedown, before this
-        // click handler runs — doesn't see this button as "outside" and
-        // close what we're about to open (or reopen what we're closing).
+        // LabelPicker's outside-click listener fires on mousedown, so stop it
+        // here or the picker closes and reopens around this button.
         onMouseDown={stop}
         onClick={(e) => {
           stop(e);

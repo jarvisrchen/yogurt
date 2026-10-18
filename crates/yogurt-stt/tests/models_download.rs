@@ -1,17 +1,9 @@
-//! Plan 08-02 Task 3 — TDD for `models::download_to`.
+//! `models::download_to` against an in-test axum mock that respects `Range:` headers.
 //!
-//! Three contracts proven against an in-test axum mock that respects
-//! `Range:` headers:
+//! Covers a full download with SHA256 verify and progress callbacks, resume from a partial file via `Range: bytes=102400-` and a 206 response,
+//! and a bad SHA producing an error mentioning "sha256" or "hash" with the file deleted.
 //!
-//! 1. Full download + SHA256 verify + progress callback fires.
-//! 2. Resume from a partial file (pre-write first 100 KB, expect
-//!    `Range: bytes=102400-` + 206 response).
-//! 3. Bad SHA → error mentioning "sha256" or "hash" + file deleted.
-//!
-//! The mock server lives in-process — no external Wiremock — because
-//! we want fine control over `Content-Range` formatting (a frequent
-//! Range-header footgun) and don't want a flake risk on a third-party
-//! mock framework upgrade.
+//! The mock is in-process rather than Wiremock to control `Content-Range` formatting, a frequent footgun.
 
 #![cfg(feature = "local-stt")]
 
@@ -43,9 +35,7 @@ struct AppState {
 async fn serve_file(State(state): State<AppState>, headers: HeaderMap) -> Response<Body> {
     let total = state.body.len() as u64;
 
-    // Honour `Range: bytes=START-` (open-ended only, which is what
-    // download_to sends on resume).  Spec also allows `START-END`
-    // but we don't issue that — keep the mock minimal.
+    // Only open-ended `START-` ranges, which is all `download_to` sends on resume.
     let range_start: Option<u64> = headers
         .get(header::RANGE)
         .and_then(|h| h.to_str().ok())
@@ -76,9 +66,7 @@ async fn serve_file(State(state): State<AppState>, headers: HeaderMap) -> Respon
         .unwrap()
 }
 
-/// Spin up the mock on `127.0.0.1:0` and return its base URL.  The
-/// server lives until the test process ends (we don't bother with
-/// a shutdown signal — the OS reaps it).
+/// Spin up the mock on `127.0.0.1:0` and return its base URL.
 async fn spawn_server() -> String {
     let state = AppState {
         body: Arc::new(payload()),
@@ -105,9 +93,7 @@ async fn it_downloads_a_full_file_and_verifies_sha256() {
 
     let tmp = tempfile::NamedTempFile::new().unwrap();
     let dest = tmp.path().to_path_buf();
-    // tempfile creates the file as empty; we want a fresh-path test
-    // for the full-download path.  Drop the handle so download_to
-    // can recreate (it opens with `create` for full downloads).
+    // Drop the handle so `download_to` recreates the empty tempfile.
     drop(tmp);
     let _ = std::fs::remove_file(&dest);
 
@@ -138,7 +124,6 @@ async fn it_downloads_a_full_file_and_verifies_sha256() {
         "total_bytes should equal payload size"
     );
 
-    // cleanup
     let _ = std::fs::remove_file(&dest);
 }
 
@@ -151,8 +136,6 @@ async fn it_resumes_from_a_partial_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let dest = tmp_dir.path().join("partial.bin");
 
-    // Pre-write the first 100 KB — download_to must resume from byte
-    // 102400 via `Range: bytes=102400-`.
     {
         let mut f = std::fs::File::create(&dest).unwrap();
         f.write_all(&body[..100_000]).unwrap();
@@ -183,7 +166,7 @@ async fn it_rejects_a_bad_sha_and_removes_the_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let dest = tmp_dir.path().join("badhash.bin");
 
-    // "deadbeef" × 8 = 64 hex chars, definitely wrong.
+    // 64 hex chars that are definitely wrong.
     let bogus_sha = "deadbeef".repeat(8);
 
     let err = models::download_to(&url, &dest, &bogus_sha, |_| {})

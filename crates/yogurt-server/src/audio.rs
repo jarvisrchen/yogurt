@@ -1,32 +1,10 @@
 //! HTTP surface for `yogurt-audio` capture.
 //!
-//! Four endpoints + one in-process hook point:
+//! The screen-recording prompt is fired explicitly from the Welcome button because it
+//! otherwise only appeared when `start_capture` opened an SCK stream, which the Welcome CTA
+//! is gated behind, so first-run users deadlocked.
 //!
-//! - `GET /api/audio/permission` — surfaces both [`PermissionStatus`]
-//!   fields (screen recording + microphone) for the Phase 7 onboarding
-//!   flow (§5.10 / §5.11) and the parallel mic-permission flow added by
-//!   quick task `260628-g71`. Polled by the UI while the user grants
-//!   permissions in System Settings.
-//! - `POST /api/audio/microphone/request` — fires the macOS microphone
-//!   permission system dialog (idempotent — no-op if already granted /
-//!   denied) and returns the *current* combined permission snapshot.
-//!   Wired to the Welcome "Grant Microphone" button (DD-05).
-//! - `POST /api/audio/screen-recording/request` — fires the macOS Screen
-//!   Recording TCC prompt explicitly from the Welcome Step 1 button
-//!   (quick task 260701-vjb). Previously the prompt only fired implicitly
-//!   when `start_capture` opened an SCK stream, which deadlocked first-run
-//!   users: the Welcome CTA is gated on the permission, so capture never
-//!   started and the prompt never appeared.
-//! - `GET /api/audio/devices` — enumerates input devices for the Phase 5
-//!   settings dropdown (PRD §5.6).
-//! - [`start_meeting_recording`] — Phase 3's hook into the audio pipeline.
-//!   Called from `POST /api/meetings/:id/start` once that lands. Returns
-//!   the `AudioStream` Phase 3 STT will fan-in via `tokio::select!`.
-//!
-//! [`AudioErrorWrap`] maps the typed [`AudioError`] variants onto HTTP
-//! status codes — Phase 3 / Phase 7 handlers compose this into their own
-//! responses by `?`-ing on the `AudioError` and letting the wrapper render
-//! the JSON body.
+//! [`AudioErrorWrap`] maps [`AudioError`] variants onto HTTP status codes.
 
 use axum::{
     extract::State,
@@ -36,21 +14,15 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use yogurt_audio::{
     has_microphone_permission, has_screen_recording_permission, list_input_devices, play_test_tone,
-    request_microphone_permission, request_screen_recording_permission, start_capture, AudioError,
-    AudioStream, DeviceInfo, PermissionStatus,
+    request_microphone_permission, request_screen_recording_permission, AudioError, DeviceInfo,
+    PermissionStatus,
 };
 use yogurt_db::settings;
 
 use crate::state::AppState;
 
-/// JSON body for `GET /api/audio/permission`,
-/// `POST /api/audio/microphone/request`, and
-/// `POST /api/audio/screen-recording/request`. All three endpoints return
-/// the full snapshot — the SPA polls one cache key (`["audio", "permission"]`) and
-/// derives both `useScreenRecordingStatus` and `useMicrophoneStatus` from
-/// it via `select`-style accessors (DD-04).
-///
-/// Wire shape:
+/// Body of the permission and both request endpoints. All three return the full snapshot
+/// so the SPA polls one cache key.
 ///
 /// ```json
 /// {
@@ -58,10 +30,6 @@ use crate::state::AppState;
 ///   "microphone":       "granted" | "denied" | "not_determined" | "not_required"
 /// }
 /// ```
-///
-/// Per DD-03 we extend the existing endpoint rather than adding a sibling
-/// — the only consumer is the same-repo SPA shipped in the same binary,
-/// so backward compatibility with the old `{status: …}` shape is moot.
 #[derive(Serialize)]
 pub struct PermissionResponse {
     pub screen_recording: PermissionStatus,
@@ -69,9 +37,7 @@ pub struct PermissionResponse {
 }
 
 impl PermissionResponse {
-    /// Read both TCC states in one go. Each call is a thread-safe
-    /// idempotent query (CGPreflightScreenCaptureAccess +
-    /// AVCaptureDevice.authorizationStatus), so we don't need to cache.
+    /// Both queries are thread-safe and idempotent, so nothing is cached.
     fn snapshot() -> Self {
         Self {
             screen_recording: has_screen_recording_permission(),
@@ -80,54 +46,29 @@ impl PermissionResponse {
     }
 }
 
-/// `GET /api/audio/permission` — combined permission snapshot.
-/// Phase 7 onboarding (and the parallel mic-permission flow) polls this
-/// while the user grants permissions in System Settings; the response
-/// drives both the §5.11 recovery card and the `<MicPermissionDenied />`
-/// recovery card.
 pub async fn get_permission() -> Json<PermissionResponse> {
     Json(PermissionResponse::snapshot())
 }
 
-/// `POST /api/audio/microphone/request` — fire the macOS microphone
-/// permission system dialog. Idempotent: calling when already granted is
-/// a cheap no-op; calling when already denied returns immediately without
-/// re-prompting (macOS only ever asks the user once per app+TCC entry).
-///
-/// Returns the full combined snapshot (not just the mic field) so the SPA
-/// can update both `useScreenRecordingStatus` and `useMicrophoneStatus`
-/// in a single round-trip via `qc.invalidateQueries(permissionsKey)`.
+/// macOS asks once per app, so a repeat call after a denial does not re-prompt.
 pub async fn request_microphone() -> Json<PermissionResponse> {
-    // Fire-and-forget. The dialog appears asynchronously; the SPA's 2s
-    // polling loop picks up the eventual state change on the next tick.
+    // The dialog appears asynchronously and the SPA's polling picks up the result.
     let _ = request_microphone_permission();
     Json(PermissionResponse::snapshot())
 }
 
-/// `POST /api/audio/screen-recording/request` — fire the macOS Screen
-/// Recording TCC prompt if the app has never asked (quick task 260701-vjb).
-/// If the user already denied, macOS will not re-prompt — the SPA offers a
-/// System Settings deep link for that case instead.
-///
-/// Returns the full combined snapshot so the SPA updates both permission
-/// hooks in one round-trip.
+/// After a denial macOS will not re-prompt, so the SPA offers a System Settings deep link.
 pub async fn request_screen_recording() -> Json<PermissionResponse> {
-    // Fire-and-forget, mirroring `request_microphone`. The prompt appears
-    // asynchronously; the SPA's 2s polling loop picks up the state change.
     let _ = request_screen_recording_permission();
     Json(PermissionResponse::snapshot())
 }
 
-/// `GET /api/audio/devices` — input devices for the §5.6 settings dropdown.
-/// Returns a JSON array of `{ name, is_default, sample_rate }`.
 pub async fn get_devices() -> Result<Json<Vec<DeviceInfo>>, (StatusCode, String)> {
     list_input_devices()
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-/// `GET /api/audio/output-devices` - output devices for the echo
-/// destination picker. Same shape as `get_devices`.
 pub async fn get_output_devices() -> Result<Json<Vec<DeviceInfo>>, (StatusCode, String)> {
     yogurt_audio::list_output_devices()
         .map(Json)
@@ -140,11 +81,8 @@ pub struct TestEchoBody {
     device: Option<String>,
 }
 
-/// Result of `POST /api/audio/echo/test`. Same `{ok, model, error}` shape
-/// as `TestProviderResult` in `api::settings` so the frontend's existing
-/// verdict rendering (`TestKeyButton`) works unchanged; the two are
-/// duplicated rather than shared because they live in separate modules
-/// with no other coupling.
+/// Same `{ok, model, error}` shape as `TestProviderResult` in `api::settings` so the frontend's
+/// verdict rendering works unchanged.
 #[derive(Serialize)]
 pub struct TestEchoResult {
     pub ok: bool,
@@ -152,11 +90,8 @@ pub struct TestEchoResult {
     pub error: Option<String>,
 }
 
-/// `POST /api/audio/echo/test` - plays a 440 Hz tone on the echo output
-/// device for 700 ms, independent of any recording or ScreenCaptureKit, so
-/// the user can verify their echo routing (e.g. BlackHole) before a real
-/// meeting. `device` missing/empty falls back to the persisted
-/// `audio_echo_output_device` setting, then to the system default.
+/// Plays a 440 Hz tone for 700 ms so the user can verify echo routing (e.g. BlackHole).
+/// An empty `device` falls back to the `audio_echo_output_device` setting, then the system default.
 pub async fn test_echo(
     State(s): State<AppState>,
     Json(body): Json<TestEchoBody>,
@@ -195,19 +130,7 @@ pub async fn test_echo(
     }))
 }
 
-/// Begin recording. Phase 3 will wire this into `POST /api/meetings/:id/start`.
-///
-/// Surfaces [`AudioError::PermissionDenied`] for the §5.11 recovery flow.
-/// The returned [`AudioStream`] holds RAII guards over both cpal and SCK
-/// producers — dropping it terminates the OS-level capture handles
-/// cleanly (AUDIO-06 / D-26).
-pub fn start_meeting_recording(mic_device: Option<&str>) -> Result<AudioStream, AudioError> {
-    start_capture(mic_device)
-}
-
-/// Newtype wrapper that gives [`AudioError`] an [`IntoResponse`] impl
-/// without orphan-rule violation. Phase 3 handlers use `?` to propagate
-/// audio failures into the response body without case-by-case mapping.
+/// Newtype giving [`AudioError`] an [`IntoResponse`] impl past the orphan rule.
 pub struct AudioErrorWrap(pub AudioError);
 
 impl From<AudioError> for AudioErrorWrap {

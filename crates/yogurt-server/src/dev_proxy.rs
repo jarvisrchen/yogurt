@@ -6,33 +6,20 @@ use axum::{
 
 const VITE_BASE_DEFAULT: &str = "http://127.0.0.1:5173";
 
-/// Vite target, overridable via `YOGURT_VITE_BASE` so tests can point the
-/// proxy at a dead port instead of asserting nothing is bound on the real
-/// :5173 (which made the vite-down test fail whenever a dev server was
-/// legitimately running on the developer's machine).
+/// Overridable via `YOGURT_VITE_BASE` so tests can target a dead port even when a dev server
+/// is running on :5173.
 fn vite_base() -> String {
     std::env::var("YOGURT_VITE_BASE").unwrap_or_else(|_| VITE_BASE_DEFAULT.to_string())
 }
 
-/// Cap on request bodies forwarded to Vite (HI-03). Dev requests are tiny
-/// (HMR pings, asset requests, JSON RPC). 16 MiB is generous; anything larger
-/// is rejected with 413 Payload Too Large rather than buffered, eliminating
-/// the trivial OOM DoS that `usize::MAX` allowed.
+/// Larger request bodies get a 413 instead of being buffered.
 const MAX_PROXY_BODY: usize = 16 * 1024 * 1024;
 
-/// Axum fallback handler used in `Mode::Dev`. Forwards the entire request to
-/// the Vite dev server on :5173. Hop-by-hop headers are stripped on both legs.
+/// Axum fallback in `Mode::Dev` that forwards requests to the Vite dev server.
 ///
-/// On upstream failure (Vite not running), returns 502 with actionable copy
-/// telling the user to run `pnpm --dir web dev`.
-///
-/// HI-04: WebSocket upgrade requests are NOT proxied — reqwest cannot perform
-/// the upgrade handshake. They are rejected with 426 Upgrade Required and a
-/// message pointing the user at `http://localhost:5173` (Vite directly) for
-/// HMR. The yogurt server's own `/ws` route is registered before this
-/// fallback, so this only affects unknown WS paths like `/__vite_hmr`.
+/// WebSocket upgrades get a 426 because reqwest cannot perform the handshake. The server's
+/// own `/ws` route is registered first, so only unknown WS paths such as `/__vite_hmr` hit this.
 pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: Body) -> Response {
-    // HI-04: detect WS upgrade attempts and refuse cleanly.
     if is_websocket_upgrade(&headers) {
         tracing::warn!(
             path = uri.path(),
@@ -51,8 +38,6 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
     let path_and_query = uri.path_and_query().map(|x| x.as_str()).unwrap_or("/");
     let target = format!("{}{path_and_query}", vite_base());
 
-    // HI-03: cap request body at MAX_PROXY_BODY. Reject larger bodies with 413
-    // rather than allocating arbitrary memory.
     let body_bytes = match axum::body::to_bytes(body, MAX_PROXY_BODY).await {
         Ok(b) => b,
         Err(e) => {
@@ -91,8 +76,6 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
                 }
                 builder = builder.header(name.as_str(), value.as_bytes());
             }
-            // MD-03: surface upstream body-read failures explicitly rather
-            // than silently returning the original status with an empty body.
             let bytes = match resp.bytes().await {
                 Ok(b) => b,
                 Err(e) => {
@@ -104,8 +87,6 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
                         .into_response();
                 }
             };
-            // MD-02: builder.body cannot fail with our well-formed headers,
-            // but use .expect for self-documenting intent.
             builder
                 .body(Body::from(bytes))
                 .expect("response builder accepts well-formed proxy headers")
@@ -129,7 +110,6 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
     }
 }
 
-/// True if the request looks like an HTTP→WS upgrade attempt.
 fn is_websocket_upgrade(headers: &HeaderMap) -> bool {
     let upgrade_is_ws = headers
         .get(header::UPGRADE)
@@ -148,8 +128,7 @@ fn is_websocket_upgrade(headers: &HeaderMap) -> bool {
     upgrade_is_ws && connection_has_upgrade
 }
 
-// MD-04: `HeaderName::as_str()` is already guaranteed lowercase by the http
-// crate; no `to_ascii_lowercase()` allocation needed per header per request.
+// `HeaderName::as_str()` is already lowercase.
 fn is_hop_by_hop(name: &HeaderName) -> bool {
     matches!(
         name.as_str(),

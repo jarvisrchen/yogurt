@@ -1,23 +1,15 @@
-//! HTTP client + server discovery for `yogurt ctl` (CLI-4 / D1).
-//!
-//! One `reqwest::Client`, one auth story (the session token file), one
-//! discovery precedence: `--port` flag, then `$YOGURT_PORT`, then a health
-//! scan of the port range `just dev` / `port-guard.sh` already use
-//! (7878-7898). Every failure mode collapses to a `CtlError`, which the
-//! caller turns into the `error: ... / help: ...` pair on stdout.
+//! HTTP client and server discovery for `yogurt ctl`.
+//! Discovery precedence: `--port`, then `$YOGURT_PORT`, then a health scan of the port range. Every failure collapses to a `CtlError`.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// `just dev` / `scripts/lib/port-guard.sh` widen a busy default port by up
-/// to 20 before giving up, so this is the same window a scan has to cover
-/// to find an instance a second worktree pushed off 7878.
+/// `just dev` / `port-guard.sh` widen a busy default port by up to 20, so a scan covers the same window.
 pub const PORT_RANGE: std::ops::RangeInclusive<u16> = 7878..=7898;
 
-/// A single probe result: `GET /api/health` answered, and (once D5 has
-/// landed on the running binary) carried `version` + `mode`.
+/// A single probe result. `version` and `mode` are absent from older binaries.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Instance {
     pub port: u16,
@@ -25,9 +17,7 @@ pub struct Instance {
     pub mode: String,
 }
 
-/// Every business-logic failure `ctl` can hit, already carrying its own
-/// `help:` line. Never a raw `anyhow`/`reqwest` error at the print site --
-/// see `mod.rs::print_error`.
+/// Every business-logic failure `ctl` can hit, already carrying its own `help:` line.
 #[derive(Debug)]
 pub enum CtlError {
     /// No server answered at this specific port (`Some`), or the scan of
@@ -39,8 +29,7 @@ pub enum CtlError {
     /// The server answered with a non-2xx status; `message` is its
     /// `{"error": "..."}` body (or the raw text if it wasn't JSON).
     Server(String),
-    /// Anything else: a bad local path, a malformed response, a connection
-    /// that dropped mid-request. Carries its own tailored help text.
+    /// Anything else: a bad local path, a malformed response, a dropped connection.
     Local { message: String, help: String },
 }
 
@@ -52,7 +41,6 @@ impl CtlError {
         }
     }
 
-    /// The `(error, help)` pair `mod.rs` prints as `error: ...` / `help: ...`.
     pub fn message_and_help(&self) -> (String, String) {
         match self {
             CtlError::NoServer(Some(port)) => (
@@ -124,9 +112,6 @@ async fn probe_health(http: &reqwest::Client, port: u16) -> Option<Instance> {
     })
 }
 
-/// Probe every port in [`PORT_RANGE`] concurrently. `tokio::task::JoinSet`
-/// rather than `futures::future::join_all` -- tokio is already a
-/// dependency via `yogurt-server`, so this adds no new crate.
 async fn scan(http: &reqwest::Client) -> Vec<Instance> {
     let mut set = tokio::task::JoinSet::new();
     for port in PORT_RANGE {
@@ -143,8 +128,7 @@ async fn scan(http: &reqwest::Client) -> Vec<Instance> {
     found
 }
 
-/// What `ctl status` shows -- unlike [`resolve`], an ambiguous scan is not
-/// an error here, it's the answer.
+/// An ambiguous scan is not an error for `ctl status`, it is the answer.
 pub enum StatusTarget {
     /// `--port` / `$YOGURT_PORT` named a single port; `None` if it didn't
     /// answer.
@@ -160,8 +144,7 @@ pub async fn discover_for_status(http: &reqwest::Client, explicit: Option<u16>) 
     StatusTarget::Scanned(scan(http).await)
 }
 
-/// Discovery for every command except `status`: resolves to exactly one
-/// instance or fails with a message telling the caller what to do.
+/// Discovery for every command except `status`.
 pub async fn resolve(http: &reqwest::Client, explicit: Option<u16>) -> Result<Instance, CtlError> {
     if let Some(port) = port_precedence(explicit, env_port()) {
         return probe_health(http, port)
@@ -171,16 +154,12 @@ pub async fn resolve(http: &reqwest::Client, explicit: Option<u16>) -> Result<In
     resolve_from_scan(scan(http).await)
 }
 
-/// Pure: `--port` beats `$YOGURT_PORT`. Takes both already-read values
-/// rather than reading `$YOGURT_PORT` itself, so it's unit-testable
-/// without touching the process env.
+/// Pure so it is testable without touching the process env.
 fn port_precedence(flag: Option<u16>, env: Option<u16>) -> Option<u16> {
     flag.or(env)
 }
 
-/// Pure: given however many instances a scan found, decide the outcome.
-/// Takes the already-run scan result rather than probing itself, so
-/// it's unit-testable with a synthetic `Vec<Instance>` and no network.
+/// Pure over the scan result so it is testable without a network.
 fn resolve_from_scan(found: Vec<Instance>) -> Result<Instance, CtlError> {
     match found.len() {
         0 => Err(CtlError::NoServer(None)),
@@ -197,9 +176,7 @@ pub(crate) fn yogurt_home() -> Result<PathBuf, CtlError> {
         .ok_or_else(|| CtlError::local("could not resolve home directory", "check $HOME is set"))
 }
 
-/// Read the local session token. Every authenticated route needs it; no
-/// `ctl` subcommand ever prints its value (see `tests/ctl_smoke.rs`'s
-/// `--help`/`status` assertions).
+/// No `ctl` subcommand ever prints the token value.
 fn read_session_token() -> Result<String, CtlError> {
     let path = yogurt_home()?.join("session-token");
     std::fs::read_to_string(&path)
@@ -212,7 +189,6 @@ fn read_session_token() -> Result<String, CtlError> {
         })
 }
 
-/// The authenticated HTTP surface `ctl` talks to.
 pub struct Client {
     http: reqwest::Client,
     pub port: u16,
@@ -224,9 +200,7 @@ impl Client {
         Self { http, port, token }
     }
 
-    /// Resolve a target server (discovery precedence) and load the local
-    /// session token. The one entry point every subcommand but `status`,
-    /// `detect`, and `windows` uses.
+    /// Resolve a target server and load the session token. Used by every subcommand except `status`, `detect`, and `windows`.
     pub async fn discover(explicit_port: Option<u16>) -> Result<Self, CtlError> {
         let http = reqwest::Client::new();
         let instance = resolve(&http, explicit_port).await?;
@@ -234,8 +208,7 @@ impl Client {
         Ok(Self::new(http, instance.port, token))
     }
 
-    /// Build a client that talks to a specific port without going through
-    /// discovery -- used when a meeting URL already named the port.
+    /// Skips discovery; used when a meeting URL already named the port.
     pub fn at_port(port: u16) -> Result<Self, CtlError> {
         let token = read_session_token()?;
         Ok(Self::new(reqwest::Client::new(), port, token))
@@ -310,10 +283,7 @@ impl Client {
         Self::handle_json(resp).await
     }
 
-    /// Same as [`Self::post_empty`] but for endpoints that answer with no
-    /// body at all (e.g. the 202-Accepted-and-fire-and-forget model
-    /// download start) -- `post_empty`'s `resp.json::<T>()` would fail
-    /// parsing an empty body.
+    /// For endpoints that answer with an empty body (e.g. the 202 model download start), where `post_empty`'s `resp.json()` would fail.
     pub async fn post_no_body(&self, path: &str) -> Result<(), CtlError> {
         let resp = self
             .http
@@ -352,8 +322,7 @@ impl Client {
         Self::handle_json(resp).await
     }
 
-    /// Same as [`Self::delete`] but for `204 No Content` responses (e.g.
-    /// `DELETE /api/meetings/:id`).
+    /// For `204 No Content` responses.
     pub async fn delete_no_body(&self, path: &str) -> Result<(), CtlError> {
         let resp = self
             .http
@@ -365,9 +334,7 @@ impl Client {
         Self::handle_status(resp).await
     }
 
-    /// `ws://127.0.0.1:<port><path>?token=<token>` -- the WS auth contract
-    /// (`crate::ws`'s doc comment on the server side) is the query-param
-    /// token, same as every browser `WebSocket` connection.
+    /// The WS auth contract is the query-param token, same as a browser `WebSocket`.
     pub fn ws_url(&self, path: &str) -> String {
         format!("ws://127.0.0.1:{}{path}?token={}", self.port, self.token)
     }
@@ -400,10 +367,8 @@ async fn server_error_message(resp: reqwest::Response) -> String {
     error_message_from(status, &body)
 }
 
-/// The server answers some failures as `{"error": "..."}` and others (axum
-/// `(StatusCode, String)` rejections, e.g. enhance's unknown-template 400)
-/// as a plain-text body. Both carry the message the user needs, so only an
-/// empty body falls back to the bare status.
+/// The server answers some failures as `{"error": ...}` and others as plain text (axum rejections).
+/// Only an empty body falls back to the bare status.
 fn error_message_from(status: reqwest::StatusCode, body: &str) -> String {
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
         if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {

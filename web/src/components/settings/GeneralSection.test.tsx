@@ -10,8 +10,6 @@ function mockStandalone(standalone: boolean) {
   }));
 }
 
-/** Constructor spy carrying a static `.permission`, matching the real
- *  `Notification` API's shape closely enough for these tests. */
 function mockNotification(permission: NotificationPermission) {
   class FakeNotification {
     static permission = permission;

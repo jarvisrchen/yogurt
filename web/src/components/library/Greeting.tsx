@@ -1,15 +1,6 @@
-/**
- * Phase 7 (Plan 07-01) — Library hero greeting + meeting-count caption.
- *
- * PRD §5.9 + D-03:
- *   - "Good morning, you" via heading-greeting (34px)
- *   - "N meeting{s} · all on this Mac" caption at 13px
- */
-
 import { useGreeting } from "../../hooks/useGreeting";
 
 interface Props {
-  /** Total number of meetings — drives pluralization. */
   count: number;
 }
 

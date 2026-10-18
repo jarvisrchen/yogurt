@@ -1,28 +1,9 @@
-//! Phase 7 (Plan 07-01) — integration tests for the Library REST surface.
-//!
-//! Exercises the new `/api/meetings` and `/api/meetings/:id` handlers
-//! (GET / POST / PATCH / DELETE) against a real axum server bound to an
-//! ephemeral 127.0.0.1 port. Each test gets its own tempdir-isolated
-//! SQLite + session-token + notes directory so parallel runs cannot collide.
-//!
-//! Coverage matrix:
-//! - `it_creates_and_lists_meetings` — POST + GET /api/meetings round-trip;
-//!   create returns 201; list returns the created row.
-//! - `it_patches_title_and_writes_markdown_file` — PATCH updates title and
-//!   re-emits the `~/.yogurt/notes/<…>.md` file via MarkdownExporter.
-//! - `it_deletes_and_returns_404` — DELETE returns 204 + the row vanishes;
-//!   second GET returns 404.
-//! - `it_returns_404_for_missing_id` — GET on an unknown id returns 404
-//!   without nuking the existing rows.
+//! Library REST surface (`/api/meetings*`: GET / POST / PATCH / DELETE) against a real axum server with tempdir-isolated SQLite, session token, and notes directory.
 
 use std::time::Duration;
 
 use yogurt_server::{run_with_config, Mode, RunConfig};
 
-/// Spawn a fresh server bound to an ephemeral port with a tempdir-scoped
-/// home. Returns the bound addr, the seeded session token, the join
-/// handle, the notes_dir path (so tests can inspect the on-disk markdown
-/// files), and the tempdir guard (kept alive for the test's duration).
 async fn spawn_server() -> (
     std::net::SocketAddr,
     String,
@@ -76,7 +57,6 @@ async fn it_creates_and_lists_meetings() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // POST with explicit title.
     let create_resp = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -93,7 +73,6 @@ async fn it_creates_and_lists_meetings() {
         "created_at must be a serialized ISO 8601 string"
     );
 
-    // GET /api/meetings lists the row.
     let list_resp = client
         .get(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -109,10 +88,7 @@ async fn it_creates_and_lists_meetings() {
     handle.abort();
 }
 
-// CLI-5: `POST /api/meetings` gains two optional fields, `transcript_json`
-// (an array of `{ts_ms, channel, text}` segments -- the same shape the
-// column already stores) and `ended` -- so a fixture meeting can be seeded
-// without a live recording.
+// `POST /api/meetings` accepts optional `transcript_json` (`{ts_ms, channel, text}` segments) and `ended`, so a fixture meeting can be seeded without a live recording.
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_creates_a_fixture_meeting_with_transcript_and_ended() {
@@ -178,7 +154,6 @@ async fn it_rejects_malformed_transcript_json_naming_the_bad_field() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // Missing `ts_ms` on the one segment.
     let create_resp = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -197,7 +172,7 @@ async fn it_rejects_malformed_transcript_json_naming_the_bad_field() {
         "expected the error to name the missing field: {msg}"
     );
 
-    // Nothing was left behind -- a rejected create must not leave a stray row.
+    // A rejected create must not leave a stray row.
     let list_resp: Vec<serde_json::Value> = client
         .get(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -232,7 +207,6 @@ async fn it_patches_title_and_writes_markdown_file() {
         .unwrap();
     let id = created["id"].as_str().unwrap().to_string();
 
-    // PATCH the title + notes.
     let patch_resp = client
         .patch(format!("http://{addr}/api/meetings/{id}"))
         .bearer_auth(&token)
@@ -248,10 +222,7 @@ async fn it_patches_title_and_writes_markdown_file() {
     assert_eq!(body["title"].as_str().unwrap(), "Renamed");
     assert_eq!(body["notes_md"].as_str().unwrap(), "- bullet 1\n");
 
-    // The markdown file should exist under notes_dir, with the
-    // updated title in its YAML front-matter. The exporter slugifies
-    // the title into the filename — search for any file containing
-    // "renamed" in the name.
+    // The exporter slugifies the title into the filename, so search for a file containing "renamed".
     let entries: Vec<_> = std::fs::read_dir(&notes_dir)
         .expect("notes_dir exists")
         .filter_map(|e| e.ok())
@@ -312,7 +283,6 @@ async fn it_patches_stt_engine_and_persists() {
         "local \u{b7} small.en"
     );
 
-    // GET reflects the persisted value.
     let get_resp: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings/{id}"))
         .bearer_auth(&token)
@@ -346,7 +316,6 @@ async fn it_deletes_and_returns_404() {
         .unwrap();
     let id = created["id"].as_str().unwrap().to_string();
 
-    // DELETE returns 204.
     let del_resp = client
         .delete(format!("http://{addr}/api/meetings/{id}"))
         .bearer_auth(&token)
@@ -355,7 +324,6 @@ async fn it_deletes_and_returns_404() {
         .unwrap();
     assert_eq!(del_resp.status(), 204);
 
-    // GET returns 404 now.
     let get_resp = client
         .get(format!("http://{addr}/api/meetings/{id}"))
         .bearer_auth(&token)
@@ -372,7 +340,6 @@ async fn it_deletes_the_markdown_only_when_asked() {
     let (addr, token, handle, notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // Two meetings, each PATCHed so the exporter writes its .md.
     let mut paths = Vec::new();
     let mut ids = Vec::new();
     for title in ["Keep the file", "Nuke the file"] {
@@ -403,7 +370,7 @@ async fn it_deletes_the_markdown_only_when_asked() {
         ids.push(id);
     }
 
-    // No flag -> row goes, file stays (D-10 default).
+    // No flag: the row goes and the file stays.
     let resp = client
         .delete(format!("http://{addr}/api/meetings/{}", ids[0]))
         .bearer_auth(&token)
@@ -413,7 +380,7 @@ async fn it_deletes_the_markdown_only_when_asked() {
     assert_eq!(resp.status(), 204);
     assert!(paths[0].exists(), "default delete must not unlink the .md");
 
-    // `?delete_file=true` -> both go.
+    // `?delete_file=true` removes both.
     let resp = client
         .delete(format!(
             "http://{addr}/api/meetings/{}?delete_file=true",
@@ -434,8 +401,6 @@ async fn it_fts_searches_meetings() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // Two meetings; `a` will gain notes containing "palette" so the
-    // FTS index can find it.
     let a: serde_json::Value = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -472,7 +437,6 @@ async fn it_fts_searches_meetings() {
         .error_for_status()
         .unwrap();
 
-    // Search for "palette" — only meeting `a` should hit.
     let hits: Vec<serde_json::Value> = client
         .get(format!("http://{addr}/api/meetings/search?q=palette"))
         .bearer_auth(&token)
@@ -485,7 +449,6 @@ async fn it_fts_searches_meetings() {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0]["id"], a["id"]);
 
-    // Search for a non-matching token — empty result.
     let none: Vec<serde_json::Value> = client
         .get(format!("http://{addr}/api/meetings/search?q=zzzzz"))
         .bearer_auth(&token)
@@ -497,7 +460,6 @@ async fn it_fts_searches_meetings() {
         .unwrap();
     assert!(none.is_empty());
 
-    // Empty q falls through to the full list (both meetings).
     let all: Vec<serde_json::Value> = client
         .get(format!("http://{addr}/api/meetings/search?q="))
         .bearer_auth(&token)
@@ -511,8 +473,6 @@ async fn it_fts_searches_meetings() {
 
     handle.abort();
 }
-
-// ─── Phase 7 Plan 07-03 — Copy markdown + Reveal in Finder ─────────────────
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_returns_markdown_with_front_matter() {
@@ -531,8 +491,7 @@ async fn it_returns_markdown_with_front_matter() {
         .unwrap();
     let id = created["id"].as_str().unwrap().to_string();
 
-    // PATCH some body so the file isn't just front-matter — exercises the
-    // `body_md` branch of the exporter view.
+    // Give the file a body so the `body_md` branch of the exporter view is exercised.
     client
         .patch(format!("http://{addr}/api/meetings/{id}"))
         .bearer_auth(&token)
@@ -581,11 +540,7 @@ async fn it_returns_404_for_markdown_of_missing_meeting() {
     handle.abort();
 }
 
-// Reveal-in-Finder is hard to assert in CI (it would actually trigger
-// Finder activation on macOS hosts). We test the contract: the endpoint
-// exists, missing meeting → 404, valid meeting → 204. macOS-gated because
-// non-darwin runners would either lack `open -R` semantics or short-circuit
-// the cfg branch — either way the contract is still 204 for a valid meeting.
+// A real reveal would activate Finder on macOS hosts, so only the contract is asserted: missing meeting 404, valid meeting 204.
 #[cfg(target_os = "macos")]
 #[tokio::test(flavor = "multi_thread")]
 async fn it_reveals_an_existing_meeting() {
@@ -616,11 +571,7 @@ async fn it_reveals_an_existing_meeting() {
     handle.abort();
 }
 
-/// `POST /:id/stop` stamps `ended_at` on a meeting that was never started
-/// (`Registry::stop` is documented as idempotent no-op when there's no
-/// task/capture_thread/persist handle to tear down, and `routes::stop_meeting`
-/// stamps `ended_at` regardless). A second `/stop` call must NOT change the
-/// already-recorded `ended_at` — "first stop wins".
+/// `POST /:id/stop` stamps `ended_at` on a never-started meeting. A second `/stop` must not change it: first stop wins.
 #[tokio::test(flavor = "multi_thread")]
 async fn it_stamps_ended_at_on_stop_and_second_stop_is_a_noop() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
@@ -637,7 +588,6 @@ async fn it_stamps_ended_at_on_stop_and_second_stop_is_a_noop() {
         .unwrap();
     let id = created["id"].as_str().unwrap().to_string();
 
-    // Stop without ever starting.
     let stop_resp = client
         .post(format!("http://{addr}/api/meetings/{id}/stop"))
         .bearer_auth(&token)
@@ -659,8 +609,7 @@ async fn it_stamps_ended_at_on_stop_and_second_stop_is_a_noop() {
         .as_i64()
         .expect("ended_at must be set after the first stop");
 
-    // A small delay so a buggy re-stamp would be observable as a changed
-    // timestamp.
+    // A small delay so a buggy re-stamp would show as a changed timestamp.
     tokio::time::sleep(Duration::from_millis(5)).await;
 
     let stop_resp2 = client
@@ -709,16 +658,13 @@ async fn it_returns_404_for_missing_id() {
     handle.abort();
 }
 
-/// DATA-LOSS GUARD: a PATCH carrying an empty `enriched_md` must NOT blank
-/// a stored non-empty enriched document (observed live: a stale post-view
-/// mount flushed `""` on unmount and destroyed the enhanced notes). Other
-/// fields in the same PATCH still apply.
+/// Data-loss guard: a PATCH with an empty `enriched_md` must not blank a stored non-empty document (a stale post-view mount flushed `""` on unmount).
+/// Other fields in the same PATCH still apply.
 #[tokio::test]
 async fn patch_with_empty_enriched_md_does_not_blank_stored_content() {
     let (addr, token, task, _notes_dir, _tmp) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // Create a meeting and give it a real enriched body.
     let created: serde_json::Value = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -766,9 +712,7 @@ async fn patch_with_empty_enriched_md_does_not_blank_stored_content() {
     task.abort();
 }
 
-/// GET /api/meetings/active with nothing recording returns `200 null`
-/// (not 404 — the frontend polls this every 5s for the floating "Return
-/// to recording" pill, and a 404 would just be constant noise).
+/// `GET /api/meetings/active` with nothing recording returns `200 null`, not 404, since the frontend polls it every 5s.
 #[tokio::test(flavor = "multi_thread")]
 async fn active_recording_returns_null_when_nothing_is_recording() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
@@ -787,11 +731,7 @@ async fn active_recording_returns_null_when_nothing_is_recording() {
     handle.abort();
 }
 
-/// Route-order guard: `/api/meetings/active` (registered in `routes.rs`)
-/// must not shadow the `/api/meetings/:id` matcher (registered in
-/// `api::meetings::router()`) — a real meeting id still resolves to
-/// `get_one`, proving axum 0.8 prefers the literal segment over the `{id}`
-/// param regardless of which router the two routes were merged from.
+/// Route-order guard: the literal `/api/meetings/active` must not shadow `/api/meetings/:id`, though the two are registered in different routers.
 #[tokio::test(flavor = "multi_thread")]
 async fn active_recording_route_does_not_capture_real_meeting_ids() {
     let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
@@ -823,14 +763,8 @@ async fn active_recording_route_does_not_capture_real_meeting_ids() {
     handle.abort();
 }
 
-/// `GET /api/meetings/active` must serialize the truthful `stt` engine
-/// once `Registry::start` has stamped it — this is the field the live
-/// header badge trusts over Settings (which only applies at the *next*
-/// start). `Registry::start` needs real audio hardware to reach the point
-/// where it stamps `stt_engine`, so this test seeds a registry meeting
-/// in-process (via the same `AppState::in_memory` + `__test_router`
-/// pattern `settings_api.rs::boot()` uses) and sets `stt_engine` directly
-/// through its `pub` field, then asserts the route reflects it.
+/// `GET /api/meetings/active` must serialize the truthful `stt` engine once `Registry::start` has stamped it, since the live header badge trusts it over Settings.
+/// `Registry::start` needs real audio hardware, so the test seeds a registry meeting in-process and sets `stt_engine` directly.
 #[tokio::test]
 async fn active_recording_serializes_stt_engine_once_set() {
     let tmp = tempfile::tempdir().unwrap();
@@ -853,9 +787,7 @@ async fn active_recording_serializes_stt_engine_once_set() {
     )
     .unwrap();
 
-    // Seed a meeting that looks "recording" (task is Some) with the engine
-    // stamped, mirroring what `Registry::start` does right after
-    // `select_stt` resolves.
+    // A "recording" meeting (task is Some) with the engine stamped, as `Registry::start` does after `select_stt`.
     let m = state.meetings.create().await;
     let never_finishes = tokio::spawn(async { std::future::pending::<()>().await });
     *m.task.lock().await = Some(never_finishes);

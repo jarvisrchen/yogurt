@@ -1,16 +1,8 @@
-//! API-key storage: the `ApiKeyStore` trait + production `FileKeyStore`
-//! (`~/.yogurt/keys.json`, mode 0600) + in-memory `MemoryKeyStore` for tests.
-//!
 //! Account name = provider ULID (or `stt-deepgram` for the STT singleton).
 //!
-//! ## Why a plaintext file and not the macOS Keychain?
-//!
-//! Keychain ACLs are bound to the binary's code signature, so every
-//! unsigned dev rebuild re-prompted for every key, a wedged prompt hung
-//! boot, and machines without Keychain write access could not run yogurt
-//! at all. A 0600 JSON file next to the SQLite database has the same
-//! posture as `~/.aws/credentials` or `gh`'s `hosts.yml`, is encrypted at
-//! rest by FileVault, and needs no OS consent dialogs.
+//! Plaintext 0600 file rather than the macOS Keychain: Keychain ACLs bind to the code signature, so every unsigned dev rebuild re-prompted for every key,
+//! a wedged prompt hung boot, and machines without Keychain write access could not run yogurt.
+//! The file has the same posture as `~/.aws/credentials`, is encrypted at rest by FileVault, and needs no consent dialogs.
 
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
@@ -18,28 +10,19 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
 
-/// Storage abstraction over the on-disk key file.
-///
-/// Implementations MUST be cheap to clone (or wrapped in `Arc`) since
-/// `AppState` holds `Arc<dyn ApiKeyStore>` and is cloned per-request.
+/// Implementations must be cheap to clone (or wrapped in `Arc`) since `AppState` holds `Arc<dyn ApiKeyStore>` and is cloned per request.
 pub trait ApiKeyStore: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<String>>;
     fn set(&self, account: &str, secret: &str) -> Result<()>;
     fn delete(&self, account: &str) -> Result<()>;
 
-    /// Returns `Some("••••XXXX")` (last 4 chars) when a key exists, `None`
-    /// otherwise. Default impl is implemented in terms of `get`.
-    ///
-    /// The `••••` prefix is the unicode bullet (U+2022) × 4. This is the
-    /// canonical mask format used by the Settings UI footer.
+    /// `Some("••••XXXX")` (last 4 chars) when a key exists. The Settings UI footer relies on this mask format.
     fn masked(&self, account: &str) -> Result<Option<String>> {
         Ok(self.get(account)?.map(|s| mask_suffix(&s)))
     }
 }
 
-/// Mask a secret as `"••••XXXX"` where `XXXX` is the last 4 unicode chars.
-/// For secrets shorter than 4 chars, returns the whole secret prefixed by
-/// the bullets (so the caller can still detect "key set" vs "no key").
+/// Mask a secret as `"••••XXXX"` (last 4 unicode chars). A shorter secret is kept whole after the bullets so callers can still detect "key set".
 fn mask_suffix(secret: &str) -> String {
     let collected: Vec<char> = secret.chars().collect();
     let n = collected.len();
@@ -51,7 +34,7 @@ fn mask_suffix(secret: &str) -> String {
     format!("••••{tail}")
 }
 
-/// In-memory fake for tests and CI. NEVER use in production.
+/// In-memory fake for tests. Never use in production.
 #[derive(Default)]
 pub struct MemoryKeyStore {
     inner: Mutex<HashMap<String, String>>,
@@ -74,16 +57,13 @@ impl ApiKeyStore for MemoryKeyStore {
     }
 }
 
-/// Production store: a `{account: secret}` JSON object at `path`, held in
-/// memory and rewritten atomically (temp file + rename, mode 0600) on every
-/// mutation. Reads never touch disk after construction.
+/// A `{account: secret}` JSON object at `path`, held in memory and rewritten atomically (temp file + rename, mode 0600) on every mutation.
 pub struct FileKeyStore {
     path: PathBuf,
     map: RwLock<BTreeMap<String, String>>,
 }
 
 impl FileKeyStore {
-    /// Open (or lazily create on first write) the key file at `path`.
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         let map = match std::fs::read(&path) {
@@ -98,7 +78,6 @@ impl FileKeyStore {
         })
     }
 
-    /// Open `~/.yogurt/keys.json`.
     pub fn open_default() -> Result<Self> {
         Self::open(crate::paths::keys_path()?)
     }

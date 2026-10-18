@@ -1,14 +1,4 @@
-/**
- * GeneralSection - Settings page General section (Phase 5 Plan 05-04, SET-08).
- *
- * - Port input (number, 1024-65535) persists on blur if changed.
- * - "Open browser on start" checkbox persists on toggle.
- * - Both persist via `PATCH /api/settings` and invalidate `['settings']`.
- *
- * Caption explains that port changes apply on the next `yogurt start`.
- * - Appearance (UI-6) is browser-local (see `lib/theme.ts`), not a server
- *   setting, so it applies instantly and survives reload without a flash.
- */
+// Appearance is browser-local (lib/theme.ts), so it applies instantly and survives reload without a flash.
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";

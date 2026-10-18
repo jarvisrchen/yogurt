@@ -1,38 +1,15 @@
-/**
- * Phase 7 (Plan 07-01) — per-day grouping for the Library feed.
- *
- * Meetings render under uppercase day headers:
- *   Today / Yesterday / weekday name (2–6 days back) / "Aug 13"-style
- *   short date beyond that (with the year appended once it differs).
- * Day boundaries are local-time midnight (so "yesterday" doesn't include
- * 11:59 PM the night before from the user's perspective).
- *
- * `dayLabel` and `groupMeetingsByDay` are pure functions so the vitest
- * suite can assert behavior without rendering React.
- */
-
 import type { Meeting } from "../../lib/api/meetings";
 import { MeetingCard } from "./MeetingCard";
 import { LABEL } from "../settings/labelClass";
 
-/** Return midnight (00:00:00.000) of the supplied date, in local time. */
 function localMidnight(d: Date): Date {
   const m = new Date(d);
   m.setHours(0, 0, 0, 0);
   return m;
 }
 
-/**
- * Human day header for `d` relative to `now`:
- *   same day      → "Today"
- *   previous day  → "Yesterday"
- *   2–6 days back → weekday name ("Monday")
- *   older         → "Aug 13" (plus ", 2025" once the year differs)
- * Pure function — no implicit `new Date()` so tests are deterministic.
- */
 export function dayLabel(d: Date, now: Date): string {
-  // Round instead of truncate so DST-shifted 23h/25h days still count
-  // as exactly one calendar day.
+  // Round so DST-shifted 23h/25h days still count as one calendar day.
   const daysAgo = Math.round(
     (localMidnight(now).getTime() - localMidnight(d).getTime()) / 86_400_000,
   );
@@ -49,17 +26,11 @@ export function dayLabel(d: Date, now: Date): string {
 }
 
 export interface DayGroup {
-  /** Local-midnight epoch ms of the day — stable React key. */
   key: number;
   label: string;
   meetings: Meeting[];
 }
 
-/**
- * Group meetings by local calendar day, preserving the input order both
- * WITHIN each group and across groups. Callers pass a list already
- * sorted newest-first, which is what `GET /api/meetings` returns.
- */
 export function groupMeetingsByDay(
   meetings: ReadonlyArray<Meeting>,
   now: Date,
@@ -82,11 +53,8 @@ export function groupMeetingsByDay(
 
 interface Props {
   meetings: ReadonlyArray<Meeting>;
-  /** Optional clock override for testing — defaults to now. */
   now?: Date;
-  /** Id of the currently-recording meeting, forwarded to every card. */
   activeId?: string | null;
-  /** MTG-14 multi-select - forwarded to every `MeetingCard`. */
   selectionActive?: boolean;
   selectedIds?: ReadonlySet<string>;
   onToggleSelect?: (id: string, shiftKey: boolean) => void;

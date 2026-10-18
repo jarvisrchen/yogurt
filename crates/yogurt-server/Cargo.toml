@@ -9,59 +9,40 @@ repository.workspace = true
 [dependencies]
 tokio = { workspace = true }
 axum = { workspace = true, features = ["macros", "ws"] }
-tower = { workspace = true }
-tower-http = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rust-embed = { workspace = true }
 reqwest = { workspace = true }
-mime_guess = { workspace = true }
 rusqlite = { workspace = true }
 directories = { workspace = true }
 rand = { workspace = true }
 base64 = { workspace = true }
 subtle = { workspace = true }
 yogurt-audio = { path = "../yogurt-audio" }
-# Phase 8 (Plan 08-03): server gains the local-stt feature on `yogurt-stt`
-# so REST handlers can call `yogurt_stt::models::*` and `meetings/start.rs`
-# can construct `WhisperLocal`. Default-on for the server crate; release
-# builds always want the local path available.
+# REST handlers call `yogurt_stt::models::*` and `meetings/start.rs` constructs
+# `WhisperLocal`, so the local path is always on for the server.
 yogurt-stt = { path = "../yogurt-stt", features = ["local-stt"] }
-# Phase 5 (Plan 05-01): LlmClient trait + OpenAI-compat adapter. The
-# enhance handler talks to providers through `LlmClient`; Phase 6 chat
-# will share the same crate without going through axum.
 yogurt-llm = { path = "../yogurt-llm" }
-# Phase 5 (Plan 05-01): `MockLlm::stream` returns a `BoxStream` so the
-# server crate needs `futures_util` in main deps (also in dev-deps for
-# integration tests).
+# `MockLlm::stream` returns a `BoxStream`, so this is a main dependency.
 futures-util = { workspace = true }
-# Phase 5 (Plan 05-02): providers + settings + key file. `Db` and
-# `ApiKeyStore` are carried on `AppState` for handlers + bootstrap.
 yogurt-db = { path = "../yogurt-db" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
-# Phase 4 (Plan 04-02): date formatting for MarkdownExporter filenames.
-time = { workspace = true }
-# Phase 4 (Plan 04-03): the enhance handler consumes both Phase 4 crates.
+chrono = { workspace = true }
 yogurt-prompts = { path = "../yogurt-prompts" }
 yogurt-notes = { path = "../yogurt-notes" }
-# BL-2 (Phase 4 review): server-side HTML sanitization for enriched_md before
-# it's persisted + sent to the browser. The LLM can hallucinate <script>
-# tags + onerror handlers; ammonia's allowlist keeps only the wire-format
-# spans (data-ai-grey, data-transcript-link).
+# Sanitizes enriched_md before it is persisted and sent to the browser. The
+# allowlist keeps only the wire-format spans (data-ai-grey, data-transcript-link).
 ammonia = { workspace = true }
 html-escape = { workspace = true }
-# Phase 6 (Plan 06-01): optional tempdir for the test_support module.
-# Activated by the `test-support` feature; release builds never link it.
+# Tempdir for the test_support module. Release builds never link it.
 tempfile = { workspace = true, optional = true }
 
 [features]
-# Phase 6 (Plan 06-01): expose `test_support::{MockChunksLlm,
-# run_with_mock_llm, seed_meeting}` to integration tests. Activated by
-# `[dev-dependencies] yogurt-server = { path = ".", features = ["test-support"] }`
-# so release builds NEVER compile the helpers.
+# Exposes `test_support::{MockChunksLlm, run_with_mock_llm, seed_meeting}` to
+# integration tests. Release builds never compile the helpers.
 test-support = ["dep:tempfile"]
 
 [dev-dependencies]

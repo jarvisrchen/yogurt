@@ -1,25 +1,9 @@
 /**
- * MicMuteToggle — full-width button between the mic-picker row and the
- * notes card (AUD-6). Pauses `Channel::Mic` only via `POST
- * /:id/mic-muted` — `Channel::System` keeps recording the whole time.
- *
- * Always mounted whenever `meetingId` is known (mirrors the notes editor
- * below it), disabled with an explanatory tooltip while not recording —
- * muting only makes sense mid-meeting, so it reads as unavailable rather
- * than disappearing. A core action deserves a big, always-findable target,
- * not a small icon tucked into the toolbar.
- *
- * The `M` hotkey (no modifier — this needs to be a reflex, not a chord)
- * mirrors it; `useKeyboardShortcut`'s `ignoreWhenTyping` keeps it from
- * firing while notes/title/chat have focus, and it's `enabled` only while
- * `recording` so it can't fire before there's anything to mute.
- *
- * Sourced from the shared `["meetings", "active"]` query (`useActiveRecording`,
- * already polled every 5s by `Meeting.tsx` for the STT engine badge) rather
- * than local component state, so a page reload or a second tab shows the
- * true mute state — see `docs/.planning/aud6-mic-mute-design.md`. A
- * successful mutation invalidates that query so the toggle itself doesn't
- * have to wait out the poll interval.
+ * Pauses `Channel::Mic` only (`POST /:id/mic-muted`); `Channel::System` keeps recording.
+ * Always mounted and disabled outside recording, since muting only makes sense mid-meeting.
+ * The `M` hotkey has no modifier so it works as a reflex; `ignoreWhenTyping` keeps it from firing while notes, title or chat have focus.
+ * State comes from the shared `["meetings", "active"]` query, not local state, so a reload or second tab shows the true mute state.
+ * A successful mutation invalidates it so the toggle doesn't wait out the 5s poll.
  */
 import { Mic, MicOff } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

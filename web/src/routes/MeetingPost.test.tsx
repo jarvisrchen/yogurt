@@ -1,13 +1,3 @@
-/**
- * MeetingPost.tsx — live-recording redirect.
- *
- * A meeting that's still recording server-side must never render the
- * frozen post view: deep links, refresh, and the back button can all land
- * here for a meeting `GET /api/meetings/active` still reports as live.
- * When that's the case, redirect straight to the live capture surface
- * (`/meeting/:id`) instead — it has the Start/Stop controls and live
- * transcript this route doesn't.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
@@ -21,10 +11,13 @@ vi.mock("../components/AskExperience", () => ({
 }));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
+  bearerFetch: (input: string, init?: RequestInit) =>
+    fetch(input, {
+      ...init,
+      headers: { ...(init?.headers as object), Authorization: "Bearer test-token" },
+    }),
 }));
-// Stateful, test-controllable mock for the streaming-preview tests below —
-// the default matches the old static shape (no streaming activity) so every
-// pre-existing test in this file is unaffected.
+// Controllable mock for the streaming-preview tests; the default is no streaming activity.
 const wsState = vi.hoisted(() => ({
   phase: null as "sending" | "streaming" | "done" | "error" | null,
   chars: null as number | null,
@@ -223,7 +216,6 @@ describe("MeetingPost — live-recording redirect", () => {
         notes_md: "- private raw note",
       });
     });
-    // The header pill follows the model the re-enhance actually used.
     expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
   });
 
@@ -242,12 +234,10 @@ describe("MeetingPost — live-recording redirect", () => {
     renderPost();
     await screen.findByText("Enhanced summary");
     const picker = (await screen.findByTestId("template-picker")) as HTMLSelectElement;
-    // The stored format is preselected, and the list came from the server.
     await waitFor(() => expect(picker.value).toBe("general"));
     expect(screen.getByRole("option", { name: "Auto" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Interview" })).toBeInTheDocument();
 
-    // Auto sends no template at all - the server decides.
     fireEvent.change(picker, { target: { value: "auto" } });
     fireEvent.click(screen.getByTestId("re-enhance-button"));
     await waitFor(() => {
@@ -257,10 +247,8 @@ describe("MeetingPost — live-recording redirect", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.[1]?.body))).not.toHaveProperty("template");
     });
-    // ...and the picker then shows what it detected.
     await waitFor(() => expect(picker.value).toBe("standup"));
 
-    // A forced format rides along on the request.
     fireEvent.change(picker, { target: { value: "interview" } });
     fireEvent.click(screen.getByTestId("re-enhance-button"));
     await waitFor(() => {
@@ -340,11 +328,8 @@ describe("MeetingPost — streaming enhance preview", () => {
   });
 
   it("drops the preview once done + the enhance response land, keeping Enhanced read-only", async () => {
-    // A real server persists `enriched_md` BEFORE emitting the `done` WS
-    // frame (BL-5: persistence failure emits `error` instead), so a GET
-    // that lands after `done` always sees the new value too — this mock
-    // mutates its own row on the enhance POST to match that, instead of
-    // always replaying the original fixture.
+    // A real server persists `enriched_md` before emitting `done`, so a GET after `done`
+    // sees the new value. This mock mutates its row on the enhance POST to match.
     let row: Record<string, unknown> = {
       id: MEETING_ID,
       title: "Standup",
@@ -392,11 +377,8 @@ describe("MeetingPost — streaming enhance preview", () => {
       );
     });
 
-    // The enhance POST resolving is what actually replaces the document -
-    // the Re-enhance button drives the same POST path a real enhance
-    // completion would. Wait for the header model pill (set from the same
-    // response's `llm_model`) rather than editor text, since the editor
-    // still shows the raw preview until the WS also reports `done` below.
+    // Wait for the header model pill (from the POST response's `llm_model`), not editor text,
+    // since the editor shows the raw preview until the WS also reports `done`.
     fireEvent.click(screen.getByTestId("re-enhance-button"));
     expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
 
@@ -410,8 +392,6 @@ describe("MeetingPost — streaming enhance preview", () => {
       );
     });
     expect(await screen.findByText("regenerated")).toBeInTheDocument();
-    // The Enhanced document is read-only even after the preview settles;
-    // only My notes takes typing.
     const prosemirror = () =>
       screen.getByTestId("yogurt-editor").querySelector(".ProseMirror");
     expect(prosemirror()).toHaveAttribute("contenteditable", "false");
@@ -422,10 +402,8 @@ describe("MeetingPost — streaming enhance preview", () => {
   });
 
   it("holds the last streamed preview through the done-to-response gap, so there is no flash to the old/blank document", async () => {
-    // The server persists `enriched_md` and emits `done` (clearing ws.text)
-    // BEFORE the enhance POST's HTTP response actually completes — a
-    // deferred Response lets this test hold the POST open to reproduce
-    // that gap deterministically.
+    // The server emits `done` (clearing ws.text) before the POST response completes. A
+    // deferred Response holds the POST open to reproduce that gap deterministically.
     let resolvePost: (res: Response) => void = () => {};
     const postPromise = new Promise<Response>((resolve) => {
       resolvePost = resolve;
@@ -470,20 +448,16 @@ describe("MeetingPost — streaming enhance preview", () => {
 
     fireEvent.click(screen.getByTestId("re-enhance-button"));
 
-    // Server reports `done` (clearing ws.text) while the POST is still
-    // pending.
     wsState.phase = "done";
     wsState.text = null;
     view.rerenderSame();
 
-    // No flash: the held preview keeps showing, wrapper stays streaming.
     expect(screen.getByTestId("yogurt-editor")).toHaveAttribute(
       "data-streaming",
       "",
     );
     expect(screen.getByText(/Streamed body/)).toBeInTheDocument();
 
-    // Now the POST resolves with the final document.
     await act(async () => {
       resolvePost(
         new Response(
@@ -540,9 +514,7 @@ describe("MeetingPost — auto-enhance on arrival", () => {
       });
     });
 
-    // Give any duplicate (StrictMode-style double-effect) POST a chance to
-    // fire, and the resolved response's state updates a chance to flush,
-    // before asserting there's exactly one.
+    // Give a duplicate (StrictMode-style) POST and state flushes time to land before asserting exactly one.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
@@ -553,11 +525,8 @@ describe("MeetingPost — auto-enhance on arrival", () => {
   });
 
   it("renders the too-short screen when the autoEnhance POST reports too_short, then returns to the library", async () => {
-    // Reproduces the docs/TODO.md "too short" case: the enhance POST
-    // (fired from `location.state.autoEnhance`) reports `too_short` (empty
-    // notes + trivial transcript, see `enhance.rs`'s
-    // `TOO_SHORT_TRANSCRIPT_WORDS` gate). The route must show the brief
-    // state instead of the editor, then auto-return to the library.
+    // `too_short` from the autoEnhance POST shows the brief state instead of the editor,
+    // then returns to the library.
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {

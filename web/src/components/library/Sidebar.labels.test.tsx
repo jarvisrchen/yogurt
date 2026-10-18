@@ -1,7 +1,3 @@
-/**
- * Sidebar — Labels section coverage: labels render with their meeting
- * counts and link to `/label/:id`.
- */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";

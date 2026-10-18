@@ -19,6 +19,5 @@ fn it_is_idempotent_to_open_twice() {
     let db1 = Db::open_in_memory().expect("first open");
     drop(db1);
     let db2 = Db::open_in_memory().expect("second open");
-    // re-running migrations on the same conn should be a no-op
     db2.run_migrations().expect("re-running migrations is safe");
 }

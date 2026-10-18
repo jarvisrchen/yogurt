@@ -1,7 +1,3 @@
-//! `yogurt ctl status` (and bare `yogurt ctl`) -- content-first: what
-//! instance(s) are up, what's recording, what detection sees, which
-//! provider/engine is active, and whether the OS grants are in place.
-
 use serde::Deserialize;
 use serde_json::json;
 

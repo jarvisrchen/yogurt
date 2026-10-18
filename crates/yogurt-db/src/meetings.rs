@@ -1,33 +1,12 @@
-//! Phase 7 (Plan 07-01) — `meetings` repo backing the Library route.
+//! `meetings` repo: the persisted directory of meetings (id, title, timestamps, starred flag, notes/transcript/enriched bodies).
+//! Streaming state (audio and transcript broadcasts, capture-thread handles) lives in memory on `yogurt-server::meetings::Meeting`.
 //!
-//! Replaces the Phase-3 in-memory `HashMap<MeetingId, Meeting>` registry
-//! with a SQLite-backed CRUD layer that survives restarts. The streaming
-//! surface (audio + transcript broadcasts, capture-thread join handles)
-//! still lives in-memory on `yogurt-server::meetings::Meeting`; THIS
-//! module owns the **directory** of meetings (id, title, timestamps,
-//! starred flag, persisted notes/transcript/enriched bodies).
+//! `created_at` / `updated_at` travel as ISO 8601 UTC strings over the wire, while the DB stores unix milliseconds for cheap SQL comparisons. [`row_to_meeting`] converts.
 //!
-//! ## Wire contract
+//! `MeetingPatch::enriched_md` is `Option<Option<String>>`: `None` leaves it alone, `Some(None)` clears it, `Some(Some(s))` sets it.
+//! Paired with `#[serde(default, skip_serializing_if = "Option::is_none")]`, it distinguishes a JSON `null` from a missing field.
 //!
-//! `created_at` / `updated_at` travel as ISO 8601 UTC strings via the
-//! `chrono::DateTime<Utc>` serde adapter. The DB column stores unix
-//! milliseconds so SQL comparisons (newest-first ordering, starred index)
-//! stay cheap; conversion happens in [`row_to_meeting`].
-//!
-//! `enriched_md: Option<Option<String>>` on `MeetingPatch` is the
-//! load-bearing tri-state: `None` means "leave alone", `Some(None)` means
-//! "explicitly clear" (e.g. user retracted the enhancement), `Some(Some(s))`
-//! means "set to s". The `Option<Option<T>>` pattern is the conventional
-//! serde way to round-trip a JSON `null` distinctly from a missing field
-//! when paired with `#[serde(default, skip_serializing_if = "Option::is_none")]`.
-//!
-//! ## Concurrency
-//!
-//! Repo methods are synchronous because `Db::with_conn` holds a
-//! `MutexGuard<Connection>`. Callers that need them async-friendly should
-//! wrap the call in `tokio::task::spawn_blocking` — the same pattern the
-//! enhance handler already uses for the storage writer. The Library REST
-//! handlers in `crates/yogurt-server/src/api/meetings.rs` do exactly that.
+//! Repo methods are synchronous because `Db::with_conn` holds a `MutexGuard<Connection>`. Async callers wrap them in `tokio::task::spawn_blocking`.
 
 use crate::labels::{self, Label};
 use crate::Db;
@@ -38,13 +17,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use ulid::Ulid;
 
-/// One row in the `meetings` table, projected onto the Library wire shape.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Meeting {
     pub id: String,
     pub title: String,
-    /// Unix ms — meeting recording-start clock (distinct from `created_at`
-    /// which is the SQLite row's birthday).
+    /// Unix ms of the recording-start clock, distinct from `created_at` (the row's birthday).
     pub started_at: i64,
     /// Unix ms; `None` while the meeting is still live.
     pub ended_at: Option<i64>,
@@ -62,52 +39,34 @@ pub struct Meeting {
     /// `yogurt_prompts::TEMPLATE_IDS` such as "standup". `None` until the
     /// meeting has been enhanced with a template-aware build.
     pub template: Option<String>,
-    /// Row creation timestamp (ISO 8601 over the wire).
     pub created_at: DateTime<Utc>,
-    /// Last mutation timestamp (ISO 8601 over the wire). Updated on every
-    /// `patch` call so the Library can re-sort on edit.
+    /// Updated on every `patch` so the Library can re-sort on edit.
     pub updated_at: DateTime<Utc>,
-    /// Labels attached to this meeting, sorted by name. Hydrated by a
-    /// second query in `get` / `list` / `search` (see [`labels_for`]) —
-    /// `row_to_meeting` always sets this to an empty `Vec` first.
+    /// Labels sorted by name, hydrated by a second query in `get` / `list` / `search` (see [`labels_for`]). `row_to_meeting` starts with an empty `Vec`.
     #[serde(default)]
     pub labels: Vec<Label>,
 }
 
-/// Constructor payload for [`MeetingRepo::create`]. Only the fields a fresh
-/// meeting genuinely needs — the rest are filled in by the repo (defaults +
-/// auto-minted id + timestamps).
+/// Constructor payload for [`MeetingRepo::create`]; the repo fills in defaults, id, and timestamps.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct NewMeeting {
     pub title: String,
-    /// Optional started-at override. Defaults to "now" when absent —
-    /// matches the Phase-3 in-memory registry where `Meeting::new` minted
-    /// `created_at_ms = SystemTime::now()`.
+    /// Optional started-at override. Defaults to now.
     #[serde(default)]
     pub started_at_unix_ms: Option<i64>,
-    /// Optional caller-supplied id. Defaults to a freshly minted ULID
-    /// when absent. The Phase-7 Library REST handler passes
-    /// `Uuid::now_v7().to_string()` here so the existing UUID-typed
-    /// streaming routes (`/api/meetings/:id/start` etc.) keep working
-    /// against the same id — without this escape hatch the directory
-    /// (ULID strings) and the streaming registry (UUID v7) would have
-    /// mutually-incompatible identifier spaces.
+    /// Optional caller-supplied id, defaulting to a fresh ULID.
+    /// The Library REST handler passes `Uuid::now_v7().to_string()` so the UUID-typed streaming routes (`/api/meetings/:id/start` etc.) use the same id.
     #[serde(default)]
     pub id: Option<String>,
 }
 
-/// Patch payload for [`MeetingRepo::patch`]. Every field is `Option`
-/// because a PATCH only carries the values the caller wants to change.
-///
-/// The `enriched_md` field is `Option<Option<String>>` on purpose — see
-/// the module-level docs for the tri-state semantics.
+/// Patch payload for [`MeetingRepo::patch`]. Every field is `Option` because a PATCH only carries the values to change.
+/// `enriched_md` is tri-state, see the module docs.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MeetingPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Updates the recording-start clock. Use for back-dated imports or
-    /// for the Phase 4 enhance handler which sets `started_at` to the
-    /// known recording start.
+    /// Updates the recording-start clock, e.g. for back-dated imports or to record the known start.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -118,9 +77,7 @@ pub struct MeetingPatch {
     /// `Some(Some(s))` (set). See module docs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enriched_md: Option<Option<String>>,
-    /// Tri-state mirror of `enriched_md` for the meeting end time.
-    /// `Some(Some(ts))` marks the meeting as ended; `Some(None)` un-ends it
-    /// (rare — used by re-enhance flows). `None` leaves it alone.
+    /// Tri-state mirror of `enriched_md` for the meeting end time. `Some(None)` un-ends the meeting (used by re-enhance flows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<Option<i64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -144,26 +101,19 @@ pub struct MeetingPatch {
     pub label_ids: Option<Vec<String>>,
 }
 
-/// CRUD facade over the `meetings` table.
-///
-/// Holds a `Db` handle, not a `Connection`. The Db handle's interior
-/// `Arc<Mutex<Connection>>` is the locking unit — every method locks for
-/// the duration of one statement (or a small transaction for `patch`).
+/// CRUD facade over the `meetings` table. Holds a `Db` handle; each method locks for one statement (or a small transaction for `patch`).
 #[derive(Clone)]
 pub struct MeetingRepo {
     db: Db,
 }
 
 impl MeetingRepo {
-    /// Construct a repo bound to `db`. Cheap — no IO.
     pub fn new(db: Db) -> Self {
         Self { db }
     }
 
-    /// Insert a new meeting row. Auto-mints a 26-char ULID id and stamps
-    /// `created_at = updated_at = now`. Rejects an empty / whitespace-only
-    /// `title` per the LIB-08 inline-rename rule (callers should default
-    /// to "Untitled meeting" before calling this).
+    /// Auto-mints a 26-char ULID id and stamps `created_at = updated_at = now`.
+    /// Rejects an empty or whitespace-only `title`; callers default to "Untitled meeting" first.
     pub fn create(&self, m: NewMeeting) -> Result<Meeting> {
         let title = m.title.trim();
         if title.is_empty() {
@@ -184,14 +134,12 @@ impl MeetingRepo {
             )
             .context("insert meeting")
         })?;
-        // Reload — cheaper than constructing the wire shape inline; also
-        // double-checks the row landed.
+        // Reload to build the wire shape and confirm the row landed.
         self.get(&id)?
             .ok_or_else(|| anyhow::anyhow!("create: row vanished after insert"))
     }
 
-    /// Look up one row by id. `Ok(None)` for missing rows (not an error —
-    /// the REST handler maps to 404).
+    /// `Ok(None)` for a missing row; the REST handler maps it to 404.
     pub fn get(&self, id: &str) -> Result<Option<Meeting>> {
         self.db.with_conn(|conn| -> Result<Option<Meeting>> {
             let mut stmt = conn.prepare_cached(SELECT_ALL_WHERE_ID)?;
@@ -204,9 +152,7 @@ impl MeetingRepo {
         })
     }
 
-    /// List all meetings newest-first by `started_at`. The Library sidebar
-    /// uses this as its primary feed; date-bucketing happens client-side
-    /// in `DateGroup`.
+    /// All meetings newest-first by `started_at`.
     pub fn list(&self) -> Result<Vec<Meeting>> {
         self.db.with_conn(|conn| -> Result<Vec<Meeting>> {
             let mut stmt = conn.prepare_cached(SELECT_ALL_ORDER_BY_STARTED_DESC)?;
@@ -220,11 +166,7 @@ impl MeetingRepo {
         })
     }
 
-    /// Apply `patch` to the row identified by `id`. Bumps `updated_at`
-    /// to "now" iff at least one field changed. Returns the post-patch
-    /// row. Errors:
-    ///   - empty title (LIB-08 — caller should default before patching)
-    ///   - no such id
+    /// Bumps `updated_at` to now iff at least one field changed and returns the post-patch row. Errors on an empty title or an unknown id.
     pub fn patch(&self, id: &str, patch: MeetingPatch) -> Result<Meeting> {
         if let Some(t) = patch.title.as_deref() {
             if t.trim().is_empty() {
@@ -233,9 +175,7 @@ impl MeetingRepo {
         }
         let now_ms = chrono::Utc::now().timestamp_millis();
         let id_owned = id.to_string();
-        // The patch builds a dynamic UPDATE because SQLite has no
-        // `COALESCE-on-missing-bind` story. We keep it inline (not a
-        // query builder crate) — the field set is small and stable.
+        // Dynamic UPDATE because SQLite cannot skip a missing bind with COALESCE. Kept inline since the field set is small and stable.
         self.db.with_conn(|conn| -> Result<()> {
             let mut sets: Vec<&str> = Vec::new();
             let mut args: Vec<rusqlite::types::Value> = Vec::new();
@@ -255,8 +195,7 @@ impl MeetingRepo {
                 sets.push("transcript_json = ?");
                 args.push(t.clone().into());
             }
-            // Tri-state enriched_md: outer None ⇒ no SET; outer Some
-            // unconditionally writes (inner None becomes SQL NULL).
+            // Tri-state enriched_md: outer None writes nothing; outer Some writes, with inner None becoming SQL NULL.
             if let Some(inner) = patch.enriched_md.as_ref() {
                 sets.push("enriched_md = ?");
                 match inner {
@@ -288,8 +227,7 @@ impl MeetingRepo {
                 args.push(e.clone().into());
             }
             if sets.is_empty() && patch.label_ids.is_none() {
-                // No fields supplied — still touch updated_at? PRD §10
-                // says "PATCH with empty body is a no-op". Match that.
+                // A PATCH with an empty body is a no-op.
                 return Ok(());
             }
             sets.push("updated_at = ?");
@@ -303,18 +241,8 @@ impl MeetingRepo {
                 bail!("meeting not found: {id_owned}");
             }
 
-            // Phase 7 Plan 07-02: keep the FTS5 index's `transcript_text`
-            // column in sync. The V004 AFTER UPDATE trigger has already
-            // re-indexed `title` and `notes_md` from the new row, but the
-            // trigger writes '' for `transcript_text` (it has no JSON
-            // parser). This explicit UPDATE on `meetings_fts` fills the
-            // flattened transcript so search can match transcript words.
-            //
-            // We always run this UPDATE — even when only `title` /
-            // `notes_md` changed — because the trigger zeroed transcript_text
-            // and we need to restore the prior flattened transcript from
-            // the current `transcript_json`. The cost is one extra UPDATE
-            // per patch, which is amortized into the meeting-edit hot path.
+            // Keep the FTS5 `transcript_text` in sync. The AFTER UPDATE trigger re-indexes `title` and `notes_md` but writes '' for `transcript_text` (it cannot parse JSON),
+            // so always restore the flattened transcript from `transcript_json`, even when only `title` or `notes_md` changed.
             let mut stmt = conn.prepare_cached(
                 "SELECT title, notes_md, transcript_json FROM meetings WHERE id = ?1",
             )?;
@@ -341,36 +269,21 @@ impl MeetingRepo {
 
     /// FTS5 keyword search across title + notes_md + transcript_text.
     ///
-    /// `query`: free-text user input. Empty or whitespace-only input
-    /// short-circuits to `self.list()` (capped at `limit`) — the Library
-    /// UI relies on this to render the chronological feed when the
-    /// search pill is cleared.
+    /// Empty or whitespace-only `query` short-circuits to `self.list()` (capped at `limit`); the Library UI relies on this when the search pill is cleared.
     ///
-    /// Quoting strategy: the user query is wrapped as
-    /// `"<sanitized>"*` so the FTS5 parser treats it as a single
-    /// prefix-matched phrase. Embedded `"` characters are escaped by
-    /// doubling them (the FTS5 string-quoting convention). This avoids
-    /// the FTS5 query-syntax operators (`OR`, `NEAR`, column filters)
-    /// leaking into the user input — typing `notes:foo` should search
-    /// for the literal string "notes:foo", not a column-restricted
-    /// query.
+    /// The query is wrapped as `"<sanitized>"*`, a single prefix-matched phrase, with embedded `"` doubled (FTS5 quoting).
+    /// That keeps FTS5 operators (`OR`, `NEAR`, column filters) out: typing `notes:foo` searches the literal string.
     ///
-    /// Ranking: `bm25(meetings_fts)` puts the most-relevant row first;
-    /// ties break by `started_at DESC` so the newest of two equally-
-    /// scoring meetings wins.
+    /// Ranking: `bm25(meetings_fts)`, ties broken by `started_at DESC`.
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<Meeting>> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
-            // Truncate the chronological list to `limit` for parity with
-            // the matched-query branch — the REST handler caps `limit`
-            // at 200, so this never returns more than the caller asked.
+            // Truncate to `limit` for parity with the matched branch.
             let mut all = self.list()?;
             all.truncate(limit);
             return Ok(all);
         }
-        // Escape `"` by doubling (FTS5 quoting), then wrap in quotes and
-        // suffix `*` for prefix matching. Empty after escaping is
-        // impossible because we trimmed above.
+        // Double `"` (FTS5 quoting), wrap in quotes, and suffix `*` for prefix matching.
         let escaped = trimmed.replace('"', "\"\"");
         let match_expr = format!("\"{escaped}\"*");
         // A date-shaped query ("10/6/26") also returns every meeting that
@@ -412,9 +325,7 @@ impl MeetingRepo {
         })
     }
 
-    /// Delete the meeting row. Returns `Ok(true)` if a row was removed,
-    /// `Ok(false)` if the id was unknown. Cascades to `chat_messages` via
-    /// the V003b FK rebuild.
+    /// `Ok(true)` if a row was removed, `Ok(false)` for an unknown id. Cascades to `chat_messages` via the V003b FK rebuild.
     pub fn delete(&self, id: &str) -> Result<bool> {
         let id_owned = id.to_string();
         self.db.with_conn(|conn| {
@@ -460,8 +371,6 @@ fn local_day_bounds_ms(d: NaiveDate) -> Option<(i64, i64)> {
     Some((ms(d)?, ms(d.succ_opt()?)?))
 }
 
-// ─── Internal SQL ──────────────────────────────────────────────────────────
-
 const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
     notes_md, enriched_md, transcript_json, starred, created_at, updated_at, \
     stt_engine, llm_model, template FROM meetings WHERE id = ?1";
@@ -470,12 +379,7 @@ const SELECT_ALL_ORDER_BY_STARTED_DESC: &str = "SELECT id, title, started_at, \
     ended_at, notes_md, enriched_md, transcript_json, starred, created_at, \
     updated_at, stt_engine, llm_model, template FROM meetings ORDER BY started_at DESC, id DESC";
 
-/// Project one SQLite row onto the `Meeting` wire shape. Used by `get`,
-/// `list`, and (indirectly) `create` / `patch` via `get`.
-///
-/// Coerces SQL NULL on `notes_md` / `transcript_json` to `""` / `"[]"`
-/// because legacy Phase 0 rows may have NULLs there even though the
-/// Phase 7 schema declares NOT NULL DEFAULT.
+/// Coerces SQL NULL on `notes_md` / `transcript_json` to `""` / `"[]"` because legacy rows may have NULLs there.
 fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     let id: String = r.get(0)?;
     let title: Option<String> = r.get(1)?;
@@ -508,9 +412,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     })
 }
 
-/// Run one query hydrating the labels for every meeting id in
-/// `meeting_ids`. Returns an empty map without querying when the slice is
-/// empty (covers `get` on a not-found row upstream, and empty `list`).
+/// One query hydrating labels for every id in `meeting_ids`. Returns an empty map without querying for an empty slice.
 fn labels_for(
     conn: &Connection,
     meeting_ids: &[String],
@@ -553,7 +455,6 @@ fn labels_for(
     Ok(map)
 }
 
-/// Hydrate `labels_for` results onto every `Meeting` in `out`, in place.
 fn hydrate_labels(conn: &Connection, out: &mut [Meeting]) -> rusqlite::Result<()> {
     let ids: Vec<String> = out.iter().map(|m| m.id.clone()).collect();
     let mut map = labels_for(conn, &ids)?;
@@ -563,22 +464,11 @@ fn hydrate_labels(conn: &Connection, out: &mut [Meeting]) -> rusqlite::Result<()
     Ok(())
 }
 
-/// Phase 7 Plan 07-02: flatten the `transcript_json` blob into a single
-/// searchable string the FTS5 index can tokenize.
+/// Flatten the `transcript_json` blob into one searchable string for the FTS5 index.
 ///
-/// `transcript_json` is the wire shape produced by the Phase-3 transcript
-/// pipeline — an array of `{ "text": "...", ... }` (or `{ "transcript": "..." }`
-/// for older Deepgram payloads) objects. We concatenate every `.text` or
-/// `.transcript` string field separated by " ".
-///
-/// Invariants:
-/// - Returns `""` for empty / malformed / non-array JSON. Callers (FTS sync
-///   in `MeetingRepo::patch`) treat the empty string as "no transcript text"
-///   — that's correct: an unparseable transcript shouldn't match anything.
-/// - Does NOT walk arbitrarily-nested objects; only `arr[].text` or
-///   `arr[].transcript` at depth 1. Deeper Deepgram fields like `words[]`
-///   are skipped intentionally — the segment-level `text` already
-///   concatenates all the word strings.
+/// Concatenates the `.text` (or older Deepgram `.transcript`) string of each array element, separated by " ".
+/// Returns `""` for empty, malformed, or non-array JSON, so an unparseable transcript matches nothing.
+/// Only depth 1 is read: segment-level `text` already contains the word strings, so nested `words[]` are skipped.
 fn extract_transcript_text(transcript_json: &str) -> String {
     let trimmed = transcript_json.trim();
     if trimmed.is_empty() {
@@ -592,8 +482,7 @@ fn extract_transcript_text(transcript_json: &str) -> String {
     };
     let mut parts: Vec<&str> = Vec::with_capacity(arr.len());
     for entry in arr {
-        // Prefer `.text` (current Phase-3 shape); fall back to `.transcript`
-        // for older payloads that may still be sitting in user DBs.
+        // Prefer `.text`; fall back to `.transcript` for older payloads in user DBs.
         if let Some(t) = entry.get("text").and_then(|v| v.as_str()) {
             if !t.is_empty() {
                 parts.push(t);
@@ -609,13 +498,10 @@ fn extract_transcript_text(transcript_json: &str) -> String {
 
 fn ms_to_dt(ms: i64) -> DateTime<Utc> {
     Utc.timestamp_millis_opt(ms).single().unwrap_or_else(|| {
-        // Saturating fallback for the unreasonably-far-future case —
-        // never expected in practice, but keeps the projection infallible.
+        // Saturating fallback keeps the projection infallible.
         Utc.timestamp_opt(0, 0).single().expect("epoch")
     })
 }
-
-// ─── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -637,7 +523,6 @@ mod tests {
                 ..Default::default()
             })
             .expect("create");
-        // ULID strings are exactly 26 chars (Crockford base32).
         assert_eq!(m.id.len(), 26, "id should be a 26-char ULID");
         assert_eq!(m.title, "Standup");
         assert_eq!(m.notes_md, "");
@@ -793,7 +678,6 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        // Set
         let m1 = repo
             .patch(
                 &m.id,
@@ -804,7 +688,6 @@ mod tests {
             )
             .unwrap();
         assert_eq!(m1.enriched_md.as_deref(), Some("**bold**"));
-        // Leave alone — different patch, no enriched_md key
         let m2 = repo
             .patch(
                 &m.id,
@@ -815,7 +698,6 @@ mod tests {
             )
             .unwrap();
         assert_eq!(m2.enriched_md.as_deref(), Some("**bold**"));
-        // Explicit clear
         let m3 = repo
             .patch(
                 &m.id,
@@ -858,8 +740,6 @@ mod tests {
         assert!(repo.delete(&m.id).unwrap());
         assert!(repo.get(&m.id).unwrap().is_none());
     }
-
-    // ─── Phase 7 Plan 07-02: FTS5 search ───────────────────────────────
 
     #[test]
     fn it_indexes_a_meeting_on_create_and_finds_by_title() {
@@ -1015,13 +895,11 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        // Seed two chat rows on that meeting.
         let msg1 = ChatMessage::new(&m.id, Role::User, "ping");
         let msg2 = ChatMessage::new(&m.id, Role::Assistant, "pong");
         db.insert_chat_message(&msg1).unwrap();
         db.insert_chat_message(&msg2).unwrap();
         assert_eq!(db.list_chat_messages(&m.id).unwrap().len(), 2);
-        // Cascade.
         assert!(repo.delete(&m.id).unwrap());
         assert_eq!(
             db.list_chat_messages(&m.id).unwrap().len(),

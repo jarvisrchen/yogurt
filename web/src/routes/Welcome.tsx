@@ -1,52 +1,3 @@
-/**
- * Phase 7 Plan 07-04 — `/welcome` onboarding route (PRD §5.10).
- *
- * Two-column layout, paper-left / white-right:
- *
- *   ┌──────────────────────────────────┬────────────────────────────────────┐
- *   │  yogurt logo + bold wordmark    │  ONE-TIME SETUP (11px caps)         │
- *   │                                   │                                    │
- *   │  "Welcome to yogurt." (52px)     │  [Step 1: Screen Recording]        │
- *   │  Two streams, one set of notes…  │  [Step 2: Microphone]              │
- *   │                                   │  [Step 3: Connect your model]      │
- *   │  <TerminalMockup />              │  [Step 4: Pick transcription]      │
- *   │                                   │  [Take me to my meetings →]        │
- *   │                                   │  "Restart once after granting…"    │
- *   └──────────────────────────────────┴────────────────────────────────────┘
- *
- * Ready-gating: the primary CTA is enabled only when Screen Recording is
- * granted AND Microphone is granted AND at least one provider is active.
- * On click it flips `first_run_completed=true` (Phase 7 backend field
- * added in this plan) and navigates to `/`. The `useFirstRunRedirect`
- * hook then keeps the SPA on `/` for subsequent visits.
- *
- * Quick task 260628-g71 inserted Step 2 (Microphone) and renumbered the
- * provider + transcription cards from 2/3 to 3/4. The mic StepCard's
- * Grant button is the user-facing trigger for `POST /api/audio/microphone/request`
- * — when status is `not_determined`, clicking it fires the macOS system
- * dialog; when status is `denied`, clicking it deep-links into
- * System Settings (macOS won't re-prompt after a denial).
- *
- * Quick task 260701-vjb made Steps 1, 3, and 4 actionable: Step 1's Grant
- * button hits `POST /api/audio/screen-recording/request` (with a System
- * Settings deep link alongside), Steps 3 and 4 link to `/settings`, and
- * Step 4's state is derived from steps 1-3 instead of hardcoded pending.
- *
- * Honesty pass (fast task) — three fixes:
- *   1. The relaunch requirement after granting Screen Recording used to
- *      live only in the page-bottom footnote, while Steps 2-4 sat visibly
- *      "pending" underneath — easy to read as the page being broken.
- *      Step 1 now states the relaunch requirement inline, right where the
- *      user is about to click Grant.
- *   2. `PROVIDER_CHIPS` was missing LM Studio even though the preset
- *      exists server-side (`yogurt_db::providers::PRESETS`).
- *   3. The mic/screen-recording request mutations and the
- *      `first_run_completed` flip previously swallowed failures into
- *      `console.error` with nothing shown to the user. `<ErrorNote>`
- *      surfaces a friendly line with the raw backend detail collapsed
- *      behind a `<details>` disclosure.
- */
-
 import {
   useMutation,
   useQueryClient,
@@ -76,13 +27,7 @@ const PROVIDER_CHIPS = [
   { id: "openrouter", label: "OpenRouter" },
 ];
 
-/**
- * Friendly wrapper for a mutation error. Backend messages (e.g. axum
- * error bodies) are implementation detail, not copy — this shows one
- * calm sentence up front and keeps the raw string available but
- * secondary, behind a `<details>` disclosure, for anyone who wants to
- * paste it into a bug report.
- */
+/** Backend error bodies are not user copy, so the raw string sits behind a `<details>`. */
 function ErrorNote({
   error,
   friendly,
@@ -117,10 +62,8 @@ export function Welcome() {
 
   const micRequest = useMutation({
     mutationFn: requestMicrophonePermission,
-    // The POST returns the *current* (likely still `not_determined`)
-    // snapshot — the real state change arrives via the 2s poll. Invalidate
-    // here so the next render reads the freshest cached value rather
-    // than waiting up to 2s for the periodic refetch.
+    // The POST returns the current snapshot, usually still `not_determined`.
+    // Invalidate so the 2s poll doesn't have to catch up.
     onSuccess: () => qc.invalidateQueries({ queryKey: permissionsKey }),
   });
 
@@ -131,9 +74,8 @@ export function Welcome() {
 
   const handleGrantMic = () => {
     if (micStatus === "denied") {
-      // macOS will not re-prompt after a denial — deep-link straight
-      // into the Privacy_Microphone pane instead. Exact casing matters;
-      // see `<MicPermissionDenied />` doc-comment.
+      // macOS will not re-prompt after a denial, so deep-link to the
+      // Privacy_Microphone pane. Exact casing matters.
       window.location.href =
         "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
     } else {
@@ -144,16 +86,12 @@ export function Welcome() {
   const providers = settings.data?.providers ?? [];
   const activeProvider = providers.find((p) => p.is_active);
   const hasProvider = !!activeProvider;
-  // Best-effort label match against the chip list — the providers row
-  // doesn't carry a `preset_id`, so we normalize on the name.
+  // The providers row has no `preset_id`, so match on the normalized name.
   const activeChipId =
     PROVIDER_CHIPS.find((c) =>
       activeProvider?.name.toLowerCase().includes(c.id),
     )?.id ?? null;
 
-  // Sequential gating mirrors PRD §5.10 — each step is only `current`
-  // once its prerequisites are satisfied. The user works through them
-  // top-to-bottom (Welcome's existing pattern; we preserve it).
   const step1State: StepState = granted ? "done" : "current";
   const step2State: StepState = micGranted
     ? "done"
@@ -166,9 +104,7 @@ export function Welcome() {
       : hasProvider
         ? "done"
         : "current";
-  // 260701-vjb: Step 4 becomes current once steps 1-3 are done. The
-  // transcription choice does not gate `ready` - Deepgram cloud is the
-  // seeded default, so this step is informational-but-actionable.
+  // Transcription does not gate `ready`: Deepgram cloud is the seeded default.
   const step4State: StepState =
     granted && micGranted && hasProvider ? "current" : "pending";
 
@@ -184,16 +120,11 @@ export function Welcome() {
     }
   };
 
-  // Whether to render the inline Grant button under the mic StepCard.
-  // Hidden once permission is positively resolved (granted on macOS,
-  // not_required off macOS); shown for both `not_determined` (Grant)
-  // and `denied` (Open System Settings).
   const showMicButton =
     micStatus !== "granted" && micStatus !== "not_required";
 
   return (
     <div className="grid grid-cols-[1.05fr_0.95fr] min-h-screen">
-      {/* ─── Left: brand + bold headline + terminal mockup ─────────── */}
       <section className="bg-paper px-16 py-16 flex flex-col justify-center">
         <div className="flex items-center gap-3 mb-12">
           <Logo size={36} />
@@ -215,7 +146,6 @@ export function Welcome() {
         </div>
       </section>
 
-      {/* ─── Right: ONE-TIME SETUP card stack + primary CTA ─────────── */}
       <section className="bg-card px-12 py-16 flex flex-col">
         <p className={`${LABEL} mb-4`}>
           ONE-TIME SETUP
@@ -230,10 +160,8 @@ export function Welcome() {
           >
             {!granted ? (
               <>
-                {/* Unlike the mic path, CGPreflight cannot distinguish
-                    never-asked from denied - so we always show BOTH the
-                    Grant button (fires the prompt if never asked) and the
-                    System Settings link (recovery after a denial). */}
+                {/* CGPreflight cannot tell never-asked from denied, so show both
+                    the Grant button and the System Settings link. */}
                 <div className="flex items-center gap-3">
                   <button
                     type="button"

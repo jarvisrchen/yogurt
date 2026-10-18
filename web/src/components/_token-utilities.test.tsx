@@ -1,25 +1,6 @@
 /**
- * HI-03 — Tailwind 4 utility-existence smoke test.
- *
- * Asserting that `el.className` contains `bg-mut` only proves the string
- * is there — NOT that Tailwind actually emitted a CSS rule for it. If a
- * developer types `bg-mute` (typo) or a future @theme refactor drops a
- * token, the component class string still contains `bg-mut`, the regex
- * assertions pass, and the element silently has no background.
- *
- * This file closes that gap by reading the *built* CSS file from
- * `dist/assets/` and asserting every token-derived utility we depend on
- * actually exists in the bundle. It runs after `pnpm build` (or
- * `pnpm test` if a build has been done previously — `dist/` is a
- * checked-in build product for verification convenience).
- *
- * If you see this test fail, the most likely cause is one of:
- *   - a token was renamed in `index.css` `@theme` but a component still
- *     refers to the old utility (e.g. `bg-mut` after `--color-mut`
- *     was renamed to `--color-muted`);
- *   - a new utility (e.g. `text-foo`) was used in a component but its
- *     `--color-foo` token was never added to `@theme`;
- *   - the dist build is stale — re-run `pnpm build`.
+ * Asserts the built CSS contains each token-derived utility. A className assertion
+ * cannot catch a typo or a dropped `@theme` token. Reads `dist/assets/`, so build first.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -28,20 +9,11 @@ import { join } from "node:path";
 const DIST_ASSETS = join(__dirname, "..", "..", "dist", "assets");
 
 /**
- * All token-derived utility classes that Phase 1 components actually use
- * (verified by `pnpm build` output). If you add a new component that
- * references a new utility, add it here too — otherwise a typo in the
- * utility name will silently no-op and downstream phases won't catch it.
- *
- * NOTE: utilities consumed only as opacity-modified variants
- * (`border-matcha/25`, `border-straw/40`, …) are emitted by Tailwind 4
- * under different class names and are NOT listed here directly. Their
- * existence is implicitly verified by the .border-line / .border-blue /
- * .border-straw entries (Tailwind only emits opacity utilities if the
- * base color token is registered).
+ * Utilities used only as opacity variants (`border-matcha/25`) are not listed;
+ * Tailwind emits them only when the base color token is registered, which the
+ * `.border-line` / `.border-blue` / `.border-straw` entries already prove.
  */
 const TOKEN_UTILITIES = [
-  // bg-*
   ".bg-paper",
   ".bg-card",
   ".bg-blue",
@@ -52,27 +24,18 @@ const TOKEN_UTILITIES = [
   ".bg-straw",
   ".bg-mut",
   ".bg-ink",
-  // text-*
   ".text-ink",
   ".text-mut",
   ".text-blue",
   ".text-matcha",
   ".text-straw",
   ".text-white",
-  // border-* (only base forms used unmodified)
   ".border-line",
   ".border-blue",
   ".border-straw",
 ];
 
-/**
- * Animation utilities derived from `--animate-*` tokens. Only the
- * animations referenced in actual JSX className strings are emitted by
- * Tailwind 4's JIT. `pop-up` and `slide-in-right` are tokenized in
- * `@theme` but currently consumed only by Phase 6 / Phase 3 (not yet
- * landed), so they intentionally are NOT asserted here — add them when
- * the respective phase wires the animation to runtime state.
- */
+/** `pop-up` and `slide-in-right` are not asserted until a component uses them (Tailwind emits only utilities that appear in JSX). */
 const ANIMATION_UTILITIES = [
   ".animate-recpulse",
   ".animate-blink",
@@ -98,9 +61,7 @@ describe("Tailwind 4 token utility existence (HI-03)", () => {
 
   for (const cls of TOKEN_UTILITIES) {
     maybeIt(`emits a CSS rule for ${cls}`, () => {
-      // Escape regex specials and match `.bg-mut{...var(--color-mut)...}`.
       const escaped = cls.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Look for ".bg-mut{" — startoftoken + `{`.
       const ruleRe = new RegExp(`${escaped}\\s*\\{`);
       expect(css).toMatch(ruleRe);
     });
@@ -123,11 +84,9 @@ describe("Tailwind 4 token utility existence (HI-03)", () => {
   });
 
   maybeIt("animate-staggered-reveal references the staggered-reveal keyframe", () => {
-    // Tailwind emits `.animate-staggered-reveal{animation:var(--animate-staggered-reveal)}`
     expect(css).toMatch(
       /\.animate-staggered-reveal\s*\{[^}]*var\(--animate-staggered-reveal\)[^}]*\}/,
     );
-    // And the @keyframes block exists.
     expect(css).toMatch(/@keyframes\s+staggered-reveal\s*\{/);
   });
 });

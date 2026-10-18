@@ -1,93 +1,41 @@
-//! Voice-activity-detection segmenter — Plan 08-02 Task 1.
+//! Turns 16 kHz mono i16 PCM into utterance-bounded `Segment` events using `webrtc-vad` in Aggressive mode, tuned for noisy meeting audio.
 //!
-//! Turns a stream of 16 kHz mono i16 PCM samples into utterance-bounded
-//! `Segment` events using `webrtc-vad` in Aggressive mode.  Designed for
-//! noisy meeting audio (the project's hero use case), not clean-room
-//! lavalier mics.
-//!
-//! ## State machine
-//!
-//! The segmenter holds a small ring of partial-frame leftover, the live
-//! buffer for the current utterance, and three counters: `speech_ms`,
-//! `silence_ms`, `cursor_ms`.  For every 30 ms / 480-sample frame:
-//!
-//! 1. Run `webrtc-vad::is_voice_segment(frame)`.
-//! 2. If voice **and** we were not in speech, transition: emit
-//!    `SegmenterEvent::SpeechStart`, set `in_speech = true`,
-//!    `speech_start_ms = cursor_ms`, reset `speech_ms / silence_ms`.
-//! 3. If voice while in speech, advance `speech_ms`.  Append the frame
-//!    to `buffer`.  Reset `silence_ms`.
-//! 4. If silence while in speech, advance `silence_ms`.  Still append
-//!    the frame so the segment carries the natural tail (helps Whisper
-//!    catch trailing phonemes).
-//! 5. When `in_speech` AND (`silence_ms ≥ SILENCE_HANG_MS`
-//!    OR `speech_ms ≥ MAX_SEGMENT_MS`) AND `speech_ms ≥ MIN_SPEECH_MS`,
-//!    emit `SegmenterEvent::Segment { pcm, start_ms, end_ms }` and
-//!    reset to non-speech state.
-//! 6. When we hit the SILENCE_HANG_MS gate but `speech_ms <
-//!    MIN_SPEECH_MS`, discard the buffer (it was a cough / click).
-//!
-//! All time is tracked in `cursor_ms`, advanced by FRAME_MS per frame
-//! we process — there is no wall-clock dependency, the segmenter is
-//! purely deterministic on its input.
-//!
-//! ## Why 30 ms frames
-//!
-//! webrtc-vad accepts 10 / 20 / 30 ms frames at 16 kHz (160/320/480 samples).
-//! 30 ms is the longest, which gives the VAD the most context per decision
-//! and minimizes per-frame overhead.  Plan 08-02 source-plan Step 3 pins
-//! this explicitly.
-
+//! Time is tracked in `cursor_ms`, advanced per 30 ms frame, so the segmenter is deterministic on its input.
+//! Segments keep the trailing silence so Whisper catches final phonemes, and runs under `MIN_SPEECH_MS` are discarded as coughs or clicks.
+//! 30 ms is the longest frame webrtc-vad accepts, which gives it the most context per decision.
 use webrtc_vad::{SampleRate, Vad, VadMode};
 
-/// Frame length in milliseconds.  webrtc-vad supports 10/20/30 ms;
-/// 30 ms gives the most context per decision.
+/// Frame length in milliseconds.
 pub const FRAME_MS: u64 = 30;
 
-/// Sample rate (Hz).  Matches `yogurt-audio` post-resample output.
+/// Sample rate (Hz), matching `yogurt-audio`'s resampled output.
 pub const SAMPLE_RATE_HZ: usize = 16_000;
 
-/// Samples per 30 ms frame at 16 kHz.  `SAMPLE_RATE_HZ * FRAME_MS / 1000`.
+/// Samples per frame.
 pub const FRAME_SAMPLES: usize = 480;
 
-/// Minimum speech run that counts as an utterance.  Runs shorter than
-/// this are filtered — coughs, clicks, single-word "uh" syllables.
+/// Minimum speech run that counts as an utterance, filtering coughs, clicks and single syllables.
 pub const MIN_SPEECH_MS: u64 = 250;
 
-/// How long the silence tail must run before we flush an utterance.
-/// Empirically tuned; mirrors Granola's ~600 ms hangover.
+/// Silence tail required before an utterance is flushed. Mirrors Granola's ~600 ms hangover.
 pub const SILENCE_HANG_MS: u64 = 600;
 
-/// Hard cap on a single segment.  If someone monologues for > 25 s
-/// without a pause, we cut anyway so Whisper sees bounded input.
+/// Hard cap on a single segment so Whisper sees bounded input.
 pub const MAX_SEGMENT_MS: u64 = 25_000;
 
-/// The same cap expressed in samples, applied to the buffer itself.
+/// The same cap in samples, applied to the buffer itself.
 ///
-/// `MAX_SEGMENT_MS` alone does not bound how much audio a segment holds,
-/// because `speech_ms` counts only *voice* frames while `buffer` collects
-/// every frame we are in speech for.  Speech with pauses shorter than
-/// `SILENCE_HANG_MS` never flushes on silence and advances `speech_ms` at
-/// well under wall-clock rate: at a 37% voice duty cycle the buffer reaches
-/// 46 s before `speech_ms` reaches 25 s.
-///
-/// That breaks the promise above.  whisper.cpp encodes in 30 s windows, so
-/// anything past 30 s costs a second encoder pass - which lands a partial
-/// decode outside the ticker's 1 s budget, and makes a final cost double
-/// what the bench says.  Cap the buffer directly so "bounded input" is
-/// actually bounded.
+/// `speech_ms` counts only voice frames while `buffer` collects every frame during speech,
+/// so speech with short pauses reaches 46 s of buffer (at a 37% duty cycle) before `speech_ms` hits 25 s.
+/// whisper.cpp encodes in 30 s windows, and anything longer costs a second encoder pass that breaks the partial-decode budget.
 pub const MAX_SEGMENT_SAMPLES: usize = SAMPLE_RATE_HZ * MAX_SEGMENT_MS as usize / 1000;
 
 /// Segmenter event surfaced to the WhisperLocal pump.
 #[derive(Debug, Clone)]
 pub enum SegmenterEvent {
-    /// Speech started at `at_ms` (cursor time).  Useful for UI
-    /// indicators ("listening...") and not strictly required by the
-    /// decoder path.
+    /// Speech started at `at_ms` (cursor time).
     SpeechStart { at_ms: u64 },
-    /// A complete utterance, ready for decode.  Owned PCM so the
-    /// receiver can move it into `spawn_blocking` without lifetime
-    /// hassle.
+    /// A complete utterance, ready for decode.
     Segment {
         pcm: Vec<i16>,
         start_ms: u64,
@@ -95,47 +43,29 @@ pub enum SegmenterEvent {
     },
 }
 
-/// VAD-driven sliding-window segmenter.
+/// VAD-driven segmenter.
 ///
-/// `webrtc_vad::Vad` wraps a raw `*mut Fvad` C-handle and is therefore
-/// `!Send` by default.  We own the handle exclusively (no aliasing,
-/// no shared state) and only ever access it through `&mut self`, so
-/// it is safe to move the `Segmenter` across threads.  The
-/// `unsafe impl Send` below makes that explicit; the async-trait
-/// future inside `WhisperLocal::start` requires `Send` to satisfy
-/// `Stt: Send + Sync`.
+/// `webrtc_vad::Vad` wraps a raw `*mut Fvad` and is `!Send`.
+/// The handle is exclusively owned and only touched through `&mut self`, and `WhisperLocal::start`'s future needs `Send`.
 pub struct Segmenter {
     vad: Vad,
-    /// Partial-frame leftover from the previous `push` call.  When
-    /// the caller hands us a chunk that doesn't divide evenly into
-    /// 480-sample frames, we stash the tail here and prepend it next
-    /// time.  Bounded at `< FRAME_SAMPLES`.
+    /// Partial-frame tail of the previous `push`, always under `FRAME_SAMPLES`.
     leftover: Vec<i16>,
-    /// Current utterance PCM (owned).  Cleared after each `Segment`
-    /// emit, or trimmed if a long silence with no speech accumulates.
+    /// Current utterance PCM.
     buffer: Vec<i16>,
     in_speech: bool,
     speech_start_ms: u64,
-    /// ms of contiguous voice frames inside the current run.
     speech_ms: u64,
-    /// ms of contiguous silence frames inside the current run
-    /// (resets to 0 on each voice frame while `in_speech`).
     silence_ms: u64,
-    /// Total ms processed across all `push` calls — wall-clock-ish
-    /// cursor used to stamp segment boundaries.
+    /// Total ms processed across all `push` calls.
     cursor_ms: u64,
 }
 
-// SAFETY: the underlying `*mut Fvad` is exclusively owned by this
-// `Segmenter` — never aliased, never shared — and is only accessed
-// through `&mut self` methods.  Moving the `Segmenter` between
-// threads is therefore sound.
+// SAFETY: the `*mut Fvad` is exclusively owned by this `Segmenter` and only accessed through `&mut self`.
 unsafe impl Send for Segmenter {}
 
 impl Segmenter {
-    /// Construct a segmenter for `sample_rate` (Hz).  webrtc-vad
-    /// requires one of 8000 / 16000 / 32000 / 48000.  Anything else
-    /// is rounded down to the nearest supported rate.
+    /// Construct a segmenter for `sample_rate` (Hz), rounded down to a rate webrtc-vad supports (8, 16, 32 or 48 kHz).
     pub fn new(sample_rate: usize) -> Self {
         let rate = match sample_rate {
             r if r >= 48_000 => SampleRate::Rate48kHz,
@@ -156,21 +86,11 @@ impl Segmenter {
         }
     }
 
-    /// PCM of the utterance currently in flight, plus the `cursor_ms` at
-    /// which it started, or `None` when we are between utterances.
+    /// PCM of the utterance in flight and the `cursor_ms` it started at, or `None` between utterances.
     ///
-    /// This is the *same* buffer the eventual `Segment` event carries, and
-    /// that is the point.  The partial-preview decoder in `whisper_local`
-    /// reads this instead of keeping a rolling window of its own.  A rolling
-    /// window makes the displayed partial *shrink* once an utterance outruns
-    /// it (AUD-1): every re-decode replaces the whole line, and past the
-    /// window each replacement is a decode of less audio than the one
-    /// before, so the transcript appears to eat itself.  Reading the live
-    /// utterance buffer makes growth structural - it only ever gains samples
-    /// until the segment is emitted, and `MAX_SEGMENT_SAMPLES` bounds it.
-    ///
-    /// The `None` between utterances is load-bearing too: it is what stops
-    /// the ticker spending a decode on a channel that is silent.
+    /// This is the same buffer the eventual `Segment` carries, so the partial-preview decoder in `whisper_local` only ever sees it grow.
+    /// A rolling window would make the displayed partial shrink once an utterance outran it.
+    /// The `None` between utterances stops the ticker decoding a silent channel.
     pub fn pending(&self) -> Option<(&[i16], u64)> {
         if !self.in_speech || self.buffer.is_empty() {
             return None;
@@ -178,16 +98,11 @@ impl Segmenter {
         Some((&self.buffer, self.speech_start_ms))
     }
 
-    /// Feed PCM samples.  Frames are sliced internally to 480 samples
-    /// (30 ms @ 16 kHz); any trailing partial frame is retained for
-    /// the next call.  The closure is invoked once per emitted event.
+    /// Feed PCM samples, sliced into 480-sample frames. A trailing partial frame is kept for the next call.
     pub fn push<F>(&mut self, pcm: &[i16], mut on_event: F)
     where
         F: FnMut(SegmenterEvent),
     {
-        // Concatenate leftover + new samples, then slice into 480-sample
-        // frames.  Avoiding the explicit `Vec::extend` here would save
-        // an allocation on the hot path, but for now correctness > μs.
         let mut combined = Vec::with_capacity(self.leftover.len() + pcm.len());
         combined.extend_from_slice(&self.leftover);
         combined.extend_from_slice(pcm);
@@ -201,7 +116,6 @@ impl Segmenter {
             self.process_frame(frame, &mut on_event);
         }
 
-        // Stash the partial tail.
         let tail_start = full_frames * FRAME_SAMPLES;
         if tail_start < combined.len() {
             self.leftover.extend_from_slice(&combined[tail_start..]);
@@ -213,13 +127,10 @@ impl Segmenter {
         F: FnMut(SegmenterEvent),
     {
         debug_assert_eq!(frame.len(), FRAME_SAMPLES);
-        // webrtc-vad returns Err(()) only if the frame length is wrong
-        // for the configured sample rate — by construction we always
-        // pass 480 samples at 16 kHz, so we treat Err as "no voice".
+        // Err means a wrong frame length, which cannot happen here, so it counts as no voice.
         let is_voice = self.vad.is_voice_segment(frame).unwrap_or(false);
 
         if is_voice && !self.in_speech {
-            // Transition into speech.
             self.in_speech = true;
             self.speech_start_ms = self.cursor_ms;
             self.speech_ms = 0;
@@ -241,16 +152,13 @@ impl Segmenter {
 
             let silence_long_enough = self.silence_ms >= SILENCE_HANG_MS;
             let speech_too_long = self.speech_ms >= MAX_SEGMENT_MS;
-            // Wall-clock cap, not just voice-time - see MAX_SEGMENT_SAMPLES.
+            // Counts wall-clock, not voice time. See MAX_SEGMENT_SAMPLES.
             let buffer_too_long = self.buffer.len() >= MAX_SEGMENT_SAMPLES;
 
             if silence_long_enough || speech_too_long || buffer_too_long {
                 if self.speech_ms >= MIN_SPEECH_MS {
-                    // Flush a real segment.
                     let pcm = std::mem::take(&mut self.buffer);
                     let start_ms = self.speech_start_ms;
-                    // cursor_ms is advanced after this block, so the
-                    // current frame's end is cursor_ms + FRAME_MS.
                     let end_ms = self.cursor_ms + FRAME_MS;
                     on_event(SegmenterEvent::Segment {
                         pcm,
@@ -258,7 +166,6 @@ impl Segmenter {
                         end_ms,
                     });
                 } else {
-                    // Discard — was just a cough / click.
                     self.buffer.clear();
                 }
                 self.in_speech = false;
@@ -266,11 +173,7 @@ impl Segmenter {
                 self.silence_ms = 0;
             }
         } else {
-            // Bound buffer growth during long silence runs — we'd
-            // never actually grow `buffer` here (we only append while
-            // in_speech), but if a caller transitions us into speech
-            // and then we sit in silence-purgatory between transitions
-            // the leftover should still be bounded.  Belt + suspenders.
+            // Defensive bound on `buffer`, which is only appended to while `in_speech`.
             if self.buffer.len() > SAMPLE_RATE_HZ * 2 {
                 self.buffer.clear();
             }

@@ -1,47 +1,17 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-/**
- * ComboBox - a text input paired with a clickable dropdown of suggestions.
- *
- * Why not `<input list="…">` + `<datalist>`: native HTML autocomplete is a
- * *typing* aid, not a *click-to-open* affordance. On Safari/macOS the
- * dropdown arrow often doesn't render at all, and even when it does,
- * clicking it shows nothing. This combo-box replaces that pattern with a
- * guaranteed-to-work button + popup that lists every option, with a
- * text-filter input for narrowing down.
- *
- * Free text is always allowed - the popup is just for picking a known
- * suggestion, never for constraining what the user can type. The value
- * surfaces up through `onChange` on every keystroke (so the parent's
- * draft state keeps working); `onCommit` fires separately, once, when
- * the user actually commits to a value - picking an option, pressing
- * Enter with nothing highlighted, or blurring away from the component -
- * so a parent doing a PATCH-on-commit flow can tell a keystroke from a
- * decision.
- *
- * Filtering: typing narrows the popup to options whose id contains the
- * typed text (case-insensitive). Opening the popup any other way (focus,
- * trigger click, ArrowDown) shows the full list again - the user hasn't
- * typed a filter yet.
- *
- * Accessibility: the input keeps a normal `aria-label`, the trigger
- * button has an `aria-label` that names the provider, the popup uses
- * `role="listbox"` with `role="option"` children, and Escape / click
- * outside both close the popup.
- */
+// Not `<input list>` + `<datalist>`: on Safari/macOS the dropdown arrow often does
+// not render and clicking it shows nothing.
+// `onChange` fires per keystroke. `onCommit` fires once on pick, Enter with
+// nothing highlighted, or blur. Free text is always allowed.
 
 interface Props {
   value: string;
   onChange: (next: string) => void;
-  /** Fires once when the user commits to a value: picking an option,
-   *  pressing Enter with nothing highlighted, or blurring outside the
-   *  component. Does not fire per keystroke. */
   onCommit?: (value: string) => void;
   options: string[];
   placeholder?: string;
   ariaLabel: string;
-  /** Accessible name for the dropdown trigger - distinct from the input's
-   *  own label so a screen reader user can tell them apart. */
   triggerLabel: string;
   disabled?: boolean;
   id?: string;
@@ -65,18 +35,15 @@ export function ComboBox({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState(false);
-  // -1 means nothing highlighted - Enter in that state commits the typed
-  // text instead of picking an option.
+  // -1: nothing highlighted, so Enter commits the typed text.
   const [highlight, setHighlight] = useState(-1);
-  // null means "show everything" (popup just opened without typing); a
-  // string is the in-progress filter from typing.
+  // null shows every option (opened without typing).
   const [query, setQuery] = useState<string | null>(null);
 
   const filtered = query
     ? options.filter((o) => o.toLowerCase().includes(query.toLowerCase()))
     : options;
 
-  // Close on outside click.
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
@@ -230,8 +197,7 @@ export function ComboBox({
               aria-selected={value === option}
               onMouseEnter={() => setHighlight(idx)}
               onMouseDown={(e) => {
-                // mousedown (not click) so the input doesn't lose focus
-                // before the selection lands.
+                // mousedown, not click, so the input keeps focus until the pick lands.
                 e.preventDefault();
                 pick(option);
               }}

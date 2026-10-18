@@ -1,24 +1,5 @@
-//! End-to-end integration test for `POST /api/meetings/{id}/enhance`.
-//!
-//! Spins up a real `yogurt-server` bound to 127.0.0.1:0 with a tempdir for
-//! both the SQLite database and the per-meeting markdown notes directory,
-//! creates a meeting, hits the enhance endpoint with hand-crafted notes +
-//! transcript, and asserts:
-//!
-//! 1. Response `enriched_md` contains the user's raw bullet preserved
-//!    verbatim (`- pricing`).
-//! 2. Response `enriched_md` contains an `aiGrey`-tagged AI bullet with
-//!    the transcript timestamp baked in (`data-ai-grey data-ts="120"`)
-//!    and the `↳ 02:00` deep-link suffix formatted MM:SS.
-//! 3. The per-meeting markdown file exists at the configured notes dir
-//!    and its body matches the response.
-//! 4. The SQLite `meetings.enriched_doc_json` column is non-null and
-//!    parses as the serialized `MergedDoc` JSON.
-//!
-//! `MockLlm` is used by virtue of the test environment not having
-//! `YOGURT_LLM_BASE_URL` / `YOGURT_LLM_API_KEY` / `YOGURT_LLM_MODEL` set —
-//! the mock deterministically emits one AI bullet per transcript segment
-//! using the first 8 words, so the assertions above are stable.
+//! End-to-end `POST /api/meetings/{id}/enhance` against a real server with tempdir SQLite and notes dir.
+//! `MockLlm` is the LLM because the `YOGURT_LLM_*` vars are unset. It emits one AI bullet per transcript segment from the first 8 words.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,7 +24,6 @@ async fn spawn_server() -> (
     let token_path = tmp.path().join("session-token");
     let notes_dir = tmp.path().join("notes");
 
-    // Pre-create the session token so the test client can authenticate.
     let token = yogurt_server::session::load_or_create(&token_path)
         .expect("seed session token")
         .as_str()
@@ -62,13 +42,11 @@ async fn spawn_server() -> (
         db_path: Some(db_path.clone()),
         session_token_path: Some(token_path),
         notes_dir: Some(notes_dir.clone()),
-        // Phase 5 (SET-12): tempdir-isolate the new yogurt-db.
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
     };
     let handle = tokio::spawn(async move {
         let _ = run_with_config(cfg).await;
     });
-    // Poll until server is reachable.
     for _ in 0..100 {
         if reqwest::get(format!("http://{addr}/api/health"))
             .await
@@ -84,12 +62,8 @@ async fn spawn_server() -> (
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_enhances_a_meeting_end_to_end() {
-    // Belt-and-suspenders: MockLlm must be the LLM the handler picks. If
-    // any of these vars leak in from the test runner's environment the
-    // assertions would race against a real provider.
-    //
-    // SAFETY: this test owns the env, and `from_env()` only checks for
-    // *presence* — remove_var is the precise primitive.
+    // Clear LLM env vars so MockLlm is the resolved client.
+    // SAFETY: this test owns the env, and `from_env()` only checks for presence.
     unsafe {
         std::env::remove_var("YOGURT_LLM_BASE_URL");
         std::env::remove_var("YOGURT_LLM_API_KEY");
@@ -99,7 +73,6 @@ async fn it_enhances_a_meeting_end_to_end() {
     let (addr, token, _handle, tmp, db_path) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // 1) Create a fresh meeting via POST /api/meetings.
     let created: serde_json::Value = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -115,9 +88,6 @@ async fn it_enhances_a_meeting_end_to_end() {
         .expect("meeting id")
         .to_string();
 
-    // 2) Drive the enhance handler. MockLlm will preserve `- pricing` and
-    // append one AI bullet (first 8 words of the transcript text) tagged
-    // with `data-ai-grey data-ts="120"` + `↳ 02:00`.
     let body = serde_json::json!({
         "notes_md": "- pricing\n",
         "transcript_json": "[{\"ts_ms\":120000,\"channel\":\"mic\",\"text\":\"We debated the pricing model in detail today\"}]",
@@ -149,9 +119,7 @@ async fn it_enhances_a_meeting_end_to_end() {
         "response names the model that produced enriched_md"
     );
 
-    // 3) Wire-format assertions on the response body. The AI bullet is
-    // wrapped in a `data-ai-grey` span; ammonia normalizes the boolean
-    // attribute to `data-ai-grey=""` on the way out.
+    // ammonia normalizes the boolean attribute to `data-ai-grey=""` on the way out.
     assert!(
         enriched_md.contains("- pricing"),
         "user notes preserved verbatim. got: {enriched_md}",
@@ -160,10 +128,8 @@ async fn it_enhances_a_meeting_end_to_end() {
         enriched_md.contains(r#"data-ai-grey="" data-ts="120""#),
         "AI bullet tagged with transcript timestamp. got: {enriched_md}",
     );
-    // Regression (2026-08-13): the mock (like a real model) emits its own
-    // `<span data-ai-grey>` scaffolding; render must STRIP it, not escape +
-    // double-wrap it. If the corruption returns, the escaped literal markup
-    // (`&lt;span data-ai-grey`) reappears in the body.
+    // The mock, like a real model, emits its own `<span data-ai-grey>` scaffolding.
+    // Render must strip it, not escape and double-wrap it. Escaped `&lt;span data-ai-grey` in the body means the corruption is back.
     assert!(
         !enriched_md.contains("&lt;span"),
         "model-emitted span markup must be stripped, not escaped. got: {enriched_md}",
@@ -173,7 +139,6 @@ async fn it_enhances_a_meeting_end_to_end() {
         "deep-link suffix formatted MM:SS. got: {enriched_md}",
     );
 
-    // 4) Per-meeting markdown file exists and contains the enriched body.
     let file_body = std::fs::read_to_string(&notes_file)
         .unwrap_or_else(|e| panic!("read notes file {notes_file}: {e}"));
     assert!(
@@ -189,8 +154,6 @@ async fn it_enhances_a_meeting_end_to_end() {
         "markdown file front-matter carries the title. got: {file_body}",
     );
 
-    // 5) SQLite assertion — enriched_doc_json was persisted and parses as
-    // a JSON object (the serialized MergedDoc has a top-level `blocks` key).
     let conn = rusqlite::Connection::open(&db_path).expect("reopen sqlite");
     let (enriched_md_db, enriched_doc_json_db, title_db): (String, String, String) = conn
         .query_row(
@@ -203,7 +166,7 @@ async fn it_enhances_a_meeting_end_to_end() {
         enriched_md_db, enriched_md,
         "SQLite enriched_md matches response",
     );
-    // LLM provenance lives on the Library row (yogurt-db), not Phase 0 storage.
+    // LLM provenance lives on the Library row (yogurt-db).
     let app_conn = rusqlite::Connection::open(tmp.path().join("yogurt-app.sqlite"))
         .expect("reopen app sqlite");
     let llm_model_db: Option<String> = app_conn
@@ -286,16 +249,10 @@ async fn reenhance_keeps_raw_notes_separate_from_ai_output() {
     assert_eq!(notes_md, "- My original note");
 }
 
-/// Regression: the server-side transcript-persistence task (meetings.rs) is
-/// the source of truth for what was said. When the request body's
-/// `transcript_json` is empty (`""`/`"[]"`) — as it always is once the
-/// browser stops sending the transcript itself — `enhance` must fall back
-/// to the stored row's `transcript_json` rather than silently producing a
-/// notes-only doc.
+/// Regression: with an empty request `transcript_json`, `enhance` must fall back to the stored row's transcript rather than produce a notes-only doc.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
-    // SAFETY: mirrors the other enhance tests — clear LLM env so MockLlm
-    // (deterministic) is the resolved path.
+    // SAFETY: clear LLM env so MockLlm is the resolved path.
     unsafe {
         std::env::remove_var("YOGURT_LLM_BASE_URL");
         std::env::remove_var("YOGURT_LLM_API_KEY");
@@ -305,7 +262,6 @@ async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
     let (addr, token, _handle, _tmp, _db_path) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // 1) Create a meeting.
     let created: serde_json::Value = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -317,9 +273,7 @@ async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
         .unwrap();
     let meeting_id = created["id"].as_str().unwrap().to_string();
 
-    // 2) Seed a REAL transcript directly on the row — simulating the
-    // server-side persistence task in meetings.rs having already
-    // accumulated finals while the meeting was recording.
+    // Seed the transcript on the row, as the server-side persistence task would.
     let stored_transcript = serde_json::json!([
         {
             "ts_ms": 90000,
@@ -338,7 +292,6 @@ async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
         .error_for_status()
         .unwrap();
 
-    // 3) POST enhance with an EMPTY transcript_json in the request body.
     let resp = client
         .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
         .bearer_auth(&token)
@@ -354,10 +307,7 @@ async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
     let body: serde_json::Value = resp.json().await.unwrap();
     let enriched_md = body["enriched_md"].as_str().expect("enriched_md");
 
-    // MockLlm emits one `data-ai-grey` bullet per transcript segment,
-    // tagged with `ts_ms / 1000` and summarized from the segment text —
-    // this can only appear if enhance actually read the STORED transcript
-    // (the request body's transcript was empty).
+    // One AI bullet per stored segment can only appear if enhance read the stored transcript.
     assert!(
         enriched_md.contains(r#"data-ai-grey="" data-ts="90""#),
         "enhance must fall back to the stored transcript row. got: {enriched_md}"
@@ -368,15 +318,10 @@ async fn enhance_falls_back_to_stored_transcript_when_request_body_is_empty() {
     );
 }
 
-/// A meeting with no typed notes and a trivial transcript (well under
-/// `TOO_SHORT_TRANSCRIPT_WORDS`) must skip the LLM/merge/persist pipeline
-/// entirely and report `too_short: true` instead of enhancing a near-empty
-/// document.
+/// A trivial transcript with no typed notes must skip the LLM/merge/persist pipeline and report `too_short: true`.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_skips_llm_for_a_too_short_meeting() {
-    // Belt-and-suspenders like the other tests: the too-short path returns
-    // before the LLM is ever resolved, but clear the env anyway so a stray
-    // leaked var can't mask a regression that removes the early return.
+    // The too-short path returns before the LLM is resolved. Clear env anyway so a leaked var cannot mask a removed early return.
     unsafe {
         std::env::remove_var("YOGURT_LLM_BASE_URL");
         std::env::remove_var("YOGURT_LLM_API_KEY");
@@ -397,8 +342,6 @@ async fn enhance_skips_llm_for_a_too_short_meeting() {
         .unwrap();
     let meeting_id = created["id"].as_str().unwrap().to_string();
 
-    // No notes, and a transcript well under the 20-word threshold - an
-    // accidental tap that caught a stray "hello?" before the user hung up.
     let resp = client
         .post(format!("http://{addr}/api/meetings/{meeting_id}/enhance"))
         .bearer_auth(&token)
@@ -415,9 +358,7 @@ async fn enhance_skips_llm_for_a_too_short_meeting() {
     assert_eq!(body["too_short"].as_bool(), Some(true), "got: {body}");
     assert_eq!(body["enriched_md"].as_str(), Some(""), "got: {body}");
 
-    // The LLM/merge/persist pipeline never ran AND the stub row that
-    // POST /api/meetings created is gone - an accidental start/stop must
-    // not leave an "Untitled meeting" behind in the library.
+    // The pipeline never ran and the stub row from POST /api/meetings is gone: an accidental start/stop must not leave an "Untitled meeting".
     let app_db_path = tmp.path().join("yogurt-app.sqlite");
     let conn = rusqlite::Connection::open(&app_db_path).expect("reopen yogurt-db");
     let rows: i64 = conn
@@ -430,10 +371,7 @@ async fn enhance_skips_llm_for_a_too_short_meeting() {
     assert_eq!(rows, 0, "too-short meeting row must be deleted");
 }
 
-/// Regression guard for the threshold's notes-gate: real user notes must
-/// still enhance normally even when the transcript itself is trivial - the
-/// too-short skip is about having NOTHING to work with, not a short
-/// transcript alone.
+/// Real user notes must still enhance when the transcript is trivial. The too-short skip applies only when there is nothing to work with.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_still_runs_when_notes_are_present_even_with_a_trivial_transcript() {
     unsafe {
@@ -485,10 +423,7 @@ async fn it_rejects_enhance_without_session_token() {
     let (addr, _token, _handle, _tmp, _db_path) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // POST /api/meetings/<any-uuid>/enhance with NO bearer token → 403
-    // (matches the auth contract of the other meeting routes — WR-06).
-    // We don't need to create a meeting first — the auth middleware
-    // rejects before the handler runs.
+    // The auth middleware rejects before the handler, so no meeting is needed.
     let placeholder_id = "00000000-0000-0000-0000-000000000000";
     let resp = client
         .post(format!(
@@ -504,11 +439,7 @@ async fn it_rejects_enhance_without_session_token() {
     assert_eq!(resp.status(), 403, "missing token must be 403");
 }
 
-/// Plan 04-04: persistence acceptance gate (NOTES-13 step 10).
-///
-/// After enhance writes the row, `GET /api/meetings/{id}` must return the
-/// persisted columns so the post-meeting route can hydrate on direct-link
-/// or refresh. 404 on unknown ids; 403 without token.
+/// After enhance, `GET /api/meetings/{id}` returns the persisted columns for direct-link hydration. 404 on unknown id, 403 without token.
 #[tokio::test(flavor = "multi_thread")]
 async fn it_gets_a_meeting_after_enhance() {
     unsafe {
@@ -520,7 +451,6 @@ async fn it_gets_a_meeting_after_enhance() {
     let (addr, token, _handle, _tmp, _db_path) = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // 1) Create a meeting + run enhance so the row exists.
     let created: serde_json::Value = client
         .post(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
@@ -546,7 +476,6 @@ async fn it_gets_a_meeting_after_enhance() {
         .await
         .unwrap();
 
-    // 2) GET the meeting — must return all persisted columns.
     let get_resp = client
         .get(format!("http://{addr}/api/meetings/{meeting_id}"))
         .bearer_auth(&token)
@@ -571,10 +500,6 @@ async fn it_gets_a_meeting_after_enhance() {
         enriched.contains("data-ai-grey"),
         "GET enriched_md contains AI spans. got: {enriched}",
     );
-    // Phase 7 (Plan 07-01): the new Library GET returns the
-    // `yogurt_db::Meeting` wire shape. Field names changed from
-    // `started_at_unix_ms` / `ended_at_unix_ms` to `started_at` / `ended_at`
-    // (still i64 unix millis on the wire).
     assert_eq!(
         body["started_at"].as_i64().unwrap(),
         1_700_000_000_000,
@@ -586,7 +511,6 @@ async fn it_gets_a_meeting_after_enhance() {
         "GET preserves ended_at",
     );
 
-    // 3) Unknown meeting id → 404.
     let unknown_id = "ffffffff-ffff-ffff-ffff-ffffffffffff";
     let resp_404 = client
         .get(format!("http://{addr}/api/meetings/{unknown_id}"))
@@ -596,7 +520,6 @@ async fn it_gets_a_meeting_after_enhance() {
         .unwrap();
     assert_eq!(resp_404.status(), 404, "unknown meeting must be 404");
 
-    // 4) No token → 403 (WR-06).
     let resp_403 = client
         .get(format!("http://{addr}/api/meetings/{meeting_id}"))
         .send()
@@ -605,14 +528,10 @@ async fn it_gets_a_meeting_after_enhance() {
     assert_eq!(resp_403.status(), 403, "missing token must be 403");
 }
 
-/// BL-2 regression: malicious notes + transcript MUST be neutralized before
-/// the enriched_md leaves the server. Any of `<script>`, `<img onerror=...>`,
-/// `<iframe>`, or `javascript:` URLs in notes/transcript would otherwise
-/// reach the browser DOM via markdown-it's `html: true` parser.
+/// Malicious notes and transcript must be neutralized before `enriched_md` leaves the server, since markdown-it renders with `html: true`.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
-    // SAFETY: mirrors `it_enhances_a_meeting_end_to_end` — clear LLM env so
-    // MockLlm is the deterministic path.
+    // SAFETY: clear LLM env so MockLlm is the resolved path.
     unsafe {
         std::env::remove_var("YOGURT_LLM_BASE_URL");
         std::env::remove_var("YOGURT_LLM_API_KEY");
@@ -667,14 +586,8 @@ async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
     let json: serde_json::Value = resp.json().await.unwrap();
     let enriched = json["enriched_md"].as_str().unwrap();
 
-    // The sanitizer + html-escape layer must neutralize every dangerous
-    // construct. Escaped forms like `&lt;script&gt;` are SAFE — they render
-    // as text, not as a tag. We therefore assert that NO raw `<script>`,
-    // `<img`, `<iframe` survives — only escaped (`&lt;script&gt;`) or
-    // stripped variants. Live attributes (` onerror=`, ` srcdoc=`) only
-    // matter if attached to a live tag; since the tags are all stripped or
-    // escaped, attribute substrings appearing inside escaped tag bodies
-    // (like `&lt;iframe srcdoc="..."&gt;`) are inert text.
+    // Escaped forms like `&lt;script&gt;` are safe text. Assert no raw `<script>`, `<img`, `<iframe` survives.
+    // Attribute substrings inside escaped tag bodies are inert.
     assert!(
         !enriched.contains("<script"),
         "<script tags must be stripped from enriched_md. got: {enriched}"
@@ -687,9 +600,7 @@ async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
         !enriched.contains("<iframe"),
         "<iframe tags must be stripped from enriched_md. got: {enriched}"
     );
-    // Allowlisted live tags are <span> with data-* attrs only. Confirm no
-    // live <a>, <link>, <object>, <embed>, <form>, <input>, <style> made it
-    // through.
+    // Only <span> with data-* attrs is allowlisted: no live <a>, <link>, <object>, <embed>, <form>, <input>, <style>.
     for forbidden in [
         "<a ", "<a>", "<link", "<object", "<embed", "<form", "<input", "<style",
     ] {
@@ -699,22 +610,14 @@ async fn enhance_strips_xss_payloads_from_notes_and_transcript() {
         );
     }
 
-    // The wire-format spans MUST survive (otherwise the editor can't render
-    // the augmented notes).
+    // The wire-format spans must survive so the editor can render the notes.
     assert!(
         enriched.contains("data-ai-grey"),
         "data-ai-grey spans must survive sanitization. got: {enriched}"
     );
 }
 
-/// Build an `AppState` rooted in a tempdir, wired with `MockLlm` via
-/// `llm_override` (mirrors `meeting_ws.rs::build_test_state`). Gives the
-/// test a handle on the meeting registry (to poll `events_tx.receiver_count`
-/// before POSTing) and on `prompts` (to independently reconstruct the exact
-/// user prompt the handler renders, so the mock's raw output can be
-/// predicted without duplicating the mock's own bullet-formatting logic).
-/// Scripted LLM: answers every request with the same text, so a test can
-/// pin the model's reply exactly where `MockLlm` derives it from the prompt.
+/// Answers every request with the same text.
 #[derive(Clone)]
 struct FixedLlm(String);
 
@@ -751,7 +654,6 @@ impl LlmClient for FixedLlm {
     }
 }
 
-/// Serve `state` on its bound port; the task is dropped with the caller.
 async fn serve(state: AppState) -> tokio::task::JoinHandle<()> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], state.bind_port));
     let app = yogurt_server::__test_router(state);
@@ -768,11 +670,8 @@ async fn ephemeral_port() -> u16 {
     port
 }
 
-/// LLM-8 regression (the "End meeting just showed my notes" report): a
-/// model that answers with nothing must surface as an error, not as the
-/// user's own notes persisted and displayed as the enhanced document.
-/// `merge_notes(notes, "")` is exactly the notes, so nothing downstream
-/// would ever notice - only the handler can.
+/// A model that answers with nothing must surface as an error, not the user's notes persisted as the enhanced document.
+/// `merge_notes(notes, "")` is exactly the notes, so only the handler can notice.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_fails_loudly_when_the_model_returns_nothing() {
     let port = ephemeral_port().await;
@@ -799,7 +698,6 @@ async fn enhance_fails_loudly_when_the_model_returns_nothing() {
     let body = resp.text().await.unwrap();
     assert!(body.contains("empty reply"), "got: {body}");
 
-    // Nothing persisted: the notes-only echo never reaches the row or disk.
     let conn = rusqlite::Connection::open(tmp.path().join("yogurt-test.db")).unwrap();
     let rows: i64 = conn
         .query_row(
@@ -820,11 +718,8 @@ async fn enhance_fails_loudly_when_the_model_returns_nothing() {
     );
 }
 
-/// LLM-8 regression (meeting 01a05a46): the model folded the one-word
-/// note `247k` into `Base salary: 247k`. The merge used to miss it (the
-/// weave ignored one-word lines), paint the whole bullet grey, and then
-/// append `247k` again as an orphan paragraph. Now the user's word is ink
-/// inside the bullet and appears exactly once.
+/// Regression: the model folded the one-word note `247k` into `Base salary: 247k`.
+/// The merge must render it as ink inside the bullet exactly once, not paint the bullet grey and append an orphan `247k`.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_weaves_a_one_word_note_into_the_ai_bullet_without_duplicating_it() {
     let port = ephemeral_port().await;
@@ -907,20 +802,8 @@ fn build_test_state(
     (state, token_str, tmp)
 }
 
-/// Task 1 of "enhance streaming" — the enhance handler now streams the
-/// LLM output over the meeting WS instead of emitting one placeholder
-/// `streaming` frame after the whole completion lands.
-///
-/// Asserts, against the deterministic `MockLlm`:
-/// - the WS sees `sending`, then at least one `streaming` frame, then `done`;
-/// - every `streaming` frame carries a non-empty `text` snapshot whose
-///   length equals `chars`;
-/// - the last `streaming` frame's `text` equals the raw MockLlm completion
-///   for this exact request (computed independently below via the same
-///   `Prompts::render_enhance` + `MockLlm::complete` calls the handler
-///   itself makes, so this doesn't just restate the handler's own output);
-/// - the response body / persistence assertions from the non-streaming test
-///   above still hold (`enriched_md`, `too_short`, `llm_model`).
+/// The enhance handler streams LLM output over the meeting WS: `sending`, at least one `streaming` frame whose non-empty `text` has length `chars`, then `done`.
+/// The last `streaming` text must equal the raw MockLlm completion, computed independently via `Prompts::render_enhance` + `MockLlm::complete`.
 #[tokio::test(flavor = "multi_thread")]
 async fn enhance_streams_progress_over_ws() {
     let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -940,10 +823,7 @@ async fn enhance_streams_progress_over_ws() {
     let notes_md = "- pricing\n";
     let transcript_json = r#"[{"ts_ms":120000,"channel":"mic","text":"We debated the pricing model in detail today"}]"#;
 
-    // Independently reconstruct the exact raw MockLlm output the handler
-    // will produce for this request, by driving the same two building
-    // blocks (`render_enhance` + `MockLlm::complete`) the handler itself
-    // uses — without re-implementing the mock's bullet-formatting rules.
+    // Reconstruct the raw MockLlm output with the same building blocks the handler uses, without re-implementing the mock's formatting.
     let user_prompt = prompts
         .render_enhance(&EnhanceCtx {
             notes: notes_md,
@@ -959,14 +839,10 @@ async fn enhance_streams_progress_over_ws() {
         .await
         .expect("mock complete")
         .content;
-    // LLM-9: the streamed preview is the document after the `template:`
-    // marker line, exactly as the handler strips it.
+    // The streamed preview is the document after the `template:` marker line.
     let expected_raw = yogurt_prompts::split_template_line(&mock_raw).1.to_string();
 
-    // Connect the WS BEFORE posting — the handler runs the whole enhance
-    // pipeline (including the `done` frame) inside the POST's response
-    // future, so a subscriber that attaches after the POST returns would
-    // have missed every frame.
+    // Connect the WS before posting: the handler broadcasts every frame inside the POST's response future, so a late subscriber misses them all.
     let ws_url = format!(
         "ws://127.0.0.1:{}/ws/meetings/{}?token={}",
         addr.port(),
@@ -983,7 +859,6 @@ async fn enhance_streams_progress_over_ws() {
         .expect("ws connect");
     let (mut ws_write, mut ws_read) = ws_stream.split();
 
-    // Deterministic subscribe signal instead of a fixed sleep.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while meeting.events_tx.receiver_count() == 0 {
         assert!(
@@ -1019,9 +894,7 @@ async fn enhance_streams_progress_over_ws() {
         "got: {body}"
     );
 
-    // Collect every `enhance_progress` frame — by the time POST returned,
-    // the handler has already broadcast all of them (sending, streaming
-    // x N, done); this just drains what's sitting in the channel.
+    // By the time POST returned every frame is broadcast; drain the channel.
     let mut phases: Vec<String> = Vec::new();
     let mut streaming_frames: Vec<(usize, String)> = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);

@@ -1,11 +1,5 @@
-//! LLM-9: note formats ("templates") on `POST /api/meetings/{id}/enhance`
-//! and the `GET /api/templates` list behind the post-meeting picker.
-//!
-//! Runs against the deterministic `MockLlm`, which names `standup` on its
-//! first line when the transcript mentions one and `general` otherwise -
-//! enough to pin the whole path: the marker is parsed and stripped, the
-//! id lands on the meeting row and in the response, a forced format beats
-//! the model's pick, and an unknown id is a 400 before any LLM work.
+//! Note formats (templates) on `POST /api/meetings/{id}/enhance` and `GET /api/templates`.
+//! `MockLlm` names `standup` on its first line when the transcript mentions one and `general` otherwise.
 
 use std::time::Duration;
 
@@ -168,7 +162,6 @@ async fn auto_detect_stamps_the_models_pick_and_strips_the_marker() {
         Some("standup")
     );
 
-    // "auto" spelled out is the same as leaving it off.
     let resp = enhance(&client, addr, &token, &id, Some("auto")).await;
     assert_eq!(resp.status(), 200);
     assert_eq!(

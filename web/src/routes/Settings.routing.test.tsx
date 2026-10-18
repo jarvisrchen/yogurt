@@ -1,10 +1,3 @@
-/**
- * Settings routing tests.
- *
- * Tabs must be URL-driven so a browser refresh keeps the user on the
- * same settings surface (audio, general, transcription, model). Clicking
- * a sidebar item pushes the URL rather than mutating local state.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -120,7 +113,6 @@ describe("Settings routing", () => {
 
   it("clicking a sidebar tab changes the rendered pane", async () => {
     renderAt("/settings/model");
-    // Start on Model.
     expect(
       await screen.findByRole("heading", { name: /^model$/i }),
     ).toBeInTheDocument();
@@ -128,7 +120,6 @@ describe("Settings routing", () => {
     const audioTab = await screen.findByRole("button", { name: /^audio$/i });
     fireEvent.click(audioTab);
 
-    // After the navigate, the Audio heading mounts and Model unmounts.
     expect(
       await screen.findByRole("heading", { name: /^audio$/i }),
     ).toBeInTheDocument();
@@ -137,8 +128,6 @@ describe("Settings routing", () => {
 
   it("/settings redirects to /settings/model", () => {
     renderAt("/settings");
-    // The Navigate element redirects in-render; asserting the panel
-    // content is the same as /settings/model.
     return screen
       .findByRole("heading", { name: /^model$/i })
       .then(() => undefined);

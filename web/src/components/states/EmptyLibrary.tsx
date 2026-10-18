@@ -1,21 +1,4 @@
-/**
- * Phase 7 (Plan 07-04) — EmptyLibrary state (STATE-01).
- *
- * Rendered by `<Library />` when the user has Screen-Recording granted AND
- * an active provider AND zero meetings stored. PRD §5.10 / §16.5 lock the
- * cadence: the swirl logo gently drifts up and down on a 3.5-second cycle
- * using the `.float-3500` utility — the class name encodes the duration;
- * do NOT parameterize it. The duration string `float 3.5s ease-in-out
- * infinite` appears exactly once in `web/src/index.css` (CSS contract
- * grep enforced by the plan acceptance).
- *
- * Behavior: clicking the blueberry CTA (or pressing ⌘N — handled at the
- * Library level by `useKeyboardShortcut`) creates a fresh "Untitled
- * meeting" via `useCreateMeeting` and navigates to `/meeting/:id`. The
- * route shape was kept at `/meeting/:id` (Phase-3 convention) instead of
- * the plan-suggested `/m/:id` to minimize regression surface. (Auto-fix
- * Rule 3 — Plan 07-01 already established this convention.)
- */
+/** The `.float-3500` class name encodes its 3.5s cycle. Do not parameterize it. */
 
 import { useNavigate } from "react-router";
 import { useCreateMeeting } from "../../lib/api/meetings";
@@ -31,7 +14,7 @@ export function EmptyLibrary() {
       const m = await create.mutateAsync(undefined);
       nav(`/meeting/${m.id}`);
     } catch (e) {
-      // Surface in console; richer error UX is a v1.1 concern.
+      // Logged only; there is no richer error UX.
       console.error("create meeting failed", e);
     }
   };

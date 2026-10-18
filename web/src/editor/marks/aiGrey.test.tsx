@@ -1,9 +1,5 @@
-// `aiGrey` mark + `transcriptLink` node — jsdom render tests.
-//
-// These pin the wire-format ↔ TipTap parse/render surface that Plan 04-03's
-// HTTP handler depends on. Promote-on-edit is exercised in Plan 04-04's
-// manual smoke (jsdom doesn't reproduce ProseMirror input rules identically
-// to a real browser, so unit-testing it here would over-fit on jsdom quirks).
+// `aiGrey` mark + `transcriptLink` node jsdom render tests.
+// Promote-on-edit is not unit tested: jsdom does not reproduce ProseMirror input rules like a real browser.
 
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";

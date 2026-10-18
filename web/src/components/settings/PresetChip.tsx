@@ -2,22 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Preset } from "../../lib/api/settings";
 import { settingsApi } from "../../lib/api/settings";
 
-/**
- * Preset chip — Phase 5 (Plan 05-03), SET-06.
- *
- * Dashed-border pill. Clicking instantiates a new
- * inactive provider via `POST /api/settings/providers` with the preset's
- * `name + base_url + default_model`. Activation is a separate explicit
- * action (UI-SPEC §Interaction 6 — no auto-promote).
- *
- * The list itself comes from `GET /api/settings` and is owned by the
- * Rust-side `PRESETS` const (`crates/yogurt-db/src/providers.rs`) — do not
- * enumerate it here, it drifts.
- *
- * `onCreated` surfaces the new provider's id back to the page so the
- * freshly-cloned card can auto-open its API key input — the user came
- * here to paste a key, not to click `Add key` again.
- */
+// The preset list is owned by the Rust `PRESETS` const (crates/yogurt-db/src/providers.rs).
+// Do not enumerate it here, it drifts.
 
 export function PresetChip({
   preset,
@@ -34,10 +20,7 @@ export function PresetChip({
         base_url: preset.base_url,
         model: preset.default_model,
         adapter: preset.adapter,
-        // A `cli` row starts unverified - `cli_model` stays empty until a
-        // successful Test proves the CLI actually connects (ProviderRow /
-        // ProviderCard seed the preset's default only then). Sending it
-        // here would let the MODEL picker appear before that proof exists.
+        // A `cli` row leaves `cli_model` empty until a Test passes, so the MODEL picker stays hidden.
       }),
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["settings"] });

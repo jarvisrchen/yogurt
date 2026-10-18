@@ -1,9 +1,6 @@
-//! Integration tests for the `/api/settings*` REST surface — Phase 5 Plan 05-03.
+//! Integration tests for the `/api/settings*` REST surface.
 //!
-//! The third test (`api_responses_never_include_the_raw_api_key`) is the
-//! load-bearing security regression for the entire phase. **Never weaken
-//! it.** Any change that lets a raw key escape the server in an API
-//! response will trip the substring assertion below.
+//! `api_responses_never_include_the_raw_api_key` is the security regression for key handling. Never weaken it: any change that lets a raw key escape in an API response must trip its substring assertion.
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -13,10 +10,7 @@ use tokio::net::TcpListener;
 use yogurt_server::state::AppState;
 use yogurt_server::{session, storage, Mode};
 
-/// Matches only when no `authorization` header is present at all. Used to
-/// assert the keyless `/models` probe (local runtimes need no key)
-/// reaches upstream with no auth header - wiremock has no built-in
-/// "header absent" matcher.
+/// Matches only when no `authorization` header is present (wiremock has no built-in absent-header matcher).
 struct NoAuthHeader;
 
 impl wiremock::Match for NoAuthHeader {
@@ -25,23 +19,14 @@ impl wiremock::Match for NoAuthHeader {
     }
 }
 
-/// Spin up a fresh in-memory `AppState` and start an axum server on an
-/// ephemeral kernel-assigned port. Returns the state handle (mostly
-/// dropped), the session token, and the `http://127.0.0.1:{port}` base
-/// URL to hit.
-///
-/// The listener is bound *before* the serve task is spawned, so incoming
-/// connections queue in the accept backlog — no readiness sleep needed.
+/// Spin up a fresh in-memory `AppState` and axum server on an ephemeral port. Returns the state, session token, and base URL.
+/// The listener is bound before the serve task spawns, so connections queue in the accept backlog and no readiness sleep is needed.
 async fn boot() -> (AppState, String, String) {
     let tmp = tempfile::tempdir().expect("tempdir");
-    // Keep the tempdir alive for the duration of the spawned server by
-    // leaking it intentionally — this is a short-lived integration test
-    // and the OS will reclaim on process exit.
+    // Leak the tempdir so it lives as long as the spawned server. The OS reclaims it on exit.
     let path = tmp.keep();
     let storage = Arc::new(storage::Storage::init_at(&path.join("db.sqlite")).expect("storage"));
     let session = Arc::new(session::load_or_create(&path.join("session-token")).expect("session"));
-    // The `/api/settings*` routes require the session token (hardened
-    // 2026-08-13). Read it out so each request below can present it.
     let token = session.as_str().to_string();
     let notes_dir: PathBuf = path.join("notes");
 
@@ -102,21 +87,14 @@ async fn it_creates_a_provider_and_round_trips_via_get() {
     let arr = listed.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["id"], id);
-    // No key has been set yet — api_key_masked must be JSON null, NEVER
-    // an empty string (an empty string would imply "key set but empty",
-    // which would round-trip a key-not-present state as a different shape
-    // to the frontend).
+    // No key set: `api_key_masked` must be JSON null, never an empty string, which would imply "key set but empty".
     assert_eq!(arr[0]["api_key_masked"], Value::Null);
 }
 
 #[tokio::test]
 async fn api_responses_never_include_the_raw_api_key() {
-    // ─── Load-bearing security regression. NEVER WEAKEN. ───────────────
-    // This test is the canonical proof that the raw API key never escapes
-    // the server in any API response — only the canonical mask
-    // (`••••XXXX`) is exposed. Any future refactor that adds an `api_key`
-    // field to `ProviderView` (or otherwise echoes the raw secret) will
-    // fail the `!s.contains("sk-supersecret-XYZA")` assertion below.
+    // Security regression, never weaken: the raw API key must never escape in any API response, only the mask (`••••XXXX`).
+    // An `api_key` field on `ProviderView` would fail the `!s.contains(...)` assertion below.
     let (_state, token, base) = boot().await;
     let client = reqwest::Client::new();
     let created: Value = client
@@ -153,9 +131,7 @@ async fn api_responses_never_include_the_raw_api_key() {
     assert!(!s.contains("sk-supersecret-XYZA"), "raw key leaked in: {s}");
     assert!(s.contains("••••XYZA"), "masked key should be present: {s}");
 
-    // The Deepgram STT key travels a different path to a different field
-    // (`deepgram_key_masked` on `GET /api/settings`, no `providers` row),
-    // so it needs its own proof. Same rule: mask out, raw never.
+    // The Deepgram key travels a different path (`deepgram_key_masked` on `GET /api/settings`, no `providers` row), so it needs its own proof.
     let resp = client
         .post(format!("{base}/api/settings/stt/key"))
         .bearer_auth(&token)
@@ -187,10 +163,8 @@ async fn api_responses_never_include_the_raw_api_key() {
 
 #[tokio::test]
 async fn unauthenticated_requests_are_rejected() {
-    // Hardening regression (2026-08-13): `/api/settings*` writes were once
-    // reachable with no token — an unauthenticated cross-origin POST could
-    // repoint the active LLM provider at an attacker `base_url`. Lock it:
-    // a tokenless GET and a tokenless provider-create must both 403.
+    // Regression: `/api/settings*` writes must require the session token, or an unauthenticated cross-origin POST could repoint the active LLM provider at an attacker `base_url`.
+    // A tokenless GET and a tokenless provider-create must both 403.
     let (_state, _token, base) = boot().await;
     let client = reqwest::Client::new();
 
@@ -215,28 +189,14 @@ async fn unauthenticated_requests_are_rejected() {
     );
 }
 
-// ─── STT local-model validation (server-side lie guard) ─────────────────────
-//
-// Settings previously let `stt_provider = "local"` persist against a model
-// that was never downloaded — the UI then showed "local/medium.en" with
-// nothing in `~/.yogurt/models`. Recording "worked" only because an
-// already-running cloud session ignores mid-recording settings changes
-// (settings apply at the *next* start). `patch_settings` now rejects any
-// PATCH whose EFFECTIVE settings (current row + patch overlaid) would
-// leave `stt_provider == "local"` pointed at an undownloaded model.
-//
-// `"ghost.en"` mirrors `meetings.rs::rejects_local_when_model_missing` —
-// a name that is not in `yogurt_stt::models::REGISTRY` at all, so the
-// check is hermetic: it can never accidentally pass because some engineer's
-// machine happens to have a real model already downloaded.
+// STT local-model validation: `patch_settings` must reject any PATCH whose effective settings (current row + patch) leave `stt_provider == "local"` on an undownloaded model.
+// `"ghost.en"` is not in `yogurt_stt::models::REGISTRY`, so the check stays hermetic on machines with real models downloaded.
 
 #[tokio::test]
 async fn patch_to_local_with_undownloaded_model_is_rejected_and_settings_unchanged() {
     let (_state, token, base) = boot().await;
     let client = reqwest::Client::new();
 
-    // Both fields in one PATCH: provider flips to local AND the model is
-    // bogus/undownloaded at the same time.
     let res = client
         .patch(format!("{base}/api/settings"))
         .bearer_auth(&token)
@@ -250,8 +210,7 @@ async fn patch_to_local_with_undownloaded_model_is_rejected_and_settings_unchang
     assert!(msg.contains("ghost.en"), "got: {msg}");
     assert!(msg.contains("not downloaded"), "got: {msg}");
 
-    // Rejected PATCH must not have written anything — GET still shows the
-    // V005-seeded defaults.
+    // A rejected PATCH must not write anything.
     let after: Value = client
         .get(format!("{base}/api/settings"))
         .bearer_auth(&token)
@@ -267,12 +226,8 @@ async fn patch_to_local_with_undownloaded_model_is_rejected_and_settings_unchang
 
 #[tokio::test]
 async fn patch_provider_alone_to_local_is_rejected_when_stored_model_is_undownloaded() {
-    // Provider flip alone: the PATCH doesn't mention `stt_model` at all, so
-    // the effective model comes from the CURRENT row. Seed it to a name
-    // that's guaranteed not to be on disk (rather than relying on the
-    // V005 default `"small.en"`, which a dev machine that's actually used
-    // local STT before may well have downloaded already — that ambient
-    // state would make this test flaky).
+    // Provider flip alone: the effective model comes from the current row.
+    // Seed a name guaranteed not on disk rather than rely on the `small.en` default, which a dev machine may have downloaded.
     let (state, token, base) = boot().await;
     yogurt_db::settings::save_general_patch(
         &state.db,
@@ -296,11 +251,8 @@ async fn patch_provider_alone_to_local_is_rejected_when_stored_model_is_undownlo
 
 #[tokio::test]
 async fn patch_model_alone_is_rejected_when_provider_is_already_local() {
-    // Model flip alone while local is already active: seed the row
-    // directly via the db layer (bypassing the HTTP validation this test
-    // exercises) so the PATCH under test carries only `stt_model`. The
-    // effective provider ("local") must come from the stored row, not the
-    // patch body.
+    // Model flip alone while local is active: seed the row via the db layer to bypass the validation under test.
+    // The effective provider must come from the stored row.
     let (state, token, base) = boot().await;
     yogurt_db::settings::save_general_patch(
         &state.db,
@@ -331,7 +283,6 @@ async fn patch_model_alone_is_rejected_when_provider_is_already_local() {
         .json()
         .await
         .unwrap();
-    // Unchanged from the seed — the rejected PATCH did not overwrite it.
     assert_eq!(after["general"]["stt_model"], "tiny.en");
 }
 
@@ -351,9 +302,6 @@ async fn patch_to_cloud_is_always_ok_regardless_of_model_state() {
     assert_eq!(status, 200);
 }
 
-// ─── POST /api/settings/providers/{id}/test ──────────────────────────────────
-
-/// Create a provider pointed at `base_url` and return its id.
 async fn make_provider(base: &str, token: &str, provider_base_url: &str) -> String {
     let v: Value = reqwest::Client::new()
         .post(format!("{base}/api/settings/providers"))
@@ -417,8 +365,7 @@ async fn test_provider_reports_ok_for_a_working_draft_key() {
     assert_eq!(v["ok"], true, "expected a passing test, got {v}");
     assert_eq!(v["model"], "gpt-4o-mini");
 
-    // The draft key must NOT have been persisted as a side effect of
-    // testing it — testing is not saving.
+    // Testing a draft key must not persist it.
     let settings: Value = reqwest::Client::new()
         .get(format!("{base}/api/settings"))
         .bearer_auth(&token)
@@ -440,9 +387,7 @@ async fn test_provider_reports_ok_for_a_working_draft_key() {
     );
 }
 
-/// SECURITY: providers routinely quote the rejected key back inside their
-/// error body. That text must never reach the client verbatim — it would
-/// smuggle a raw key into an API response.
+/// SECURITY: providers quote the rejected key in error bodies. That text must never reach the client verbatim.
 #[tokio::test]
 async fn test_provider_reports_failure_without_echoing_the_key() {
     let upstream = wiremock::MockServer::start().await;
@@ -477,7 +422,6 @@ async fn test_provider_says_so_when_no_key_is_stored() {
     let (_state, token, base) = boot().await;
     let id = make_provider(&base, &token, "https://example.invalid/v1").await;
 
-    // No draft key and nothing in the key store.
     let (status, v) = post_test(&base, &token, &id, json!({})).await;
     assert_eq!(status, 200);
     assert_eq!(v["ok"], false);
@@ -500,13 +444,7 @@ async fn test_provider_404s_for_an_unknown_id() {
     assert_eq!(status, 404);
 }
 
-/// REGRESSION: the MODEL `Refresh` button on the Settings page must
-/// work with a draft API key (the user hasn't saved the key yet, but
-/// they want to see what models the provider offers so they can pick
-/// one before clicking `Save key`). The whole point: when the saved
-/// `model` is the only thing wrong with the provider (e.g. Google's
-/// frequent deprecations), the user needs to discover what's available
-/// before they can choose a replacement.
+/// Regression: the model `Refresh` button must work with a draft API key, so the user can see what a provider offers before saving the key.
 #[tokio::test]
 async fn list_models_uses_draft_key_when_no_stored_key() {
     let upstream = wiremock::MockServer::start().await;
@@ -549,7 +487,7 @@ async fn list_models_uses_draft_key_when_no_stored_key() {
         ]
     );
 
-    // Side-effect-free: probing with a draft must not store the key.
+    // Probing with a draft must not store the key.
     let settings: Value = reqwest::Client::new()
         .get(format!("{base}/api/settings"))
         .bearer_auth(&token)
@@ -571,11 +509,8 @@ async fn list_models_uses_draft_key_when_no_stored_key() {
     );
 }
 
-/// No key at all - neither draft nor stored - must NOT be treated as an
-/// error: local runtimes (Ollama, LM Studio) need no key at all, so the
-/// probe proceeds keyless. The request must reach the upstream with no
-/// `authorization` header, and a provider that's happy to answer without
-/// one (as a local runtime would) returns its model list normally.
+/// No key, draft or stored, is not an error: local runtimes (Ollama, LM Studio) need none, so the probe proceeds keyless.
+/// It must reach upstream with no `authorization` header.
 #[tokio::test]
 async fn list_models_without_any_key_probes_with_no_auth_header() {
     let upstream = wiremock::MockServer::start().await;
@@ -605,15 +540,8 @@ async fn list_models_without_any_key_probes_with_no_auth_header() {
     assert_eq!(models, vec!["llama3.2".to_string()]);
 }
 
-// ─── STT key test ────────────────────────────────────────────────────────────
-//
-// `POST /api/settings/stt/test` probes the real `api.deepgram.com`, so
-// unlike `test_provider` (which points at a `wiremock` server via the
-// provider's own `base_url`) there is no way to redirect the 2xx/401 paths
-// to a local mock without adding a mocking dependency this file doesn't
-// already use, or making the probe URL configurable (out of scope - see
-// the task contract). This test covers what's fully local: the
-// no-key-stored path and the route wiring.
+// `POST /api/settings/stt/test` probes the real `api.deepgram.com`, with no local redirect for the 2xx/401 paths.
+// This covers the no-key-stored path and the route wiring.
 #[tokio::test]
 async fn test_stt_key_says_so_when_no_key_is_stored() {
     let (_state, token, base) = boot().await;
@@ -633,10 +561,7 @@ async fn test_stt_key_says_so_when_no_key_is_stored() {
     );
 }
 
-/// SECURITY: an upstream 401 must surface as our 502 (the provider is at
-/// fault, not us), with a JSON `{"error": ...}` body that never echoes the
-/// draft key back - even in the error text a misconfigured provider might
-/// quote it into.
+/// SECURITY: an upstream 401 must surface as our 502 with a JSON `{"error": ...}` body that never echoes the draft key, even if the provider quotes it.
 #[tokio::test]
 async fn list_models_upstream_401_surfaces_as_502_without_the_key() {
     let upstream = wiremock::MockServer::start().await;
@@ -667,8 +592,6 @@ async fn list_models_upstream_401_surfaces_as_502_without_the_key() {
     );
 }
 
-// ── LLM-4: explicit CLI provider selection ──────────────────────────────
-
 #[tokio::test]
 async fn creates_a_cli_provider_and_round_trips_its_adapter() {
     let (_state, token, base) = boot().await;
@@ -690,8 +613,7 @@ async fn creates_a_cli_provider_and_round_trips_its_adapter() {
         .unwrap();
     assert_eq!(created["adapter"], "cli");
     assert_eq!(created["model"], "claude");
-    // A `cli` provider never has a key - the row must round-trip with no
-    // masked value even though nothing was ever posted to `/key`.
+    // A `cli` provider never has a key: the row must round-trip with no masked value.
     assert_eq!(created["api_key_masked"], Value::Null);
 
     let listed: Value = client
@@ -706,10 +628,7 @@ async fn creates_a_cli_provider_and_round_trips_its_adapter() {
     assert_eq!(listed[0]["adapter"], "cli");
 }
 
-/// The built-in CLI presets round-trip through `GET /api/settings` and
-/// `GET /api/settings/presets` with `adapter: "cli"` - the exact bug that
-/// briefly existed when `get_settings` and `list_presets` each built their
-/// own `PresetView` mapping and only one of them got the field added.
+/// The built-in CLI presets round-trip through `GET /api/settings` and `GET /api/settings/presets` with `adapter: "cli"` in both separately built `PresetView` mappings.
 #[tokio::test]
 async fn cli_presets_are_advertised_with_their_adapter() {
     let (_state, token, base) = boot().await;
@@ -779,11 +698,8 @@ async fn rejects_an_unrecognized_adapter_value() {
     assert_eq!(res.status(), 422);
 }
 
-/// `claude` is the one CLI with no model-list mode - its four aliases are
-/// the whole catalog and ship as static preset suggestions. Refresh on one
-/// is 422 ("nothing to refresh"), never 502, so the UI can tell that apart
-/// from `cursor-agent --list-models` / `opencode models` genuinely failing
-/// (not logged in, binary missing) and keep showing the static list.
+/// `claude` has no model-list mode, so its four aliases ship as static preset suggestions.
+/// Refresh returns 422, never 502, so the UI can tell it from a genuine list-models failure.
 #[tokio::test]
 async fn claude_cli_provider_has_no_model_catalog_to_refresh() {
     let (_state, token, base) = boot().await;
@@ -815,11 +731,8 @@ async fn claude_cli_provider_has_no_model_catalog_to_refresh() {
     assert_eq!(res.status(), 422);
 }
 
-/// `POST .../test` on a `cli` provider never asks for a key - it either
-/// finds the named program on `$PATH` and reports a real completion, or
-/// reports `ok: false` naming the program. Both are asserted so the test
-/// is meaningful whether or not `claude` happens to be installed on the
-/// machine running it (mine has it; CI does not).
+/// `POST .../test` on a `cli` provider never asks for a key. It either finds the program on `$PATH` and reports a real completion, or reports `ok: false` naming the program.
+/// Both are asserted so the test holds whether or not `claude` is installed.
 #[tokio::test]
 async fn tests_a_cli_provider_without_ever_asking_for_a_key() {
     let (_state, token, base) = boot().await;
@@ -861,11 +774,7 @@ async fn tests_a_cli_provider_without_ever_asking_for_a_key() {
     }
 }
 
-/// `POST .../test` on a `cli` provider with a `cli_model` override echoes
-/// it back in the verdict's `model` field, so the Settings UI's "answered
-/// as …" text names the specific model that was actually exercised - not
-/// just the CLI program - which is the whole point of letting the user
-/// pin one in the first place.
+/// `POST .../test` on a `cli` provider with a `cli_model` override echoes it in the verdict's `model` field, so the UI names the model actually exercised.
 #[tokio::test]
 async fn tests_a_cli_provider_echoing_the_model_override_it_was_tested_with() {
     let (_state, token, base) = boot().await;

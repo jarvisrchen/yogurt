@@ -1,18 +1,4 @@
-// ReEnhanceButton — single-button affordance per PRD §5.5 / NOTES-12.
-//
-// No caret of its own: the note format lives in the sibling
-// <TemplatePicker> (LLM-9), and this button just carries its value.
-//
-// On click:
-//   1. setBusy(true) + onEnhancing(true).
-//   2. POST /api/meetings/{id}/enhance with raw notes + transcript (+ the
-//      chosen template, when one is forced).
-//   3. On success: onEnhanced(enriched_md, notes_file). The host swaps the
-//      editor content via the YogurtEditor `enrichedMarkdown` prop.
-//   4. setBusy(false) + onEnhancing(false), even on error.
-//
-// Styling: blueberry button matching the existing Meeting.tsx Create /
-// Start recording buttons — same shadow, same radius, same hover.
+// No caret of its own: the note format lives in the sibling <TemplatePicker>, and this button just carries its value.
 
 import { useState } from "react";
 import {
@@ -25,25 +11,18 @@ const BLUE = "var(--color-blue)";
 
 export interface ReEnhanceButtonProps {
   meetingId: string;
-  /** Raw user notes, kept separate from the generated summary. */
   notesMd: string;
   /** JSON-serialized transcript segments. Empty array if no transcript. */
   transcriptJson: string;
-  /** Optional title for the on-disk markdown filename slug. */
   title?: string;
   /** Optional meeting start time (unix ms) — drives the filename date. */
   startedAtUnixMs?: number;
-  /** Optional meeting end time (unix ms). */
   endedAtUnixMs?: number;
   /** Note format id to force; undefined lets the model auto-detect. */
   template?: string;
-  /** Session token from ensureSessionToken(). */
-  token: string;
-  /** Called with the enriched markdown when the POST succeeds. */
   onEnhanced: (response: EnhanceResponse) => void;
   /** Called with `true` on click, `false` when the POST resolves/throws. */
   onEnhancing?: (busy: boolean) => void;
-  /** Called with an Error message string when the POST fails. */
   onError?: (message: string) => void;
 }
 
@@ -56,7 +35,6 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
     startedAtUnixMs,
     endedAtUnixMs,
     template,
-    token,
     onEnhanced,
     onEnhancing,
     onError,
@@ -77,7 +55,7 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
         ended_at_unix_ms: endedAtUnixMs,
         template,
       };
-      const response = await postEnhance(meetingId, body, token);
+      const response = await postEnhance(meetingId, body);
       onEnhanced(response);
     } catch (e) {
       const message =

@@ -37,7 +37,7 @@ fn it_loads_typed_general_struct() {
     assert_eq!(g.port, 7878);
     assert!(g.open_browser_on_start);
     assert_eq!(g.audio_input_device, "");
-    // V003 seeds first_run_completed = "false" — onboarding (§5.10) gates on this.
+    // V003 seeds first_run_completed = "false"; onboarding gates on this.
     assert!(!g.first_run_completed);
 }
 
@@ -53,7 +53,6 @@ fn it_flips_first_run_completed_via_patch() {
     )
     .unwrap();
     assert!(patched.first_run_completed);
-    // And it survives a reload.
     assert!(settings::load_general(&db).unwrap().first_run_completed);
 }
 
@@ -75,8 +74,7 @@ fn it_saves_a_general_patch_and_returns_updated() {
     assert_eq!(patched.audio_input_device, "MacBook Pro Microphone");
 }
 
-/// Phase 8 (Plan 08-03): V005 seeds defaults; load_general returns them
-/// on a fresh DB.
+/// V005 seeds defaults; `load_general` returns them on a fresh DB.
 #[test]
 fn it_loads_v005_seeded_stt_defaults() {
     let db = Db::open_in_memory().unwrap();
@@ -85,7 +83,6 @@ fn it_loads_v005_seeded_stt_defaults() {
     assert_eq!(g.stt_model, "small.en");
 }
 
-/// Phase 8 (Plan 08-03): patch updates both keys.
 #[test]
 fn it_patches_stt_provider_and_model() {
     let db = Db::open_in_memory().unwrap();
@@ -100,7 +97,6 @@ fn it_patches_stt_provider_and_model() {
     .unwrap();
     assert_eq!(patched.stt_provider, "local");
     assert_eq!(patched.stt_model, "medium.en");
-    // Survives reload.
     let g = settings::load_general(&db).unwrap();
     assert_eq!(g.stt_provider, "local");
     assert_eq!(g.stt_model, "medium.en");
@@ -121,7 +117,6 @@ fn it_loads_meeting_detection_focus_default_and_patches_it() {
     )
     .unwrap();
     assert!(!patched.meeting_detection_focus);
-    // Survives reload.
     assert!(!settings::load_general(&db).unwrap().meeting_detection_focus);
 }
 

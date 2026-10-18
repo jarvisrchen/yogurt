@@ -1,10 +1,3 @@
-/**
- * AddProviderForm test suite (fast task: wire the dead "+ Add" button).
- *
- * Covers required-field validation (submit disabled until name + base_url
- * + model are all non-empty) and that a valid submit posts via
- * `settingsApi.createProvider` and calls `onDone`.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

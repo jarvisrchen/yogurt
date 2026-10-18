@@ -1,9 +1,3 @@
-/**
- * Typed fetch wrappers + TanStack-Query hooks for the Granola-style
- * meeting labels REST surface (`/api/labels*` from
- * `crates/yogurt-server/src/api/labels.rs`).
- */
-
 import {
   useMutation,
   useQuery,
@@ -17,10 +11,8 @@ export type { Label, LabelColor, PaletteColor };
 
 export interface LabelWithCount extends Label {
   meeting_count: number;
-  /** Custom sidebar order (UI-12), set via `useReorderLabels`. */
   position: number;
-  /** Unix ms — bumped on rename/recolor and on apply/remove from a
-   *  meeting. Backs the "Last updated" sidebar sort. */
+  /** Unix ms, bumped on rename/recolor and on apply/remove. Backs the "Last updated" sort. */
   updated_at: number;
 }
 
@@ -39,7 +31,6 @@ export const labelsApi = {
       body: JSON.stringify(patch),
     }),
   delete: (id: string) => json<void>(`/api/labels/${id}`, { method: "DELETE" }),
-  /** `PUT /api/labels/order` — set the Custom sidebar order. */
   reorder: (ids: string[]) =>
     json<void>("/api/labels/order", {
       method: "PUT",
@@ -47,7 +38,6 @@ export const labelsApi = {
     }),
 };
 
-/** `GET /api/labels`. */
 export function useLabels(): UseQueryResult<LabelWithCount[], Error> {
   return useQuery({
     queryKey: labelsKey,
@@ -56,7 +46,7 @@ export function useLabels(): UseQueryResult<LabelWithCount[], Error> {
   });
 }
 
-/** `POST /api/labels` — find-or-create. */
+/** Find-or-create. */
 export function useCreateLabel(): UseMutationResult<
   Label,
   Error,
@@ -72,7 +62,6 @@ export function useCreateLabel(): UseMutationResult<
   });
 }
 
-/** `PATCH /api/labels/:id` — rename / recolor. */
 export function useUpdateLabel(): UseMutationResult<
   Label,
   Error,
@@ -89,7 +78,6 @@ export function useUpdateLabel(): UseMutationResult<
   });
 }
 
-/** `DELETE /api/labels/:id`. */
 export function useDeleteLabel(): UseMutationResult<void, Error, string> {
   const qc = useQueryClient();
   return useMutation({
@@ -102,10 +90,8 @@ export function useDeleteLabel(): UseMutationResult<void, Error, string> {
 }
 
 /**
- * `PUT /api/labels/order` — Custom drag-to-reorder. Applies the new
- * order to the cached list immediately (`onMutate`) so the drag doesn't
- * visibly snap back while the request is in flight; `onSettled` always
- * refetches to correct for a failed request or a concurrent change.
+ * Optimistic: applies the new order immediately so the drag does not snap back.
+ * `onSettled` refetches to correct a failed request or a concurrent change.
  */
 export function useReorderLabels(): UseMutationResult<void, Error, string[]> {
   const qc = useQueryClient();

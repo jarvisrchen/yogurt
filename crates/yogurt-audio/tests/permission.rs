@@ -1,7 +1,5 @@
-//! Manual smoke test for Screen Recording permission detection.
-//!
-//! This test is `#[ignore]` by default — CI cannot grant TCC permissions,
-//! so we run it locally with `cargo test -p yogurt-audio --test permission --ignored`.
+//! Manual smoke test: CI cannot grant TCC permissions, so run it locally with
+//! `cargo test -p yogurt-audio --test permission --ignored`.
 
 #![cfg(target_os = "macos")]
 
@@ -38,9 +36,7 @@ fn manual_smoke_permission_detection() {
     println!("CURRENT STATUS: {:?}", status);
     println!();
 
-    // No assertion on the value — both Granted and Denied are valid outcomes
-    // depending on what the human just configured. We assert only that we
-    // returned *some* valid macOS-side variant.
+    // Granted and Denied are both valid, depending on what the human configured.
     assert!(matches!(
         status,
         PermissionStatus::Granted | PermissionStatus::Denied

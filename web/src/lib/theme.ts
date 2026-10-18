@@ -1,6 +1,4 @@
 /**
- * UI-6: dark mode.
- *
  * The preference lives in localStorage rather than server settings so the
  * inline script in `index.html` can stamp `data-theme` before first paint
  * (no light flash on reload). `index.css` overrides the `@theme` color
@@ -45,7 +43,6 @@ export function setThemePref(pref: ThemePref): void {
   applyTheme(pref);
 }
 
-/** Apply once and re-apply when the OS scheme flips while on "system". */
 export function initTheme(): void {
   applyTheme();
   if (typeof matchMedia !== "function") return;

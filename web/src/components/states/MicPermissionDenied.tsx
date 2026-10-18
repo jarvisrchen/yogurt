@@ -1,32 +1,9 @@
 /**
- * Quick task 260628-g71 — MicPermissionDenied state.
- *
- * Parallel to `<PermissionDenied />` (which is the Screen-Recording
- * denial card). Rendered by `<Library />` when `useMicrophoneStatus`
- * reports `denied` AND screen-recording is already granted (screen
- * recording denial takes precedence — it's the more fundamental capture
- * path).
- *
- * The "Open System Settings" anchor's `href` is a load-bearing string:
- *
- *   `x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`
- *
- * Do NOT alter the casing, query-string key, or scheme — macOS only
- * opens the Microphone pane when the URI matches exactly. The plan's
- * acceptance criteria grep this file verbatim.
- *
- * Honesty pass (fast task) — same two lies as `<PermissionDenied />` had:
- * "Toggle Yogurt on" names an app that doesn't appear in the System
- * Settings list (it's whichever process asked — Terminal/iTerm under
- * `just dev`, or the yogurt binary itself when launched directly), and
- * the "Restart Yogurt" button just reloaded the browser tab, which
- * restarts nothing. Unlike screen recording, a denied microphone
- * permission CAN be recovered without a process restart on modern
- * macOS — flipping the toggle takes effect on the next attempt to open
- * the input device — but the long tail of macOS releases still wants a
- * relaunch, so the honest instructions cover both. Replaced the button
- * with "Check again", which re-fetches the permission query instead of
- * reloading the page.
+ * The "Open System Settings" href must match exactly (casing, query key, scheme) or macOS will not open the Microphone pane:
+ * `x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`
+ * The System Settings list shows whichever process asked (Terminal/iTerm under `just dev`, the yogurt binary when launched directly), not "Yogurt".
+ * A denied microphone usually recovers on the next attempt to open the input device, but older macOS releases want a relaunch, so the instructions cover both.
+ * "Check again" re-fetches the permission query. Reloading the tab restarts nothing.
  */
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";

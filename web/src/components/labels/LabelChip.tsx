@@ -1,13 +1,4 @@
-/**
- * `LabelChip` — small colored pill rendering one label's name.
- *
- * Colors come from `LABEL_COLORS`: the three original design-system tones
- * (blue/matcha/straw) reuse the existing `--color-*soft` tokens; the three
- * new palette entries (lilac/honey/slate) don't have design tokens yet, so
- * they're inline hex per the plan spec. A custom `#rrggbb` label color (see
- * `isHexColor`) has no design token at all, so its soft background is
- * synthesized as the hex plus low alpha.
- */
+/** Custom `#rrggbb` colors have no design token, so the soft background is the hex plus low alpha. The lilac/honey/slate palette entries are inline hex for the same reason. */
 
 import type { LabelColor, PaletteColor } from "../../lib/api/labels";
 
@@ -26,12 +17,10 @@ const FALLBACK = { bg: "var(--color-line)", fg: "var(--color-mut)" };
 
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 
-/** True for a custom `#rrggbb` label color, false for a palette key. */
 export function isHexColor(color: string): boolean {
   return HEX_COLOR_RE.test(color);
 }
 
-/** Resolves any `LabelColor` (palette key or custom hex) to a fg/bg pair. */
 export function labelTone(color: LabelColor): { bg: string; fg: string } {
   if (isHexColor(color)) return { bg: `${color}22`, fg: color };
   return LABEL_COLORS[color as PaletteColor] ?? FALLBACK;

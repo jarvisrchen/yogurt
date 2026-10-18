@@ -1,26 +1,6 @@
 /**
- * Meeting.tsx — hero in-meeting flow coverage.
- *
- * Covers three of the biggest behavior changes:
- *   1. "+ New meeting" auto-starts recording on mount (task NOTES-01) —
- *      no more create-then-hunt-for-Start.
- *   2. End meeting stops recording BEFORE enhancing, sends the always-
- *      empty `transcript_json: "[]"` (server prefers its own stored
- *      transcript), omits started/ended timestamps, and navigates to the
- *      post-meeting view (task NOTES-07).
- *   3. The mic picker and STT engine chip stay visible once a meeting is
- *      stopped (but not ended) — only End meeting should clear the header
- *      down to just the buttons. The picker's own read/write wiring
- *      (hot-swap vs `settings.audio_input_device` patch) is covered by
- *      `MicDevicePicker.test.tsx`; here we only assert Meeting.tsx keeps it
- *      mounted and passes it the right `recording` flag.
- *
- * TranscriptDock / AskExperience are stubbed out — they own their own WS
- * connections and are covered by their own test files; pulling them in
- * here would just add unrelated network/WS noise to a route-logic test.
- * MicDevicePicker is stubbed with a prop-recording marker (not `() => null`)
- * so this file can assert on its mount state and `recording` prop without
- * pulling in its real `audioApi`/`settingsApi` network calls.
+ * TranscriptDock and AskExperience own WS connections covered by their own tests, so they are stubbed.
+ * MicDevicePicker is stubbed with a prop-recording marker to assert its mount state and `recording` prop.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -38,10 +18,7 @@ vi.mock("../components/MicDevicePicker", () => ({
     <div data-testid="mic-picker" data-recording={String(recording)} />
   ),
 }));
-// AUD-6: stubbed the same way as MicDevicePicker above — this file only
-// needs to assert Meeting.tsx keeps it mounted and passes it the right
-// `recording` flag, not its own `audioApi.setMicMuted` wiring (covered by
-// MicMuteToggle.test.tsx).
+// Stubbed like MicDevicePicker above; MicMuteToggle.test.tsx covers its wiring.
 vi.mock("../components/MicMuteToggle", () => ({
   MicMuteToggle: ({ meetingId, recording }: { meetingId: string; recording: boolean }) => (
     <div
@@ -70,6 +47,11 @@ vi.mock("../components/MicEchoToggle", () => ({
 }));
 vi.mock("../lib/session", () => ({
   ensureSessionToken: () => Promise.resolve("test-token"),
+  bearerFetch: (input: string, init?: RequestInit) =>
+    fetch(input, {
+      ...init,
+      headers: { ...(init?.headers as object), Authorization: "Bearer test-token" },
+    }),
 }));
 vi.mock("../lib/ws", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/ws")>();
@@ -81,8 +63,7 @@ vi.mock("../lib/ws", async (importOriginal) => {
 
 const state = vi.hoisted(() => ({
   meetingRow: undefined as unknown,
-  // Backs the mocked `useSettings` below — the live header reads the
-  // active provider's model for the "will enhance with" LLM pill.
+  // Backs the mocked `useSettings`: the live header shows the active provider's model.
   providers: [{ id: "p1", is_active: true, model: "gpt-5-mini" }] as Array<{
     id: string;
     is_active: boolean;
@@ -95,8 +76,7 @@ const state = vi.hoisted(() => ({
     stt?: "cloud" | "local";
     auto_stop_at?: number | null;
   } | null,
-  // AUD-13: mirrors `general.audio_echo_feature` - off by default, the
-  // same as a fresh install.
+  // Mirrors `general.audio_echo_feature`, off by default.
   audioEchoFeature: false,
 }));
 
@@ -135,10 +115,7 @@ vi.mock("../lib/api/settings", () => ({
 import { Meeting } from "./Meeting";
 import { activeRecordingKey, detectedMeetingKey } from "../lib/api/meetings";
 
-// Task 2 (End meeting navigates immediately with `state: { autoEnhance }`
-// instead of awaiting a POST first): a plain probe div can't assert on the
-// state passed to `navigate`, so stamp it into a data attribute via
-// `useLocation` for the "End meeting flow" tests below to read.
+// A probe div can't assert on the state passed to `navigate`, so stamp it into a data attribute.
 function PostViewProbe() {
   const location = useLocation();
   return (
@@ -175,13 +152,8 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
     vi.clearAllMocks();
   });
 
-  // The real "+ New meeting" flow (Sidebar.tsx / Library.tsx's ⌘N handler)
-  // already POSTs /api/meetings itself via `useCreateMeeting`, then
-  // navigates straight to `/meeting/:id` with a REAL id and
-  // `state: { autoStart: true }` — it never hits the `/meeting/new`
-  // bootstrap route (that route has no `:id` segment at all, so
-  // `routeId` can never literally equal `"new"` when reached through the
-  // real UI). This is the path that actually matters in production.
+  // The real flow POSTs via `useCreateMeeting` and navigates to `/meeting/:id` with a
+  // real id and `autoStart`. It never reaches the `/meeting/new` bootstrap route.
   it("POSTs /start automatically on mount when navigated here with autoStart state", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -207,8 +179,6 @@ describe("Meeting — auto-start on '+ New meeting'", () => {
       ).toBe(true);
     });
 
-    // Recording started — the toolbar swaps "Start recording" for "Stop
-    // recording" without the user clicking anything.
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: /stop recording/i }),
@@ -306,7 +276,6 @@ describe("Meeting — End meeting flow", () => {
 
     renderAt("/meeting/meeting-3");
 
-    // Recording must be active for "stop before enhance" to be meaningful.
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: /^start recording$/i }),
@@ -329,13 +298,11 @@ describe("Meeting — End meeting flow", () => {
       expect(screen.getByTestId("post-view")).toBeInTheDocument();
     });
 
-    // stop happened (so the server flushed its transcript) before navigating.
+    // Stop ran (so the server flushed its transcript) before navigating.
     expect(
       fetchMock.mock.calls.some(([u]) => String(u) === "/api/meetings/meeting-3/stop"),
     ).toBe(true);
-    // Task 2: Meeting.tsx no longer calls /enhance itself — it hands the raw
-    // notes to MeetingPost via router state so the post view can fire the
-    // POST and stream the preview immediately.
+    // Notes go to MeetingPost via router state, which fires the POST itself.
     expect(
       fetchMock.mock.calls.some(([u]) => String(u).includes("/enhance")),
     ).toBe(false);
@@ -350,16 +317,9 @@ describe("Meeting — End meeting flow", () => {
     vi.unstubAllGlobals();
   });
 
-  // Regression: the first "End meeting" click used to be a dead click while
-  // still recording. `MeetingPost` bounces back to this route whenever the
-  // cached active-recording value still names this meeting, and that query
-  // is on a 5 s `refetchInterval` — so navigating to /post immediately
-  // after /stop landed on a stale cache and got redirected right back. The
-  // user had to click End a second time (or Stop first) to get through.
-  // Stopping must therefore clear the cache itself rather than wait for the
-  // poll. Asserting the cache write is what makes this fail if the line
-  // goes away; the mocked `useActiveRecording` reads module state, not the
-  // client, so the bounce itself can't be exercised from this file.
+  // MeetingPost bounces back here while the cached active-recording value still names
+  // this meeting (5 s refetchInterval), so Stop must clear the cache itself. The mocked
+  // `useActiveRecording` reads module state, so only the cache write is asserted.
   it("clears the cached active recording on stop, so End meeting doesn't bounce off a stale poll", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -405,12 +365,8 @@ describe("Meeting — End meeting flow", () => {
   });
 
   it("sends hydrated prior notes_md via autoEnhance state, not an empty string, when End is clicked before any new keystroke", async () => {
-    // Regression coverage for task NOTES-02's hydration bug: YogurtEditor's
-    // `enrichedMarkdown` content swap intentionally does NOT fire onChange,
-    // so without explicitly syncing `notesMd` state on hydration, a user
-    // who reopens an in-progress meeting (prior notes already on the
-    // server) and immediately hits End meeting would silently send "" and
-    // clobber their real notes.
+    // The `enrichedMarkdown` swap doesn't fire onChange, so hydration must sync `notesMd`
+    // or End meeting would send "" and clobber real notes.
     state.meetingRow = {
       ...(state.meetingRow as Record<string, unknown>),
       notes_md: "existing notes from before refresh",
@@ -488,9 +444,7 @@ describe("Meeting — recovers recording state on return", () => {
   });
 
   it("renders a truthful engine chip next to the mic picker when the live recording reports stt", async () => {
-    // The chip must reflect the server's `stt_engine` field (stamped once
-    // `Registry::start` resolves), not the Settings page — settings only
-    // apply at the *next* start, so this is the one honest source.
+    // The chip reflects the server's `stt_engine`, stamped at start. Settings only apply at the next start.
     state.activeRecording = {
       id: "meeting-live",
       title: "Weekly sync",
@@ -515,9 +469,7 @@ describe("Meeting — recovers recording state on return", () => {
   });
 
   it("shows the active provider's model as a pending LLM pill on a fresh meeting", async () => {
-    // A brand-new meeting has no `llm_model` stamp yet (enhance.rs writes
-    // it only after a successful enhance), but the header should still say
-    // which model *will* fuse the notes — parity with the STT pill.
+    // A new meeting has no `llm_model` stamp yet; the header shows the model that will fuse the notes.
     state.activeRecording = {
       id: "meeting-live",
       title: "Weekly sync",
@@ -589,10 +541,7 @@ describe("Meeting — recovers recording state on return", () => {
 });
 
 describe("Meeting — header stays put once stopped (meeting still open)", () => {
-  // "Stopped" here means Stop recording was clicked but End meeting was
-  // not — the meeting is still open on this route. Only End meeting (which
-  // navigates away) should clear the mic picker / engine chip; Stop must
-  // not.
+  // Stopped: Stop clicked but not End meeting. Only End meeting should clear the picker and chip.
   beforeEach(() => {
     state.meetingRow = {
       id: "meeting-4",
@@ -636,8 +585,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
         "true",
       );
     });
-    // AUD-6: always mounted (disabled, not gone, while not recording) — see
-    // the `data-recording` flip below.
+    // Always mounted (disabled while not recording); see the `data-recording` flip below.
     expect(screen.getByTestId("mic-mute-toggle")).toHaveAttribute(
       "data-recording",
       "true",
@@ -685,8 +633,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
       "data-recording",
       "false",
     );
-    // AUD-6: still mounted (disabled) while stopped, not unmounted — a
-    // core action should stay findable, not disappear.
+    // Still mounted (disabled) while stopped: a core action should stay findable.
     expect(screen.getByTestId("mic-mute-toggle")).toHaveAttribute(
       "data-recording",
       "false",

@@ -5,7 +5,6 @@ type Variant = "primary" | "secondary" | "ghost" | "warn" | "on";
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> {
   variant?: Variant;
   children: ReactNode;
-  /** Optional extra Tailwind classes appended after the variant classes. */
   className?: string;
 }
 
@@ -26,9 +25,7 @@ const BASE = [
   "duration-150",
   "ease-out",
   "select-none",
-  // Visible focus ring for keyboard users (WCAG 2.4.7 / MD-03).
-  // Uses the blueberry token at 40% alpha so the ring reads against
-  // primary (filled-blue) and secondary (cream) variants equally.
+  // Keyboard focus ring (WCAG 2.4.7). Blueberry at 40% alpha reads against both filled-blue and cream variants.
   "focus-visible:outline-none",
   "focus-visible:ring-2",
   "focus-visible:ring-blue/40",
@@ -39,41 +36,17 @@ const BASE = [
 ].join(" ");
 
 const VARIANT: Record<Variant, string> = {
-  // Blueberry button with branded shadow. Hover darkens via opacity overlay
-  // since Tailwind 4 doesn't expose a 'blue-600'-style derived shade without
-  // explicit token; opacity-90 on hover is consistent with the design board.
+  // opacity-90 on hover: Tailwind 4 has no derived blue-600 shade without an explicit token.
   primary: "bg-blue text-white shadow-button-blue hover:opacity-90 active:opacity-100",
-  // Card surface with a slightly stronger line than --line, per §16.6.
   secondary:
     "bg-card text-ink border border-line hover:bg-paper active:bg-line/60",
-  // Transparent, used inside cards where any background would compete.
   ghost: "bg-transparent text-mut hover:text-ink hover:bg-blsoft/50",
-  // Strawberry — the app's one "attention, but not an error" tone (matches
-  // MetaPill's warn tone and the recording-error banner). For a state that
-  // needs noticing, not a destructive action.
+  // The "needs noticing, not an error" tone; matches MetaPill's warn tone and the recording-error banner.
   warn: "bg-straw text-white hover:opacity-90 active:opacity-100",
-  // Matcha "live" state - an active action, not an error or CTA.
   on: "bg-mtsoft text-matcha border border-matcha hover:opacity-90 active:opacity-100",
 };
 
-/**
- * Yogurt brand button (PRD §16.6).
- *
- * Variants:
- *   - "primary"   — blueberry, white text. New meeting / End meeting / CTAs.
- *   - "secondary" — white card, ink text, hairline border. Cancel / Restart.
- *   - "ghost"     — transparent, muted text. Subtle dismissals.
- *   - "warn"      — strawberry, white text. A state that needs noticing
- *                   (mic muted), not a destructive action.
- *
- * Future variants (deferred to Phase 4): "ink" — ink-on-cream End-meeting
- * style used in the live meeting top bar.
- */
-/**
- * The full class string for a variant, for the rare element that must be
- * an `<a>` (e.g. an `x-apple.systempreferences:` link) but should look
- * exactly like `<Button>`.
- */
+/** Variant classes for an element that must be an `<a>` (e.g. `x-apple.systempreferences:`) but should look like `<Button>`. */
 export function buttonClassName(variant: Variant = "primary", extra = ""): string {
   return `${BASE} ${VARIANT[variant]} ${extra}`.trim();
 }

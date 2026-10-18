@@ -1,12 +1,3 @@
-//! Rendering tests for the yogurt-prompts crate.
-//!
-//! These pin the contract for the hero enhance flow + chat system:
-//! 1. `{notes}` + `{transcript}` substitute into `enhance.md`.
-//! 2. `chat-system.md` is served verbatim with no templating.
-//! 3. HTML special characters in user notes are NOT escaped (D-16).
-//! 4. Every id in `TEMPLATE_IDS` loads, and the `{format}` block lists
-//!    them all when auto-detecting or just the one that was forced.
-
 use yogurt_prompts::{EnhanceCtx, Mode, Prompts, TEMPLATE_IDS};
 
 #[test]

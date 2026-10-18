@@ -1,23 +1,9 @@
-/**
- * Settings page smoke test (Phase 5 Plan 05-04 Task 2).
- *
- * Mocks `../lib/api/settings` so the page renders without a live server.
- * Asserts that:
- *  - The active provider's name + masked key both render in the ProviderCard
- *  - The "Local-only · on" matcha pill renders (because the active provider
- *    uses a localhost base_url — see plan 05-04 task 2 fixture guidance)
- *
- * The fixture intentionally uses Ollama (localhost) as the active provider
- * so the matcha pill renders — Minimax would suppress it because its base
- * URL is api.minimax.io (non-localhost).
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import type { SettingsView } from "../lib/api/settings";
 
-// ─── Mock the typed API client before importing the component ──────────────
 const { baseFixture } = vi.hoisted(() => {
   const baseFixture: SettingsView = {
     general: {
@@ -93,7 +79,6 @@ vi.mock("../lib/api/settings", () => ({
   },
 }));
 
-// Import AFTER vi.mock so the mocked module is wired up
 import { Settings } from "./Settings";
 import { settingsApi } from "../lib/api/settings";
 
@@ -118,18 +103,13 @@ describe("Settings page", () => {
   it("renders the active provider card with masked key + Local-only pill", async () => {
     renderSettings();
 
-    // Wait for the active provider name (proves the query resolved and
-    // ProviderCard mounted). The name "Local Ollama" is unique to the
-    // active card — distinct from any preset chip.
+    // "Local Ollama" is unique to the active card, unlike the preset chips.
     await waitFor(() => {
       expect(screen.getByText("Local Ollama")).toBeInTheDocument();
     });
 
-    // Masked key surfaces in the card.
     expect(screen.getByText("••••WXYZ")).toBeInTheDocument();
 
-    // Local-only pill renders because the only active provider has a
-    // localhost base_url.
     expect(screen.getByText(/Local-only · on/)).toBeInTheDocument();
 
     // Sanity: the raw "sk-" prefix never appears anywhere in the rendered tree.
@@ -137,14 +117,6 @@ describe("Settings page", () => {
   });
 });
 
-/**
- * REGRESSION: an inactive provider must be keyable in place.
- *
- * Cloning a preset chip creates an INACTIVE row. Originally only the active
- * `ProviderCard` rendered a key field, so the only route to keying a
- * freshly-cloned provider was `Set active` first — which swaps the live LLM
- * over to a provider that cannot answer yet.
- */
 describe("inactive provider key entry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -153,7 +125,6 @@ describe("inactive provider key entry", () => {
   it("reveals a key field on the inactive row and saves without activating", async () => {
     renderSettings();
 
-    // The keyless inactive row (Minimax in the fixture) offers "Add key".
     fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
 
     const field = await screen.findByLabelText("API key for Minimax");
@@ -168,16 +139,10 @@ describe("inactive provider key entry", () => {
         "sk-inactive-provider-key",
       );
     });
-    // Keying must NOT have promoted the provider.
     expect(settingsApi.activateProvider).not.toHaveBeenCalled();
   });
 });
 
-/**
- * The point of "Test" is a verdict BEFORE the key is committed, so the
- * failing path must report the provider's reason and must not have written
- * anything.
- */
 describe("test connection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -210,7 +175,6 @@ describe("test connection", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       /401 Unauthorized/,
     );
-    // Testing is not saving.
     expect(settingsApi.setProviderKey).not.toHaveBeenCalled();
   });
 
@@ -235,10 +199,7 @@ describe("test connection", () => {
   });
 
   it("tests the stored key from a collapsed provider card", async () => {
-    // The card the user most wants to probe is one that is already fully
-    // set up (stored key + saved model) and quietly failing — that card
-    // sits collapsed, so `Test` has to be reachable without pretending to
-    // replace the key.
+    // A fully set-up (stored key, saved model) but failing card sits collapsed, so `Test` must be reachable there.
     vi.mocked(settingsApi.get).mockResolvedValue({
       ...baseFixture,
       providers: baseFixture.providers.map((p) =>
@@ -252,7 +213,6 @@ describe("test connection", () => {
     renderSettings();
 
     const card = (await screen.findAllByTestId("inactive-provider-card"))[0];
-    // Still collapsed: the password field was never opened.
     expect(screen.queryByLabelText("API key for Minimax")).toBeNull();
 
     fireEvent.click(
@@ -260,7 +220,6 @@ describe("test connection", () => {
     );
 
     await waitFor(() => {
-      // No draft → the stored key is what gets tested.
       expect(settingsApi.testProvider).toHaveBeenCalledWith(
         "01HYYYYYYYYYYYYYYYYYYYYYYY",
         undefined,
@@ -294,13 +253,6 @@ describe("test connection", () => {
   });
 });
 
-/**
- * Pasting a key into the password field shows a live preview in the
- * stored-key format (`••••XXXX`, last 4 chars) so the user can confirm
- * they pasted the right key — without it, a partial paste / stray
- * whitespace / wrong-keyboard-layout typo isn't visible until after
- * Save, when the masked view re-renders from the server.
- */
 describe("API key live preview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -312,7 +264,6 @@ describe("API key live preview", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add key" }));
     const field = await screen.findByLabelText("API key for Minimax");
 
-    // Empty draft: no preview yet.
     expect(screen.queryByText(/Will save as/)).not.toBeInTheDocument();
 
     fireEvent.change(field, { target: { value: "sk-ABCDefgh" } });
@@ -322,11 +273,6 @@ describe("API key live preview", () => {
   });
 });
 
-/**
- * Cloning a preset chip should land the user at the API key field with
- * the cursor already there — the whole point of cloning is to paste a key,
- * so requiring a second click on `Add key` would be friction with no upside.
- */
 describe("preset cloning auto-opens the key input", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -345,10 +291,8 @@ describe("preset cloning auto-opens the key input", () => {
       cli_model: "",
     };
 
-    // The factory's `get` returns a static fixture, so the cloned row
-    // would never appear after invalidation. Mock get to a mutable impl
-    // that appends any provider createProvider has returned so far — the
-    // same shape the real backend would produce.
+    // The factory's `get` returns a static fixture, so the cloned row would never appear after
+    // invalidation. Mock `get` to append providers `createProvider` has returned.
     const appended: typeof cloned[] = [];
     vi.mocked(settingsApi.createProvider).mockImplementation(async () => {
       appended.push(cloned);
@@ -365,38 +309,21 @@ describe("preset cloning auto-opens the key input", () => {
       await screen.findByRole("button", { name: /ollama \(local\)/i }),
     );
 
-    // Two inactive cards now — waitFor (not findAllBy*, which resolves on
-    // the first hit) so we don't assert before the refetch re-renders.
+    // waitFor, not findAllBy*, which resolves on the first hit before the refetch re-renders.
     await waitFor(() => {
       expect(screen.getAllByTestId("inactive-provider-card")).toHaveLength(2);
     });
 
-    // The freshly-cloned card is the one whose key input is already open
-    // — findByLabelText would throw if it were collapsed (the input isn't
-    // in the DOM until keying=true).
+    // The freshly cloned card has its key input open (it is not in the DOM until keying=true).
     const input = await screen.findByLabelText("API key for Google Gemini");
     expect(input).toBeInTheDocument();
 
-    // Pre-existing Minimax card stays collapsed: its "Add key" button is
-    // still visible (not replaced by the input).
     expect(
       screen.getByRole("button", { name: "Add key" }),
     ).toBeInTheDocument();
   });
 });
 
-/**
- * REGRESSION: when the saved `model` is the only thing wrong with the
- * provider (Google's frequent deprecations are the canonical case), the
- * user must be able to discover what models are actually available
- * BEFORE saving the key — picking a replacement requires knowing the
- * replacement exists.
- *
- * The flow: paste a draft key → the MODEL `Refresh` button becomes
- * enabled → click it → the backend receives the draft key in the body
- * of POST /api/settings/providers/{id}/models. The stored
- * entry stays untouched.
- */
 describe("MODEL Refresh works with a draft API key", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -411,11 +338,7 @@ describe("MODEL Refresh works with a draft API key", () => {
 
     renderSettings();
 
-    // Open the key input on the Minimax card (the fixture has no stored
-    // key, so the Add key button is showing by default). Scope to the
-    // inactive card testid — there is also a `+ Add` chip-button on the
-    // page for adding a brand-new provider, which would otherwise collide
-    // on the same accessible name.
+    // Scope to the inactive card testid: a `+ Add` chip on the page shares the accessible name.
     const minimaxCard = (
       await screen.findAllByTestId("inactive-provider-card")
     )[0];
@@ -423,8 +346,6 @@ describe("MODEL Refresh works with a draft API key", () => {
       within(minimaxCard).getByRole("button", { name: "Add key" }),
     );
 
-    // Type a draft key. Refresh should be enabled once any non-empty
-    // draft is present, even though no key is stored.
     fireEvent.change(
       await screen.findByLabelText("API key for Minimax"),
       { target: { value: "sk-draft" } },
@@ -446,14 +367,6 @@ describe("MODEL Refresh works with a draft API key", () => {
   });
 });
 
-/**
- * Each preset ships a `docs_url` pointing at the provider's public
- * model catalog. The Settings page renders it as a small link below
- * the MODEL input so the user has a discovery surface even when
- * `/v1/models` is wrong, missing, or behind auth — the canonical
- * case being a Google Gemini deprecation where the user needs to see
- * the new tiers before they can pick one.
- */
 describe("preset docs link", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -462,13 +375,9 @@ describe("preset docs link", () => {
   it("renders a See all {preset} models link anchored at the preset's docs_url", async () => {
     renderSettings();
 
-    // Scope to the active card — the inactive Minimax row doesn't match
-    // any preset base_url so it has no docs link, which would otherwise
-    // either be missing (findBy fails) or be a different match.
+    // Scope to the active card: the inactive Minimax row matches no preset base_url, so it has no docs link.
     const activeCard = await screen.findByTestId("active-provider-card");
-    // The link text uses the preset's brand name ("Ollama (local)"),
-    // NOT the user-chosen provider name ("Local Ollama") — the docs
-    // page belongs to the brand, not to the user's nickname.
+    // The link text uses the preset's brand name, not the user's provider nickname.
     const link = await within(activeCard).findByRole("link", {
       name: /see all ollama \(local\) models/i,
     });

@@ -1,17 +1,4 @@
-/**
- * Phase 7 Plan 07-04 — onboarding StepCard primitive (PRD §5.10).
- *
- * Three states, mirrored in both the border and the leading badge:
- *
- *   done    → matcha border, matcha badge with ✓
- *   current → blueberry 2px border, blueberry-soft badge with the number
- *   pending → line-color border, line-color badge with the number
- *
- * The body sits under the title and is `ml-10` so it lines up with the
- * title's leftmost text edge (badge is 28px + gap-2 = ~36px ≈ 10 of
- * tailwind's 4px steps). `children` slot is for optional inline content
- * like the provider chips in Step 2.
- */
+/** `ml-10` aligns the body with the title's left text edge (28px badge + gap-2). */
 
 import type { ReactNode } from "react";
 

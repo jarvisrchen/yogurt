@@ -1,17 +1,10 @@
-//! REST contract tests for `POST /api/meetings/:id/mic-muted` (AUD-6).
-//!
-//! Mirrors `audio_device_switch.rs`: none of these require real audio
-//! hardware or Screen Recording permission — they exercise only the
-//! "meeting not found" / "not recording" / "no token" branches, which is as
-//! far as this environment can safely exercise `Registry::start`.
+//! REST contract tests for `POST /api/meetings/:id/mic-muted`, mirroring `audio_device_switch.rs`.
+//! No audio hardware or Screen Recording permission: only the not-found, not-recording, and no-token branches.
 
 use std::time::Duration;
 
 use yogurt_server::{run_with_config, Mode, RunConfig};
 
-/// Spawn a fresh server bound to an ephemeral port with temp DB + temp
-/// session token (so the test never touches the developer's real
-/// `~/.yogurt/`). Copied verbatim (pattern) from `audio_device_switch.rs`.
 async fn spawn_server() -> (
     std::net::SocketAddr,
     String,
@@ -91,7 +84,7 @@ async fn it_returns_409_when_meeting_is_not_recording() {
         .unwrap();
     let id = created["id"].as_str().unwrap();
 
-    // Never call /start — the meeting exists but is not recording.
+    // /start needs TCC permissions, so the meeting stays not recording.
     let resp = client
         .post(format!("http://{addr}/api/meetings/{id}/mic-muted"))
         .bearer_auth(&token)
@@ -104,8 +97,6 @@ async fn it_returns_409_when_meeting_is_not_recording() {
     handle.abort();
 }
 
-/// Mirrors `it_rejects_unauthenticated_switch_requests` in
-/// `audio_device_switch.rs` — no token must yield 403.
 #[tokio::test(flavor = "multi_thread")]
 async fn it_rejects_unauthenticated_mute_requests() {
     let (addr, _token, handle, _tmp) = spawn_server().await;
@@ -122,10 +113,7 @@ async fn it_rejects_unauthenticated_mute_requests() {
     handle.abort();
 }
 
-/// `GET /api/meetings/active` returns `null` when nothing is recording —
-/// AUD-6's `mic_muted` field only appears inside a non-null body, so there
-/// is nothing to assert about it here beyond the endpoint staying a clean
-/// `null`, not erroring, once `mic_muted` reads through `Registry::get`.
+/// `GET /api/meetings/active` returns `null` when nothing is recording. `mic_muted` only appears inside a non-null body.
 #[tokio::test(flavor = "multi_thread")]
 async fn active_recording_stays_null_when_nothing_is_recording() {
     let (addr, token, handle, _tmp) = spawn_server().await;

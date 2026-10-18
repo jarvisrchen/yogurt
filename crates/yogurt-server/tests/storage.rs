@@ -1,6 +1,4 @@
-//! Integration tests for the SQLite storage layer.
-//!
-//! Uses per-test tempdirs so we never touch the developer's real `~/.yogurt/`.
+//! Integration tests for the SQLite storage layer, using per-test tempdirs.
 
 use rusqlite::Connection;
 use tempfile::TempDir;
@@ -11,21 +9,17 @@ async fn it_initializes_db_with_wal_and_tables() {
     let tmp = TempDir::new().expect("tempdir");
     let db_path = tmp.path().join("db.sqlite");
 
-    // First init: creates DB, sets WAL, runs migrations.
     let storage = Storage::init_at(&db_path).expect("storage init");
     // Hold the handle so the DB file stays valid through the assertions.
     drop(storage);
 
-    // Open a fresh connection to the same file and verify state.
     let conn = Connection::open(&db_path).expect("reopen db");
 
-    // (a) journal mode is WAL.
     let mode: String = conn
         .query_row("PRAGMA journal_mode", [], |r| r.get(0))
         .expect("query journal_mode");
     assert_eq!(mode.to_lowercase(), "wal", "expected WAL journal mode");
 
-    // (b) both tables exist.
     let mut tables: Vec<String> = conn
         .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         .unwrap()
@@ -43,7 +37,6 @@ async fn it_initializes_db_with_wal_and_tables() {
         "expected chat_messages table, got {tables:?}"
     );
 
-    // (c) both indexes exist.
     let indexes: Vec<String> = conn
         .prepare("SELECT name FROM sqlite_master WHERE type='index'")
         .unwrap()
@@ -60,8 +53,6 @@ async fn it_initializes_db_with_wal_and_tables() {
         "expected idx_chat_messages_meeting_id, got {indexes:?}"
     );
 
-    // (d) Phase 4 (STORE-01 / CONTEXT D-11): meetings table MUST contain
-    //     enriched_doc_json after V0004 runs.
     let meetings_cols: Vec<String> = conn
         .prepare("PRAGMA table_info(meetings)")
         .unwrap()
@@ -73,7 +64,6 @@ async fn it_initializes_db_with_wal_and_tables() {
         meetings_cols.contains(&"enriched_doc_json".to_string()),
         "Phase 4 V0004 must add enriched_doc_json; current cols: {meetings_cols:?}"
     );
-    // Phase 0 schema columns must still be present (no regression).
     for required in ["id", "notes_md", "enriched_md", "transcript_json"] {
         assert!(
             meetings_cols.contains(&required.to_string()),
@@ -81,17 +71,12 @@ async fn it_initializes_db_with_wal_and_tables() {
         );
     }
 
-    // (e) Idempotency: a second init on the same path must succeed.
-    //     This also exercises the V0004 guard (column already present →
-    //     migration must skip the ALTER without erroring).
     let _again = Storage::init_at(&db_path).expect("second init is idempotent");
 }
 
 #[tokio::test]
 async fn it_adds_enriched_doc_json_only_once_across_multiple_inits() {
-    // STORE-01 / Phase 4: the V0004 migration must be idempotent — calling
-    // `Storage::init_at` repeatedly must NOT raise "duplicate column" from
-    // SQLite (which it would if the runner blindly re-ALTERed).
+    // Repeated `Storage::init_at` must not raise "duplicate column" from SQLite.
     let tmp = TempDir::new().expect("tempdir");
     let db_path = tmp.path().join("db.sqlite");
 
@@ -114,7 +99,6 @@ async fn it_adds_enriched_doc_json_only_once_across_multiple_inits() {
 #[cfg(unix)]
 #[tokio::test]
 async fn it_creates_db_file_at_mode_0600_and_parent_at_0700() {
-    // MD-06 regression: SQLite file + ~/.yogurt/ must not be world-readable.
     use std::os::unix::fs::PermissionsExt;
     let tmp = TempDir::new().expect("tempdir");
     let parent = tmp.path().join("yogurt-storage");
@@ -132,7 +116,6 @@ async fn it_creates_db_file_at_mode_0600_and_parent_at_0700() {
 #[cfg(unix)]
 #[tokio::test]
 async fn it_tightens_a_preexisting_loose_storage_parent_dir() {
-    // MD-06: if ~/.yogurt/ pre-exists at 0755, init_at must tighten to 0700.
     use std::os::unix::fs::PermissionsExt;
     let tmp = TempDir::new().expect("tempdir");
     let parent = tmp.path().join("preexisting");
@@ -151,16 +134,11 @@ async fn it_tightens_a_preexisting_loose_storage_parent_dir() {
 
 #[tokio::test]
 async fn it_applies_wal_pragma_to_read_pool_connections() {
-    // HI-02 regression: every read connection must explicitly set
-    // journal_mode=WAL. We can't introspect the pool directly, but we can
-    // verify reads work after init -- and combined with the in-storage
-    // pragma_update assertion in init_at, that's sufficient.
+    // The pool cannot be introspected, so verify reads work after init.
     let tmp = TempDir::new().expect("tempdir");
     let db_path = tmp.path().join("db.sqlite");
     let storage = Storage::init_at(&db_path).expect("init");
 
-    // Drive a read through the pool to prove the connection works after
-    // all pragmas were applied.
     let r = storage.read();
     let conn = r.lock().unwrap();
     let mode: String = conn
@@ -179,7 +157,6 @@ async fn it_exposes_both_read_and_writer_handles() {
     let db_path = tmp.path().join("db.sqlite");
     let storage = Storage::init_at(&db_path).expect("storage init");
 
-    // Writer is usable for writes.
     {
         let w = storage.writer();
         let conn = w.lock().unwrap();

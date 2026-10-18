@@ -72,7 +72,6 @@ describe("SilenceStopBanner", () => {
       });
       expect(created).toHaveLength(1);
 
-      // Warning clears (banner unmounts) and recurs.
       unmount();
       render(<SilenceStopBanner meetingId="m1" autoStopAt={1_000_000 + 60_000} />);
       expect(created).toHaveLength(2);

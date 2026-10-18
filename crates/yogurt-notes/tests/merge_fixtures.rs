@@ -1,17 +1,4 @@
-//! Fixture-driven tests for `yogurt_notes::merge_notes`.
-//!
-//! Each fixture directory under `tests/fixtures/` contains exactly four files:
-//!   - `notes.md` — the user's raw markdown
-//!   - `transcript.json` — the transcript segment array
-//!   - `enriched.md` — the LLM's output
-//!   - `expected.json` — the expected `MergedDoc` JSON
-//!
-//! Five scenarios (per CONTEXT D-09 + PRD §5.3) lock the contract:
-//!   01: pure new AI (empty notes, transcript-attributed AI bullets)
-//!   02: AI bullets under a user heading
-//!   03: AI bullet inserted between user bullets
-//!   04: promote-grey-on-edit (re-enhance shorter, user's edit wins)
-//!   05: re-enhance preserves promoted-black + still adds new AI bullets
+//! Each directory under `tests/fixtures/` holds `notes.md`, `transcript.json`, `enriched.md`, and the expected `MergedDoc` as `expected.json`.
 
 use std::path::Path;
 
@@ -40,11 +27,6 @@ fn it_preserves_promoted_grey_on_reenhance_long() {
     run("05_reenhance_preserves_promoted");
 }
 
-/// HI-3: LLMs reliably flatten nested user bullets (depth-1 sub-bullets
-/// re-emitted as depth-0 top-level items). The diff must recognize the
-/// LLM's flattened bullets as the SAME content as the user's nested
-/// bullets and preserve the user's original depth — otherwise outline-
-/// style notes silently lose their structure on enhance.
 #[test]
 fn it_preserves_user_depth_when_llm_flattens_nested_list() {
     run("06_nested_list_flattened");
@@ -62,7 +44,6 @@ fn run(name: &str) {
     let got_json = serde_json::to_value(&got).unwrap();
 
     if got_json != expected {
-        // Pretty-diff on failure.
         let pretty_got = serde_json::to_string_pretty(&got_json).unwrap();
         let pretty_exp = serde_json::to_string_pretty(&expected).unwrap();
         panic!(
@@ -93,19 +74,12 @@ fn it_renders_merged_doc_to_wire_markdown_with_spans() {
     );
 }
 
-/// Regression: weaker LLMs (e.g. Minimax) reproduce the `<span data-ai-grey>`
-/// scaffolding from the enhance prompt literally in the bullet body. We own
-/// the wrapping, so the render layer must STRIP those model-emitted wire-format
-/// spans before escaping — otherwise the raw markup is HTML-escaped
-/// (`&lt;span…&gt;`) and double-wrapped, surfacing literal span tags in the
-/// user's notes. Found via E2E enhance against Minimax (2026-08-13).
 #[test]
 fn it_strips_model_emitted_spans_instead_of_escaping_them() {
     let transcript = std::fs::read_to_string(
         std::path::Path::new("tests/fixtures/01_pure_new_ai").join("transcript.json"),
     )
     .unwrap();
-    // The LLM echoed the prompt's span format into its own output.
     let enriched = concat!(
         "## Discussion\n\n",
         "- <span data-ai-grey data-ts=\"120\">Pricing model debated",

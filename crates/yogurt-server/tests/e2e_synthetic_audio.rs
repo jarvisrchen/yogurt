@@ -1,12 +1,5 @@
-//! Acceptance test for PRD §5.2 / TRANS-08: "transcript appears with < 2s lag".
-//!
-//! We test the SERVER side of that budget — from `transcript_tx.send(...)` to
-//! the WS client receiving the frame — must be well under 2s. Network lag to
-//! Deepgram + Deepgram's own processing are budgeted separately and verified
-//! by manual smoke against the real API (superpowers Task 3.10 Step 3).
-//!
-//! Asserts < 200ms (CONTEXT D-19) — the part we own. Anything close to 2s
-//! here would point at a real bug in the broadcast → WS serialize path.
+//! Server-side transcript latency, from `transcript_tx.send` to the WS frame, must stay well under the 2s product budget.
+//! Deepgram lag is verified by manual smoke.
 
 use futures_util::StreamExt;
 use std::sync::Arc;
@@ -43,17 +36,11 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         meetings: meetings::Registry::new(),
         markdown_exporter,
         prompts,
-        // Phase 5 (Plan 05-02): test wiring uses in-memory yogurt-db +
-        // MemoryKeyStore so this test doesn't touch the real key file.
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
-        // Phase 6 (Plan 06-01): test wiring uses MockLlm.
         llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
-        // Phase 7 (Plan 07-01): SQLite-backed Library directory.
         meeting_repo,
         label_repo,
-        // Phase 8 (Plan 08-03): app-wide event broadcaster — unused
-        // here but required by the AppState struct.
         app_events_tx: tokio::sync::broadcast::channel(64).0,
         detect: Default::default(),
     };
@@ -62,7 +49,6 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn it_delivers_transcript_to_browser_well_under_2s() {
-    // IN-06: bind ephemeral port instead of hard-coded 17893.
     let probe = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = probe.local_addr().unwrap();
     drop(probe);
@@ -74,7 +60,6 @@ async fn it_delivers_transcript_to_browser_well_under_2s() {
     });
 
     let m = state.meetings.create().await;
-    // BL-01: this WS endpoint now requires Origin + session-token.
     let url = format!(
         "ws://127.0.0.1:{}/ws/meetings/{}?token={}",
         addr.port(),
@@ -87,8 +72,6 @@ async fn it_delivers_transcript_to_browser_well_under_2s() {
         HeaderValue::from_str(&format!("http://127.0.0.1:{}", addr.port())).unwrap(),
     );
     let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
-    // Deterministic subscribe signal: poll the broadcast's receiver count
-    // instead of a fixed sleep (flake source on slow CI).
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while m.transcript_tx.receiver_count() == 0 {
         assert!(
@@ -120,9 +103,7 @@ async fn it_delivers_transcript_to_browser_well_under_2s() {
         other => panic!("expected text: {other:?}"),
     }
 
-    // The actual budget we own (sender → ws frame) should be tens of
-    // milliseconds. 200ms here is a generous CI-friendly ceiling — anything
-    // close to 2s would point at a real bug in the fan-out path.
+    // 200ms is a CI-friendly ceiling; close to 2s would mean a real fan-out bug.
     assert!(
         elapsed < Duration::from_millis(200),
         "server-side lag was {elapsed:?}, expected < 200ms"

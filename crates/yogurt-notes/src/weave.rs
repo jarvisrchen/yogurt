@@ -1,27 +1,14 @@
-//! Inline weaving: locate the user's own note lines inside an AI block so
-//! the render can paint just those words ink and leave the model's
-//! phrasing grey. Without this, a note like "25% on monday" and the
-//! model's "Rollout: 25% on Monday the 5th, then 50% the following week"
-//! sit side by side as two bullets; with it they are one bullet, the
-//! user's words black inside the model's sentence.
+//! Locates the user's note lines inside an AI block so the render paints just those words ink.
+//! Without it, a note and the model's expansion of it show as two separate bullets.
 
-/// Fewest words a note line needs before we go looking for it inside AI
-/// text. One: a single-word note ("247k", "pricing") is exactly the kind
-/// of line the model is told to fold into a richer bullet, and matching
-/// is whole-word (punctuation-trimmed, case-folded), so it only lands
-/// where that word actually appears. Skipping it left the user's word
-/// painted grey inside the bullet AND appended again as an orphan
-/// paragraph (LLM-8).
+/// A single-word note ("247k") is the kind of line the model folds into a richer bullet.
+/// Matching is whole-word, so it only lands where that word appears.
 const MIN_WORDS: usize = 1;
-/// Fraction of the line's words that must be found, in order.
+/// Fraction of the line's words that must appear in order.
 const MIN_RATIO: f32 = 0.75;
 
-/// Byte range of `text` (already marker-stripped) that carries `line`, if
-/// enough of the line's words appear in order within a window no longer
-/// than twice the line. The range runs from the first matched word to the
-/// last, so model words interleaved with the user's ("ask Jordan *today*
-/// for *updated* cost numbers") are painted ink too - the sentence should
-/// read as one thing.
+/// Byte range of marker-stripped `text` carrying `line`, within a window of at most twice the line.
+/// The range spans first to last matched word, so interleaved model words are painted ink too.
 pub fn find_user_line(text: &str, line: &str) -> Option<(usize, usize)> {
     let want: Vec<String> = words(line).into_iter().map(|(_, _, w)| w).collect();
     if want.len() < MIN_WORDS {
@@ -29,7 +16,8 @@ pub fn find_user_line(text: &str, line: &str) -> Option<(usize, usize)> {
     }
     let have = words(text);
     let max_span = want.len() * 2 + 1;
-    let mut best: Option<(usize, usize, usize)> = None; // (matched, start_idx, end_idx)
+    // (matched, start_idx, end_idx)
+    let mut best: Option<(usize, usize, usize)> = None;
     for (i, tok) in have.iter().enumerate() {
         if tok.2 != want[0] {
             continue;
@@ -60,7 +48,6 @@ pub fn find_user_line(text: &str, line: &str) -> Option<(usize, usize)> {
     Some((have[s].0, have[e].1))
 }
 
-/// Sort and merge overlapping ranges so the render can walk them once.
 pub fn merge_ranges(mut runs: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     runs.sort_unstable();
     let mut out: Vec<(usize, usize)> = Vec::with_capacity(runs.len());
@@ -73,8 +60,7 @@ pub fn merge_ranges(mut runs: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     out
 }
 
-/// Words with their byte spans in `s`, lowercased with edge punctuation
-/// trimmed ("Jordan," -> "jordan", "25%," -> "25%").
+/// Words with byte spans, lowercased with edge punctuation trimmed.
 fn words(s: &str) -> Vec<(usize, usize, String)> {
     let mut out = Vec::new();
     let mut start: Option<usize> = None;
@@ -135,8 +121,6 @@ mod tests {
         );
     }
 
-    /// LLM-8: a one-word note the model folded into a bullet is found as
-    /// a whole word, and only as a whole word.
     #[test]
     fn one_word_note_matches_as_a_whole_word() {
         let t = "Base salary: 247k";
@@ -146,7 +130,6 @@ mod tests {
             find_user_line("kill switch before Monday", "switch"),
             Some((5, 11))
         );
-        // "switch" is not a substring match on "switches".
         assert_eq!(find_user_line("flip the switches", "switch"), None);
     }
 

@@ -1,20 +1,3 @@
-/**
- * Phase 7 (Plan 07-01) — Library sidebar (212px, paper bg, blueberry CTA).
- *
- * PRD §5.9 + D-02. Top-to-bottom layout:
- *   1. Yogurt swirl logo + "yogurt" wordmark (heading-wordmark)
- *   2. Primary "+ New meeting" blueberry button (creates → /meeting/:id)
- *   3. Nav: "All meetings" (lilac active), "Starred"
- *   4. Footer:
- *      - matcha "Local-only · on" pill iff no active cloud provider
- *      - ⚙ Settings row → /settings
- *
- * The frontend route shape was kept at `/meeting/:id` (the Phase 3
- * convention) instead of the plan-suggested `/m/:id`, since the existing
- * Meeting + MeetingPost surfaces already mount under that prefix. Same
- * conceptual link, smaller blast radius. (Auto-fix Rule 3.)
- */
-
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
 import { Plus, Settings as SettingsIcon, Star } from "lucide-react";
@@ -61,10 +44,6 @@ export function Sidebar() {
     setAddingLabel(false);
   }
 
-  // Phase 5 settings drive the "Local-only · on" pill — only show it
-  // when no `kind === "cloud"` provider is active. The shape is the
-  // ProviderView from `lib/api/settings.ts`; we treat absence of
-  // `kind` as cloud (most providers default that way).
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: () => settingsApi.get(),
@@ -79,28 +58,19 @@ export function Sidebar() {
   const handleNew = async () => {
     try {
       const m = await createMeeting.mutateAsync(undefined);
-      // `autoStart` tells Meeting.tsx to POST /start immediately on
-      // mount (task NOTES-01) — Granola-style one-click-and-recording,
-      // not create-then-hunt-for-the-Start-button.
+      // `autoStart` makes Meeting.tsx POST /start on mount.
       navigate(`/meeting/${m.id}`, { state: { autoStart: true } });
     } catch (e) {
-      // Surface inline; the consumer Library page will catch this via
-      // the mutation's error state. Logging is enough for v1.
       console.error("create meeting failed", e);
     }
   };
 
   return (
     <aside
-      // `sticky top-0 h-screen` pins the rail to the viewport instead of
-      // letting it stretch to the height of a long meeting list. Before
-      // this, the flex parent sized the aside to the tallest child, so
-      // `mt-auto` parked Settings at the bottom of the *document* and you
-      // had to scroll the library to reach it. Sticky keeps the document
-      // scroll on <main> only, which is what the layout always meant.
+      // Sticky keeps the rail at viewport height so `mt-auto` parks Settings at
+      // the bottom of the screen, not the bottom of a long meeting list.
       className="w-[212px] shrink-0 flex flex-col bg-paper border-r border-line sticky top-0 h-screen"
     >
-      {/* Header — logo + wordmark */}
       <div className="px-5 pt-5 pb-4 flex items-center gap-2">
         <Logo size={28} />
         <span className="heading-wordmark">
@@ -108,7 +78,6 @@ export function Sidebar() {
         </span>
       </div>
 
-      {/* Primary CTA */}
       <div className="px-4 pb-3">
         <Button
           onClick={handleNew}
@@ -120,7 +89,6 @@ export function Sidebar() {
         </Button>
       </div>
 
-      {/* Nav */}
       <nav className="px-2 flex flex-col gap-0.5">
         <NavLink
           to="/"
@@ -150,7 +118,6 @@ export function Sidebar() {
         </NavLink>
       </nav>
 
-      {/* Labels */}
       <div className={`px-5 pt-5 pb-1 flex items-center justify-between ${LABEL}`}>
         <span>Labels</span>
         <div className="flex items-center gap-1">
@@ -224,7 +191,6 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Footer */}
       <div className="mt-auto px-4 py-4 flex flex-col gap-2">
         {isLocalOnly && (
           <div
@@ -245,13 +211,7 @@ export function Sidebar() {
   );
 }
 
-/**
- * Heuristic for "is this a local-network provider" — used to decide
- * whether the Local-only pill should appear. Returns true for
- * Ollama / LM Studio / vLLM / llama.cpp-server / 127.0.0.1 / localhost
- * URLs, false for cloud SaaS. The settings shape doesn't currently carry
- * a `kind: "local" | "cloud"` discriminator, so we infer from URL.
- */
+// The settings shape has no local/cloud discriminator, so infer it from the URL.
 function isLocalProvider(baseUrl: string): boolean {
   const u = baseUrl.toLowerCase();
   return (

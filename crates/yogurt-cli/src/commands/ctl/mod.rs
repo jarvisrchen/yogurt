@@ -1,12 +1,5 @@
-//! `yogurt ctl` (CLI-4 / D1) -- an agent-facing control surface for a
-//! running `yogurt` instance, replacing the curl recipes in
-//! `.claude/skills/yogurt-control/SKILL.md` and `docs/AI-INTEGRATION.md`
-//! with real subcommands: `--json` output, descriptive errors that say
-//! what to run instead, idempotent mutations, subcommands over flag soup.
-//!
-//! See `docs/.planning/agent-workflow.md` section 4D (D1) for the design
-//! this implements, and `client.rs` for the discovery precedence
-//! (`--port` / `$YOGURT_PORT` / a health scan of 7878-7898).
+//! `yogurt ctl`: an agent-facing control surface for a running instance.
+//! `--json` output, errors that say what to run instead, idempotent mutations.
 
 mod client;
 mod detect_cmd;
@@ -79,10 +72,8 @@ pub enum CtlCmd {
     },
 }
 
-/// Dispatch + top-level error formatting. Returns the process exit code:
-/// `0` on success, `1` on a business-logic error (`error: ... / help:
-/// ...` already printed). Usage errors (bad flags, missing args) never
-/// reach here -- clap exits `2` on its own during `Cli::parse()`.
+/// Dispatch and top-level error formatting. Returns `0` on success and `1` on a business-logic error already printed.
+/// Clap exits `2` on usage errors before reaching here.
 pub async fn run(args: CtlArgs) -> i32 {
     let json_out = args.json;
     let port = args.port;

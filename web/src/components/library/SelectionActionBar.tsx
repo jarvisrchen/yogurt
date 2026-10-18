@@ -1,22 +1,10 @@
-/**
- * Floating bottom action bar for the Library's multi-select mode (MTG-14).
- * Mounted only while at least one meeting is selected (`Library.tsx` gates
- * on selection size), same fixed/floating placement family as
- * `RecordingPill`.
- *
- * Delete reuses the exact "Delete? / Cancel" + "also delete .md" confirm
- * surface the per-card kebab menu uses (`ConfirmPanel`, exported from
- * `DeleteMeetingConfirm`) - only the mutation underneath is the bulk one.
- */
-
 import { useEffect, useState } from "react";
 import { ConfirmPanel } from "./DeleteMeetingConfirm";
 import { BulkLabelPicker } from "../labels/BulkLabelPicker";
 import { useBulkDeleteMeetings, type Meeting } from "../../lib/api/meetings";
 
 interface Props {
-  /** The selected meetings themselves (not just ids) - label bulk-ops
-   *  need each one's current `labels` to compute its next set. */
+  // Label bulk-ops need each meeting's current `labels` to compute its next set.
   meetings: Pick<Meeting, "id" | "labels">[];
   onSelectAll: () => void;
   onClear: () => void;
@@ -48,10 +36,8 @@ export function SelectionActionBar({ meetings, onSelectAll, onClear }: Props) {
     try {
       await bulkDelete.mutateAsync({ ids, deleteFile });
     } catch (err) {
-      // A partial failure still invalidates the list (see
-      // useBulkDeleteMeetings), so anything that *did* delete is already
-      // gone - clearing below just drops the rest instead of leaving a
-      // stuck "N selected" bar with no visible way forward.
+      // A partial failure still invalidates the list, so clearing the selection
+      // avoids a stuck "N selected" bar.
       console.error("bulk delete meetings failed", err);
     }
     onClear();
@@ -76,10 +62,8 @@ export function SelectionActionBar({ meetings, onSelectAll, onClear }: Props) {
         <button
           type="button"
           className={`${itemButton} text-ink`}
-          // Stop the mousedown before it reaches `document` so
-          // BulkLabelPicker's own outside-click listener doesn't see this
-          // button as "outside" and immediately re-close what we're
-          // opening (same trick as MeetingCardActions' Tag button).
+          // BulkLabelPicker's outside-click listener fires on mousedown, so stop it
+          // here or the picker closes as it opens.
           onMouseDown={stop}
           onClick={(e) => {
             stop(e);

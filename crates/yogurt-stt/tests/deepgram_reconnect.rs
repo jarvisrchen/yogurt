@@ -1,32 +1,17 @@
-//! BL-02 regression: Deepgram adapter must surface backpressure,
-//! reconnect on transient errors, and emit a terminal status on 401.
-//!
-//! We exercise three scenarios with a hand-rolled mock WS server:
-//!   (a) Server accepts then closes mid-stream — supervisor emits
-//!       "[stt disconnected, retrying]" status frames.
-//!   (b) Server returns HTTP 401 on upgrade — initial connect fails with
-//!       an `Stt::start` error mentioning the API key. (No reconnect: we
-//!       can't easily inject a mid-stream 401, but the unit assertion that
-//!       401 maps to ConnectError::Auth is exercised by the start path.)
-//!   (c) Server accepts both channels but never reads — backpressure path
-//!       kicks in once the mpsc fills, supervisor emits
-//!       "[stt overloaded, transcript may be lossy]".
+//! The Deepgram adapter must surface backpressure, reconnect on transient errors, and emit a terminal status on 401.
 
 use futures_util::{SinkExt, StreamExt};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use yogurt_stt::{deepgram::DeepgramStt, AudioChunk, Channel, Stt, TranscriptEvent};
 
-/// (a) Server closes mid-stream → supervisor emits at least one
-///     "[stt disconnected, retrying]" status frame for the affected channel.
+/// A server that closes mid-stream makes the supervisor emit a "[stt disconnected, retrying]" status frame.
 #[tokio::test(flavor = "multi_thread")]
 async fn it_emits_disconnect_status_when_server_closes() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    // Both connections: accept and close immediately. Reconnect loop will
-    // keep trying with exponential backoff (1s, 2s, 4s) — that's fine for
-    // the test because we only need to see ONE status event.
+    // Reconnect backs off exponentially, which is fine since one status event is enough.
     let server = tokio::spawn(async move {
         for _ in 0..2 {
             let (stream, _) = listener.accept().await.unwrap();
@@ -49,7 +34,6 @@ async fn it_emits_disconnect_status_when_server_closes() {
         let _ = stt2.start(audio_rx, txn_tx).await;
     });
 
-    // We expect at least one "[stt disconnected, retrying]" event within 2s.
     let mut saw_disconnect = false;
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     while std::time::Instant::now() < deadline {
@@ -69,20 +53,15 @@ async fn it_emits_disconnect_status_when_server_closes() {
     server.abort();
 }
 
-/// (b) Server returns 401 on upgrade → `Stt::start` returns an Err mentioning
-///     the API key. The supervisor's reconnect path classifies the error as
-///     terminal (Auth) — no retries.
+/// A 401 on upgrade makes `Stt::start` return an Err mentioning the API key, with no retries.
 #[tokio::test(flavor = "multi_thread")]
 async fn it_fails_fast_on_auth_rejection() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    // Mock that accepts the TCP connection but responds with HTTP 401
-    // BEFORE the WS upgrade completes. Easiest way: read the request and
-    // write a raw HTTP/1.1 401 response.
+    // Respond with a raw HTTP/1.1 401 before the WS upgrade completes.
     let server = tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
-        // Drain the upgrade request bytes (we don't care about content).
         let mut buf = [0u8; 1024];
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let _ = stream.read(&mut buf).await;
@@ -110,26 +89,18 @@ async fn it_fails_fast_on_auth_rejection() {
     server.abort();
 }
 
-/// (c) Server accepts both channels but never reads — the writer's buffer
-///     eventually fills and the upstream pump's `try_send` drops chunks.
-///     After enough consecutive drops, the supervisor emits an
-///     "[stt overloaded, ...]" status event.
+/// A server that never reads fills the writer's buffer, then the mpsc, so `try_send` drops chunks and the supervisor emits an "[stt overloaded, ...]" status event.
 #[tokio::test(flavor = "multi_thread")]
 async fn it_emits_overload_status_when_backpressured() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    // Accept both connections but immediately stop reading. The kernel's
-    // TCP recv buffer eventually fills, then tungstenite's send buffer
-    // fills, then write.send().await blocks the writer task, then the
-    // supervisor's per-channel mpsc (cap 64) fills, then the pump's
-    // try_send starts dropping.
+    // Stop reading so the TCP buffers, then the writer, then the per-channel mpsc (cap 64) fill, and the pump's `try_send` starts dropping.
     let server = tokio::spawn(async move {
         for _ in 0..2 {
             let (stream, _) = listener.accept().await.unwrap();
             tokio::spawn(async move {
                 let ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-                // Hold the connection open without ever reading.
                 let (mut _write, _read) = ws.split();
                 tokio::time::sleep(Duration::from_secs(60)).await;
             });
@@ -147,15 +118,9 @@ async fn it_emits_overload_status_when_backpressured() {
         let _ = stt2.start(audio_rx, txn_tx).await;
     });
 
-    // Give the adapter a beat to open both WS connections.
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Keep pumping mic audio while waiting. With the server not reading,
-    // the first ~64 chunks fill the per-channel mpsc and the rest are
-    // dropped via try_send; after 50 consecutive drops the supervisor emits
-    // the overload status. Pumping in every wait iteration, not one burst
-    // up front, keeps backpressure building even when a slow runner is
-    // still opening the sockets when the wait starts.
+    // Pump in every wait iteration, not one burst, so backpressure keeps building even if a slow runner is still opening sockets.
     let mut ts_ms = 0u64;
     let mut pump = |n: u64| {
         for _ in 0..n {
@@ -169,8 +134,7 @@ async fn it_emits_overload_status_when_backpressured() {
     };
     pump(400);
 
-    // Look for either the overload status OR any disconnect status - both
-    // are valid backpressure-aware behaviors depending on timing.
+    // Either the overload status or a disconnect status is valid depending on timing.
     let mut saw_status = false;
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while std::time::Instant::now() < deadline {

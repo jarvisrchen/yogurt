@@ -5,15 +5,9 @@ members = [
     "crates/yogurt-server",
     "crates/yogurt-audio",
     "crates/yogurt-stt",
-    # Phase 4: bundled prompts.
     "crates/yogurt-prompts",
-    # Phase 4: augmented-notes structural AST diff + merge (Plan 04-02).
     "crates/yogurt-notes",
-    # Phase 5 (Plan 05-01): LlmClient trait + OpenAI-compat adapter (no axum).
     "crates/yogurt-llm",
-    # Phase 5 (Plan 05-02): SQLite (providers + settings) + Keychain wrapper.
-    # Coexists with `yogurt-server::storage` (Phase 0) by owning a disjoint set
-    # of tables in the same `~/.yogurt/db.sqlite` file.
     "crates/yogurt-db",
 ]
 
@@ -32,125 +26,60 @@ categories = ["command-line-utilities", "multimedia::audio"]
 keywords = ["meeting", "transcription", "notes", "local-first", "granola"]
 
 [workspace.dependencies]
-# async runtime
 tokio = { version = "1.42", features = ["full"] }
-# HTTP server
 axum = { version = "0.8", features = ["macros"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "trace"] }
-# CLI
 clap = { version = "4.5", features = ["derive"] }
-# logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# embedding assets
 rust-embed = { version = "8.5", features = ["mime-guess"] }
-# helpers
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# HTTP client (used by dev_proxy + tests)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-# mime guessing for embedded assets
-mime_guess = "2"
-# storage
 rusqlite = { version = "0.32", features = ["bundled"] }
-# Phase 5 (Plan 05-02): managed migrations for the new yogurt-db crate.
 rusqlite_migration = "1"
-# Phase 5 (Plan 05-02): ULIDs for provider IDs (sortable, lexicographic).
 ulid = { version = "1", features = ["serde"] }
-# Phase 5 (Plan 05-02): .env.local dev-mode loader, gated behind `--dev` in
-# yogurt-cli main(). Release builds never read .env.local (SET-11).
+# Gated behind `--dev` in yogurt-cli main(). Release builds never read .env.local.
 dotenvy = "0.15"
 directories = "5"
-# crypto / encoding
 rand = "0.8"
 base64 = "0.22"
 subtle = "2"
-# testing
 assert_cmd = "2"
 tempfile = "3"
-# WebSocket transport for STT adapters. rustls-tls-webpki-roots avoids OpenSSL link
-# (single-binary distribution requires no system OpenSSL dep). Phase 3 STT crate
-# uses this for Deepgram WS; do NOT enable default native-tls feature.
+# rustls-tls-webpki-roots avoids an OpenSSL link (single-binary distribution
+# needs no system OpenSSL). Do NOT enable the default native-tls feature.
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 # `sink` for SinkExt (write half of split WS), `std` for tokio compatibility.
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-# Async trait for the STT trait surface (Phase 3) and any other dyn-compat traits.
 async-trait = "0.1"
-# URL parsing for WS connect requests.
-url = "2"
-# UUID v7 used by Phase 3 meeting registry; defined as a workspace dep here so
-# yogurt-stt-adjacent crates can share the pin.
 uuid = { version = "1", features = ["v7", "serde"] }
-# audio capture (Phase 2)
-# NOTE: plan suggested screencapturekit = "0.3" but crate has bumped to 8.x
-# with a different builder-pattern API. Pinned to 8 with macos_13_0 feature
-# (audio capture surface). See docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md.
 cpal = "0.15"
+# Pinned to 8 with macos_13_0 (audio capture surface); 0.3 had a different builder API.
 screencapturekit = { version = "8", features = ["macos_13_0"] }
 rubato = "0.16"
-# Lock-free single-producer/single-consumer ring buffer. Used to decouple
-# real-time audio callbacks (cpal IOProc, SCK delegate) from the tokio
-# drainer task that owns rubato + broadcast::Sender. See BL-01 fix.
+# Lock-free SPSC ring buffer that decouples real-time audio callbacks (cpal
+# IOProc, SCK delegate) from the tokio drainer task that owns rubato.
 rtrb = "0.3"
-# Fast, non-poisoning mutex — wrapped around the SPSC producer in the SCK
-# audio handler, whose trait bound demands `Fn + Send + Sync` and so
-# forbids holding a !Sync producer directly. The critical section is
-# 1-2 instructions (a ring push) so contention is effectively zero;
-# we use parking_lot for the lower constant overhead vs std::sync::Mutex.
+# Non-poisoning mutex around the SPSC producer in the SCK audio handler, whose
+# trait bound demands `Fn + Send + Sync`.
 parking_lot = "0.12"
-# typed errors
 thiserror = "2"
-# Phase 4: prompt templating engine (yogurt-prompts crate). Native placeholder
-# syntax is `{name}` (single braces); the user-facing requirement names them
-# `{{NOTES}}` / `{{TRANSCRIPT}}` — CONTEXT D-16 documents the resolution.
 tinytemplate = "1.2"
-# Phase 4 (Plan 04-02): markdown AST for the augmented-notes structural diff.
 pulldown-cmark = { version = "0.12", default-features = false }
-# Phase 4 (Plan 04-02): lightweight regex used to strip wire-format marker
-# spans inside block_key() without pulling in all of `regex`.
-regex-lite = "0.1"
-# Phase 4 (Plan 04-02): snapshot/fixture testing surface for diff tests.
-insta = { version = "1.41", features = ["json"] }
-# Phase 4 (Plan 04-02): date formatting for MarkdownExporter (per-meeting
-# `<YYYY-MM-DD-HHmm>-<slug>.md` filenames derived from meetings.started_at).
-# Per PRD stack: `time` 0.3 is the safe stable pick.
-time = { version = "0.3", features = ["formatting", "macros"] }
-# Phase 7 (Plan 07-01): MeetingRepo + REST handlers carry timestamps as
-# ISO 8601 strings. `chrono` with `serde` is the conventional wire-format
-# adapter; `time`'s serde integration is awkward for `DateTime<Utc>` round
-# trips so we pin chrono alongside it (workspaces tolerate both crates).
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
-# Phase 5 (Plan 05-01): SSE event-stream parser for OpenAI-compat streaming
-# chat completions. Composes with reqwest's bytes_stream() via .eventsource().
 eventsource-stream = "0.2"
-# Phase 5 (Plan 05-01): HTTP mock server for yogurt-llm wiremock tests
-# (non-streaming + SSE round-trips). Dev-dep only.
 wiremock = "0.6"
-# Phase 4 (BL-2 hardening): HTML escape and allowlist sanitization for the
-# enrich pipeline. `html-escape` escapes user-controlled text BEFORE we
-# interpolate it into wire-format spans (MockLlm + render::wrap_ai). `ammonia`
-# allowlist-sanitizes the FINAL enriched_md so an LLM hallucinated <script>
-# / <img onerror=...> can never reach the browser DOM.
+# html-escape escapes user text before it is interpolated into wire-format
+# spans. ammonia allowlist-sanitizes the final enriched_md so an LLM
+# hallucinated <script> or <img onerror=...> never reaches the browser DOM.
 html-escape = "0.2"
 ammonia = "4"
-# Phase 8 (Plan 08-01): local whisper.cpp STT. 0.16 is the pin from the
-# project tech stack; CONTEXT D-01 documents the resolution against the
-# source plan's 0.13. `metal` feature is enabled at the crate level
-# (yogurt-stt) so consumers without `local-stt` never pull in the
-# whisper.cpp CMake build. `default-features = false` here lets the
-# leaf crate opt into Metal explicitly.
+# `default-features = false` lets yogurt-stt opt into Metal explicitly, so
+# consumers without `local-stt` never pull in the whisper.cpp CMake build.
 whisper-rs = { version = "0.16", default-features = false }
-# Phase 8 (Plan 08-01): WebRTC VAD used by `vad.rs` (Plan 02 lands the
-# actual segmenter). Declared in workspace so the dep version is one
-# place to bump.
 webrtc-vad = "0.4"
-# Phase 8 (Plan 08-01): streaming SHA256 for model verification (Plan 02
-# download flow). Workspace pin so future crates share the digest impl.
 sha2 = "0.10"
-# Phase 8 (Plan 08-01): hex encoding for the SHA256 helper's output.
-hex = "0.4"
 
 [profile.release]
 lto = "thin"

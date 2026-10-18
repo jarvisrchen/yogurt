@@ -1,30 +1,7 @@
-//! Microphone capture via `cpal` → CoreAudio default input device.
-//!
-//! cpal is the boring, battle-tested CoreAudio binding (D-13). The default
-//! input device is typically 48 kHz f32 (sometimes mono, sometimes stereo);
-//! we down-mix to mono in the callback (cheap), and the drainer task does
-//! the rubato resample to 16 kHz, the i16 quantize, and the broadcast send.
-//!
-//! ## Threading (BL-01 / BL-03 fix)
-//!
-//! cpal invokes the data callback on CoreAudio's IOProc thread which is
-//! real-time-priority and **must not block** — if the IOProc misses its
-//! deadline, macOS refuses to deliver the next ~10 ms buffer.
-//!
-//! Pipeline:
-//!
-//! ```text
-//! cpal IOProc thread:                tokio drainer task:
-//!   bytes → f32 → mono mean              drain SPSC ring
-//!   push to SPSC ring (lock-free)        rubato 48k → 16k
-//!         │                              f32 → i16 (clamp + multiply)
-//!         └─────► SPSC ring ─────►       FrameChunker → broadcast::Sender
-//! ```
-//!
-//! The callback never touches a mutex, never allocates on the steady-state
-//! path, never sends on the broadcast — so the audio thread is provably
-//! real-time-safe. The drainer task lives on the tokio runtime and may
-//! freely call `broadcast::Sender::send`.
+//! Microphone capture via `cpal`.
+//! The cpal data callback runs on CoreAudio's real-time IOProc thread and must not block, or macOS skips the next buffer.
+//! So the callback only down-mixes to mono and pushes into a lock-free SPSC ring, with no mutex, allocation, or broadcast send.
+//! A tokio drainer task does the rubato resample to 16 kHz, i16 quantize, chunking, and broadcast.
 
 use crate::{
     error::{AudioError, Result},
@@ -43,27 +20,15 @@ use std::time::Instant;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
-/// Live mic capture handle. Drop to stop the underlying `cpal::Stream` AND
-/// abort the drainer task.
 pub struct MicCapture {
-    /// Keep-alive — dropping this stops the OS-level capture via RAII.
     _stream: cpal::Stream,
-    /// Drainer task — aborted on Drop so it stops touching the broadcast
-    /// sender as soon as the user releases the stream.
     drainer: JoinHandle<()>,
-    /// The device cpal handed us at construction time. Surfaced via
-    /// `/api/audio/devices` for the UI.
     pub device_name: String,
-    /// AUD-6: shared with the drainer's `FrameChunker`. See
-    /// [`MicCapture::set_muted`].
     muted: Arc<AtomicBool>,
     /// Native sample rate this capture was opened at; the echo output
     /// stream must match it exactly.
     pub(crate) sample_rate: u32,
-    /// Gates whether the callback tees samples into `echo_consumer`'s ring.
     echo_active: Arc<AtomicBool>,
-    /// Consumer half of the echo ring, shared with whichever echo output
-    /// stream is currently reading it.
     echo_consumer: Arc<std::sync::Mutex<AudioRingConsumer>>,
 }
 
@@ -76,10 +41,7 @@ impl Drop for MicCapture {
 }
 
 impl MicCapture {
-    /// AUD-6: pause (`true`) or resume (`false`) mic audio reaching the
-    /// broadcast channel — `Channel::System` is untouched. The cpal stream
-    /// and drainer keep running either way, so resuming is instant with no
-    /// re-open cost, unlike a real device switch.
+    /// The cpal stream and drainer keep running while muted, so resuming is instant.
     pub fn set_muted(&self, muted: bool) {
         self.muted.store(muted, Ordering::Relaxed);
     }
@@ -100,44 +62,28 @@ impl MicCapture {
 
 impl std::fmt::Debug for MicCapture {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // `cpal::Stream` is not Debug — print just what we own logically.
         f.debug_struct("MicCapture")
             .field("device_name", &self.device_name)
             .finish_non_exhaustive()
     }
 }
 
-/// Information about an input device, surfaced through the `GET /api/audio/devices`
-/// endpoint Phase 7's settings UI will consume.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub name: String,
     pub is_default: bool,
-    /// Reported default sample rate, when cpal can supply it. `None` for
-    /// devices that error out (e.g. a virtual device with no live config).
+    /// `None` for devices with no live config, such as virtual devices.
     pub sample_rate: Option<u32>,
 }
 
-/// Collects an arbitrary-length i16 PCM stream into exactly-`FRAME_SAMPLES`
-/// `Frame`s and broadcasts them. Producers create one per stream.
-///
-/// Owned by the drainer task — no longer shared across threads or mutexes
-/// since BL-01.
+/// Collects an arbitrary-length i16 PCM stream into `FRAME_SAMPLES` frames and broadcasts them.
 pub(crate) struct FrameChunker {
     channel: Channel,
     tx: broadcast::Sender<Frame>,
     buf: Vec<i16>,
-    /// Meeting-relative clock baseline — captured at chunker construction
-    /// time, which is captured inside the drainer setup inside
-    /// `spawn_*_capture()`. AUDIO-05 requires drift between mic and
-    /// system streams < 50 ms; both drainers are spawned synchronously
-    /// inside `start_capture()` so the spawn-order skew is microseconds.
+    /// Both drainers are spawned synchronously inside `start_capture()`, so mic/system skew is microseconds.
     start: Instant,
-    /// AUD-6: while `true`, `feed` still drains `buf` and advances `start`
-    /// as normal, it just skips the broadcast — so unmuting produces no
-    /// timestamp jump or discontinuity, only a real gap in the audio that
-    /// reached the pipeline. `Mic`-only in practice: `System` chunkers are
-    /// constructed via `new`, which always starts unmuted.
+    /// While `true`, `feed` still drains `buf` but skips the broadcast, so unmuting causes no timestamp jump.
     muted: Arc<AtomicBool>,
 }
 
@@ -160,17 +106,7 @@ impl FrameChunker {
         }
     }
 
-    /// Feed an arbitrary slice of i16 PCM. Drains the internal buffer in
-    /// `FRAME_SAMPLES`-sized chunks, computes `monotonic_micros` per frame
-    /// from the recorded `start` instant, and sends each frame on the
-    /// broadcast channel. Send errors (no live subscribers) are dropped
-    /// silently per D-19's "consumers fall behind → drop late frames"
-    /// semantics.
-    ///
-    /// **CR-01:** microsecond resolution (not millisecond) so the 20 ms
-    /// frame cadence remains distinguishable from wall-clock jitter under
-    /// any downstream cross-channel alignment use. See
-    /// [`Frame::monotonic_micros`].
+    /// Send errors (no live subscribers) are dropped: late consumers lose frames.
     pub(crate) fn feed(&mut self, samples: &[i16]) {
         self.buf.extend_from_slice(samples);
         while self.buf.len() >= FRAME_SAMPLES {
@@ -180,7 +116,6 @@ impl FrameChunker {
                 continue;
             }
             let frame = Frame::new(self.channel, monotonic_micros, chunk);
-            // Drop silently if no live subscribers.
             let _ = self.tx.send(frame);
         }
     }
@@ -195,8 +130,6 @@ impl std::fmt::Debug for FrameChunker {
     }
 }
 
-/// Enumerate all input devices the cpal default host knows about. Returned
-/// for the `GET /api/audio/devices` REST endpoint (Plan 02-03).
 pub fn list_input_devices() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
     let default_name = host.default_input_device().and_then(|d| d.name().ok());
@@ -220,7 +153,6 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>> {
     Ok(out)
 }
 
-/// Enumerate all output devices the cpal default host knows about.
 pub fn list_output_devices() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
     let default_name = host.default_output_device().and_then(|d| d.name().ok());
@@ -244,14 +176,7 @@ pub fn list_output_devices() -> Result<Vec<DeviceInfo>> {
     Ok(out)
 }
 
-/// Spawn a microphone capture stream on the default input device. The
-/// supplied `tx` receives one [`Frame`] every 20 ms while the returned
-/// [`MicCapture`] is alive; drop it to stop capture (RAII per D-26).
-///
-/// **BL-01 architecture:** the cpal callback only pushes mono f32 samples
-/// into a lock-free SPSC ring. A dedicated tokio drainer task consumes the
-/// ring, runs rubato + i16 conversion + frame chunking + broadcast. The
-/// callback never blocks and never touches the broadcast sender.
+/// Sends one [`Frame`] every 20 ms on `tx` while the returned [`MicCapture`] is alive.
 pub fn spawn_mic_capture(
     tx: broadcast::Sender<Frame>,
     requested_device: Option<&str>,
@@ -285,7 +210,6 @@ pub fn spawn_mic_capture(
         "spawning mic capture"
     );
 
-    // Producer/consumer pair shared between the audio thread and the drainer.
     let (mut producer, mut consumer) = ring();
     // Echo ring is always allocated so start_echo never touches the audio thread.
     let (mut echo_producer, echo_consumer) = ring();
@@ -297,9 +221,6 @@ pub fn spawn_mic_capture(
         tracing::error!(error = %e, "cpal mic stream error");
     };
 
-    // Build the cpal stream. Callback does the minimum: bytes → f32 (if
-    // needed) → mono channel-mean → SPSC ring push (main + echo tee). No
-    // allocation, no mutex, no broadcast send.
     let channels_us = channels as usize;
     let stream = match sample_format {
         SampleFormat::F32 => device
@@ -343,9 +264,6 @@ pub fn spawn_mic_capture(
         .play()
         .map_err(|e| AudioError::Cpal(format!("stream.play(): {e}")))?;
 
-    // Spawn the drainer. Owns rubato (Downmix, mono-already so input_channels=1)
-    // and the FrameChunker. Wakes every DRAINER_TICK, drains the ring,
-    // resamples, chunks, broadcasts. May safely block on broadcast::send.
     let mut downmix = Downmix::new(sample_rate, 1)?;
     let muted = Arc::new(AtomicBool::new(false));
     let mut chunker = FrameChunker::with_mute(Channel::Mic, tx, muted.clone());
@@ -364,7 +282,6 @@ pub fn spawn_mic_capture(
                     chunker.feed(&i16_out);
                 }
             }
-            // Surface ring overflow as a warn! once per spike.
             let drops = consumer.dropped_samples();
             if drops > last_logged_drops {
                 tracing::warn!(
@@ -389,7 +306,6 @@ pub fn spawn_mic_capture(
     })
 }
 
-/// Destination for down-mixed mono samples.
 trait Sink {
     fn push_slice(&mut self, samples: &[f32]);
 }
@@ -416,20 +332,13 @@ impl Sink for TeeSink<'_> {
     }
 }
 
-/// Down-mix an interleaved f32 slice to mono (channel-mean) and push into
-/// the SPSC ring. Real-time-safe: no allocation, single ring write.
-///
-/// Done on the audio thread because it's O(N) trivial arithmetic; pushing
-/// raw stereo would double the ring's bandwidth requirement for no gain.
+/// Down-mixes interleaved f32 to mono (channel-mean) on the audio thread, with no allocation.
 fn push_mono_f32(sink: &mut impl Sink, data: &[f32], channels: usize) {
     if channels <= 1 {
         sink.push_slice(data);
         return;
     }
-    // Compute mono in-place using a small fixed stack buffer. Bounded chunk
-    // size so the stack array is small. 1024 input samples ≈ 512 mono out
-    // for stereo — plenty for one IOProc callback (cpal callbacks are
-    // typically 480–960 samples).
+    // Fixed stack buffer, flushed when full. One IOProc callback is typically 480-960 samples.
     let mut mono = [0.0_f32; 1024];
     let mut written = 0usize;
     for frame in data.chunks_exact(channels) {
@@ -446,19 +355,14 @@ fn push_mono_f32(sink: &mut impl Sink, data: &[f32], channels: usize) {
     }
 }
 
-/// Same as [`push_mono_f32`] but takes i16 input. Symmetric conversion
-/// using **32768.0** (= 2^15), not `i16::MAX` (= 32767), so `i16::MIN`
-/// (= -32768) maps cleanly to -1.0 instead of -1.00003. See BL-02.
+/// Like [`push_mono_f32`] for i16. Divides by 32768 so `i16::MIN` maps to exactly -1.0.
 fn push_mono_i16(sink: &mut impl Sink, data: &[i16], channels: usize) {
-    /// BL-02: 2^15 = 32768.0, the symmetric divisor. Matches the multiplier
-    /// used in resample.rs's f32 → i16 path so the round-trip is identity
-    /// within the i16 saturation range.
+    /// Matches the multiplier in resample.rs so the round-trip is identity.
     const I16_TO_F32: f32 = 1.0 / 32768.0;
 
     let mut mono = [0.0_f32; 1024];
     let mut written = 0usize;
     if channels <= 1 {
-        // Convert directly to f32 in chunks.
         for &s in data {
             if written == mono.len() {
                 sink.push_slice(&mono[..written]);
@@ -491,7 +395,6 @@ mod tests {
     fn chunker_emits_exactly_frame_samples_per_frame() {
         let (tx, mut rx) = broadcast::channel::<Frame>(8);
         let mut chunker = FrameChunker::new(Channel::Mic, tx);
-        // Feed 1000 samples → 3 full frames (960 samples), 40 buffered.
         let samples: Vec<i16> = (0..1000).map(|i| (i as i16) % 1000).collect();
         chunker.feed(&samples);
         let mut count = 0;
@@ -525,7 +428,6 @@ mod tests {
     fn chunker_monotonic_micros_is_non_decreasing() {
         let (tx, mut rx) = broadcast::channel::<Frame>(8);
         let mut chunker = FrameChunker::new(Channel::System, tx);
-        // Feed two frames worth so we get two events.
         let samples = vec![0_i16; FRAME_SAMPLES * 2];
         chunker.feed(&samples);
         let f1 = rx.try_recv().expect("first frame");
@@ -550,9 +452,7 @@ mod tests {
 
     #[test]
     fn list_input_devices_does_not_panic() {
-        // We can't assert anything about hardware here (CI macOS runners have
-        // no audio devices, dev machines have varying setups). Just call it
-        // and ensure it returns Ok(_) — empty vec is acceptable.
+        // CI runners have no audio devices, so only check that it does not panic.
         let _ = list_input_devices();
     }
 
@@ -564,7 +464,6 @@ mod tests {
     #[test]
     fn push_mono_f32_averages_stereo_channels() {
         let (mut tx, mut rx) = ring();
-        // Stereo L=1.0, R=0.0 → mono mean = 0.5.
         let interleaved = vec![1.0_f32, 0.0_f32, 1.0, 0.0, 1.0, 0.0];
         push_mono_f32(&mut tx, &interleaved, 2);
         let mut out = Vec::new();
@@ -574,7 +473,6 @@ mod tests {
 
     #[test]
     fn push_mono_i16_uses_symmetric_divisor() {
-        // BL-02: i16::MIN (-32768) must map to exactly -1.0, not -1.00003.
         let (mut tx, mut rx) = ring();
         let data = vec![i16::MIN, 0, i16::MAX];
         push_mono_i16(&mut tx, &data, 1);
@@ -582,7 +480,6 @@ mod tests {
         rx.drain_to(&mut out);
         assert_eq!(out[0], -1.0, "i16::MIN must convert to exactly -1.0");
         assert_eq!(out[1], 0.0);
-        // i16::MAX / 32768 = 0.99997 — just shy of 1.0, which is correct.
         assert!(
             (out[2] - 0.99997_f32).abs() < 1e-4,
             "i16::MAX should map to ~0.99997, got {}",
