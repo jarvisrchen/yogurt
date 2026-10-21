@@ -312,13 +312,16 @@ cmd_dev_bg() {
   local name
   name="$(tmux_window_name "${1:-}")"
   local target="yogurt:$name"
+  # A tmux window inherits the tmux server's environment, not this shell's.
+  local env=()
+  [ -n "${YOGURT_DATA_DIR:-}" ] && env=(-e "YOGURT_DATA_DIR=$YOGURT_DATA_DIR")
 
   if tmux has-session -t yogurt 2>/dev/null; then
     if ! tmux list-windows -t yogurt -F '#{window_name}' 2>/dev/null | grep -qx "$name"; then
-      tmux new-window -t yogurt: -n "$name" -c "$PWD" 'just dev'
+      tmux new-window ${env[@]+"${env[@]}"} -t yogurt: -n "$name" -c "$PWD" 'just dev'
     fi
   else
-    tmux new-session -d -s yogurt -n "$name" -c "$PWD" 'just dev'
+    tmux new-session ${env[@]+"${env[@]}"} -d -s yogurt -n "$name" -c "$PWD" 'just dev'
   fi
 
   local pane="" backend_port="" vite_port="" i
