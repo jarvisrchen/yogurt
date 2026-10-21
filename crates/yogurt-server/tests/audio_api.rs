@@ -119,6 +119,10 @@ async fn it_reports_permission_status() {
         ),
         "microphone must be a known status, got {microphone:?}"
     );
+    assert!(
+        body.get("owner").and_then(|v| v.as_str()).is_some(),
+        "macOS always has a responsible process to name, got {body}"
+    );
 }
 
 /// TCC state is environment-dependent, so only the shape is asserted.

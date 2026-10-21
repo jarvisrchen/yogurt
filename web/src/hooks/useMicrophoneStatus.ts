@@ -8,6 +8,7 @@ import {
 export interface MicrophoneStatus {
   granted: boolean;
   status: PermissionStatus | undefined;
+  owner: string | null;
   isLoading: boolean;
   error: Error | null;
 }
@@ -35,6 +36,7 @@ export function useMicrophoneStatus(
   return {
     granted,
     status,
+    owner: q.data?.owner ?? null,
     isLoading: q.isLoading,
     error: q.error as Error | null,
   };

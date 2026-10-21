@@ -11,6 +11,7 @@ export type PermissionStatus =
 export interface PermissionsResponse {
   screen_recording: PermissionStatus;
   microphone: PermissionStatus;
+  owner: string | null;
 }
 
 /** Shared by both permission hooks so React Query dedupes them into one poll. */

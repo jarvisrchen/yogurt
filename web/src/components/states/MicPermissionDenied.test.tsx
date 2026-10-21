@@ -39,4 +39,19 @@ describe("MicPermissionDenied", () => {
       });
     });
   });
+
+  it("names the app that owns the grant", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(permissionsKey, {
+      screen_recording: "granted",
+      microphone: "denied",
+      owner: "Ghostty",
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MicPermissionDenied />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Ghostty")).toBeInTheDocument();
+  });
 });

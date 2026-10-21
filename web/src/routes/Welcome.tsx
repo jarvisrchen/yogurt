@@ -57,7 +57,7 @@ export function Welcome() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const settings = useSettings();
-  const { granted } = useScreenRecordingStatus();
+  const { granted, owner } = useScreenRecordingStatus();
   const { granted: micGranted, status: micStatus } = useMicrophoneStatus();
   const setFirstRun = useSetFirstRunCompleted();
   const models = useModels();
@@ -134,6 +134,9 @@ export function Welcome() {
   const showMicButton =
     micStatus !== "granted" && micStatus !== "not_required";
 
+  const permissionsDone = granted && micGranted;
+  const ownerIsOther = !!owner && owner !== "yogurt";
+
   return (
     <div className="grid grid-cols-[1.05fr_0.95fr] min-h-screen">
       <section className="bg-paper px-16 py-16 flex flex-col justify-center">
@@ -161,6 +164,22 @@ export function Welcome() {
         <p className={`${LABEL} mb-4`}>
           ONE-TIME SETUP
         </p>
+        {!permissionsDone ? (
+          <p className="-mt-2 mb-4 text-[13px] text-mut">
+            {ownerIsOther ? (
+              <>
+                macOS gives both permissions to{" "}
+                <strong className="text-ink">{owner}</strong>, the app that
+                started yogurt. Turn on {owner} in System Settings.
+              </>
+            ) : (
+              <>
+                Turn on {owner ?? "the app that started yogurt"} in System
+                Settings.
+              </>
+            )}
+          </p>
+        ) : null}
 
         <div className="flex flex-col gap-4">
           <StepCard
@@ -194,9 +213,8 @@ export function Welcome() {
                   </button>
                 </div>
                 <p className="mt-2 text-[12px] text-mut">
-                  Granting this quits yogurt immediately. That is macOS
-                  doing it, not a crash. Relaunch yogurt and reload this
-                  page; the steps below will pick up where you left off.
+                  macOS may quit {ownerIsOther ? owner : "yogurt"} once you
+                  grant this. That is expected.
                 </p>
                 <ErrorNote
                   error={screenRequest.isError ? screenRequest.error : null}
@@ -299,9 +317,20 @@ export function Welcome() {
           friendly="Couldn't save that. Your permissions and provider are still set, so try again."
         />
 
-        <p className="mt-4 text-[13px] text-mut text-center">
-          Restart once after granting. That one is a macOS quirk.
-        </p>
+        {!permissionsDone ? (
+          <p className="mt-4 text-[13px] text-mut text-center">
+            Already granted? macOS applies a grant only when yogurt starts, so
+            reloading this page will not pick it up.{" "}
+            {ownerIsOther ? (
+              <>
+                Press Ctrl-C in {owner} where <code>yogurt start</code> is
+                running, then run it again.
+              </>
+            ) : (
+              <>Quit yogurt and start it again.</>
+            )}
+          </p>
+        ) : null}
       </section>
     </div>
   );

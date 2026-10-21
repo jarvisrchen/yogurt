@@ -1,7 +1,7 @@
 /**
  * The "Open System Settings" href must match exactly (casing, query key, scheme) or macOS will not open the Microphone pane:
  * `x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`
- * The System Settings list shows whichever process asked (Terminal/iTerm under `just dev`, the yogurt binary when launched directly), not "Yogurt".
+ * System Settings lists the responsible app (the terminal that ran `yogurt start`, or the yogurt binary itself), which the server reports as `owner`.
  * A denied microphone usually recovers on the next attempt to open the input device, but older macOS releases want a relaunch, so the instructions cover both.
  * "Check again" re-fetches the permission query. Reloading the tab restarts nothing.
  */
@@ -9,10 +9,12 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { permissionsKey } from "../../lib/api/audio";
 import { Button, buttonClassName } from "../Button";
+import { useMicrophoneStatus } from "../../hooks/useMicrophoneStatus";
 
 export function MicPermissionDenied() {
   const qc = useQueryClient();
   const [checking, setChecking] = useState(false);
+  const { owner } = useMicrophoneStatus();
 
   const handleCheckAgain = async () => {
     setChecking(true);
@@ -44,10 +46,17 @@ export function MicPermissionDenied() {
           Open <strong>System Settings → Privacy &amp; Security → Microphone</strong>
         </li>
         <li>
-          Find the app that launched yogurt. That is{" "}
-          <strong>Terminal</strong> or <strong>iTerm</strong> if you started
-          it from the command line, or <strong>yogurt</strong> itself if you
-          opened it directly. Toggle it on
+          {owner ? (
+            <>
+              Find <strong>{owner}</strong>, the app macOS gives yogurt&apos;s
+              permissions to, and toggle it on
+            </>
+          ) : (
+            <>
+              Find the app that launched yogurt, usually your terminal, and
+              toggle it on
+            </>
+          )}
         </li>
         <li>
           Click "Check again" below. Most macOS versions pick this up

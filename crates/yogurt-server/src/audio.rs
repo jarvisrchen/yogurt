@@ -13,9 +13,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use yogurt_audio::{
-    has_microphone_permission, has_screen_recording_permission, list_input_devices, play_test_tone,
-    request_microphone_permission, request_screen_recording_permission, AudioError, DeviceInfo,
-    PermissionStatus,
+    has_microphone_permission, has_screen_recording_permission, list_input_devices,
+    permission_owner, play_test_tone, request_microphone_permission,
+    request_screen_recording_permission, AudioError, DeviceInfo, PermissionStatus,
 };
 use yogurt_db::settings;
 
@@ -27,13 +27,15 @@ use crate::state::AppState;
 /// ```json
 /// {
 ///   "screen_recording": "granted" | "denied" | "not_required",
-///   "microphone":       "granted" | "denied" | "not_determined" | "not_required"
+///   "microphone":       "granted" | "denied" | "not_determined" | "not_required",
+///   "owner":            "Ghostty" | null
 /// }
 /// ```
 #[derive(Serialize)]
 pub struct PermissionResponse {
     pub screen_recording: PermissionStatus,
     pub microphone: PermissionStatus,
+    pub owner: Option<String>,
 }
 
 impl PermissionResponse {
@@ -42,6 +44,7 @@ impl PermissionResponse {
         Self {
             screen_recording: has_screen_recording_permission(),
             microphone: has_microphone_permission(),
+            owner: permission_owner(),
         }
     }
 }
