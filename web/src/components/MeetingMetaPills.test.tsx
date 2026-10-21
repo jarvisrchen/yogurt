@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { MeetingMetaPills, parseLlmModel, parseSttEngine } from "./MeetingMetaPills";
 
@@ -58,7 +58,9 @@ describe("MeetingMetaPills", () => {
     expect(screen.getByText(/Aug 28/)).toBeInTheDocument();
     expect(screen.getByText("8 min")).toBeInTheDocument();
     expect(screen.getByText("small.en")).toBeInTheDocument();
-    expect(screen.getByTestId("engine-pill")).toHaveAttribute("title", "Local · small.en");
+    expect(within(screen.getByTestId("engine-pill")).getByRole("tooltip")).toHaveTextContent(
+      "Local · small.en",
+    );
   });
 
   it("shows the short CLI model and the full stamp on hover", () => {
@@ -69,9 +71,8 @@ describe("MeetingMetaPills", () => {
       />,
     );
     const pill = screen.getByTestId("llm-pill");
-    expect(pill).toHaveTextContent(/^MiniMax-M3$/);
-    expect(pill).toHaveAttribute(
-      "title",
+    expect(within(pill).getByText("MiniMax-M3")).toBeInTheDocument();
+    expect(within(pill).getByRole("tooltip")).toHaveTextContent(
       "Enhanced by cli:opencode:minimax-coding-plan/MiniMax-M3",
     );
   });
