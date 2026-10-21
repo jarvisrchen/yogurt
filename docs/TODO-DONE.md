@@ -1159,3 +1159,13 @@ New closed items go at the bottom.
 
   Landed with a stop delegate and a watchdog on the system SCStream, a `system_audio_status` WS notice, and a daily-rotated server log at `<data dir>/logs/yogurt.log.YYYY-MM-DD`.
   </details>
+
+- [x] **UI-18** Shorten the Library's STT and LLM pills so a long model stamp stops truncating the meeting title
+  <details>
+  <summary>Details</summary>
+
+  A CLI stamp like `cli:opencode:minimax-coding-plan/MiniMax-M3` filled most of the row.
+  Show only the model name, mark CLI with a terminal icon, drop the Local/Cloud word the icon already carries, and keep the full stamp in the hover title.
+
+  Landed in the UI-18 PR (2026-10-20). The STT and LLM pills show only the model name, a terminal icon marks a CLI provider, and the hover title carries the full stamp.
+  </details>

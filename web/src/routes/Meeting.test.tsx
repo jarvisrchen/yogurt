@@ -657,7 +657,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
     renderAt("/meeting/meeting-4");
 
     await waitFor(() => {
-      expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
+      expect(screen.getByText("nova-3")).toBeInTheDocument();
     });
 
     await act(async () => {
@@ -671,7 +671,7 @@ describe("Meeting — header stays put once stopped (meeting still open)", () =>
     });
     // The chip is meeting metadata (stamped at start), not a live status —
     // it must not vanish just because recording flipped to false.
-    expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
+    expect(screen.getByText("nova-3")).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });
