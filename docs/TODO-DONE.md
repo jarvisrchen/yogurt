@@ -1196,3 +1196,7 @@ New closed items go at the bottom.
 - [x] **UI-19** Show the STT and LLM pills' full names in a tooltip that appears on hover, since the native `title` tooltip went unnoticed
 
   Landed in the UI-19 PR (2026-10-21). The pills render a CSS tooltip under their right edge on hover in place of `title`, which only appeared after about a second of holding still. The STT pill skips it when the full name equals the label (a bare `Local STT`).
+
+- [x] **UI-20** Restyle the pill tooltip as the app's card surface, with a muted caption and the model ID in mono
+
+  Landed in the UI-20 PR (2026-10-21). The tooltip uses the menu surface (`bg-card`, `border-line`, `rounded-chip`, `shadow-pop`), a muted caption over the full ID in `font-mono`, and a 150ms `ease-pop` fade with a short hover delay so sweeping across rows does not flash it.
