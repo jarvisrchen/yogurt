@@ -1200,3 +1200,7 @@ New closed items go at the bottom.
 - [x] **UI-20** Restyle the pill tooltip as the app's card surface, with a muted caption and the model ID in mono
 
   Landed in the UI-20 PR (2026-10-21). The tooltip uses the menu surface (`bg-card`, `border-line`, `rounded-chip`, `shadow-pop`), a muted caption over the full ID in `font-mono`, and a 150ms `ease-pop` fade with a short hover delay so sweeping across rows does not flash it.
+
+- [x] **UI-21** Make the card, pop, and window shadows follow dark mode, which they never did
+
+  Landed in the UI-21 PR (2026-10-21). Tailwind v4 copies a shadow token's value into its utility class, so the dark block's `--shadow-*` overrides never reached `shadow-card`, `shadow-pop`, or `shadow-window`. The tokens now read a `--shadow-*-color` variable that the dark block re-points. A leftover unlayered `.shadow-pop` rule that beat the utility in both themes is gone.
