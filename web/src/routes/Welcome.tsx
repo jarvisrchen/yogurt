@@ -106,7 +106,6 @@ export function Welcome() {
       : hasProvider
         ? "done"
         : "current";
-  // Transcription does not gate `ready`: Deepgram cloud is the seeded default.
   const general = settings.data?.general;
   const sttUsable =
     general?.stt_provider === "local"
@@ -119,6 +118,7 @@ export function Welcome() {
         ? "done"
         : "current";
 
+  // Transcription does not gate `ready`: Deepgram cloud is the seeded default.
   const ready = granted && micGranted && hasProvider;
 
   const handleProceed = async () => {

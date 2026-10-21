@@ -52,33 +52,17 @@ function setup(
 }
 
 describe("Welcome step 4", () => {
-  it("is done for local whisper with the model downloaded", () => {
-    const card = setup(
-      { stt_provider: "local", stt_model: "large-v3-turbo" },
-      { downloaded: true },
+  it.each([
+    ["local", { downloaded: true }, "done"],
+    ["local", {}, "current"],
+    ["cloud", { deepgramKey: "••••abcd" }, "done"],
+    ["cloud", {}, "current"],
+  ] as const)("%s %o is %s", (stt_provider, opts, expected) => {
+    const card = setup({ stt_provider, stt_model: "large-v3-turbo" }, opts);
+    expect(card.getAttribute("data-state")).toBe(expected);
+    const link = screen.queryByText(/Choose in Settings/)?.closest("a");
+    expect(link?.getAttribute("href") ?? null).toBe(
+      expected === "current" ? "/settings/transcription" : null,
     );
-    expect(card.getAttribute("data-state")).toBe("done");
-    expect(screen.queryByText(/Choose in Settings/)).toBeNull();
-  });
-
-  it("is current for local whisper with the model missing", () => {
-    const card = setup({ stt_provider: "local", stt_model: "large-v3-turbo" });
-    expect(card.getAttribute("data-state")).toBe("current");
-    expect(
-      screen.getByText(/Choose in Settings/).closest("a")?.getAttribute("href"),
-    ).toBe("/settings/transcription");
-  });
-
-  it("is done for cloud with a stored Deepgram key", () => {
-    const card = setup(
-      { stt_provider: "cloud", stt_model: "" },
-      { deepgramKey: "••••abcd" },
-    );
-    expect(card.getAttribute("data-state")).toBe("done");
-  });
-
-  it("is current for cloud without a key", () => {
-    const card = setup({ stt_provider: "cloud", stt_model: "" });
-    expect(card.getAttribute("data-state")).toBe("current");
   });
 });
