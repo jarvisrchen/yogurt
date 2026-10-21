@@ -78,13 +78,15 @@ describe("MeetingCard — engine pill", () => {
     expect(screen.queryByText(/Local|Cloud/)).toBeNull();
   });
 
-  it("shows the same provider · model pill as the meeting headers", () => {
+  it("shows the model alone with the provider on hover", () => {
     renderCard(meeting({ id: "local-1", stt_engine: "local · small.en" }));
-    expect(screen.getByText("Local · small.en")).toBeInTheDocument();
+    expect(screen.getByText("small.en")).toBeInTheDocument();
+    expect(screen.getByTestId("engine-pill")).toHaveAttribute("title", "Local · small.en");
   });
 
-  it("shows Cloud · model for a cloud stamp", () => {
+  it("keeps Cloud in the hover for a cloud stamp", () => {
     renderCard(meeting({ id: "cloud-1", stt_engine: "cloud · nova-3" }));
-    expect(screen.getByText("Cloud · nova-3")).toBeInTheDocument();
+    expect(screen.getByText("nova-3")).toBeInTheDocument();
+    expect(screen.getByTestId("engine-pill")).toHaveAttribute("title", "Cloud · nova-3");
   });
 });

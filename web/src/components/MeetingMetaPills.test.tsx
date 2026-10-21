@@ -1,22 +1,47 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { MeetingMetaPills, parseSttEngine } from "./MeetingMetaPills";
+import { MeetingMetaPills, parseLlmModel, parseSttEngine } from "./MeetingMetaPills";
 
 afterEach(() => cleanup());
 
 describe("parseSttEngine", () => {
-  it("splits provider and model", () => {
+  it("labels with the model alone and keeps the provider for the hover", () => {
     expect(parseSttEngine("local · small.en")).toEqual({
       cloud: false,
-      text: "Local · small.en",
+      text: "small.en",
+      full: "Local · small.en",
     });
-    expect(parseSttEngine("cloud · nova-3")).toEqual({ cloud: true, text: "Cloud · nova-3" });
+    expect(parseSttEngine("cloud · nova-3")).toEqual({
+      cloud: true,
+      text: "nova-3",
+      full: "Cloud · nova-3",
+    });
   });
   it("renders a bare provider as '<Provider> STT' and null for missing", () => {
-    expect(parseSttEngine("local")).toEqual({ cloud: false, text: "Local STT" });
+    expect(parseSttEngine("local")).toEqual({ cloud: false, text: "Local STT", full: "Local STT" });
     expect(parseSttEngine(null)).toBeNull();
     expect(parseSttEngine("  ")).toBeNull();
+  });
+});
+
+describe("parseLlmModel", () => {
+  it("drops the CLI binary and the provider prefix from the label", () => {
+    expect(parseLlmModel("cli:opencode:minimax-coding-plan/MiniMax-M3")).toEqual({
+      cli: true,
+      text: "MiniMax-M3",
+      full: "cli:opencode:minimax-coding-plan/MiniMax-M3",
+    });
+    expect(parseLlmModel("cli:claude:haiku")?.text).toBe("haiku");
+    expect(parseLlmModel("cli:claude")?.text).toBe("claude");
+  });
+  it("leaves a plain API model as is and null for missing", () => {
+    expect(parseLlmModel("gemini-3.5-flash-lite")).toEqual({
+      cli: false,
+      text: "gemini-3.5-flash-lite",
+      full: "gemini-3.5-flash-lite",
+    });
+    expect(parseLlmModel("  ")).toBeNull();
   });
 });
 
@@ -32,7 +57,23 @@ describe("MeetingMetaPills", () => {
     );
     expect(screen.getByText(/Aug 28/)).toBeInTheDocument();
     expect(screen.getByText("8 min")).toBeInTheDocument();
-    expect(screen.getByText("Local · small.en")).toBeInTheDocument();
+    expect(screen.getByText("small.en")).toBeInTheDocument();
+    expect(screen.getByTestId("engine-pill")).toHaveAttribute("title", "Local · small.en");
+  });
+
+  it("shows the short CLI model and the full stamp on hover", () => {
+    render(
+      <MeetingMetaPills
+        startedAt={Date.now()}
+        llmModel="cli:opencode:minimax-coding-plan/MiniMax-M3"
+      />,
+    );
+    const pill = screen.getByTestId("llm-pill");
+    expect(pill).toHaveTextContent(/^MiniMax-M3$/);
+    expect(pill).toHaveAttribute(
+      "title",
+      "Enhanced by cli:opencode:minimax-coding-plan/MiniMax-M3",
+    );
   });
 
   it("omits duration while the meeting is live and the engine when unknown", () => {

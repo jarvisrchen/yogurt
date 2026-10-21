@@ -1,9 +1,10 @@
 /**
  * `stt_engine` is stamped at recording start as "local · <model>" or "cloud · <model>". Older meetings have `null` and get no engine pill.
  * A bare "local" / "cloud" (from the active-recording poll before the row refetches) renders as "Local STT" / "Cloud STT".
+ * Pills show a short label (the icon already says local vs cloud, or CLI) and carry the full name in `title`.
  */
 
-import { Cloud, HardDrive, Sparkles } from "lucide-react";
+import { Cloud, HardDrive, Sparkles, Terminal } from "lucide-react";
 
 interface Props {
   startedAt?: number | null;
@@ -17,14 +18,25 @@ interface Props {
 
 export function parseSttEngine(
   raw: string | null | undefined,
-): { cloud: boolean; text: string } | null {
+): { cloud: boolean; text: string; full: string } | null {
   const s = raw?.trim();
   if (!s) return null;
   const [provider, ...rest] = s.split("·").map((p) => p.trim());
   const cloud = provider?.toLowerCase() === "cloud";
   const label = cloud ? "Cloud" : "Local";
   const model = rest.filter(Boolean).join(" · ");
-  return { cloud, text: model ? `${label} · ${model}` : `${label} STT` };
+  const text = model || `${label} STT`;
+  return { cloud, text, full: model ? `${label} · ${model}` : text };
+}
+
+/** CLI stamps are `cli:<binary>[:<model>]`, and opencode models carry a `provider/` prefix; the label keeps only the last segment. */
+export function parseLlmModel(
+  raw: string | null | undefined,
+): { cli: boolean; text: string; full: string } | null {
+  const full = raw?.trim();
+  if (!full) return null;
+  const text = full.split(":").pop()!.split("/").pop()! || full;
+  return { cli: full.startsWith("cli:"), text, full };
 }
 
 export function formatStartedAt(startedAt: number): string {
@@ -42,6 +54,8 @@ export function formatDuration(startedAt: number, endedAt: number): string | nul
 
 const PILL =
   "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none";
+// Caps a model name we have not seen yet so it cannot squeeze the Library row's title.
+const LABEL = "min-w-0 max-w-[12rem] truncate";
 
 export function MetaPill({
   children,
@@ -70,14 +84,14 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
     <span
       className={`${PILL} ${tone}`}
       data-testid="engine-pill"
-      title={engine.cloud ? "Transcribed by cloud STT" : "Transcribed on this Mac"}
+      title={engine.full}
     >
       {engine.cloud ? (
-        <Cloud size={12} aria-hidden />
+        <Cloud size={12} aria-hidden className="shrink-0" />
       ) : (
-        <HardDrive size={12} aria-hidden className="text-matcha" />
+        <HardDrive size={12} aria-hidden className="shrink-0 text-matcha" />
       )}
-      {engine.text}
+      <span className={LABEL}>{engine.text}</span>
     </span>
   );
 }
@@ -90,18 +104,19 @@ export function LlmPill({
   llmModel: string | null | undefined;
   pending?: boolean;
 }) {
-  const model = llmModel?.trim();
+  const model = parseLlmModel(llmModel);
   if (!model) return null;
   // Filled once enhanced, outlined while pending; mirrors the STT pill's filled-vs-outlined convention.
   const tone = pending ? "border border-blue/40 text-blue bg-transparent" : "bg-blsoft text-ink";
+  const Icon = model.cli ? Terminal : Sparkles;
   return (
     <span
       className={`${PILL} ${tone}`}
       data-testid="llm-pill"
-      title={pending ? `Will enhance with ${model}` : `Enhanced by ${model}`}
+      title={pending ? `Will enhance with ${model.full}` : `Enhanced by ${model.full}`}
     >
-      <Sparkles size={12} aria-hidden className={pending ? undefined : "text-blue"} />
-      {model}
+      <Icon size={12} aria-hidden className={pending ? "shrink-0" : "shrink-0 text-blue"} />
+      <span className={LABEL}>{model.text}</span>
     </span>
   );
 }
