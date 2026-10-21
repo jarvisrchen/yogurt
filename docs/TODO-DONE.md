@@ -1173,3 +1173,7 @@ New closed items go at the bottom.
 - [x] **DX-16** Add a `yogurt-ship` skill for the ticket-to-merged-PR flow, and make `just dev-bg` pass `YOGURT_DATA_DIR` into its tmux window
 
   Landed in the DX-16 PR (2026-10-20). `.claude/skills/yogurt-ship/SKILL.md` walks ID allocation past open PRs, the worktree, end-to-end verification on a scratch `YOGURT_DATA_DIR`, ponytail review, the conflict check, and landing. `just dev-bg` now forwards `YOGURT_DATA_DIR` with `tmux -e`, since a new window inherits the tmux server environment and silently ran on the shared `~/.yogurt`.
+
+- [x] **UI-17** On /welcome, step 4 "Pick transcription" ignores the saved transcription setup and its link goes to /settings/model instead of /settings/transcription.
+
+  Step 4 on /welcome now turns green once the selected transcription engine is usable, and its link opens /settings/transcription.

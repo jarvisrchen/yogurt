@@ -15,6 +15,7 @@ import {
   useSettings,
   useSetFirstRunCompleted,
 } from "../lib/api/settings";
+import { useModels } from "../lib/api/stt";
 import { useMicrophoneStatus } from "../hooks/useMicrophoneStatus";
 import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
 import { LABEL } from "../components/settings/labelClass";
@@ -59,6 +60,7 @@ export function Welcome() {
   const { granted } = useScreenRecordingStatus();
   const { granted: micGranted, status: micStatus } = useMicrophoneStatus();
   const setFirstRun = useSetFirstRunCompleted();
+  const models = useModels();
 
   const micRequest = useMutation({
     mutationFn: requestMicrophonePermission,
@@ -104,10 +106,19 @@ export function Welcome() {
       : hasProvider
         ? "done"
         : "current";
-  // Transcription does not gate `ready`: Deepgram cloud is the seeded default.
+  const general = settings.data?.general;
+  const sttUsable =
+    general?.stt_provider === "local"
+      ? !!models.data?.find((m) => m.name === general.stt_model)?.downloaded
+      : !!settings.data?.deepgram_key_masked;
   const step4State: StepState =
-    granted && micGranted && hasProvider ? "current" : "pending";
+    !granted || !micGranted || !hasProvider
+      ? "pending"
+      : sttUsable
+        ? "done"
+        : "current";
 
+  // Transcription does not gate `ready`: Deepgram cloud is the seeded default.
   const ready = granted && micGranted && hasProvider;
 
   const handleProceed = async () => {
@@ -262,7 +273,7 @@ export function Welcome() {
           >
             {step4State === "current" ? (
               <Link
-                to="/settings"
+                to="/settings/transcription"
                 className="text-[12.5px] text-blue hover:underline"
               >
                 Choose in Settings →
