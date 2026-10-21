@@ -25,6 +25,8 @@ just pr "<ID>: <title>" --body-file <f>  # validate, push, open the PR
 just land                                # wait for CI, squash-merge, clean up
 ```
 
+The `yogurt-ship` skill runs this end to end, with ID allocation, a ponytail review, and the conflict check.
+
 Releases: `scripts/release.sh preflight <version>`, then `scripts/release.sh ship <version>`; the `release` skill is the pointer for the judgment calls.
 
 ## Repo layout
