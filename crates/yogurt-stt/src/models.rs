@@ -11,6 +11,7 @@ use crate::sha256;
 use futures_util::StreamExt;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Static description of one downloadable whisper.cpp model.
@@ -285,18 +286,27 @@ pub enum DownloadError {
     Cancelled,
 }
 
-/// Download `url` to `dest`, resuming a partial file via `Range: bytes=N-`, and verify SHA256 afterward.
-/// On mismatch the file is deleted so a later call does not fast-path against corrupt state.
+/// `<model path>.part`, where bytes stream until they verify.
+/// Keeping them off `dest` means `resolve_model` never hashes a partial file, which took minutes for a 3 GB model.
+pub fn part_path(model: &Path) -> PathBuf {
+    let mut s = model.as_os_str().to_os_string();
+    s.push(".part");
+    PathBuf::from(s)
+}
+
+/// Download `url` to `dest` via [`part_path`], resuming with `Range: bytes=N-`, and verify SHA256 before renaming into place.
+/// On mismatch the partial file is deleted so the next attempt starts clean.
 ///
 /// `on_progress` fires at a cadence of at least 500 ms and once at the end with `bytes_downloaded == total_bytes`.
+/// Setting `cancel` stops at the next chunk, deletes the partial file, and returns [`DownloadError::Cancelled`].
 ///
 /// If `dest` already verifies, it returns without touching the network.
-/// Otherwise it sends `Range: bytes={len}-` from the existing length.
 /// A server that replies 200 instead of 206 gets a truncate-overwrite from byte 0.
 pub async fn download_to<F>(
     url: &str,
     dest: &Path,
     expected_sha256: &str,
+    cancel: &AtomicBool,
     mut on_progress: F,
 ) -> Result<(), DownloadError>
 where
@@ -313,9 +323,12 @@ where
                 return Ok(());
             }
         }
+        // A partial written before `.part` existed, or a corrupt copy. Either way it is not resumable.
+        let _ = std::fs::remove_file(dest);
     }
 
-    let existing_len: u64 = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+    let part = part_path(dest);
+    let existing_len: u64 = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
 
     let client = reqwest::Client::builder()
         .user_agent("yogurt-stt/0.1")
@@ -337,12 +350,12 @@ where
     };
 
     let mut file: std::fs::File = if resumed && existing_len > 0 {
-        let mut f = std::fs::OpenOptions::new().append(true).open(dest)?;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&part)?;
         f.seek(SeekFrom::End(0))?;
         f
     } else {
         // No existing file, or the server ignored Range and sends the full body, so truncate.
-        std::fs::File::create(dest)?
+        std::fs::File::create(&part)?
     };
 
     let mut downloaded: u64 = if resumed { existing_len } else { 0 };
@@ -351,6 +364,11 @@ where
 
     let mut stream = resp.bytes_stream();
     while let Some(chunk_res) = stream.next().await {
+        if cancel.load(Ordering::Relaxed) {
+            drop(file);
+            let _ = std::fs::remove_file(&part);
+            return Err(DownloadError::Cancelled);
+        }
         let chunk = chunk_res?;
         file.write_all(&chunk)?;
         downloaded += chunk.len() as u64;
@@ -395,17 +413,18 @@ where
     drop(file);
 
     // Same reactor-blocking concern as the fast path.
-    let dest_owned = dest.to_path_buf();
-    let actual = tokio::task::spawn_blocking(move || sha256::hash_file(&dest_owned))
+    let part_owned = part.clone();
+    let actual = tokio::task::spawn_blocking(move || sha256::hash_file(&part_owned))
         .await
         .map_err(|e| std::io::Error::other(format!("hash join error: {e}")))??;
     if !actual.eq_ignore_ascii_case(expected_sha256) {
-        let _ = std::fs::remove_file(dest);
+        let _ = std::fs::remove_file(&part);
         return Err(DownloadError::HashMismatch {
             expected: expected_sha256.to_string(),
             actual,
         });
     }
+    std::fs::rename(&part, dest)?;
     write_marker(dest, &actual);
 
     Ok(())
@@ -421,6 +440,7 @@ async fn download_trying_mirror_first<F>(
     url: &str,
     dest: &Path,
     expected_sha256: &str,
+    cancel: &AtomicBool,
     on_progress: F,
 ) -> Result<(), DownloadError>
 where
@@ -435,11 +455,10 @@ where
                 g(tick);
             }
         };
-        if download_to(mirror_url, dest, expected_sha256, cb)
-            .await
-            .is_ok()
-        {
-            return Ok(());
+        match download_to(mirror_url, dest, expected_sha256, cancel, cb).await {
+            Ok(()) => return Ok(()),
+            Err(DownloadError::Cancelled) => return Err(DownloadError::Cancelled),
+            Err(_) => {}
         }
     }
     let cb = move |tick: DownloadProgress| {
@@ -447,16 +466,28 @@ where
             g(tick);
         }
     };
-    download_to(url, dest, expected_sha256, cb).await
+    download_to(url, dest, expected_sha256, cancel, cb).await
 }
 
 /// Resolve `model_path(spec)` and download it, trying `spec.mirror_url` before `spec.url`.
-pub async fn download<F>(spec: &ModelSpec, on_progress: F) -> Result<(), DownloadError>
+pub async fn download<F>(
+    spec: &ModelSpec,
+    cancel: &AtomicBool,
+    on_progress: F,
+) -> Result<(), DownloadError>
 where
     F: FnMut(DownloadProgress) + Send + 'static,
 {
     let path = model_path(spec)?;
-    download_trying_mirror_first(spec.mirror_url, spec.url, &path, spec.sha256, on_progress).await
+    download_trying_mirror_first(
+        spec.mirror_url,
+        spec.url,
+        &path,
+        spec.sha256,
+        cancel,
+        on_progress,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -786,6 +817,7 @@ mod tests {
             "http://127.0.0.1:1/unreachable",
             &dest,
             &expected,
+            &AtomicBool::new(false),
             |_| {},
         )
         .await
@@ -806,6 +838,7 @@ mod tests {
             &format!("{base}/ok"),
             &dest,
             &expected,
+            &AtomicBool::new(false),
             |_| {},
         )
         .await
@@ -821,10 +854,39 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("ggml-test.bin");
 
-        download_trying_mirror_first(None, &format!("{base}/ok"), &dest, &expected, |_| {})
-            .await
-            .expect("download should succeed with no mirror configured");
+        download_trying_mirror_first(
+            None,
+            &format!("{base}/ok"),
+            &dest,
+            &expected,
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .await
+        .expect("download should succeed with no mirror configured");
         assert_eq!(sha256::hash_file(&dest).unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_mirror_download_does_not_fall_back() {
+        let payload = b"mirror bytes".to_vec();
+        let expected = sha256::hash_bytes(&payload);
+        let base = spawn_mirror_test_server(payload).await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("ggml-test.bin");
+
+        let err = download_trying_mirror_first(
+            Some(&format!("{base}/ok")),
+            &format!("{base}/ok"),
+            &dest,
+            &expected,
+            &AtomicBool::new(true),
+            |_| {},
+        )
+        .await
+        .expect_err("cancel must win over the fallback URL");
+        assert!(matches!(err, DownloadError::Cancelled), "got {err:?}");
+        assert!(!dest.exists());
     }
 
     #[test]

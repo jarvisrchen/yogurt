@@ -6,8 +6,9 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
-use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use yogurt_stt::models;
 
 use crate::state::AppState;
@@ -16,7 +17,10 @@ use crate::ws;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/stt/models", get(list_models))
-        .route("/api/stt/models/{name}/download", post(start_download))
+        .route(
+            "/api/stt/models/{name}/download",
+            post(start_download).delete(cancel_download),
+        )
         .route("/api/stt/models/{name}", delete(delete_model))
 }
 
@@ -26,6 +30,7 @@ struct ModelView {
     name: String,
     size_mb: u32,
     downloaded: bool,
+    downloading: bool,
     intel_supported: bool,
     /// The verified copy lives in a Homebrew prefix, not yogurt's download dir.
     /// `delete_model` refuses to touch another tool's prefix.
@@ -38,6 +43,10 @@ fn to_view(spec: &models::ModelSpec) -> ModelView {
         name: spec.name.to_string(),
         size_mb: spec.size_mb,
         downloaded: resolved.is_some(),
+        downloading: in_flight_downloads()
+            .lock()
+            .unwrap()
+            .contains_key(spec.name),
         intel_supported: spec.intel_supported,
         managed_by_homebrew: resolved.is_some_and(|p| !models::is_user_owned(&p)),
     }
@@ -59,11 +68,11 @@ async fn list_models(State(_s): State<AppState>) -> Json<Vec<ModelView>> {
     Json(views)
 }
 
-/// Guards against two concurrent downloads of one model, which would race
-/// on the same destination file and corrupt it.
-fn in_flight_downloads() -> &'static Mutex<HashSet<&'static str>> {
-    static SET: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
-    SET.get_or_init(|| Mutex::new(HashSet::new()))
+/// Running downloads and their cancel flags.
+/// Also guards against two concurrent downloads of one model, which would race on the same file and corrupt it.
+fn in_flight_downloads() -> &'static Mutex<HashMap<&'static str, Arc<AtomicBool>>> {
+    static MAP: OnceLock<Mutex<HashMap<&'static str, Arc<AtomicBool>>>> = OnceLock::new();
+    MAP.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 async fn start_download(
@@ -71,20 +80,37 @@ async fn start_download(
     Path(name): Path<String>,
 ) -> Result<StatusCode, Error> {
     let spec = models::lookup(&name).ok_or(Error::NotFound)?;
-    if !in_flight_downloads().lock().unwrap().insert(spec.name) {
-        return Err(Error::Conflict(format!(
-            "{} is already downloading",
-            spec.name
-        )));
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut in_flight = in_flight_downloads().lock().unwrap();
+        if in_flight.contains_key(spec.name) {
+            return Err(Error::Conflict(format!(
+                "{} is already downloading",
+                spec.name
+            )));
+        }
+        in_flight.insert(spec.name, cancel.clone());
     }
     // Detached so the response returns 202 immediately. Progress and terminal state go over `/ws`.
     let tx = s.app_events_tx.clone();
     let model_name = spec.name.to_string();
     tokio::spawn(async move {
-        download_task(tx, model_name, spec).await;
+        download_task(tx, model_name, spec, &cancel).await;
         in_flight_downloads().lock().unwrap().remove(spec.name);
     });
     Ok(StatusCode::ACCEPTED)
+}
+
+/// The task sees the flag at its next chunk, deletes the partial file, and emits `stt_model_download_cancelled`.
+async fn cancel_download(Path(name): Path<String>) -> Result<StatusCode, Error> {
+    let spec = models::lookup(&name).ok_or(Error::NotFound)?;
+    match in_flight_downloads().lock().unwrap().get(spec.name) {
+        Some(cancel) => {
+            cancel.store(true, Ordering::Relaxed);
+            Ok(StatusCode::ACCEPTED)
+        }
+        None => Err(Error::Conflict(format!("{} is not downloading", spec.name))),
+    }
 }
 
 async fn delete_model(
@@ -143,10 +169,15 @@ async fn delete_model(
     .map(Json)
 }
 
-async fn download_task(tx: ws::AppEventTx, model_name: String, spec: &'static models::ModelSpec) {
+async fn download_task(
+    tx: ws::AppEventTx,
+    model_name: String,
+    spec: &'static models::ModelSpec,
+    cancel: &AtomicBool,
+) {
     let tx_progress = tx.clone();
     let model_name_progress = model_name.clone();
-    let result = models::download(spec, move |p| {
+    let result = models::download(spec, cancel, move |p| {
         ws::send_stt_model_download_progress(
             &tx_progress,
             &model_name_progress,
@@ -160,6 +191,9 @@ async fn download_task(tx: ws::AppEventTx, model_name: String, spec: &'static mo
 
     match result {
         Ok(()) => ws::send_stt_model_download_complete(&tx, &model_name),
+        Err(models::DownloadError::Cancelled) => {
+            ws::send_stt_model_download_cancelled(&tx, &model_name)
+        }
         Err(e) => ws::send_stt_model_download_error(&tx, &model_name, &format!("{e}")),
     }
 }
@@ -167,7 +201,7 @@ async fn download_task(tx: ws::AppEventTx, model_name: String, spec: &'static mo
 #[derive(Debug)]
 enum Error {
     NotFound,
-    /// A download for this model is already in flight.
+    /// A download for this model is already in flight, or a cancel found none.
     Conflict(String),
     Internal(String),
 }
@@ -195,6 +229,7 @@ mod tests {
         assert_eq!(json["name"], "small.en");
         assert!(json["size_mb"].as_u64().unwrap() > 0);
         assert!(json["downloaded"].is_boolean());
+        assert!(json["downloading"].is_boolean());
         assert!(json["intel_supported"].is_boolean());
         assert!(json["managed_by_homebrew"].is_boolean());
     }
@@ -240,7 +275,24 @@ mod tests {
             ),
         }
 
+        assert_eq!(
+            cancel_download(Path("tiny.en".to_string())).await.unwrap(),
+            StatusCode::ACCEPTED,
+            "an in-flight download accepts a cancel"
+        );
         in_flight_downloads().lock().unwrap().remove("tiny.en");
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_model_that_is_not_downloading_is_a_409() {
+        match cancel_download(Path("large-v3".to_string())).await {
+            Err(Error::Conflict(msg)) => assert!(msg.contains("not downloading"), "{msg}"),
+            other => panic!("expected Error::Conflict, got {other:?}"),
+        }
+        assert!(matches!(
+            cancel_download(Path("nope".to_string())).await,
+            Err(Error::NotFound)
+        ));
     }
 
     #[test]

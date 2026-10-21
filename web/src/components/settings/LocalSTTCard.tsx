@@ -1,15 +1,13 @@
-// `activeDownload` is the truth about an in-flight download and survives the
-// dialog closing. `dialogOpen` only tracks modal visibility.
-// The WS hook lives here, not in the dialog, so progress persists across open/close.
-// Only one download is tracked in the UI. A second pill click replaces it,
-// though the server still finishes the first.
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { useModels, useDeleteModel, formatBytes } from "../../lib/api/stt";
 import { settingsApi } from "../../lib/api/settings";
-import { useModelDownloadProgress } from "../../hooks/useModelDownloadProgress";
+import {
+  beginDownload,
+  showDownloadDialog,
+  useModelDownload,
+} from "../../hooks/useModelDownload";
 import { ModelPicker } from "./ModelPicker";
-import { ModelDownloadDialog } from "../dialogs/ModelDownloadDialog";
 import { TestKeyButton } from "./TestKeyButton";
 import { Button } from "../Button";
 import { Pill } from "../Pill";
@@ -44,31 +42,12 @@ export function LocalSTTCard({
     const t = window.setTimeout(() => setShowFreed(false), 4000);
     return () => window.clearTimeout(t);
   }, [del.isSuccess, del.data]);
-  const [activeDownload, setActiveDownload] = useState<{
-    name: string;
-    sizeMb: number;
-  } | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const download = useModelDownload();
 
-  const progress = useModelDownloadProgress(activeDownload?.name ?? null);
-
-  // Clear 600 ms after success so 100% shows briefly. Never auto-clear on error:
-  // the pill stays reopenable so the user can read it and retry (resumes the partial file).
-  useEffect(() => {
-    if (!progress?.complete) return;
-    const t = window.setTimeout(() => setActiveDownload(null), 600);
-    return () => window.clearTimeout(t);
-  }, [progress?.complete]);
-
+  // A second model's click replaces the tracked one, though the server still finishes the first.
   const startOrReopenDownload = (name: string) => {
-    const m = q.data?.find((x) => x.name === name);
-    if (!m) return;
-    if (activeDownload?.name === name) {
-      setDialogOpen(true);
-      return;
-    }
-    setActiveDownload({ name: m.name, sizeMb: m.size_mb });
-    setDialogOpen(true);
+    if (download?.model === name) showDownloadDialog();
+    else beginDownload(name);
   };
 
   // The selected model must be on disk or recording fails at meeting start.
@@ -77,14 +56,6 @@ export function LocalSTTCard({
   const selectedModelDownloaded =
     q.data?.find((m) => m.name === selectedModel)?.downloaded ?? false;
   const activateBlocked = !selectedModelDownloaded;
-
-  const handleDialogClose = () => {
-    setDialogOpen(false);
-    // Closing on an error dismisses the failed download. A running download stays tracked.
-    if (progress?.error) {
-      setActiveDownload(null);
-    }
-  };
 
   return (
     <article
@@ -123,7 +94,7 @@ export function LocalSTTCard({
           </Button>
         )}
       </header>
-      {activateBlocked && (
+      {q.data && activateBlocked && (
         <span className="text-[11px] text-straw">
           Download the model first
         </span>
@@ -148,8 +119,10 @@ export function LocalSTTCard({
           selected={selectedModel}
           onSelect={onSelectModel}
           onRequestDownload={startOrReopenDownload}
-          activeDownloadName={activeDownload?.name ?? null}
-          activeDownloadProgress={progress}
+          activeDownloadName={
+            download && !download.progress.error ? download.model : null
+          }
+          activeDownloadProgress={download?.progress ?? null}
           onDelete={(name) => del.mutate(name)}
           activeModelName={active ? selectedModel : null}
         />
@@ -186,13 +159,6 @@ export function LocalSTTCard({
         Models download on first use · stored in{" "}
         <code className="font-mono text-ink">~/.yogurt/models/</code>
       </p>
-
-      <ModelDownloadDialog
-        model={dialogOpen ? activeDownload?.name ?? null : null}
-        sizeMb={activeDownload?.sizeMb ?? null}
-        progress={progress}
-        onClose={handleDialogClose}
-      />
     </article>
   );
 }

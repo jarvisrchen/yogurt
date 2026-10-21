@@ -13,15 +13,24 @@ import { Welcome } from "./routes/Welcome";
 import { useFirstRunRedirect } from "./hooks/useFirstRunRedirect";
 import { RecordingPill } from "./components/RecordingPill";
 import { MeetingDetectedBanner } from "./components/MeetingDetectedBanner";
+import { DownloadPill } from "./components/DownloadPill";
+import { ModelDownloadDialog } from "./components/dialogs/ModelDownloadDialog";
+import { useModelDownloadEvents } from "./hooks/useModelDownload";
 
 // Pathless Shell wraps every route. useFirstRunRedirect only gates `/`, so deep links work before onboarding.
-// The banner and pill can never show together: the server reports no detection while a recording is live.
+// The banner and recording pill can never show together: the server reports no detection while a recording is live.
+// The download pill can sit beside either, so all three share one centered row.
 function Shell() {
   useFirstRunRedirect();
+  useModelDownloadEvents();
   return (
     <>
-      <RecordingPill />
-      <MeetingDetectedBanner />
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-30">
+        <RecordingPill />
+        <MeetingDetectedBanner />
+        <DownloadPill />
+      </div>
+      <ModelDownloadDialog />
       <Outlet />
     </>
   );

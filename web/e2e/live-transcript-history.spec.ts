@@ -59,26 +59,8 @@ const SETTINGS = {
 };
 
 async function mockBackend(page: Page) {
-  // The WS never opens in this test - stub it out so the dock's reconnect
-  // backoff doesn't hammer Vite's dev server with /ws upgrades.
-  await page.addInitScript(() => {
-    class DeadSocket {
-      static readonly CONNECTING = 0;
-      static readonly OPEN = 1;
-      static readonly CLOSING = 2;
-      static readonly CLOSED = 3;
-      readyState = 0;
-      onopen: unknown = null;
-      onclose: unknown = null;
-      onmessage: unknown = null;
-      onerror: unknown = null;
-      close() {
-        this.readyState = 3;
-      }
-      send() {}
-    }
-    (window as unknown as { WebSocket: unknown }).WebSocket = DeadSocket;
-  });
+  // No backend: answer every socket in the browser so nothing reaches Vite's proxy.
+  await page.routeWebSocket(/\/ws(\/|\?|$)/, () => {});
 
   await page.route("**/api/session-token", (r) =>
     r.fulfill({ json: { token: "e2e-token" } }),

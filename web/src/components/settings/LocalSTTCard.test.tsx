@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModelView } from "../../lib/api/stt";
 
 const modelsFixture: ModelView[] = [
-  { name: "tiny.en", size_mb: 39, downloaded: true, intel_supported: true, managed_by_homebrew: false },
-  { name: "small.en", size_mb: 487, downloaded: false, intel_supported: true, managed_by_homebrew: false },
+  { name: "tiny.en", size_mb: 39, downloaded: true, downloading: false, intel_supported: true, managed_by_homebrew: false },
+  { name: "small.en", size_mb: 487, downloaded: false, downloading: false, intel_supported: true, managed_by_homebrew: false },
 ];
 
 interface DeleteModelResult {
@@ -42,10 +42,6 @@ vi.mock("../../lib/api/stt", async (importOriginal) => {
       isError: false,
       error: null,
     })),
-    // LocalSTTCard always renders <ModelDownloadDialog>, which calls
-    // useDownloadModel() unconditionally - stub it even though no test
-    // here opens the dialog.
-    useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
     useDeleteModel: deleteModelMock,
   };
 });

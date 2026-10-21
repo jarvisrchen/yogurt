@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Trash2 } from "lucide-react";
 import type { ModelView } from "../../lib/api/stt";
-import type { DownloadState } from "../../hooks/useModelDownloadProgress";
+import type { DownloadState } from "../../hooks/useModelDownload";
 
 interface ModelPickerProps {
   models: ModelView[];
@@ -60,9 +60,11 @@ export function ModelPicker({
       {models.map((m) => {
         const isSelected = selected === m.name;
         const showSlow = intel && !m.intel_supported;
-        const isDownloading = activeDownloadName === m.name && !m.downloaded;
+        const isDownloading =
+          (activeDownloadName === m.name || m.downloading) && !m.downloaded;
         const pct =
           isDownloading &&
+          activeDownloadName === m.name &&
           activeDownloadProgress &&
           activeDownloadProgress.totalBytes > 0
             ? Math.min(
