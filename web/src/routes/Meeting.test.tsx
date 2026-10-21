@@ -3,7 +3,7 @@
  * MicDevicePicker is stubbed with a prop-recording marker to assert its mount state and `recording` prop.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -487,7 +487,7 @@ describe("Meeting — recovers recording state on return", () => {
 
     const pill = await screen.findByTestId("llm-pill");
     expect(pill).toHaveTextContent("gpt-5-mini");
-    expect(pill).toHaveAttribute("title", "Will enhance with gpt-5-mini");
+    expect(within(pill).getByRole("tooltip")).toHaveTextContent("Will enhance with gpt-5-mini");
 
     vi.unstubAllGlobals();
   });

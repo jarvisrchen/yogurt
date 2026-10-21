@@ -1192,3 +1192,7 @@ New closed items go at the bottom.
 - [x] **DX-17** Make `just ticket next` skip IDs that open PRs already claim, so parallel sessions stop colliding
 
   Landed in the DX-17 PR (2026-10-20). `scripts/ticket.sh next` takes the higher of the docs maximum and any `<PREFIX>-N` in open PR titles or branch names, and warns and falls back to the docs when `gh` cannot answer. The `--check` block that only re-derived max+1 is gone, so CI never calls `gh`.
+
+- [x] **UI-19** Show the STT and LLM pills' full names in a tooltip that appears on hover, since the native `title` tooltip went unnoticed
+
+  Landed in the UI-19 PR (2026-10-21). The pills render a CSS tooltip under their right edge on hover in place of `title`, which only appeared after about a second of holding still. The STT pill skips it when the full name equals the label (a bare `Local STT`).

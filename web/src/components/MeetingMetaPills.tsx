@@ -1,7 +1,7 @@
 /**
  * `stt_engine` is stamped at recording start as "local · <model>" or "cloud · <model>". Older meetings have `null` and get no engine pill.
  * A bare "local" / "cloud" (from the active-recording poll before the row refetches) renders as "Local STT" / "Cloud STT".
- * Pills show a short label (the icon already says local vs cloud, or CLI) and carry the full name in `title`.
+ * Pills show a short label (the icon already says local vs cloud, or CLI) and the full name in a hover tooltip.
  */
 
 import { Cloud, HardDrive, Sparkles, Terminal } from "lucide-react";
@@ -57,6 +57,18 @@ const PILL =
 // Caps a model name we have not seen yet so it cannot squeeze the Library row's title.
 const LABEL = "min-w-0 max-w-[12rem] truncate";
 
+// A native `title` only appears after a second of holding still, so users missed it.
+function FullName({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-medium text-card opacity-0 transition-opacity group-hover/pill:opacity-100"
+    >
+      {children}
+    </span>
+  );
+}
+
 export function MetaPill({
   children,
   tone = "neutral",
@@ -82,9 +94,8 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
   const tone = engine.cloud ? "bg-card text-mut border border-line" : "bg-mtsoft text-ink";
   return (
     <span
-      className={`${PILL} ${tone}`}
+      className={`${PILL} ${tone} relative group/pill`}
       data-testid="engine-pill"
-      title={engine.full}
     >
       {engine.cloud ? (
         <Cloud size={12} aria-hidden className="shrink-0" />
@@ -92,6 +103,7 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
         <HardDrive size={12} aria-hidden className="shrink-0 text-matcha" />
       )}
       <span className={LABEL}>{engine.text}</span>
+      {engine.full !== engine.text && <FullName>{engine.full}</FullName>}
     </span>
   );
 }
@@ -111,12 +123,12 @@ export function LlmPill({
   const Icon = model.cli ? Terminal : Sparkles;
   return (
     <span
-      className={`${PILL} ${tone}`}
+      className={`${PILL} ${tone} relative group/pill`}
       data-testid="llm-pill"
-      title={pending ? `Will enhance with ${model.full}` : `Enhanced by ${model.full}`}
     >
       <Icon size={12} aria-hidden className={pending ? "shrink-0" : "shrink-0 text-blue"} />
       <span className={LABEL}>{model.text}</span>
+      <FullName>{pending ? `Will enhance with ${model.full}` : `Enhanced by ${model.full}`}</FullName>
     </span>
   );
 }
