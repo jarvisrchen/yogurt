@@ -1204,3 +1204,7 @@ New closed items go at the bottom.
 - [x] **UI-21** Make the card, pop, and window shadows follow dark mode, which they never did
 
   Landed in the UI-21 PR (2026-10-21). Tailwind v4 copies a shadow token's value into its utility class, so the dark block's `--shadow-*` overrides never reached `shadow-card`, `shadow-pop`, or `shadow-window`. The tokens now read a `--shadow-*-color` variable that the dark block re-points. A leftover unlayered `.shadow-pop` rule that beat the utility in both themes is gone.
+
+- [x] **UI-22** Keep a model download visible on every page, and make its Cancel button stop the download
+
+  Landed in the UI-22 PR (2026-10-21). Download state moved out of `LocalSTTCard` into a module store fed by one app-wide `/ws` subscription in the Shell, and a pill in the shared top-center status row shows progress, "ready", or "failed" on every page. `DELETE /api/stt/models/{name}/download` sets a cancel flag that the download loop checks per chunk, then deletes the partial file and emits `stt_model_download_cancelled`. Bytes now stream into `ggml-<name>.bin.part` and are renamed into place after the SHA256 check, because `GET /api/stt/models` was hashing the multi-GB partial on every call and stalled Settings for over 90 seconds mid-download.

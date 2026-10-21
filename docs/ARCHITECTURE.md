@@ -435,13 +435,13 @@ Two independent switches, either can be flipped without the other:
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Settings page
+    participant B as Browser (any page)
     participant M as api/stt_models.rs
     participant HF as model host
     participant FS as ~/.yogurt/models/
     participant WS as /ws (app_events_tx)
 
-    B->>M: GET /api/stt/models  (registry + downloaded state)
+    B->>M: GET /api/stt/models  (registry + downloaded/downloading state)
     B->>M: POST /api/stt/models/{name}/download
     M->>M: spawn download_task
     M-->>B: 202 accepted
@@ -450,11 +450,14 @@ sequenceDiagram
         M->>WS: stt_model_download_progress { bytes, total, bytes_per_sec, eta }
         WS-->>B: matcha progress bar
     end
-    M->>M: streaming SHA256 verify
-    alt hash mismatch or IO error
+    M->>M: streaming SHA256 verify of the .part file
+    alt DELETE .../download set the cancel flag
+        M->>FS: remove the .part file
+        M->>WS: stt_model_download_cancelled { model }
+    else hash mismatch or IO error
         M->>WS: stt_model_download_error { model, error }
     else
-        M->>FS: persist model + .sha256 sidecar marker
+        M->>FS: rename .part into place + .sha256 sidecar marker
         M->>WS: stt_model_download_complete { model }
         B->>B: dialog auto-closes ~600 ms later
     end

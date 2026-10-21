@@ -1,5 +1,5 @@
-// The download endpoint is fire-and-forget: progress and terminal state arrive over `/ws`
-// (see `useModelDownloadProgress`).
+// The download endpoints are fire-and-forget: progress and terminal state arrive over `/ws`
+// (see `useModelDownload`).
 import {
   useMutation,
   useQuery,
@@ -20,6 +20,7 @@ export interface ModelView {
   name: ModelName;
   size_mb: number;
   downloaded: boolean;
+  downloading: boolean;
   intel_supported: boolean;
   /** The verified copy lives in a Homebrew prefix. DELETE refuses these, so the picker shows a "brew" chip. */
   managed_by_homebrew: boolean;
@@ -45,10 +46,18 @@ export async function fetchModels(): Promise<ModelView[]> {
   return http<ModelView[]>("/api/stt/models");
 }
 
-async function startDownload(name: ModelName | string): Promise<void> {
+export async function startDownload(name: ModelName | string): Promise<void> {
   return http<void>(
     `/api/stt/models/${encodeURIComponent(name)}/download`,
     { method: "POST" },
+  );
+}
+
+/** Rejects with a 409 when the model is not downloading. */
+export async function cancelDownload(name: ModelName | string): Promise<void> {
+  return http<void>(
+    `/api/stt/models/${encodeURIComponent(name)}/download`,
+    { method: "DELETE" },
   );
 }
 
@@ -72,27 +81,12 @@ export const sttKeys = {
   models: ["stt", "models"] as const,
 };
 
-/** Only `downloaded` mutates and the WS hook invalidates on completion, so a generous staleTime is safe. */
+/** The WS hook invalidates on every terminal download frame, so a generous staleTime is safe. */
 export function useModels(): UseQueryResult<ModelView[], Error> {
   return useQuery({
     queryKey: sttKeys.models,
     queryFn: fetchModels,
     staleTime: 30_000,
-  });
-}
-
-/** Resolves on the 202. Progress arrives over the WebSocket. */
-export function useDownloadModel(): UseMutationResult<
-  void,
-  Error,
-  ModelName | string
-> {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: startDownload,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: sttKeys.models });
-    },
   });
 }
 

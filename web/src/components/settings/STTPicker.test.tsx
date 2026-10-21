@@ -40,7 +40,7 @@ vi.mock("../../lib/api/settings", () => ({
 }));
 
 const modelsFixture: ModelView[] = [
-  { name: "small.en", size_mb: 487, downloaded: true, intel_supported: true, managed_by_homebrew: false },
+  { name: "small.en", size_mb: 487, downloaded: true, downloading: false, intel_supported: true, managed_by_homebrew: false },
 ];
 
 vi.mock("../../lib/api/stt", () => ({
@@ -50,8 +50,6 @@ vi.mock("../../lib/api/stt", () => ({
     isError: false,
     error: null,
   })),
-  // LocalSTTCard calls useDownloadModel() unconditionally.
-  useDownloadModel: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   // ...and useDeleteModel() for the ModelPicker trash.
   useDeleteModel: vi.fn(() => ({
     mutate: vi.fn(),

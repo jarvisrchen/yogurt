@@ -53,7 +53,7 @@ pub enum CtlCmd {
         #[command(subcommand)]
         cmd: provider::ProviderCmd,
     },
-    /// STT models: list, download, delete.
+    /// STT models: list, download, cancel, delete.
     Models {
         #[command(subcommand)]
         cmd: models::ModelsCmd,

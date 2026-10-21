@@ -20,7 +20,7 @@ Needs yogurt 0.8.0 or newer: check with `yogurt --version`, and run `brew upgrad
   - `yogurt ctl windows` - On-screen windows and each one's meeting-detection verdict. No server needed
   - `yogurt ctl settings` - General settings the server exposes: get and set
   - `yogurt ctl provider` - Configured LLM providers: list, activate, test
-  - `yogurt ctl models` - STT models: list, download, delete
+  - `yogurt ctl models` - STT models: list, download, cancel, delete
   - `yogurt ctl ws` - Subscribe to the server websocket, printing one JSON frame per line
 <!-- yogurt-cli:end -->
 

@@ -30,7 +30,7 @@ export function RecordingPill() {
       type="button"
       onClick={() => navigate(`/meeting/${data.id}`)}
       aria-label="Return to recording"
-      className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-card border border-line rounded-full shadow-pop text-[13px] text-ink hover:border-straw transition-colors z-30"
+      className="flex items-center gap-2 px-3 py-1.5 bg-card border border-line rounded-full shadow-pop text-[13px] text-ink hover:border-straw transition-colors"
     >
       <span
         aria-hidden="true"

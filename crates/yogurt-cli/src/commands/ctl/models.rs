@@ -17,6 +17,8 @@ pub enum ModelsCmd {
         #[arg(long)]
         wait: bool,
     },
+    /// Stop an in-flight download and remove its partial file.
+    Cancel { name: String },
     /// Delete a downloaded model.
     Delete {
         name: String,
@@ -30,6 +32,7 @@ pub async fn run(cmd: ModelsCmd, port: Option<u16>, json_out: bool) -> Result<()
     match cmd {
         ModelsCmd::List => list(port, json_out).await,
         ModelsCmd::Download { name, wait } => download(port, json_out, &name, wait).await,
+        ModelsCmd::Cancel { name } => cancel(port, json_out, &name).await,
         ModelsCmd::Delete { name, dry_run } => delete(port, json_out, &name, dry_run).await,
     }
 }
@@ -40,6 +43,8 @@ struct ModelRow {
     name: String,
     size_mb: u32,
     downloaded: bool,
+    #[serde(default)]
+    downloading: bool,
     managed_by_homebrew: bool,
 }
 
@@ -53,6 +58,8 @@ async fn list(port: Option<u16>, json_out: bool) -> Result<(), CtlError> {
         for m in &models {
             let state = if m.downloaded {
                 "downloaded"
+            } else if m.downloading {
+                "downloading"
             } else {
                 "not downloaded"
             };
@@ -147,6 +154,12 @@ async fn wait_for_download(c: &Client, name: &str, json_out: bool) -> Result<(),
                 }
                 return Ok(());
             }
+            Some("stt_model_download_cancelled") => {
+                return Err(CtlError::local(
+                    format!("download of {name} was cancelled"),
+                    "run `yogurt ctl models download` to start it again",
+                ));
+            }
             Some("stt_model_download_error") => {
                 let err = v
                     .get("error")
@@ -160,6 +173,18 @@ async fn wait_for_download(c: &Client, name: &str, json_out: bool) -> Result<(),
             _ => {}
         }
     }
+}
+
+async fn cancel(port: Option<u16>, json_out: bool, name: &str) -> Result<(), CtlError> {
+    let c = Client::discover(port).await?;
+    c.delete_no_body(&format!("/api/stt/models/{name}/download"))
+        .await?;
+    if json_out {
+        println!("{}", json!({ "status": "cancelling", "model": name }));
+    } else {
+        println!("cancelling download: {name}");
+    }
+    Ok(())
 }
 
 fn timed_out(name: &str) -> CtlError {

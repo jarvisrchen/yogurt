@@ -62,7 +62,7 @@ export function MeetingDetectedBanner() {
   return (
     <div
       role="status"
-      className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 pl-3 pr-1.5 py-1.5 bg-card border border-line rounded-full shadow-pop text-[13px] text-ink z-30"
+      className="flex items-center gap-3 pl-3 pr-1.5 py-1.5 bg-card border border-line rounded-full shadow-pop text-[13px] text-ink"
     >
       <span
         aria-hidden="true"

@@ -45,6 +45,8 @@ const SETTINGS = {
 };
 
 async function mockBackend(page: Page) {
+  // The Shell's app-wide socket would otherwise hit Vite's proxy with no backend behind it.
+  await page.routeWebSocket(/\/ws(\/|\?|$)/, () => {});
   await page.route("**/api/session-token", (r) =>
     r.fulfill({ json: { token: "e2e-token" } }),
   );

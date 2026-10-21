@@ -1,7 +1,7 @@
 //! `models::download_to` against an in-test axum mock that respects `Range:` headers.
 //!
 //! Covers a full download with SHA256 verify and progress callbacks, resume from a partial file via `Range: bytes=102400-` and a 206 response,
-//! and a bad SHA producing an error mentioning "sha256" or "hash" with the file deleted.
+//! a bad SHA producing an error mentioning "sha256" or "hash" with the file deleted, and a cancel removing the partial file.
 //!
 //! The mock is in-process rather than Wiremock to control `Content-Range` formatting, a frequent footgun.
 
@@ -16,6 +16,7 @@ use axum::{
 };
 use std::io::Write;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use yogurt_stt::models::{self, DownloadProgress};
@@ -100,9 +101,15 @@ async fn it_downloads_a_full_file_and_verifies_sha256() {
     let progress = Arc::new(std::sync::Mutex::new(Vec::<DownloadProgress>::new()));
     let progress_clone = Arc::clone(&progress);
 
-    models::download_to(&url, &dest, &expected_sha, move |p| {
-        progress_clone.lock().unwrap().push(p);
-    })
+    models::download_to(
+        &url,
+        &dest,
+        &expected_sha,
+        &AtomicBool::new(false),
+        move |p| {
+            progress_clone.lock().unwrap().push(p);
+        },
+    )
     .await
     .expect("download should succeed");
 
@@ -137,13 +144,16 @@ async fn it_resumes_from_a_partial_file() {
     let dest = tmp_dir.path().join("partial.bin");
 
     {
-        let mut f = std::fs::File::create(&dest).unwrap();
+        let mut f = std::fs::File::create(models::part_path(&dest)).unwrap();
         f.write_all(&body[..100_000]).unwrap();
         f.sync_all().unwrap();
     }
-    assert_eq!(std::fs::metadata(&dest).unwrap().len(), 100_000);
+    assert_eq!(
+        std::fs::metadata(models::part_path(&dest)).unwrap().len(),
+        100_000
+    );
 
-    models::download_to(&url, &dest, &expected_sha, |_| {})
+    models::download_to(&url, &dest, &expected_sha, &AtomicBool::new(false), |_| {})
         .await
         .expect("resume download should succeed");
 
@@ -157,6 +167,10 @@ async fn it_resumes_from_a_partial_file() {
         TOTAL as u64,
         "resumed file should be full payload length"
     );
+    assert!(
+        !models::part_path(&dest).exists(),
+        "the .part file is renamed into place"
+    );
 }
 
 #[tokio::test]
@@ -169,7 +183,7 @@ async fn it_rejects_a_bad_sha_and_removes_the_file() {
     // 64 hex chars that are definitely wrong.
     let bogus_sha = "deadbeef".repeat(8);
 
-    let err = models::download_to(&url, &dest, &bogus_sha, |_| {})
+    let err = models::download_to(&url, &dest, &bogus_sha, &AtomicBool::new(false), |_| {})
         .await
         .expect_err("must error on hash mismatch");
     let msg = format!("{}", err).to_ascii_lowercase();
@@ -183,4 +197,38 @@ async fn it_rejects_a_bad_sha_and_removes_the_file() {
         "file must be deleted on hash mismatch; still exists at {:?}",
         dest
     );
+    assert!(!models::part_path(&dest).exists());
+}
+
+#[tokio::test]
+async fn it_stops_on_cancel_and_removes_the_partial_file() {
+    let url = spawn_server().await;
+    let expected_sha = sha256::hash_bytes(&payload());
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let dest = tmp_dir.path().join("cancelled.bin");
+
+    let err = models::download_to(&url, &dest, &expected_sha, &AtomicBool::new(true), |_| {})
+        .await
+        .expect_err("a set cancel flag must stop the download");
+    assert!(
+        matches!(err, models::DownloadError::Cancelled),
+        "got {err:?}"
+    );
+    assert!(!dest.exists());
+    assert!(!models::part_path(&dest).exists());
+}
+
+#[tokio::test]
+async fn it_discards_a_legacy_partial_at_dest_instead_of_resolving_it() {
+    let url = spawn_server().await;
+    let body = payload();
+    let expected_sha = sha256::hash_bytes(&body);
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let dest = tmp_dir.path().join("legacy.bin");
+    std::fs::write(&dest, &body[..100_000]).unwrap();
+
+    models::download_to(&url, &dest, &expected_sha, &AtomicBool::new(false), |_| {})
+        .await
+        .expect("download should replace the legacy partial");
+    assert_eq!(sha256::hash_file(&dest).unwrap(), expected_sha);
 }

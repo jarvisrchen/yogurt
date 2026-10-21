@@ -46,6 +46,9 @@ pub enum WsEvent {
         model: String,
         error: String,
     },
+    SttModelDownloadCancelled {
+        model: String,
+    },
 }
 
 /// Meeting-independent sibling of the per-meeting `events_tx`, surfaced on the global `/ws`.
@@ -74,6 +77,15 @@ pub fn send_stt_model_download_progress(
 
 pub fn send_stt_model_download_complete(tx: &AppEventTx, model: &str) {
     let ev = WsEvent::SttModelDownloadComplete {
+        model: model.to_string(),
+    };
+    if let Ok(value) = serde_json::to_value(&ev) {
+        let _ = tx.send(value);
+    }
+}
+
+pub fn send_stt_model_download_cancelled(tx: &AppEventTx, model: &str) {
+    let ev = WsEvent::SttModelDownloadCancelled {
         model: model.to_string(),
     };
     if let Ok(value) = serde_json::to_value(&ev) {
@@ -435,6 +447,16 @@ mod tests {
         };
         let json = serde_json::to_value(&ev).unwrap();
         assert_eq!(json["type"], "stt_model_download_complete");
+        assert_eq!(json["model"], "small.en");
+    }
+
+    #[test]
+    fn dl_cancelled_serializes_with_tag() {
+        let ev = WsEvent::SttModelDownloadCancelled {
+            model: "small.en".into(),
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "stt_model_download_cancelled");
         assert_eq!(json["model"], "small.en");
     }
 

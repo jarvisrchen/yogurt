@@ -52,6 +52,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | POST | `/api/settings/providers/{id}/test` | test provider key | `ctl provider test` |
 | GET | `/api/stt/models` | list STT models | `ctl models list` |
 | POST | `/api/stt/models/{name}/download` | download model | `ctl models download` |
+| DELETE | `/api/stt/models/{name}/download` | cancel download | `ctl models cancel` |
 | DELETE | `/api/stt/models/{name}` | delete model | `ctl models delete` |
 | GET | `/ws/meetings/{id}` | transcript/enhance/chat/audio frames | `ctl ws <id>`, `ctl meeting transcript --follow` |
 | GET | `/ws` | model-download frames | `ctl ws` |
@@ -71,7 +72,7 @@ The response and the meeting row both carry the resolved `template`.
 
 Both sockets share a `{"type": "<snake_case>", ...}` discriminator.
 `/ws/meetings/{id}`: `transcript` (`ts_ms`, `channel`, `text`, `is_final`), `enhance_progress`, `chat_chunk`, `audio_level`, `stt_error`.
-`/ws`: `stt_model_download_progress`/`complete`/`error`.
+`/ws`: `stt_model_download_progress`/`complete`/`error`/`cancelled`.
 `ctl ws` prints one frame per line from either; `--types` filters by `type`.
 
 ## What agents should not try to do
