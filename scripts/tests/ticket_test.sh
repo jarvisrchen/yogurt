@@ -77,6 +77,15 @@ t() {
   fi
 }
 
+# A fake gh on PATH stands in for the open-PR lookup so no test touches the network.
+BIN="$WORK/bin"
+mkdir -p "$BIN"
+GH_OUT="$WORK/gh-out"
+: > "$GH_OUT"
+printf '#!/bin/sh\n[ -f "%s.fail" ] && exit 1\ncat "%s"\n' "$GH_OUT" "$GH_OUT" > "$BIN/gh"
+chmod +x "$BIN/gh"
+export PATH="$BIN:$PATH"
+
 run() { TICKET_DOCS_DIR="$DOCS" "$TICKET" "$@"; }
 
 # --- list ---
@@ -102,6 +111,15 @@ t "show unknown ID prints error+help" bash -c 'echo "$1" | grep -q "no ticket AA
 # --- next ---
 t "next AAA is AAA-3 (max across both files, fenced example excluded)" [ "$(run next AAA)" = "AAA-3" ]
 t "next BBB is BBB-2" [ "$(run next BBB)" = "BBB-2" ]
+printf 'AAA-7: claimed by an open PR\nbbb-4-claimed-branch\nAAAA-50: other prefix\n' > "$GH_OUT"
+t "next AAA skips an ID in an open PR title" [ "$(run next AAA)" = "AAA-8" ]
+t "next BBB skips an ID in an open PR branch" [ "$(run next BBB)" = "BBB-5" ]
+touch "$GH_OUT.fail"
+t "next falls back to the docs when gh fails" [ "$(run next AAA 2>/dev/null)" = "AAA-3" ]
+gh_err="$(run next AAA 2>&1 >/dev/null)"
+t "next warns when gh fails" bash -c 'echo "$1" | grep -q "could not read open PRs"' _ "$gh_err"
+rm -f "$GH_OUT.fail"
+: > "$GH_OUT"
 t "next with unknown prefix exits 2" bash -c '
   TICKET_DOCS_DIR="$1" "$2" next ZZZ >/dev/null 2>&1
   [ $? -eq 2 ]

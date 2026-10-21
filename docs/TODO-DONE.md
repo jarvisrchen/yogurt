@@ -1188,3 +1188,7 @@ New closed items go at the bottom.
 
   Landed 2026-10-20. `GET /api/audio/permission` now returns `owner`, the responsible app read with `responsibility_get_pid_responsible_for_pid` (looked up via `dlsym`, so it degrades to `null`). The Welcome page and both permission-denied screens name that app and explain the restart, and `yogurt ctl status` reports each server's own grants instead of its own process's.
   </details>
+
+- [x] **DX-17** Make `just ticket next` skip IDs that open PRs already claim, so parallel sessions stop colliding
+
+  Landed in the DX-17 PR (2026-10-20). `scripts/ticket.sh next` takes the higher of the docs maximum and any `<PREFIX>-N` in open PR titles or branch names, and warns and falls back to the docs when `gh` cannot answer. The `--check` block that only re-derived max+1 is gone, so CI never calls `gh`.
