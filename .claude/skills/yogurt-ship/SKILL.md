@@ -8,8 +8,8 @@ description: Take a yogurt change from a request to a merged PR - allocate a tic
 AGENTS.md owns the lifecycle and its rules; this is the order of operations and the traps between them.
 
 1. **Allocate an ID.**
-   `just ticket next <PREFIX>` counts only `docs/TODO.md` and `docs/TODO-DONE.md` on main, so it hands out IDs that an open PR already claims.
-   Check `gh pr list --state open --json number,title,headRefName` and take the next number nobody uses.
+   `just ticket next <PREFIX>` also skips IDs in open PR titles and branches.
+   If it warns that it could not read open PRs, check `gh pr list --state open` by hand.
 
 2. **Open a worktree.**
    `just start <id> <words>` with the lowercase slug form (`just start ui-18 short-model-pills`), since a new ID is not on main yet.

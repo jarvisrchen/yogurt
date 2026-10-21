@@ -115,6 +115,17 @@ max_number() {
     '
 }
 
+# PREFIX-N numbers in open PR titles and branch names: a ticket added inside
+# an unmerged branch is not in the docs on main yet. Warns and prints nothing
+# when gh cannot answer (offline, no auth), leaving the docs as the only source.
+pr_numbers() {
+  local refs
+  refs="$(cd "$SCRIPT_DIR/.." && gh pr list --state open --limit 200 \
+    --json title,headRefName --jq '.[] | .title, .headRefName' 2>/dev/null)" ||
+    { echo "ticket: could not read open PRs, so this ID may collide with one" >&2; return 0; }
+  echo "$refs" | grep -oiE "(^|[^a-z0-9])$1-[0-9]+" | grep -oE '[0-9]+$' || true
+}
+
 cmd_list() {
   list_open "$TODO_FILE"
 }
@@ -131,7 +142,7 @@ cmd_next() {
   [ -z "$prefix" ] && { usage; exit 2; }
   grep -q "^| \`$prefix\` |" "$TODO_FILE" ||
     { usage; echo "error: unknown prefix $prefix (not in docs/TODO.md's Ticket IDs table)" >&2; exit 2; }
-  echo "${prefix}-$(($(max_number "$prefix") + 1))"
+  echo "${prefix}-$(($({ max_number "$prefix"; pr_numbers "$prefix"; } | sort -n | tail -1) + 1))"
 }
 
 cmd_done() {
@@ -231,15 +242,6 @@ cmd_check() {
   while read -r p; do
     [ -z "$p" ] && continue
     grep -q "^| \`$p\` |" "$TODO_FILE" || { echo "ticket: prefix $p has no row in docs/TODO.md's Ticket IDs table"; fail=1; }
-  done <<< "$prefixes"
-
-  # next equals max+1 for every prefix (sanity check on the computation itself)
-  while read -r p; do
-    [ -z "$p" ] && continue
-    local m computed
-    m="$(max_number "$p")"
-    computed="$(cmd_next "$p" 2>/dev/null || true)"
-    [ "$computed" = "${p}-$((m + 1))" ] || { echo "ticket: next $p computation is inconsistent"; fail=1; }
   done <<< "$prefixes"
 
   if [ "$fail" -ne 0 ]; then

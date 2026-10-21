@@ -17,7 +17,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `CLI` | CLI |
 | `DX` | Developer experience |
 
-Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` too.
+Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` and the titles and branch names of open PRs too.
 Never reuse or renumber an ID, including when an item moves to DONE.
 A new section gets a new short prefix added to the table above.
 
