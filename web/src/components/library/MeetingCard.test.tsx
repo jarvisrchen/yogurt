@@ -70,7 +70,7 @@ describe("MeetingCard — live-recording routing", () => {
 describe("MeetingCard — engine pill", () => {
   it("shows the LLM pill once the meeting has been enhanced", () => {
     renderCard(meeting({ id: "llm-1", llm_model: "gpt-5-mini" }));
-    expect(screen.getByText("gpt-5-mini")).toBeInTheDocument();
+    expect(screen.getByTestId("llm-pill")).toHaveTextContent(/^gpt-5-mini/);
   });
 
   it("shows no engine pill for a null stt_engine (pre-column meetings)", () => {
@@ -80,17 +80,17 @@ describe("MeetingCard — engine pill", () => {
 
   it("shows the model alone with the provider on hover", () => {
     renderCard(meeting({ id: "local-1", stt_engine: "local · small.en" }));
-    expect(screen.getByText("small.en")).toBeInTheDocument();
+    expect(screen.getByTestId("engine-pill")).toHaveTextContent(/^small\.en/);
     expect(within(screen.getByTestId("engine-pill")).getByRole("tooltip")).toHaveTextContent(
-      "Local · small.en",
+      "Local small.en",
     );
   });
 
   it("keeps Cloud in the hover for a cloud stamp", () => {
     renderCard(meeting({ id: "cloud-1", stt_engine: "cloud · nova-3" }));
-    expect(screen.getByText("nova-3")).toBeInTheDocument();
+    expect(screen.getByTestId("engine-pill")).toHaveTextContent(/^nova-3/);
     expect(within(screen.getByTestId("engine-pill")).getByRole("tooltip")).toHaveTextContent(
-      "Cloud · nova-3",
+      "Cloud nova-3",
     );
   });
 });

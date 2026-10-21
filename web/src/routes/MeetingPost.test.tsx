@@ -202,7 +202,7 @@ describe("MeetingPost — live-recording redirect", () => {
 
     renderPost();
     await screen.findByText("Enhanced summary");
-    expect(screen.getByText("MiniMax-M3")).toBeInTheDocument();
+    expect(screen.getByTestId("llm-pill")).toHaveTextContent(/^MiniMax-M3/);
 
     fireEvent.click(screen.getByRole("tab", { name: "My notes" }));
     expect(await screen.findByText(/private raw note/)).toBeInTheDocument();
@@ -216,7 +216,7 @@ describe("MeetingPost — live-recording redirect", () => {
         notes_md: "- private raw note",
       });
     });
-    expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
+    expect(await screen.findByTestId("llm-pill")).toHaveTextContent(/^gpt-5-mini/);
   });
 
   it("re-enhances with the picked note format and shows the one that was used", async () => {
@@ -380,7 +380,7 @@ describe("MeetingPost — streaming enhance preview", () => {
     // Wait for the header model pill (from the POST response's `llm_model`), not editor text,
     // since the editor shows the raw preview until the WS also reports `done`.
     fireEvent.click(screen.getByTestId("re-enhance-button"));
-    expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
+    expect(await screen.findByTestId("llm-pill")).toHaveTextContent(/^gpt-5-mini/);
 
     wsState.phase = "done";
     wsState.text = null;

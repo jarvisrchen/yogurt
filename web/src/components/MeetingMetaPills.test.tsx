@@ -57,9 +57,9 @@ describe("MeetingMetaPills", () => {
     );
     expect(screen.getByText(/Aug 28/)).toBeInTheDocument();
     expect(screen.getByText("8 min")).toBeInTheDocument();
-    expect(screen.getByText("small.en")).toBeInTheDocument();
+    expect(screen.getByTestId("engine-pill")).toHaveTextContent(/^small\.en/);
     expect(within(screen.getByTestId("engine-pill")).getByRole("tooltip")).toHaveTextContent(
-      "Local · small.en",
+      "Local small.en",
     );
   });
 
@@ -89,7 +89,7 @@ describe("MeetingMetaPills", () => {
     const { rerender } = render(<MeetingMetaPills startedAt={start} llmModel={null} />);
     expect(screen.queryByText("gpt-5-mini")).toBeNull();
     rerender(<MeetingMetaPills startedAt={start} llmModel="gpt-5-mini" />);
-    expect(screen.getByText("gpt-5-mini")).toBeInTheDocument();
+    expect(screen.getByTestId("llm-pill")).toHaveTextContent(/^gpt-5-mini/);
   });
 
   it("renders nothing when there is no metadata at all", () => {

@@ -58,13 +58,15 @@ const PILL =
 const LABEL = "min-w-0 max-w-[12rem] truncate";
 
 // A native `title` only appears after a second of holding still, so users missed it.
-function FullName({ children }: { children: React.ReactNode }) {
+// Same surface as the app's menus (bg-card, border-line, shadow-pop), with the ID in mono.
+function FullName({ caption, value }: { caption: string; value: string }) {
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-medium text-card opacity-0 transition-opacity group-hover/pill:opacity-100"
+      className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 flex flex-col gap-1 whitespace-nowrap rounded-chip border border-line bg-card px-2.5 py-2 text-left leading-none shadow-pop opacity-0 translate-y-0.5 transition duration-150 ease-pop group-hover/pill:translate-y-0 group-hover/pill:opacity-100 group-hover/pill:delay-150"
     >
-      {children}
+      <span className="text-[11px] font-medium text-mut">{caption}</span>{" "}
+      <span className="font-mono text-[12px] font-normal text-ink">{value}</span>
     </span>
   );
 }
@@ -103,7 +105,9 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
         <HardDrive size={12} aria-hidden className="shrink-0 text-matcha" />
       )}
       <span className={LABEL}>{engine.text}</span>
-      {engine.full !== engine.text && <FullName>{engine.full}</FullName>}
+      {engine.full !== engine.text && (
+        <FullName caption={engine.cloud ? "Cloud" : "Local"} value={engine.text} />
+      )}
     </span>
   );
 }
@@ -128,7 +132,7 @@ export function LlmPill({
     >
       <Icon size={12} aria-hidden className={pending ? "shrink-0" : "shrink-0 text-blue"} />
       <span className={LABEL}>{model.text}</span>
-      <FullName>{pending ? `Will enhance with ${model.full}` : `Enhanced by ${model.full}`}</FullName>
+      <FullName caption={pending ? "Will enhance with" : "Enhanced by"} value={model.full} />
     </span>
   );
 }
