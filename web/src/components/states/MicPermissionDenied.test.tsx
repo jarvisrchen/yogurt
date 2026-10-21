@@ -21,7 +21,6 @@ describe("MicPermissionDenied", () => {
     qc.setQueryData(permissionsKey, {
       screen_recording: "granted",
       microphone: "denied",
-      owner: "Ghostty",
     });
     const refetchSpy = vi.spyOn(qc, "refetchQueries");
 

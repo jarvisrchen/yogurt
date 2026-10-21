@@ -135,7 +135,6 @@ export function Welcome() {
     micStatus !== "granted" && micStatus !== "not_required";
 
   const permissionsDone = granted && micGranted;
-  // A bare binary owns its own grants, so "the app that started yogurt" only reads right for another app.
   const ownerIsOther = !!owner && owner !== "yogurt";
 
   return (
@@ -173,15 +172,10 @@ export function Welcome() {
                 <strong className="text-ink">{owner}</strong>, the app that
                 started yogurt. Turn on {owner} in System Settings.
               </>
-            ) : owner ? (
-              <>
-                Turn on <strong className="text-ink">{owner}</strong> in
-                System Settings.
-              </>
             ) : (
               <>
-                macOS gives both permissions to the app that started yogurt,
-                usually your terminal. Turn that app on in System Settings.
+                Turn on {owner ?? "the app that started yogurt"} in System
+                Settings.
               </>
             )}
           </p>

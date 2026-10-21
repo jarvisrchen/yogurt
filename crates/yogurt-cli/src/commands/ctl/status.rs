@@ -21,8 +21,7 @@ struct ProviderRow {
     is_active: bool,
 }
 
-/// Each instance's own grants: macOS applies a grant only to processes started after it,
-/// so this process's answer says nothing about a server that was already running.
+/// Asked of each server, because a grant reaches only processes started after it.
 #[derive(Debug, Deserialize)]
 struct Grants {
     screen_recording: String,
@@ -36,7 +35,6 @@ struct Details {
     detected_meeting: Option<yogurt_audio::detect::DetectedMeeting>,
     stt: Option<String>,
     provider: Option<String>,
-    grants: Option<Grants>,
 }
 
 pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError> {
@@ -86,6 +84,7 @@ pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError>
 
     let inst = &instances[0];
     let details = fetch_details(inst.port).await;
+    let grants = fetch_grants(inst.port).await;
 
     if json_out {
         println!(
@@ -96,9 +95,9 @@ pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError>
                 "detected_meeting": details.detected_meeting,
                 "stt": details.stt,
                 "provider": details.provider,
-                "screen_recording": details.grants.as_ref().map(|g| &g.screen_recording),
-                "microphone": details.grants.as_ref().map(|g| &g.microphone),
-                "permission_owner": details.grants.as_ref().and_then(|g| g.owner.as_ref()),
+                "screen_recording": grants.as_ref().map(|g| &g.screen_recording),
+                "microphone": grants.as_ref().map(|g| &g.microphone),
+                "permission_owner": grants.as_ref().and_then(|g| g.owner.as_ref()),
             })
         );
     } else {
@@ -119,7 +118,7 @@ pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError>
             "provider: {}",
             details.provider.as_deref().unwrap_or("none configured")
         );
-        let (screen, mic, owner) = grant_text(details.grants.as_ref());
+        let (screen, mic, owner) = grant_text(grants.as_ref());
         println!("screen recording: {screen}");
         println!("microphone: {mic}");
         println!("permission owner: {owner}");
@@ -152,7 +151,6 @@ async fn fetch_details(port: u16) -> Details {
             .find(|p| p.is_active)
             .map(|p| p.name);
     }
-    d.grants = c.get("/api/audio/permission").await.ok();
     d
 }
 

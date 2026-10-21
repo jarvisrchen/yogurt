@@ -184,7 +184,6 @@ async fn status_against_running_server_prints_version_and_mode() {
     assert_eq!(instances[0]["port"], port);
     assert_eq!(instances[0]["mode"], "release");
     assert!(instances[0]["version"].is_string());
-    // Read from the server, so a failed fetch would leave these null.
     assert!(body["screen_recording"].is_string(), "got {body}");
     assert!(body["microphone"].is_string(), "got {body}");
 }

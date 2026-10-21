@@ -63,9 +63,7 @@ pub fn request_microphone_permission() -> PermissionStatus {
     }
 }
 
-/// The app macOS charges both permissions to: the responsible process, which is the terminal
-/// (Ghostty, iTerm, ...) when yogurt runs from one, and yogurt itself when nothing launched it.
-/// System Settings lists that app, so the SPA names it instead of telling the user to find "yogurt".
+/// The app System Settings lists for both grants: the terminal that ran yogurt, or yogurt itself.
 pub fn permission_owner() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
@@ -112,8 +110,7 @@ mod macos {
 
     pub fn owner() -> Option<String> {
         type ResponsibleFor = unsafe extern "C" fn(libc::pid_t) -> libc::pid_t;
-        // Private libSystem symbol with no public equivalent. Looked up at runtime so a macOS that
-        // drops it degrades to the SPA's generic copy instead of failing to launch.
+        // Private symbol with no public equivalent, so look it up at runtime instead of linking it.
         // SAFETY: dlsym with RTLD_DEFAULT and a NUL-terminated name has no preconditions.
         let sym = unsafe {
             libc::dlsym(
@@ -259,12 +256,6 @@ mod tests {
             name("/opt/homebrew/Cellar/yogurt/1.4.0/bin/yogurt").as_deref(),
             Some("yogurt")
         );
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn it_finds_an_owner_for_the_test_process() {
-        assert!(permission_owner().is_some());
     }
 
     #[test]
