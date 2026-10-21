@@ -1177,3 +1177,14 @@ New closed items go at the bottom.
 - [x] **UI-17** On /welcome, step 4 "Pick transcription" ignores the saved transcription setup and its link goes to /settings/model instead of /settings/transcription.
 
   Step 4 on /welcome now turns green once the selected transcription engine is usable, and its link opens /settings/transcription.
+
+- [x] **UI-16** Welcome says which app needs the permissions and that a grant needs a server restart
+  <details>
+  <summary>Details</summary>
+
+  Seen 2026-10-20: a `yogurt start` launched before the grants kept reporting both permissions as denied, so `/` bounced back to `/welcome` and reloading did nothing.
+  macOS charges the grants to the responsible app (the terminal, Ghostty here) and applies them only to processes started afterwards.
+  The page never named that app, and `yogurt ctl status` probed its own process, so it reported granted while the server was stuck on denied.
+
+  Landed 2026-10-20. `GET /api/audio/permission` now returns `owner`, the responsible app read with `responsibility_get_pid_responsible_for_pid` (looked up via `dlsym`, so it degrades to `null`). The Welcome page and both permission-denied screens name that app and explain the restart, and `yogurt ctl status` reports each server's own grants instead of its own process's.
+  </details>

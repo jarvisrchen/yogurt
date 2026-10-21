@@ -29,7 +29,7 @@ pub struct CtlArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum CtlCmd {
-    /// Instances found, active/detected meeting, stt engine, provider, permission grants.
+    /// Instances found, active/detected meeting, stt engine, provider, each server's permission grants.
     Status,
     /// Create, start, stop, and read meetings on a running instance.
     Meeting {

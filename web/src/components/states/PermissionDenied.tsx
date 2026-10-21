@@ -1,7 +1,7 @@
 /**
  * The "Open System Settings" href must match exactly (casing, query key, scheme) or macOS will not open the Screen Recording pane:
  * `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`
- * The System Settings list shows whichever process asked (the yogurt binary when launched directly, Terminal/iTerm under `just dev`), so there is no "Yogurt" toggle.
+ * System Settings lists the responsible app (the terminal that ran `yogurt start`, or the yogurt binary itself), which the server reports as `owner`.
  * Reloading the tab cannot help: macOS re-reads the TCC grant only on the process's next launch (see `crates/yogurt-audio/src/permission.rs`),
  * and granting makes macOS quit the asking process, so the server may already be down.
  * Hence static relaunch instructions (a browser cannot relaunch a process) and a "Check again" button that re-fetches the permission query.
@@ -10,10 +10,12 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { permissionsKey } from "../../lib/api/audio";
 import { Button, buttonClassName } from "../Button";
+import { useScreenRecordingStatus } from "../../hooks/useScreenRecordingStatus";
 
 export function PermissionDenied() {
   const qc = useQueryClient();
   const [checking, setChecking] = useState(false);
+  const { owner } = useScreenRecordingStatus();
 
   const handleCheckAgain = async () => {
     setChecking(true);
@@ -46,10 +48,17 @@ export function PermissionDenied() {
           Recording</strong>
         </li>
         <li>
-          Find the app that launched yogurt. That is{" "}
-          <strong>Terminal</strong> or <strong>iTerm</strong> if you started
-          it from the command line, or <strong>yogurt</strong> itself if you
-          opened it directly. Toggle it on
+          {owner ? (
+            <>
+              Find <strong>{owner}</strong>, the app macOS gives yogurt&apos;s
+              permissions to, and toggle it on
+            </>
+          ) : (
+            <>
+              Find the app that launched yogurt, usually your terminal, and
+              toggle it on
+            </>
+          )}
         </li>
         <li>
           macOS will immediately quit that process. That is expected

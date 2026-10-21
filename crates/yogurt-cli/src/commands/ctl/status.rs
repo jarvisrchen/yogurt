@@ -21,12 +21,22 @@ struct ProviderRow {
     is_active: bool,
 }
 
+/// Each instance's own grants: macOS applies a grant only to processes started after it,
+/// so this process's answer says nothing about a server that was already running.
+#[derive(Debug, Deserialize)]
+struct Grants {
+    screen_recording: String,
+    microphone: String,
+    owner: Option<String>,
+}
+
 #[derive(Default)]
 struct Details {
     active_meeting: Option<ActiveMeeting>,
     detected_meeting: Option<yogurt_audio::detect::DetectedMeeting>,
     stt: Option<String>,
     provider: Option<String>,
+    grants: Option<Grants>,
 }
 
 pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError> {
@@ -43,25 +53,32 @@ pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError>
         StatusTarget::Scanned(found) => found,
     };
 
-    let (screen, mic) = grants();
-
     if instances.len() > 1 {
+        let mut rows = Vec::new();
+        for inst in &instances {
+            rows.push((inst, fetch_grants(inst.port).await));
+        }
         if json_out {
-            println!(
-                "{}",
-                json!({
-                    "instances": instances,
-                    "screen_recording": screen,
-                    "microphone": mic,
+            let instances: Vec<_> = rows
+                .iter()
+                .map(|(inst, g)| {
+                    let mut v = json!(inst);
+                    v["screen_recording"] = json!(g.as_ref().map(|g| &g.screen_recording));
+                    v["microphone"] = json!(g.as_ref().map(|g| &g.microphone));
+                    v["permission_owner"] = json!(g.as_ref().and_then(|g| g.owner.as_ref()));
+                    v
                 })
-            );
+                .collect();
+            println!("{}", json!({ "instances": instances }));
         } else {
             println!("instances:");
-            for i in &instances {
-                println!("  127.0.0.1:{} (yogurt {}, {})", i.port, i.version, i.mode);
+            for (inst, g) in &rows {
+                let (screen, mic, _) = grant_text(g.as_ref());
+                println!(
+                    "  127.0.0.1:{} (yogurt {}, {}) screen recording: {screen}, microphone: {mic}",
+                    inst.port, inst.version, inst.mode
+                );
             }
-            println!("screen recording: {screen}");
-            println!("microphone: {mic}");
             println!("help: pass --port <port> to target one instance");
         }
         return Ok(());
@@ -79,8 +96,9 @@ pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError>
                 "detected_meeting": details.detected_meeting,
                 "stt": details.stt,
                 "provider": details.provider,
-                "screen_recording": screen,
-                "microphone": mic,
+                "screen_recording": details.grants.as_ref().map(|g| &g.screen_recording),
+                "microphone": details.grants.as_ref().map(|g| &g.microphone),
+                "permission_owner": details.grants.as_ref().and_then(|g| g.owner.as_ref()),
             })
         );
     } else {
@@ -101,8 +119,10 @@ pub async fn run(port_flag: Option<u16>, json_out: bool) -> Result<(), CtlError>
             "provider: {}",
             details.provider.as_deref().unwrap_or("none configured")
         );
+        let (screen, mic, owner) = grant_text(details.grants.as_ref());
         println!("screen recording: {screen}");
         println!("microphone: {mic}");
+        println!("permission owner: {owner}");
     }
     Ok(())
 }
@@ -132,23 +152,26 @@ async fn fetch_details(port: u16) -> Details {
             .find(|p| p.is_active)
             .map(|p| p.name);
     }
+    d.grants = c.get("/api/audio/permission").await.ok();
     d
 }
 
-fn grants() -> (&'static str, &'static str) {
-    use yogurt_audio::permission::{has_microphone_permission, has_screen_recording_permission};
-    (
-        permission_str(has_screen_recording_permission()),
-        permission_str(has_microphone_permission()),
-    )
+async fn fetch_grants(port: u16) -> Option<Grants> {
+    client::Client::at_port(port)
+        .ok()?
+        .get("/api/audio/permission")
+        .await
+        .ok()
 }
 
-fn permission_str(p: yogurt_audio::permission::PermissionStatus) -> &'static str {
-    use yogurt_audio::permission::PermissionStatus::*;
-    match p {
-        Granted => "granted",
-        Denied => "denied",
-        NotDetermined => "not determined",
-        NotRequired => "not required",
+fn grant_text(g: Option<&Grants>) -> (String, String, String) {
+    let words = |s: &str| s.replace('_', " ");
+    match g {
+        Some(g) => (
+            words(&g.screen_recording),
+            words(&g.microphone),
+            g.owner.clone().unwrap_or_else(|| "unknown".into()),
+        ),
+        None => ("unknown".into(), "unknown".into(), "unknown".into()),
     }
 }

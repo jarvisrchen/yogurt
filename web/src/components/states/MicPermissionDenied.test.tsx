@@ -21,6 +21,7 @@ describe("MicPermissionDenied", () => {
     qc.setQueryData(permissionsKey, {
       screen_recording: "granted",
       microphone: "denied",
+      owner: "Ghostty",
     });
     const refetchSpy = vi.spyOn(qc, "refetchQueries");
 
@@ -38,5 +39,20 @@ describe("MicPermissionDenied", () => {
         type: "active",
       });
     });
+  });
+
+  it("names the app that owns the grant", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(permissionsKey, {
+      screen_recording: "granted",
+      microphone: "denied",
+      owner: "Ghostty",
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MicPermissionDenied />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Ghostty")).toBeInTheDocument();
   });
 });

@@ -14,7 +14,7 @@ Needs yogurt 0.8.0 or newer: check with `yogurt --version`, and run `brew upgrad
 - `yogurt start` - Launch the local server and open the browser
 - `yogurt doctor` - Print diagnostic info (rust, macOS, perms, providers, models) + repair actions
 - `yogurt ctl` - Control a running yogurt instance: status, meetings, detection, windows
-  - `yogurt ctl status` - Instances found, active/detected meeting, stt engine, provider, permission grants
+  - `yogurt ctl status` - Instances found, active/detected meeting, stt engine, provider, each server's permission grants
   - `yogurt ctl meeting` - Create, start, stop, and read meetings on a running instance
   - `yogurt ctl detect` - What meeting detection currently sees (MTG-11), or dismiss the prompt
   - `yogurt ctl windows` - On-screen windows and each one's meeting-detection verdict. No server needed

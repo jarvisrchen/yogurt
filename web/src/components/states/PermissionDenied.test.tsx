@@ -22,6 +22,7 @@ describe("PermissionDenied", () => {
     qc.setQueryData(permissionsKey, {
       screen_recording: "denied",
       microphone: "granted",
+      owner: "Ghostty",
     });
     const refetchSpy = vi.spyOn(qc, "refetchQueries");
 
@@ -39,5 +40,20 @@ describe("PermissionDenied", () => {
         type: "active",
       });
     });
+  });
+
+  it("names the app that owns the grant", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(permissionsKey, {
+      screen_recording: "denied",
+      microphone: "granted",
+      owner: "Ghostty",
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <PermissionDenied />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Ghostty")).toBeInTheDocument();
   });
 });

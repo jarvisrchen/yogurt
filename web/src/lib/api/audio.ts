@@ -11,6 +11,8 @@ export type PermissionStatus =
 export interface PermissionsResponse {
   screen_recording: PermissionStatus;
   microphone: PermissionStatus;
+  /** The app System Settings lists for both grants, e.g. the terminal that ran `yogurt start`. */
+  owner: string | null;
 }
 
 /** Shared by both permission hooks so React Query dedupes them into one poll. */
