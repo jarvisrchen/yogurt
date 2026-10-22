@@ -16,6 +16,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `LLM` | LLM |
 | `CLI` | CLI |
 | `DX` | Developer experience |
+| `SYNC` | Sync |
 
 Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` and the titles and branch names of open PRs too.
 Never reuse or renumber an ID, including when an item moves to DONE.
@@ -120,3 +121,10 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## Developer experience
 
+## Sync
+
+Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
+
+- [ ] **SYNC-1** Link a laptop to a self-hosted Supabase cloud account and push encrypted meetings with a manual button
+- [ ] **SYNC-2** Read-only phone viewer for the cloud account, hosted on GitHub Pages, with a device picker
+- [ ] **SYNC-3** Automatic sync on an interval (15 minutes, 1 hour, or daily)
