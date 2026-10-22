@@ -37,7 +37,7 @@ pub fn block_key(b: &Block) -> String {
 /// A `data-ai-grey` span keeps its inner text, which holds the user's bullet content.
 /// A `data-transcript-link` span is dropped whole, including its `↳ HH:MM` text.
 /// Stripping `</span>` globally would leave link text behind when the spans nest.
-pub(crate) fn strip_markers(s: &str) -> String {
+pub fn strip_markers(s: &str) -> String {
     if !s.contains("<span") && !s.contains("</span>") {
         return s.to_string();
     }

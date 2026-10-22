@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod labels;
+pub mod library_chat;
 pub mod meetings;
 pub mod settings;
 pub mod stt_models;

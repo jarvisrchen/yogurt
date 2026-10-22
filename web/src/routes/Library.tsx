@@ -14,6 +14,7 @@ import { SelectionActionBar } from "../components/library/SelectionActionBar";
 import { EMPTY_SELECTION, clickSelect, clearSelection, selectAll } from "../components/library/selection";
 import { Sidebar } from "../components/library/Sidebar";
 import { ShimmerSkeleton } from "../components/ShimmerSkeleton";
+import { LibraryAskExperience } from "../components/AskExperience";
 import { EmptyLibrary } from "../components/states/EmptyLibrary";
 import { MicPermissionDenied } from "../components/states/MicPermissionDenied";
 import { PermissionDenied } from "../components/states/PermissionDenied";
@@ -120,7 +121,7 @@ export function Library({ starredOnly = false }: LibraryProps) {
   return (
     <div className="flex">
       <Sidebar />
-      <main className="flex-1 px-12 py-10 max-w-[860px]">
+      <main className="flex-1 px-12 pt-10 pb-28 max-w-[860px]">
         <div className="flex items-start justify-between mb-8">
           <Greeting
             count={
@@ -159,12 +160,15 @@ export function Library({ starredOnly = false }: LibraryProps) {
           />
         )}
       </main>
-      {hasSelection && (
+      {/* Both anchor bottom-center, so the selection bar takes the slot while it shows. */}
+      {hasSelection ? (
         <SelectionActionBar
           meetings={selectedMeetings}
           onSelectAll={onSelectAll}
           onClear={onClearSelection}
         />
+      ) : (
+        <LibraryAskExperience />
       )}
     </div>
   );

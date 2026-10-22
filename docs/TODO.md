@@ -64,37 +64,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
-- [ ] **MTG-19** Chat across all meetings ("what did Steven and I decide about pricing last month?")
-  <details>
-  <summary>Details</summary>
-
-  Chat today is per meeting only (`POST /api/meetings/{id}/chat` in `crates/yogurt-server/src/api/chat.rs`, routed at `crates/yogurt-server/src/routes.rs:69`, client in `web/src/hooks/useChat.ts`).
-  The goal is a library-level chat that answers questions across every meeting and cites which meetings each answer came from.
-
-  **Approach: retrieve, then answer.**
-  1. Turn the question into search terms: drop stopwords, OR the remaining words, and pull out a date range when the question names one ("last month", "in September").
-  2. Ask the existing FTS5 index for the top 5 to 8 meetings by `bm25`, inside that date range.
-  3. Send the LLM each hit's title, date, augmented notes (`enriched_md`), and FTS5 `snippet()` excerpts of the transcript around the matched terms. Never send whole transcripts.
-  4. Stream the answer with the same WS/streaming path per-meeting chat uses, and render citations as links to `/meeting/<id>/post`.
-
-  Use retrieval from day one, even though the current library would fit in one prompt.
-  Measured on 2026-10-20: 43 meetings, augmented notes average about 2,100 chars (about 500 tokens) and all of them total about 23,000 tokens, while transcripts average about 2,000 tokens and the longest is about 30,000.
-  Retrieval keeps the prompt bounded as the library grows and keeps it working on small local models with 8,000 to 32,000 token contexts.
-  No embeddings or vector store: names, projects, and topics are what people ask about, and keyword search finds those.
-
-  **Search changes this needs** (`MeetingRepo::search`, `crates/yogurt-db/src/meetings.rs:278`; index in `crates/yogurt-db/migrations/V004__meetings_fts.sql`):
-  - The index covers `title`, `notes_md`, `transcript_text` but not `enriched_md`. Add it with a new migration (next is `V013`) that rebuilds `meetings_fts` and its three triggers and backfills from existing rows.
-  - `search` wraps the whole query in quotes with a prefix `*`, so it is phrase matching: "steven pricing" only hits that exact phrase. Add a retrieval query that ORs terms (keep the library search box behavior unless the change is clearly better there too).
-  - Verify first: the `meetings_au` trigger re-inserts `transcript_text` as `''` on every UPDATE and relies on `MeetingRepo::patch` to refill it. Writes that bypass `patch` (the enhance path's direct UPSERT in `crates/yogurt-server/src/enhance.rs`) may leave a meeting's transcript unsearchable. Reproduce with a real enhance, and fix it in the same migration if confirmed.
-
-  **UI.** An "Ask across meetings" entry in the Library (sidebar or top of the list) that opens a chat panel. Reuse the per-meeting chat components and their styling. The answer lists cited meetings as clickable chips.
-
-  **Constraints.** Uses the user's configured LLM provider only; nothing new leaves the machine beyond what per-meeting chat already sends. No new dependencies needed (FTS5 is already in use).
-  The migration touches the shared `~/.yogurt` DB: test the branch with `YOGURT_DATA_DIR` pointed at a copy, never the real DB, until it lands.
-
-  **Tests.** Unit tests for term extraction and date parsing. `yogurt-db` tests that retrieval ranks the right meetings, that `enriched_md` is searchable after an enhance write, and that the backfill indexes old rows. A server test with a mock LLM asserting the prompt holds only the top-k meetings and that citations come back. A Playwright spec for the Library chat panel with screenshots.
-  </details>
-
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download

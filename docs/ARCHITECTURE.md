@@ -601,7 +601,7 @@ graph TB
     end
     subgraph SQ["~/.yogurt/db.sqlite (WAL)"]
         MT["meetings: notes_md, transcript_json,<br/>enriched_md, enriched_doc_json, timestamps"]
-        FTS["meetings_fts (search)"]
+        FTS["meetings_fts (search + Library chat retrieval)"]
         CM["chat_messages"]
         PRV["providers (base_url, model, active)"]
         SET["settings (stt_provider, stt_model, ...)"]
@@ -625,6 +625,7 @@ Notes on the storage layout, since it surprises people reading the code:
   They deliberately do not depend on each other for path resolution. Keep the two path helpers in sync if that path ever moves.
   `yogurt start --data-dir <path>` / `$YOGURT_DATA_DIR` relocates both openers to the same `<path>/db.sqlite` together (CLI-7); keys, models, and notes still resolve under `~/.yogurt`.
 - **`storage` uses a dual pool**: one writer connection behind a mutex, one read-only connection, WAL with `synchronous=NORMAL`.
+- **`meetings_fts` is maintained by triggers alone.** It indexes `title`, `notes_md`, `enriched_md`, and `transcript_text`, which the triggers flatten from `transcript_json` with SQLite's JSON functions (V013), so a writer that bypasses `MeetingRepo` still keeps the index whole.
 - **rusqlite is synchronous**, so every DB touch inside a request handler goes through `spawn_blocking`. Same for the markdown export, which does write + rename + fsync.
 - **API keys are never in SQLite and never in a response body.** The providers table holds `base_url`, model, and active flag; the secret lives in `~/.yogurt/keys.json` keyed by the provider's ULID (or `stt-deepgram` for the STT singleton). Responses return a masked suffix only.
 - **The key file is read once and held in memory.** `FileKeyStore::open` (`yogurt-db/src/keys.rs`) parses `keys.json` at boot into a map behind an `RwLock`; every `get` is a map lookup, so key reads happen inline in request handlers with no `spawn_blocking` and no timeouts. Every `set`/`delete` rewrites the whole file through a same-directory temp file with mode 0600 and an atomic rename, so a crash mid-write can never truncate it. The file is created on the first write, not at boot.
@@ -715,7 +716,8 @@ graph TB
 |---|---|---|---|---|
 | 1 | `meetings.rs::start` → `Stt::start` | Deepgram `nova-3` **or** local whisper.cpp | Continuously while recording | Cloud: per streamed minute. Local: free. |
 | 2 | `enhance.rs:210` `llm.complete` | Configured LLM provider | Once per **End meeting**, once per **Re-enhance** | Input + output tokens |
-| 3 | `api/chat.rs:218` `llm.stream` | Same provider | Once per **chat message sent** | Input + output tokens |
+| 3 | `api/chat.rs` `llm.stream` | Same provider | Once per **chat message sent** | Input + output tokens |
+| 3b | `api/library_chat.rs` `llm.stream` | Same provider | Once per **Library chat question**, with at most 6 retrieved meetings in the prompt | Input + output tokens |
 
 Fallbacks that cost nothing: if no provider is configured at all, `MockLlm` answers deterministically (`$0`).
 A provider that *is* configured but whose stored key cannot be read is a hard 502, never a silent free fallback, so you can never be silently downgraded to fake output.
