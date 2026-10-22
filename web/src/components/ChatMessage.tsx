@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import type { ChatMessage as Msg } from "../lib/api";
+import { splitTitle } from "./library/InlineTitle";
 
 interface Props {
   message: Msg;
@@ -53,8 +55,16 @@ function MiniMarkdown({ content }: { content: string }) {
   return <>{blocks}</>;
 }
 
+/** The sources the finished answer cites as `[n]`, keeping their numbers. */
+function citedSources(message: Msg) {
+  return (message.sources ?? [])
+    .map((s, i) => ({ ...s, n: i + 1, ...splitTitle(s.title, s.started_at) }))
+    .filter((s) => message.content.includes(`[${s.n}]`));
+}
+
 export function ChatMessage({ message, isStreaming = false }: Props) {
   const isUser = message.role === "user";
+  const cited = isStreaming ? [] : citedSources(message);
   // A finished turn with empty content (e.g. no transcript to answer from) would render a blank box that reads as a hung request.
   // Show a muted placeholder instead. Never while streaming.
   const isEmptyFinishedReply =
@@ -74,6 +84,21 @@ export function ChatMessage({ message, isStreaming = false }: Props) {
           message.content
         ) : (
           <MiniMarkdown content={message.content} />
+        )}
+        {cited.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {cited.map((s) => (
+              <Link
+                key={s.id}
+                to={`/meeting/${s.id}/post`}
+                className="inline-flex items-center gap-1.5 max-w-full h-6 px-2 rounded-chip text-[12px] text-[var(--color-ink)] bg-[var(--color-blsoft)] hover:bg-[var(--color-blue)] hover:text-white transition-colors"
+              >
+                <span className="font-mono opacity-70">{s.n}</span>
+                <span className="truncate">{s.name}</span>
+                <span className="opacity-70">{s.date}</span>
+              </Link>
+            ))}
+          </div>
         )}
         {isStreaming && !isUser && (
           <span

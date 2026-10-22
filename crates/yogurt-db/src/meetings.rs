@@ -47,6 +47,13 @@ pub struct Meeting {
     pub labels: Vec<Label>,
 }
 
+/// One [`MeetingRepo::retrieve`] result. `excerpt` is the transcript text around the matched terms, empty when nothing matched there.
+#[derive(Debug, Clone)]
+pub struct RetrievalHit {
+    pub meeting: Meeting,
+    pub excerpt: String,
+}
+
 /// Constructor payload for [`MeetingRepo::create`]; the repo fills in defaults, id, and timestamps.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct NewMeeting {
@@ -241,23 +248,6 @@ impl MeetingRepo {
                 bail!("meeting not found: {id_owned}");
             }
 
-            // Keep the FTS5 `transcript_text` in sync. The AFTER UPDATE trigger re-indexes `title` and `notes_md` but writes '' for `transcript_text` (it cannot parse JSON),
-            // so always restore the flattened transcript from `transcript_json`, even when only `title` or `notes_md` changed.
-            let mut stmt = conn.prepare_cached(
-                "SELECT title, notes_md, transcript_json FROM meetings WHERE id = ?1",
-            )?;
-            let (title, notes_md, transcript_json): (String, String, String) = stmt
-                .query_row(params![id_owned], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-                .with_context(|| format!("re-read meeting for FTS sync id={id_owned}"))?;
-            let transcript_text = extract_transcript_text(&transcript_json);
-            conn.execute(
-                "UPDATE meetings_fts \
-                 SET title = ?1, notes_md = ?2, transcript_text = ?3 \
-                 WHERE rowid = (SELECT rowid FROM meetings WHERE id = ?4)",
-                params![title, notes_md, transcript_text, id_owned],
-            )
-            .with_context(|| format!("update meetings_fts id={id_owned}"))?;
-
             if let Some(label_ids) = patch.label_ids.as_ref() {
                 labels::set_for_meeting_conn(conn, &id_owned, label_ids)?;
             }
@@ -321,6 +311,63 @@ impl MeetingRepo {
                 }
             }
             hydrate_labels(conn, &mut out)?;
+            Ok(out)
+        })
+    }
+
+    /// Top `limit` meetings for cross-meeting chat, each with a transcript excerpt around the matched terms.
+    /// Unlike [`Self::search`], `terms` are ORed, so bm25 ranks a meeting higher the more of them it hits.
+    /// No terms means the newest meetings. `range` is `[start, end)` unix ms on `started_at`.
+    pub fn retrieve(
+        &self,
+        terms: &[String],
+        range: Option<(i64, i64)>,
+        limit: usize,
+    ) -> Result<Vec<RetrievalHit>> {
+        let (start, end) = range.unwrap_or((i64::MIN, i64::MAX));
+        let match_expr = terms
+            .iter()
+            .map(|t| format!("\"{}\"*", t.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        self.db.with_conn(|conn| -> Result<Vec<RetrievalHit>> {
+            let mut out = Vec::new();
+            if match_expr.is_empty() {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT id, title, started_at, ended_at, notes_md, enriched_md, \
+                            transcript_json, starred, created_at, updated_at, \
+                            stt_engine, llm_model, template \
+                     FROM meetings WHERE started_at >= ?1 AND started_at < ?2 \
+                     ORDER BY started_at DESC LIMIT ?3",
+                )?;
+                for r in stmt.query_map(params![start, end, limit as i64], row_to_meeting)? {
+                    out.push(RetrievalHit {
+                        meeting: r?,
+                        excerpt: String::new(),
+                    });
+                }
+            } else {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
+                            m.enriched_md, m.transcript_json, m.starred, \
+                            m.created_at, m.updated_at, m.stt_engine, m.llm_model, m.template, \
+                            snippet(meetings_fts, 3, '', '', ' … ', 64) \
+                     FROM meetings m \
+                     JOIN meetings_fts f ON f.rowid = m.rowid \
+                     WHERE meetings_fts MATCH ?1 AND m.started_at >= ?2 AND m.started_at < ?3 \
+                     ORDER BY bm25(meetings_fts), m.started_at DESC \
+                     LIMIT ?4",
+                )?;
+                let rows = stmt.query_map(params![match_expr, start, end, limit as i64], |r| {
+                    Ok(RetrievalHit {
+                        meeting: row_to_meeting(r)?,
+                        excerpt: r.get(13)?,
+                    })
+                })?;
+                for r in rows {
+                    out.push(r?);
+                }
+            }
             Ok(out)
         })
     }
@@ -462,38 +509,6 @@ fn hydrate_labels(conn: &Connection, out: &mut [Meeting]) -> rusqlite::Result<()
         m.labels = map.remove(&m.id).unwrap_or_default();
     }
     Ok(())
-}
-
-/// Flatten the `transcript_json` blob into one searchable string for the FTS5 index.
-///
-/// Concatenates the `.text` (or older Deepgram `.transcript`) string of each array element, separated by " ".
-/// Returns `""` for empty, malformed, or non-array JSON, so an unparseable transcript matches nothing.
-/// Only depth 1 is read: segment-level `text` already contains the word strings, so nested `words[]` are skipped.
-fn extract_transcript_text(transcript_json: &str) -> String {
-    let trimmed = transcript_json.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
-        return String::new();
-    };
-    let Some(arr) = value.as_array() else {
-        return String::new();
-    };
-    let mut parts: Vec<&str> = Vec::with_capacity(arr.len());
-    for entry in arr {
-        // Prefer `.text`; fall back to `.transcript` for older payloads in user DBs.
-        if let Some(t) = entry.get("text").and_then(|v| v.as_str()) {
-            if !t.is_empty() {
-                parts.push(t);
-            }
-        } else if let Some(t) = entry.get("transcript").and_then(|v| v.as_str()) {
-            if !t.is_empty() {
-                parts.push(t);
-            }
-        }
-    }
-    parts.join(" ")
 }
 
 fn ms_to_dt(ms: i64) -> DateTime<Utc> {
@@ -800,6 +815,91 @@ mod tests {
         let hits = repo.search("homebrew", 50).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, m.id);
+    }
+
+    #[test]
+    fn transcript_stays_searchable_after_a_write_that_bypasses_patch() {
+        let db = Db::open_in_memory().unwrap();
+        let repo = MeetingRepo::new(db.clone());
+        let m = repo
+            .create(NewMeeting {
+                title: "T".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        repo.patch(
+            &m.id,
+            MeetingPatch {
+                transcript_json: Some(r#"[{"text":"shipping the homebrew formula"}]"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        // The enhance path writes `meetings` with its own UPSERT.
+        db.with_conn(|c| {
+            c.execute(
+                "UPDATE meetings SET enriched_md = '## Pricing' WHERE id = ?1",
+                params![m.id],
+            )
+        })
+        .unwrap();
+        assert_eq!(repo.search("homebrew", 50).unwrap().len(), 1);
+        assert_eq!(repo.search("pricing", 50).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn retrieve_ors_terms_ranks_by_hits_and_honors_the_range() {
+        let repo = fresh_repo();
+        let mk = |title: &str, ms: i64, transcript: &str, enriched: Option<&str>| {
+            let m = repo
+                .create(NewMeeting {
+                    title: title.into(),
+                    started_at_unix_ms: Some(ms),
+                    ..Default::default()
+                })
+                .unwrap();
+            repo.patch(
+                &m.id,
+                MeetingPatch {
+                    transcript_json: Some(serde_json::json!([{ "text": transcript }]).to_string()),
+                    enriched_md: Some(enriched.map(str::to_string)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            m.id
+        };
+        let both = mk(
+            "Sync",
+            2_000,
+            "Steven wants the pricing at twenty dollars",
+            None,
+        );
+        let one = mk(
+            "Roadmap",
+            3_000,
+            "nothing relevant",
+            Some("## Pricing\n- tiers"),
+        );
+        mk("Lunch", 4_000, "sandwiches", None);
+        let early = mk("Old sync", 500, "Steven pricing pricing", None);
+
+        let terms = ["steven".to_string(), "pricing".to_string()];
+        let hits = repo.retrieve(&terms, Some((1_000, 10_000)), 8).unwrap();
+        let ids: Vec<&str> = hits.iter().map(|h| h.meeting.id.as_str()).collect();
+        assert_eq!(ids, [both.as_str(), one.as_str()]);
+        assert!(
+            hits[0].excerpt.contains("pricing at twenty"),
+            "{:?}",
+            hits[0].excerpt
+        );
+
+        let all = repo.retrieve(&terms, None, 8).unwrap();
+        assert!(all.iter().any(|h| h.meeting.id == early));
+
+        let newest = repo.retrieve(&[], Some((1_000, 10_000)), 2).unwrap();
+        assert_eq!(newest.len(), 2);
+        assert_eq!(newest[0].meeting.title, "Lunch");
     }
 
     #[test]

@@ -60,7 +60,7 @@ impl Prompts {
             cached: HashMap::new(),
         };
         if matches!(mode, Mode::Release) {
-            for name in ["enhance.md", "chat-system.md"] {
+            for name in ["enhance.md", "chat-system.md", "library-chat-system.md"] {
                 p.cached.insert(name.to_string(), read_embedded(name)?);
             }
             for id in TEMPLATE_IDS {
@@ -123,6 +123,10 @@ impl Prompts {
 
     pub fn chat_system(&self) -> Result<String> {
         self.read("chat-system.md")
+    }
+
+    pub fn library_chat_system(&self) -> Result<String> {
+        self.read("library-chat-system.md")
     }
 
     pub fn templates(&self) -> Result<Vec<Template>> {

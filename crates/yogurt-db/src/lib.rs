@@ -13,7 +13,7 @@ pub mod providers;
 pub mod settings;
 
 pub use labels::{Label, LabelRepo, LabelWithCount};
-pub use meetings::{Meeting, MeetingPatch, MeetingRepo, NewMeeting};
+pub use meetings::{Meeting, MeetingPatch, MeetingRepo, NewMeeting, RetrievalHit};
 
 use anyhow::Result;
 use rusqlite::Connection;

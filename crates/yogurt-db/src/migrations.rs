@@ -18,8 +18,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../migrations/V003b__chat_messages_cascade.sql"
         )),
-        // FTS5 keyword search across title, notes_md, transcript_text. Triggers keep the index in sync,
-        // but `transcript_text` is maintained explicitly by MeetingRepo::patch because the triggers only mirror base columns.
+        // FTS5 keyword search across title, notes_md, transcript_text. Superseded by V013.
         M::up(include_str!("../migrations/V004__meetings_fts.sql")),
         // Seed `stt.provider` (cloud) and `stt.model` (small.en) so `meetings/start.rs` can pick an STT adapter without a null check.
         M::up(include_str!("../migrations/V005__stt_provider_model.sql")),
@@ -38,6 +37,10 @@ fn migrations() -> Migrations<'static> {
         // `labels.position` (custom sidebar order) and `labels.updated_at` (last-updated order).
         M::up(include_str!(
             "../migrations/V012__labels_position_updated_at.sql"
+        )),
+        // Rebuild `meetings_fts` to index `enriched_md` and flatten `transcript_json` inside the triggers, so every writer keeps the index whole.
+        M::up(include_str!(
+            "../migrations/V013__meetings_fts_enriched.sql"
         )),
     ])
 }
@@ -83,4 +86,36 @@ fn existing_columns(conn: &Connection, table: &str) -> Result<Vec<String>> {
         out.push(r?);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v013_backfills_enriched_and_transcript_text_for_existing_rows() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        // Version 13 is V012: V003b counts as its own step.
+        migrations().to_version(&mut conn, 13).unwrap();
+        conn.execute_batch(
+            r#"INSERT INTO meetings (id, title, started_at, notes_md, enriched_md, transcript_json)
+               VALUES ('a', 'Old', 0, '', '## Pricing tiers', '[{"text":"homebrew"},{"transcript":"legacy"},"bare"]'),
+                      ('b', 'Bad', 0, '', NULL, 'not json');"#,
+        )
+        .unwrap();
+        migrations().to_latest(&mut conn).unwrap();
+        let hit = |q: &str| -> Vec<String> {
+            let mut stmt = conn
+                .prepare("SELECT m.id FROM meetings m JOIN meetings_fts f ON f.rowid = m.rowid WHERE meetings_fts MATCH ?1")
+                .unwrap();
+            stmt.query_map([q], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert_eq!(hit("pricing"), ["a"]);
+        assert_eq!(hit("homebrew"), ["a"]);
+        assert_eq!(hit("legacy"), ["a"]);
+        assert_eq!(hit("bad"), ["b"]);
+    }
 }

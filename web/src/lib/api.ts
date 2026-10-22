@@ -14,6 +14,46 @@ export interface ChatMessage {
   content: string;
   /** Unix ms. */
   created_at: number;
+  /** Cross-meeting chat only: the meetings the answer may cite as `[n]`, numbered from 1. */
+  sources?: ChatSource[];
+}
+
+export interface ChatSource {
+  id: string;
+  title: string;
+  /** Unix ms. */
+  started_at: number;
+}
+
+/** `POST /api/chat`: one cross-meeting turn. Calls `onSources` once, then `onDelta` per streamed chunk. */
+export async function streamLibraryChat(
+  messages: { role: ChatRole; content: string }[],
+  onSources: (sources: ChatSource[]) => void,
+  onDelta: (delta: string) => void,
+): Promise<void> {
+  const res = await bearerFetch("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ messages }),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `chat failed: ${res.status} ${res.statusText}`);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += value;
+    const lines = buf.split("\n");
+    buf = lines.pop()!;
+    for (const line of lines) {
+      if (!line) continue;
+      const frame = JSON.parse(line) as { sources?: ChatSource[]; delta?: string };
+      if (frame.sources) onSources(frame.sources);
+      if (frame.delta) onDelta(frame.delta);
+    }
+  }
 }
 
 export async function postChatMessage(

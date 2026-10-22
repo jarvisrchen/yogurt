@@ -3,14 +3,27 @@ import type { ChatMessage as Msg } from "../lib/api";
 import { ChatMessage } from "./ChatMessage";
 import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 
+export interface ChatCopy {
+  title: string;
+  placeholder: string;
+  hint: string;
+  suggestions: string[];
+}
+
+export const MEETING_CHAT_COPY: ChatCopy = {
+  title: "Ask the meeting",
+  placeholder: "Ask this meeting…",
+  hint: "Ask anything about what's been said so far.",
+  suggestions: ["Catch me up", "What did I miss?"],
+};
+
 interface Props {
   messages: Msg[];
   streamingId: string | null;
   onSend: (content: string) => void;
   onCollapse: () => void;
+  copy?: ChatCopy;
 }
-
-const SUGGESTED_QUESTIONS = ["Catch me up", "What did I miss?"];
 
 /** Sticky: outside-click does not collapse the window (no document mousedown listener). Only the header caret and Escape do. */
 export function ChatWindow({
@@ -18,6 +31,7 @@ export function ChatWindow({
   streamingId,
   onSend,
   onCollapse,
+  copy = MEETING_CHAT_COPY,
 }: Props) {
   const [draft, setDraft] = useState("");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -44,7 +58,7 @@ export function ChatWindow({
   return (
     <div
       role="region"
-      aria-label="Ask the meeting chat"
+      aria-label={`${copy.title} chat`}
       className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px] max-h-[60vh] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-panel shadow-pop anim-popUp z-30"
     >
       <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)]">
@@ -55,7 +69,7 @@ export function ChatWindow({
             className="h-5 w-5 rounded-full bg-[var(--color-blue)]"
           />
           <span className="text-[14px] font-semibold text-[var(--color-ink)]">
-            Ask the meeting
+            {copy.title}
           </span>
         </div>
         <button
@@ -82,10 +96,10 @@ export function ChatWindow({
         {messages.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-6">
             <p className="italic text-[13px] text-center text-[var(--color-mut)]">
-              Ask anything about what&apos;s been said so far.
+              {copy.hint}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTED_QUESTIONS.map((q) => (
+              {copy.suggestions.map((q) => (
                 <button
                   key={q}
                   type="button"
@@ -120,7 +134,7 @@ export function ChatWindow({
                 trySubmit();
               }
             }}
-            placeholder="Ask this meeting…"
+            placeholder={copy.placeholder}
             className="w-full bg-transparent text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-mut)] outline-none"
           />
         </div>

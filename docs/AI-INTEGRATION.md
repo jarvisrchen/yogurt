@@ -44,6 +44,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | GET | `/api/audio/output-devices` | output devices for the echo | - |
 | POST | `/api/audio/echo/test` | play a test tone on the echo device: `{device?}` | - |
 | POST | `/api/meetings/{id}/chat` | ask a question (streamed) | - |
+| POST | `/api/chat` | ask across all meetings: `{messages}`, NDJSON `{sources}` then `{delta}` lines | - |
 | GET | `/api/meetings/detected` | detected meeting | `ctl detect` |
 | POST | `/api/meetings/detected/dismiss` | dismiss prompt | `ctl detect dismiss` |
 | GET/PATCH | `/api/settings` | settings | `ctl settings get`/`set` |

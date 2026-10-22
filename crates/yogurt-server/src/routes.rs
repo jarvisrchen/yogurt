@@ -69,6 +69,10 @@ pub fn router(state: AppState) -> Router {
             "/api/meetings/{id}/chat",
             post(crate::api::chat::post_chat).get(crate::api::chat::get_chat_history),
         )
+        .route(
+            "/api/chat",
+            post(crate::api::library_chat::post_library_chat),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_session_token,

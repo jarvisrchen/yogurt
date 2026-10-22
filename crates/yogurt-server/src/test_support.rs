@@ -17,15 +17,18 @@ use crate::{AppState, Mode};
 pub use crate::llm_openai::resolve;
 
 /// Each `stream` call replays `chunks` once, then emits the terminal frame.
+/// `requests` records every streamed request so tests can assert on the prompt.
 #[derive(Clone)]
 pub struct MockChunksLlm {
     chunks: Vec<String>,
+    pub requests: Arc<std::sync::Mutex<Vec<ChatRequest>>>,
 }
 
 impl MockChunksLlm {
     pub fn new(chunks: &[&str]) -> Self {
         Self {
             chunks: chunks.iter().map(|s| (*s).to_string()).collect(),
+            requests: Default::default(),
         }
     }
 }
@@ -43,7 +46,8 @@ impl LlmClient for MockChunksLlm {
         })
     }
 
-    async fn stream(&self, _req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
+    async fn stream(&self, req: ChatRequest) -> Result<BoxStream<'static, Result<ChatChunk>>> {
+        self.requests.lock().unwrap().push(req);
         let mut frames: Vec<Result<ChatChunk>> = self
             .chunks
             .iter()
@@ -67,6 +71,7 @@ pub struct TestServer {
     pub addr: std::net::SocketAddr,
     pub token: String,
     pub state: AppState,
+    pub llm: MockChunksLlm,
     pub _tmp: tempfile::TempDir,
 }
 
@@ -91,6 +96,7 @@ pub async fn run_with_mock_llm(
     let meeting_repo = Arc::new(yogurt_db::MeetingRepo::new(db.clone()));
     let label_repo = Arc::new(yogurt_db::LabelRepo::new(db.clone()));
     let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
+    let llm = MockChunksLlm::new(chunks);
     let state = AppState {
         mode: Mode::Release,
         storage,
@@ -101,7 +107,7 @@ pub async fn run_with_mock_llm(
         prompts,
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
-        llm_override: Some(Arc::new(MockChunksLlm::new(chunks))),
+        llm_override: Some(Arc::new(llm.clone())),
         meeting_repo,
         label_repo,
         app_events_tx,
@@ -119,6 +125,7 @@ pub async fn run_with_mock_llm(
             addr,
             token: token_str,
             state: server_state,
+            llm,
             _tmp: tmp,
         },
         handle,
