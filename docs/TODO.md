@@ -125,6 +125,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 
-- [ ] **SYNC-1** Link a laptop to a self-hosted Supabase cloud account and push encrypted meetings with a manual button
-- [ ] **SYNC-2** Read-only phone viewer for the cloud account, hosted on GitHub Pages, with a device picker
+- [ ] **SYNC-1** Link a laptop to a self-hosted Supabase cloud account and push encrypted, versioned meetings with a manual button
+- [ ] **SYNC-2** Read-only phone viewer for the cloud account, hosted on GitHub Pages, with a device picker and push history
 - [ ] **SYNC-3** Automatic sync on an interval (15 minutes, 1 hour, or daily)

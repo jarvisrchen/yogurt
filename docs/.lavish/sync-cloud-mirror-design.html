@@ -229,6 +229,17 @@
   .doc .ai{color:var(--ai)}
   .ro{font-size:9.5px}
 
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .opts{display:flex;flex-direction:column;gap:6px}
+  .opt{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-btn);background:var(--paper);font-size:12.5px}
+  .opt.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+  .opt small{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--mut)}
+  .radio{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--grey);flex:none}
+  .opt.on .radio{border:4px solid var(--blue)}
+  .mrow.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+  .hist td,.hist th{text-align:center;font-family:var(--mono);font-size:12px}
+  .hist td:first-child,.hist th:first-child{text-align:left}
+  .hist .asof{background:var(--blsoft)}
   .questions{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
   .q b{display:block;margin-bottom:4px}
   .q span{color:var(--mut);font-size:12.5px}
@@ -265,6 +276,7 @@
   <div class="rule"><b>One-way</b><span>Laptops push. The phone only reads.</span></div>
   <div class="rule"><b>Ciphertext only</b><span>Supabase never sees a title, note, or transcript.</span></div>
   <div class="rule"><b>Laptops can't decrypt</b><span>They hold the public key only. A work laptop can't read your other laptops.</span></div>
+  <div class="rule"><b>Every push is kept</b><span>The cloud is an append-only history. View the library as of any earlier push.</span></div>
 </div>
 
 <!-- ============ CAST ============ -->
@@ -314,7 +326,7 @@
         <div class="k">Your Supabase project = Yogurt Cloud</div>
         <div class="ar-two">
           <div class="ar-node"><b>Auth</b><span>Yogurt Cloud login · public sign-ups off</span></div>
-          <div class="ar-node ar-db"><b>Postgres + RLS</b><span><code>devices</code> · <code>keyring</code> · <code>meetings</code></span><em class="ar-lock">ciphertext only</em></div>
+          <div class="ar-node ar-db"><b>Postgres + RLS</b><span><code>devices</code> · <code>keyring</code> · <code>pushes</code> · <code>versions</code></span><em class="ar-lock">ciphertext only</em></div>
         </div>
       </div>
     </div>
@@ -350,24 +362,28 @@ sequenceDiagram
   participant Y as yogurt on Laptop 1
   participant M as Management API
   participant P as Supabase project
-  U->>Y: access token, login email + password, passphrase
+  U->>Y: access token
   Y->>M: GET /v1/organizations, GET /v1/projects
-  alt no project named yogurt
+  Y-->>U: your projects + Create a new project
+  U->>Y: project, login email + password, passphrase
+  alt new project
     Y->>M: POST /v1/projects (random db_pass, never stored)
     loop until ACTIVE_HEALTHY
       Y->>M: GET /v1/projects/{ref}
     end
   end
   Y->>M: POST /v1/projects/{ref}/database/query (schema.sql)
-  Y->>M: PATCH /v1/projects/{ref}/config/auth (disable_signup)
+  opt sign-ups off (checked by default)
+    Y->>M: PATCH /v1/projects/{ref}/config/auth (disable_signup)
+  end
   Y->>M: GET /v1/projects/{ref}/api-keys?reveal=true
   Y->>P: POST /auth/v1/admin/users (email_confirm, secret key)
   Y->>Y: P-256 key pair, wrap private key with passphrase
-  Y->>P: insert keyring
+  Y->>P: insert yogurt_keyring
   Y->>Y: forget token, secret key, passphrase, private key
   Y-->>U: link code + QR · revoke the token now
 </pre>
-    <figcaption>You do two things first in a browser: sign up at supabase.com, then create a personal access token. <code>database/query</code> is Beta in the spec, so a failure shows <code>schema.sql</code> with a copy button and continues once you confirm.</figcaption>
+    <figcaption>You do two things first in a browser: sign up at supabase.com, then create a personal access token. <code>database/query</code> is Beta in the spec, so a failure shows <code>schema.sql</code> with a copy button and continues once you confirm. Any existing project can be reused, because every table is prefixed <code>yogurt_</code>.</figcaption>
   </figure>
   <figure class="diagram flowpane" id="f2" hidden style="margin:0">
 <pre class="mermaid">
@@ -380,13 +396,13 @@ sequenceDiagram
   V->>V: read #c= (URL, publishable key, public key)
   U->>V: login email + password
   V->>P: sign in
-  V->>P: select keyring
+  V->>P: select yogurt_keyring, newest first
   U->>V: passphrase
   V->>V: PBKDF2, unwrap private key, keep non-extractable in IndexedDB
-  V->>P: select devices, meetings
+  V->>P: select yogurt_devices, rpc yogurt_as_of()
   V->>V: decrypt, group by day, device picker = All devices
 </pre>
-    <figcaption>Any browser can run the viewer, Laptop 1's included.</figcaption>
+    <figcaption>Any browser can run the viewer, Laptop 1's included. The unlocked key stays in that browser until you tap Lock, so later visits skip the passphrase.</figcaption>
   </figure>
   <figure class="diagram flowpane" id="f3" hidden style="margin:0">
 <pre class="mermaid">
@@ -397,8 +413,8 @@ sequenceDiagram
   participant P as Supabase project
   U->>Y: link code, login email + password, name "Laptop 2"
   Y->>P: POST /auth/v1/token?grant_type=password
-  Y->>P: select keyring.public_key, must match link code
-  Y->>P: insert devices (encrypted name)
+  Y->>P: select yogurt_keyring.public_key, must match link code
+  Y->>P: insert yogurt_devices (encrypted name)
   Y->>Y: keys.json: refresh token, URL, publishable key, public key, device id
   U->>Y: Push meetings
 </pre>
@@ -413,19 +429,41 @@ sequenceDiagram
   participant P as Supabase project
   Y->>P: refresh session if needed
   Y->>DB: every meeting except the one recording
-  loop each meeting
-    Y->>Y: plaintext JSON, sha256
-    alt hash differs from meetings.cloud_hash
-      Y->>Y: encrypt to public key
-      Y->>P: upsert meetings
-      Y->>DB: store new cloud_hash
+  Y->>Y: sha256 each, keep those that differ from cloud_hash
+  Y->>P: rpc yogurt_as_of(), meeting ids where device = me
+  Y->>Y: deleted = cloud ids missing locally
+  alt anything changed or deleted
+    Y->>P: insert yogurt_pushes, returning id
+    loop batches
+      Y->>Y: encrypt changes to public key
+      Y->>P: insert yogurt_versions (null ct = deleted)
+      Y->>DB: store the batch's cloud_hash values
     end
   end
-  Y->>P: select id where device_id = me
-  Y->>P: delete ids missing locally
 </pre>
-    <figcaption>Hashing the plaintext catches label and chat edits that don't touch <code>updated_at</code>. The id listing reads metadata, never content. 45 local meetings today total 630 KB, and the largest is 148 KB.</figcaption>
+    <figcaption>Hashing the plaintext catches label and chat edits that don't touch <code>updated_at</code>. The id listing reads metadata, never content. A pass that changes nothing writes nothing, and nothing is ever updated or deleted in place.</figcaption>
   </figure>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section>
+  <div class="sechead"><h2>History</h2><p>Each push stores only what changed, plus a deletion marker for anything the device no longer has. The library as of push N is the latest version of each meeting at or before N.</p></div>
+  <div class="tablewrap">
+  <table class="creds hist">
+    <thead><tr><th>Meeting</th><th>Push 1 · Laptop 1</th><th>Push 2 · Laptop 2</th><th>Push 3 · Laptop 1</th><th class="asof">As of push 2</th><th>Latest</th></tr></thead>
+    <tbody>
+      <tr><td><b>m1</b> · Laptop 1</td><td class="yes">v1</td><td class="no">·</td><td class="yes">v2 edited</td><td class="asof">v1</td><td>v2</td></tr>
+      <tr><td><b>m2</b> · Laptop 1</td><td class="yes">v1</td><td class="no">·</td><td class="warn">deleted</td><td class="asof">v1</td><td class="no">gone</td></tr>
+      <tr><td><b>m3</b> · Laptop 2</td><td class="no">·</td><td class="yes">v1</td><td class="no">·</td><td class="asof">v1</td><td>v1</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid3" style="margin-top:16px">
+    <div class="card"><h3>Why not a snapshot per push</h3><p class="sub">Same result, far more storage. Hourly auto-push of a 630 KB library is about 15 MB a day, which fills the free tier's 500 MB in about a month. Versions cost about 19 KB per change, so 500 MB holds about 26,000.</p></div>
+    <div class="card"><h3>Reverting is read-only</h3><p class="sub">Pick a push in the viewer to see the library as it was. Nothing flows back to a laptop. A wiped <code>db.sqlite</code> marks that device's meetings deleted on the next push, and they stay readable from any earlier push.</p></div>
+    <div class="card"><h3>Insert-only policies</h3><p class="sub">No laptop or browser can update or delete a row, so a compromised laptop can add junk but can't erase history. Purging for real happens in the Supabase SQL editor.</p></div>
+  </div>
+  <p class="sub" style="margin-top:10px">This table is what <code>yogurt_as_of()</code> returned when the schema ran in a throwaway Postgres 16 with stubbed Supabase auth.</p>
 </section>
 
 <!-- ============ WHO HOLDS WHAT ============ -->
@@ -442,7 +480,7 @@ sequenceDiagram
     </tbody>
   </table>
   </div>
-  <p class="sub" style="margin-top:10px">A compromised laptop could upload junk or delete other devices' rows, but it can't read them. Pushing again from the other laptops restores the mirror.</p>
+  <p class="sub" style="margin-top:10px">A compromised laptop can't read anything. It can add junk, deletion markers, or forged meetings, since the public key is all an encrypter needs, but it can't erase history, so a push from before the damage shows the real library.</p>
 </section>
 
 <!-- ============ UI MOCKS: LAPTOP ============ -->
@@ -495,6 +533,7 @@ sequenceDiagram
         <div class="setupgrid">
           <div class="mcard">
             <div class="field"><span class="k">Supabase access token</span><div class="inp mono">sbp_••••••••••••••••••••3f9a</div><span class="hint">supabase.com → Account → Access tokens. Held in memory for this setup only.</span></div>
+            <div class="field"><span class="k">Project</span><div class="inp">New project · yogurt ▾</div><span class="hint">Or reuse one of your 2 existing projects. See B3.</span></div>
             <div class="grid2">
               <div class="field"><span class="k">Login email</span><div class="inp">richard@example.com</div></div>
               <div class="field"><span class="k">Login password</span><div class="inp">••••••••••••</div></div>
@@ -528,6 +567,19 @@ sequenceDiagram
   <div class="mcard" style="max-width:680px">
     <div class="note honey"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div><b>Supabase didn't accept the schema automatically.</b> Copy it, run it in your project's SQL editor, then come back and continue.</div></div>
     <div class="row" style="margin-top:12px;justify-content:flex-start"><span class="btn">Copy schema.sql</span><span class="btn ghost">Open SQL editor ↗</span><span class="btn pri">I ran it, continue</span></div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">B3</span><h3>Setup reusing an existing project</h3><span class="sub">The project picker open, with the sign-up warning a reused project gets.</span></div>
+  <div class="mcard" style="max-width:680px">
+    <div class="k" style="margin-bottom:8px">Project</div>
+    <div class="opts">
+      <div class="opt"><span class="radio"></span>Create a new project named yogurt<small>uses 1 of 2 free</small></div>
+      <div class="opt on"><span class="radio"></span><b>notes-app</b><small>efgh5678 · existing</small></div>
+      <div class="opt"><span class="radio"></span><b>portfolio</b><small>ijkl9012 · existing</small></div>
+    </div>
+    <p class="hint" style="margin:10px 0 0">Yogurt adds four tables named <code>yogurt_*</code> and changes nothing else in the project's data.</p>
+    <div class="check"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Turn off public sign-ups for this project</div>
+    <div class="note honey" style="margin-top:10px"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div>This applies to all of notes-app. If notes-app lets people sign up, uncheck it. Your meetings stay private either way, because each row is readable only by its owner.</div></div>
   </div>
 
   <div class="mocklabel"><span class="pill p-slate">C</span><h3>Connected · Laptop 1 after setup</h3><span class="sub">The page you return to. Link code and QR live here.</span></div>
@@ -565,7 +617,7 @@ sequenceDiagram
             <div class="qrwrap"><svg class="qr" id="qr" viewBox="0 0 29 29" shape-rendering="crispEdges"></svg><p class="hint" style="margin:0">Scan, sign in, enter your passphrase. Project details travel in the link fragment and never reach the viewer's host.</p></div>
           </div>
         </div>
-        <div class="row" style="margin-top:14px"><span class="hint">Disconnect forgets this cloud on this laptop. You choose whether to delete Laptop 1's meetings from the cloud.</span><span class="btn danger">Disconnect…</span></div>
+        <div class="row" style="margin-top:14px"><span class="hint">Disconnect forgets this cloud on this laptop. You choose whether one last push marks Laptop 1's meetings deleted. History keeps them either way.</span><span class="btn danger">Disconnect…</span></div>
       </div>
     </div>
   </div>
@@ -668,18 +720,37 @@ sequenceDiagram
         </div>
       </div></div>
     </div>
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">I</span><h3>History</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="sub" style="font-size:11px">← Library</div>
+          <b style="font-size:16px;font-weight:800;letter-spacing:-.01em">History</b>
+          <div class="note honey" style="font-size:11px;padding:8px 10px"><div>Viewing as of push 55 · Oct 22, 9:14 AM</div></div>
+          <span class="btn" style="width:100%">Back to latest</span>
+          <div class="day">Today</div>
+          <div class="mrow"><b>Push 58</b><div class="m"><span>2:10 PM · 3 changed</span><span class="dev d2">Laptop 2</span></div></div>
+          <div class="day">Oct 22</div>
+          <div class="mrow"><b>Push 56</b><div class="m"><span style="color:var(--honey)">9:30 AM · 12 deleted</span><span class="dev d3">Laptop 3</span></div></div>
+          <div class="mrow sel"><b>Push 55 · viewing</b><div class="m"><span>9:14 AM · 2 changed</span><span class="dev d1">Laptop 1</span></div></div>
+        </div>
+      </div></div>
+    </div>
   </div>
 </section>
 
-<!-- ============ OPEN QUESTIONS ============ -->
+<!-- ============ DECISIONS ============ -->
 <section>
-  <div class="sechead"><h2>Open questions</h2><p>Annotate any card to answer. Defaults apply if left alone.</p></div>
+  <div class="sechead"><h2>Decisions</h2><p>The four open questions, settled 2026-10-24.</p></div>
   <div class="questions">
-    <div class="card q"><b>Exclude a meeting from push?</b><span>For a sensitive 1:1, a per-meeting "keep local" toggle.</span><br><span class="pill p-blue def">Default: push everything</span></div>
-    <div class="card q"><b>Local reset deletes the cloud copy?</b><span>A wiped <code>db.sqlite</code> with the connection intact makes the next push delete that device's cloud rows.</span><br><span class="pill p-blue def">Default: mirror it</span></div>
-    <div class="card q"><b>Remember the unlocked key on the phone?</b><span>Or ask for the passphrase every session.</span><br><span class="pill p-blue def">Default: remember per browser</span></div>
-    <div class="card q"><b>Create a fresh project or reuse one?</b><span>Free plan allows 2 projects.</span><br><span class="pill p-blue def">Default: reuse "yogurt" if found, else create</span></div>
+    <div class="card q"><b>Exclude a meeting from push?</b><span>No. Every meeting is pushed.</span><br><span class="pill p-matcha def">Push everything</span></div>
+    <div class="card q"><b>Local reset deletes the cloud copy?</b><span>The next push marks that device's meetings deleted, and History keeps every earlier push readable.</span><br><span class="pill p-matcha def">Versioned history</span></div>
+    <div class="card q"><b>Remember the unlocked key on the phone?</b><span>Yes, per browser, until Lock in the viewer's settings.</span><br><span class="pill p-matcha def">Remember</span></div>
+    <div class="card q"><b>Create a fresh project or reuse one?</b><span>Setup lists your existing projects next to Create a new project.</span><br><span class="pill p-matcha def">Offer reuse</span></div>
   </div>
+  <p class="sub" style="margin-top:10px">Parked: a hosted Yogurt Cloud for other people. Nothing in SYNC-1 to SYNC-3 blocks it, because laptops and the viewer only need a URL and a public key.</p>
 </section>
 
 </div>
