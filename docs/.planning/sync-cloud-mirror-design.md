@@ -365,7 +365,7 @@ The mocks are in the review surface linked at the top.
 - **Connected.** Device name, Push meetings, last push result, link code with copy, QR for the phone, Disconnect.
 - **Connect.** Link code, login, device name.
 - **Library subtitle.** "46 meetings · all on this Mac" gains "· 3 not pushed" when connected and behind.
-- **Viewer.** Unlock, library with the device picker, a read-only meeting page, and History.
+- **Viewer.** Unlock, library with the device picker, a read-only meeting page, and History. A clock button in the library header opens the list of pushes, and picking one shows the library as of that push under a "Viewing <time>" banner with a Latest button.
 
 ## Viewer
 
