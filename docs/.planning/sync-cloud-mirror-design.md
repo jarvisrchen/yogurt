@@ -1,7 +1,7 @@
 # SYNC: push meetings to a self-hosted cloud for reading on a phone
 
 Design, not yet implemented.
-Tickets: `docs/TODO.md` SYNC-1 through SYNC-3.
+Tickets: `docs/TODO.md` SYNC-1 through SYNC-6. Build order and verification: [sync-implementation-plan.md](sync-implementation-plan.md).
 Review surface with diagrams and UI mocks: [../.lavish/sync-cloud-mirror-design.html](../.lavish/sync-cloud-mirror-design.html).
 
 jarvisrchen runs yogurt on more than one laptop and wants to read every meeting from his phone.
@@ -101,7 +101,7 @@ Recovery is to drop the `yogurt_` tables in the Supabase SQL editor, run setup a
 
 ## Cloud schema
 
-`cloud/schema.sql`, which setup runs automatically and which the manual fallback pastes into the SQL editor:
+`crates/yogurt-cloud/schema.sql`, which setup runs automatically and which the manual fallback pastes into the SQL editor:
 
 ```sql
 create table yogurt_devices (
@@ -285,7 +285,7 @@ It first offers one last push that marks every meeting from this device deleted,
 
 ## Flow 4: pushing
 
-The Push meetings button in Settings runs one pass. SYNC-3 adds an interval timer that runs the same pass.
+The Push meetings button in Settings runs one pass. SYNC-5 adds an interval timer that runs the same pass.
 
 ```mermaid
 sequenceDiagram
@@ -336,7 +336,7 @@ Purging data for real, for example a work laptop's meetings, is done in the Supa
 Size check against the current `~/.yogurt/db.sqlite`: 45 meetings total 630 KB, and the largest (1 hour 58 minutes) is 148 KB.
 With base64 and the 77-byte header, an average version is about 19 KB, so the free tier's 500 MB holds about 26,000 versions.
 A meeting gets a new version only when it changes after its first push, so that is thousands of meetings with their edit history.
-SYNC-1 prunes nothing. If the database nears the cap, the upgrade is a `pg_cron` job that drops versions older than a set age while keeping each meeting's latest.
+The first version prunes nothing. If the database nears the cap, the upgrade is a `pg_cron` job that drops versions older than a set age while keeping each meeting's latest.
 
 ## What each place holds
 
@@ -397,16 +397,21 @@ The archived PRD's "There is no Yogurt cloud" still holds too, because yogurt ho
 Third-party sources agree on 500 MB of database per project, 2 free projects, and a pause after one week of inactivity that needs a manual restore.
 Whether API writes count as activity is unverified.
 Pro ($25 a month) removes the pause.
-Verify against Supabase's own pricing page before SYNC-1 lands.
+Verify against Supabase's own pricing page before SYNC-2 lands.
 
 ## Phasing
 
-1. **SYNC-1.** `cloud/schema.sql` with the versioned tables, the crypto with its fixtures, Flow 1 setup with the project picker and the SQL fallback, Flow 3 connect and disconnect, the link code, manual push, the `cloud_hash` migration, and the `AGENTS.md` edit.
-2. **SYNC-2.** The viewer with History, the QR code, and the GitHub Pages deploy.
-3. **SYNC-3.** Automatic push on an interval (15 minutes, 1 hour, or daily).
+1. **SYNC-1.** The `yogurt-cloud` crate: crypto, link code, `schema.sql`, and the cross-language fixtures.
+2. **SYNC-2.** Flow 1 setup with the project picker and the SQL fallback.
+3. **SYNC-3.** Flow 3 connect and disconnect, manual push, the `cloud_hash` migration, and the `AGENTS.md` edit.
+4. **SYNC-4.** The viewer with settings and History, the QR code, and the GitHub Pages deploy.
+5. **SYNC-5.** Automatic push on an interval (15 minutes, 1 hour, or daily).
+6. **SYNC-6.** The setup guide, `docs/CLOUD-SYNC.md`, checked by a rehearsal on real accounts.
+
+[sync-implementation-plan.md](sync-implementation-plan.md) has the files, tests, and verification for each.
 
 Later and unplanned: a hosted Yogurt Cloud, so other people could push without their own Supabase project.
-Nothing in SYNC-1 to SYNC-3 blocks it, because the laptops and the viewer only need a URL and a public key.
+Nothing in SYNC-1 to SYNC-6 blocks it, because the laptops and the viewer only need a URL and a public key.
 
 ## Decisions
 
