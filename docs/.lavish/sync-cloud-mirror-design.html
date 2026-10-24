@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yogurt Cloud sync design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBF7EF;--card:#FFFFFF;--ink:#211D18;--grey:#A89F90;--ai:#7A7264;--line:#EBE3D5;
+    --blue:#5B4FC7;--blsoft:#ECE9FB;--straw:#E07A66;--strsoft:#FBE6E0;--matcha:#5E9E73;--mtsoft:#E7F0E8;--mut:#8A8174;
+    --lilac:#8A5BB8;--lilacsoft:#F3E8FB;--honey:#A67C1B;--honeysoft:#FBF0D6;--slate:#4E5D6B;--slatesoft:#E8ECF0;
+    --shc:rgba(40,30,15,.10);--shp:rgba(40,30,15,.18);
+    --sans:"Manrope","Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    --r-chip:8px;--r-btn:12px;--r-card:16px;--r-panel:24px;--r-pill:999px;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#1B1815;--card:#26221D;--ink:#EDEAE2;--grey:#8F877B;--ai:#A69D90;--line:#3A342C;
+      --blue:#7D72DE;--blsoft:#2C2846;--straw:#E8886F;--strsoft:#3D2622;--matcha:#7FBE8C;--mtsoft:#22342A;--mut:#9B9285;
+      --lilac:#C4A2E8;--lilacsoft:#33283F;--honey:#D9B24E;--honeysoft:#3A3120;--slate:#A9B7C4;--slatesoft:#2A3138;
+      --shc:rgba(0,0,0,.35);--shp:rgba(0,0,0,.5);color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#1B1815;--card:#26221D;--ink:#EDEAE2;--grey:#8F877B;--ai:#A69D90;--line:#3A342C;
+    --blue:#7D72DE;--blsoft:#2C2846;--straw:#E8886F;--strsoft:#3D2622;--matcha:#7FBE8C;--mtsoft:#22342A;--mut:#9B9285;
+    --lilac:#C4A2E8;--lilacsoft:#33283F;--honey:#D9B24E;--honeysoft:#3A3120;--slate:#A9B7C4;--slatesoft:#2A3138;
+    --shc:rgba(0,0,0,.35);--shp:rgba(0,0,0,.5);color-scheme:dark;
+  }
+  *{box-sizing:border-box;min-width:0}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+  .wrap{max-width:1200px;margin:0 auto;padding:32px 24px 96px}
+  h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0}
+  h2{font-size:20px;font-weight:800;letter-spacing:-.01em;margin:0 0 4px}
+  h3{font-size:15px;font-weight:700;margin:0}
+  p{margin:0 0 8px}
+  a{color:var(--blue)}
+  code,.mono{font-family:var(--mono);font-size:.92em}
+  .k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+  .sub{color:var(--mut)}
+  section{margin-top:56px}
+  .sechead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px}
+  .sechead p{color:var(--mut);margin:0;max-width:720px}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:var(--r-pill);font-size:11px;font-weight:700;white-space:nowrap}
+  .p-blue{background:var(--blsoft);color:var(--blue)} .p-matcha{background:var(--mtsoft);color:var(--matcha)}
+  .p-straw{background:var(--strsoft);color:var(--straw)} .p-honey{background:var(--honeysoft);color:var(--honey)}
+  .p-slate{background:var(--slatesoft);color:var(--slate)} .p-lilac{background:var(--lilacsoft);color:var(--lilac)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:0 16px 32px -4px var(--shc);padding:20px}
+
+  /* header */
+  .top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;align-items:flex-start}
+  .top > div:first-child{flex:1 1 600px}
+  .seg{display:inline-flex;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-btn);padding:3px;gap:2px}
+  .seg button{font:inherit;font-size:12px;font-weight:600;border:0;background:transparent;color:var(--mut);padding:5px 12px;border-radius:9px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 2px 6px var(--shc)}
+  .lede{max-width:760px;color:var(--ai);font-size:15px;margin-top:10px}
+  .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:20px}
+  .rule{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:14px 16px}
+  .rule b{display:block;font-size:13px;margin-bottom:2px}
+  .rule span{color:var(--mut);font-size:12.5px}
+
+  /* cast */
+  .cast{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .who{display:flex;gap:12px;align-items:flex-start}
+  .ico{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--blsoft);color:var(--blue)}
+  .ico svg{width:20px;height:20px}
+  .creds{width:100%;border-collapse:separate;border-spacing:0;margin-top:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden}
+  .creds th,.creds td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+  .creds tr:last-child td{border-bottom:0}
+  .creds th{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:500;background:var(--paper)}
+  .tablewrap{overflow-x:auto;border-radius:var(--r-card)}
+  .yes{color:var(--matcha);font-weight:700} .no{color:var(--mut)} .warn{color:var(--honey);font-weight:600}
+
+  /* diagrams */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:20px;overflow-x:auto}
+  .diagram .mermaid{display:flex;justify-content:center;min-width:560px}
+  .diagram figcaption{color:var(--mut);font-size:12.5px;margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .tabs button{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--mut);padding:7px 14px;border-radius:var(--r-btn);cursor:pointer}
+  .tabs button[aria-selected="true"]{background:var(--blsoft);color:var(--blue);border-color:transparent}
+  .flowpane[hidden]{display:none}
+
+  /* hand-drawn architecture */
+  .arch{display:flex;flex-direction:column;gap:0}
+  .ar-zone{border:1px dashed var(--line);border-radius:14px;padding:12px;background:var(--paper)}
+  .ar-zone > .k{margin-bottom:10px}
+  .ar-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .ar-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:10px}
+  .ar-node{background:var(--card);border:1px solid var(--blue);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+  .ar-node b{font-size:13px}
+  .ar-node span{font-size:11.5px;color:var(--mut)}
+  .ar-key,.ar-lock{font-style:normal;font-family:var(--mono);font-size:10px;align-self:flex-start;margin-top:4px;padding:1px 7px;border-radius:var(--r-pill);background:var(--slatesoft);color:var(--slate)}
+  .ar-key.ok,.ar-lock{background:var(--mtsoft);color:var(--matcha)}
+  .ar-mgmt{border-style:dashed;border-color:var(--mut)}
+  .ar-sb{border-color:var(--blue);border-style:solid;background:var(--blsoft)}
+  .ar-db{border-color:var(--matcha)}
+  .ar-mid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch}
+  .ar-side{display:flex;flex-direction:column;align-items:flex-start;padding-left:16px}
+  .ar-side .ar-node{max-width:320px}
+  .ar-edge{position:relative;min-height:46px;display:flex;align-items:center;padding-left:28px;margin-left:16px}
+  .ar-edge::before{content:"";position:absolute;left:8px;top:0;bottom:6px;border-left:2px solid var(--mut)}
+  .ar-edge::after{content:"";position:absolute;left:3px;bottom:0;border:6px solid transparent;border-top:8px solid var(--mut);border-bottom:0}
+  .ar-edge.dashed{min-height:36px;margin-left:0}
+  .ar-edge.dashed::before{border-left-style:dashed}
+  .ar-edge.thick::before{border-left-width:3px;border-color:var(--blue)}
+  .ar-edge.thick::after{border-top-color:var(--blue)}
+  .ar-edge.thick span{color:var(--blue);font-weight:700}
+  .ar-edge.up::after{top:0;bottom:auto;border-top:0;border-bottom:8px solid var(--mut)}
+  .ar-edge.up::before{top:6px;bottom:0}
+  .ar-edge span{font-size:11.5px;color:var(--mut);font-weight:600}
+  .ar-flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.3fr);gap:10px;align-items:center}
+  .ar-h{display:flex;flex-direction:column;align-items:center;font-size:11px;color:var(--mut);font-weight:600}
+  .ar-h::after{content:"→";font-size:18px;line-height:1;color:var(--mut)}
+  @media (max-width:720px){
+    .ar-three,.ar-two,.ar-flow{grid-template-columns:1fr}
+    .ar-mid{grid-template-columns:1fr}
+    .ar-h::after{content:"↓"}
+  }
+
+  /* ---------- desktop app mock ---------- */
+  .mocklabel{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:28px 0 10px}
+  .mocklabel h3{font-size:14px}
+  .mocklabel .sub{font-size:12.5px}
+  .win{border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 24px 48px -8px var(--shp);background:var(--paper)}
+  .chrome{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--card);border-bottom:1px solid var(--line)}
+  .dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:var(--line);display:block}
+  .url{flex:1;max-width:360px;margin:0 auto;font-family:var(--mono);font-size:11px;color:var(--mut);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:4px 10px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .app{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:440px}
+  .side{border-right:1px solid var(--line);padding:16px 10px;display:flex;flex-direction:column;gap:2px}
+  .side .back{font-size:12px;color:var(--mut);padding:0 8px}
+  .side .ttl{font-size:20px;font-weight:800;padding:2px 8px 12px}
+  .nav{font-size:13px;padding:7px 10px;border-radius:var(--r-btn);color:var(--ink)}
+  .nav.on{background:var(--blsoft);color:var(--blue);font-weight:600}
+  .nav .new{margin-left:6px}
+  .side .foot{margin-top:auto;font-family:var(--mono);font-size:10.5px;color:var(--mut);padding:8px;line-height:1.6}
+  .main{padding:22px 28px 28px;max-width:680px}
+  .main h2{font-size:22px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .main h2 small{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--mut)}
+  .intro{color:var(--ai);font-size:13px;margin:4px 0 16px}
+  .mcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:16px 18px;box-shadow:0 16px 32px -4px var(--shc)}
+  .main > .mcard + .mcard{margin-top:12px}
+  .mcard.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue),0 16px 32px -4px var(--shc)}
+  .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .choice h3{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .choice p{color:var(--mut);font-size:12.5px}
+  .choice ul{margin:4px 0 14px;padding-left:16px;color:var(--ai);font-size:12.5px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:12.5px;font-weight:700;border-radius:var(--r-btn);padding:8px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);white-space:nowrap}
+  .btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 8px 16px -6px rgba(91,79,199,.35)}
+  .btn.ghost{background:transparent}
+  .btn.danger{color:var(--straw);border-color:var(--strsoft)}
+  .btn.dis{opacity:.45}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .field .k{font-size:9.5px}
+  .inp{font-family:var(--sans);font-size:12.5px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-btn);padding:8px 11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .inp.mono{font-family:var(--mono);font-size:11.5px}
+  .inp.ph{color:var(--grey)}
+  .inp.ok{border-color:var(--matcha)}
+  .hint{font-size:11.5px;color:var(--mut)}
+  .row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 12px}
+  .note{display:flex;gap:8px;align-items:flex-start;font-size:12px;border-radius:var(--r-btn);padding:9px 12px}
+  .note.matcha{background:var(--mtsoft);color:var(--matcha)}
+  .note.honey{background:var(--honeysoft);color:var(--honey)}
+  .note svg{flex:none;width:15px;height:15px;margin-top:1px}
+  .check{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:10px 0 0}
+  .box{width:14px;height:14px;border-radius:4px;background:var(--blue);display:grid;place-items:center;flex:none}
+  .box svg{width:10px;height:10px;color:#fff}
+  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .steps li{display:flex;gap:10px;align-items:flex-start;font-size:12.5px}
+  .steps .st{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--line)}
+  .steps .done .st{background:var(--matcha);border-color:var(--matcha);color:#fff}
+  .steps .done .st svg{width:10px;height:10px}
+  .steps .now .st{border-color:var(--blue);border-top-color:transparent;animation:spin 1s linear infinite}
+  .steps .todo{color:var(--mut)}
+  .steps small{display:block;color:var(--mut);font-family:var(--mono);font-size:10.5px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .setupgrid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:12px}
+  .codebox{display:flex;gap:8px;align-items:center}
+  .codebox .inp{flex:1}
+  .qrwrap{display:flex;gap:14px;align-items:center}
+  .qr{width:96px;height:96px;flex:none;background:#fff;border-radius:10px;padding:6px;border:1px solid var(--line)}
+  .stat{display:flex;flex-direction:column}
+  .stat b{font-size:18px;font-weight:800}
+  .stat span{font-size:11px;color:var(--mut)}
+  .stats{display:flex;gap:24px;flex-wrap:wrap;margin:10px 0 14px}
+  .divider{border:0;border-top:1px solid var(--line);margin:14px 0}
+
+  /* library header mock */
+  .libhead{padding:22px 28px}
+  .libhead .hello{font-size:28px;font-weight:800;letter-spacing:-.02em}
+  .libhead .meta{color:var(--mut);font-size:12.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .libhead .meta .pill{font-size:10.5px}
+
+  /* ---------- phone mocks ---------- */
+  .phones{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:24px;justify-items:center}
+  .phones > div{width:100%;max-width:300px}
+  .phone{width:100%;max-width:300px;aspect-ratio:9/18.5;border-radius:42px;padding:10px;background:#0f0d0b;box-shadow:0 24px 48px -8px var(--shp)}
+  .screen{position:relative;height:100%;border-radius:33px;overflow:hidden;background:var(--paper);display:flex;flex-direction:column}
+  .notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:84px;height:22px;border-radius:12px;background:#0f0d0b;z-index:2}
+  .sbar{display:flex;justify-content:space-between;padding:12px 22px 0;font-size:11px;font-weight:700;height:36px}
+  .vurl{margin:2px 14px 8px;font-family:var(--mono);font-size:9.5px;color:var(--mut);text-align:center;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pbody{flex:1;overflow:hidden;padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px}
+  .logo{display:flex;align-items:center;gap:7px;font-weight:800;font-size:16px}
+  .logo i{width:22px;height:22px;border-radius:7px;background:var(--blue);display:block;position:relative}
+  .logo i::after{content:"";position:absolute;inset:6px 5px 5px 6px;border-radius:50%;background:var(--paper);opacity:.9}
+  .unlock{flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px}
+  .unlock h3{font-size:20px;font-weight:800;letter-spacing:-.01em}
+  .lock{width:44px;height:44px;border-radius:14px;background:var(--blsoft);color:var(--blue);display:grid;place-items:center}
+  .lock svg{width:22px;height:22px}
+  .chips{display:flex;gap:6px;overflow:hidden}
+  .chip{flex:none;font-size:11px;font-weight:700;padding:5px 10px;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .search{font-size:11.5px;color:var(--grey);background:var(--card);border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 12px}
+  .day{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin-top:4px}
+  .mrow{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+  .mrow b{display:block;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mrow .m{display:flex;justify-content:space-between;gap:6px;align-items:center;font-size:10px;color:var(--mut);margin-top:2px}
+  .dev{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:var(--r-pill);white-space:nowrap}
+  .d1{background:var(--blsoft);color:var(--blue)} .d2{background:var(--honeysoft);color:var(--honey)} .d3{background:var(--slatesoft);color:var(--slate)}
+  .ptabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+  .ptabs span{font-size:11px;font-weight:700;color:var(--mut);padding:6px 8px}
+  .ptabs span.on{color:var(--blue);box-shadow:inset 0 -2px 0 var(--blue)}
+  .doc{font-size:11.5px;color:var(--ink);line-height:1.55}
+  .doc h4{margin:6px 0 2px;font-size:12px}
+  .doc ul{margin:0;padding-left:16px}
+  .doc .ai{color:var(--ai)}
+  .ro{font-size:9.5px}
+
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .opts{display:flex;flex-direction:column;gap:6px}
+  .opt{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-btn);background:var(--paper);font-size:12.5px}
+  .opt.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+  .opt small{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--mut)}
+  .radio{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--grey);flex:none}
+  .opt.on .radio{border:4px solid var(--blue)}
+  .mrow.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+  .pbanner{display:flex;align-items:center;gap:7px;padding:4px 4px 4px 10px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-pill);box-shadow:0 8px 18px -6px var(--shc);font-size:11px;min-width:0}
+  .pbanner .dot{width:6px;height:6px;border-radius:50%;background:var(--blue);flex:none}
+  .pbanner .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pbanner .go{flex:none;background:var(--blue);color:#fff;font-weight:600;font-size:10.5px;padding:4px 9px;border-radius:var(--r-pill)}
+  .hbtn{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--mut)}
+  .hbtn svg{width:13px;height:13px}
+  .sgroup{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .srow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;font-size:11.5px;border-bottom:1px solid var(--line)}
+  .srow:last-child{border-bottom:0}
+  .srow small{display:block;font-size:10px;color:var(--mut);margin-top:1px}
+  .srow .chev{color:var(--mut);flex:none}
+  .hist td,.hist th{text-align:center;font-family:var(--mono);font-size:12px}
+  .hist td:first-child,.hist th:first-child{text-align:left}
+  .hist .asof{background:var(--blsoft)}
+  .questions{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .q b{display:block;margin-bottom:4px}
+  .q span{color:var(--mut);font-size:12.5px}
+  .q .def{display:inline-block;margin-top:8px;white-space:normal;border-radius:10px}
+  .pbody > *{flex-shrink:0}
+
+  @media (max-width:720px){
+    .wrap{padding:24px 16px 72px}
+    .app{grid-template-columns:1fr}
+    .side{display:none}
+    .main{padding:18px 16px}
+    .setupgrid{grid-template-columns:1fr}
+    h1{font-size:24px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <div class="k">SYNC-1 to SYNC-6 · design review · not implemented</div>
+    <h1>Yogurt Cloud: push meetings to your own Supabase, read them on your phone</h1>
+    <p class="lede">Yogurt stays a local app with no login. Yogurt Cloud is an optional, encrypted mirror in a Supabase project you own. Laptops push into it and never read from it. The phone reads it after you type your passphrase. Source of truth: <code>docs/.planning/sync-cloud-mirror-design.md</code>.</p>
+  </div>
+  <div class="seg" role="group" aria-label="Theme">
+    <button data-t="system" aria-pressed="true">System</button><button data-t="light" aria-pressed="false">Light</button><button data-t="dark" aria-pressed="false">Dark</button>
+  </div>
+</header>
+
+<div class="rules">
+  <div class="rule"><b>No login to use yogurt</b><span>Sync stays off until you turn it on in Settings.</span></div>
+  <div class="rule"><b>You host it</b><span>Your Supabase project. Yogurt hosts no data.</span></div>
+  <div class="rule"><b>One-way</b><span>Laptops push. The phone only reads.</span></div>
+  <div class="rule"><b>Ciphertext only</b><span>Supabase never sees a title, note, or transcript.</span></div>
+  <div class="rule"><b>Laptops can't decrypt</b><span>They hold the public key only. A work laptop can't read your other laptops.</span></div>
+  <div class="rule"><b>Every push is kept</b><span>The cloud is an append-only history. View the library as of any earlier push.</span></div>
+</div>
+
+<!-- ============ CAST ============ -->
+<section>
+  <div class="sechead"><h2>The cast</h2><p>One person, three laptops, one phone, and three credentials that each appear in as few places as possible.</p></div>
+  <div class="cast">
+    <div class="card who"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/></svg></div><div><h3>Laptop 1 · personal</h3><p class="sub">Creates Yogurt Cloud once. May also push its own meetings.</p></div></div>
+    <div class="card who"><div class="ico" style="background:var(--honeysoft);color:var(--honey)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/></svg></div><div><h3>Laptops 2 and 3 · maybe work</h3><p class="sub">Each has its own local meetings. Connects with a link code and pushes.</p></div></div>
+    <div class="card who"><div class="ico" style="background:var(--mtsoft);color:var(--matcha)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg></div><div><h3>Phone</h3><p class="sub">Opens the viewer from a QR code. The only place meetings get decrypted.</p></div></div>
+  </div>
+  <div class="tablewrap">
+  <table class="creds">
+    <thead><tr><th>Credential</th><th>What it is</th><th>Where it is used</th></tr></thead>
+    <tbody>
+      <tr><td><b>Supabase account</b></td><td>Your supabase.com login. Owns the project and billing.</td><td>Once, during setup on Laptop 1, through an access token held in memory.</td></tr>
+      <tr><td><b>Yogurt Cloud login</b></td><td>An email and password user inside your Supabase project.</td><td>Every laptop and the phone sign in with it.</td></tr>
+      <tr><td><b>Passphrase</b></td><td>Unlocks the private key that decrypts meetings.</td><td>Typed during setup on Laptop 1 and in the viewer. Never stored on a laptop.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section>
+  <div class="sechead"><h2>Architecture</h2><p>Every arrow into Supabase carries ciphertext or credentials. GitHub Pages serves code only and never sees your project details, because they ride in the link's <code>#fragment</code>.</p></div>
+  <figure class="diagram arch" style="margin:0">
+    <div class="ar-row ar-laptops">
+      <div class="ar-zone">
+        <div class="k">Laptops · local yogurt · no login to use</div>
+        <div class="ar-three">
+          <div class="ar-node"><b>Laptop 1</b><span>personal · runs setup once</span><em class="ar-key">public key only</em></div>
+          <div class="ar-node"><b>Laptop 2</b><span>own meetings</span><em class="ar-key">public key only</em></div>
+          <div class="ar-node"><b>Laptop 3</b><span>own meetings</span><em class="ar-key">public key only</em></div>
+        </div>
+      </div>
+    </div>
+    <div class="ar-row ar-mid">
+      <div class="ar-side">
+        <div class="ar-edge dashed"><span>setup once · access token</span></div>
+        <div class="ar-node ar-mgmt"><b>Supabase Management API</b><span>create project, run schema, turn off sign-ups, create login</span></div>
+        <div class="ar-edge dashed"><span>configures</span></div>
+      </div>
+      <div class="ar-edge thick"><span>push ciphertext</span></div>
+    </div>
+    <div class="ar-row">
+      <div class="ar-zone ar-sb">
+        <div class="k">Your Supabase project = Yogurt Cloud</div>
+        <div class="ar-two">
+          <div class="ar-node"><b>Auth</b><span>Yogurt Cloud login · public sign-ups off</span></div>
+          <div class="ar-node ar-db"><b>Postgres + RLS</b><span><code>devices</code> · <code>keyring</code> · <code>pushes</code> · <code>versions</code></span><em class="ar-lock">ciphertext only</em></div>
+        </div>
+      </div>
+    </div>
+    <div class="ar-row ar-mid"><div></div><div class="ar-edge up"><span>sign in · read ciphertext</span></div></div>
+    <div class="ar-row">
+      <div class="ar-zone ar-read">
+        <div class="k">Reading</div>
+        <div class="ar-flow">
+          <div class="ar-node"><b>GitHub Pages</b><span>static viewer JS, no data</span></div>
+          <div class="ar-h"><span>serves JS</span></div>
+          <div class="ar-node ar-phone"><b>Phone browser</b><span>viewer · unwraps private key with passphrase</span><em class="ar-key ok">decrypts here only</em></div>
+        </div>
+      </div>
+    </div>
+    <figcaption>Laptops also sign in to Auth with the Yogurt Cloud login. Encryption: an ephemeral P-256 ECDH key to the account public key, HKDF-SHA256, AES-256-GCM, with associated data <code>meeting id|device id</code>.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ FLOWS ============ -->
+<section>
+  <div class="sechead"><h2>Flows</h2><p>The four sequences, in the order you would live them.</p></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-f="f1">1 · Laptop 1 sets up</button>
+    <button role="tab" aria-selected="false" data-f="f2">2 · Phone unlocks</button>
+    <button role="tab" aria-selected="false" data-f="f3">3 · Laptops 2 and 3 connect</button>
+    <button role="tab" aria-selected="false" data-f="f4">4 · Push</button>
+  </div>
+  <figure class="diagram flowpane" id="f1" style="margin:0">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as You
+  participant Y as yogurt on Laptop 1
+  participant M as Management API
+  participant P as Supabase project
+  U->>Y: access token
+  Y->>M: GET /v1/organizations, GET /v1/projects
+  Y-->>U: your projects + Create a new project
+  U->>Y: project, login email + password, passphrase
+  alt new project
+    Y->>M: POST /v1/projects (random db_pass, never stored)
+    loop until ACTIVE_HEALTHY
+      Y->>M: GET /v1/projects/{ref}
+    end
+  end
+  Y->>M: POST /v1/projects/{ref}/database/query (schema.sql)
+  opt sign-ups off (checked by default)
+    Y->>M: PATCH /v1/projects/{ref}/config/auth (disable_signup)
+  end
+  Y->>M: GET /v1/projects/{ref}/api-keys?reveal=true
+  Y->>P: POST /auth/v1/admin/users (email_confirm, secret key)
+  Y->>Y: P-256 key pair, wrap private key with passphrase
+  Y->>P: insert yogurt_keyring
+  Y->>Y: forget token, secret key, passphrase, private key
+  Y-->>U: link code + QR · revoke the token now
+</pre>
+    <figcaption>You do two things first in a browser: sign up at supabase.com, then create a personal access token. <code>database/query</code> is Beta in the spec, so a failure shows <code>schema.sql</code> with a copy button and continues once you confirm. Any existing project can be reused, because every table is prefixed <code>yogurt_</code>.</figcaption>
+  </figure>
+  <figure class="diagram flowpane" id="f2" hidden style="margin:0">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as You
+  participant V as Viewer on phone
+  participant P as Supabase project
+  U->>V: scan QR on Laptop 1
+  V->>V: read #c= (URL, publishable key, public key)
+  U->>V: login email + password
+  V->>P: sign in
+  V->>P: select yogurt_keyring, newest first
+  U->>V: passphrase
+  V->>V: PBKDF2, unwrap private key, keep non-extractable in IndexedDB
+  V->>P: select yogurt_devices, rpc yogurt_as_of()
+  V->>V: decrypt, group by day, device picker = All devices
+</pre>
+    <figcaption>Any browser can run the viewer, Laptop 1's included. The unlocked key stays in that browser until you tap Lock, so later visits skip the passphrase.</figcaption>
+  </figure>
+  <figure class="diagram flowpane" id="f3" hidden style="margin:0">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as You
+  participant Y as yogurt on Laptop 2
+  participant P as Supabase project
+  U->>Y: link code, login email + password, name "Laptop 2"
+  Y->>P: POST /auth/v1/token?grant_type=password
+  Y->>P: select yogurt_keyring.public_key, must match link code
+  Y->>P: insert yogurt_devices (encrypted name)
+  Y->>Y: keys.json: refresh token, URL, publishable key, public key, device id
+  U->>Y: Push meetings
+</pre>
+    <figcaption>No Supabase token, no secret key, no passphrase on Laptops 2 and 3. Copy the link code from Laptop 1 or from the viewer's settings on your phone.</figcaption>
+  </figure>
+  <figure class="diagram flowpane" id="f4" hidden style="margin:0">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant Y as yogurt on Laptop 2
+  participant DB as Local SQLite
+  participant P as Supabase project
+  Y->>P: refresh session if needed
+  Y->>DB: every meeting except the one recording
+  Y->>Y: sha256 each, keep those that differ from cloud_hash
+  Y->>P: rpc yogurt_as_of(), meeting ids where device = me
+  Y->>Y: deleted = cloud ids missing locally
+  alt anything changed or deleted
+    Y->>P: insert yogurt_pushes, returning id
+    loop batches
+      Y->>Y: encrypt changes to public key
+      Y->>P: insert yogurt_versions (null ct = deleted)
+      Y->>DB: store the batch's cloud_hash values
+    end
+  end
+</pre>
+    <figcaption>Hashing the plaintext catches label and chat edits that don't touch <code>updated_at</code>. The id listing reads metadata, never content. A pass that changes nothing writes nothing, and nothing is ever updated or deleted in place.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section>
+  <div class="sechead"><h2>History</h2><p>Each push stores only what changed, plus a deletion marker for anything the device no longer has. The library as of push N is the latest version of each meeting at or before N.</p></div>
+  <div class="tablewrap">
+  <table class="creds hist">
+    <thead><tr><th>Meeting</th><th>Push 1 · Laptop 1</th><th>Push 2 · Laptop 2</th><th>Push 3 · Laptop 1</th><th class="asof">As of push 2</th><th>Latest</th></tr></thead>
+    <tbody>
+      <tr><td><b>m1</b> · Laptop 1</td><td class="yes">v1</td><td class="no">·</td><td class="yes">v2 edited</td><td class="asof">v1</td><td>v2</td></tr>
+      <tr><td><b>m2</b> · Laptop 1</td><td class="yes">v1</td><td class="no">·</td><td class="warn">deleted</td><td class="asof">v1</td><td class="no">gone</td></tr>
+      <tr><td><b>m3</b> · Laptop 2</td><td class="no">·</td><td class="yes">v1</td><td class="no">·</td><td class="asof">v1</td><td>v1</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid3" style="margin-top:16px">
+    <div class="card"><h3>Why not a snapshot per push</h3><p class="sub">Same result, far more storage. Hourly auto-push of a 630 KB library is about 15 MB a day, which fills the free tier's 500 MB in about a month. Versions cost about 19 KB per change, so 500 MB holds about 26,000.</p></div>
+    <div class="card"><h3>Reverting is read-only</h3><p class="sub">Pick a push in the viewer to see the library as it was. Nothing flows back to a laptop. A wiped <code>db.sqlite</code> marks that device's meetings deleted on the next push, and they stay readable from any earlier push.</p></div>
+    <div class="card"><h3>Insert-only policies</h3><p class="sub">No laptop or browser can update or delete a row, so a compromised laptop can add junk but can't erase history. Purging for real happens in the Supabase SQL editor.</p></div>
+  </div>
+  <p class="sub" style="margin-top:10px">This table is what <code>yogurt_as_of()</code> returned when the schema ran in a throwaway Postgres 16 with stubbed Supabase auth.</p>
+</section>
+
+<!-- ============ WHO HOLDS WHAT ============ -->
+<section>
+  <div class="sechead"><h2>What each place holds</h2><p>Laptop secrets live in <code>~/.yogurt/keys.json</code> (mode 0600), never in SQLite or a log.</p></div>
+  <div class="tablewrap">
+  <table class="creds">
+    <thead><tr><th></th><th>Supabase access token</th><th>Cloud login</th><th>Public key</th><th>Private key</th></tr></thead>
+    <tbody>
+      <tr><td><b>Laptop 1</b></td><td class="warn">memory, setup only</td><td>refresh token, if it pushes</td><td class="yes">yes</td><td class="warn">memory, setup only</td></tr>
+      <tr><td><b>Laptops 2, 3</b></td><td class="no">never</td><td>refresh token</td><td class="yes">yes</td><td class="no">never</td></tr>
+      <tr><td><b>Viewer</b></td><td class="no">never</td><td>session</td><td class="yes">yes</td><td class="yes">unwrapped after passphrase</td></tr>
+      <tr><td><b>Supabase</b></td><td class="no">n/a</td><td>stores the login</td><td class="yes">stores it</td><td>wrapped by passphrase</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sub" style="margin-top:10px">A compromised laptop can't read anything. It can add junk, deletion markers, or forged meetings, since the public key is all an encrypter needs, but it can't erase history, so a push from before the damage shows the real library.</p>
+</section>
+
+<!-- ============ UI MOCKS: LAPTOP ============ -->
+<section>
+  <div class="sechead"><h2>UI · yogurt Settings</h2><p>A new Cloud sync page in Settings. Rendered with yogurt's own tokens, so the theme switch above flips these too.</p></div>
+
+  <div class="mocklabel"><span class="pill p-slate">A</span><h3>Nothing set up yet</h3><span class="sub">Every laptop starts here. Nothing leaves the Mac.</span></div>
+  <div class="win">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:7878/settings/cloud</div></div>
+    <div class="app">
+      <aside class="side">
+        <div class="back">← Library</div><div class="ttl">Settings</div>
+        <div class="nav">Model</div><div class="nav">Transcription</div><div class="nav">Audio</div><div class="nav">General</div>
+        <div class="nav on">Cloud sync <span class="pill p-blue new" style="font-size:9.5px;padding:1px 7px">new</span></div>
+        <div class="foot">keys → ~/.yogurt/keys.json<br>data → ~/.yogurt/</div>
+      </aside>
+      <div class="main">
+        <h2>Cloud sync <small>optional · your own Supabase</small></h2>
+        <p class="intro">Push encrypted copies of your meetings to a Supabase project you own, then read them on your phone. This laptop can encrypt but never decrypt. Nothing leaves this Mac until you push.</p>
+        <div class="two">
+          <div class="mcard choice">
+            <h3>Set up a new Yogurt Cloud</h3>
+            <p>First time, on one laptop.</p>
+            <ul><li>A free supabase.com account</li><li>A Supabase access token</li><li>About 2 minutes</li></ul>
+            <span class="btn pri">Set up</span>
+          </div>
+          <div class="mcard choice">
+            <h3>Connect to a Yogurt Cloud</h3>
+            <p>Already set up on another laptop.</p>
+            <ul><li>The link code from that laptop or your phone</li><li>Your Yogurt Cloud login</li></ul>
+            <span class="btn">Connect</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">B</span><h3>Setup on Laptop 1, mid-run</h3><span class="sub">The form locks while the checklist works through Flow 1.</span></div>
+  <div class="win">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:7878/settings/cloud/setup</div></div>
+    <div class="app">
+      <aside class="side">
+        <div class="back">← Library</div><div class="ttl">Settings</div>
+        <div class="nav">Model</div><div class="nav">Transcription</div><div class="nav">Audio</div><div class="nav">General</div><div class="nav on">Cloud sync</div>
+        <div class="foot">keys → ~/.yogurt/keys.json<br>data → ~/.yogurt/</div>
+      </aside>
+      <div class="main" style="max-width:820px">
+        <h2>Set up a new Yogurt Cloud</h2>
+        <p class="intro">Yogurt uses the token once to create and configure the project, then forgets it.</p>
+        <div class="setupgrid">
+          <div class="mcard">
+            <div class="field"><span class="k">Supabase access token</span><div class="inp mono">sbp_••••••••••••••••••••3f9a</div><span class="hint">supabase.com → Account → Access tokens. Held in memory for this setup only.</span></div>
+            <div class="field"><span class="k">Project</span><div class="inp">New project · yogurt ▾</div><span class="hint">Or reuse one of your 2 existing projects. See B3.</span></div>
+            <div class="grid2">
+              <div class="field"><span class="k">Login email</span><div class="inp">richard@example.com</div></div>
+              <div class="field"><span class="k">Login password</span><div class="inp">••••••••••••</div></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><span class="k">Passphrase</span><div class="inp">••••••••••••••••</div></div>
+              <div class="field"><span class="k">Confirm passphrase</span><div class="inp">••••••••••••••••</div></div>
+            </div>
+            <span class="hint">12+ characters. You type it on your phone to read meetings. Yogurt can't recover it.</span>
+            <div class="check"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Also push this laptop's meetings as <span class="inp" style="padding:3px 8px;display:inline-block">Laptop 1</span></div>
+          </div>
+          <div class="mcard">
+            <div class="k" style="margin-bottom:12px">Progress</div>
+            <ol class="steps">
+              <li class="done"><span class="st"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span><div>Found organization<small>rchen</small></div></li>
+              <li class="done"><span class="st"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span><div>Created project <b>yogurt</b><small>abcd1234.supabase.co</small></div></li>
+              <li class="now"><span class="st"></span><div>Waiting for the project to start<small>0:48 · usually 1 to 2 minutes (unmeasured)</small></div></li>
+              <li class="todo"><span class="st"></span><div>Install schema</div></li>
+              <li class="todo"><span class="st"></span><div>Turn off public sign-ups</div></li>
+              <li class="todo"><span class="st"></span><div>Create your login</div></li>
+              <li class="todo"><span class="st"></span><div>Create encryption keys</div></li>
+            </ol>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px"><span class="hint">Leave this page open. Closing it stops setup at the current step, and running it again resumes there.</span><span class="btn dis">Setting up…</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">B2</span><h3>Setup fallback when the schema call fails</h3><span class="sub">The Beta endpoint path.</span></div>
+  <div class="mcard" style="max-width:680px">
+    <div class="note honey"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div><b>Supabase didn't accept the schema automatically.</b> Copy it, run it in your project's SQL editor, then come back and continue.</div></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-start"><span class="btn">Copy schema.sql</span><span class="btn ghost">Open SQL editor ↗</span><span class="btn pri">I ran it, continue</span></div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">B3</span><h3>Setup reusing an existing project</h3><span class="sub">The project picker open, with the sign-up warning a reused project gets.</span></div>
+  <div class="mcard" style="max-width:680px">
+    <div class="k" style="margin-bottom:8px">Project</div>
+    <div class="opts">
+      <div class="opt"><span class="radio"></span>Create a new project named yogurt<small>uses 1 of 2 free</small></div>
+      <div class="opt on"><span class="radio"></span><b>notes-app</b><small>efgh5678 · existing</small></div>
+      <div class="opt"><span class="radio"></span><b>portfolio</b><small>ijkl9012 · existing</small></div>
+    </div>
+    <p class="hint" style="margin:10px 0 0">Yogurt adds four tables named <code>yogurt_*</code> and changes nothing else in the project's data.</p>
+    <div class="check"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Turn off public sign-ups for this project</div>
+    <div class="note honey" style="margin-top:10px"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div>This applies to all of notes-app. If notes-app lets people sign up, uncheck it. Your meetings stay private either way, because each row is readable only by its owner.</div></div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">C</span><h3>Connected · Laptop 1 after setup</h3><span class="sub">The page you return to. Link code and QR live here.</span></div>
+  <div class="win">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:7878/settings/cloud</div></div>
+    <div class="app">
+      <aside class="side">
+        <div class="back">← Library</div><div class="ttl">Settings</div>
+        <div class="nav">Model</div><div class="nav">Transcription</div><div class="nav">Audio</div><div class="nav">General</div><div class="nav on">Cloud sync</div>
+        <div class="foot">keys → ~/.yogurt/keys.json<br>data → ~/.yogurt/</div>
+      </aside>
+      <div class="main">
+        <h2>Cloud sync <span class="pill p-matcha">Connected</span></h2>
+        <p class="intro">yogurt · <span class="mono">abcd1234.supabase.co</span> · signed in as richard@example.com</p>
+        <div class="mcard active">
+          <div class="row"><div><div class="k">This device</div><b style="font-size:15px">Laptop 1</b> <span class="sub" style="font-size:12px">· Rename</span></div><span class="btn pri">Push meetings</span></div>
+          <div class="stats">
+            <div class="stat"><b>46</b><span>meetings on this Mac</span></div>
+            <div class="stat"><b>43</b><span>in the cloud</span></div>
+            <div class="stat"><b style="color:var(--honey)">3</b><span>changed since last push</span></div>
+          </div>
+          <div class="hint">Last push 10/23/26 2:59 PM · 1 uploaded, 0 deleted</div>
+          <hr class="divider">
+          <div class="row"><div><b style="font-size:13px">Push automatically</b> <span class="pill p-lilac" style="font-size:9.5px">SYNC-5</span></div>
+            <div class="seg"><button aria-pressed="true">Off</button><button aria-pressed="false">15 min</button><button aria-pressed="false">Hourly</button><button aria-pressed="false">Daily</button></div></div>
+        </div>
+        <div class="two" style="margin-top:12px">
+          <div class="mcard">
+            <h3 style="margin-bottom:4px">Connect another laptop</h3>
+            <p class="hint" style="margin-bottom:10px">Paste on Laptop 2 or 3. Not secret: it can't sign in or decrypt anything.</p>
+            <div class="codebox"><div class="inp mono">yogurt-cloud:eyJ1IjoiaHR0cHM6Ly9hYmNk…</div><span class="btn">Copy</span></div>
+          </div>
+          <div class="mcard">
+            <h3 style="margin-bottom:8px">Open on your phone</h3>
+            <div class="qrwrap"><svg class="qr" id="qr" viewBox="0 0 29 29" shape-rendering="crispEdges"></svg><p class="hint" style="margin:0">Scan, sign in, enter your passphrase. Project details travel in the link fragment and never reach the viewer's host.</p></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:14px"><span class="hint">Disconnect forgets this cloud on this laptop. You choose whether one last push marks Laptop 1's meetings deleted. History keeps them either way.</span><span class="btn danger">Disconnect…</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">D</span><h3>Connect · Laptop 2</h3><span class="sub">No token, no passphrase.</span></div>
+  <div class="win">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:7878/settings/cloud/connect</div></div>
+    <div class="app">
+      <aside class="side">
+        <div class="back">← Library</div><div class="ttl">Settings</div>
+        <div class="nav">Model</div><div class="nav">Transcription</div><div class="nav">Audio</div><div class="nav">General</div><div class="nav on">Cloud sync</div>
+        <div class="foot">keys → ~/.yogurt/keys.json<br>data → ~/.yogurt/</div>
+      </aside>
+      <div class="main">
+        <h2>Connect to a Yogurt Cloud</h2>
+        <p class="intro">Paste the link code from Laptop 1 or from the viewer's settings on your phone.</p>
+        <div class="mcard">
+          <div class="field"><span class="k">Link code</span><div class="inp mono ok">yogurt-cloud:eyJ1IjoiaHR0cHM6Ly9hYmNkMTIzNC5zdXBhYmFzZS5jbyIs…</div><span class="hint" style="color:var(--matcha)">✓ yogurt · abcd1234.supabase.co</span></div>
+          <div class="grid2">
+            <div class="field"><span class="k">Login email</span><div class="inp">richard@example.com</div></div>
+            <div class="field"><span class="k">Login password</span><div class="inp">••••••••••••</div></div>
+          </div>
+          <div class="field"><span class="k">Name this device</span><div class="inp">Laptop 2</div><span class="hint">Shown in the device picker on your phone.</span></div>
+          <div class="note matcha"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><div>This laptop gets the public key only. It can push its own meetings but can't read anything in the cloud, so your passphrase isn't needed here.</div></div>
+          <div class="row" style="margin-top:14px;justify-content:flex-end"><span class="btn ghost">Cancel</span><span class="btn pri">Connect</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">E</span><h3>Library header when connected and behind</h3><span class="sub">The existing subtitle gains one pill. Clicking it opens Cloud sync.</span></div>
+  <div class="win" style="max-width:720px">
+    <div class="libhead">
+      <div class="hello">Good evening</div>
+      <div class="meta">46 meetings · all on this Mac · <span class="pill p-honey">3 not pushed</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ UI MOCKS: PHONE ============ -->
+<section>
+  <div class="sechead"><h2>UI · the phone viewer</h2><p>A static, read-only build on GitHub Pages. Same tokens, same components, no local API.</p></div>
+  <div class="phones">
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">F</span><h3>Unlock</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="logo"><i></i>yogurt</div>
+          <div class="unlock">
+            <div class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/></svg></div>
+            <h3>Unlock your meetings</h3>
+            <p class="sub" style="font-size:12px;margin:0">Signed in as richard@example.com<br><span class="mono" style="font-size:10px">abcd1234.supabase.co</span></p>
+            <div class="field" style="margin:0"><span class="k">Passphrase</span><div class="inp">••••••••••••••••</div></div>
+            <div class="check" style="margin:0"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Remember on this phone</div>
+            <span class="btn pri" style="width:100%">Unlock</span>
+            <p class="hint" style="margin:0">Meetings are decrypted on this phone. Supabase only stores ciphertext.</p>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">G</span><h3>Library with device picker</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="row"><div class="logo"><i></i>yogurt</div><span style="display:flex;gap:6px;align-items:center"><span class="pill p-slate ro">read-only</span><span class="hbtn" title="Settings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></span></span></div>
+          <div class="search">Search notes & transcripts</div>
+          <div class="chips"><span class="chip on">All devices</span><span class="chip">Laptop 1</span><span class="chip">Laptop 2</span><span class="chip">Laptop 3</span></div>
+          <div class="day">Today</div>
+          <div class="mrow"><b>edis update 10/23/26</b><div class="m"><span>2:59 PM · 11 min</span><span class="dev d1">Laptop 1</span></div></div>
+          <div class="day">Thursday</div>
+          <div class="mrow"><b>Q4 planning sync</b><div class="m"><span>1:42 PM · 22 min</span><span class="dev d2">Laptop 2</span></div></div>
+          <div class="mrow"><b>Vendor review</b><div class="m"><span>10:37 AM · 41 min</span><span class="dev d1">Laptop 1</span></div></div>
+          <div class="day">Oct 16</div>
+          <div class="mrow"><b>Meeting 10/16/26</b><div class="m"><span>4:21 PM · 37 min</span><span class="dev d1">Laptop 1</span></div></div>
+          <div class="mrow"><b>1:1 with Steven</b><div class="m"><span>11:59 AM · 30 min</span><span class="dev d2">Laptop 2</span></div></div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">H</span><h3>Meeting, read-only</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="sub" style="font-size:11px">← All devices</div>
+          <div><b style="font-size:16px;font-weight:800;letter-spacing:-.01em">Q4 planning sync</b>
+            <div class="m" style="display:flex;gap:6px;align-items:center;font-size:10.5px;color:var(--mut);margin-top:3px"><span class="dev d2">Laptop 2</span>10/22/26 · 1:42 PM · 22 min</div></div>
+          <div class="ptabs"><span>Notes</span><span class="on">Enhanced</span><span>Transcript</span><span>Chat</span></div>
+          <div class="doc">
+            <h4>Decisions</h4>
+            <ul><li>Ship the pricing page before the holiday freeze</li><li class="ai">Steven owns the migration plan, due Nov 3</li></ul>
+            <h4>Open items</h4>
+            <ul><li class="ai">Confirm the vendor's SOC 2 report</li><li>Revisit headcount in January</li></ul>
+          </div>
+          <p class="hint" style="margin-top:auto">Pushed from Laptop 2 · 10/22/26 2:10 PM</p>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="mocklabel"><span class="pill p-lilac">SYNC-4</span><h3>Settings and History</h3><span class="sub">The gear opens I. History sits at the bottom of settings because it is for recovery, not daily use. Tapping a push opens K.</span></div>
+  <div class="phones">
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">I</span><h3>Viewer settings</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="sub" style="font-size:11px">← Library</div>
+          <b style="font-size:16px;font-weight:800;letter-spacing:-.01em">Settings</b>
+          <div class="day">Account</div>
+          <div class="sgroup">
+            <div class="srow"><div>richard@example.com<small class="mono">abcd1234.supabase.co</small></div></div>
+            <div class="srow"><div>Lock<small>Forget the key on this phone</small></div><span class="chev">›</span></div>
+            <div class="srow"><div>Sign out</div><span class="chev">›</span></div>
+          </div>
+          <div class="day">Connect a laptop</div>
+          <div class="sgroup">
+            <div class="srow"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" class="mono">yogurt-cloud:eyJ1IjoiaHR0cHM6…</div><span class="pill p-blue" style="font-size:10px">Copy</span></div>
+          </div>
+          <div class="day">Recovery</div>
+          <div class="sgroup">
+            <div class="srow"><div>History<small>See your library as of an earlier push</small></div><span class="chev">›</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">J</span><h3>History</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="sub" style="font-size:11px">← Settings</div>
+          <div><b style="font-size:16px;font-weight:800;letter-spacing:-.01em">History</b>
+            <p class="hint" style="margin:3px 0 0;font-size:10.5px">Every push is kept. Tap one to see your library as it was then.</p></div>
+          <div class="chips"><span class="chip on">All devices</span><span class="chip">Laptop 1</span><span class="chip">Laptop 2</span><span class="chip">Laptop 3</span></div>
+          <div class="day">Today</div>
+          <div class="mrow"><b>1 meeting updated</b><div class="m"><span>3:12 PM</span><span class="dev d1">Laptop 1</span></div></div>
+          <div class="mrow"><b>12 meetings removed</b><div class="m"><span>8:50 AM</span><span class="dev d3">Laptop 3</span></div></div>
+          <div class="day">Thursday</div>
+          <div class="mrow"><b>1 meeting updated</b><div class="m"><span>2:10 PM</span><span class="dev d2">Laptop 2</span></div></div>
+          <div class="mrow"><b>1 meeting updated</b><div class="m"><span>11:20 AM</span><span class="dev d1">Laptop 1</span></div></div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">K</span><h3>Library as of a push</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">yogurt.github.io/cloud</div>
+        <div class="pbody">
+          <div class="row"><div class="logo"><i></i>yogurt</div><span style="display:flex;gap:6px;align-items:center"><span class="pill p-slate ro">read-only</span><span class="hbtn" title="Settings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></span></span></div>
+          <div class="pbanner"><span class="dot"></span><span class="t"><span class="sub">Viewing </span><b style="font-weight:600">Oct 22, 2:10 PM</b></span><span class="go">Latest</span></div>
+          <div class="chips"><span class="chip on">All devices</span><span class="chip">Laptop 1</span><span class="chip">Laptop 2</span><span class="chip">Laptop 3</span></div>
+          <div class="day">Thursday</div>
+          <div class="mrow"><b>Q4 planning sync</b><div class="m"><span>1:42 PM · 22 min</span><span class="dev d2">Laptop 2</span></div></div>
+          <div class="mrow"><b>Vendor review</b><div class="m"><span>10:37 AM · 41 min</span><span class="dev d1">Laptop 1</span></div></div>
+          <div class="day">Wednesday</div>
+          <div class="mrow"><b>Hiring loop debrief</b><div class="m"><span>4:05 PM · 28 min</span><span class="dev d3">Laptop 3</span></div></div>
+          <div class="mrow"><b>Design crit</b><div class="m"><span>2:30 PM · 45 min</span><span class="dev d3">Laptop 3</span></div></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section>
+  <div class="sechead"><h2>Decisions</h2><p>The four open questions, settled 2026-10-24.</p></div>
+  <div class="questions">
+    <div class="card q"><b>Exclude a meeting from push?</b><span>No. Every meeting is pushed.</span><br><span class="pill p-matcha def">Push everything</span></div>
+    <div class="card q"><b>Local reset deletes the cloud copy?</b><span>The next push marks that device's meetings deleted, and History keeps every earlier push readable.</span><br><span class="pill p-matcha def">Versioned history</span></div>
+    <div class="card q"><b>Remember the unlocked key on the phone?</b><span>Yes, per browser, until Lock in the viewer's settings.</span><br><span class="pill p-matcha def">Remember</span></div>
+    <div class="card q"><b>Create a fresh project or reuse one?</b><span>Setup lists your existing projects next to Create a new project.</span><br><span class="pill p-matcha def">Offer reuse</span></div>
+  </div>
+  <p class="sub" style="margin-top:10px">Parked: a hosted Yogurt Cloud for other people. Nothing in SYNC-1 to SYNC-6 blocks it, because laptops and the viewer only need a URL and a public key.</p>
+</section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function(){
+  const root=document.documentElement;
+  const css=n=>getComputedStyle(root).getPropertyValue(n).trim();
+  const srcs=[...document.querySelectorAll('pre.mermaid')].map(el=>{el.dataset.src=el.textContent;return el;});
+
+  async function renderDiagrams(){
+    const dark=root.dataset.theme==='dark'||(root.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
+    await document.fonts.ready;
+    mermaid.initialize({startOnLoad:false,theme:'base',securityLevel:'antiscript',fontFamily:'Manrope, sans-serif',
+      flowchart:{htmlLabels:true,curve:'basis',padding:14},
+      themeVariables:{darkMode:dark,background:css('--card'),fontFamily:'Manrope, sans-serif',fontSize:'13px',
+        primaryColor:css('--blsoft'),primaryTextColor:css('--ink'),primaryBorderColor:css('--blue'),
+        secondaryColor:css('--mtsoft'),tertiaryColor:css('--paper'),lineColor:css('--mut'),textColor:css('--ink'),
+        clusterBkg:css('--paper'),clusterBorder:css('--line'),edgeLabelBackground:css('--card'),
+        actorBkg:css('--blsoft'),actorBorder:css('--blue'),actorTextColor:css('--ink'),actorLineColor:css('--line'),
+        signalColor:css('--ink'),signalTextColor:css('--ink'),labelBoxBkgColor:css('--honeysoft'),labelBoxBorderColor:css('--honey'),
+        labelTextColor:css('--ink'),loopTextColor:css('--ink'),noteBkgColor:css('--honeysoft'),noteTextColor:css('--ink'),
+        sequenceNumberColor:css('--card'),activationBkgColor:css('--blsoft')}});
+    for(const el of srcs){
+      // hidden panes measure as zero width, so render each pane while visible
+      const pane=el.closest('.flowpane');const wasHidden=pane&&pane.hidden;if(wasHidden)pane.hidden=false;
+      el.removeAttribute('data-processed');el.textContent=el.dataset.src;
+      try{await mermaid.run({nodes:[el]});}catch(e){console.error(e);}
+      if(wasHidden)pane.hidden=true;
+    }
+  }
+
+  document.querySelectorAll('.top .seg button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.top .seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    if(b.dataset.t==='system')delete root.dataset.theme;else root.dataset.theme=b.dataset.t;
+    renderDiagrams();
+  }));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(!root.dataset.theme)renderDiagrams();});
+
+  document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
+    document.querySelectorAll('.flowpane').forEach(p=>p.hidden=p.id!==b.dataset.f);
+  }));
+
+  // Decorative QR: finder patterns plus seeded noise, not a scannable code.
+  const qr=document.getElementById('qr');let s=7;const rnd=()=>(s=(s*16807)%2147483647)/2147483647;
+  let d='';const finder=(x,y)=>{d+=`M${x},${y}h7v7h-7zM${x+1},${y+1}v5h5v-5zM${x+2},${y+2}h3v3h-3z`;};
+  finder(0,0);finder(22,0);finder(0,22);
+  for(let y=0;y<29;y++)for(let x=0;x<29;x++){
+    const inF=(x<8&&y<8)||(x>20&&y<8)||(x<8&&y>20);
+    if(!inF&&rnd()>.52)d+=`M${x},${y}h1v1h-1z`;
+  }
+  qr.innerHTML=`<path d="${d}" fill="#1B1815" fill-rule="evenodd"/>`;
+
+  renderDiagrams();
+})();
+</script>
+</body>
+</html>
