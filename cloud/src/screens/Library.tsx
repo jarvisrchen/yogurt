@@ -5,9 +5,9 @@ import { Brand, LoadError, useDesktop } from "../ui";
 import { TokenRejected, type Api, type Device } from "../lib/api";
 
 export const GearIcon = () => (
-  <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+  <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden>
     <circle cx="8" cy="8" r="2.2" />
-    <path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" />
+    <path d="M6.40 2.84L6.83 1.20L9.17 1.20L9.60 2.84L10.52 3.22L11.98 2.37L13.63 4.02L12.78 5.48L13.16 6.40L14.80 6.83L14.80 9.17L13.16 9.60L12.78 10.52L13.63 11.98L11.98 13.63L10.52 12.78L9.60 13.16L9.17 14.80L6.83 14.80L6.40 13.16L5.48 12.78L4.02 13.63L2.37 11.98L3.22 10.52L2.84 9.60L1.20 9.17L1.20 6.83L2.84 6.40L3.22 5.48L2.37 4.02L4.02 2.37L5.48 3.22Z" />
   </svg>
 );
 

@@ -15,6 +15,12 @@ import "./index.css";
 
 initTheme();
 
+// The installed app's system bars follow the page background, which is the paper token.
+const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!;
+const syncThemeColor = () => (themeColor.content = getComputedStyle(document.documentElement).getPropertyValue("--color-paper").trim());
+new MutationObserver(syncThemeColor).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+syncThemeColor();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
