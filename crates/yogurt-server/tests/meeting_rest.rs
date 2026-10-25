@@ -34,6 +34,7 @@ async fn spawn_server() -> (
         notes_dir: Some(tmp.path().join("notes")),
         // Parallel tests deadlock on the real user DB's WAL lock.
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
+        keys_path: None,
     };
     let handle = tokio::spawn(async move {
         let _ = run_with_config(cfg).await;

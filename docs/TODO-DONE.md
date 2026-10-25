@@ -1247,3 +1247,7 @@ New closed items go at the bottom.
 - [x] **SYNC-1** `yogurt-cloud` crate with the encryption, link code, cloud schema, and fixtures the web viewer decrypts in a test
 
   New `yogurt-cloud` crate with P-256 sealing, the passphrase-wrapped private key bound to its public key, the link code, an idempotent `schema.sql` with explicit grants and insert-only policies that keep pushes older than an hour immutable, and a Rust fixture that the browser-side WebCrypto code decrypts in vitest.
+
+- [x] **SYNC-2** Rework `yogurt-cloud` for the plaintext design: drop the crypto and link code, rewrite `schema.sql` with the owner, passcode, and read RPCs, and land the REST client and local test stack
+
+  Removed the SYNC-1 crypto and link code, rewrote `schema.sql` for the owner, the PIN gate, and the read RPCs with helpers in `yogurt_private`, and landed the REST client, `keys.json` following the data dir, and the local Supabase test stack.

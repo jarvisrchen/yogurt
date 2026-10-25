@@ -84,3 +84,51 @@ fn env_var_relocates_doctor_db_path_with_no_flag() {
     // The data dir is created even though doctor never opens the DB.
     assert!(data_dir.path().is_dir());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn data_dir_flag_relocates_keys_json() {
+    let home = tempfile::tempdir().expect("create tempdir for HOME");
+    let data_dir = tempfile::tempdir().expect("create tempdir for --data-dir");
+
+    let probe = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+    let port = probe.local_addr().expect("local_addr").port();
+    drop(probe);
+
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+        .args([
+            "start",
+            "--port",
+            &port.to_string(),
+            "--no-open",
+            "--data-dir",
+        ])
+        .arg(data_dir.path())
+        .env("HOME", home.path())
+        .env_remove("YOGURT_MEMORY_KEYSTORE")
+        .env("YOGURT_DEEPGRAM_API_KEY", "dg-test-key")
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn yogurt start");
+
+    let mut healthy = false;
+    for _ in 0..100 {
+        if let Ok(resp) = reqwest::get(format!("http://127.0.0.1:{port}/api/health")).await {
+            if resp.status().is_success() {
+                healthy = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(healthy, "server on port {port} never reported healthy");
+
+    child.kill().await.ok();
+
+    let keys = std::fs::read_to_string(data_dir.path().join("keys.json"))
+        .expect("keys.json should exist under --data-dir");
+    assert!(keys.contains("dg-test-key"), "seeded key missing: {keys}");
+    assert!(
+        !home.path().join(".yogurt").join("keys.json").exists(),
+        "keys.json must NOT exist under the temp HOME's .yogurt when --data-dir is given"
+    );
+}

@@ -29,6 +29,7 @@ async fn spawn_server() -> (std::net::SocketAddr, String, tempfile::TempDir) {
         session_token_path: Some(token_path),
         notes_dir: Some(tmp.path().join("notes")),
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
+        keys_path: None,
     };
     tokio::spawn(async move {
         let _ = run_with_config(cfg).await;

@@ -144,7 +144,7 @@ test-web:
     pnpm --dir web test
     pnpm --dir web e2e
 
-# Apply yogurt-cloud's schema.sql twice and run its SQL test in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Needs Docker. CI's cloud-schema job runs this.
+# Apply yogurt-cloud's schema.sql twice and run its SQL test (with owner.sql prepared as set_owner) in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Needs Docker. CI's cloud-schema job runs this.
 test-cloud-schema:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -165,8 +165,27 @@ test-cloud-schema:
         psql -d "$db" -v old_defaults="$mode" < tests/supabase_stub.sql
         psql -d "$db" < schema.sql
         psql -d "$db" < schema.sql
-        psql -d "$db" < tests/schema_test.sql
+        { echo "prepare set_owner(text) as"; cat owner.sql; cat tests/schema_test.sql; } | psql -d "$db"
     done
+
+# Run yogurt-cloud's #[ignore]d integration tests against a local Supabase stack (project yogurt-cloud-test, ports 56420-56429). Starts the stack if it is not running (slow the first time), drops the yogurt_ tables and every auth user, reapplies schema.sql and owner.sql for owner@yogurt-cloud.test, then runs the tests single-threaded. Leaves the stack running: stop it with `supabase stop --workdir crates/yogurt-cloud`. Needs Docker and the supabase CLI.
+test-cloud:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wd=crates/yogurt-cloud
+    if ! docker ps --format '{{{{.Names}}' | grep -qx supabase_db_yogurt-cloud-test; then
+        supabase start --workdir "$wd" -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
+    fi
+    eval "$(supabase status --workdir "$wd" -o env)"
+    psql() { docker exec -i -e PGOPTIONS='-c client_min_messages=warning' supabase_db_yogurt-cloud-test psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
+    psql <<'SQL'
+    drop table if exists yogurt_versions, yogurt_pushes, yogurt_devices, yogurt_browsers, yogurt_owner cascade;
+    delete from auth.users;
+    SQL
+    psql < "$wd/schema.sql"
+    sed "s/[$]1/'owner@yogurt-cloud.test'/" "$wd/owner.sql" | psql
+    YOGURT_CLOUD_TEST_URL="$API_URL" YOGURT_CLOUD_TEST_PUBLISHABLE_KEY="$PUBLISHABLE_KEY" YOGURT_CLOUD_TEST_SECRET_KEY="$SECRET_KEY" \
+        cargo test -p yogurt-cloud -- --ignored --test-threads=1
 
 # Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded. A fresh worktree's `target/debug/yogurt` is a new TCC identity, so the first run here may need a one-time Screen Recording/Microphone grant in System Settings; the start/stop test bounds itself to 45s and names this if it times out.
 test-hw:

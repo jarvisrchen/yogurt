@@ -82,6 +82,7 @@ pub struct RunConfig {
     /// Separate from `db_path`: the `yogurt-db` file (providers, settings). Tests pass a
     /// tempdir so parallel suites do not collide on the WAL lock.
     pub app_db_path: Option<PathBuf>,
+    pub keys_path: Option<PathBuf>,
 }
 
 impl RunConfig {
@@ -93,6 +94,7 @@ impl RunConfig {
             session_token_path: None,
             notes_dir: None,
             app_db_path: None,
+            keys_path: None,
         }
     }
 }
@@ -126,6 +128,7 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         session,
         notes_dir,
         app_db_path: cfg.app_db_path,
+        keys_path: cfg.keys_path,
     })?;
 
     // .env.local is loaded only in dev mode, by yogurt-cli.

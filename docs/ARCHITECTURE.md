@@ -623,7 +623,8 @@ Notes on the storage layout, since it surprises people reading the code:
 - **One SQLite file, two independent openers.**
   `yogurt-server::storage` (Phase 0: `meetings`, `chat_messages`) and `yogurt-db` (`providers`, `settings`, `meetings` repo, FTS) both resolve `~/.yogurt/db.sqlite` and both run their own idempotent migrations.
   They deliberately do not depend on each other for path resolution. Keep the two path helpers in sync if that path ever moves.
-  `yogurt start --data-dir <path>` / `$YOGURT_DATA_DIR` relocates both openers to the same `<path>/db.sqlite` together (CLI-7); keys, models, and notes still resolve under `~/.yogurt`.
+  `yogurt start --data-dir <path>` / `$YOGURT_DATA_DIR` relocates both openers to the same `<path>/db.sqlite` together (CLI-7), and `keys.json` moves with them.
+  Models and notes still resolve under `~/.yogurt`.
 - **`storage` uses a dual pool**: one writer connection behind a mutex, one read-only connection, WAL with `synchronous=NORMAL`.
 - **`meetings_fts` is maintained by triggers alone.** It indexes `title`, `notes_md`, `enriched_md`, and `transcript_text`, which the triggers flatten from `transcript_json` with SQLite's JSON functions (V013), so a writer that bypasses `MeetingRepo` still keeps the index whole.
 - **rusqlite is synchronous**, so every DB touch inside a request handler goes through `spawn_blocking`. Same for the markdown export, which does write + rename + fsync.
@@ -819,7 +820,7 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 
 - **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio - never notes.
 Captured audio is deleted after transcription.
-API keys live only in `~/.yogurt/keys.json` (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
+API keys live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-4, 2026-08-31): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM provider, but only when the user has explicitly picked it in Settings - never as an automatic fallback behind another provider. See [§7.6](#76-the-cli-provider-exception-llm-4) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.

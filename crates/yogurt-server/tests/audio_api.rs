@@ -27,6 +27,7 @@ async fn spawn_server() -> (SocketAddr, String, tempfile::TempDir) {
         notes_dir: Some(tmp.path().join("notes")),
         // Parallel runs collide on the WAL lock of the real ~/.yogurt/db.sqlite.
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
+        keys_path: None,
     };
     tokio::spawn(async move {
         let _ = yogurt_server::run_with_config(cfg).await;

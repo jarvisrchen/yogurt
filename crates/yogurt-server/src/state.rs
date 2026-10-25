@@ -96,11 +96,13 @@ pub struct ProductionConfig {
     /// Defaults to `~/.yogurt/db.sqlite`. Tests pass a tempdir so parallel suites do not
     /// collide on the real DB's WAL lock.
     pub app_db_path: Option<PathBuf>,
+    /// Defaults to `~/.yogurt/keys.json`.
+    pub keys_path: Option<PathBuf>,
 }
 
 impl AppState {
     /// Opens `~/.yogurt/db.sqlite` (shared with `storage`, disjoint tables) and a `FileKeyStore`
-    /// over `~/.yogurt/keys.json`.
+    /// over `~/.yogurt/keys.json`, unless the config overrides either path.
     pub fn production(cfg: ProductionConfig) -> Result<Self> {
         let exporter = Arc::new(MarkdownExporter::new(cfg.notes_dir)?);
         let prompt_mode = match cfg.mode {
@@ -122,7 +124,10 @@ impl AppState {
                 tracing::info!("YOGURT_MEMORY_KEYSTORE set — using in-memory key store");
                 Arc::new(MemoryKeyStore::default())
             } else {
-                Arc::new(FileKeyStore::open_default()?)
+                Arc::new(match cfg.keys_path {
+                    Some(p) => FileKeyStore::open(p)?,
+                    None => FileKeyStore::open_default()?,
+                })
             };
         Ok(Self {
             mode: cfg.mode,
