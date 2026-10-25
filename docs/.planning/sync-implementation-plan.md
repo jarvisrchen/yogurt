@@ -90,7 +90,8 @@ Verify first, with Richard's token on a throwaway project, before writing `mgmt.
 
 - Migration `V014__meetings_cloud_hash.sql` adds `meetings.cloud_hash TEXT`.
 - `MeetingRepo` gains `cloud_hashes`, `set_cloud_hash`, and `clear_cloud_hashes`. Connecting to a cloud clears them all, so a new cloud gets a full push.
-- `meeting_bundle(id)` returns the plaintext JSON `{"v":1,"meeting":<Meeting>,"chat":[...]}`. The `Meeting` struct already carries labels and matches the web `Meeting` type, so the viewer renders it directly. A test pins the serialization (field order, label order) so the hash only changes when content does.
+- `meeting_bundle(id)` returns the plaintext JSON `{"v":1,"meeting":<Meeting>,"chat":[...]}`. The `Meeting` struct already carries labels and matches the web `Meeting` type, so the viewer renders it directly. A test pins the serialization (field order, label order) so the hash only changes when content does. Labels are reduced to `{id, name, color}`, and fields that change without a content change, such as label position and `updated_at`, are excluded.
+- Clients page `yogurt_as_of` and the keyring query with limit and offset, 1,000 rows per page (the Supabase response cap). The viewer selects keyring rows filtered by the link code's `public_key`.
 
 `yogurt-cloud`:
 
@@ -127,6 +128,7 @@ Tests:
 ## SYNC-4: the viewer
 
 - `web/cloud.html` and `web/src/cloud/`: unlock (F), library with the device picker (G), meeting (H), settings (I), History (J), and as-of library (K).
+- Paging and the keyring filter follow the SYNC-3 rule: `yogurt_as_of` pages at 1,000 rows, and keyring rows are selected by the link code's `public_key`.
 - It reuses the existing markdown renderer, transcript line, and date grouping. Where a component reaches for the local API, the viewer passes data in instead of forking it.
 - `@supabase/supabase-js` (MIT) handles sign-in and session refresh. WebCrypto handles every decrypt. The unwrapped key is stored non-extractable in IndexedDB until Lock.
 - A separate `web/vite.cloud.config.ts` builds into `web/dist-cloud` with `base: "/yogurt/"`, which keeps the viewer out of the binary's embedded `web/dist`.

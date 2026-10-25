@@ -132,7 +132,7 @@ build-web:
 
 # ── Quality gates ────────────────────────────────────────────────────
 
-# Full test suite - what CI runs, split across the rust job (test-rust) and the web job (test-web).
+# Full test suite, split across CI's rust job (test-rust) and web job (test-web). The Docker-based test-cloud-schema is CI's separate cloud-schema job and stays out of this.
 test: test-rust test-web
 
 # Rust tests, matching CI's flags.
@@ -143,6 +143,30 @@ test-rust:
 test-web:
     pnpm --dir web test
     pnpm --dir web e2e
+
+# Apply yogurt-cloud's schema.sql twice and run its SQL test in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Needs Docker. CI's cloud-schema job runs this.
+test-cloud-schema:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    id=$(docker run --rm -d -e POSTGRES_PASSWORD=postgres postgres:16)
+    trap 'docker stop "$id" >/dev/null' EXIT
+    ready=
+    for _ in $(seq 60); do
+        docker exec "$id" pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1 && ready=1 && break
+        sleep 1
+    done
+    [ -n "$ready" ] || { echo "test-cloud-schema: postgres did not become ready in 60s" >&2; exit 1; }
+    psql() { docker exec -i -e PGOPTIONS='-c client_min_messages=warning' "$id" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
+    cd crates/yogurt-cloud
+    for mode in on off; do
+        db="defaults_$mode"
+        echo "== old default grants: $mode"
+        psql -c "create database $db" -d postgres
+        psql -d "$db" -v old_defaults="$mode" < tests/supabase_stub.sql
+        psql -d "$db" < schema.sql
+        psql -d "$db" < schema.sql
+        psql -d "$db" < tests/schema_test.sql
+    done
 
 # Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded. A fresh worktree's `target/debug/yogurt` is a new TCC identity, so the first run here may need a one-time Screen Recording/Microphone grant in System Settings; the start/stop test bounds itself to 45s and names this if it times out.
 test-hw:
