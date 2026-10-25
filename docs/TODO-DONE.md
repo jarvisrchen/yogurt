@@ -1243,3 +1243,7 @@ New closed items go at the bottom.
   V013 rebuilds `meetings_fts` to index `enriched_md` and flattens `transcript_json` inside the triggers, which fixed the enhance UPSERT and bootstrap repair blanking transcripts out of search.
   The conversation is held client-side and not persisted.
   </details>
+
+- [x] **SYNC-1** `yogurt-cloud` crate with the encryption, link code, cloud schema, and fixtures the web viewer decrypts in a test
+
+  New `yogurt-cloud` crate with P-256 sealing, the passphrase-wrapped private key bound to its public key, the link code, an idempotent `schema.sql` with explicit grants and insert-only policies that keep pushes older than an hour immutable, and a Rust fixture that the browser-side WebCrypto code decrypts in vitest.

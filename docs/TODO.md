@@ -126,7 +126,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
-- [ ] **SYNC-1** `yogurt-cloud` crate with the encryption, link code, cloud schema, and fixtures the web viewer decrypts in a test
 - [ ] **SYNC-2** Create a Yogurt Cloud from Settings on Laptop 1 through the Supabase Management API, with project reuse and the SQL fallback
 - [ ] **SYNC-3** Connect a laptop to a Yogurt Cloud and push encrypted, versioned meetings with a manual button
 - [ ] **SYNC-4** Read-only phone viewer on GitHub Pages with a device picker, settings, and push history, plus the QR code on the laptop

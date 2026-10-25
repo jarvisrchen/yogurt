@@ -78,3 +78,11 @@ jobs:
         run: just test-web
       - name: build-web
         run: just build-web
+
+  cloud-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v3
+      - name: schema.sql applies twice and passes its SQL tests
+        run: just test-cloud-schema
