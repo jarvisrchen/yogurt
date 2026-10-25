@@ -1,0 +1,3 @@
+@import "../../web/src/index.css";
+/* Tailwind scans the project root only, so name the shared components it must also scan. */
+@source "../../web/src/components/{Button,Logo}.tsx";

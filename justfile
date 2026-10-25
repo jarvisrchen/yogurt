@@ -192,6 +192,16 @@ test-cloud-e2e:
     cargo build -p yogurt
     ./scripts/test-cloud-e2e.sh
 
+# Run the cloud/ webapp's Playwright e2e against a local Supabase stack (project yogurt-cloud-web, ports 56430-56439, mail catcher on 56434). Starts the stack if it is not running, then the specs reset the yogurt_ tables and auth users themselves. Runs phone and desktop widths in light and dark and writes screenshots to cloud/e2e/screenshots/. Leaves the stack running: stop it with `supabase stop --workdir cloud`. Needs Docker and the supabase CLI.
+test-cloud-web:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! docker ps --format '{{{{.Names}}' | grep -qx supabase_db_yogurt-cloud-web; then
+        supabase start --workdir cloud -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta
+    fi
+    pnpm --dir cloud install --frozen-lockfile
+    pnpm --dir cloud exec playwright test
+
 # Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded. A fresh worktree's `target/debug/yogurt` is a new TCC identity, so the first run here may need a one-time Screen Recording/Microphone grant in System Settings; the start/stop test bounds itself to 45s and names this if it times out.
 test-hw:
     #!/usr/bin/env bash

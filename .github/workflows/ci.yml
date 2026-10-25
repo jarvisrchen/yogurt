@@ -79,6 +79,28 @@ jobs:
       - name: build-web
         run: just build-web
 
+  # Its own job and its own install, with no `pnpm --dir web install`, so the build sees only cloud/node_modules, as Vercel does.
+  # A change under web/src can break the webapp, which is why this runs on every code change.
+  cloud:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+          cache-dependency-path: cloud/pnpm-lock.yaml
+      - run: pnpm --dir cloud install --frozen-lockfile
+      - run: pnpm --dir cloud typecheck
+      - run: pnpm --dir cloud test
+      - run: pnpm --dir cloud build
+        env:
+          SUPABASE_URL: https://ci.invalid
+          SUPABASE_PUBLISHABLE_KEY: ci
+
   cloud-schema:
     runs-on: ubuntu-latest
     steps:

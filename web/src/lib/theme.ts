@@ -5,7 +5,7 @@
  * tokens under `:root[data-theme="dark"]`, so every `bg-paper` / `text-ink`
  * utility and every `var(--color-*)` inline style follows for free.
  *
- * Keep `resolve()` in sync with the inline script in `web/index.html`.
+ * Keep `resolve()` in sync with the inline scripts in `web/index.html` and `cloud/index.html`.
  */
 export type ThemePref = "system" | "light" | "dark";
 

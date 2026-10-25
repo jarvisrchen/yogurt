@@ -86,9 +86,15 @@ A deploy button copy is a new repo in the user's GitHub and does not follow `mai
 
 The build runs `cloud/scripts/build.mjs`:
 
-1. On production builds only (`VERCEL_ENV=production`), connect with `POSTGRES_URL_NON_POOLING`, apply `crates/yogurt-cloud/schema.sql`, and upsert `YOGURT_OWNER_EMAIL` into `yogurt_owner`. Preview builds skip this step so an unmerged branch never changes the live schema.
-2. Write `config.json` with `{"v":1,"supabase_url":...,"publishable_key":...}`. Both values are public by design.
-3. Run the Vite build into `cloud/dist`.
+1. Write `config.json` with `{"v":1,"supabase_url":...,"publishable_key":...}`.
+   Both values are public by design.
+   The script reads `SUPABASE_URL` and the key from `SUPABASE_PUBLISHABLE_KEY`, and also accepts `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, because Supabase's page documents only the two `NEXT_PUBLIC_` names.
+   A missing value fails the build with a message naming the variable.
+2. Run the Vite build into `cloud/dist`.
+3. On production builds only (`VERCEL_ENV=production`), connect with `POSTGRES_URL_NON_POOLING`, apply `crates/yogurt-cloud/schema.sql`, and upsert `YOGURT_OWNER_EMAIL` into `yogurt_owner`.
+   This runs last, so a failed build never migrates production.
+   The script drops any `ssl*` parameter from the URL and sets TLS itself, on without certificate verification for a remote host and off for localhost, because Supabase's CA is not in Node's trust store.
+   Preview builds skip this step so an unmerged branch never changes the live schema.
 
 `schema.sql` is idempotent, so every production deploy re-applies it and schema changes ship with the code that needs them.
 
@@ -114,6 +120,7 @@ sequenceDiagram
   V->>V: unlock (Flow 2)
 ```
 
+The confirmation link returns to the webapp with a session, so after clicking it the user lands on the passcode screen without signing in again.
 A first-visit browser has no session, so it cannot call `yogurt_status`, which only `authenticated` may execute.
 The webapp therefore opens on Sign in with a "Create the Cloud login" option and calls `yogurt_status` only after sign-in.
 The owner is the confirmed Supabase user whose email matches `yogurt_owner.email`.
@@ -333,15 +340,28 @@ The webapp:
 - **First visit.** Create the Cloud login, confirm the email, then choose a passcode.
 - **Sign in, then Unlock.** Passcode with "Remember this browser".
 - **Library** with the device picker, a read-only **meeting** page, and **History**, which shows the library as of a push under a "Viewing <time>" banner with a Latest button.
-- **Settings** (a gear in the library header): the account and Sign out, Lock, Change passcode, remembered browsers with Forget, and History under Recovery.
+- **Settings** (a gear in the library header): the account and Sign out, Lock, Change PIN, remembered browsers with Forget, and History under Recovery.
+  Until SYNC-5 the History row is a disabled placeholder that says "Coming soon".
 
 ## Webapp
 
 The webapp is its own Vite app in a top-level `cloud/` folder, with its own `package.json`, and Vercel builds only that folder.
 Nothing in `cloud/` is embedded in the yogurt binary.
-It imports the existing markdown and transcript components and the `@theme` tokens from `web/src` through a Vite alias, and makes no calls to the local API.
-Those imports resolve `react` from `web/node_modules`, so `cloud/vite.config.ts` sets `resolve.dedupe` for `react` and `react-dom` to keep one copy.
-It uses `@supabase/supabase-js` (MIT) for sign-in and session refresh, and reads `config.json` at startup.
+It imports the existing markdown and transcript components and the `@theme` tokens from `web/src` through the Vite alias `@web`, and makes no calls to the local API.
+It serves `web/public` (the favicon and app icons) as its public folder.
+Those imports would resolve `react` from `web/node_modules`, so `cloud/vite.config.ts` sets `resolve.dedupe` for `react` and `react-dom` to keep one copy.
+`web/src/index.css` does `@import "tailwindcss"`, and Vercel installs only `cloud/node_modules`, so the config also aliases `tailwindcss` to cloud's copy.
+`cloud/src/index.css` imports the shared stylesheet and names the shared components Tailwind must scan with `@source`.
+CI builds `cloud/` in its own job without installing `web/`, which is what Vercel sees.
+There is no dev server, because `config.json` exists only in `dist`.
+Run `pnpm build` and `vite preview` instead.
+Auth screens follow the mocks, with two phone adjustments.
+Text inputs use 16px so iOS does not zoom on focus, and keypad keys are 44px tall for touch.
+The PIN is one real `<input inputmode="numeric" autocomplete="off">` under the digit boxes.
+On a phone the on-screen keypad types and the boxes do not raise the native keyboard.
+The choose and change screens use the native numeric keyboard instead, as in mock G.
+Mock G has no "Remember this browser" control, so the browser that sets the first PIN unlocks with remember on, like the Unlock screen's default.
+The browser token and the "Remember this browser" choice share one `localStorage` key, `yogurt-cloud-browser`, so Change PIN can unlock the current browser again the same way.
 It downloads the current library from `yogurt_library` on open, which is fine at personal scale. When it gets slow, the upgrade is a cache that fetches only versions with a higher push id.
 Email and password is the only sign-in in v1.
 

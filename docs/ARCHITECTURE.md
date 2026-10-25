@@ -854,6 +854,7 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 - **`Stt` trait** (`yogurt-stt`): Deepgram and whisper.cpp are interchangeable behind it; swapping or adding an engine is a one-file change.
 - **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
 - **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
+- **`cloud/` webapp**: a separate Vite app for the Yogurt Cloud, deployed to the user's own Vercel project and never embedded in the binary. `cloud/vite.config.ts` aliases `web/src` as `@web` to reuse the logo, buttons, and `@theme` tokens, serves `web/public` as its public folder, and dedupes `react`. `cloud/scripts/build.mjs` applies `crates/yogurt-cloud/schema.sql` on production builds and writes `config.json`. CI builds it in the web job because a change under `web/src` can break it.
 
 ---
 

@@ -84,7 +84,7 @@ Files:
 
 - A new top-level `cloud/` folder: `package.json`, `index.html`, `src/`, and `vite.config.ts` building into `cloud/dist`. The config aliases `web/src` for the shared components and tokens, and sets `resolve.dedupe` for `react` and `react-dom`.
 - `cloud/scripts/build.mjs`: on `VERCEL_ENV=production`, apply `../crates/yogurt-cloud/schema.sql` and the owner statement through `POSTGRES_URL_NON_POOLING` with `pg`, then write `dist/config.json`, then run the Vite build. Outside production it only writes `config.json` and builds.
-- `cloud/vercel.json`: build command, output directory, and an `ignoreCommand` that skips builds when nothing under `cloud/`, `web/src/`, or `crates/yogurt-cloud/schema.sql` changed.
+- `cloud/vercel.json`: build command, output directory, and an `ignoreCommand` that skips builds when nothing under `cloud/`, `web/src/`, `web/public/`, or `crates/yogurt-cloud/*.sql` changed. `owner.sql` runs in the same build step as `schema.sql`.
 - CI: the web job gains a `cloud/` typecheck, test, and build step, because a change under `web/src` can break the webapp.
 - Screens: first visit (create the login, check your email), sign in, choose a passcode (a 4 or 6 digit PIN, entered on a numeric keypad with `inputmode="numeric"` and `autocomplete="off"`), unlock with "Remember this browser", Lock, settings with the account, Sign out, Change passcode, and remembered browsers with Forget, and an empty library that says no machine has pushed yet.
 - The token lives in `localStorage` under one key. A rejected token sends the user back to Unlock.
@@ -97,7 +97,7 @@ Richard's deployment:
 Tests:
 
 - Vitest for the token storage and the status-to-screen routing.
-- Playwright against the local Supabase from SYNC-2: first visit, email confirmation through the local Inbucket, passcode, Lock, unlock, wrong passcode, Forget, at phone width in light and dark.
+- Playwright in `cloud/e2e` against its own local Supabase (`cloud/supabase`, project `yogurt-cloud-web`, ports 56430 to 56439, run by `just test-cloud-web`) so SYNC-4's resets of the SYNC-2 stack never collide: first visit, email confirmation through the local mail catcher's API, PIN, Lock, unlock, wrong PIN, Forget from a second browser, Change PIN, and the lockout, at phone and desktop width in light and dark. Screenshots go to `cloud/e2e/screenshots/`.
 
 Verify first, on a throwaway Vercel project:
 

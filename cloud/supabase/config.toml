@@ -1,0 +1,67 @@
+# Local stack for the cloud/ webapp e2e (`just test-cloud-web`). Ports sit in 5643x, beside crates/yogurt-cloud/supabase (5642x), so the two stacks never collide.
+project_id = "yogurt-cloud-web"
+
+[api]
+enabled = true
+port = 56431
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 56432
+shadow_port = 56430
+major_version = 17
+
+[db.pooler]
+enabled = false
+port = 56439
+
+[db.migrations]
+enabled = false
+
+[db.seed]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+port = 56433
+
+# The mail catcher the e2e reads the confirmation link from (Mailpit; the section keeps its Inbucket name).
+[inbucket]
+enabled = true
+port = 56434
+smtp_port = 56435
+pop3_port = 56436
+
+[storage]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+port = 56437
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5191"
+additional_redirect_urls = ["http://127.0.0.1:5191"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 0
+enable_signup = true
+minimum_password_length = 6
+
+[auth.rate_limit]
+token_refresh = 1000
+sign_in_sign_ups = 1000
+email_sent = 1000
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
