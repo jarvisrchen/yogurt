@@ -16,7 +16,11 @@
     "noEmit": true,
     "types": ["vitest/globals", "node"],
     "baseUrl": ".",
-    "paths": { "@web/*": ["../web/src/*"] }
+    "paths": {
+      "@web/*": ["../web/src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"]
+    }
   },
   "include": ["src", "vite.config.ts", "e2e", "playwright.config.ts"]
 }
