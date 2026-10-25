@@ -204,9 +204,8 @@
   .sbar{display:flex;justify-content:space-between;padding:12px 22px 0;font-size:11px;font-weight:700;height:36px}
   .vurl{margin:2px 14px 8px;font-family:var(--mono);font-size:9.5px;color:var(--mut);text-align:center;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pbody{flex:1;overflow:hidden;padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px}
-  .logo{display:flex;align-items:center;gap:7px;font-weight:800;font-size:16px}
-  .logo i{width:22px;height:22px;border-radius:7px;background:var(--blue);display:block;position:relative}
-  .logo i::after{content:"";position:absolute;inset:6px 5px 5px 6px;border-radius:50%;background:var(--paper);opacity:.9}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:20px;letter-spacing:-.01em;line-height:1}
+  .logo i{width:28px;height:28px;flex:none;display:block;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Ccircle cx='22' cy='22' r='22' fill='%235B4FC7'/%3E%3Cpath d='M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round'/%3E%3Ccircle cx='19' cy='19' r='1.7' fill='%23E07A66'/%3E%3C/svg%3E") center/contain no-repeat}
   .unlock{flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px}
   .unlock h3{font-size:20px;font-weight:800;letter-spacing:-.01em}
   .lock{width:44px;height:44px;border-radius:14px;background:var(--blsoft);color:var(--blue);display:grid;place-items:center}
@@ -229,6 +228,63 @@
   .doc ul{margin:0;padding-left:16px}
   .doc .ai{color:var(--ai)}
   .ro{font-size:9.5px}
+
+  /* webapp: PIN entry, keypad, desktop browser mocks */
+  .pins{display:flex;gap:6px;justify-content:center}
+  .pin{flex:1;max-width:46px;height:42px;border:1px solid var(--line);background:var(--card);border-radius:var(--r-btn);display:grid;place-items:center}
+  .pin.f::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--ink)}
+  .pin.cur{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+  .pins.err .pin{border-color:var(--straw)}
+  .pins.off,.kp.off{opacity:.45}
+  .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .kp span{height:33px;border-radius:10px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:15px;font-weight:600;line-height:1}
+  .kp span small{font-size:6.5px;letter-spacing:.14em;color:var(--mut);margin-top:2px;font-weight:700}
+  .kp span.x{background:transparent;border-color:transparent;color:var(--mut)}
+  .kp svg{width:18px;height:18px}
+  .note.straw{background:var(--strsoft);color:var(--straw)}
+  .wlink{font-size:11.5px;color:var(--blue);font-weight:600;text-align:center}
+  .seg.sm{align-self:flex-start}
+  .seg.sm button{padding:3px 12px;font-size:11px}
+  .win.web{max-width:1000px}
+  .wbody{min-height:500px;display:grid;place-items:center;padding:40px 20px}
+  .wcard{width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px;padding:28px}
+  .wcard h3{font-size:20px;font-weight:800;letter-spacing:-.01em}
+  .wcard .field{margin:0}
+  .wcard .field .k{font-size:10px}
+  .wcard .inp{font-size:13px;padding:10px 12px}
+  .wcard .pin{height:56px}
+  .wcard .btn{padding:10px 14px;font-size:13px}
+  .wcard .wlink{font-size:12.5px}
+  .whead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--card)}
+  .whead .acts{display:flex;align-items:center;gap:8px}
+  .whead .hbtn{width:30px;height:30px}
+  .whead .hbtn svg{width:15px;height:15px}
+  .whead .btn{padding:5px 12px}
+  .wlib{display:grid;grid-template-columns:300px minmax(0,1fr);min-height:540px}
+  .wlist{border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:8px}
+  .wlist .chips{flex-wrap:wrap}
+  .wpane{padding:22px 28px;display:flex;flex-direction:column;gap:12px}
+  .wpane .doc{font-size:13px}
+  .wpane .doc h4{font-size:13px}
+  .wpane .ptabs span{font-size:12px;padding:7px 10px}
+  .wpane h2{font-size:22px;margin:0}
+  .tline{display:flex;gap:10px;font-size:12.5px}
+  .tline .mono{flex:none;color:var(--mut);font-size:11px;padding-top:1px}
+  .wset{max-width:640px;margin:0 auto;padding:22px 24px 28px;display:flex;flex-direction:column;gap:10px}
+  .wset .day{font-size:10.5px;margin-top:10px}
+  .wset .srow{font-size:13px;padding:11px 14px}
+  .wset .srow small{font-size:11px}
+  .wset .creds{margin:0}
+  .wset .creds th,.wset .creds td{padding:10px 14px;font-size:12.5px}
+  .wset .creds th{font-size:10px}
+  @media (max-width:720px){
+    .wlib{grid-template-columns:1fr}
+    .wlist{border-right:0;border-bottom:1px solid var(--line)}
+    .wbody{padding:24px 12px}
+    .wcard{padding:22px 18px}
+    .wpane{padding:18px 16px}
+    .wset{padding:18px 12px}
+  }
 
   .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
   .opts{display:flex;flex-direction:column;gap:6px}
@@ -274,7 +330,7 @@
   <div>
     <div class="k">SYNC-2 to SYNC-7 · design review · partly implemented</div>
     <h1>Yogurt Cloud: push meetings to your own Vercel and Supabase, read them on your phone</h1>
-    <p class="lede">Yogurt stays a local app with no login. Yogurt Cloud is an optional mirror that you deploy yourself: a static webapp on your Vercel account, backed by a Supabase project you own. Laptops push into it and never read content back. You read on your phone after you sign in and type a passcode. Source of truth: <code>docs/.planning/sync-cloud-mirror-design.md</code>.</p>
+    <p class="lede">Yogurt stays a local app with no login. Yogurt Cloud is an optional mirror that you deploy yourself: a static webapp on your Vercel account, backed by a Supabase project you own. Laptops push into it and never read content back. You read on your phone after you sign in and type a 4 or 6 digit PIN. Source of truth: <code>docs/.planning/sync-cloud-mirror-design.md</code>.</p>
   </div>
   <div class="seg" role="group" aria-label="Theme">
     <button data-t="system" aria-pressed="true">System</button><button data-t="light" aria-pressed="false">Light</button><button data-t="dark" aria-pressed="false">Dark</button>
@@ -285,7 +341,7 @@
   <div class="rule"><b>No login to use yogurt</b><span>Sync stays off until you connect it in Settings.</span></div>
   <div class="rule"><b>You host it</b><span>Your Vercel project and your Supabase project. Yogurt hosts nothing.</span></div>
   <div class="rule"><b>One-way</b><span>Laptops push. The webapp only reads.</span></div>
-  <div class="rule"><b>A passcode gates every read</b><span>Postgres checks it before any meeting is returned.</span></div>
+  <div class="rule"><b>A PIN gates every read</b><span>Postgres checks it before any meeting is returned.</span></div>
   <div class="rule"><b>Laptops are insert-only</b><span>A laptop can add rows and list its own meeting ids. It never reads content.</span></div>
   <div class="rule"><b>Stored readable</b><span>There is no client-side encryption. You trust the owner of the Supabase project, which is you.</span></div>
   <div class="rule"><b>Every push is kept</b><span>The cloud is an append-only history. View the library as of any earlier push.</span></div>
@@ -306,7 +362,7 @@
       <tr><td><b>Vercel and Supabase accounts</b></td><td>Your own logins that own the deployment and the database.</td><td>Once, during the deploy. Yogurt never sees them.</td></tr>
       <tr><td><b>Cloud address</b></td><td>The webapp's URL, for example <code>richard-yogurt.vercel.app</code>. Not secret.</td><td>Typed on each laptop to connect, opened on the phone.</td></tr>
       <tr><td><b>Cloud login</b></td><td>An email and password user inside the Supabase project.</td><td>Every laptop and every browser signs in with it.</td></tr>
-      <tr><td><b>Passcode</b></td><td>A second secret, checked in Postgres before any read.</td><td>Typed in the webapp only. Never on a laptop.</td></tr>
+      <tr><td><b>PIN</b></td><td>A second secret, 4 or 6 digits, checked in Postgres before any read.</td><td>Typed in the webapp only. Never on a laptop.</td></tr>
     </tbody>
   </table>
   </div>
@@ -339,7 +395,7 @@ flowchart LR
   Y1 & Y2 -- "insert only" --> DB
   WEB -- "build: apply schema.sql" --> DB
   WEB -- "serves JS" --> PH
-  PH -- "sign in, passcode, read" --> SB
+  PH -- "sign in, PIN, read" --> SB
 </pre>
     <figcaption>Laptop 3 looks the same as Laptop 2 and is left out of the drawing. Both values in <code>config.json</code> are public by design.</figcaption>
   </figure>
@@ -396,8 +452,8 @@ sequenceDiagram
   U->>U: click the confirmation email
   U->>V: sign in
   V->>P: rpc yogurt_status()
-  P-->>V: you are the owner, no passcode yet
-  U->>V: choose a passcode
+  P-->>V: you are the owner, no PIN yet
+  U->>V: choose a 4 or 6 digit PIN
   V->>P: rpc yogurt_set_passcode(new)
   V->>V: unlock (Flow 2)
 </pre>
@@ -410,15 +466,16 @@ sequenceDiagram
   actor U as User
   participant V as Webapp
   participant P as Supabase project
-  U->>V: sign in with the Cloud login
-  U->>V: passcode, Remember this browser on or off
+  U->>V: sign in with the Cloud login, once per browser
+  Note over V: Supabase keeps the session, so a return visit starts here
+  U->>V: 4 or 6 digit PIN, Remember this browser on or off
   V->>P: rpc yogurt_unlock(passcode, remember, label)
   P->>P: check bcrypt hash, count failures
   P-->>V: browser token, or null
   V->>V: keep the token in localStorage
   V->>P: rpc yogurt_library(token)
 </pre>
-    <figcaption><code>yogurt_unlock</code> returns a random 32-byte token and stores only its SHA-256, with a label such as "Safari on iPhone", a creation time, and an expiry. A token lasts 12 hours, or 90 days with "Remember this browser". Every read RPC refuses a missing, expired, or forgotten token. Five wrong passcodes in a row lock unlocking for 15 minutes. The function returns null instead of raising, because a raised error would roll back the failure count. Lock forgets the token in that browser, and Settings lists every remembered browser with Forget. A forgotten passcode is reset in the Supabase SQL editor, so the Cloud login alone cannot reset it.</figcaption>
+    <figcaption><code>yogurt_unlock</code> returns a random 32-byte token and stores only its SHA-256, with a label such as "Safari on iPhone", a creation time, and an expiry. A token lasts 12 hours, or 90 days with "Remember this browser". Every read RPC refuses a missing, expired, or forgotten token. The PIN is 4 or 6 digits. Five wrong PINs in a row lock unlocking, and the lockout doubles each time: 15 minutes, then 30, then 1 hour. A correct PIN resets the count. The function returns null instead of raising, because a raised error would roll back the failure count. Sign in (email and password) happens once per browser because Supabase keeps the session. A return visit shows only Unlock. Lock forgets the token in that browser, and Settings lists every remembered browser with Forget. A forgotten PIN is reset in the Supabase SQL editor, so the Cloud login alone cannot reset it.</figcaption>
   </figure>
   <figure class="diagram flowpane" id="f3" hidden style="margin:0">
 <pre class="mermaid">
@@ -436,7 +493,7 @@ sequenceDiagram
   Y->>Y: keys.json: address, URL, publishable key, refresh token, device id
   U->>Y: Push meetings
 </pre>
-    <figcaption>The laptop never sees the passcode, a Supabase secret, or a Vercel or Supabase account. "Create a Yogurt Cloud" on the same page opens the setup guide in the browser. Disconnect removes the <code>keys.json</code> entry, after offering one last push that marks every meeting from this machine deleted. The current library then drops them, and History keeps them.</figcaption>
+    <figcaption>The laptop never sees the PIN, a Supabase secret, or a Vercel or Supabase account. "Create a Yogurt Cloud" on the same page opens the setup guide in the browser. Disconnect removes the <code>keys.json</code> entry, after offering one last push that marks every meeting from this machine deleted. The current library then drops them, and History keeps them.</figcaption>
   </figure>
   <figure class="diagram flowpane" id="f4" hidden style="margin:0">
 <pre class="mermaid">
@@ -488,7 +545,7 @@ sequenceDiagram
   <div class="sechead"><h2>Who can read what</h2><p>Laptop secrets live in <code>~/.yogurt/keys.json</code> (mode 0600), never in SQLite or a log.</p></div>
   <div class="tablewrap">
   <table class="creds">
-    <thead><tr><th></th><th>Cloud login</th><th>Passcode</th><th>Can read meetings</th></tr></thead>
+    <thead><tr><th></th><th>Cloud login</th><th>PIN</th><th>Can read meetings</th></tr></thead>
     <tbody>
       <tr><td><b>A laptop</b></td><td>refresh token in <code>keys.json</code></td><td class="no">never</td><td class="no">No. It can insert, and list its own meeting ids.</td></tr>
       <tr><td><b>A browser after unlock</b></td><td>session</td><td>a browser token for 12 hours or 90 days</td><td class="yes">Yes</td></tr>
@@ -497,8 +554,8 @@ sequenceDiagram
     </tbody>
   </table>
   </div>
-  <p class="sub" style="margin-top:10px">IT on a work laptop can take the laptop's refresh token, or the email and password if they were typed there. Either one lets them add junk rows, deletion markers, or forged meetings in new pushes. Neither lets them read a meeting, because every read needs the passcode, which is only typed into a browser. They cannot erase history, so a push from more than an hour before the damage shows the real library.</p>
-  <p class="sub">The passcode does not protect against anyone with access to the Supabase project itself. Some corporate networks block <code>*.supabase.co</code> or <code>*.vercel.app</code>, which would stop a work laptop from connecting or pushing.</p>
+  <p class="sub" style="margin-top:10px">IT on a work laptop can take the laptop's refresh token, or the email and password if they were typed there. Either one lets them add junk rows, deletion markers, or forged meetings in new pushes. Neither lets them read a meeting, because every read needs the PIN, which is only typed into a browser. They cannot erase history, so a push from more than an hour before the damage shows the real library.</p>
+  <p class="sub">The PIN does not protect against anyone with access to the Supabase project itself. Some corporate networks block <code>*.supabase.co</code> or <code>*.vercel.app</code>, which would stop a work laptop from connecting or pushing.</p>
 </section>
 
 <!-- ============ UI MOCKS: LAPTOP ============ -->
@@ -558,14 +615,14 @@ sequenceDiagram
         </div>
         <div class="mcard" style="margin-top:12px">
           <div class="qrwrap"><svg class="qr" id="qr" viewBox="0 0 29 29" shape-rendering="crispEdges"></svg>
-            <div><div class="k">Cloud address</div><div class="mono" style="font-size:13px;margin:2px 0 10px">richard-yogurt.vercel.app</div><span class="btn">Open ↗</span><p class="hint" style="margin:10px 0 0">Scan to open the webapp on your phone. You sign in there and type your passcode.</p></div></div>
+            <div><div class="k">Cloud address</div><div class="mono" style="font-size:13px;margin:2px 0 10px">richard-yogurt.vercel.app</div><span class="btn">Open ↗</span><p class="hint" style="margin:10px 0 0">Scan to open the webapp on your phone. You sign in there and type your PIN.</p></div></div>
         </div>
         <div class="row" style="margin-top:14px"><span class="hint">Disconnect removes this cloud from this laptop. You can first run one last push that marks this machine's meetings deleted. History keeps them either way.</span><span class="btn danger">Disconnect…</span></div>
       </div>
     </div>
   </div>
 
-  <div class="mocklabel"><span class="pill p-slate">C</span><h3>Connect form</h3><span class="sub">No passcode, no Vercel or Supabase account.</span></div>
+  <div class="mocklabel"><span class="pill p-slate">C</span><h3>Connect form</h3><span class="sub">No PIN, no Vercel or Supabase account.</span></div>
   <div class="win">
     <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:7878/settings/cloud/connect</div></div>
     <div class="app">
@@ -584,7 +641,7 @@ sequenceDiagram
             <div class="field"><span class="k">Login password</span><div class="inp">••••••••••••</div></div>
           </div>
           <div class="field"><span class="k">Machine name</span><div class="inp">Laptop 2</div><span class="hint">Shown in the device picker in the webapp.</span></div>
-          <div class="note matcha"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><div>This laptop can push its own meetings and list its own meeting ids. It never reads content, and it never sees the passcode.</div></div>
+          <div class="note matcha"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><div>This laptop can push its own meetings and list its own meeting ids. It never reads content, and it never sees the PIN.</div></div>
           <div class="row" style="margin-top:14px;justify-content:flex-end"><span class="btn ghost">Cancel</span><span class="btn pri">Connect</span></div>
         </div>
       </div>
@@ -602,9 +659,9 @@ sequenceDiagram
 
 <!-- ============ UI MOCKS: WEBAPP ============ -->
 <section>
-  <div class="sechead"><h2>UI · the webapp</h2><p>A static build on your Vercel project. Same tokens, same components, no local API. Shown at phone width.</p></div>
+  <div class="sechead"><h2>UI · the webapp</h2><p>A static build on your Vercel project. Same tokens, same components, no local API. Shown at phone width and in a desktop browser.</p></div>
 
-  <div class="mocklabel"><h3>Getting in</h3><span class="sub">First visit runs E to G once. After that you see H.</span></div>
+  <div class="mocklabel"><h3>Getting in</h3><span class="sub">First visit runs E to G once. Sign in (H, K) happens once per browser because Supabase keeps the session. After that you only see Unlock (I, L), which asks for a 4 or 6 digit PIN. Wrong tries lock you out for 15 minutes, then 30, then 1 hour, and a correct PIN resets it (J).</span></div>
   <div class="phones">
     <div>
       <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">E</span><h3>First visit: create the login</h3></div>
@@ -634,78 +691,124 @@ sequenceDiagram
             <div class="lock" style="background:var(--mtsoft);color:var(--matcha)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3.5 7.5l8.5 6 8.5-6"/></svg></div>
             <h3>Check your email</h3>
             <p class="sub" style="font-size:12px;margin:0">We sent a confirmation link to richard@example.com. Click it, then come back and sign in.</p>
-            <span class="btn" style="width:100%">Sign in</span>
+            <span class="btn " style="width:100%">Sign in</span>
           </div>
         </div>
       </div></div>
     </div>
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">G</span><h3>First visit: choose a passcode</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">G</span><h3>First visit: choose a PIN</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
         <div class="pbody">
           <div class="logo"><i></i>yogurt</div>
-          <div class="unlock">
+          <div class="unlock" style="gap:10px">
             <div class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/></svg></div>
-            <h3>Choose a passcode</h3>
-            <p class="sub" style="font-size:12px;margin:0">You type it in a browser to read meetings. Laptops never see it. If you forget it, you reset it in the Supabase SQL editor.</p>
-            <div class="field" style="margin:0"><span class="k">Passcode</span><div class="inp">••••••••••••</div></div>
-            <div class="field" style="margin:0"><span class="k">Confirm passcode</span><div class="inp">••••••••••••</div></div>
-            <span class="btn pri" style="width:100%">Save passcode</span>
+            <h3>Choose a 4 or 6 digit PIN</h3>
+            <p class="sub" style="font-size:12px;margin:0">You type it in a browser to read meetings. Laptops never see it.</p>
+            <div class="seg sm" role="group" aria-label="PIN length"><button aria-pressed="false">4 digits</button><button aria-pressed="true">6 digits</button></div>
+            <div class="field" style="margin:0"><span class="k">PIN</span><div class="pins "><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i></div></div>
+            <div class="field" style="margin:0"><span class="k">Confirm PIN</span><div class="pins "><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin cur"></i><i class="pin"></i></div></div>
+            <span class="btn pri" style="width:100%">Save PIN</span>
           </div>
         </div>
       </div></div>
     </div>
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">H</span><h3>Sign in and unlock</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">H</span><h3>Sign in</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
         <div class="pbody">
           <div class="logo"><i></i>yogurt</div>
           <div class="unlock">
-            <h3>Unlock your meetings</h3>
+            <h3>Sign in</h3>
+            <p class="sub" style="font-size:12px;margin:0">Once per browser. After this you only type your PIN.</p>
             <div class="field" style="margin:0"><span class="k">Email</span><div class="inp">richard@example.com</div></div>
             <div class="field" style="margin:0"><span class="k">Password</span><div class="inp">••••••••••••</div></div>
-            <div class="field" style="margin:0"><span class="k">Passcode</span><div class="inp">••••••••••••</div></div>
-            <div class="check" style="margin:0"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Remember this browser</div>
-            <p class="hint" style="margin:0">Checked: unlocked for 90 days. Unchecked: 12 hours.</p>
+            <span class="btn pri" style="width:100%">Sign in</span>
+            <div class="wlink" style="color:var(--mut)">First time here? <span style="color:var(--blue)">Create your Cloud login</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">I</span><h3>Unlock</h3></div>
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>●●●</span></div>
+        <div class="vurl">richard-yogurt.vercel.app</div>
+        <div class="pbody">
+          <div class="logo"><i></i>yogurt</div>
+          <div class="unlock" style="gap:9px;justify-content:flex-start;padding-top:2px">
+            <h3>Unlock your meetings</h3>
+            <p class="sub" style="font-size:11.5px;margin:0">Signed in as richard@example.com</p>
+            <div class="pins "><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin cur"></i><i class="pin"></i></div>
+            <div class="check" style="margin:0;font-size:11.5px"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Remember this browser</div>
+            <div class="kp "><span>1</span><span>2<small>ABC</small></span><span>3<small>DEF</small></span><span>4<small>GHI</small></span><span>5<small>JKL</small></span><span>6<small>MNO</small></span><span>7<small>PQRS</small></span><span>8<small>TUV</small></span><span>9<small>WXYZ</small></span><span class="x"></span><span>0</span><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6h11a1 1 0 011 1v10a1 1 0 01-1 1H9l-6-6z"/><path d="M13 9.5l4 4M17 9.5l-4 4"/></svg></span></div>
             <span class="btn pri" style="width:100%">Unlock</span>
+            <div class="wlink" style="color:var(--mut)">Not you? <span style="color:var(--blue)">Sign out</span></div>
           </div>
         </div>
       </div></div>
     </div>
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">I</span><h3>Unlock after too many wrong tries</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">J</span><h3>Unlock after too many wrong tries</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
         <div class="pbody">
           <div class="logo"><i></i>yogurt</div>
-          <div class="unlock">
+          <div class="unlock" style="gap:9px;justify-content:flex-start;padding-top:2px">
             <h3>Unlock your meetings</h3>
-            <div class="field" style="margin:0"><span class="k">Email</span><div class="inp">richard@example.com</div></div>
-            <div class="field" style="margin:0"><span class="k">Password</span><div class="inp">••••••••••••</div></div>
-            <div class="field" style="margin:0"><span class="k">Passcode</span><div class="inp" style="border-color:var(--straw)">••••••••</div></div>
-            <div class="note" style="background:var(--strsoft);color:var(--straw)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div>Five wrong passcodes. Unlocking is locked for 15 minutes.</div></div>
+            <p class="sub" style="font-size:11.5px;margin:0">Signed in as richard@example.com</p>
+            <div class="pins err off"><i class="pin"></i><i class="pin"></i><i class="pin"></i><i class="pin"></i><i class="pin"></i><i class="pin"></i></div>
+            <div class="note straw"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/></svg><div>Too many wrong tries. Try again in 30 minutes.</div></div>
+            <div class="kp off"><span>1</span><span>2<small>ABC</small></span><span>3<small>DEF</small></span><span>4<small>GHI</small></span><span>5<small>JKL</small></span><span>6<small>MNO</small></span><span>7<small>PQRS</small></span><span>8<small>TUV</small></span><span>9<small>WXYZ</small></span><span class="x"></span><span>0</span><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6h11a1 1 0 011 1v10a1 1 0 01-1 1H9l-6-6z"/><path d="M13 9.5l4 4M17 9.5l-4 4"/></svg></span></div>
             <span class="btn pri dis" style="width:100%">Unlock</span>
+            <div class="wlink" style="color:var(--mut)">Not you? <span style="color:var(--blue)">Sign out</span></div>
           </div>
         </div>
       </div></div>
     </div>
   </div>
 
-  <div class="mocklabel" style="margin-top:44px"><h3>Reading</h3><span class="sub">The library, then a meeting.</span></div>
+  <div class="mocklabel"><span class="pill p-slate">K</span><h3>Desktop: Sign in</h3><span class="sub">Once per browser. A first-time visitor follows the link to E.</span></div>
+  <div class="win web">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">richard-yogurt.vercel.app</div></div>
+    <div class="wbody"><div class="card wcard">
+      <div class="logo"><i></i>yogurt</div>
+      <h3>Sign in</h3>
+      <div class="field" style="margin:0"><span class="k">Email</span><div class="inp">richard@example.com</div></div>
+      <div class="field" style="margin:0"><span class="k">Password</span><div class="inp">••••••••••••</div></div>
+      <span class="btn pri" style="width:100%">Sign in</span>
+      <div class="wlink" style="color:var(--mut)">First time here? <span style="color:var(--blue)">Create your Cloud login</span></div>
+    </div></div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">L</span><h3>Desktop: Unlock</h3><span class="sub">What a return visit shows. The session is already there, so only the PIN is asked.</span></div>
+  <div class="win web">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">richard-yogurt.vercel.app</div></div>
+    <div class="wbody"><div class="card wcard">
+      <div class="logo"><i></i>yogurt</div>
+      <h3>Unlock your meetings</h3>
+      <p class="sub" style="margin:0;font-size:12.5px">Signed in as <b style="color:var(--ink)">richard@example.com</b></p>
+      <div class="pins "><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin f"></i><i class="pin cur"></i><i class="pin"></i></div>
+      <div><div class="check" style="margin:0;font-size:13px"><span class="box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg></span>Remember this browser</div><p class="hint" style="margin:4px 0 0">Checked: unlocked for 90 days. Unchecked: 12 hours.</p></div>
+      <span class="btn pri" style="width:100%">Unlock</span>
+      <div class="wlink" style="color:var(--mut)">Not you? <span style="color:var(--blue)">Sign out</span></div>
+    </div></div>
+  </div>
+
+  <div class="mocklabel" style="margin-top:44px"><h3>Reading</h3><span class="sub">The library, then a meeting, on a phone (M, N) and on a desktop (O).</span></div>
   <div class="phones">
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">J</span><h3>Library with device picker</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">M</span><h3>Library with device picker</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
         <div class="pbody">
           <div class="row"><div class="logo"><i></i>yogurt</div><span style="display:flex;gap:6px;align-items:center"><span class="pill p-slate ro">read-only</span><span class="hbtn" title="Settings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></span></span></div>
-          <div class="search">Search notes &amp; transcripts</div>
           <div class="chips"><span class="chip on">All devices</span><span class="chip">Laptop 1</span><span class="chip">Laptop 2</span><span class="chip">Laptop 3</span></div>
           <div class="day">Today</div>
           <div class="mrow"><b>edis update 10/23/26</b><div class="m"><span>2:59 PM · 11 min</span><span class="dev d1">Laptop 1</span></div></div>
@@ -719,7 +822,7 @@ sequenceDiagram
       </div></div>
     </div>
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">K</span><h3>Meeting, read-only</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">N</span><h3>Meeting, read-only</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
@@ -727,7 +830,7 @@ sequenceDiagram
           <div class="sub" style="font-size:11px">← All devices</div>
           <div><b style="font-size:16px;font-weight:800;letter-spacing:-.01em">Q4 planning sync</b>
             <div class="m" style="display:flex;gap:6px;align-items:center;font-size:10.5px;color:var(--mut);margin-top:3px"><span class="dev d2">Laptop 2</span>10/22/26 · 1:42 PM · 22 min</div></div>
-          <div class="ptabs"><span>Notes</span><span class="on">Enhanced</span><span>Transcript</span><span>Chat</span></div>
+          <div class="ptabs"><span>Notes</span><span class="on">Enhanced</span><span>Transcript</span></div>
           <div class="doc">
             <h4>Decisions</h4>
             <ul><li>Ship the pricing page before the holiday freeze</li><li class="ai">Steven owns the migration plan, due Nov 3</li></ul>
@@ -740,10 +843,44 @@ sequenceDiagram
     </div>
   </div>
 
-  <div class="mocklabel" style="margin-top:44px"><h3>Settings and History</h3><span class="sub">The gear opens L. History sits under Recovery because it is for recovery, not daily use. Tapping a push in M opens N.</span></div>
+  <div class="mocklabel"><span class="pill p-slate">O</span><h3>Desktop: Library and a meeting</h3><span class="sub">The device picker filters the list. The right pane is the selected meeting, read-only.</span></div>
+  <div class="win web">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">richard-yogurt.vercel.app</div></div>
+    <div class="whead"><div class="logo"><i></i>yogurt</div><span class="acts"><span class="pill p-slate ro">read-only</span><span class="hbtn" title="Settings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></span><span class="btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" width="13" height="13"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>Lock</span></span></div>
+    <div class="wlib">
+      <div class="wlist">
+        <div class="chips"><span class="chip on">All devices</span><span class="chip">Laptop 1</span><span class="chip">Work laptop</span></div>
+        <div class="day">Today</div>
+        <div class="mrow"><b>edis update 10/23/26</b><div class="m"><span>2:59 PM · 11 min</span><span class="dev d1">Laptop 1</span></div></div>
+        <div class="day">Thursday</div>
+        <div class="mrow sel"><b>Q4 planning sync</b><div class="m"><span>1:42 PM · 22 min</span><span class="dev d2">Work laptop</span></div></div>
+        <div class="mrow"><b>Vendor review</b><div class="m"><span>10:37 AM · 41 min</span><span class="dev d1">Laptop 1</span></div></div>
+        <div class="day">Oct 16</div>
+        <div class="mrow"><b>Meeting 10/16/26</b><div class="m"><span>4:21 PM · 37 min</span><span class="dev d1">Laptop 1</span></div></div>
+        <div class="mrow"><b>1:1 with Steven</b><div class="m"><span>11:59 AM · 30 min</span><span class="dev d2">Work laptop</span></div></div>
+      </div>
+      <div class="wpane">
+        <div><h2>Q4 planning sync</h2>
+          <div class="m" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:4px"><span class="dev d2">Work laptop</span>10/22/26 · 1:42 PM · 22 min</div></div>
+        <div class="ptabs"><span class="on">Notes</span><span>Enhanced</span><span>Transcript</span></div>
+        <div class="doc">
+          <h4>Decisions</h4>
+          <ul><li>Ship the pricing page before the holiday freeze</li><li class="ai">Steven owns the migration plan, due Nov 3</li></ul>
+          <h4>Open items</h4>
+          <ul><li class="ai">Confirm the vendor's SOC 2 report</li><li>Revisit headcount in January</li></ul>
+        </div>
+        <div class="day" style="margin-top:8px">Transcript</div>
+        <div class="tline"><span class="mono">00:12</span><span><b>Steven</b> We should lock the pricing page before the freeze.</span></div>
+        <div class="tline"><span class="mono">00:41</span><span><b>You</b> Agreed. Can you own the migration plan?</span></div>
+        <p class="hint" style="margin-top:auto">Pushed from Work laptop · 10/22/26 2:10 PM</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mocklabel" style="margin-top:44px"><h3>Settings and history</h3><span class="sub">The gear opens P on a phone and S on a desktop. History sits under Recovery because it is for recovery, not daily use. Tapping a push in Q opens R.</span></div>
   <div class="phones">
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">L</span><h3>Settings</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">P</span><h3>Settings</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
@@ -755,10 +892,10 @@ sequenceDiagram
             <div class="srow"><div>richard@example.com<small class="mono">richard-yogurt.vercel.app</small></div></div>
             <div class="srow"><div>Sign out</div><span class="chev">›</span></div>
           </div>
-          <div class="day">Passcode</div>
+          <div class="day">PIN</div>
           <div class="sgroup">
             <div class="srow"><div>Lock<small>Forget the token in this browser</small></div><span class="chev">›</span></div>
-            <div class="srow"><div>Change passcode</div><span class="chev">›</span></div>
+            <div class="srow"><div>Change PIN</div><span class="chev">›</span></div>
           </div>
           <div class="day">Remembered browsers</div>
           <div class="sgroup">
@@ -773,7 +910,7 @@ sequenceDiagram
       </div></div>
     </div>
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">M</span><h3>History</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">Q</span><h3>History</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
@@ -792,7 +929,7 @@ sequenceDiagram
       </div></div>
     </div>
     <div>
-      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">N</span><h3>Library as of a push</h3></div>
+      <div class="mocklabel" style="margin-top:0"><span class="pill p-slate">R</span><h3>Library as of a push</h3></div>
       <div class="phone"><div class="screen"><div class="notch"></div>
         <div class="sbar"><span>9:41</span><span>●●●</span></div>
         <div class="vurl">richard-yogurt.vercel.app</div>
@@ -808,6 +945,36 @@ sequenceDiagram
           <div class="mrow"><b>Design crit</b><div class="m"><span>2:30 PM · 45 min</span><span class="dev d3">Laptop 3</span></div></div>
         </div>
       </div></div>
+    </div>
+  </div>
+
+  <div class="mocklabel"><span class="pill p-slate">S</span><h3>Desktop: Settings</h3><span class="sub">The gear opens it. History sits under Recovery.</span></div>
+  <div class="win web">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">richard-yogurt.vercel.app</div></div>
+    <div class="whead"><div class="sub" style="font-size:13px">← Library</div><span class="acts"><span class="btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" width="13" height="13"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>Lock</span></span></div>
+    <div class="wset">
+      <h2 style="margin:0 0 2px">Settings</h2>
+      <div class="day" style="margin-top:4px">Account</div>
+      <div class="sgroup">
+        <div class="srow"><div>richard@example.com<small class="mono">richard-yogurt.vercel.app</small></div><span class="btn">Sign out</span></div>
+      </div>
+      <div class="day">PIN</div>
+      <div class="sgroup">
+        <div class="srow"><div>Lock<small>Forget the token in this browser</small></div><span class="btn">Lock</span></div>
+        <div class="srow"><div>Change PIN<small>4 or 6 digits. Forgets every other remembered browser.</small></div><span class="btn">Change PIN</span></div>
+      </div>
+      <div class="day">Remembered browsers</div>
+      <div class="tablewrap"><table class="creds">
+        <thead><tr><th>Browser</th><th>Unlocked</th><th>Expires</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><b>Safari on iPhone</b> <span class="pill p-blue" style="font-size:10px">This browser</span></td><td>Oct 23</td><td>Jan 21</td><td><span class="pill p-straw" style="font-size:10px">Forget</span></td></tr>
+          <tr><td><b>Chrome on Mac</b></td><td>Oct 16</td><td>Jan 14</td><td><span class="pill p-straw" style="font-size:10px">Forget</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="day">Recovery</div>
+      <div class="sgroup">
+        <div class="srow"><div>History<small>See your library as of an earlier push</small></div><span class="chev">›</span></div>
+      </div>
     </div>
   </div>
 </section>
