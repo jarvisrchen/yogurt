@@ -257,6 +257,59 @@ impl MeetingRepo {
             .ok_or_else(|| anyhow::anyhow!("patch: row vanished after update"))
     }
 
+    /// `(id, cloud_hash)` for every meeting.
+    pub fn cloud_hashes(&self) -> Result<Vec<(String, Option<String>)>> {
+        self.db.with_conn(|conn| -> Result<_> {
+            let mut stmt = conn.prepare_cached("SELECT id, cloud_hash FROM meetings")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// Leaves `updated_at` alone, since a push is not an edit.
+    pub fn set_cloud_hash(&self, id: &str, hash: &str) -> Result<()> {
+        self.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE meetings SET cloud_hash = ?2 WHERE id = ?1",
+                params![id, hash],
+            )
+        })?;
+        Ok(())
+    }
+
+    /// Called on connect and disconnect, so a new cloud gets a full push. Pending deletions go too.
+    pub fn clear_cloud_hashes(&self) -> Result<()> {
+        self.db.with_conn(|conn| {
+            conn.execute_batch("UPDATE meetings SET cloud_hash = NULL; DELETE FROM cloud_deleted;")
+        })?;
+        Ok(())
+    }
+
+    /// Ids of meetings that were pushed and then deleted here, so the cloud has not heard of the deletion yet.
+    pub fn cloud_tombstones(&self) -> Result<Vec<String>> {
+        self.db.with_conn(|conn| -> Result<_> {
+            let mut stmt = conn.prepare_cached("SELECT meeting_id FROM cloud_deleted")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// Called after a pass that sent the deletion markers.
+    pub fn clear_cloud_tombstones(&self) -> Result<()> {
+        self.db
+            .with_conn(|conn| conn.execute("DELETE FROM cloud_deleted", []))?;
+        Ok(())
+    }
+
+    /// The document pushed to Yogurt Cloud, `None` for an unknown id. See [`bundle_value`].
+    pub fn meeting_bundle(&self, id: &str) -> Result<Option<serde_json::Value>> {
+        let Some(m) = self.get(id)? else {
+            return Ok(None);
+        };
+        let chat = self.db.list_chat_messages(id)?;
+        Ok(Some(bundle_value(&m, &chat)))
+    }
+
     /// FTS5 keyword search across title + notes_md + transcript_text.
     ///
     /// Empty or whitespace-only `query` short-circuits to `self.list()` (capped at `limit`); the Library UI relies on this when the search pill is cleared.
@@ -416,6 +469,42 @@ fn local_day_bounds_ms(d: NaiveDate) -> Option<(i64, i64)> {
             .map(|t| t.timestamp_millis())
     };
     Some((ms(d)?, ms(d.succ_opt()?)?))
+}
+
+/// `{"v":1,"meeting":...,"chat":[...]}`. The hash of this document decides whether a meeting is pushed again, so it carries content only.
+/// `updated_at` and each label's `position` and `updated_at` are left out because reordering labels or tagging another meeting must not change this meeting's hash.
+pub fn bundle_value(m: &Meeting, chat: &[crate::chat::ChatMessage]) -> serde_json::Value {
+    use serde_json::json;
+    let mut meeting = serde_json::to_value(m).expect("Meeting serializes");
+    let obj = meeting.as_object_mut().expect("Meeting is an object");
+    obj.remove("updated_at");
+    obj.insert(
+        "labels".into(),
+        m.labels
+            .iter()
+            .map(|l| json!({ "id": l.id, "name": l.name, "color": l.color }))
+            .collect(),
+    );
+    let chat: Vec<_> = chat
+        .iter()
+        .map(|c| json!({ "id": c.id, "role": c.role, "content": c.content, "created_at": c.created_at }))
+        .collect();
+    strip_nul(json!({ "v": 1, "meeting": meeting, "chat": chat }))
+}
+
+/// Postgres jsonb rejects U+0000 (22P05), and one such meeting would block its batch on every pass.
+fn strip_nul(v: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::String(s) => Value::String(s.replace('\0', "")),
+        Value::Array(a) => Value::Array(a.into_iter().map(strip_nul).collect()),
+        Value::Object(o) => Value::Object(
+            o.into_iter()
+                .map(|(k, v)| (k.replace('\0', ""), strip_nul(v)))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
@@ -1045,5 +1134,87 @@ mod tests {
         assert_eq!(short_date(at(2026, 10, 6, 9)), "10/6/26");
         assert_eq!(parse_short_date("13/1/26"), None);
         assert_eq!(parse_short_date("10/6"), None);
+    }
+    #[test]
+    fn bundle_serialization_is_pinned() {
+        use crate::chat::{ChatMessage, Role};
+        let at = |ms| ms_to_dt(ms);
+        let m = Meeting {
+            id: "m1".into(),
+            title: "Stand\0up".into(),
+            started_at: 1000,
+            ended_at: Some(2000),
+            notes_md: "notes".into(),
+            enriched_md: None,
+            transcript_json: "[]".into(),
+            starred: true,
+            stt_engine: Some("local".into()),
+            llm_model: None,
+            template: None,
+            created_at: at(1000),
+            updated_at: at(9999),
+            labels: vec![Label {
+                id: "l1".into(),
+                name: "Sales".into(),
+                color: "blue".into(),
+                position: 3,
+                updated_at: 42,
+            }],
+        };
+        let chat = ChatMessage {
+            id: "c1".into(),
+            meeting_id: "m1".into(),
+            role: Role::User,
+            content: "hi".into(),
+            created_at: 1500,
+        };
+        assert_eq!(
+            bundle_value(&m, &[chat]).to_string(),
+            r#"{"chat":[{"content":"hi","created_at":1500,"id":"c1","role":"user"}],"meeting":{"created_at":"1970-01-01T00:00:01Z","ended_at":2000,"enriched_md":null,"id":"m1","labels":[{"color":"blue","id":"l1","name":"Sales"}],"llm_model":null,"notes_md":"notes","starred":true,"started_at":1000,"stt_engine":"local","template":null,"title":"Standup","transcript_json":"[]"},"v":1}"#
+        );
+    }
+
+    #[test]
+    fn cloud_hash_round_trip_and_bundle_ignores_updated_at() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "A".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(repo.cloud_hashes().unwrap(), [(m.id.clone(), None)]);
+        let before = repo.meeting_bundle(&m.id).unwrap().unwrap();
+        repo.set_cloud_hash(&m.id, "abc").unwrap();
+        assert_eq!(
+            repo.cloud_hashes().unwrap(),
+            [(m.id.clone(), Some("abc".into()))]
+        );
+        assert_eq!(repo.get(&m.id).unwrap().unwrap().updated_at, m.updated_at);
+        assert_eq!(repo.meeting_bundle(&m.id).unwrap().unwrap(), before);
+        repo.clear_cloud_hashes().unwrap();
+        assert_eq!(repo.cloud_hashes().unwrap(), [(m.id, None)]);
+        assert!(repo.meeting_bundle("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn deleting_a_pushed_meeting_leaves_a_tombstone_until_cleared() {
+        let repo = fresh_repo();
+        let mk = |t: &str| {
+            repo.create(NewMeeting {
+                title: t.into(),
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let (pushed, never) = (mk("Pushed"), mk("Never"));
+        repo.set_cloud_hash(&pushed.id, "h").unwrap();
+        assert!(repo.cloud_tombstones().unwrap().is_empty());
+        repo.delete(&never.id).unwrap();
+        assert!(repo.cloud_tombstones().unwrap().is_empty());
+        repo.delete(&pushed.id).unwrap();
+        assert_eq!(repo.cloud_tombstones().unwrap(), [pushed.id]);
+        repo.clear_cloud_tombstones().unwrap();
+        assert!(repo.cloud_tombstones().unwrap().is_empty());
     }
 }

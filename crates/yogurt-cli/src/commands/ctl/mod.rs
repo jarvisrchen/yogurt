@@ -2,6 +2,7 @@
 //! `--json` output, errors that say what to run instead, idempotent mutations.
 
 mod client;
+mod cloud;
 mod detect_cmd;
 mod meeting;
 mod models;
@@ -58,6 +59,11 @@ pub enum CtlCmd {
         #[command(subcommand)]
         cmd: models::ModelsCmd,
     },
+    /// Yogurt Cloud sync: status and push. Connecting stays in the UI.
+    Cloud {
+        #[command(subcommand)]
+        cmd: cloud::CloudCmd,
+    },
     /// Subscribe to the server websocket, printing one JSON frame per line.
     Ws {
         /// Meeting id, url, or `last` -- scopes to that meeting's transcript
@@ -85,6 +91,7 @@ pub async fn run(args: CtlArgs) -> i32 {
         CtlCmd::Settings { cmd } => settings::run(cmd, port, json_out).await,
         CtlCmd::Provider { cmd } => provider::run(cmd, port, json_out).await,
         CtlCmd::Models { cmd } => models::run(cmd, port, json_out).await,
+        CtlCmd::Cloud { cmd } => cloud::run(cmd, port, json_out).await,
         CtlCmd::Ws {
             meeting,
             types,

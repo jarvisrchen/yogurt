@@ -1,6 +1,8 @@
 //! Schema and REST client for Yogurt Cloud, the user's own Supabase project.
 
+pub mod config;
 mod error;
+pub mod push;
 mod rest;
 
 pub use error::{Error, Result};

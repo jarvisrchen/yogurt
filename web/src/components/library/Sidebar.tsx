@@ -6,6 +6,7 @@ import { useCreateMeeting } from "../../lib/api/meetings";
 import { useCreateLabel, useLabels, useReorderLabels } from "../../lib/api/labels";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
+import { useCloudStatus } from "../../lib/api/cloud";
 import { SidebarLabelRow } from "./SidebarLabelRow";
 import { Button } from "../Button";
 import { LABEL } from "../settings/labelClass";
@@ -50,6 +51,7 @@ export function Sidebar() {
     staleTime: 30_000,
   });
 
+  const cloudOn = useCloudStatus().data?.connected === true;
   const isLocalOnly =
     !settings.data?.providers?.some(
       (p) => p.is_active && !isLocalProvider(p.base_url),
@@ -192,11 +194,11 @@ export function Sidebar() {
       </div>
 
       <div className="mt-auto px-4 py-4 flex flex-col gap-2">
-        {isLocalOnly && (
+        {(cloudOn || isLocalOnly) && (
           <div
-            className="self-start px-2.5 py-1 rounded-pill bg-mtsoft text-matcha text-[11px] font-medium"
+            className="self-start px-2.5 py-1 rounded-pill bg-mtsoft text-ink text-[11px] font-medium"
           >
-            Local-only · on
+            {cloudOn ? "Cloud sync · on" : "Local-only · on"}
           </div>
         )}
         <Link

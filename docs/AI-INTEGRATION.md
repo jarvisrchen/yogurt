@@ -55,6 +55,12 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | POST | `/api/stt/models/{name}/download` | download model | `ctl models download` |
 | DELETE | `/api/stt/models/{name}/download` | cancel download | `ctl models cancel` |
 | DELETE | `/api/stt/models/{name}` | delete model | `ctl models delete` |
+| GET | `/api/cloud` | Yogurt Cloud connection, not-pushed count, last push | `ctl cloud status` |
+| POST | `/api/cloud/push` | push changed meetings now | `ctl cloud push` |
+| POST | `/api/cloud/check` | check a Cloud address: `{address}` | - |
+| POST | `/api/cloud/connect` | connect: `{address, email, password, machine_name}`, UI only | - |
+| POST | `/api/cloud/sign-in` | sign in again after a dead session: `{password}`, UI only | - |
+| POST | `/api/cloud/disconnect` | disconnect: `{mark_deleted?}` | - |
 | GET | `/ws/meetings/{id}` | transcript/enhance/chat/audio frames | `ctl ws <id>`, `ctl meeting transcript --follow` |
 | GET | `/ws` | model-download frames | `ctl ws` |
 

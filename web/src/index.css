@@ -21,6 +21,7 @@
   --color-lilacsoft: #F3E8FB;
   --color-honey:     #A67C1B;
   --color-honeysoft: #FBF0D6;
+  --color-honeyink:  #7A5A0F;  /* honey text that reaches 4.5:1 on white and on honeysoft */
   --color-slate:     #4E5D6B;
   --color-slatesoft: #E8ECF0;
 
@@ -113,6 +114,7 @@
   --color-lilacsoft: #33283F;
   --color-honey:     #D9B24E;
   --color-honeysoft: #3A3120;
+  --color-honeyink:  #D9B24E;
   --color-slate:     #A9B7C4;
   --color-slatesoft: #2A3138;
   --shadow-card-color:   rgba(0, 0, 0, 0.35);

@@ -799,6 +799,7 @@ fn build_test_state(
         label_repo,
         app_events_tx: tokio::sync::broadcast::channel(64).0,
         detect: Default::default(),
+        cloud_lock: Default::default(),
     };
     (state, token_str, tmp)
 }

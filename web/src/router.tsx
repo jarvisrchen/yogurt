@@ -49,7 +49,7 @@ export const routes: RouteObject[] = [
       { path: "/meeting/:id", element: <Meeting /> },
       { path: "/meeting/:id/post", element: <MeetingPost /> },
       { path: "/settings", element: <Navigate to="/settings/model" replace /> },
-      { path: "/settings/:section", element: <Settings /> },
+      { path: "/settings/:section/:view?", element: <Settings /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

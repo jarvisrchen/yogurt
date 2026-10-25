@@ -1,6 +1,6 @@
 import { type ReactNode, type ElementType, type HTMLAttributes } from "react";
 
-type Padding = "sm" | "md" | "lg";
+type Padding = "sm" | "md" | "lg" | "compact";
 
 /** Extra props spread onto the rendered element. Not enforced per element: pass `type="button"` explicitly with `as="button"` to avoid form-submit surprises. */
 interface CardProps extends Omit<HTMLAttributes<HTMLElement>, "className"> {
@@ -15,6 +15,7 @@ const PADDING: Record<Padding, string> = {
   sm: "p-3",
   md: "p-5",
   lg: "p-8",
+  compact: "px-[18px] py-4",
 };
 
 export function Card({

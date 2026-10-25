@@ -1,4 +1,7 @@
+import { Link } from "react-router";
 import { useGreeting } from "../../hooks/useGreeting";
+import { useCloudStatus } from "../../lib/api/cloud";
+import { Pill } from "../Pill";
 
 interface Props {
   count: number;
@@ -6,12 +9,26 @@ interface Props {
 
 export function Greeting({ count }: Props) {
   const { greeting } = useGreeting();
+  const cloud = useCloudStatus().data;
+  const notPushed = cloud?.connected ? cloud.not_pushed : 0;
   const plural = count === 1 ? "meeting" : "meetings";
   return (
     <header className="mb-8">
       <h1 className="heading-greeting">{greeting}</h1>
-      <p className="mt-1 text-[13px] text-mut">
-        {count} {plural} · all on this Mac
+      <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-mut">
+        <span>
+          {count} {plural} · all on this Mac
+        </span>
+        {notPushed > 0 && (
+          <>
+            <span aria-hidden="true">·</span>
+            <Link to="/settings/cloud" className="rounded-pill focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue">
+              <Pill tone="honey" className="px-2.5! py-[3px]! text-[10.5px]! font-bold!">
+                {notPushed} not pushed
+              </Pill>
+            </Link>
+          </>
+        )}
       </p>
     </header>
   );

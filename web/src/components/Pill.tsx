@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 
-type Tone = "neutral" | "blue" | "matcha" | "straw";
+type Tone = "neutral" | "blue" | "matcha" | "straw" | "honey";
 
 /** Live-region mode: 'none' decorative (default), 'status' polite (timers, banners), 'alert' assertive (permission-denied errors only). */
 export type PillStatus = "none" | "status" | "alert";
@@ -33,6 +33,7 @@ const TONE: Record<Tone, string> = {
   blue:    "bg-blsoft  text-blue border-transparent",
   matcha:  "bg-mtsoft  text-matcha border-transparent",
   straw:   "bg-strsoft text-ink border-transparent",
+  honey:   "bg-honeysoft text-honeyink border-transparent",
 };
 
 export function Pill({

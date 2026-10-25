@@ -17,6 +17,7 @@ Companion docs: [archive/PRD.md](./archive/PRD.md) for the original product inte
 - [9. Trust boundaries](#9-trust-boundaries)
 - [10. AI usage and cost map](#10-ai-usage-and-cost-map)
 - [11. Key decisions and rejected alternatives](#11-key-decisions-and-rejected-alternatives)
+- [12. Yogurt Cloud sync](#12-yogurt-cloud-sync)
 
 ---
 
@@ -94,6 +95,7 @@ graph TB
     subgraph Cloud["Network, only if the user opts in"]
         DG["Deepgram streaming WS"]
         PROV["LLM provider<br/>OpenAI / Ollama / LM Studio / OpenRouter / ..."]
+        YC["Yogurt Cloud<br/>the user's own Supabase project"]
     end
 
     KC["~/.yogurt/keys.json<br/>mode 0600"]
@@ -629,8 +631,9 @@ Notes on the storage layout, since it surprises people reading the code:
 - **`meetings_fts` is maintained by triggers alone.** It indexes `title`, `notes_md`, `enriched_md`, and `transcript_text`, which the triggers flatten from `transcript_json` with SQLite's JSON functions (V013), so a writer that bypasses `MeetingRepo` still keeps the index whole.
 - **rusqlite is synchronous**, so every DB touch inside a request handler goes through `spawn_blocking`. Same for the markdown export, which does write + rename + fsync.
 - **API keys are never in SQLite and never in a response body.** The providers table holds `base_url`, model, and active flag; the secret lives in `~/.yogurt/keys.json` keyed by the provider's ULID (or `stt-deepgram` for the STT singleton). Responses return a masked suffix only.
-- **The key file is read once and held in memory.** `FileKeyStore::open` (`yogurt-db/src/keys.rs`) parses `keys.json` at boot into a map behind an `RwLock`; every `get` is a map lookup, so key reads happen inline in request handlers with no `spawn_blocking` and no timeouts. Every `set`/`delete` rewrites the whole file through a same-directory temp file with mode 0600 and an atomic rename, so a crash mid-write can never truncate it. The file is created on the first write, not at boot.
+- **The key file is read at boot and held in memory.** `FileKeyStore::open` (`yogurt-db/src/keys.rs`) parses `keys.json` at boot into a map behind an `RwLock`; every `get` is a map lookup, so key reads happen inline in request handlers with no `spawn_blocking` and no timeouts. Every `set`/`delete` re-reads the file, applies its one change, and rewrites the whole file through a same-directory temp file with mode 0600 and an atomic rename, so a crash mid-write can never truncate it and a second process sharing the file keeps its entries. The in-memory map is updated only after the write lands. The file is created on the first write, not at boot.
 - **Tests never touch the real key file.** `YOGURT_MEMORY_KEYSTORE=1` (set by `just test` and CI) makes `AppState::production` use `MemoryKeyStore` instead; everything else behind the `ApiKeyStore` trait is identical.
+- **`keys.json` also holds the Yogurt Cloud connection** as one `yogurt-cloud` account, and `meetings.cloud_hash` (V014) is the only cloud column in SQLite.
 - **Markdown files are an export, not the source of truth.** SQLite is authoritative; the `.md` file exists so the user's notes are portable and greppable outside the app.
 
 ---
@@ -640,12 +643,12 @@ Notes on the storage layout, since it surprises people reading the code:
 ```mermaid
 graph LR
     subgraph Local["Never leaves the machine"]
-        NOTES2["notes, enriched notes, chat history"]
         AUDIOB["raw audio buffers"]
     end
     subgraph Opt["Leaves only on explicit opt-in"]
         AU["audio -> Deepgram (cloud STT)"]
-        TR["notes + transcript -> LLM provider (enhance, chat)"]
+        TR["notes + transcript -> the configured LLM provider (enhance, chat)"]
+        CL["notes + transcript + chat -> the user's own Yogurt Cloud (push)"]
     end
     subgraph Never["Never sent anywhere"]
         TEL["telemetry (none, not even opt-in)"]
@@ -659,7 +662,7 @@ Enforcement points, all in `routes.rs` unless noted:
 |---|---|
 | `/api/health` | none |
 | `/api/session-token` | Origin allowlist only (it hands out the token) |
-| `/api/meetings*`, `/api/audio/*`, `/api/settings*`, `/api/stt/*` | `require_session_token` middleware |
+| `/api/meetings*`, `/api/audio/*`, `/api/settings*`, `/api/stt/*`, `/api/cloud*` | `require_session_token` middleware |
 | `/ws`, `/ws/meetings/{id}` | Origin allowlist + `?token=` (`ws.rs::enforce_ws_auth`) |
 | unknown `/api/*` | explicit 404, never falls through to the SPA |
 | everything else | embedded assets with SPA fallback, or Vite proxy in `--dev` |
@@ -818,9 +821,10 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 
 ### Hard constraints (violating any of these is a bug)
 
-- **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio - never notes.
+- **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio.
+Notes and transcripts leave only to the LLM provider the user configures (enhance and chat) and to a Yogurt Cloud the user connects, which is their own Supabase project ([§12](#12-yogurt-cloud-sync)).
 Captured audio is deleted after transcription.
-API keys live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
+API keys and the Yogurt Cloud connection live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-4, 2026-08-31): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM provider, but only when the user has explicitly picked it in Settings - never as an automatic fallback behind another provider. See [§7.6](#76-the-cli-provider-exception-llm-4) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
@@ -850,3 +854,65 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 - **`Stt` trait** (`yogurt-stt`): Deepgram and whisper.cpp are interchangeable behind it; swapping or adding an engine is a one-file change.
 - **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
 - **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
+
+---
+
+## 12. Yogurt Cloud sync
+
+Optional, one-way, and off until the user connects it in Settings > Cloud sync.
+A laptop pushes its meetings to a Yogurt Cloud the user deployed: a static webapp on their Vercel account, backed by their own Supabase project.
+Yogurt hosts nothing.
+The design, schema, and who can read what are in [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md), and `crates/yogurt-cloud/schema.sql` is the schema.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant UI as Settings page
+  participant S as yogurt-server (api/cloud.rs)
+  participant K as keys.json
+  participant W as Cloud webapp
+  participant P as Supabase project
+
+  UI->>S: POST /api/cloud/connect {address, email, password, machine_name}
+  S->>W: GET https://address/config.json
+  S->>P: sign in with the password, then drop it
+  S->>P: rpc yogurt_status (must be owner, passcode set)
+  S->>P: insert yogurt_devices {id, name}
+  S->>K: set yogurt-cloud (refresh token, device id, ...)
+  UI->>S: POST /api/cloud/push
+  S->>K: refresh the session, store the rotated refresh token
+  S->>P: rpc yogurt_device_meetings, then yogurt_start_push
+  S->>P: insert yogurt_versions in batches
+  S->>S: store each batch's cloud_hash in SQLite
+```
+
+- **Crates.**
+  `yogurt-cloud` holds the REST client (`rest.rs`), address and `config.json` validation (`config.rs`), and the push pass (`push.rs`, with a pure `plan`).
+  `yogurt-server/src/api/cloud.rs` holds the routes.
+  `yogurt-db` supplies `MeetingRepo::meeting_bundle` and the `cloud_hash` accessors.
+- **What is pushed.**
+  One JSON document per meeting, `{"v":1,"meeting":...,"chat":[...]}`, with volatile fields (`updated_at`, label order and timestamps) and U+0000 characters left out.
+  Its SHA-256 is the meeting's `cloud_hash`, so a pass sends only meetings whose content changed, plus a null body for each meeting the cloud lists that is gone locally.
+  A trigger leaves a tombstone in `cloud_deleted` when a pushed meeting is deleted, so the "not pushed" count includes deletions until a pass sends the markers.
+  The meeting being recorded is skipped.
+- **Secrets.**
+  The `yogurt-cloud` account in `keys.json` holds the address, login email, Supabase URL, publishable key, refresh token, device id, and machine name.
+  The password is a request field that is used once.
+  No response, log line, `yogurt ctl` command, or SQLite column carries any of it.
+- **The refresh mutex.**
+  Supabase rotates the refresh token on every use.
+  `AppState::cloud_lock` serializes connect, sign-in, push, and disconnect.
+  Each of those runs in a spawned task that the handler awaits, so a client that disconnects mid-request cannot drop the future between a refresh and the save of the rotated token.
+  Every path that needs a session goes through `link()`, which takes the lock guard as a parameter, refreshes, and writes the new refresh token to `keys.json` before the session is used.
+  A pass also renews the access token when it is within 5 minutes of expiring, and saves the rotated refresh token each time.
+  A pass holds the lock to the end, so a manual push and a later timer push never overlap.
+- **Errors.**
+  Every failure carries a stable `code` next to its message: `bad_address`, `bad_config`, `bad_credentials`, `not_owner`, `passcode_not_set`, `session_expired`, `device_removed`, `network`, `cloud_error`, `not_connected`, `already_connected`, `bad_request`, `local_error`, `internal`.
+  The server records the last success (`cloud.last_push`) and the last failure (`cloud.last_error`) separately, so a failed pass never hides when the cloud was last in step.
+  The UI shows a `session_expired` failure as "Sign in again" with an inline password field, which posts to `/api/cloud/sign-in` and stays up until a sign-in succeeds.
+- **Disconnect.**
+  It removes the `yogurt-cloud` account and clears every `cloud_hash`, after a best-effort sign-out that revokes the refresh token.
+  With `mark_deleted` it first runs one pass that marks every meeting from this device deleted, and a failure there leaves the connection in place.
+- **Verification.**
+  `just test-cloud` runs the client against a local Supabase.
+  `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a revoked session, and disconnect.

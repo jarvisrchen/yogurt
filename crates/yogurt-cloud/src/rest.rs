@@ -66,6 +66,8 @@ impl Project {
             http: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(10))
                 .timeout(Duration::from_secs(60))
+                // A 307 or 308 would re-send the password to wherever it points.
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("static reqwest client config"),
         }
@@ -95,6 +97,14 @@ impl Project {
             }) => Err(Error::SessionExpired),
             Err(e) => Err(e),
         }
+    }
+
+    /// Revokes this session's refresh token. Best effort: the caller ignores a failure.
+    pub async fn logout(&self, session: &Session) -> Result<()> {
+        let url = format!("{}/auth/v1/logout?scope=local", self.url);
+        send(self.authed(self.http.post(url), session))
+            .await
+            .map(drop)
     }
 
     /// Sends with `return=minimal`: `authenticated` has no `select`, so asking for the rows back would fail.
@@ -186,6 +196,7 @@ async fn send(req: reqwest::RequestBuilder) -> Result<reqwest::Response> {
     if status.is_success() {
         return Ok(resp);
     }
+    // A gateway error page is not JSON, and then the status line is all there is to say.
     let body: Value = resp.json().await.unwrap_or(Value::Null);
     let text = |k: &str| match &body[k] {
         Value::String(s) => Some(s.clone()),
@@ -200,6 +211,6 @@ async fn send(req: reqwest::RequestBuilder) -> Result<reqwest::Response> {
         message: text("msg")
             .or_else(|| text("message"))
             .or_else(|| text("error_description"))
-            .unwrap_or_default(),
+            .unwrap_or_else(|| format!("Supabase returned {}", status.as_u16())),
     })
 }

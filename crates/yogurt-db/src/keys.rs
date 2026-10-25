@@ -82,8 +82,26 @@ impl FileKeyStore {
         Self::open(crate::paths::keys_path()?)
     }
 
-    fn persist(&self, map: &BTreeMap<String, String>) -> Result<()> {
-        write_private(&self.path, &serde_json::to_vec_pretty(map)?)
+    /// The file as it is now, so a write never drops entries another process added since this one booted.
+    fn read_file(&self) -> Result<BTreeMap<String, String>> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .with_context(|| format!("parsing key file {}", self.path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(e) => Err(e).with_context(|| format!("reading {}", self.path.display())),
+        }
+    }
+
+    /// Re-reads the file, applies one change, writes atomically, and only then updates the in-memory map.
+    /// Two processes changing the file at the same instant can still lose one write, because there is no file lock.
+    fn update(&self, change: impl FnOnce(&mut BTreeMap<String, String>) -> bool) -> Result<()> {
+        let mut map = self.map.write().unwrap();
+        let mut fresh = self.read_file()?;
+        if change(&mut fresh) {
+            write_private(&self.path, &serde_json::to_vec_pretty(&fresh)?)?;
+        }
+        *map = fresh;
+        Ok(())
     }
 }
 
@@ -113,15 +131,47 @@ impl ApiKeyStore for FileKeyStore {
         Ok(self.map.read().unwrap().get(account).cloned())
     }
     fn set(&self, account: &str, secret: &str) -> Result<()> {
-        let mut map = self.map.write().unwrap();
-        map.insert(account.to_string(), secret.to_string());
-        self.persist(&map)
+        self.update(|m| {
+            m.insert(account.to_string(), secret.to_string());
+            true
+        })
     }
     fn delete(&self, account: &str) -> Result<()> {
-        let mut map = self.map.write().unwrap();
-        if map.remove(account).is_some() {
-            self.persist(&map)?;
-        }
-        Ok(())
+        self.update(|m| m.remove(account).is_some())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_stores_on_one_file_do_not_drop_each_others_keys() {
+        let dir = std::env::temp_dir().join(format!("yogurt-keys-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("keys.json");
+        let _ = std::fs::remove_file(&path);
+        let a = FileKeyStore::open(&path).unwrap();
+        let b = FileKeyStore::open(&path).unwrap();
+        a.set("one", "1").unwrap();
+        b.set("two", "2").unwrap();
+        a.set("yogurt-cloud", "rotated").unwrap();
+        b.delete("one").unwrap();
+        let c = FileKeyStore::open(&path).unwrap();
+        assert_eq!(c.get("one").unwrap(), None);
+        assert_eq!(c.get("two").unwrap().as_deref(), Some("2"));
+        assert_eq!(c.get("yogurt-cloud").unwrap().as_deref(), Some("rotated"));
+        assert_eq!(a.get("two").unwrap().as_deref(), Some("2"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_in_memory_map_alone() {
+        let dir = std::env::temp_dir().join(format!("yogurt-keys-ro-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = FileKeyStore::open(dir.join("missing-dir").join("keys.json")).unwrap();
+        assert!(store.set("k", "v").is_err());
+        assert_eq!(store.get("k").unwrap(), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -2,12 +2,13 @@ import { Link } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import type { ProviderView } from "../../lib/api/settings";
 import { Pill } from "../Pill";
+import { useCloudStatus } from "../../lib/api/cloud";
 
 // The 212px width matches the Library sidebar, but the components are deliberately
 // not shared because the section lists differ.
 // The `→` in the caption is U+2192, never ASCII `->`.
 
-export type SettingsSection = "model" | "transcription" | "audio" | "general";
+export type SettingsSection = "model" | "transcription" | "audio" | "general" | "cloud";
 
 interface Props {
   active: SettingsSection;
@@ -20,6 +21,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "transcription", label: "Transcription" },
   { id: "audio", label: "Audio" },
   { id: "general", label: "General" },
+  { id: "cloud", label: "Cloud sync" },
 ];
 
 export function SidebarNav({ active, onChange, providers }: Props) {
@@ -27,6 +29,10 @@ export function SidebarNav({ active, onChange, providers }: Props) {
   const localOnly = !providers.some(
     (p) => p.is_active && !/localhost|127\.0\.0\.1/.test(p.base_url),
   );
+
+  const cloud = useCloudStatus().data;
+  const cloudNew = cloud?.connected === false;
+  const cloudOn = cloud?.connected === true;
 
   return (
     <nav
@@ -59,15 +65,30 @@ export function SidebarNav({ active, onChange, providers }: Props) {
               }`}
             >
               {s.label}
+              {s.id === "cloud" && cloudNew && (
+                <Pill
+                  tone="blue"
+                  className={`ml-2 font-bold! ${active === s.id ? "bg-card!" : ""}`}
+                >
+                  new
+                </Pill>
+              )}
             </button>
           </li>
         ))}
       </ul>
       <footer className="p-4 border-t border-line space-y-2">
-        {localOnly ? (
+        {cloudOn ? (
+          <span data-testid="cloud-sync-pill" className="inline-block">
+            <Pill tone="matcha" className="text-ink!">
+              <span className="w-1.5 h-1.5 rounded-pill bg-matcha" />
+              Cloud sync · on
+            </Pill>
+          </span>
+        ) : localOnly ? (
           <span data-testid="local-only-pill" className="inline-block">
-            <Pill tone="matcha" className="text-white bg-matcha">
-              <span className="w-1.5 h-1.5 rounded-pill bg-white" />
+            <Pill tone="matcha" className="text-ink!">
+              <span className="w-1.5 h-1.5 rounded-pill bg-matcha" />
               Local-only · on
             </Pill>
           </span>

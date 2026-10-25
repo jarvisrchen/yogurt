@@ -28,6 +28,7 @@ yogurt-llm = { path = "../yogurt-llm" }
 # `MockLlm::stream` returns a `BoxStream`, so this is a main dependency.
 futures-util = { workspace = true }
 yogurt-db = { path = "../yogurt-db" }
+yogurt-cloud = { path = "../yogurt-cloud" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }

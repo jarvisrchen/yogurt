@@ -29,6 +29,8 @@ pub enum CtlError {
     /// The server answered with a non-2xx status; `message` is its
     /// `{"error": "..."}` body (or the raw text if it wasn't JSON).
     Server(String),
+    /// Like `Server`, for an answer that carries a stable `code` next to its message. A caller branches on the code and never on the English text.
+    Coded { code: String, message: String },
     /// Anything else: a bad local path, a malformed response, a dropped connection.
     Local { message: String, help: String },
 }
@@ -70,7 +72,9 @@ impl CtlError {
                     "pass --port <port>".to_string(),
                 )
             }
-            CtlError::Server(message) => (message.clone(), "check `yogurt ctl status`".to_string()),
+            CtlError::Server(message) | CtlError::Coded { message, .. } => {
+                (message.clone(), "check `yogurt ctl status`".to_string())
+            }
             CtlError::Local { message, help } => (message.clone(), help.clone()),
         }
     }
@@ -356,8 +360,21 @@ impl Client {
                 )
             })
         } else {
-            Err(CtlError::Server(server_error_message(resp).await))
+            Err(server_error(resp).await)
         }
+    }
+}
+
+async fn server_error(resp: reqwest::Response) -> CtlError {
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    let message = error_message_from(status, &body);
+    let code = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|j| j.get("code")?.as_str().map(str::to_string));
+    match code {
+        Some(code) => CtlError::Coded { code, message },
+        None => CtlError::Server(message),
     }
 }
 
