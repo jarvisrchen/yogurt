@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod cloud;
 pub mod labels;
 pub mod library_chat;
 pub mod meetings;

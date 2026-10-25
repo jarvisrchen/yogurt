@@ -201,7 +201,8 @@ A fresh worktree contains only tracked files, and everything needed to *run* is 
 They do share `~/.yogurt/`, so both see the same meetings and the same keys, and only one of them should be recording at a time.
 Pin the pair yourself with `YOGURT_VITE_PORT` and `YOGURT_BACKEND_PORT`, or force the old behaviour with `YOGURT_PORT_POLICY=ask`.
 If the branch carries a database migration or touches Yogurt Cloud, set `YOGURT_DATA_DIR=~/.yogurt-<slug>` before `just dev` so this worktree gets its own `db.sqlite` and `keys.json` instead of changing the shared ones out from under the main binary.
-The override starts with no keys beyond what `.env.local` seeds, so copy `~/.yogurt/keys.json` beside the database if the instance needs your configured providers.
+The override starts with no keys beyond what `.env.local` seeds, so copy `~/.yogurt/keys.json` beside the database if the instance needs your configured providers, then delete the `yogurt-cloud` entry from the copy.
+That entry is the Yogurt Cloud connection, and a copy that keeps it would push as the same device as your real install.
 Models, notes, and the session token stay in `~/.yogurt` either way.
 
 Hand over the manual test with an absolute path, not a relative one.

@@ -283,6 +283,9 @@ async fn no_subcommand_reveals_or_sets_a_key_or_token() {
         vec!["ctl", "models", "list", "--help"],
         vec!["ctl", "models", "download", "--help"],
         vec!["ctl", "models", "delete", "--help"],
+        vec!["ctl", "cloud", "--help"],
+        vec!["ctl", "cloud", "status", "--help"],
+        vec!["ctl", "cloud", "push", "--help"],
         vec!["ctl", "ws", "--help"],
     ] {
         let mut cmd = Command::cargo_bin("yogurt").expect("binary exists");

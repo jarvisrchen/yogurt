@@ -26,7 +26,7 @@ pub async fn run(args: StartArgs) -> Result<()> {
         cfg.keys_path = Some(crate::data_dir::keys_path(&dir));
         if let Some((own, default)) = crate::data_dir::keys_not_copied(&dir) {
             tracing::warn!(
-                "no API keys at {}, and this data dir does not read {}. Copy that file here if this instance should use the same keys.",
+                "no API keys at {}, and this data dir does not read {}. Copy that file here if this instance should use the same keys, and delete its `yogurt-cloud` entry so this instance does not push as the same device.",
                 own.display(),
                 default.display()
             );

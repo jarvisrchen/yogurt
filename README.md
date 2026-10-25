@@ -326,9 +326,13 @@ sequence diagrams, and trust boundaries.
 ## Privacy posture
 
 - Audio never leaves your machine unless you opt into a cloud STT provider,
-  and even then only the audio stream goes out, never the notes.
+  and even then only the audio stream goes out.
+- Notes and transcripts leave only to the LLM provider you configure and to a Yogurt Cloud you connect.
+  A Yogurt Cloud is a webapp on your own Vercel account backed by your own Supabase project, so yogurt hosts nothing.
+  Nothing is pushed until you press Push meetings, and the meetings sit readable in your Supabase, behind your Cloud login and a passcode you set in the webapp.
+  The setup guide is [docs/CLOUD-SYNC.md](docs/CLOUD-SYNC.md).
 - No telemetry, no phone-home, not even opt-in crash reporting.
-- API keys live in `~/.yogurt/keys.json` (mode 0600), never in the database or in any response body.
+- API keys and the Yogurt Cloud connection live in `~/.yogurt/keys.json` (mode 0600), never in the database or in any response body.
 - Audio is deleted from disk after transcription.
 - All data lives locally at `~/.yogurt/`.
 

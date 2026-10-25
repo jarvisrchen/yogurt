@@ -3994,6 +3994,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -4075,6 +4076,7 @@ dependencies = [
  "uuid",
  "wiremock",
  "yogurt-audio",
+ "yogurt-cloud",
  "yogurt-db",
  "yogurt-llm",
  "yogurt-notes",

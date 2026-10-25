@@ -187,6 +187,11 @@ test-cloud:
     YOGURT_CLOUD_TEST_URL="$API_URL" YOGURT_CLOUD_TEST_PUBLISHABLE_KEY="$PUBLISHABLE_KEY" YOGURT_CLOUD_TEST_SECRET_KEY="$SECRET_KEY" \
         cargo test -p yogurt-cloud -- --ignored --test-threads=1
 
+# Drives the real yogurt binary through Yogurt Cloud connect, push, edit, delete, a second laptop, and disconnect against the local Supabase stack (see test-cloud for the stack). Builds target/debug/yogurt first. Needs Docker, the supabase CLI, curl, jq, and python3. Leaves the stack running: stop it with `supabase stop --workdir crates/yogurt-cloud`.
+test-cloud-e2e:
+    cargo build -p yogurt
+    ./scripts/test-cloud-e2e.sh
+
 # Hardware smoke tests - opens a real SCK + mic capture pipeline, needs Screen Recording (+ Microphone) grants. NEVER runs under `just test` or CI: every test here is `#[ignore]`d and re-checks $YOGURT_HW_TESTS itself, so this recipe is the only sanctioned way to run them. Skips (does not fail) the whisper smoke test if ~/.yogurt/models/ggml-small.en.bin isn't downloaded. A fresh worktree's `target/debug/yogurt` is a new TCC identity, so the first run here may need a one-time Screen Recording/Microphone grant in System Settings; the start/stop test bounds itself to 45s and names this if it times out.
 test-hw:
     #!/usr/bin/env bash

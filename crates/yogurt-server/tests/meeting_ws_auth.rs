@@ -55,6 +55,7 @@ async fn spawn() -> TestSetup {
         label_repo,
         app_events_tx: tokio::sync::broadcast::channel(64).0,
         detect: Default::default(),
+        cloud_lock: Default::default(),
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

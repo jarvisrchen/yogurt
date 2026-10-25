@@ -12,8 +12,9 @@ import { AddProviderForm } from "../components/settings/AddProviderForm";
 import { STTPicker } from "../components/settings/STTPicker";
 import { AudioSection } from "../components/settings/AudioSection";
 import { GeneralSection } from "../components/settings/GeneralSection";
+import { CloudSection } from "../components/settings/cloud/CloudSection";
 
-const VALID_SECTIONS = ["model", "transcription", "audio", "general"] as const;
+const VALID_SECTIONS = ["model", "transcription", "audio", "general", "cloud"] as const;
 
 function isValidSection(s: unknown): s is SettingsSection {
   return typeof s === "string" && (VALID_SECTIONS as readonly string[]).includes(s);
@@ -25,7 +26,7 @@ function isValidSection(s: unknown): s is SettingsSection {
  * a later re-render doesn't re-trigger the auto-open.
  */
 export function Settings() {
-  const params = useParams<{ section: string }>();
+  const params = useParams<{ section: string; view?: string }>();
   const navigate = useNavigate();
   const section: SettingsSection = isValidSection(params.section)
     ? params.section
@@ -185,6 +186,8 @@ export function Settings() {
         {section === "audio" && <AudioSection general={data.general} />}
 
         {section === "general" && <GeneralSection general={data.general} />}
+
+        {section === "cloud" && <CloudSection view={params.view} />}
       </main>
     </div>
   );

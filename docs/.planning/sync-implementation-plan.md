@@ -124,7 +124,9 @@ Verify first, on a throwaway Vercel project:
 
 - Connect reads `yogurt_status` and refuses a login that is not the owner or an owner with no passcode yet, with "Choose a passcode in the webapp first".
 - `GET /api/cloud`, `POST /api/cloud/connect`, `POST /api/cloud/push`, `POST /api/cloud/disconnect` (with `mark_deleted`).
-- One `keys.json` account, `yogurt-cloud`, holding the address, URL, publishable key, refresh token, device id, and machine name, so the connection is atomic.
+- One `keys.json` account, `yogurt-cloud`, holding the address, login email, URL, publishable key, refresh token, device id, and machine name, so the connection is atomic.
+- Two routes beyond the four above: `POST /api/cloud/check`, which backs the connect form's "Found a Yogurt Cloud" hint, and `POST /api/cloud/sign-in`, which renews a dead session from the stored email and a typed password.
+- Every error carries a stable `code` (`bad_address`, `bad_config`, `bad_credentials`, `not_owner`, `passcode_not_set`, `session_expired`, `device_removed`, `network`, `cloud_error`, `not_connected`, `already_connected`, `bad_request`, `local_error`, `internal`) next to its message.
 - A `keys.json` copied into a scratch data dir carries the `yogurt-cloud` account and would push as the same device, so the `CONTRIBUTING.md` copy advice must say to delete the `yogurt-cloud` entry from the copy once this stores it.
 - An expired or revoked session returns a typed error the UI shows as "Sign in again", with the password field inline. A non-owner login returns its own error, "This login does not own that Yogurt Cloud".
 
@@ -140,7 +142,7 @@ Docs in the same PR: `AGENTS.md` (the constraint wording from the design doc), `
 
 Tests:
 
-- `just test-cloud` drives the real binary through connect, push, an edit, a delete, a second push, and disconnect against the local Supabase, with a stub `config.json` server on loopback, and checks the rows as the test superuser.
+- `just test-cloud-e2e` (`scripts/test-cloud-e2e.sh`) drives the real binary through connect, push, an edit, a delete, a second push, a second laptop, a revoked session, a removed device, and disconnect against the local Supabase, with a stub `config.json` server on loopback, and checks the rows as the test superuser.
 - Two instances on one Mac: a second `just dev-bg` with its own `YOGURT_DATA_DIR` plays Laptop 2.
 - Development runs against a scratch `YOGURT_DATA_DIR`, because the shared `~/.yogurt` database would break other builds once V014 runs against it.
 

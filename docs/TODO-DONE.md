@@ -1251,3 +1251,7 @@ New closed items go at the bottom.
 - [x] **SYNC-2** Rework `yogurt-cloud` for the plaintext design: drop the crypto and link code, rewrite `schema.sql` with the owner, passcode, and read RPCs, and land the REST client and local test stack
 
   Removed the SYNC-1 crypto and link code, rewrote `schema.sql` for the owner, the PIN gate, and the read RPCs with helpers in `yogurt_private`, and landed the REST client, `keys.json` following the data dir, and the local Supabase test stack.
+
+- [x] **SYNC-4** Connect a laptop with the Cloud address and push versioned meetings with a manual button, plus the QR code for the phone
+
+  Laptops connect to a Yogurt Cloud with its address, the Cloud login, and a machine name, and push meetings by hand from Settings or `yogurt ctl cloud push`, with Disconnect, the not-pushed pill, and the draft `docs/CLOUD-SYNC.md`.

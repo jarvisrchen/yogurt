@@ -42,6 +42,8 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../migrations/V013__meetings_fts_enriched.sql"
         )),
+        // `meetings.cloud_hash`, the bundle hash last pushed to Yogurt Cloud.
+        M::up(include_str!("../migrations/V014__meetings_cloud_hash.sql")),
     ])
 }
 

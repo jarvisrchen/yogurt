@@ -28,6 +28,7 @@
     "lucide-react": "^1.34.0",
     "markdown-it": "^14.2.0",
     "prosemirror-markdown": "^1.13.4",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^7"
@@ -39,6 +40,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.1.0",
     "@types/markdown-it": "^14.1.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",

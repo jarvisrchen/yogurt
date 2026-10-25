@@ -38,6 +38,9 @@ pub struct AppState {
     pub app_events_tx: crate::ws::AppEventTx,
     /// Written by the `crate::detect` watcher, read by `GET /api/meetings/detected`.
     pub detect: crate::detect::SharedDetectState,
+    /// Serializes everything that uses the Yogurt Cloud refresh token: connect, push, disconnect.
+    /// Supabase rotates the token on every use, so two overlapping refreshes would kill the connection.
+    pub cloud_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -144,6 +147,7 @@ impl AppState {
             label_repo,
             app_events_tx,
             detect: Default::default(),
+            cloud_lock: Default::default(),
         })
     }
 
@@ -181,6 +185,7 @@ impl AppState {
             label_repo,
             app_events_tx,
             detect: Default::default(),
+            cloud_lock: Default::default(),
         })
     }
 }
