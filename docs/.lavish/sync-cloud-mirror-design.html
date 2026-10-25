@@ -514,7 +514,7 @@ sequenceDiagram
     end
   end
 </pre>
-    <figcaption>Hashing the JSON catches label and chat edits that don't touch <code>updated_at</code>. <code>yogurt_device_meetings</code> returns only the ids of that device's live meetings, so a laptop can plan a push without read access to content. A pass that changes nothing writes nothing. If a batch fails, its meetings keep their old <code>cloud_hash</code> and the next pass sends them again. The Push meetings button runs one pass, and SYNC-6 adds an interval timer that runs the same pass.</figcaption>
+    <figcaption>Hashing the JSON catches label and chat edits that don't touch <code>updated_at</code>. <code>yogurt_device_meetings</code> returns only the ids of that device's live meetings, so a laptop can plan a push without read access to content. A pass that changes nothing writes nothing. If a batch fails, its meetings keep their old <code>cloud_hash</code> and the next pass sends them again. The Push meetings button runs one pass. An Auto-push setting (off, 15m, 1h, 1d) runs the same pass from a timer that wakes every minute while Yogurt is running. It starts Off on every new connection. It pushes when the interval has passed since the last successful push, retries a failure after 5 minutes, and stops after <code>session_expired</code>, <code>device_removed</code>, <code>not_owner</code>, or <code>passcode_not_set</code> until a sign-in, a connect, or a manual push clears the error. Every pass holds a lock file beside <code>keys.json</code>, so two yogurt processes on one data dir never rotate the same refresh token at once.</figcaption>
   </figure>
 </section>
 

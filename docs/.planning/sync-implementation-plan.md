@@ -155,9 +155,17 @@ Tests:
 
 ## SYNC-6: auto-push
 
-- A setting `cloud_push_interval` (`off`, `15m`, `1h`, `1d`) in the existing settings store, with a segmented control on the Connected page.
+- A setting (`off`, `15m`, `1h`, `1d`) in the existing settings store under the key `cloud.push_interval`, beside the other `cloud.*` keys.
+  `GET /api/cloud` returns it as `push_interval`, and `POST /api/cloud/push-interval` with `{"interval": ...}` sets it and returns the status.
+  The Connected page shows a segmented control in an Auto-push card, which no mock draws, so it copies the Appearance control and the mock's card styling.
+  Disconnecting resets it to `off`.
 - A task spawned beside `detect::spawn` in `yogurt-server/src/lib.rs`, copying its `tokio::time::interval` pattern and re-reading the setting each tick.
-- The manual button and the timer share one mutex, so two passes never overlap. A failed pass shows on the Connected page and retries at the next tick.
+- The manual button and the timer share one mutex, so two passes never overlap. A failed pass shows on the Connected page and retries 5 minutes later.
+  Failures only the user can fix (`session_expired`, `device_removed`, `not_owner`, `passcode_not_set`) stop attempts until a sign-in, connect, or manual push clears the error.
+  A wake with nothing pending only stamps the last push and makes no network call.
+  Every cloud operation also holds a lock file beside `keys.json`, so two processes never rotate one refresh token at once, and the timer starts only after the listener binds.
+  A new connection resets the interval to `off`, and the interval cannot be set while disconnected (409 `not_connected`).
+  The task wakes every 60 seconds, and a pass is due when the interval has passed since the last successful push or nothing was ever pushed.
 - Tests: a paused-time tokio test for the scheduling, and a 15-minute soak on the two local instances.
 
 ## SYNC-7: the setup guide

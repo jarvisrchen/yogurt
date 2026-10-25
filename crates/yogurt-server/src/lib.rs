@@ -155,9 +155,10 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     // Reads its enable flag every tick, so toggling takes effect immediately.
     detect::spawn(state.clone());
 
-    let app = routes::router(state);
+    let app = routes::router(state.clone());
     tracing::info!(addr = ?cfg.addr, mode = ?cfg.mode, "yogurt-server starting");
     let listener = TcpListener::bind(cfg.addr).await?;
+    api::cloud::spawn_auto_push(state.clone());
     axum::serve(listener, app).await?;
     Ok(())
 }

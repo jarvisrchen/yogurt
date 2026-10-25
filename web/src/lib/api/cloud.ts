@@ -16,6 +16,8 @@ export interface LastError {
   code: string;
 }
 
+export type PushInterval = "off" | "15m" | "1h" | "1d";
+
 export type CloudStatus =
   | { connected: false }
   | {
@@ -28,6 +30,7 @@ export type CloudStatus =
       not_pushed: number;
       last_push: LastPush | null;
       last_error: LastError | null;
+      push_interval: PushInterval;
     };
 
 export type CloudConnected = Extract<CloudStatus, { connected: true }>;
@@ -79,6 +82,7 @@ export const cloudApi = {
   connect: (req: ConnectRequest) => post<CloudStatus>("/api/cloud/connect", req),
   signIn: (password: string) => post<CloudStatus>("/api/cloud/sign-in", { password }),
   push: () => post<{ at: number; changed: number; deleted: number }>("/api/cloud/push", {}),
+  setPushInterval: (interval: PushInterval) => post<CloudStatus>("/api/cloud/push-interval", { interval }),
   disconnect: (markDeleted: boolean) => post<CloudStatus>("/api/cloud/disconnect", { mark_deleted: markDeleted }),
 };
 

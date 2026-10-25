@@ -200,7 +200,13 @@ It first offers one last push that marks every meeting from this device deleted,
 
 ## Flow 4: pushing
 
-The Push meetings button in Settings runs one pass. SYNC-6 adds an interval timer that runs the same pass.
+The Push meetings button in Settings runs one pass.
+An Auto-push setting (off, 15m, 1h, 1d) runs the same pass from a timer that wakes every minute while Yogurt is running.
+It starts Off on every new connection.
+It pushes when the interval has passed since the last successful push, and a wake with nothing pending only stamps the time without touching the network.
+It retries a failure after 5 minutes.
+It stops after `session_expired`, `device_removed`, `not_owner`, or `passcode_not_set` until a sign-in, a connect, or a manual push clears the error.
+Every pass holds a lock file beside `keys.json`, so two yogurt processes on one data dir never rotate the same refresh token at once.
 
 ```mermaid
 sequenceDiagram

@@ -2,7 +2,8 @@
 //! The whole connection is one `keys.json` account, so connect and disconnect are atomic.
 //! Nothing here returns, logs, or stores a secret outside that file. The password is used once to sign in and dropped.
 //!
-//! Every operation that touches the refresh token runs in a spawned task and holds `AppState::cloud_lock` to the end.
+//! Every operation that touches the refresh token runs in a spawned task and holds [`Held`] to the end: `AppState::cloud_lock` in this process and a lock file beside `keys.json` across processes.
+//! Another yogurt on the same data dir may have rotated the refresh token, so each operation reads the connection fresh from disk.
 //! hyper drops a handler future when the client disconnects, and a dropped future would lose a rotated refresh token that was not saved yet.
 
 use axum::{
@@ -16,9 +17,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::future::Future;
+use std::time::Duration;
 use tokio::sync::MutexGuard;
 use yogurt_cloud::push::{self, LocalMeeting, Plan};
 use yogurt_cloud::{config, Error as CloudError, Project, Session};
+use yogurt_db::keys::ProcessLock;
 use yogurt_db::MeetingRepo;
 
 use crate::AppState;
@@ -27,6 +30,19 @@ const ACCOUNT: &str = "yogurt-cloud";
 /// The last pass that succeeded, kept apart from the last failure so a failed pass never hides when the cloud was last in step.
 const LAST_PUSH_KEY: &str = "cloud.last_push";
 const LAST_ERROR_KEY: &str = "cloud.last_error";
+const INTERVAL_KEY: &str = "cloud.push_interval";
+const INTERVALS: [(&str, i64); 3] = [("15m", 15 * 60_000), ("1h", 3_600_000), ("1d", 86_400_000)];
+/// Failures only the user can fix. The timer stays quiet until a sign-in, a connect, or a manual push clears the error.
+const USER_FIXABLE: [&str; 4] = [
+    "session_expired",
+    "device_removed",
+    "not_owner",
+    "passcode_not_set",
+];
+/// How often the auto-push task wakes to compare the clock with the setting.
+const CHECK_EVERY: Duration = Duration::from_secs(60);
+/// After a failed pass the next automatic attempt waits this long, so an outage or a dead cloud is not hammered every wake.
+const RETRY_AFTER_FAILURE_MS: i64 = 5 * 60_000;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -35,6 +51,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/cloud/connect", post(connect))
         .route("/api/cloud/sign-in", post(sign_in))
         .route("/api/cloud/push", post(push_now))
+        .route("/api/cloud/push-interval", post(set_push_interval))
         .route("/api/cloud/disconnect", post(disconnect))
 }
 
@@ -93,7 +110,7 @@ fn message_for(code: &str, fallback: &str) -> String {
         "session_expired" => "Your Cloud session expired. Sign in again.",
         "bad_credentials" => "Wrong email or password.",
         "not_owner" => "This login does not own that Yogurt Cloud",
-        "passcode_not_set" => "Choose a passcode in the webapp first",
+        "passcode_not_set" => "Choose a PIN in the webapp first",
         "not_connected" => "This Mac is not connected to a Yogurt Cloud.",
         "already_connected" => "This Mac is already connected. Disconnect first.",
         "device_removed" => {
@@ -142,7 +159,10 @@ fn now_ms() -> i64 {
 }
 
 fn load(state: &AppState) -> ApiResult<Option<Connection>> {
-    let raw = state.keys.get(ACCOUNT).map_err(CloudApiError::internal)?;
+    let raw = state
+        .keys
+        .get_fresh(ACCOUNT)
+        .map_err(CloudApiError::internal)?;
     raw.map(|s| serde_json::from_str(&s))
         .transpose()
         .map_err(|_| {
@@ -160,6 +180,22 @@ fn save(state: &AppState, conn: &Connection) -> ApiResult<()> {
         .map_err(CloudApiError::internal)
 }
 
+/// The in-process mutex and the cross-process file lock, released together.
+struct Held<'a> {
+    _mutex: MutexGuard<'a, ()>,
+    _file: ProcessLock,
+}
+
+async fn acquire(state: &AppState) -> ApiResult<Held<'_>> {
+    let mutex = state.cloud_lock.lock().await;
+    let keys = state.keys.clone();
+    let file = blocking(move || keys.lock_exclusive()).await?;
+    Ok(Held {
+        _mutex: mutex,
+        _file: file,
+    })
+}
+
 struct Link {
     conn: Connection,
     project: Project,
@@ -167,8 +203,8 @@ struct Link {
 }
 
 /// Refreshes the session and persists the rotated refresh token before anything else uses it.
-/// The guard parameter makes holding `AppState::cloud_lock` a compile-time requirement.
-async fn link(state: &AppState, _held: &MutexGuard<'_, ()>) -> ApiResult<Link> {
+/// The guard parameter makes holding both locks a compile-time requirement.
+async fn link(state: &AppState, _held: &Held<'_>) -> ApiResult<Link> {
     let mut conn = load(state)?.ok_or_else(|| CloudApiError::coded("not_connected"))?;
     let project = Project::new(&conn.supabase_url, &conn.publishable_key);
     let session = project.refresh(&conn.refresh_token).await?;
@@ -223,19 +259,71 @@ fn record(state: &AppState, key: &str, value: &Value) {
     }
 }
 
-fn record_failure(state: &AppState, e: &CloudApiError) {
+/// A new connection starts with nothing leaving this Mac until the user picks an interval again.
+fn reset_interval(state: &AppState) {
+    if let Err(e) = yogurt_db::settings::set(&state.db, INTERVAL_KEY, "off") {
+        tracing::warn!(error = %e, "could not reset the auto-push interval");
+    }
+}
+
+fn record_failure(state: &AppState, e: &CloudApiError, now: i64) {
     record(
         state,
         LAST_ERROR_KEY,
-        &json!({ "at": now_ms(), "error": e.message, "code": e.code }),
+        &json!({ "at": now, "error": e.message, "code": e.code }),
     );
 }
 
-async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    let Some(conn) = load(&state)? else {
-        return Ok(Json(json!({ "connected": false })));
-    };
-    let recording = recording_id(&state).await;
+fn interval_ms(name: &str) -> Option<i64> {
+    INTERVALS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, ms)| *ms)
+}
+
+/// `off`, `15m`, `1h`, or `1d`. Anything else stored reads as `off`.
+fn push_interval(state: &AppState) -> &'static str {
+    let stored = yogurt_db::settings::get(&state.db, INTERVAL_KEY)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    INTERVALS
+        .iter()
+        .find(|(n, _)| *n == stored)
+        .map_or("off", |(n, _)| n)
+}
+
+#[derive(Deserialize)]
+struct IntervalBody {
+    interval: String,
+}
+
+async fn set_push_interval(
+    State(state): State<AppState>,
+    Json(body): Json<IntervalBody>,
+) -> ApiResult<Json<Value>> {
+    if body.interval != "off" && interval_ms(&body.interval).is_none() {
+        return Err(CloudApiError::new(
+            "bad_request",
+            "Auto-push interval must be off, 15m, 1h, or 1d.",
+        ));
+    }
+    if load(&state)?.is_none() {
+        return Err(CloudApiError::coded("not_connected"));
+    }
+    yogurt_db::settings::set(&state.db, INTERVAL_KEY, &body.interval)
+        .map_err(CloudApiError::internal)?;
+    status(State(state)).await
+}
+
+struct Pending {
+    meetings: usize,
+    not_pushed: usize,
+}
+
+/// The meeting being recorded does not count, and a local deletion not yet sent does.
+async fn pending(state: &AppState) -> ApiResult<Pending> {
+    let recording = recording_id(state).await;
     let repo = state.meeting_repo.clone();
     let (local, tombstones) =
         blocking(move || Ok((local_meetings(&repo)?, repo.cloud_tombstones()?.len()))).await?;
@@ -244,15 +332,27 @@ async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
         .filter(|m| Some(m.id.as_str()) != recording.as_deref())
         .filter(|m| m.cloud_hash.as_deref() != Some(&m.hash))
         .count();
+    Ok(Pending {
+        meetings: local.len(),
+        not_pushed: changed + tombstones,
+    })
+}
+
+async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let Some(conn) = load(&state)? else {
+        return Ok(Json(json!({ "connected": false })));
+    };
+    let pending = pending(&state).await?;
     Ok(Json(json!({
         "connected": true,
         "address": conn.address,
         "email": conn.email,
         "machine_name": conn.machine_name,
-        "meetings": local.len(),
-        "not_pushed": changed + tombstones,
+        "meetings": pending.meetings,
+        "not_pushed": pending.not_pushed,
         "last_push": recorded(&state, LAST_PUSH_KEY),
         "last_error": recorded(&state, LAST_ERROR_KEY),
+        "push_interval": push_interval(&state),
     })))
 }
 
@@ -276,7 +376,7 @@ struct ConnectBody {
     machine_name: String,
 }
 
-/// Fails unless the login owns the cloud and the owner has chosen a passcode.
+/// Fails unless the login owns the cloud and the owner has chosen a PIN.
 async fn require_ready(project: &Project, session: &Session) -> ApiResult<()> {
     let st = project
         .rpc(session, "yogurt_status", &json!({}))
@@ -310,7 +410,7 @@ async fn connect(
         ));
     }
     detached(async move {
-        let _held = state.cloud_lock.lock().await;
+        let _held = acquire(&state).await?;
         if load(&state).is_ok_and(|c| c.is_some()) {
             return Err(CloudApiError::coded("already_connected"));
         }
@@ -345,6 +445,7 @@ async fn connect(
         blocking(move || repo.clear_cloud_hashes()).await?;
         record(&state, LAST_PUSH_KEY, &Value::Null);
         record(&state, LAST_ERROR_KEY, &Value::Null);
+        reset_interval(&state);
         status(State(state.clone())).await
     })
     .await
@@ -361,14 +462,17 @@ async fn sign_in(
     Json(body): Json<SignInBody>,
 ) -> ApiResult<Json<Value>> {
     detached(async move {
-        let _held = state.cloud_lock.lock().await;
+        let _held = acquire(&state).await?;
         let mut conn = load(&state)?.ok_or_else(|| CloudApiError::coded("not_connected"))?;
         let project = Project::new(&conn.supabase_url, &conn.publishable_key);
         let session = project.sign_in(&conn.email, &body.password).await?;
         require_ready(&project, &session).await?;
         conn.refresh_token = session.refresh_token;
         save(&state, &conn)?;
-        if recorded(&state, LAST_ERROR_KEY)["code"] == "session_expired" {
+        if USER_FIXABLE
+            .iter()
+            .any(|c| recorded(&state, LAST_ERROR_KEY)["code"] == *c)
+        {
             record(&state, LAST_ERROR_KEY, &Value::Null);
         }
         status(State(state.clone())).await
@@ -413,32 +517,107 @@ async fn run_pass(
     Ok(plan)
 }
 
+/// The shared pass behind the Push button and the timer. `now` stamps the success or failure record.
+async fn push_locked(state: &AppState, held: &Held<'_>, now: i64) -> ApiResult<Value> {
+    let pass = async {
+        let recording = recording_id(state).await;
+        let repo = state.meeting_repo.clone();
+        let local = blocking(move || local_meetings(&repo)).await?;
+        let mut link = link(state, held).await?;
+        run_pass(state, &mut link, local, recording).await
+    };
+    match pass.await {
+        Ok(plan) => {
+            let v =
+                json!({ "at": now, "changed": plan.changed.len(), "deleted": plan.deleted.len() });
+            record(state, LAST_PUSH_KEY, &v);
+            record(state, LAST_ERROR_KEY, &Value::Null);
+            Ok(v)
+        }
+        Err(e) => {
+            if e.code != "not_connected" {
+                record_failure(state, &e, now);
+            }
+            Err(e)
+        }
+    }
+}
+
 async fn push_now(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     detached(async move {
-        let held = state.cloud_lock.lock().await;
-        let pass = async {
-            let recording = recording_id(&state).await;
-            let repo = state.meeting_repo.clone();
-            let local = blocking(move || local_meetings(&repo)).await?;
-            let mut link = link(&state, &held).await?;
-            run_pass(&state, &mut link, local, recording).await
-        };
-        match pass.await {
-            Ok(plan) => {
-                let v = json!({ "at": now_ms(), "changed": plan.changed.len(), "deleted": plan.deleted.len() });
-                record(&state, LAST_PUSH_KEY, &v);
-                record(&state, LAST_ERROR_KEY, &Value::Null);
-                Ok(Json(v))
-            }
-            Err(e) => {
-                if e.code != "not_connected" {
-                    record_failure(&state, &e);
-                }
-                Err(e)
-            }
-        }
+        let held = acquire(&state).await?;
+        push_locked(&state, &held, now_ms()).await.map(Json)
     })
     .await
+}
+
+/// Whether the timer should push now.
+fn due(
+    interval_ms: i64,
+    last_push: Option<i64>,
+    last_error: Option<(i64, &str)>,
+    now: i64,
+) -> bool {
+    match last_error {
+        Some((_, code)) if USER_FIXABLE.contains(&code) => return false,
+        Some((at, _)) if now - at < RETRY_AFTER_FAILURE_MS => return false,
+        _ => {}
+    }
+    last_push.is_none_or(|at| now - at >= interval_ms)
+}
+
+/// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
+/// With nothing pending it only stamps the last push, so an idle laptop never touches the network or rewrites `keys.json`.
+async fn auto_tick(state: &AppState, now: i64) {
+    let Some(interval_ms) = interval_ms(push_interval(state)) else {
+        return;
+    };
+    let state = state.clone();
+    let result = detached(async move {
+        let held = acquire(&state).await?;
+        if load(&state)?.is_none() {
+            return Ok(());
+        }
+        let last_push = recorded(&state, LAST_PUSH_KEY)["at"].as_i64();
+        let err = recorded(&state, LAST_ERROR_KEY);
+        let last_error = err["at"]
+            .as_i64()
+            .map(|at| (at, err["code"].as_str().unwrap_or("")));
+        if !due(interval_ms, last_push, last_error, now) {
+            return Ok(());
+        }
+        if pending(&state).await?.not_pushed == 0 {
+            record(
+                &state,
+                LAST_PUSH_KEY,
+                &json!({ "at": now, "changed": 0, "deleted": 0 }),
+            );
+            record(&state, LAST_ERROR_KEY, &Value::Null);
+            return Ok(());
+        }
+        let v = push_locked(&state, &held, now).await?;
+        tracing::info!(changed = %v["changed"], deleted = %v["deleted"], "auto-push finished");
+        Ok(())
+    })
+    .await;
+    if let Err(e) = result {
+        tracing::warn!(code = e.code, "auto-push failed");
+    }
+}
+
+/// `clock` returns wall-clock milliseconds, and only tests substitute it.
+async fn drive(state: AppState, period: Duration, clock: impl Fn() -> i64) {
+    let mut ticker = tokio::time::interval(period);
+    // A missed tick is worthless, so delay rather than burst.
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        auto_tick(&state, clock()).await;
+    }
+}
+
+pub fn spawn_auto_push(state: AppState) {
+    tokio::spawn(drive(state, CHECK_EVERY, now_ms));
 }
 
 #[derive(Deserialize, Default)]
@@ -456,13 +635,13 @@ async fn disconnect(
 ) -> ApiResult<Json<Value>> {
     let Json(body) = body.unwrap_or_default();
     detached(async move {
-        let held = state.cloud_lock.lock().await;
+        let held = acquire(&state).await?;
         let linked = link(&state, &held).await;
         let mut linked = match linked {
             Ok(l) => Some(l),
             Err(e) if body.mark_deleted => {
                 if e.code != "not_connected" {
-                    record_failure(&state, &e);
+                    record_failure(&state, &e, now_ms());
                 }
                 return Err(e);
             }
@@ -470,7 +649,7 @@ async fn disconnect(
         };
         if let (true, Some(l)) = (body.mark_deleted, linked.as_mut()) {
             if let Err(e) = run_pass(&state, l, Vec::new(), None).await {
-                record_failure(&state, &e);
+                record_failure(&state, &e, now_ms());
                 return Err(e);
             }
         }
@@ -485,7 +664,242 @@ async fn disconnect(
         blocking(move || repo.clear_cloud_hashes()).await?;
         record(&state, LAST_PUSH_KEY, &Value::Null);
         record(&state, LAST_ERROR_KEY, &Value::Null);
+        reset_interval(&state);
         Ok(Json(json!({ "connected": false })))
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    const MIN: i64 = 60_000;
+    const T0: i64 = 1_000_000_000;
+
+    /// Connected to a cloud nobody listens on, so an attempted pass fails fast with a `network` error stamped with its `now`.
+    fn state() -> (AppState, tempfile::TempDir) {
+        let (state, tmp) = idle_state();
+        state
+            .meeting_repo
+            .create(yogurt_db::NewMeeting {
+                title: "unpushed".into(),
+                started_at_unix_ms: None,
+                id: None,
+            })
+            .unwrap();
+        (state, tmp)
+    }
+
+    /// Like [`state`] with no meeting, so nothing is pending.
+    fn idle_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage =
+            Arc::new(crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap());
+        let session =
+            Arc::new(crate::session::load_or_create(&tmp.path().join("session-token")).unwrap());
+        let state = AppState::in_memory(
+            crate::Mode::Release,
+            storage,
+            session,
+            7878,
+            tmp.path().join("notes"),
+        )
+        .unwrap();
+        save(
+            &state,
+            &Connection {
+                address: "http://127.0.0.1:1".into(),
+                email: "o@example.com".into(),
+                supabase_url: "http://127.0.0.1:1".into(),
+                publishable_key: "k".into(),
+                refresh_token: "r".into(),
+                device_id: "d".into(),
+                machine_name: "m".into(),
+            },
+        )
+        .unwrap();
+        record(
+            &state,
+            LAST_PUSH_KEY,
+            &json!({ "at": T0, "changed": 0, "deleted": 0 }),
+        );
+        (state, tmp)
+    }
+
+    fn set_interval(state: &AppState, v: &str) {
+        yogurt_db::settings::set(&state.db, INTERVAL_KEY, v).unwrap();
+    }
+
+    fn attempt_at(state: &AppState) -> Option<i64> {
+        recorded(state, LAST_ERROR_KEY)["at"].as_i64()
+    }
+
+    #[test]
+    fn due_rules() {
+        let i = 15 * MIN;
+        assert!(due(i, None, None, T0));
+        assert!(!due(i, Some(T0), None, T0 + 14 * MIN));
+        assert!(due(i, Some(T0), None, T0 + 15 * MIN));
+        assert!(!due(
+            i,
+            Some(T0),
+            Some((T0 + 15 * MIN, "network")),
+            T0 + 19 * MIN
+        ));
+        assert!(due(
+            i,
+            Some(T0),
+            Some((T0 + 15 * MIN, "network")),
+            T0 + 20 * MIN
+        ));
+        for code in USER_FIXABLE {
+            assert!(!due(i, Some(T0), Some((T0, code)), T0 + 24 * 60 * MIN));
+        }
+    }
+
+    #[tokio::test]
+    async fn interval_is_validated_and_defaults_off() {
+        let (state, _tmp) = state();
+        assert_eq!(push_interval(&state), "off");
+        for ok in ["15m", "1h", "1d", "off"] {
+            let Json(status) = set_push_interval(
+                State(state.clone()),
+                Json(IntervalBody {
+                    interval: ok.into(),
+                }),
+            )
+            .await
+            .unwrap();
+            assert_eq!(push_interval(&state), ok);
+            assert_eq!(status["push_interval"], ok);
+        }
+        let bad = set_push_interval(
+            State(state.clone()),
+            Json(IntervalBody {
+                interval: "5m".into(),
+            }),
+        )
+        .await;
+        assert_eq!(bad.unwrap_err().code, "bad_request");
+        assert_eq!(push_interval(&state), "off");
+    }
+
+    #[tokio::test]
+    async fn auto_tick_follows_the_setting_the_connection_and_the_clock() {
+        let (state, _tmp) = state();
+
+        auto_tick(&state, T0 + 99 * 60 * MIN).await;
+        assert_eq!(attempt_at(&state), None, "off never pushes");
+
+        set_interval(&state, "15m");
+        auto_tick(&state, T0 + 14 * MIN).await;
+        assert_eq!(attempt_at(&state), None, "not yet due");
+        auto_tick(&state, T0 + 15 * MIN).await;
+        assert_eq!(
+            attempt_at(&state),
+            Some(T0 + 15 * MIN),
+            "due after 15 minutes"
+        );
+        assert_eq!(recorded(&state, LAST_ERROR_KEY)["code"], "network");
+
+        auto_tick(&state, T0 + 19 * MIN).await;
+        assert_eq!(
+            attempt_at(&state),
+            Some(T0 + 15 * MIN),
+            "a failure waits out the retry gap"
+        );
+        auto_tick(&state, T0 + 20 * MIN).await;
+        assert_eq!(attempt_at(&state), Some(T0 + 20 * MIN), "then retries");
+
+        record(
+            &state,
+            LAST_ERROR_KEY,
+            &json!({ "at": T0 + 20 * MIN, "error": "x", "code": "session_expired" }),
+        );
+        auto_tick(&state, T0 + 24 * 60 * MIN).await;
+        assert_eq!(
+            attempt_at(&state),
+            Some(T0 + 20 * MIN),
+            "a dead session is not retried"
+        );
+
+        record(&state, LAST_ERROR_KEY, &Value::Null);
+        state.keys.delete(ACCOUNT).unwrap();
+        auto_tick(&state, T0 + 24 * 60 * MIN).await;
+        assert_eq!(attempt_at(&state), None, "not connected, nothing to push");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_timer_wakes_every_period_and_rereads_the_setting() {
+        let (state, _tmp) = state();
+        let start = tokio::time::Instant::now();
+        let clock = move || T0 + start.elapsed().as_millis() as i64;
+        let task = tokio::spawn(drive(state.clone(), Duration::from_secs(60), clock));
+        let settle = || async {
+            for _ in 0..50 {
+                tokio::task::yield_now().await;
+            }
+        };
+
+        settle().await;
+        assert_eq!(
+            attempt_at(&state),
+            None,
+            "the first wake finds the setting off"
+        );
+
+        set_interval(&state, "1h");
+        tokio::time::advance(Duration::from_secs(30 * 60)).await;
+        settle().await;
+        assert_eq!(attempt_at(&state), None, "30 minutes into a 1h interval");
+
+        tokio::time::advance(Duration::from_secs(30 * 60)).await;
+        let mut at = None;
+        for _ in 0..200 {
+            settle().await;
+            at = attempt_at(&state);
+            if at.is_some() {
+                break;
+            }
+            tokio::task::spawn_blocking(|| std::thread::sleep(Duration::from_millis(5)))
+                .await
+                .unwrap();
+        }
+        let at = at.expect("an attempt after the hour");
+        assert!(
+            (T0 + 60 * MIN..T0 + 62 * MIN).contains(&at),
+            "stamped near the hour mark: {}",
+            at - T0
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn an_idle_laptop_stamps_the_push_without_touching_the_network() {
+        let (state, _tmp) = idle_state();
+        set_interval(&state, "15m");
+        auto_tick(&state, T0 + 15 * MIN).await;
+        assert_eq!(attempt_at(&state), None, "no pass, so nothing could fail");
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["at"], T0 + 15 * MIN);
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
+    }
+
+    #[tokio::test]
+    async fn the_interval_cannot_be_set_while_disconnected() {
+        let (state, _tmp) = state();
+        state.keys.delete(ACCOUNT).unwrap();
+        let err = set_push_interval(
+            State(state.clone()),
+            Json(IntervalBody {
+                interval: "1h".into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, "not_connected");
+        assert_eq!(err.status, StatusCode::CONFLICT);
+        assert_eq!(push_interval(&state), "off");
+    }
 }

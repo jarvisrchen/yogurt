@@ -47,7 +47,7 @@ fn with_help(e: CtlError) -> CtlError {
     let help = match code.as_str() {
         "not_connected" => "connect in Settings > Cloud sync, in the browser",
         "session_expired" => "sign in again in Settings > Cloud sync, in the browser",
-        "passcode_not_set" => "choose a passcode in the Yogurt Cloud webapp first",
+        "passcode_not_set" => "choose a PIN in the Yogurt Cloud webapp first",
         "device_removed" => "disconnect in Settings > Cloud sync, then connect again",
         _ => "check `yogurt ctl cloud status`",
     };
@@ -61,6 +61,15 @@ fn describe_push(v: &Value) -> String {
         n("changed"),
         n("deleted")
     )
+}
+
+fn describe_interval(v: &str) -> &'static str {
+    match v {
+        "15m" => "every 15 minutes",
+        "1h" => "every hour",
+        "1d" => "every day",
+        _ => "off",
+    }
 }
 
 fn print_status(v: &Value) {
@@ -79,6 +88,7 @@ fn print_status(v: &Value) {
         "meetings: {} on this Mac, {} not pushed",
         v["meetings"], v["not_pushed"]
     );
+    println!("auto-push: {}", describe_interval(s("push_interval")));
     let last = &v["last_push"];
     if last.is_null() {
         println!("last push: never");
@@ -95,6 +105,13 @@ fn print_status(v: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interval_reads_plainly() {
+        assert_eq!(describe_interval("1h"), "every hour");
+        assert_eq!(describe_interval("off"), "off");
+        assert_eq!(describe_interval("?"), "off");
+    }
 
     #[test]
     fn push_summary_reads_counts() {
