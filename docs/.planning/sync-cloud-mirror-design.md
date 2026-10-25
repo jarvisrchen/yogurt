@@ -1,40 +1,43 @@
 # SYNC: push meetings to a self-hosted cloud for reading on a phone
 
-Design, not yet implemented.
-Tickets: `docs/TODO.md` SYNC-1 through SYNC-6. Build order and verification: [sync-implementation-plan.md](sync-implementation-plan.md).
+Design, partly implemented. SYNC-1 shipped an encrypted design that this revision replaces, and SYNC-2 removes what no longer applies.
+Tickets: `docs/TODO.md` SYNC-2 through SYNC-7. Build order and verification: [sync-implementation-plan.md](sync-implementation-plan.md).
 Review surface with diagrams and UI mocks: [../.lavish/sync-cloud-mirror-design.html](../.lavish/sync-cloud-mirror-design.html).
 
 jarvisrchen runs yogurt on more than one laptop and wants to read every meeting from his phone.
 Yogurt stays a local app with no login.
-A new, optional Yogurt Cloud is a mirror that local installs push into and a phone reads from.
-Each user hosts their Yogurt Cloud in their own Supabase project, so no central yogurt server or database exists.
+A new, optional Yogurt Cloud is a mirror that local installs push into and a webapp reads from.
+Each user deploys their own Yogurt Cloud: a static webapp on their Vercel account, backed by a Supabase project they own.
+No central yogurt server or database exists.
 
 ## Rules
 
-- A local install works exactly as today with no account, and sync stays off until the user turns it on in Settings.
-- Yogurt Cloud is the user's own Supabase project. Yogurt ships the setup automation, a SQL file, and a static viewer, and hosts no data.
-- Sync is one-way. A laptop pushes and never reads meeting content back. The phone is read-only.
-- Supabase stores ciphertext only.
-- Laptops can encrypt but never decrypt. Only the viewer, after the passphrase, can read.
+- A local install works exactly as today with no account, and sync stays off until the user connects it in Settings.
+- Yogurt Cloud is the user's own Vercel project and Supabase project. Yogurt ships the webapp, a SQL file, and a deploy button, and hosts nothing.
+- Meetings are stored readable in the user's Supabase. There is no client-side encryption.
+- Reading requires the Cloud login and a passcode, and Postgres enforces both.
+- Sync is one-way. A laptop pushes and never reads meeting content back. The webapp is read-only.
 - Every push is kept. The cloud is an append-only history, so any earlier push can be viewed again, and a client cannot change what a push older than one hour shows.
 - Every meeting is pushed. There is no per-meeting exclusion.
-- Out of scope: editing on the phone, LLM chat on the phone, recording on the phone, sharing between people, conflict resolution, restoring from the cloud back onto a laptop.
+- One owner per Yogurt Cloud. The schema keys every row by `user_id`, so a hosted multi-user cloud stays possible later.
+- Out of scope: editing in the webapp, LLM chat in the webapp, recording in the webapp, sharing between people, conflict resolution, restoring from the cloud back onto a laptop.
 
 ## The cast
 
 The walkthrough below uses one person with three machines and a phone.
 
-- **Laptop 1** is the personal laptop. It creates Yogurt Cloud once, and may also push its own meetings.
+- **Laptop 1** is the personal laptop. It may push its own meetings like any other laptop.
 - **Laptop 2** and **Laptop 3** are other machines, possibly work laptops, each with its own local meetings to push.
-- **The phone** reads everything.
+- **The phone**, or any browser, reads everything through the webapp.
 
-Three credentials are involved, and each one shows up in as few places as possible.
+Setup happens in a browser, not on a laptop, so no laptop is special.
 
 | Credential | What it is | Where it is used |
 | --- | --- | --- |
-| Supabase account | The supabase.com login that owns the project and its billing. | Once, during setup on Laptop 1, through a personal access token held in memory. |
-| Yogurt Cloud login | An email and password user inside the Supabase project. | Every laptop and the phone sign in with it. |
-| Passphrase | Unlocks the private key that decrypts meetings. | Typed during setup on Laptop 1, and in the viewer. Never stored on a laptop. |
+| Vercel and Supabase accounts | The user's own logins that own the deployment and the database. | Once, during the deploy. Yogurt never sees them. |
+| Cloud address | The webapp's URL, for example `richard-yogurt.vercel.app`. Not secret. | Typed on each laptop to connect, opened on the phone. |
+| Cloud login | An email and password user inside the Supabase project. | Every laptop and every browser signs in with it. |
+| Passcode | A second secret, checked in Postgres before any read. | Typed in the webapp only. Never on a laptop. |
 
 Local yogurt keeps no account of its own, as today.
 
@@ -43,285 +46,138 @@ Local yogurt keeps no account of its own, as today.
 ```mermaid
 flowchart LR
   subgraph L1["Laptop 1"]
-    Y1["yogurt server<br/>public key only"]
+    Y1["yogurt server"]
   end
   subgraph L2["Laptop 2"]
-    Y2["yogurt server<br/>public key only"]
+    Y2["yogurt server"]
   end
-  subgraph L3["Laptop 3"]
-    Y3["yogurt server<br/>public key only"]
+  subgraph VC["User's Vercel project"]
+    WEB["Yogurt Cloud webapp<br/>static build + config.json"]
   end
-  subgraph SB["User's Supabase project = Yogurt Cloud"]
-    AUTH["Auth<br/>Yogurt Cloud login"]
-    DB[("Postgres + RLS<br/>devices, keyring, pushes, versions")]
+  subgraph SB["User's Supabase project"]
+    AUTH["Auth<br/>Cloud login"]
+    DB[("Postgres + RLS<br/>devices, pushes, versions,<br/>owner, browsers")]
   end
-  MGMT["Supabase Management API"]
-  GH["GitHub Pages<br/>static viewer build"]
-  PH["Phone browser<br/>viewer + private key"]
+  PH["Phone browser"]
 
-  Y1 -- "setup, once, access token" --> MGMT
-  MGMT -- "create project, schema, auth config" --> SB
-  Y1 -- "push ciphertext" --> DB
-  Y2 -- "push ciphertext" --> DB
-  Y3 -- "push ciphertext" --> DB
-  Y1 & Y2 & Y3 -. "sign in" .-> AUTH
-  GH -- "serves JS, no data" --> PH
-  PH -- "sign in, read ciphertext" --> SB
+  Y1 & Y2 -- "read config.json once, at connect" --> WEB
+  Y1 & Y2 -. "sign in" .-> AUTH
+  Y1 & Y2 -- "insert only" --> DB
+  WEB -- "build: apply schema.sql" --> DB
+  WEB -- "serves JS" --> PH
+  PH -- "sign in, passcode, read" --> SB
 ```
 
-Every arrow into Supabase carries ciphertext or credentials, never readable meeting content.
-GitHub Pages serves code only and never sees the project details, because they travel in the link's `#fragment`.
+The webapp has no server functions.
+Its build applies `schema.sql` to the database and writes `config.json`, and after that Vercel only serves files.
+Laptops and browsers talk to Supabase directly.
 
-## Encryption
+## Deploying a Yogurt Cloud
 
-Setup creates one P-256 key pair per Yogurt Cloud.
-Laptops hold the public key and can only encrypt.
-The private key lives in Supabase wrapped by the passphrase, and only the viewer unwraps it.
-A stolen or IT-managed work laptop therefore exposes its own local meetings, which it already had, and nothing from the other machines.
+The guide's Deploy with Vercel button opens Vercel's clone flow with these parameters, all documented on Vercel's deploy button pages (checked 2026-10-24):
 
-| Piece | Choice |
-| --- | --- |
-| Account key pair | ECDH P-256. WebCrypto supports it in every current browser, and RustCrypto's `p256` crate covers the laptop. |
-| Per-meeting encryption | A fresh ephemeral P-256 key, ECDH with the account public key, HKDF-SHA256 (`info = "yogurt-sync v1"`) to an AES-256-GCM key, and a random 96-bit nonce. |
-| Blob format | `ct` is base64 of `ephemeral public key (65 bytes) || nonce (12 bytes) || ciphertext`. |
-| Associated data | `"<meeting id>|<device id>"`, so a blob swapped between rows fails to decrypt rather than showing the wrong meeting. |
-| Private key at rest | PKCS#8 bytes, AES-256-GCM under a key from PBKDF2-HMAC-SHA256 (600,000 iterations, 16-byte salt), stored in `yogurt_keyring`. The AES-GCM associated data is the base64 public key, so a wrapped key cannot be paired with another public key. |
-| Passphrase | Normalized to Unicode NFC on both sides, then 12 characters minimum, because the wrapped key sits in the database and anyone holding the login can attack it offline. |
-| Plaintext | One JSON document per meeting: `{"v":1,"meeting":{...},"chat":[...]}`, where `meeting` is the local API's `Meeting` minus volatile fields, with labels reduced to `{id, name, color}` so reordering labels or tagging another meeting does not change this meeting's hash. `chat` holds the chat messages. Device names are encrypted the same way, with the device id as associated data. |
+- `repository-url` points at the yogurt repo, and `root-directory=cloud`.
+- `stores` adds the Supabase Marketplace integration, which creates a new Supabase project and syncs `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and other variables into the Vercel project (Supabase's Vercel Marketplace page, checked 2026-10-24).
+- `env=YOGURT_OWNER_EMAIL` asks for the email of the one Cloud login allowed to read and push.
 
-The Rust side uses RustCrypto's `p256`, `hkdf`, `aes-gcm`, and `pbkdf2` crates, all MIT or Apache-2.0.
-The viewer uses WebCrypto only, with no crypto library.
-Checked-in fixtures produced by Rust (a wrapped private key and one encrypted meeting) are decrypted by a vitest test, so the two sides cannot drift.
+A user with an existing Supabase project skips the integration and enters `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `POSTGRES_URL_NON_POOLING` by hand.
+Richard's own cloud is a Vercel project on the jarvisrchen Vercel account, imported straight from `jarvisrchen/yogurt` with the same settings, so it redeploys on every merge to `main`.
+A deploy button copy is a new repo in the user's GitHub and does not follow `main`, so it updates only when the user syncs it.
 
-The viewer rejects a keyring row unless `alg` is `pbkdf2-sha256`, `iter` is an integer from 100,000 to 10,000,000, and the salt is 16 bytes, so a junk row cannot stall it.
-`kdf` carries an `alg` field so a later move to Argon2id does not break existing clouds.
-Changing the passphrase inserts a new `yogurt_keyring` row that wraps the same private key, and re-encrypts no meetings.
-The viewer tries keyring rows newest first, so a junk row cannot lock it out.
-A lost passphrase makes the cloud copy unreadable, history included.
-Recovery is to drop the `yogurt_` tables in the Supabase SQL editor, run setup again on that project, and push again from each laptop, since every laptop still has its own local copy.
+The build runs `cloud/scripts/build.mjs`:
 
-## Cloud schema
+1. On production builds only (`VERCEL_ENV=production`), connect with `POSTGRES_URL_NON_POOLING`, apply `crates/yogurt-cloud/schema.sql`, and upsert `YOGURT_OWNER_EMAIL` into `yogurt_owner`. Preview builds skip this step so an unmerged branch never changes the live schema.
+2. Write `config.json` with `{"v":1,"supabase_url":...,"publishable_key":...}`. Both values are public by design.
+3. Run the Vite build into `cloud/dist`.
 
-`crates/yogurt-cloud/schema.sql`, which is safe to run twice, which setup runs automatically, and which the manual fallback pastes into the SQL editor:
+`schema.sql` is idempotent, so every production deploy re-applies it and schema changes ship with the code that needs them.
 
-```sql
-create table if not exists yogurt_devices (
-  id         uuid primary key,  -- generated by the laptop, because name_ct is sealed with it as AAD
-  user_id    uuid not null default auth.uid() references auth.users on delete cascade,
-  name_ct    text not null,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists yogurt_keyring (
-  id                  bigint generated always as identity primary key,
-  user_id             uuid  not null default auth.uid() references auth.users on delete cascade,
-  public_key          text  not null,  -- base64 raw P-256 point, not secret
-  wrapped_private_key text  not null,
-  kdf                 jsonb not null,  -- {"alg":"pbkdf2-sha256","iter":600000,"salt":"<b64>"}
-  created_at          timestamptz not null default now()
-);
-
--- Ids are global across devices, so "as of push N" covers every device at that moment.
-create table if not exists yogurt_pushes (
-  id        bigint generated always as identity primary key,
-  device_id uuid not null references yogurt_devices,
-  user_id   uuid not null default auth.uid() references auth.users on delete cascade,
-  pushed_at timestamptz not null default now()
-);
-
--- One row per meeting a push changed. A null ct marks the meeting deleted in that push.
-create table if not exists yogurt_versions (
-  meeting_id text   not null,  -- the local ULID
-  push_id    bigint not null references yogurt_pushes,
-  device_id  uuid   not null references yogurt_devices,
-  user_id    uuid   not null default auth.uid() references auth.users on delete cascade,
-  ct         text,
-  primary key (meeting_id, push_id)
-);
-
--- The library as of a push, or the latest library when at_push is null.
-create or replace function yogurt_as_of(at_push bigint default null)
-returns setof yogurt_versions language sql stable security invoker as $$
-  select * from (
-    select distinct on (meeting_id) * from yogurt_versions
-    where at_push is null or push_id <= at_push
-    order by meeting_id, push_id desc
-  ) latest
-  where ct is not null
-  order by meeting_id
-$$;
-
-create or replace view yogurt_push_log with (security_invoker = true) as
-  select p.id, p.device_id, p.pushed_at,
-         count(v.ct) as changed,
-         count(*) filter (where v.ct is null) as deleted
-  from yogurt_pushes p join yogurt_versions v on v.push_id = p.id
-  group by p.id;
-
-alter table yogurt_devices  enable row level security;
-alter table yogurt_keyring  enable row level security;
-alter table yogurt_pushes   enable row level security;
-alter table yogurt_versions enable row level security;
-
--- Select and insert only. Ids and times come from defaults, and a version can only join a push of its own device from the last hour,
--- so a compromised laptop cannot change what an older push shows.
-drop policy if exists read on yogurt_devices;
-create policy read on yogurt_devices  for select using (user_id = (select auth.uid()));
-drop policy if exists add on yogurt_devices;
-create policy add on yogurt_devices  for insert with check (user_id = (select auth.uid()));
-drop policy if exists read on yogurt_keyring;
-create policy read on yogurt_keyring  for select using (user_id = (select auth.uid()));
-drop policy if exists add on yogurt_keyring;
-create policy add on yogurt_keyring  for insert with check (user_id = (select auth.uid()));
-drop policy if exists read on yogurt_pushes;
-create policy read on yogurt_pushes   for select using (user_id = (select auth.uid()));
-drop policy if exists add on yogurt_pushes;
-create policy add on yogurt_pushes   for insert with check (
-  user_id = (select auth.uid())
-  and exists (select 1 from yogurt_devices d where d.id = yogurt_pushes.device_id)
-);
-drop policy if exists read on yogurt_versions;
-create policy read on yogurt_versions for select using (user_id = (select auth.uid()));
-drop policy if exists add on yogurt_versions;
-create policy add on yogurt_versions for insert with check (
-  user_id = (select auth.uid())
-  and exists (
-    select 1 from yogurt_pushes p
-    where p.id = yogurt_versions.push_id
-      and p.device_id = yogurt_versions.device_id
-      and p.pushed_at > now() - interval '1 hour'
-  )
-);
-
--- Grants are explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
-revoke all on yogurt_devices, yogurt_keyring, yogurt_pushes, yogurt_versions, yogurt_push_log from anon, authenticated;
-revoke all on sequence yogurt_keyring_id_seq, yogurt_pushes_id_seq from anon, authenticated;
-revoke execute on function yogurt_as_of(bigint) from public, anon, authenticated;
-grant select on yogurt_devices, yogurt_keyring, yogurt_pushes, yogurt_versions, yogurt_push_log to authenticated;
-grant insert (id, name_ct) on yogurt_devices to authenticated;
-grant insert (public_key, wrapped_private_key, kdf) on yogurt_keyring to authenticated;
-grant insert (device_id) on yogurt_pushes to authenticated;
-grant insert (meeting_id, push_id, device_id, ct) on yogurt_versions to authenticated;
-grant execute on function yogurt_as_of(bigint) to authenticated;
-```
-
-The grants are explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
-The column-level insert grants leave ids and times to the server defaults, and the `yogurt_versions` policy only accepts a version for a push of the same device from the last hour.
-
-The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
-The only plaintext in the cloud is the login email, row ids, push times, blob sizes, and the public key.
-A schema without a version marker is v1. A later schema adds one when it needs it.
-
-## The link code
-
-Once a Yogurt Cloud exists, Settings shows a link code and a QR code.
-Both carry the same three non-secret values: the project URL, the publishable key, and the public key.
-
-- The link code is `yogurt-cloud:` followed by base64url JSON of those values. Laptops 2 and 3 paste it.
-- The QR code is the viewer URL with the same payload in the fragment, `https://<viewer>/#c=<payload>`. Browsers never send the fragment to GitHub Pages.
-
-The viewer's own settings page shows the link code too, so a new laptop can be connected from the phone without Laptop 1 nearby.
-
-## Flow 1: Laptop 1 creates Yogurt Cloud (once)
-
-The user signs up at supabase.com and creates a personal access token on the account tokens page.
-Everything after that happens in yogurt's Settings, under Cloud sync, then "Set up a new Yogurt Cloud".
+## Flow 1: first visit to the webapp
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor U as User
-  participant Y as yogurt on Laptop 1
-  participant M as Management API
+  participant V as Webapp in a browser
   participant P as Supabase project
 
-  U->>Y: access token
-  Y->>M: GET /v1/organizations
-  Y->>M: GET /v1/projects
-  Y-->>U: existing projects + "Create a new project"
-  U->>Y: project choice, login email + password, passphrase
-  alt new project
-    Y->>M: POST /v1/projects {name, organization_slug, db_pass: random}
-    loop until status = ACTIVE_HEALTHY
-      Y->>M: GET /v1/projects/{ref}
-    end
-  end
-  Y->>M: POST /v1/projects/{ref}/database/query (schema.sql)
-  opt turn off public sign-ups (checked by default)
-    Y->>M: PATCH /v1/projects/{ref}/config/auth {disable_signup: true}
-  end
-  Y->>M: GET /v1/projects/{ref}/api-keys?reveal=true
-  Y->>P: POST /auth/v1/admin/users {email, password, email_confirm: true} (secret key)
-  Y->>P: POST /auth/v1/token?grant_type=password
-  Y->>Y: generate P-256 key pair, wrap private key with passphrase
-  Y->>P: insert yogurt_keyring row
-  Y->>Y: forget token, secret key, passphrase, private key
-  Y-->>U: link code + QR, "you can revoke the token now"
+  U->>V: open richard-yogurt.vercel.app
+  V->>P: rpc yogurt_status()
+  P-->>V: owner email set, no owner signed up yet
+  U->>V: create the Cloud login (owner email + password)
+  V->>P: auth.signUp
+  U->>U: click the confirmation email
+  U->>V: sign in
+  V->>P: rpc yogurt_status()
+  P-->>V: you are the owner, no passcode yet
+  U->>V: choose a passcode
+  V->>P: rpc yogurt_set_passcode(new)
+  V->>V: unlock (Flow 2)
 ```
 
-All endpoints above appear in the Management API's OpenAPI spec (`https://api.supabase.com/api/v1-json`, checked 2026-10-21).
-`database/query` is marked Beta there, so if it fails, setup shows `schema.sql` with a copy button and a link to the project's SQL editor, then continues once the user confirms.
-The random database password is never stored, because yogurt never connects to Postgres directly. The dashboard can reset it.
+The owner is the confirmed Supabase user whose email matches `yogurt_owner.email`.
+The first time that user calls any owner RPC, `yogurt_owner.user_id` is pinned to their id, so a later account cannot take ownership even if the email is reused.
+Email confirmation must stay on, which is Supabase's default, because the email match is the only thing that makes the first sign-up the owner.
+Anyone else can sign up, because Supabase sign-ups stay on, but every policy and RPC checks the owner, so another account can neither read nor insert a row.
 
-Setup always offers reuse, so the free plan's two-project cap needs no separate fallback.
-On a reused project, setup first checks for `yogurt_keyring`. If it exists, the project already holds a Yogurt Cloud, and setup points to Connect instead.
-Turning off public sign-ups applies to the whole project, which could break another app that lives there.
-On a new project the step just runs. On a reused one it shows as a checkbox, checked by default, with that warning.
-Leaving sign-ups on keeps the data safe, because RLS keeps every other user out of these rows. It only lets strangers sign up and use the project's storage.
-
-If Laptop 1 also records meetings, the same screen offers "Also push this laptop's meetings" with a device name, which runs Flow 3's last steps.
-
-## Flow 2: the phone becomes the reader
+## Flow 2: unlocking a browser
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor U as User
-  participant V as Viewer in phone browser
+  participant V as Webapp
   participant P as Supabase project
 
-  U->>V: scan QR on Laptop 1
-  V->>V: read #c= (URL, publishable key, public key), save in browser
-  U->>V: login email + password
-  V->>P: sign in
-  V->>P: select yogurt_keyring where public_key = the link code's, newest first
-  U->>V: passphrase
-  V->>V: PBKDF2, unwrap private key, store non-extractable in IndexedDB
-  V->>P: select yogurt_devices, rpc yogurt_as_of()
-  V->>V: decrypt, group by day, device picker = All devices
+  U->>V: sign in with the Cloud login
+  U->>V: passcode, "Remember this browser" on or off
+  V->>P: rpc yogurt_unlock(passcode, remember, label)
+  P->>P: check bcrypt hash, count failures
+  P-->>V: browser token, or null
+  V->>V: keep the token in localStorage
+  V->>P: rpc yogurt_library(token)
 ```
 
-Any browser can open the same viewer, Laptop 1's included.
-The viewer remembers the unlocked key in that browser until Lock in the viewer's settings, so later visits skip the passphrase.
+`yogurt_unlock` returns a random 32-byte token and stores only its SHA-256 in `yogurt_browsers`, with the label (for example "Safari on iPhone"), a creation time, and an expiry.
+A token lasts 12 hours, or 90 days with "Remember this browser".
+Every read RPC takes the token and refuses a missing, expired, or forgotten one.
+Five wrong passcodes in a row lock unlocking for 15 minutes. The function returns null on a wrong passcode instead of raising, because a raised error would roll back the failure count with it.
+Lock in the webapp forgets the token in that browser. The settings page lists every remembered browser with Forget, and changing the passcode forgets all of them except the current one.
 
-## Flow 3: Laptops 2 and 3 connect
+A forgotten passcode is reset in the Supabase SQL editor: `update yogurt_owner set passcode_hash = null; delete from yogurt_browsers;`.
+The next sign-in then asks for a new passcode, as in Flow 1.
+That reset needs the Supabase dashboard, which is the point: the Cloud login alone cannot reset the passcode.
 
-In yogurt's Settings, under Cloud sync, then "Connect to a Yogurt Cloud":
+## Flow 3: a laptop connects
+
+In yogurt's Settings, under Cloud sync, then Connect:
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor U as User
   participant Y as yogurt on Laptop 2
+  participant V as Webapp
   participant P as Supabase project
 
-  U->>Y: link code, login email + password, device name "Laptop 2"
+  U->>Y: Cloud address, login email + password, machine name "Work laptop"
+  Y->>V: GET https://<address>/config.json
   Y->>P: POST /auth/v1/token?grant_type=password
-  Y->>P: select yogurt_keyring.public_key, compare with link code
-  Y->>P: insert yogurt_devices {id, name_ct}, id generated by the laptop
-  Y->>Y: keys.json: refresh token, URL, publishable key, public key, device id
+  Y->>P: rpc yogurt_status(), must say owner
+  Y->>P: insert yogurt_devices {id, name}, id generated by the laptop
+  Y->>Y: keys.json: address, URL, publishable key, refresh token, device id
   U->>Y: Push meetings
 ```
 
-The public key check catches a link code from a different Yogurt Cloud than the login belongs to.
-Laptop 2 never sees a Supabase token, a secret key, or the passphrase.
+The laptop never sees the passcode, a Supabase secret, or a Vercel or Supabase account.
+"Create a Yogurt Cloud" on the same page opens the setup guide with the deploy button in the browser.
 
-Disconnect removes those `keys.json` entries.
+Disconnect removes the `keys.json` entry.
 It first offers one last push that marks every meeting from this device deleted, so the current library drops them while history keeps them.
 
 ## Flow 4: pushing
 
-The Push meetings button in Settings runs one pass. SYNC-5 adds an interval timer that runs the same pass.
+The Push meetings button in Settings runs one pass. SYNC-6 adds an interval timer that runs the same pass.
 
 ```mermaid
 sequenceDiagram
@@ -332,129 +188,168 @@ sequenceDiagram
 
   Y->>P: refresh session if needed
   Y->>DB: every meeting except the one recording
-  Y->>Y: plaintext JSON + sha256 each, keep those that differ from cloud_hash
-  Y->>P: rpc yogurt_as_of(), select meeting_id where device_id = me
+  Y->>Y: JSON + sha256 each, keep those that differ from cloud_hash
+  Y->>P: rpc yogurt_device_meetings(device_id)
   Y->>Y: deleted = cloud ids missing locally
   alt anything changed or deleted
     Y->>P: insert yogurt_pushes {device_id}, returning id
     loop batches
-      Y->>Y: encrypt changes to public key, AAD = id|device
-      Y->>P: insert yogurt_versions (null ct for each deletion)
+      Y->>P: insert yogurt_versions (null body for each deletion)
       Y->>DB: store the batch's new cloud_hash values
     end
   end
 ```
 
-Hashing the plaintext catches every change, including label and chat edits that do not touch `meetings.updated_at`.
+Each meeting is one JSON document, `{"v":1,"meeting":{...},"chat":[...]}`, stored in `yogurt_versions.body`.
+`meeting` is the local API's `Meeting` minus volatile fields, with labels reduced to `{id, name, color}`, so reordering labels or tagging another meeting does not change this meeting's hash.
+Hashing the JSON catches every change, including label and chat edits that do not touch `meetings.updated_at`.
+`yogurt_device_meetings` returns the ids of that device's live meetings and nothing else, so a laptop session can plan a push without read access to content.
 `meetings.cloud_hash` is one new nullable column, so it needs the usual shared-DB migration care while the branch is unmerged.
-The id listing reads metadata only and no content.
 A pass that changes nothing writes nothing.
-If a batch fails, its meetings keep their old `cloud_hash`, so the next pass sends them again. A push row with no versions never shows in `yogurt_push_log`.
+If a batch fails, its meetings keep their old `cloud_hash`, so the next pass sends them again. A push row with no versions never shows in the history.
+
+## Cloud schema
+
+`crates/yogurt-cloud/schema.sql` is the source of truth. It is idempotent, and the build applies it on every production deploy.
+
+| Table | Columns | Clients may |
+| --- | --- | --- |
+| `yogurt_owner` | `email`, `user_id`, `passcode_hash`, `failed_attempts`, `locked_until` | nothing directly. The build writes `email`, and RPCs do the rest. |
+| `yogurt_browsers` | `id`, `token_hash`, `label`, `created_at`, `expires_at`, `last_used_at` | nothing directly |
+| `yogurt_devices` | `id` (laptop-generated), `user_id`, `name`, `created_at` | insert `id`, `name` |
+| `yogurt_pushes` | `id`, `device_id`, `user_id`, `pushed_at` | insert `device_id` |
+| `yogurt_versions` | `meeting_id`, `push_id`, `device_id`, `user_id`, `body jsonb` | insert `meeting_id`, `push_id`, `device_id`, `body` |
+
+The functions, all `security definer` with a fixed `search_path`, and each checking that the caller is the owner:
+
+| Function | Who calls it | Returns |
+| --- | --- | --- |
+| `yogurt_status()` | webapp, laptop | whether an owner email is set, whether the caller is the owner, whether a passcode is set |
+| `yogurt_set_passcode(new, old)` | webapp | `old` is required once a passcode exists. Hashes with `extensions.crypt` and `gen_salt('bf')`. |
+| `yogurt_unlock(passcode, remember, label)` | webapp | a browser token, or null |
+| `yogurt_lock(token)`, `yogurt_forget_browser(token, id)`, `yogurt_browsers(token)` | webapp | |
+| `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
+| `yogurt_library(token, at_push)` | webapp | the latest version of each live meeting at or before `at_push`, or now, ordered by `meeting_id` for paging |
+| `yogurt_history(token)` | webapp | each push with its device, time, and changed and deleted counts |
+| `yogurt_device_list(token)` | webapp | device ids and names |
+
+The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST.
+It keeps the column-level `insert` grants and the SYNC-1 policies: a row's `user_id` must be the caller, the caller must be the owner, and a version can only join a push of its own device created in the last hour.
+Grants stay explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
+The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
+PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with limit and offset.
 
 ## History and reverting
 
 The cloud keeps every push instead of one overwritten copy.
 A push stores only the meetings that changed since that device's last push, plus a deletion marker for each meeting the device no longer has.
-The library as of push N is the latest version of each meeting at or before N, which `yogurt_as_of(N)` returns.
+The library as of push N is the latest version of each meeting at or before N, which `yogurt_library(token, N)` returns.
 Push ids are global across devices, so picking a push shows every device's library at that moment.
 
 A full snapshot per push gives the same result at far higher cost.
 With hourly auto-push, a 630 KB snapshot every hour is about 15 MB a day, which would fill the free tier's 500 MB in about a month.
 
 Reverting is read-only, because sync is one-way.
-The viewer's History list shows each push with its device, time, and changed and deleted counts, and picking one shows the library as it was then.
+The webapp's History list shows each push with its device, time, and changed and deleted counts, and picking one shows the library as it was then.
 Nothing flows back to a laptop, and the next push continues from the laptop's local state.
 That covers a local reset: a wiped `~/.yogurt/db.sqlite` with the connection intact makes the next pass mark every meeting from that device deleted, and they stay readable from any earlier push.
 
-The policies allow select and insert only, so no laptop or browser can update or delete a row.
-Inserts are limited to the columns a client owns, and a version can only join a push of its own device created in the last hour, so history older than that is fixed.
+No client can update or delete a row, and history older than an hour is fixed.
 Purging data for real, for example a work laptop's meetings, is done in the Supabase SQL editor.
 
 Size check against the current `~/.yogurt/db.sqlite`: 45 meetings total 630 KB, and the largest (1 hour 58 minutes) is 148 KB.
-With base64 and the 77-byte header, an average version is about 19 KB, so the free tier's 500 MB holds about 26,000 versions.
-A meeting gets a new version only when it changes after its first push, so that is thousands of meetings with their edit history.
-The first version prunes nothing. If the database nears the cap, the upgrade is a `pg_cron` job that drops versions older than a set age while keeping each meeting's latest.
+An average version is about 14 KB, so the free tier's 500 MB holds about 35,000 versions.
+If the database nears the cap, the upgrade is a `pg_cron` job that drops versions older than a set age while keeping each meeting's latest.
 
-## What each place holds
+## Who can read what
 
-| | Supabase access token | Cloud login | Public key | Private key |
-| --- | --- | --- | --- | --- |
-| Laptop 1 | in memory during setup only | refresh token, if it pushes | yes | in memory during setup only |
-| Laptop 2, Laptop 3 | never | refresh token | yes | never |
-| Viewer (phone or any browser) | never | session | yes | unwrapped, non-extractable, after the passphrase |
-| Supabase | n/a | stores the login | stores it | wrapped by the passphrase |
+| | Cloud login | Passcode | Can read meetings |
+| --- | --- | --- | --- |
+| A laptop | refresh token in `keys.json` | never | no. It can insert, and list its own meeting ids. |
+| A browser after unlock | session | a browser token for 12 hours or 90 days | yes |
+| Someone with the email and password | yes | no | no |
+| The Supabase dashboard, its owner, or Supabase staff | n/a | n/a | yes, the data is stored readable |
 
 Laptop secrets live in `~/.yogurt/keys.json` (mode 0600, `FileKeyStore`), never in SQLite or a log.
 
-A compromised laptop still holds a cloud login and the public key, and it cannot read anything.
-It can add junk rows, deletion markers, or forged meetings that decrypt, because the public key is all an encrypter needs.
-It cannot erase history, and it can add rows only to pushes from the last hour, so picking a push from more than an hour before the damage shows the real library.
-Per-device signing would catch forged meetings, and is left out until that threat matters.
+IT on a work laptop can take the laptop's refresh token, or the email and password if they were typed there.
+Either one lets them add junk rows, deletion markers, or forged meetings in new pushes.
+Neither lets them read a meeting, because every read needs the passcode, which is only ever typed into a browser.
+They cannot erase history, so picking a push from more than an hour before the damage shows the real library.
 
-Some corporate networks block `*.supabase.co`, which would stop a work laptop from pushing, and nothing on yogurt's side fixes that.
+The passcode does not protect against anyone with access to the Supabase project itself.
+The plaintext choice trades that away for a simpler build and for server-side search and LLM features later.
+Debugging with an agent happens against a local or test Supabase with seeded meetings, never against the real project, so meeting content does not land in an agent transcript.
+
+Some corporate networks block `*.supabase.co` or `*.vercel.app`, which would stop a work laptop from connecting or pushing, and nothing on yogurt's side fixes that.
 
 ## UI
 
 The mocks are in the review surface linked at the top.
 
-- **Settings, Cloud sync, nothing set up.** Two cards: "Set up a new Yogurt Cloud" and "Connect to a Yogurt Cloud".
-- **Setup.** Token, then a project picker (existing projects or a new one), login, passphrase, then a checklist that ticks off each Flow 1 step, with the SQL fallback inline.
-- **Connected.** Device name, Push meetings, last push result, link code with copy, QR for the phone, Disconnect.
-- **Connect.** Link code, login, device name.
+Yogurt Settings:
+
+- **Cloud sync, nothing set up.** Two cards: "Create a Yogurt Cloud", which opens the guide in the browser, and "Connect to a Yogurt Cloud".
+- **Connect.** Cloud address, login email, password, machine name.
+- **Connected.** Machine name, Cloud address with Open and a QR code for the phone, Push meetings, last push result, Disconnect.
 - **Library subtitle.** "46 meetings · all on this Mac" gains "· 3 not pushed" when connected and behind.
-- **Viewer.** Unlock, library with the device picker, a read-only meeting page, and History. The viewer's settings (a gear in the library header) hold the account, Lock, the link code, and History under Recovery, because History is for recovery rather than daily use. Picking a push in History shows the library as of that push under a "Viewing <time>" banner with a Latest button.
 
-## Viewer
+The webapp:
 
-A second Vite entry in `web/` (`web/cloud.html`) builds the static viewer.
-It reuses the existing markdown and transcript components and makes no calls to the local API.
-It uses `@supabase/supabase-js` (MIT) for sign-in and session refresh.
-It downloads and decrypts the current library from `yogurt_as_of()` on open. That is fine at personal scale. When it gets slow, the upgrade is an IndexedDB cache that fetches only versions with a higher push id.
-History reads `yogurt_push_log`, and picking a push calls `yogurt_as_of(N)`. A banner shows the push being viewed, with a button back to the latest.
+- **First visit.** Create the Cloud login, confirm the email, then choose a passcode.
+- **Sign in, then Unlock.** Passcode with "Remember this browser".
+- **Library** with the device picker, a read-only **meeting** page, and **History**, which shows the library as of a push under a "Viewing <time>" banner with a Latest button.
+- **Settings** (a gear in the library header): the account and Sign out, Lock, Change passcode, remembered browsers with Forget, and History under Recovery.
 
-The default host is one public GitHub Pages build deployed from `main`.
-Whoever controls that host controls the JS that sees decrypted meetings, so the docs also give a one-click deploy of the same build for anyone who wants their own copy.
+## Webapp
 
+The webapp is its own Vite app in a top-level `cloud/` folder, with its own `package.json`, and Vercel builds only that folder.
+Nothing in `cloud/` is embedded in the yogurt binary.
+It imports the existing markdown and transcript components and the `@theme` tokens from `web/src` through a Vite alias, and makes no calls to the local API.
+Those imports resolve `react` from `web/node_modules`, so `cloud/vite.config.ts` sets `resolve.dedupe` for `react` and `react-dom` to keep one copy.
+It uses `@supabase/supabase-js` (MIT) for sign-in and session refresh, and reads `config.json` at startup.
+It downloads the current library from `yogurt_library` on open, which is fine at personal scale. When it gets slow, the upgrade is a cache that fetches only versions with a higher push id.
 Email and password is the only sign-in in v1.
-Supabase's Google provider needs a Google Cloud OAuth client that setup cannot create, so it stays a manual, optional step in the docs.
 
 ## Constraint changes
 
-`AGENTS.md`'s first hard constraint becomes: audio never leaves the machine unless the user opted into cloud STT (then only audio), and notes and transcripts leave only when the user connects a Yogurt Cloud in a Supabase project they own, and only as ciphertext the laptop itself cannot decrypt.
+`AGENTS.md`'s first hard constraint becomes: audio never leaves the machine unless the user opted into cloud STT (then only audio), and notes and transcripts leave only when the user connects a Yogurt Cloud they deployed, and only to that cloud's Supabase project.
 The other constraints are unchanged:
 
 - Zero telemetry still holds, because sync sends nothing to yogurt or to any third party the user did not configure.
 - The one-process rule still holds, because sync runs inside the server.
-- The license rule still holds, because the new crates are MIT or Apache-2.0.
+- The license rule still holds. `@supabase/supabase-js`, `pg`, and `qrcode` are MIT.
 
 The archived PRD's "There is no Yogurt cloud" still holds too, because yogurt hosts nothing.
 
-## Supabase free tier
+## Free tiers
 
-Third-party sources agree on 500 MB of database per project, 2 free projects, and a pause after one week of inactivity that needs a manual restore.
-Whether API writes count as activity is unverified.
-Pro ($25 a month) removes the pause.
-Verify against Supabase's own pricing page before SYNC-2 lands.
+Supabase, from its pricing and project-pausing pages (checked during SYNC-2's first attempt): 500 MB of database per project, 2 active free projects, and a pause after 7 days of low activity, where API calls count as activity. A paused project resumes by hand within 1 year. Pro at $25 a month never pauses.
+Vercel's Hobby plan covers a static site at personal scale. Verify its current limits before SYNC-7.
 
 ## Phasing
 
-1. **SYNC-1.** The `yogurt-cloud` crate: crypto, link code, `schema.sql`, and the cross-language fixtures.
-2. **SYNC-2.** Flow 1 setup with the project picker and the SQL fallback.
-3. **SYNC-3.** Flow 3 connect and disconnect, manual push, the `cloud_hash` migration, and the `AGENTS.md` edit.
-4. **SYNC-4.** The viewer with settings and History, the QR code, and the GitHub Pages deploy.
-5. **SYNC-5.** Automatic push on an interval (15 minutes, 1 hour, or daily).
-6. **SYNC-6.** The setup guide, `docs/CLOUD-SYNC.md`, checked by a rehearsal on real accounts.
+1. **SYNC-2.** Rework the `yogurt-cloud` crate for this design: remove the crypto and link code, rewrite `schema.sql` with the owner, passcode, and read RPCs, and keep the REST client and the local test stack.
+2. **SYNC-3.** The webapp shell on Vercel: build script, first visit, sign in, passcode, unlock, settings, and an empty library.
+3. **SYNC-4.** Connect, manual push, disconnect, the `cloud_hash` migration, and the `AGENTS.md` edit.
+4. **SYNC-5.** The webapp's library, device picker, meeting page, and History.
+5. **SYNC-6.** Automatic push on an interval (15 minutes, 1 hour, or daily).
+6. **SYNC-7.** The setup guide, `docs/CLOUD-SYNC.md`, with the deploy button, checked by a rehearsal on real accounts.
 
 [sync-implementation-plan.md](sync-implementation-plan.md) has the files, tests, and verification for each.
 
-Later and unplanned: a hosted Yogurt Cloud, so other people could push without their own Supabase project.
-Nothing in SYNC-1 to SYNC-6 blocks it, because the laptops and the viewer only need a URL and a public key.
+Later and unplanned: a hosted Yogurt Cloud, so other people could sign up at one URL without deploying their own.
+That drops the single-owner check in favor of `user_id` isolation alone, which every table already has.
+Holding other people's meetings readable is a different promise than holding your own, so that step reopens the encryption question.
+Search and LLM features over the cloud are also unplanned. Postgres full-text search and a Vercel function are the likely routes, and neither needs a schema change beyond an index.
 
 ## Decisions
 
 Settled 2026-10-24.
 
+- No client-side encryption. The passcode gate in Postgres covers the stolen-credential case, and the Supabase project owner is trusted.
+- Each user deploys their own webapp on Vercel. The Cloud address replaces the link code.
+- One set of tables keyed by `device_id`, rather than a table per machine.
+- Setup happens in the browser through the deploy, so no laptop needs a Supabase access token.
 - Every meeting is pushed, with no per-meeting exclusion.
-- A local reset marks that device's meetings deleted in the next push, and history keeps them readable (see History and reverting).
-- The viewer remembers the unlocked key per browser until Lock.
-- Setup offers every existing project for reuse, alongside creating a new one.
+- A local reset marks that device's meetings deleted in the next push, and history keeps them readable.
