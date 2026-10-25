@@ -21,6 +21,7 @@ async fn it_responds_to_health() {
         session_token_path: Some(tmp.path().join("session-token")),
         notes_dir: Some(tmp.path().join("notes")),
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
+        keys_path: None,
     };
     let handle = tokio::spawn(async move {
         let _ = run_with_config(cfg).await;

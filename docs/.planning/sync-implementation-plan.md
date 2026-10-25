@@ -51,17 +51,30 @@ Rewrite `schema.sql` to the design doc's Cloud schema section:
 
 - `yogurt_versions.ct text` becomes `body jsonb`, and `yogurt_devices.name_ct` becomes `name text`. `yogurt_keyring` goes away.
 - New `yogurt_owner` (one row) and `yogurt_browsers`.
-- `yogurt_is_owner()`, a `security definer` helper that pins `yogurt_owner.user_id` on first use. The insert policies call it.
+- `yogurt_is_owner()`, a `security definer` helper that pins `yogurt_owner.user_id` on first use.
+  The insert policies call it.
+  It and the other helpers live in a `yogurt_private` schema that PostgREST does not expose, and `authenticated` may execute only the three policy helpers there.
 - The RPCs from the design doc's function table, all `security definer` with `set search_path = ''` and schema-qualified names.
-- Revoke `select` on every table from `authenticated`, and grant `execute` only on the RPCs.
+- Revoke `select` on every table from `authenticated`, revoke `execute` on every `yogurt_` function, and grant it back through an explicit allowlist of the RPCs.
 - `yogurt_unlock` returns null on a wrong passcode and never raises, so the failure count commits.
+  `yogurt_set_passcode` returns a boolean for the same reason, and a wrong `old_passcode` counts in the same counter.
+- `yogurt_set_passcode` accepts only a 4 or 6 digit PIN and checks the format before `old_passcode`.
+  Five wrong tries lock for 15 minutes, and each further run of five doubles it.
+- `yogurt_start_push(device_id)` replaces `insert yogurt_pushes ... returning id`, which cannot work without `select`.
+  Clients get no insert grant on `yogurt_pushes`.
+- The policy checks that read other tables go through `security definer` helpers returning a boolean.
+- A token failure raises SQLSTATE 28000 (403 from PostgREST), and a non-owner caller gets 42501.
+  An unknown device raises `PT404`.
+- `yogurt_start_push` raises `PT412` (HTTP 412) until a passcode exists, so no meeting data lands before the owner has chosen a PIN.
 
 Add the build-side half of the owner step as a statement the build script can run: `insert into yogurt_owner (email) values ($1) on conflict do update`, where a changed email only applies while `user_id` is null.
 
 Tests:
 
-- `tests/schema_test.sql` in the `cloud-schema` CI job: schema twice, owner pinning, a non-owner account that can neither insert nor call an RPC, the Cloud login reading nothing through a table `select`, unlock with the right and wrong passcode, the lockout after five failures and its expiry, a 12-hour token rejected after expiry (by updating `expires_at` as the test superuser), Forget, passcode change forgetting other browsers, and the as-of and history queries from SYNC-1.
-- `just test-cloud` against the local Supabase: the REST client signs in and pages `yogurt_library` past 1,000 rows.
+- `tests/schema_test.sql` in the `cloud-schema` CI job: schema twice, owner pinning, a non-owner account that can neither insert nor call an RPC, the Cloud login reading nothing through a table `select`, unlock with the right and wrong passcode, a 5-digit and a non-numeric passcode rejected, the lockout after five failures and its expiry, the second lockout lasting twice the first, alternating wrong `set_passcode` and `unlock` calls locking both on the fifth failure, a 12-hour token rejected after expiry (by updating `expires_at` as the test superuser), Forget, a passcode change deleting every browser so the webapp unlocks the current one again, and the as-of and history queries from SYNC-1.
+- `just test-cloud` against the local Supabase: the REST client signs in as the owner, registers a device, starts a push, inserts versions in batches, sets a passcode, unlocks, and pages `yogurt_library` past 1,000 rows.
+  A plain table `GET` as the owner answers 403.
+- `owner.sql` is prepared as `set_owner(text)` in the schema test and applied by sed for the local Supabase.
 
 Verify first, with pgcrypto on the local Supabase: `extensions.crypt` and `extensions.gen_salt('bf')` exist, and `extensions.gen_random_bytes` produces the token.
 
@@ -73,7 +86,7 @@ Files:
 - `cloud/scripts/build.mjs`: on `VERCEL_ENV=production`, apply `../crates/yogurt-cloud/schema.sql` and the owner statement through `POSTGRES_URL_NON_POOLING` with `pg`, then write `dist/config.json`, then run the Vite build. Outside production it only writes `config.json` and builds.
 - `cloud/vercel.json`: build command, output directory, and an `ignoreCommand` that skips builds when nothing under `cloud/`, `web/src/`, or `crates/yogurt-cloud/schema.sql` changed.
 - CI: the web job gains a `cloud/` typecheck, test, and build step, because a change under `web/src` can break the webapp.
-- Screens: first visit (create the login, check your email), sign in, choose a passcode, unlock with "Remember this browser", Lock, settings with the account, Sign out, Change passcode, and remembered browsers with Forget, and an empty library that says no machine has pushed yet.
+- Screens: first visit (create the login, check your email), sign in, choose a passcode (a 4 or 6 digit PIN, entered on a numeric keypad with `inputmode="numeric"` and `autocomplete="off"`), unlock with "Remember this browser", Lock, settings with the account, Sign out, Change passcode, and remembered browsers with Forget, and an empty library that says no machine has pushed yet.
 - The token lives in `localStorage` under one key. A rejected token sends the user back to Unlock.
 
 Richard's deployment:
@@ -90,7 +103,8 @@ Verify first, on a throwaway Vercel project:
 
 - A build with root directory `cloud` can read `../crates/yogurt-cloud/schema.sql` and `../web/src`. Vercel's "Include files outside the root directory" setting should cover it.
 - `POSTGRES_URL_NON_POOLING` from the integration is reachable from the Vercel build and accepts the multi-statement schema in one query.
-- The integration's project has email confirmation on.
+- The integration's project has Confirm email on. Confirmation stays on in every case, because the owner email match depends on it.
+- Supabase's built-in mail service sends only to the project's team members, at 2 emails an hour ([Auth SMTP docs](https://supabase.com/docs/guides/auth/auth-smtp)). Check whether a `YOGURT_OWNER_EMAIL` equal to the Vercel account email receives the confirmation, and what happens with a different email. Record the result in the design doc's Flow 1 section.
 
 ## SYNC-4: connect and push
 
@@ -108,8 +122,10 @@ Verify first, on a throwaway Vercel project:
 
 `yogurt-server`:
 
+- Connect reads `yogurt_status` and refuses a login that is not the owner or an owner with no passcode yet, with "Choose a passcode in the webapp first".
 - `GET /api/cloud`, `POST /api/cloud/connect`, `POST /api/cloud/push`, `POST /api/cloud/disconnect` (with `mark_deleted`).
 - One `keys.json` account, `yogurt-cloud`, holding the address, URL, publishable key, refresh token, device id, and machine name, so the connection is atomic.
+- A `keys.json` copied into a scratch data dir carries the `yogurt-cloud` account and would push as the same device, so the `CONTRIBUTING.md` copy advice must say to delete the `yogurt-cloud` entry from the copy once this stores it.
 - An expired or revoked session returns a typed error the UI shows as "Sign in again", with the password field inline. A non-owner login returns its own error, "This login does not own that Yogurt Cloud".
 
 Web:
@@ -147,7 +163,7 @@ Tests:
 `docs/CLOUD-SYNC.md`, linked from the README, written for someone who has never opened Vercel or Supabase:
 
 1. What Yogurt Cloud is, what leaves the machine, and who can read it.
-2. Deploy: the button, the Supabase integration, the owner email, and the existing-project path.
+2. Deploy: the button, the Supabase integration, the owner email, and the existing-project path. The owner email should be the Vercel and Supabase account email, so the built-in mail service delivers the confirmation. Custom SMTP, for example Resend, is the fallback for any other address.
 3. First visit: create the login, confirm the email, choose a passcode, add the webapp to the phone's home screen.
 4. Each laptop: Connect with the Cloud address, push.
 5. Everyday use: the Push button, auto-push, what the "not pushed" pill means.

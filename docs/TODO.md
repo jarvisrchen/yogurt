@@ -126,7 +126,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
-- [ ] **SYNC-2** Rework `yogurt-cloud` for the plaintext design: drop the crypto and link code, rewrite `schema.sql` with the owner, passcode, and read RPCs, and land the REST client and local test stack
 - [ ] **SYNC-3** Yogurt Cloud webapp in `cloud/`, deployed on Vercel: build-time schema, first visit, sign in, passcode unlock with remembered browsers, settings
 - [ ] **SYNC-4** Connect a laptop with the Cloud address and push versioned meetings with a manual button, plus the QR code for the phone
 - [ ] **SYNC-5** Webapp library with a device picker, read-only meeting page, and push history

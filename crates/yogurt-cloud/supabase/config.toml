@@ -1,0 +1,63 @@
+# Local stack for `just test-cloud`. Ports sit in 5642x because other local Supabase projects on this Mac use 54321-54329 and 55321-55329.
+project_id = "yogurt-cloud-test"
+
+[api]
+enabled = true
+port = 56421
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 56422
+shadow_port = 56420
+major_version = 17
+
+[db.pooler]
+enabled = false
+port = 56429
+
+[db.migrations]
+enabled = false
+
+[db.seed]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+port = 56423
+
+[inbucket]
+enabled = false
+port = 56424
+
+[storage]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+port = 56427
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+# 0 so the rotated-out token is rejected at once instead of after the default 10 second grace.
+refresh_token_reuse_interval = 0
+enable_signup = true
+minimum_password_length = 6
+
+[auth.rate_limit]
+token_refresh = 1000
+sign_in_sign_ups = 1000
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false

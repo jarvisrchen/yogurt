@@ -389,8 +389,7 @@ sequenceDiagram
   participant V as Webapp in a browser
   participant P as Supabase project
   U->>V: open richard-yogurt.vercel.app
-  V->>P: rpc yogurt_status()
-  P-->>V: owner email set, no owner signed up yet
+  V-->>U: Sign in, with a Create the Cloud login option
   U->>V: create the Cloud login (owner email + password)
   V->>P: auth.signUp
   U->>U: click the confirmation email
@@ -451,7 +450,7 @@ sequenceDiagram
   Y->>P: rpc yogurt_device_meetings(device_id)
   Y->>Y: deleted = cloud ids missing locally
   alt anything changed or deleted
-    Y->>P: insert yogurt_pushes {device_id}, returning id
+    Y->>P: rpc yogurt_start_push(device_id), returns the push id
     loop batches
       Y->>P: insert yogurt_versions (null body for each deletion)
       Y->>DB: store the batch's new cloud_hash values

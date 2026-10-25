@@ -138,7 +138,7 @@ Release builds never read `.env.local`.
 
 | Variable | Read by | Effect |
 |----------|---------|--------|
-| `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into `~/.yogurt/keys.json` on first run. |
+| `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into `keys.json` (`~/.yogurt/`, or the `YOGURT_DATA_DIR` override) on first run. |
 | `YOGURT_OPENAI_API_KEY`, `YOGURT_OPENROUTER_API_KEY`, `YOGURT_MINIMAX_API_KEY`, `YOGURT_GEMINI_API_KEY`, `YOGURT_DEEPSEEK_API_KEY` | bootstrap | Seed the matching LLM provider preset. One per entry in `ENV_PRESETS` (`crates/yogurt-server/src/bootstrap.rs`). |
 | `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`, `YOGURT_LLM_MODEL` | LLM resolver | Override the active LLM provider for this process without touching Settings or the key file. |
 | `YOGURT_DEEPGRAM_MODEL` | cloud STT | Deepgram model name (default `nova-3`). Stamped into each meeting's `stt_engine`. |
@@ -198,10 +198,11 @@ just dev
 A fresh worktree contains only tracked files, and everything needed to *run* is gitignored: `.env.local`, `web/node_modules`, `web/dist` (whose absence fails the build at `#[derive(RustEmbed)] folder ... does not exist`).
 `just dev` calls `just bootstrap` first, which restores all three from the main checkout, so there is no separate setup step.
 `just dev` prefers `:5173` and `:7878` but moves to the next free pair when they are taken, so a second worktree runs alongside the first - it prints the ports it picked, and the two instances are independent (`/api`, `/ws`, HMR, and the WS origin allowlist all follow the pair).
-They do share `~/.yogurt/`, so both see the same meetings and the same keys; only one of them should be recording at a time.
+They do share `~/.yogurt/`, so both see the same meetings and the same keys, and only one of them should be recording at a time.
 Pin the pair yourself with `YOGURT_VITE_PORT` and `YOGURT_BACKEND_PORT`, or force the old behaviour with `YOGURT_PORT_POLICY=ask`.
-If the branch carries a database migration, set `YOGURT_DATA_DIR=~/.yogurt-<slug>` before `just dev` so this worktree gets its own `db.sqlite` instead of upgrading the shared one out from under the main binary.
-Keys and models are still read from `~/.yogurt` either way.
+If the branch carries a database migration or touches Yogurt Cloud, set `YOGURT_DATA_DIR=~/.yogurt-<slug>` before `just dev` so this worktree gets its own `db.sqlite` and `keys.json` instead of changing the shared ones out from under the main binary.
+The override starts with no keys beyond what `.env.local` seeds, so copy `~/.yogurt/keys.json` beside the database if the instance needs your configured providers.
+Models, notes, and the session token stay in `~/.yogurt` either way.
 
 Hand over the manual test with an absolute path, not a relative one.
 `cd ~/Documents/code/yogurt-worktrees/<slug> && just dev` works from any terminal; `cd ../yogurt-worktrees/<slug> && just dev` silently resolves to the wrong place, or nowhere, once pasted from a terminal that was not sitting in the original working directory.

@@ -1,14 +1,10 @@
-//! Encryption, link code, and schema for Yogurt Cloud. The laptop build can only encrypt.
+//! Schema and REST client for Yogurt Cloud, the user's own Supabase project.
 
-mod crypto;
 mod error;
-mod link;
+mod rest;
 
-pub use crypto::{generate_keypair, seal, wrap_private_key, KeyPair};
 pub use error::{Error, Result};
-pub use link::LinkCode;
+pub use rest::{Project, Session};
 
 pub const SCHEMA_SQL: &str = include_str!("../schema.sql");
-
-#[cfg(test)]
-mod fixtures;
+pub const OWNER_SQL: &str = include_str!("../owner.sql");

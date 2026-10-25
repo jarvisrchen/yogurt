@@ -37,7 +37,7 @@ Setup happens in a browser, not on a laptop, so no laptop is special.
 | Vercel and Supabase accounts | The user's own logins that own the deployment and the database. | Once, during the deploy. Yogurt never sees them. |
 | Cloud address | The webapp's URL, for example `richard-yogurt.vercel.app`. Not secret. | Typed on each laptop to connect, opened on the phone. |
 | Cloud login | An email and password user inside the Supabase project. | Every laptop and every browser signs in with it. |
-| Passcode | A second secret, checked in Postgres before any read. | Typed in the webapp only. Never on a laptop. |
+| Passcode | A second secret, a 4 or 6 digit PIN, checked in Postgres before any read. | Typed in the webapp only. Never on a laptop. |
 
 Local yogurt keeps no account of its own, as today.
 
@@ -102,8 +102,7 @@ sequenceDiagram
   participant P as Supabase project
 
   U->>V: open richard-yogurt.vercel.app
-  V->>P: rpc yogurt_status()
-  P-->>V: owner email set, no owner signed up yet
+  V-->>U: Sign in, with a "Create the Cloud login" option
   U->>V: create the Cloud login (owner email + password)
   V->>P: auth.signUp
   U->>U: click the confirmation email
@@ -111,13 +110,16 @@ sequenceDiagram
   V->>P: rpc yogurt_status()
   P-->>V: you are the owner, no passcode yet
   U->>V: choose a passcode
-  V->>P: rpc yogurt_set_passcode(new)
+  V->>P: rpc yogurt_set_passcode(new_passcode)
   V->>V: unlock (Flow 2)
 ```
 
+A first-visit browser has no session, so it cannot call `yogurt_status`, which only `authenticated` may execute.
+The webapp therefore opens on Sign in with a "Create the Cloud login" option and calls `yogurt_status` only after sign-in.
 The owner is the confirmed Supabase user whose email matches `yogurt_owner.email`.
 The first time that user calls any owner RPC, `yogurt_owner.user_id` is pinned to their id, so a later account cannot take ownership even if the email is reused.
 Email confirmation must stay on, which is Supabase's default, because the email match is the only thing that makes the first sign-up the owner.
+Supabase's built-in mail service sends only to the project's team members, at 2 emails an hour, so the owner email should be the account email that owns the Supabase project. Custom SMTP, for example Resend, covers any other address. SYNC-3 checks this on a throwaway deploy and records the result here.
 Anyone else can sign up, because Supabase sign-ups stay on, but every policy and RPC checks the owner, so another account can neither read nor insert a row.
 
 ## Flow 2: unlocking a browser
@@ -141,11 +143,26 @@ sequenceDiagram
 `yogurt_unlock` returns a random 32-byte token and stores only its SHA-256 in `yogurt_browsers`, with the label (for example "Safari on iPhone"), a creation time, and an expiry.
 A token lasts 12 hours, or 90 days with "Remember this browser".
 Every read RPC takes the token and refuses a missing, expired, or forgotten one.
-Five wrong passcodes in a row lock unlocking for 15 minutes. The function returns null on a wrong passcode instead of raising, because a raised error would roll back the failure count with it.
-Lock in the webapp forgets the token in that browser. The settings page lists every remembered browser with Forget, and changing the passcode forgets all of them except the current one.
+The passcode is a 4 or 6 digit PIN, and `yogurt_set_passcode` rejects anything else with `invalid_parameter_value` (22023) before it looks at `old`, so a rejected format never counts as a failure.
+Five wrong passcodes in a row lock unlocking for 15 minutes, and each further run of five doubles the lockout (30 minutes, 1 hour, and so on, capped at 2^10 times 15 minutes).
+A correct passcode resets both counts.
+A wrong `old` in `yogurt_set_passcode` counts as a wrong passcode, and both functions share one counter and one lockout, so switching between them does not buy more tries.
+`yogurt_unlock` returns null on a wrong passcode or during a lockout instead of raising, because a raised error would roll back the failure count with it.
+`yogurt_set_passcode` returns false for the same reason.
+A missing, expired, or forgotten token raises SQLSTATE 28000 (`invalid or expired browser token`), which PostgREST answers with 403.
+A caller who is not the owner gets 42501 from every RPC except `yogurt_status`.
+Lock in the webapp forgets the token in that browser.
+The settings page lists every remembered browser with Forget.
+Changing the passcode deletes every browser, including the current one, and the webapp then unlocks the current browser again with the new passcode.
 
-A forgotten passcode is reset in the Supabase SQL editor: `update yogurt_owner set passcode_hash = null; delete from yogurt_browsers;`.
-The next sign-in then asks for a new passcode, as in Flow 1.
+A forgotten passcode is reset in the Supabase SQL editor by setting a new PIN directly:
+
+```sql
+update yogurt_owner set passcode_hash = extensions.crypt('<new pin>', extensions.gen_salt('bf')), failed_attempts = 0, consecutive_lockouts = 0, locked_until = null where id;
+delete from yogurt_browsers where true;
+```
+
+The passcode is never unset while meetings exist, because `yogurt_start_push` refuses to run until a passcode exists.
 That reset needs the Supabase dashboard, which is the point: the Cloud login alone cannot reset the passcode.
 
 ## Flow 3: a laptop connects
@@ -163,12 +180,15 @@ sequenceDiagram
   U->>Y: Cloud address, login email + password, machine name "Work laptop"
   Y->>V: GET https://<address>/config.json
   Y->>P: POST /auth/v1/token?grant_type=password
-  Y->>P: rpc yogurt_status(), must say owner
+  Y->>P: rpc yogurt_status(), must say owner and passcode_set
   Y->>P: insert yogurt_devices {id, name}, id generated by the laptop
   Y->>Y: keys.json: address, URL, publishable key, refresh token, device id
   U->>Y: Push meetings
 ```
 
+Connecting needs a passcode chosen in the webapp first.
+If `yogurt_status` says `passcode_set` is false, the laptop says to choose a passcode in the webapp and stops.
+`yogurt_start_push` enforces the same rule with SQLSTATE `PT412` (HTTP 412, "choose a passcode in the webapp first"), so no meeting data lands before the owner has a PIN.
 The laptop never sees the passcode, a Supabase secret, or a Vercel or Supabase account.
 "Create a Yogurt Cloud" on the same page opens the setup guide with the deploy button in the browser.
 
@@ -192,7 +212,7 @@ sequenceDiagram
   Y->>P: rpc yogurt_device_meetings(device_id)
   Y->>Y: deleted = cloud ids missing locally
   alt anything changed or deleted
-    Y->>P: insert yogurt_pushes {device_id}, returning id
+    Y->>P: rpc yogurt_start_push(device_id), returns the push id
     loop batches
       Y->>P: insert yogurt_versions (null body for each deletion)
       Y->>DB: store the batch's new cloud_hash values
@@ -214,27 +234,32 @@ If a batch fails, its meetings keep their old `cloud_hash`, so the next pass sen
 
 | Table | Columns | Clients may |
 | --- | --- | --- |
-| `yogurt_owner` | `email`, `user_id`, `passcode_hash`, `failed_attempts`, `locked_until` | nothing directly. The build writes `email`, and RPCs do the rest. |
+| `yogurt_owner` (one row) | `email`, `user_id`, `passcode_hash`, `failed_attempts`, `consecutive_lockouts`, `locked_until` | nothing directly. The build writes `email` with `crates/yogurt-cloud/owner.sql`, and RPCs do the rest. |
 | `yogurt_browsers` | `id`, `token_hash`, `label`, `created_at`, `expires_at`, `last_used_at` | nothing directly |
 | `yogurt_devices` | `id` (laptop-generated), `user_id`, `name`, `created_at` | insert `id`, `name` |
-| `yogurt_pushes` | `id`, `device_id`, `user_id`, `pushed_at` | insert `device_id` |
-| `yogurt_versions` | `meeting_id`, `push_id`, `device_id`, `user_id`, `body jsonb` | insert `meeting_id`, `push_id`, `device_id`, `body` |
+| `yogurt_pushes` | `id`, `device_id`, `user_id`, `pushed_at` | nothing directly. `yogurt_start_push` creates one, because `insert ... returning` needs `select`. |
+| `yogurt_versions` | `meeting_id`, `push_id`, `device_id`, `user_id`, `body jsonb` (null marks a deletion), keyed by `device_id`, `meeting_id`, `push_id` | insert `meeting_id`, `push_id`, `device_id`, `body` |
 
 The functions, all `security definer` with a fixed `search_path`, and each checking that the caller is the owner:
 
 | Function | Who calls it | Returns |
 | --- | --- | --- |
-| `yogurt_status()` | webapp, laptop | whether an owner email is set, whether the caller is the owner, whether a passcode is set |
-| `yogurt_set_passcode(new, old)` | webapp | `old` is required once a passcode exists. Hashes with `extensions.crypt` and `gen_salt('bf')`. |
-| `yogurt_unlock(passcode, remember, label)` | webapp | a browser token, or null |
-| `yogurt_lock(token)`, `yogurt_forget_browser(token, id)`, `yogurt_browsers(token)` | webapp | |
+| `yogurt_status()` | webapp, laptop | a JSON object: `owner_email_set`, `is_owner`, `passcode_set`, and `locked_until` (null unless locked). Callable by any signed-in user. |
+| `yogurt_set_passcode(new_passcode, old_passcode)` | webapp | true when set. `old_passcode` is required once a passcode exists. A wrong `old_passcode` or a lockout returns false. Hashes with `extensions.crypt` and `gen_salt('bf')`. Deletes every `yogurt_browsers` row, and the webapp then unlocks the current browser again with the new passcode. |
+| `yogurt_unlock(passcode, remember, label)` | webapp | a browser token as 64 hex characters, or null |
+| `yogurt_lock(token)`, `yogurt_forget_browser(token, browser_id)` | webapp | true when a browser was removed |
+| `yogurt_browsers(token)` | webapp | live browsers with label, times, and whether each is the caller's |
+| `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
-| `yogurt_library(token, at_push)` | webapp | the latest version of each live meeting at or before `at_push`, or now, ordered by `meeting_id` for paging |
-| `yogurt_history(token)` | webapp | each push with its device, time, and changed and deleted counts |
-| `yogurt_device_list(token)` | webapp | device ids and names |
+| `yogurt_library(token, at_push)` | webapp | for each live meeting on each device, the latest version at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `body`, ordered by `meeting_id` then `device_id` for paging |
+| `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
+| `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 
-The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST.
-It keeps the column-level `insert` grants and the SYNC-1 policies: a row's `user_id` must be the caller, the caller must be the owner, and a version can only join a push of its own device created in the last hour.
+The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST. A plain `GET /rest/v1/yogurt_versions` answers 403 with code 42501.
+It keeps column-level `insert` grants on `yogurt_devices` (`id`, `name`) and `yogurt_versions`, and these policies: a row's `user_id` must be the caller, the caller must be the owner, and a version can only join a push of its own device created in the last hour.
+The policy checks call small `security definer` helpers in a `yogurt_private` schema that PostgREST does not expose, returning only a boolean, because a policy subquery runs as the caller, who has no `select`.
+Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authenticated`, and an explicit allowlist then grants it to `authenticated`: the RPCs and the three policy helpers.
+`owner.sql` is the one statement the build runs with the owner email as `$1`: it inserts the `yogurt_owner` row, and a changed email applies only while `user_id` is still null.
 Grants stay explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
 The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
 PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with limit and offset.

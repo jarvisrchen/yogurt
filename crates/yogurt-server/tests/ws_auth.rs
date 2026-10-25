@@ -49,6 +49,7 @@ async fn spawn_test_server() -> TestServer {
         notes_dir: Some(tmp.path().join("notes")),
         // Parallel tests deadlock on the real user DB's WAL lock.
         app_db_path: Some(tmp.path().join("yogurt-app.sqlite")),
+        keys_path: None,
     };
     let join = tokio::spawn(yogurt_server::run_with_config(cfg));
 
