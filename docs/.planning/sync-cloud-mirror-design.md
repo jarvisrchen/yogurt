@@ -126,7 +126,10 @@ The webapp therefore opens on Sign in with a "Create the Cloud login" option and
 The owner is the confirmed Supabase user whose email matches `yogurt_owner.email`.
 The first time that user calls any owner RPC, `yogurt_owner.user_id` is pinned to their id, so a later account cannot take ownership even if the email is reused.
 Email confirmation must stay on, which is Supabase's default, because the email match is the only thing that makes the first sign-up the owner.
-Supabase's built-in mail service sends only to the project's team members, at 2 emails an hour, so the owner email should be the account email that owns the Supabase project. Custom SMTP, for example Resend, covers any other address. SYNC-3 checks this on a throwaway deploy and records the result here.
+Supabase's built-in mail service sends only to the project's team members, at 2 emails an hour, so the owner email should be the account email that owns the Supabase project. Custom SMTP, for example Resend, covers any other address.
+Checked in SYNC-3: the members are the Supabase organization's team members, so on a reused project the owner email must belong to that organization or the confirmation is refused with `email_address_not_authorized`.
+Inviting the owner email to the organization is the free fix, and custom SMTP is the other one.
+GoTrue also rejects reserved domains such as `example.com` with `email_address_invalid` before any mail is tried.
 Anyone else can sign up, because Supabase sign-ups stay on, but every policy and RPC checks the owner, so another account can neither read nor insert a row.
 
 ## Flow 2: unlocking a browser

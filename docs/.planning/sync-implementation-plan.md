@@ -83,15 +83,18 @@ Verify first, with pgcrypto on the local Supabase: `extensions.crypt` and `exten
 Files:
 
 - A new top-level `cloud/` folder: `package.json`, `index.html`, `src/`, and `vite.config.ts` building into `cloud/dist`. The config aliases `web/src` for the shared components and tokens, and sets `resolve.dedupe` for `react` and `react-dom`.
-- `cloud/scripts/build.mjs`: on `VERCEL_ENV=production`, apply `../crates/yogurt-cloud/schema.sql` and the owner statement through `POSTGRES_URL_NON_POOLING` with `pg`, then write `dist/config.json`, then run the Vite build. Outside production it only writes `config.json` and builds.
-- `cloud/vercel.json`: build command, output directory, and an `ignoreCommand` that skips builds when nothing under `cloud/`, `web/src/`, `web/public/`, or `crates/yogurt-cloud/*.sql` changed. `owner.sql` runs in the same build step as `schema.sql`.
-- CI: the web job gains a `cloud/` typecheck, test, and build step, because a change under `web/src` can break the webapp.
+- `cloud/scripts/build.mjs`: write `dist/config.json`, run the Vite build, and only then, on `VERCEL_ENV=production`, apply `../crates/yogurt-cloud/schema.sql` and the owner statement through `POSTGRES_URL_NON_POOLING` with `pg`. A failed build never touches the database.
+- `cloud/vercel.json`: build command, output directory, and an `ignoreCommand` that skips a build only when `VERCEL_GIT_PREVIOUS_SHA` is set and nothing under `cloud/`, `web/src/`, `web/public/`, or `crates/yogurt-cloud/*.sql` changed since it. A first deploy has no previous SHA and always builds. `owner.sql` runs in the same build step as `schema.sql`.
+- CI: a `cloud` job runs the `cloud/` typecheck, test, and build without `web/node_modules`, as Vercel does, because a change under `web/src` can break the webapp.
 - Screens: first visit (create the login, check your email), sign in, choose a passcode (a 4 or 6 digit PIN, entered on a numeric keypad with `inputmode="numeric"` and `autocomplete="off"`), unlock with "Remember this browser", Lock, settings with the account, Sign out, Change passcode, and remembered browsers with Forget, and an empty library that says no machine has pushed yet.
 - The token lives in `localStorage` under one key. A rejected token sends the user back to Unlock.
 
 Richard's deployment:
 
-- A Vercel project on the jarvisrchen Vercel account, imported from `jarvisrchen/yogurt` with root directory `cloud`, the Supabase integration added, and `YOGURT_OWNER_EMAIL` set. The local CLI switches accounts with `vercelgate switch`.
+- The Vercel project `yogurt` on the jarvisrchen account, imported from `jarvisrchen/yogurt` with root directory `cloud`, serving https://yogurt-three.vercel.app.
+- It reuses the Supabase project `ocmoczpffdjuaoiktvqw`, renamed Yogurt, after its old JVault data was archived and dropped. Every Yogurt table keeps the `yogurt_` prefix so other Yogurt features can share the project.
+- The env vars were set by hand instead of through the Supabase integration: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `YOGURT_OWNER_EMAIL`, and `POSTGRES_URL_NON_POOLING` as the session pooler URL (port 5432), production only and marked sensitive.
+- Supabase Auth's site URL and redirect allow list point at the Vercel address.
 - The deploy button URL for other users waits for SYNC-7, but SYNC-3 checks it once on a throwaway Vercel project.
 
 Tests:
@@ -102,7 +105,10 @@ Tests:
 Verify first, on a throwaway Vercel project:
 
 - A build with root directory `cloud` can read `../crates/yogurt-cloud/schema.sql` and `../web/src`. Vercel's "Include files outside the root directory" setting should cover it.
+  Result: it does, with that setting on, which is the default for a project created through the API.
 - `POSTGRES_URL_NON_POOLING` from the integration is reachable from the Vercel build and accepts the multi-statement schema in one query.
+  Result: a session pooler URL with `sslmode=require` applied `schema.sql` and `owner.sql` from a Vercel build in iad1. The integration's own variable is checked in SYNC-7.
+- Found on the way: the first `ignoreCommand` fell back to `HEAD^` without a previous SHA, so a first deploy whose latest commit missed `cloud/` was cancelled. It builds in that case now.
 - The integration's project has Confirm email on. Confirmation stays on in every case, because the owner email match depends on it.
 - Supabase's built-in mail service sends only to the project's team members, at 2 emails an hour ([Auth SMTP docs](https://supabase.com/docs/guides/auth/auth-smtp)). Check whether a `YOGURT_OWNER_EMAIL` equal to the Vercel account email receives the confirmation, and what happens with a different email. Record the result in the design doc's Flow 1 section.
 
