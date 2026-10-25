@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@web/components/Button";
-import { Brand, FieldLabel, LoadError, PinField, useDesktop, h3 } from "../ui";
+import { getThemePref, setThemePref, type ThemePref } from "@web/lib/theme";
+import { Brand, FieldLabel, LoadError, PinField, Segmented, useDesktop, h3 } from "../ui";
 import { LockSmall } from "./Library";
 import { NewPin } from "./Pin";
 import { TokenRejected, type Api, type Browser } from "../lib/api";
+
+const THEMES: { value: ThemePref; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 const date = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const dayLabel = "font-mono text-[9.5px] min-[721px]:text-[10.5px] uppercase tracking-[.08em] text-mut mt-[4px] min-[721px]:mt-[10px]";
@@ -62,6 +69,7 @@ export function Settings(p: Props) {
   const desktop = useDesktop();
   const [browsers, setBrowsers] = useState<Browser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState(getThemePref);
   const { api, token, onRejected } = p;
   const load = useCallback(() => {
     setError(null);
@@ -186,6 +194,22 @@ export function Settings(p: Props) {
               ))}
             </GroupBox>
           )}
+        </Group>
+        <Group title="Appearance">
+          <GroupBox>
+            <Row>
+              <div>Theme</div>
+              <Segmented
+                label="Appearance"
+                options={THEMES}
+                value={theme}
+                onChange={(v) => {
+                  setThemePref(v);
+                  setTheme(v);
+                }}
+              />
+            </Row>
+          </GroupBox>
         </Group>
         <Group title="Recovery">
           <GroupBox>

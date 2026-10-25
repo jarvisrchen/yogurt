@@ -35,7 +35,7 @@ function Signed({ api }: { api: Api }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    api.session().then((s) => setEmail(s?.user.email ?? null));
+    // INITIAL_SESSION always fires, so this one subscription is the only source of the session.
     const { data } = api.sb.auth.onAuthStateChange((_e, s) => setEmail(s?.user.email ?? null));
     return () => data.subscription.unsubscribe();
   }, [api]);
@@ -93,7 +93,10 @@ function Signed({ api }: { api: Api }) {
       await unlock(pin, true);
       await refreshStatus();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // The save may have landed with the reply lost, which makes a retry fail. Routing off the fresh status lands on Unlock.
+      const st = await api.status().catch(() => null);
+      if (st) setStatus(st);
+      if (!st?.passcode_set) setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

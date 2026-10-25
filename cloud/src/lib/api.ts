@@ -1,4 +1,4 @@
-import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Status } from "./route";
 
 export interface Config {
@@ -24,6 +24,11 @@ export interface Device {
 
 export class TokenRejected extends Error {}
 
+export const OFFLINE = "Couldn't reach your Cloud. Check your connection and try again.";
+
+/** postgrest-js reports a failed fetch as status 0 and auth-js as an AuthRetryableFetchError, both with the browser's raw message. */
+export const offline = (e: { status?: number; name?: string }) => e.status === 0 || e.name === "AuthRetryableFetchError";
+
 export async function loadConfig(): Promise<Config> {
   const res = await fetch("/config.json", { cache: "no-store" });
   if (!res.ok) throw new Error(`config.json answered ${res.status}`);
@@ -39,13 +44,10 @@ export class Api {
     this.sb = createClient(cfg.supabase_url, cfg.publishable_key);
   }
 
-  async session(): Promise<Session | null> {
-    return (await this.sb.auth.getSession()).data.session;
-  }
-
   private async rpc<T>(fn: string, args: object = {}): Promise<T> {
     const { data, error, status } = await this.sb.rpc(fn, args);
     if (error) {
+      if (offline({ status })) throw new Error(OFFLINE);
       if (error.code === "28000" || status === 403) throw new TokenRejected(error.message);
       throw Object.assign(new Error(error.message), { code: error.code });
     }
@@ -54,13 +56,13 @@ export class Api {
 
   async signIn(email: string, password: string) {
     const { error } = await this.sb.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) throw offline(error) ? new Error(OFFLINE) : error;
   }
 
   /** Resolves true when the project hands back a session at once, which means email confirmation is off. */
   async signUp(email: string, password: string): Promise<boolean> {
     const { data, error } = await this.sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
-    if (error) throw error;
+    if (error) throw offline(error) ? new Error(OFFLINE) : error;
     return !!data.session;
   }
 

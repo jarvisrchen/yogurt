@@ -104,6 +104,7 @@ Disconnecting removes the connection from `~/.yogurt/keys.json` and signs this M
 ## 7. History and recovery
 
 Locking and forgetting browsers is done in the webapp's Settings, which the gear in the library header opens.
+Settings also has an Appearance control (System, Light, Dark), and the installed app's system bars follow the chosen theme.
 
 - **Lock** forgets the unlock token in this browser, so the next visit asks for the PIN.
 - **Remembered browsers** lists every unlocked browser with its expiry.

@@ -17,8 +17,12 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   await expectScreen(page, "Check your email");
   await shot(page, info, "f-check-email");
 
+  let statusCalls = 0;
+  page.on("request", (r) => r.url().includes("/rpc/yogurt_status") && statusCalls++);
   await page.goto(await confirmationLink());
   await expectScreen(page, /Choose a 4 or 6 digit PIN/);
+  await page.waitForTimeout(500);
+  expect(statusCalls).toBe(1);
   await page.getByLabel("PIN", { exact: true }).fill("246810");
   await page.getByLabel("Confirm PIN").fill("246811");
   await expect(page.getByText("The two PINs differ.")).toBeVisible();
@@ -34,6 +38,23 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   await expectScreen(page, "Settings");
   await expect(page.getByText("This browser", { exact: false })).toBeVisible();
   await shot(page, info, "p-settings");
+
+  const theme = page.locator("html");
+  const appearance = page.getByRole("group", { name: "Appearance" });
+  const initial = await theme.getAttribute("data-theme");
+  const flipped = initial === "dark" ? "Light" : "Dark";
+  await appearance.getByRole("button", { name: flipped }).click();
+  await expect(theme).toHaveAttribute("data-theme", flipped.toLowerCase());
+  const paper = (await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-paper"))).trim();
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", paper);
+  await shot(page, info, "p-settings-appearance");
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expectScreen(page, "Settings");
+  await expect(theme).toHaveAttribute("data-theme", flipped.toLowerCase());
+  await expect(appearance.getByRole("button", { name: flipped })).toHaveAttribute("aria-pressed", "true");
+  await appearance.getByRole("button", { name: "System" }).click();
+  await expect(theme).toHaveAttribute("data-theme", initial!);
 
   // Lock, then a wrong PIN, then the right one with Remember this browser.
   await page.getByRole("button", { name: /^Lock/ }).first().click();
