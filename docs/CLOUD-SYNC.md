@@ -15,13 +15,36 @@ Not written yet (SYNC-7).
 
 ## 2. Deploy your Yogurt Cloud
 
-Not written yet (SYNC-7).
-It will cover the Deploy with Vercel button, the Supabase integration, and the owner email.
+Placeholder: the Deploy with Vercel button and its steps wait for the throwaway Vercel check (SYNC-7).
+The build already needs `YOGURT_OWNER_EMAIL` (the email of the one Cloud login) and the Supabase integration's variables, and it fails with a message naming any that is missing.
 
 ## 3. First visit to the webapp
 
-Not written yet (SYNC-3 and SYNC-7).
-It will cover creating the Cloud login, choosing a PIN, and adding the webapp to your phone's home screen.
+Open your Cloud address in a browser.
+The first screen is Sign in.
+Your first visit has no login yet, so follow these steps once.
+
+1. Select Create your Cloud login.
+2. Type the email you entered as `YOGURT_OWNER_EMAIL` when you deployed, and a password of at least 6 characters.
+   Any other email can sign up, but it cannot read or push anything.
+3. Select Create login.
+   The webapp says "Check your email".
+4. Open the confirmation email and select its link.
+   The link returns to your webapp already signed in.
+   Supabase's built-in mail sends only to the project owner's own email at a low rate, so use that email as the owner email until you set up your own mail service.
+5. Choose a 4 or 6 digit PIN, type it again to confirm, and select Save PIN.
+   You type this PIN in a browser to read meetings, and your laptops never see it.
+
+The webapp then opens the library, which says "No machine has pushed yet" until you connect a laptop (section 4).
+
+Add the webapp to your phone's home screen so it opens like an app.
+In Safari on iPhone, select Share, then Add to Home Screen.
+In Chrome on Android, open the menu, then Add to Home screen or Install app.
+The icon is the Yogurt logo.
+
+From then on, a browser that is already signed in only asks for the PIN.
+Tick "Remember this browser" to stay unlocked for 90 days, or leave it unticked for 12 hours.
+Five wrong PINs in a row lock unlocking for 15 minutes, and each further five doubles the wait.
 
 ## 4. Connect each laptop
 
@@ -80,7 +103,21 @@ Disconnecting removes the connection from `~/.yogurt/keys.json` and signs this M
 
 ## 7. History and recovery
 
-Not written yet (SYNC-5 and SYNC-7).
+Locking and forgetting browsers is done in the webapp's Settings, which the gear in the library header opens.
+
+- **Lock** forgets the unlock token in this browser, so the next visit asks for the PIN.
+- **Remembered browsers** lists every unlocked browser with its expiry.
+  Forget removes one, and that browser asks for the PIN on its next visit.
+  Forgetting the browser you are using locks it.
+- **Change PIN** asks for the current PIN and a new 4 or 6 digit one.
+  It forgets every remembered browser, then unlocks the one you are using again with the new PIN.
+- **Sign out** ends the Cloud login in this browser.
+  Signing in again asks for the PIN.
+
+If you forget the PIN, the webapp cannot reset it.
+Set a new one in the Supabase SQL editor with the statement in the design doc's unlocking section.
+
+Viewing an earlier push is not written yet (SYNC-5 and SYNC-7).
 
 ## 8. Troubleshooting
 

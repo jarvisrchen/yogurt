@@ -1259,3 +1259,7 @@ New closed items go at the bottom.
 - [x] **SYNC-6** Automatic push on an interval (15 minutes, 1 hour, or daily)
 
   Auto-push runs the push pass every 15 minutes, hourly, or daily from a Connected-page setting, sharing the manual push's locks and stopping on errors only the user can fix.
+
+- [x] **SYNC-3** Yogurt Cloud webapp in `cloud/`, deployed on Vercel: build-time schema, first visit, sign in, passcode unlock with remembered browsers, settings
+
+  The Yogurt Cloud webapp in `cloud/` builds on Vercel, applies the schema on production deploys, and covers first visit, sign in, the PIN, unlock, lockout, Settings, and an empty library.

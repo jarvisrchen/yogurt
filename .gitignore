@@ -28,3 +28,8 @@ web/.playwright/
 /.planning/
 repomix-output.*
 *.tsbuildinfo
+
+# cloud/ webapp Playwright output
+cloud/e2e/screenshots/
+cloud/test-results/
+cloud/playwright-report/
