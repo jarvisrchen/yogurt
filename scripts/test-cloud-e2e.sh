@@ -85,10 +85,10 @@ field() { jq -r "$1" "$tmp/body.json"; }
 connect_body() { printf '{"address":"%s","email":"%s","password":"%s","machine_name":"%s"}' "$ADDRESS" "$1" "$PASSWORD" "$2"; }
 ctl() { local name=$1; shift; eval "HOME=\$tmp/$name/home \"\$bin\" ctl --port \$${name}_port \"\$@\""; }
 
-echo "== connect is refused until the owner has a passcode"
-expect "connect before passcode" "$(api a POST /api/cloud/connect "$(connect_body "$OWNER" 'Laptop 1')")" 412
+echo "== connect is refused until the owner has a PIN"
+expect "connect before PIN" "$(api a POST /api/cloud/connect "$(connect_body "$OWNER" 'Laptop 1')")" 412
 expect "code" "$(field .code)" passcode_not_set
-expect "message" "$(field .error)" "Choose a passcode in the webapp first"
+expect "message" "$(field .error)" "Choose a PIN in the webapp first"
 
 owner_token=$(curl -fsS -X POST "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $PUBLISHABLE_KEY" -H 'Content-Type: application/json' \
     -d "{\"email\":\"$OWNER\",\"password\":\"$PASSWORD\"}" | jq -r .access_token)
@@ -175,15 +175,24 @@ expect "overlap 2" "$(cat "$tmp/c2")" 200
 expect "ctl status" "$(ctl a --json cloud status | jq -r .not_pushed)" 0
 expect "ctl push" "$(ctl a --json cloud push | jq -r .changed)" 0
 
+echo "== auto-push interval"
+expect "default" "$(ctl a --json cloud status | jq -r .push_interval)" off
+expect "bad interval" "$(api a POST /api/cloud/push-interval '{"interval":"5m"}')" 400
+expect "set" "$(api a POST /api/cloud/push-interval '{"interval":"1h"}')" 200
+expect "returned status" "$(field .push_interval)" 1h
+expect "ctl shows it" "$(ctl a cloud status | grep '^auto-push:')" "auto-push: every hour"
+
 echo "== disconnect with mark_deleted"
 expect "disconnect a" "$(api a POST /api/cloud/disconnect '{"mark_deleted":true}')" 200
 expect "disconnected" "$(field .connected)" false
 expect "marked deleted" "$(psql -c "select count(*) from yogurt_versions v join yogurt_devices d on d.id=v.device_id where d.name='Laptop 1' and v.meeting_id='$a1' and v.body is null")" 1
 expect "history keeps it" "$(psql -c "select count(*) from yogurt_versions where meeting_id='$a1' and body is not null")" 3
+expect "disconnect resets the interval" "$(sqlite3 "$tmp/a/data/db.sqlite" "select value from settings where key='cloud.push_interval'")" off
 expect "keys cleared" "$(jq -r 'has("yogurt-cloud")' "$keys")" false
 expect "status" "$(api a GET /api/cloud)" 200
 expect "not connected" "$(field .connected)" false
 expect "push when disconnected" "$(api a POST /api/cloud/push)" 409
+expect "interval while disconnected" "$(api a POST /api/cloud/push-interval '{"interval":"1h"}')" 409
 
 echo "== a revoked session asks to sign in again, and sign-in restores it"
 psql -c "delete from auth.sessions" >/dev/null

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { Button, buttonClassName } from "../../Button";
 import { Card } from "../../Card";
+import { Segmented } from "../../Segmented";
 import { Pill } from "../../Pill";
 import {
   CloudError,
@@ -10,6 +11,7 @@ import {
   useCloudStatus,
   type CloudConnected,
   type LastPush,
+  type PushInterval,
 } from "../../../lib/api/cloud";
 import { ConnectForm } from "./ConnectForm";
 import { INPUT, K } from "./Field";
@@ -154,6 +156,41 @@ function Stat({ value, label, tone }: { value: number; label: string; tone?: str
   );
 }
 
+const INTERVAL_OPTIONS: { value: PushInterval; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "15m", label: "15 min" },
+  { value: "1h", label: "Hourly" },
+  { value: "1d", label: "Daily" },
+];
+
+function AutoPush({ value }: { value: PushInterval }) {
+  const set = useCloudMutation(cloudApi.setPushInterval);
+  return (
+    <Card padding="compact" className="mt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <div className="min-w-0">
+          <div className={K}>Auto-push</div>
+          <p className="mt-0.5 text-[11.5px] text-mut">
+            Push changed meetings in the background while Yogurt is running. Off by default.
+          </p>
+        </div>
+        <Segmented
+          label="Auto-push"
+          size="sm"
+          options={INTERVAL_OPTIONS}
+          value={set.isPending ? set.variables : value}
+          onChange={(v) => set.mutate(v)}
+        />
+      </div>
+      {set.isError && (
+        <Note tone="straw" role="alert" className="mt-3">
+          {set.error.message}
+        </Note>
+      )}
+    </Card>
+  );
+}
+
 function Disconnect() {
   const disconnect = useCloudMutation(cloudApi.disconnect);
   const [open, setOpen] = useState(false);
@@ -248,6 +285,7 @@ function Connected({ status }: { status: CloudConnected }) {
           />
         )}
       </Card>
+      <AutoPush value={status.push_interval} />
       <Card padding="compact" className="mt-3">
         <div className="flex items-center gap-3.5">
           <QrCode text={status.address} label={`QR code for ${host}`} />

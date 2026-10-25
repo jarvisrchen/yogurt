@@ -44,6 +44,7 @@ const connected = (over: Record<string, unknown> = {}) => ({
   not_pushed: 3,
   last_push: { at: PUSHED_AT, changed: 1, deleted: 0 },
   last_error: null,
+  push_interval: "off",
   ...over,
 });
 
@@ -112,6 +113,10 @@ async function mockBackend(page: Page, state: State) {
       }
       state.pushError = null;
       state.status = connected();
+      return r.fulfill({ json: state.status });
+    }
+    if (path === "/api/cloud/push-interval") {
+      state.status = { ...state.status, push_interval: body.interval };
       return r.fulfill({ json: state.status });
     }
     if (path === "/api/cloud/disconnect") {
@@ -198,6 +203,16 @@ for (const theme of ["light", "dark"] as const) {
     expect(await px(connectedPill, "font-weight")).toBe("700");
     await expect(page.getByTestId("cloud-sync-pill")).toContainText("Cloud sync · on");
     await expect(page.getByText("Local-only")).toBeHidden();
+
+    // Auto-push: off by default, and a choice posts and sticks.
+    const auto = page.getByRole("radiogroup", { name: "Auto-push" });
+    await expect(auto.getByRole("radio", { name: "Off" })).toBeChecked();
+    await auto.getByRole("radio", { name: "15 min" }).click();
+    await expect(auto.getByRole("radio", { name: "15 min" })).toBeChecked();
+    expect(state.posts.at(-1)).toEqual({ path: "/api/cloud/push-interval", body: { interval: "15m" } });
+    await page.waitForTimeout(300);
+    await expect(auto.getByRole("radio", { name: "15 min" })).toBeChecked();
+    await shot("B-autopush");
 
     // Push, then the stats and the last push result update.
     await page.getByRole("button", { name: "Push meetings" }).click();

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi, type General } from "../../lib/api/settings";
 import { getThemePref, setThemePref, type ThemePref } from "../../lib/theme";
+import { Segmented } from "../Segmented";
 import { LABEL } from "./labelClass";
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
@@ -33,34 +34,15 @@ export function GeneralSection({ general }: GeneralSectionProps) {
           <label className={`block ${LABEL}`}>
             Appearance
           </label>
-          <div
-            role="radiogroup"
-            aria-label="Appearance"
-            className="inline-flex gap-0.5 rounded-card bg-line/60 p-1"
-          >
-            {THEME_OPTIONS.map((opt) => {
-              const selected = theme === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => {
-                    setThemePref(opt.value);
-                    setTheme(opt.value);
-                  }}
-                  className={`rounded-button px-4 py-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
-                    selected
-                      ? "bg-card text-ink shadow-card"
-                      : "text-mut hover:text-ink"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
+          <Segmented
+            label="Appearance"
+            options={THEME_OPTIONS}
+            value={theme}
+            onChange={(v) => {
+              setThemePref(v);
+              setTheme(v);
+            }}
+          />
         </div>
 
         <div className="border-t border-line pt-4 mt-4 space-y-1.5">
