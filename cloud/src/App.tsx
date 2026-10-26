@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Api, loadConfig, TokenRejected } from "./lib/api";
-import { browserLabel, formatWait, lockoutMinutes, screenFor, type Status, type View } from "./lib/route";
+import { HOME, useLoc } from "./lib/hash";
+import { browserLabel, formatWait, lockoutMinutes, screenFor, type Status } from "./lib/route";
 import { clearToken, readToken, saveToken, type StoredToken } from "./lib/token";
 import { AuthFlow, NotOwner } from "./screens/Auth";
+import { History } from "./screens/History";
 import { Library } from "./screens/Library";
 import { ChoosePin, Unlock } from "./screens/Pin";
 import { Settings } from "./screens/Settings";
@@ -28,7 +30,7 @@ function Signed({ api }: { api: Api }) {
   const [email, setEmail] = useState<string | null | undefined>(undefined);
   const [status, setStatus] = useState<Status | null>(null);
   const [stored, setStored] = useState<StoredToken | null>(readToken);
-  const [view, setView] = useState<View>("library");
+  const { loc, go, back, reset } = useLoc();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinChanged, setPinChanged] = useState(false);
@@ -46,17 +48,25 @@ function Signed({ api }: { api: Api }) {
     if (email) void refreshStatus();
   }, [email, refreshStatus]);
 
+  useEffect(() => {
+    if (loc.view !== "settings" && loc.view !== "change-pin") setPinChanged(false);
+  }, [loc.view]);
+
   const token = stored?.token ?? null;
   const forget = useCallback(() => {
     clearToken();
     setStored(null);
-    setView("library");
   }, []);
-  // A rejected token also means the lockout state may have changed, so reread the status.
+  // A rejected token also means the lockout state may have changed, so reread the status. The location stays, so unlocking lands on it.
   const drop = useCallback(() => {
     forget();
     void refreshStatus();
   }, [forget, refreshStatus]);
+  // An explicit Lock or Sign out starts over at the library.
+  const lockOut = useCallback(() => {
+    drop();
+    reset();
+  }, [drop, reset]);
   const keep = (t: StoredToken) => {
     saveToken(t);
     setStored(t);
@@ -70,17 +80,17 @@ function Signed({ api }: { api: Api }) {
     }
     keep({ token: t, remember });
     setNotice(null);
-    setView("library");
     return "ok" as const;
   };
 
   const lock = async () => {
     if (token) await api.lock(token).catch(() => undefined);
-    drop();
+    lockOut();
   };
   const signOut = async () => {
     if (token) await api.lock(token).catch(() => undefined);
     forget();
+    reset();
     setNotice(null);
     await api.signOut();
   };
@@ -121,18 +131,18 @@ function Signed({ api }: { api: Api }) {
       if (t) {
         keep({ token: t, remember });
         setPinChanged(true);
-        setView("settings");
+        back({ ...HOME, view: "settings" });
         return null;
       }
     } catch {
       // Falls through to the Unlock screen.
     }
     setNotice("The PIN was changed, but this browser could not unlock again. Type the new PIN.");
-    drop();
+    lockOut();
     return null;
   };
 
-  const screen = screenFor({ signedIn: !!email, status, token, view });
+  const screen = screenFor({ signedIn: !!email, status, token, view: loc.view });
 
   if (email === undefined) return null;
   if (error && screen === "loading")
@@ -153,7 +163,29 @@ function Signed({ api }: { api: Api }) {
     case "unlock":
       return <Unlock email={email!} lockedUntil={status!.locked_until} notice={notice} onUnlock={unlock} onSignOut={signOut} />;
     case "library":
-      return <Library api={api} token={token!} onSettings={() => { setPinChanged(false); setView("settings"); }} onLock={lock} onRejected={drop} />;
+      return (
+        <Library
+          api={api}
+          token={token!}
+          loc={loc}
+          go={go}
+          back={back}
+          onSettings={() => go({ ...HOME, view: "settings" })}
+          onLock={lock}
+          onRejected={drop}
+        />
+      );
+    case "history":
+      return (
+        <History
+          api={api}
+          token={token!}
+          onBack={() => back({ ...HOME, view: "settings" })}
+          onOpen={(r) => go({ ...HOME, asOf: r.push_id })}
+          onLock={lock}
+          onRejected={drop}
+        />
+      );
     case "settings":
     case "change-pin":
       return (
@@ -163,9 +195,10 @@ function Signed({ api }: { api: Api }) {
           email={email!}
           remember={stored!.remember}
           view={screen}
-          setView={setView}
+          setView={(v) => (v === "settings" ? back({ ...HOME, view: "settings" }) : go({ ...HOME, view: v }))}
           changed={pinChanged}
-          onBack={() => setView("library")}
+          onBack={() => back(HOME)}
+          onHistory={() => go({ ...HOME, view: "history" })}
           onLock={lock}
           onSignOut={signOut}
           onRejected={drop}

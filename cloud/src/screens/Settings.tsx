@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@web/components/Button";
 import { getThemePref, setThemePref, type ThemePref } from "@web/lib/theme";
-import { Brand, FieldLabel, LoadError, PinField, Segmented, useDesktop, h3 } from "../ui";
-import { LockSmall } from "./Library";
+import { Back, Brand, LockButton, FieldLabel, LoadError, PinField, Segmented, useDesktop, h3 } from "../ui";
 import { NewPin } from "./Pin";
 import { TokenRejected, type Api, type Browser } from "../lib/api";
 
@@ -24,10 +23,10 @@ const Group = ({ title, children }: { title: string; children: ReactNode }) => (
 const GroupBox = ({ children }: { children: ReactNode }) => (
   <div className="bg-card border border-line rounded-button overflow-hidden [&>*:not(:last-child)]:border-b [&>*]:border-line">{children}</div>
 );
-const Row = ({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) => {
+const Row = ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => {
   const cls = "flex w-full items-center justify-between gap-[8px] px-[11px] py-[9px] min-[721px]:px-[14px] min-[721px]:py-[11px] text-[11.5px] min-[721px]:text-[13px] text-left font-[inherit] text-ink bg-transparent border-0";
   return onClick ? (
-    <button type="button" onClick={onClick} disabled={disabled} className={`${cls} cursor-pointer`}>
+    <button type="button" onClick={onClick} className={`${cls} cursor-pointer`}>
       {children}
     </button>
   ) : (
@@ -38,11 +37,6 @@ const Small = ({ children, mono }: { children: ReactNode; mono?: boolean }) => (
   <small className={`block text-[10px] min-[721px]:text-[11px] text-mut mt-px ${mono ? "font-mono" : ""}`}>{children}</small>
 );
 const Chev = () => <span className="text-mut flex-none">›</span>;
-const Back = ({ to, onClick }: { to: string; onClick: () => void }) => (
-  <button type="button" onClick={onClick} className="text-[11px] min-[721px]:text-[13px] text-mut bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] self-start min-[721px]:self-auto">
-    ← {to}
-  </button>
-);
 const ForgetPill = ({ onClick, label }: { onClick: () => void; label: string }) => (
   <button type="button" aria-label={label} onClick={onClick} className="text-[10px] leading-normal font-bold px-[10px] py-[3px] rounded-pill bg-strsoft text-straw border-0 cursor-pointer font-[inherit]">
     Forget
@@ -55,6 +49,7 @@ interface Props {
   email: string;
   remember: boolean;
   onBack: () => void;
+  onHistory: () => void;
   onLock: () => void;
   onSignOut: () => void;
   onRejected: () => void;
@@ -94,10 +89,7 @@ export function Settings(p: Props) {
   const bar = desktop && (
     <div className="flex items-center justify-between gap-[10px] px-[20px] py-[12px] bg-card border-b border-line">
       <Back to="Library" onClick={p.onBack} />
-      <Button variant="secondary" onClick={p.onLock} className="!px-[12px] !py-[5px] !text-[12.5px] !font-bold !leading-normal">
-        <LockSmall />
-        Lock
-      </Button>
+      <LockButton onClick={p.onLock} />
     </div>
   );
 
@@ -213,11 +205,12 @@ export function Settings(p: Props) {
         </Group>
         <Group title="Recovery">
           <GroupBox>
-            <Row disabled>
-              <div className="opacity-60">
+            <Row onClick={p.onHistory}>
+              <div>
                 History
-                <Small>See your library as of an earlier push. Coming soon.</Small>
+                <Small>See your library as of an earlier push</Small>
               </div>
+              <Chev />
             </Row>
           </GroupBox>
         </Group>

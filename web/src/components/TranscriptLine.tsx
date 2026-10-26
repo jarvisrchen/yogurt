@@ -28,7 +28,7 @@ export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
       data-transcript-ts-sec={Math.floor(ev.ts_ms / 1000)}
     >
       <span
-        className="inline-block w-10 font-semibold"
+        className="inline-block w-12 font-semibold"
         style={{ color: labelColor }}
       >
         {isMic ? "Me" : "Them"}

@@ -5,7 +5,7 @@ export interface Status {
   locked_until: string | null;
 }
 
-export type View = "library" | "settings" | "change-pin";
+export type View = "library" | "settings" | "change-pin" | "history";
 export type Screen = "signin" | "not-owner" | "choose-pin" | "unlock" | View;
 
 /** `status` is null until yogurt_status has answered, and is only fetched once there is a session. */

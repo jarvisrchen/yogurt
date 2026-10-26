@@ -49,7 +49,6 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", paper);
   await shot(page, info, "p-settings-appearance");
   await page.reload();
-  await page.getByRole("button", { name: "Settings" }).click();
   await expectScreen(page, "Settings");
   await expect(theme).toHaveAttribute("data-theme", flipped.toLowerCase());
   await expect(appearance.getByRole("button", { name: flipped })).toHaveAttribute("aria-pressed", "true");

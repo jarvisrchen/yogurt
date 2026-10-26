@@ -22,12 +22,52 @@ export interface Device {
   created_at: string;
 }
 
+/** One pushed meeting, `crates/yogurt-db` `bundle_value`. `transcript_json` is the desktop's stored text, a JSON array of segments. */
+export interface Bundle {
+  v: 1;
+  meeting: {
+    id: string;
+    title: string;
+    started_at: number;
+    ended_at: number | null;
+    notes_md: string;
+    enriched_md: string | null;
+    transcript_json: string;
+  };
+}
+
+export interface LibraryRow {
+  device_id: string;
+  push_id: number;
+  pushed_at: string;
+  meeting_id: string;
+  body: Bundle;
+}
+
+export interface HistoryRow {
+  push_id: number;
+  device_id: string;
+  device_name: string;
+  pushed_at: string;
+  changed: number;
+  deleted: number;
+}
+
 export class TokenRejected extends Error {}
 
 export const OFFLINE = "Couldn't reach your Cloud. Check your connection and try again.";
 
 /** postgrest-js reports a failed fetch as status 0 and auth-js as an AuthRetryableFetchError, both with the browser's raw message. */
 export const offline = (e: { status?: number; name?: string }) => e.status === 0 || e.name === "AuthRetryableFetchError";
+
+export const SIGNUP_CLOSED = "This Cloud isn't taking new logins. Sign in with the owner account.";
+
+/** GoTrue answers a closed project with `signup_disabled`, whose own message ("Signups not allowed for this instance") reads like a bug. */
+export function authError(e: { status?: number; name?: string; code?: string }) {
+  if (offline(e)) return new Error(OFFLINE);
+  if (e.code === "signup_disabled") return new Error(SIGNUP_CLOSED);
+  return e;
+}
 
 export async function loadConfig(): Promise<Config> {
   const res = await fetch("/config.json", { cache: "no-store" });
@@ -56,13 +96,13 @@ export class Api {
 
   async signIn(email: string, password: string) {
     const { error } = await this.sb.auth.signInWithPassword({ email, password });
-    if (error) throw offline(error) ? new Error(OFFLINE) : error;
+    if (error) throw authError(error);
   }
 
   /** Resolves true when the project hands back a session at once, which means email confirmation is off. */
   async signUp(email: string, password: string): Promise<boolean> {
     const { data, error } = await this.sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
-    if (error) throw offline(error) ? new Error(OFFLINE) : error;
+    if (error) throw authError(error);
     return !!data.session;
   }
 
@@ -77,5 +117,7 @@ export class Api {
   browsers = (token: string) => this.rpc<Browser[]>("yogurt_browsers", { token });
   forgetBrowser = (token: string, browserId: number) =>
     this.rpc<boolean>("yogurt_forget_browser", { token, browser_id: browserId });
+  library = (token: string, atPush?: number) => this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: atPush ?? null });
+  history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
 }
