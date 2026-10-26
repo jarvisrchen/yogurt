@@ -1271,3 +1271,7 @@ New closed items go at the bottom.
 - [x] **SYNC-5** Webapp library with a device picker, read-only meeting page, and push history
 
   The webapp reads the Cloud: a library with a device picker, a read-only meeting page, History with an as-of library, and back-button routing in the URL hash.
+
+- [x] **SYNC-7** Setup guide in `docs/CLOUD-SYNC.md` with the deploy button, checked by a rehearsal on real accounts
+
+  The Yogurt Cloud guide is finished, with how it works, deploy, recovery, and troubleshooting, and webapp Sign out no longer signs laptops out. The rehearsal moved to SYNC-9.

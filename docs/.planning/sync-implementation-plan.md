@@ -107,7 +107,7 @@ Verify first, on a throwaway Vercel project:
 - A build with root directory `cloud` can read `../crates/yogurt-cloud/schema.sql` and `../web/src`. Vercel's "Include files outside the root directory" setting should cover it.
   Result: it does, with that setting on, which is the default for a project created through the API.
 - `POSTGRES_URL_NON_POOLING` from the integration is reachable from the Vercel build and accepts the multi-statement schema in one query.
-  Result: a session pooler URL with `sslmode=require` applied `schema.sql` and `owner.sql` from a Vercel build in iad1. The integration's own variable is checked in SYNC-7.
+  Result: a session pooler URL with `sslmode=require` applied `schema.sql` and `owner.sql` from a Vercel build in iad1. The integration sets `POSTGRES_URL_NON_POOLING`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and the two `NEXT_PUBLIC_` copies (Supabase's Vercel Marketplace page, checked 2026-10-25). Its use from a Vercel build waits for the SYNC-7 rehearsal.
 - Found on the way: the first `ignoreCommand` fell back to `HEAD^` without a previous SHA, so a first deploy whose latest commit missed `cloud/` was cancelled. It builds in that case now.
 - The integration's project has Confirm email on. Confirmation stays on in every case, because the owner email match depends on it.
 - Supabase's built-in mail service sends only to the project's team members, at 2 emails an hour ([Auth SMTP docs](https://supabase.com/docs/guides/auth/auth-smtp)). Check whether a `YOGURT_OWNER_EMAIL` equal to the Vercel account email receives the confirmation, and what happens with a different email. Record the result in the design doc's Flow 1 section.

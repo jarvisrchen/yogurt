@@ -146,3 +146,18 @@ test("a Cloud with sign-ups closed says so on Create login", async ({ page }, in
   await expect(page.getByRole("alert")).toHaveText("This Cloud isn't taking new logins. Sign in with the owner account.");
   await shot(page, info, "e-create-closed");
 });
+
+test("signing out of the webapp leaves a laptop's session alive", async ({ page }) => {
+  await reset();
+  await onboard(page);
+  const laptop = createClient(API, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error: signInError } = await laptop.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
+  expect(signInError).toBeNull();
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expectScreen(page, "Sign in");
+
+  const { error } = await laptop.auth.refreshSession();
+  expect(error).toBeNull();
+});

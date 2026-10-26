@@ -106,7 +106,7 @@ export class Api {
     return !!data.session;
   }
 
-  signOut = () => this.sb.auth.signOut();
+  signOut = () => this.sb.auth.signOut({ scope: "local" });
 
   status = () => this.rpc<Status>("yogurt_status");
   setPasscode = (newPasscode: string, oldPasscode?: string) =>
