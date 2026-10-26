@@ -143,12 +143,6 @@ end $$;
 -- Search. One row per live meeting, so the index never grows with history.
 -- Search work never runs inside a push. yogurt_search_catch_up() brings the index up to the latest versions afterwards: the laptop calls it after each push, and the build after each deploy.
 
--- Objects from earlier drafts of search.
-drop trigger if exists yogurt_search_sync on public.yogurt_versions;
-drop function if exists yogurt_private.yogurt_search_sync(), yogurt_private.yogurt_search_ensure(),
-  yogurt_private.yogurt_search_put(uuid, uuid, text, bigint, jsonb), public.yogurt_search(text, text, uuid, int);
-drop table if exists yogurt_private.yogurt_meta;
-
 do $$ begin
   if to_regprocedure('extensions.unaccent(text)') is null then
     if exists (select from pg_catalog.pg_extension where extname = 'unaccent') then
@@ -187,21 +181,12 @@ create table if not exists yogurt_private.yogurt_search_index (
   doc        text   not null default '',  -- notes, enhanced notes, and transcript as plain text, for snippets
   tsv        tsvector,
   sig        text,                        -- the yogurt_search_signature() the row was built with
-  primary key (device_id, meeting_id)
+  primary key (device_id, meeting_id),
+  -- A purge or an account deletion removes the version, and the cascade removes its text.
+  constraint yogurt_search_index_version foreign key (device_id, meeting_id, push_id) references public.yogurt_versions on delete cascade
 );
-alter table yogurt_private.yogurt_search_index add column if not exists sig text;
 create index if not exists yogurt_search_index_tsv on yogurt_private.yogurt_search_index using gin (tsv);
 alter table yogurt_private.yogurt_search_index enable row level security;
-
--- A purge or an account deletion removes the version, and the cascade removes its text. Rows left from before the constraint existed are removed first.
-do $$ begin
-  if not exists (select from pg_catalog.pg_constraint where conname = 'yogurt_search_index_version' and conrelid = 'yogurt_private.yogurt_search_index'::regclass) then
-    delete from yogurt_private.yogurt_search_index i
-    where not exists (select from public.yogurt_versions v where v.device_id = i.device_id and v.meeting_id = i.meeting_id and v.push_id = i.push_id);
-    alter table yogurt_private.yogurt_search_index add constraint yogurt_search_index_version
-      foreign key (device_id, meeting_id, push_id) references public.yogurt_versions on delete cascade;
-  end if;
-end $$;
 
 -- Plain words from markdown or editor HTML, in their original case and accents.
 -- A transcript link's label is dropped whole, other editor tags are dropped alone, and text such as "latency<target" stays.
