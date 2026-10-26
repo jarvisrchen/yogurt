@@ -158,15 +158,18 @@ test-cloud-schema:
     done
     [ -n "$ready" ] || { echo "test-cloud-schema: postgres did not become ready in 60s" >&2; exit 1; }
     psql() { docker exec -i -e PGOPTIONS='-c client_min_messages=warning' "$id" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
+    # The build applies the schema in one transaction, then runs the search ensure as its own statement. This does the same.
+    deploy() { psql -1 -d "$1" < schema.sql; psql -d "$1" -c "select yogurt_private.yogurt_search_ensure()" >/dev/null; }
     cd crates/yogurt-cloud
     docker cp schema.sql "$id:/schema.sql"
+    docker cp tests/deploy.sql "$id:/deploy.sql"
     for mode in on off; do
         db="defaults_$mode"
         echo "== old default grants: $mode"
         psql -c "create database $db" -d postgres
         psql -d "$db" -v old_defaults="$mode" < tests/supabase_stub.sql
-        psql -d "$db" < schema.sql
-        psql -d "$db" < schema.sql
+        deploy "$db"
+        deploy "$db"
         { echo "prepare set_owner(text) as"; cat owner.sql; cat tests/schema_test.sql; } | psql -d "$db"
     done
     echo "== upgrade from main, then revert to it"
@@ -176,14 +179,14 @@ test-cloud-schema:
     psql -d upgrade -v old_defaults=off < tests/supabase_stub.sql
     psql -d upgrade < "$main_schema"
     psql -d upgrade < tests/upgrade_seed.sql
-    psql -d upgrade < schema.sql
-    psql -d upgrade < schema.sql
+    deploy upgrade
+    deploy upgrade
     psql -d upgrade -v phase=upgrade -v search=true < tests/upgrade_test.sql
     psql -d upgrade < "$main_schema"
     psql -d upgrade -v phase=revert -v search=false < tests/upgrade_test.sql
     # Main's schema leaves the trigger running but knows nothing of the index, so a row can go missing while it is applied.
     psql -d upgrade -c "delete from yogurt_private.yogurt_search_index where meeting_id = 'u1'"
-    psql -d upgrade < schema.sql
+    deploy upgrade
     psql -d upgrade -v phase=reupgrade -v search=true < tests/upgrade_test.sql
 
 # Run yogurt-cloud's #[ignore]d integration tests against a local Supabase stack (project yogurt-cloud-test, ports 56420-56429). Starts the stack if it is not running (slow the first time), drops the yogurt_ tables and every auth user, reapplies schema.sql and owner.sql for owner@yogurt-cloud.test, then runs the tests single-threaded. Leaves the stack running: stop it with `supabase stop --workdir crates/yogurt-cloud`. Needs Docker and the supabase CLI.

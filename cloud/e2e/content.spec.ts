@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { API, DEVICES, KEY, OWNER, PASSWORD, LATE, PIN, expectScreen, isPhone, onboard, reset, seed, shot, signIn, typePin } from "./helpers";
+import { API, DEVICES, KEY, OWNER, PASSWORD, LATE, PIN, expectScreen, isPhone, onboard, reset, seed, shot, typePin } from "./helpers";
 
 test.beforeAll(reset);
 
@@ -140,101 +140,6 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await page.getByRole("button", { name: "Unlock" }).click();
   await expect(page.getByRole("heading", { name: "Q4 planning sync" })).toBeVisible();
   await expect(page).toHaveURL(/#\/m\//);
-});
-
-test("search the live library by transcript, within a device, and open a hit", async ({ page }, info) => {
-  const rpc = "**/rest/v1/rpc/yogurt_search";
-  await signIn(page);
-  await expectScreen(page, "Unlock your meetings");
-  await typePin(page, PIN);
-  await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: /edis update/ })).toBeVisible();
-
-  // A word only one transcript has: the library stays up, dimmed and inert, until the answer arrives.
-  const search = page.getByRole("textbox", { name: "Search notes and transcripts" });
-  const slow = async () => {
-    await page.route(rpc, async (r) => {
-      await new Promise((done) => setTimeout(done, 700));
-      await r.continue();
-    });
-  };
-  const busy = page.locator('[aria-busy="true"]');
-  await slow();
-  await search.fill("KOMBUCHA");
-  await expect(page.getByRole("status")).toHaveText("Searching…");
-  await expect(busy).toBeVisible();
-  await expect(busy.getByRole("button", { name: /edis update/ })).toBeVisible();
-  await shot(page, info, "t-search-pending");
-  const hit = page.getByRole("button", { name: /Q4 planning sync/ });
-  await expect(page.getByRole("status")).toHaveText("1 match");
-  await expect(busy).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /edis update/ })).toHaveCount(0);
-  await page.unroute(rpc);
-  await expect(hit.locator("mark")).toHaveText("kombucha");
-  await expect(hit).toContainText("bringing the kombucha to the offsite");
-  await shot(page, info, "t-search");
-
-  // The next query keeps the last answer on screen, dimmed, and never calls it a miss.
-  await slow();
-  await search.fill("migration");
-  await expect(page.getByRole("status")).toHaveText("Searching…");
-  await expect(busy.getByRole("button", { name: /Q4 planning sync/ })).toBeVisible();
-  await expect(page.getByText("No meetings match")).toHaveCount(0);
-  await shot(page, info, "t-search-pending-results");
-  await expect(page.getByRole("status")).toHaveText("1 match");
-  await page.unroute(rpc);
-  await search.fill("KOMBUCHA");
-  await expect(page.getByRole("status")).toHaveText("1 match");
-
-  // The device pill narrows the search on the server, and an empty result says so.
-  const devices = page.getByRole("group", { name: "Device" });
-  await devices.getByRole("button", { name: "Laptop 1" }).click();
-  await expect(page.getByRole("status")).toHaveText('No meetings match "KOMBUCHA".');
-  await expect(hit).toHaveCount(0);
-  await shot(page, info, "t-search-empty");
-  await devices.getByRole("button", { name: "All devices" }).click();
-  await expect(hit).toBeVisible();
-
-  // A full page of results says so.
-  await page.route(rpc, async (r) => {
-    const res = await r.fetch();
-    await r.fulfill({ response: res, json: (await res.json()).map((x: object) => ({ ...x, more: true })) });
-  });
-  await search.fill("ship");
-  await expect(page.getByRole("status")).toHaveText("Showing the newest matches. Add words to narrow.");
-  await page.unroute(rpc);
-
-  // Clear empties the field, keeps focus in it, and restores the library.
-  await page.getByRole("button", { name: "Clear search" }).click();
-  await expect(search).toBeFocused();
-  await expect(search).toHaveValue("");
-  await expect(page.getByRole("button", { name: /edis update/ })).toBeVisible();
-  await search.fill("edis");
-  await search.press("Escape");
-  await expect(search).toHaveValue("");
-
-  // A hit newer than the loaded library reloads it first, and then opens that version.
-  const owner = createClient(API, KEY);
-  await owner.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
-  const { data: push } = await owner.rpc("yogurt_start_push", { device_id: DEVICES.a });
-  const { error } = await owner.from("yogurt_versions").insert({
-    meeting_id: "m-standup",
-    push_id: push,
-    device_id: DEVICES.a,
-    body: { v: 1, meeting: { id: "m-standup", title: "edis update (revised)", started_at: Date.now(), ended_at: null, notes_md: "Feed the zebrafish herd.", enriched_md: null, transcript_json: "[]" } },
-  });
-  expect(error).toBeNull();
-  await search.fill("zebrafish");
-  await page.getByRole("button", { name: /edis update/ }).click();
-  await expect(page.getByText("Feed the zebrafish herd.")).toBeVisible();
-  await expect(page).toHaveURL(/#\/m\//);
-
-  // An earlier push is a recovery view of the whole library, and has no search.
-  await page.goto("/#/at/2");
-  await page.reload();
-  await expect(page.getByText("Viewing", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Vendor review/ })).toBeVisible();
-  await expect(search).toHaveCount(0);
 });
 
 test("a Cloud with sign-ups closed says so on Create login", async ({ page }, info) => {

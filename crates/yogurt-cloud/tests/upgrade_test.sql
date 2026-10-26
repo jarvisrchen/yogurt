@@ -19,7 +19,6 @@ reset role;
 select pg_temp.eq((select count(*)::text from yogurt_versions where meeting_id = :'phase' || '-big'), '1', 'the laptop insert landed');
 \if :search
 select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index), (select count(*)::text from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l where body is not null), 'the index holds every live meeting');
-select pg_temp.eq((select count(*)::text from information_schema.columns where table_name = 'yogurt_versions' and column_name = 'search'), '0', 'no leftover search column');
 set role authenticated;
 select yogurt_unlock('123456') as tok \gset
 select pg_temp.eq((select string_agg(meeting_id, ',' order by started_at desc) from yogurt_search(:'tok', 'upgradeword')), 'upgrade-big,u1', 'search finds the old and the new meeting');

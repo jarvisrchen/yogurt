@@ -39,7 +39,10 @@ if (production) {
   try {
     await client.query(readFileSync(here("../../crates/yogurt-cloud/schema.sql"), "utf8"));
     await client.query(readFileSync(here("../../crates/yogurt-cloud/owner.sql"), "utf8"), [owner]);
-    console.log(`yogurt-cloud build: schema applied, owner ${owner}`);
+    // The search index refill can run for many seconds, so it is its own query after the schema transaction has committed, and it takes only row locks.
+    await client.query("set statement_timeout = 0");
+    const { rows } = await client.query("select yogurt_private.yogurt_search_ensure() as wrote");
+    console.log(`yogurt-cloud build: schema applied, owner ${owner}, search index ${rows[0].wrote ? "updated" : "unchanged"}`);
   } finally {
     await client.end();
   }

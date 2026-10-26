@@ -286,11 +286,10 @@ export function DevicePills({ devices, value, onChange }: { devices: { id: strin
   );
 }
 
-export function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const input = useRef<HTMLInputElement>(null);
+export function SearchField({ value, onChange, inputRef }: { value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement | null> }) {
   const clear = () => {
     onChange("");
-    input.current?.focus();
+    inputRef.current?.focus();
   };
   return (
     <div role="search" className="flex items-center gap-[7px] bg-card border border-line rounded-pill px-[12px] py-[6px] focus-within:border-blue focus-within:ring-1 focus-within:ring-blue">
@@ -299,15 +298,15 @@ export function SearchField({ value, onChange }: { value: string; onChange: (v: 
         <path d="M10.5 10.5L14 14" />
       </svg>
       <input
-        ref={input}
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => e.key === "Escape" && clear()}
+        onKeyDown={(e) => e.key === "Escape" && !e.nativeEvent.isComposing && clear()}
         placeholder="Search notes & transcripts"
         aria-label="Search notes and transcripts"
         autoComplete="off"
-        className="flex-1 min-w-0 bg-transparent border-0 outline-none font-sans text-[16px] min-[721px]:text-[12px] text-ink placeholder:text-mut p-[0px]"
+        className="flex-1 min-w-0 bg-transparent border-0 outline-none font-sans text-[16px] min-[721px]:text-[12px] text-ink placeholder:text-mut p-[0px] pr-[10px]"
       />
       {value && (
         <button

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { groupMeetingsByDay } from "@web/components/library/dayGroups";
 import { Logo } from "@web/components/Logo";
 import { Brand, DayList, DevicePills, DeviceTag, ListRow, LoadError, LockButton, SearchField, useDesktop } from "../ui";
 import type { Api, SearchHit } from "../lib/api";
-import { asOfLabel, clock, duration, forDevice, toEntries } from "../lib/library";
+import { asOfLabel, clock, duration, forDevice, toEntries, type Entry } from "../lib/library";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { HOME, type Loc } from "../lib/hash";
@@ -15,6 +15,16 @@ export const GearIcon = () => (
     <path d="M6.40 2.84L6.83 1.20L9.17 1.20L9.60 2.84L10.52 3.22L11.98 2.37L13.63 4.02L12.78 5.48L13.16 6.40L14.80 6.83L14.80 9.17L13.16 9.60L12.78 10.52L13.63 11.98L11.98 13.63L10.52 12.78L9.60 13.16L9.17 14.80L6.83 14.80L6.40 13.16L5.48 12.78L4.02 13.63L2.37 11.98L3.22 10.52L2.84 9.60L1.20 9.17L1.20 6.83L2.84 6.40L3.22 5.48L2.37 4.02L4.02 2.37L5.48 3.22Z" />
   </svg>
 );
+
+interface Row {
+  key: string;
+  title: string;
+  started_at: number;
+  endedAt: number | null;
+  device_id: string;
+  snippet: string | null;
+  hit: SearchHit | null;
+}
 
 interface Props {
   api: Api;
@@ -32,7 +42,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
   const [device, setDevice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const { asOf: pushId, meeting: open } = loc;
-  const { data, error, retry, refresh } = useCloudLoad(
+  const { data, error, retry } = useCloudLoad(
     async () => {
       const [devices, rows, history] = await Promise.all([api.devices(token), api.library(token, pushId ?? undefined), pushId ? api.history(token) : null]);
       return { devices, entries: toEntries(rows), pushedAt: history?.find((h) => h.push_id === pushId)?.pushed_at ?? null };
@@ -43,31 +53,38 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
   const devices = data?.devices;
   const entries = data?.entries;
 
-  const search = useSearch(api, token, pushId ? "" : query, device, onRejected);
+  const [hit, setHit] = useState<SearchHit | null>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const search = useSearch(api, token, pushId ? "" : query, device, data, onRejected);
   const searching = search.active && !pushId;
-  const shown = useMemo(() => forDevice(entries ?? [], device), [entries, device]);
-  const groups = useMemo(() => groupMeetingsByDay(shown), [shown]);
-  const opened = entries?.find((e) => e.key === open) ?? null;
+  const pending = searching && search.pending;
+  const hits = searching ? (pending ? search.previous : search.hits) : null;
+  const rows = useMemo<Row[]>(
+    () =>
+      hits
+        ? hits.map((h) => ({ key: `${h.device_id}/${h.meeting_id}`, title: h.title.trim() || "Untitled meeting", started_at: h.started_at, endedAt: h.ended_at, device_id: h.device_id, snippet: h.snippet, hit: h }))
+        : forDevice(entries ?? [], device).map((e) => ({ key: e.key, title: e.title, started_at: e.started_at, endedAt: e.endedAt, device_id: e.device_id, snippet: null, hit: null })),
+    [hits, entries, device],
+  );
+  const groups = useMemo(() => groupMeetingsByDay(rows), [rows]);
+  const text = !searching
+    ? ""
+    : search.pending
+      ? "Searching…"
+      : !search.hits?.length
+        ? `No meetings match ${query.trim().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, "")}.`
+        : search.more
+          ? "Showing the newest matches. Add words to narrow."
+          : `${search.hits.length} ${search.hits.length === 1 ? "match" : "matches"}`;
 
-  // An open phone tab picks up new pushes when it comes back to the foreground.
-  useEffect(() => {
-    if (pushId) return;
-    const onVisible = () => document.visibilityState === "visible" && refresh();
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pushId]);
+  // A search hit can be newer than the loaded library, or missing from it, so the meeting opens from what is loaded and offers a reload.
+  const loaded = entries?.find((e) => e.key === open) ?? null;
+  const newer = !!hit && `${hit.device_id}/${hit.meeting_id}` === open && (!loaded || loaded.pushId < hit.push_id);
+  const opened: Entry | null = loaded ?? (newer && hit ? { key: open!, device_id: hit.device_id, pushId: 0, pushedAt: "", title: hit.title.trim() || "Untitled meeting", started_at: hit.started_at, endedAt: hit.ended_at, notes: "", enhanced: null, segments: [] } : null);
 
   const meta = (startedAt: number, endedAt: number | null) => {
     const min = duration({ started_at: startedAt, endedAt });
     return `${clock(startedAt)}${min ? ` · ${min}` : ""}`;
-  };
-
-  const openHit = (h: SearchHit) => {
-    const key = `${h.device_id}/${h.meeting_id}`;
-    const have = entries?.find((e) => e.key === key);
-    if (have && have.pushId >= h.push_id) go({ ...loc, meeting: key });
-    else refresh(() => go({ ...loc, meeting: key }));
   };
   const indexOf = (id: string) => Math.max(0, devices?.findIndex((d) => d.id === id) ?? 0);
   const nameOf = (id: string) => devices?.find((d) => d.id === id)?.name ?? "Unknown device";
@@ -81,6 +98,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
       back={devices?.find((d) => d.id === device)?.name ?? "All devices"}
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
+      onReload={newer ? retry : undefined}
     />
   );
   if (!desktop && open && !entries && !error) return null;
@@ -100,61 +118,42 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
           </button>
         </div>
       )}
-      {!pushId && <SearchField value={query} onChange={setQuery} />}
+      {!pushId && <SearchField value={query} onChange={setQuery} inputRef={field} />}
       {!!devices?.length && <DevicePills devices={devices} value={device} onChange={setDevice} />}
+      {!pushId && (
+        <p role="status" className="text-[12px] text-mut m-[0px] break-words [overflow-wrap:anywhere] empty:hidden">
+          {text}
+        </p>
+      )}
       {searching && search.error ? (
-        <LoadError message={`Search failed. ${search.error}`} onRetry={search.retry} />
+        <LoadError
+          message={`Search failed. ${search.error}`}
+          onRetry={() => {
+            search.retry();
+            field.current?.focus();
+          }}
+        />
       ) : (
-        <>
-          {searching && (
-            <p role="status" className="text-[12px] text-mut m-[0px]">
-              {search.pending
-                ? "Searching…"
-                : !search.hits?.length
-                  ? `No meetings match "${query.trim()}".`
-                  : search.more
-                    ? "Showing the newest matches. Add words to narrow."
-                    : `${search.hits.length} ${search.hits.length === 1 ? "match" : "matches"}`}
-            </p>
-          )}
-          <div
-            aria-busy={(searching && search.pending) || undefined}
-            inert={(searching && search.pending) || undefined}
-            className={`flex flex-col gap-[10px] min-[721px]:gap-[8px] ${searching && search.pending ? "opacity-50" : ""}`}
-          >
-            {searching && (search.pending ? search.previous : search.hits) ? (
-              <DayList
-                groups={groupMeetingsByDay((search.pending ? search.previous : search.hits) ?? [])}
-                render={(h) => (
-                  <ListRow
-                    key={`${h.device_id}/${h.meeting_id}`}
-                    title={h.title.trim() || "Untitled meeting"}
-                    meta={meta(h.started_at, h.ended_at)}
-                    tag={<DeviceTag name={nameOf(h.device_id)} index={indexOf(h.device_id)} />}
-                    snippet={h.snippet}
-                    selected={`${h.device_id}/${h.meeting_id}` === open}
-                    onClick={() => openHit(h)}
-                  />
-                )}
-              />
-            ) : (
-              <DayList
-                groups={groups}
-                render={(e) => (
-                  <ListRow
-                    key={e.key}
-                    title={e.title}
-                    meta={meta(e.started_at, e.endedAt)}
-                    tag={<DeviceTag name={nameOf(e.device_id)} index={indexOf(e.device_id)} />}
-                    selected={e.key === open}
-                    onClick={() => go({ ...loc, meeting: e.key })}
-                  />
-                )}
+        <div aria-busy={pending || undefined} inert={pending || undefined} className={`flex flex-col gap-[10px] min-[721px]:gap-[8px] ${pending ? "opacity-50" : ""}`}>
+          <DayList
+            groups={groups}
+            render={(r) => (
+              <ListRow
+                key={r.key}
+                title={r.title}
+                meta={meta(r.started_at, r.endedAt)}
+                tag={<DeviceTag name={nameOf(r.device_id)} index={indexOf(r.device_id)} />}
+                snippet={r.snippet}
+                selected={r.key === open}
+                onClick={() => {
+                  setHit(r.hit);
+                  go({ ...loc, meeting: r.key });
+                }}
               />
             )}
-            {!searching && entries && !shown.length && <p className="text-[12px] text-mut m-[0px]">No meetings here.</p>}
-          </div>
-        </>
+          />
+          {!searching && entries && !rows.length && <p className="text-[12px] text-mut m-[0px]">No meetings here.</p>}
+        </div>
       )}
     </>
   );

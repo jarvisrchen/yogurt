@@ -354,8 +354,9 @@ It searches the live library only, so an earlier push shown from History has no 
 Capital letters and accents do not matter, quotes find a phrase, `or` finds either word, and a minus sign leaves a word out.
 A row that matches outside its title shows a short snippet with the match marked.
 Search works inside the selected machine, and the clear button or Escape restores the full list.
-A search shows the newest 100 matches and says so when there are more, so add words to narrow it.
+A search shows the newest 25 matches and says so when there are more, so add words to narrow it.
 Chinese, Japanese, and Korean words inside a sentence do not match unless you type the whole run of characters.
+A quoted phrase matches only in the first part of a very long meeting, and a single word always matches.
 
 Tap a meeting to read it.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
@@ -419,7 +420,7 @@ delete from yogurt_pushes where device_id = '00000000-0000-0000-0000-00000000000
 delete from yogurt_devices where id = '00000000-0000-0000-0000-000000000000';
 ```
 
-This removes that device's meetings from the library and its pushes from History.
+This removes that device's meetings from the library and from search, and its pushes from History.
 Other devices are untouched.
 If that laptop is still connected, its next push says "This machine was removed from the Yogurt Cloud. Disconnect, then connect again."
 

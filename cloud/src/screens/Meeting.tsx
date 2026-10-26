@@ -20,7 +20,7 @@ function render(md: string): string {
 
 const LABELS: Record<Tab, string> = { notes: "Notes", enhanced: "Enhanced", transcript: "Transcript" };
 
-export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop }: { entry: Entry; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean }) {
+export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, onReload }: { entry: Entry; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; onReload?: () => void }) {
   const tabs = tabsFor(entry);
   const [picked, setPicked] = useState<Tab | null>(null);
   const tab = picked && tabs.includes(picked) ? picked : defaultTab(entry);
@@ -42,6 +42,14 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
           {started(entry)}
         </div>
       </div>
+      {onReload && (
+        <div role="status" className="flex items-center justify-between gap-[8px] text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
+          A newer version was pushed.
+          <button type="button" onClick={onReload} className="flex-none text-blue font-semibold cursor-pointer bg-transparent border-0 p-[0px] font-[inherit]">
+            Reload
+          </button>
+        </div>
+      )}
       {tabs.length > 1 && (
         <div role="tablist" className="flex gap-[4px] border-b border-line">
           {tabs.map((t) => (
@@ -65,7 +73,7 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
           <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); } : undefined} />
         )}
       </div>
-      <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>
+      {entry.pushedAt && <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>}
     </article>
   );
 }

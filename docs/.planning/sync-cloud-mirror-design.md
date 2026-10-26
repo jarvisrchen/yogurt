@@ -273,14 +273,14 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
 | `yogurt_library(token, at_push)` | webapp | for each live meeting on each device, the latest version at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `body`, ordered by `meeting_id` then `device_id` for paging |
-| `yogurt_search(token, query, only_device, lim)` | webapp | the live meetings matching the query, newest first, at most `lim` (100 by default, 200 at most): `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when the cap was reached |
+| `yogurt_search(token, query, only_device)` | webapp | the live meetings matching the query, newest first, at most 25: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 
 The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST. A plain `GET /rest/v1/yogurt_versions` answers 403 with code 42501.
 It keeps column-level `insert` grants on `yogurt_devices` (`id`, `name`) and `yogurt_versions`, and these policies: a row's `user_id` must be the caller, the caller must be the owner, and a version can only join a push of its own device created in the last hour.
 The policy checks call small `security definer` helpers in a `yogurt_private` schema that PostgREST does not expose, returning only a boolean, because a policy subquery runs as the caller, who has no `select`.
-Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authenticated`, and an explicit allowlist then grants it to `authenticated`: the RPCs, the three policy helpers, and the search text function.
+Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authenticated`, and an explicit allowlist then grants it to `authenticated`: the RPCs and the three policy helpers.
 `owner.sql` is the one statement the build runs with the owner email as `$1`: it inserts the `yogurt_owner` row, and a changed email applies only while `user_id` is still null.
 Grants stay explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
 The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
@@ -290,31 +290,41 @@ PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with l
 
 Search runs in the database, because the webapp will not always hold every body, and a full library can pass the response cap and the free egress budget.
 It covers the live library only, one row per live meeting, and the History view of an earlier push has no search field, because History is for recovery.
-`yogurt_private.yogurt_search_index` holds one row per device and meeting: the title, the plain text of the notes, enhanced notes, and transcript, and a `tsvector` of both with a GIN index.
-It has row security on and no client grants, so only the `security definer` RPC reads it.
-An `after insert` trigger on `yogurt_versions` keeps it current.
-It indexes a live version unless a later version of that meeting already exists, and it deletes the row for a null body.
+`yogurt_private.yogurt_search_index` holds one row per device and meeting: the raw title, the plain text of the notes, enhanced notes, and transcript in its original case and accents, and a `tsvector` of both.
+It has a GIN index on the `tsvector`, row security on, and no client grants, so only the `security definer` RPC reads it.
+A foreign key from the row to its version cascades on delete, so purging a device in the SQL editor, or deleting the account, removes its text from search as well.
+An `after insert` trigger on `yogurt_versions` keeps the index current.
+It writes a live version unless a later version of that meeting exists, never lets an older push replace a newer one, and deletes the row for a null body.
 The trigger swallows every error, so a laptop's insert never fails because of search, and the next deploy repairs the row.
 Triggers do not check `execute` when they fire, so `authenticated` needs no grant on the trigger's functions.
-`schema.sql` empties and refills the table from the latest live version of each meeting when the stored signature differs from the current one, or when the table and the live meetings disagree in count.
-The signature is an md5 over the text-search configuration, the unaccent version, the table's columns, and the definitions of the functions that build and maintain rows, and it lives in `yogurt_private.yogurt_meta`.
-The count check repairs rows the trigger skipped, a table that was dropped and recreated, and anything a revert left behind.
-A deploy that changes neither leaves the index alone, because the refill locks the index table and a push waits for it.
-At 1,500 meetings the refill takes about 11 seconds and an unchanged apply takes under 0.1 seconds.
-The plain-text step removes a transcript link's label whole, drops editor tags and markdown markers, folds accents with `unaccent`, and caps the text at 400,000 bytes.
-It leaves text such as `latency<target` alone.
-The `simple` configuration stems nothing and drops no stop words, so names and non-English words match as typed.
-It also splits on spaces and punctuation only, so Chinese, Japanese, and Korean words inside a sentence do not match unless typed as the whole run.
-`yogurt_search` folds curly quotes to straight ones and accents out of the query, then parses the whole input once with `websearch_to_tsquery`, so quotes, `or`, and a leading minus work.
-A query of only exclusions returns nothing.
-The last lexeme matches as a prefix, so a half-typed word finds its meeting, and a half-typed hyphenated word matches by its parts.
-Rows come newest first with fixed tiebreakers, filtered by device before the cap, and the RPC reads one row past the cap to set `more`.
-A title match returns a null snippet, and any other match returns a `ts_headline` with the matched words wrapped in U+E000 and U+E001.
-The webapp waits 250 ms after the last keystroke and shows "Searching…" until the answer to the current input arrives, with the previous answer (or the full library) dimmed and inert beneath it, and renders the returned rows without needing them in the loaded library.
-Opening a hit that is newer than the loaded copy reloads the library first, and the library also reloads when the page returns to the foreground.
+`yogurt_private.yogurt_ts` is a text search configuration that copies `simple` and maps `unaccent` before it, so matching ignores case and accents while the stored text keeps both.
+It stems nothing and drops no stop words, so names and non-English words match as typed.
+It splits on spaces and punctuation only, so Chinese, Japanese, and Korean words inside a sentence match only when typed as the whole run.
+The tsvector, the query, and `ts_headline` all use it, so a highlight lands on the original word.
+If the `unaccent` extension is not in the `extensions` schema, the schema step fails with a message that says so.
+The plain-text step removes a transcript link's label whole and drops editor tags, markdown markers at line or word boundaries, and U+E000 and U+E001.
+It decodes `&amp; &lt; &gt; &nbsp; &quot; &#39;`, leaves text such as `latency<target` and `2*3` alone, and caps the text at 400,000 bytes.
+`yogurt_search_ensure()` brings the index in line with the latest live version of each meeting.
+It deletes rows whose version was replaced or removed and writes rows that are missing or outdated, comparing the `(device, meeting, push)` key.
+It rewrites every row when the stored signature differs from the current one.
+The signature is an md5 over the unaccent version, the configuration's dictionaries, the table's columns, and the definitions of the functions that build and maintain rows, and it lives in `yogurt_private.yogurt_meta`.
+The ensure never truncates and takes only row locks.
+The build runs it as its own query after the schema transaction commits, because a long statement inside that transaction would sit behind the table locks the schema takes and hold them open for pushes.
+A deploy that changes nothing writes nothing, and it takes under 0.1 seconds at 1,500 meetings.
+A first fill takes about 11 seconds at 1,500 meetings of about 61 KB of transcript each.
+`yogurt_search` folds curly quotes to straight ones, turns a spaced hyphen or an en or em dash into a space, strips `https://` and `http://`, and parses the whole input once with `websearch_to_tsquery`.
+Quotes, `or`, and a leading minus work, and a query with no word outside an exclusion returns nothing.
+The last lexeme matches as a prefix, so a half-typed word finds its meeting.
+A hyphen in the last word splits it into parts only when a letter follows, so `follow-u` matches by its parts while `ABC-123`, `2024-01-15`, and `555-0100` match as typed.
+Rows come newest first with fixed tiebreakers, filtered by device before the cap of 25, and the RPC reads one row past the cap to set `more`.
+A title match returns a null snippet, and any other match returns a `ts_headline` of about 14 words with the matched words wrapped in U+E000 and U+E001.
+Positions in a `tsvector` stop at 16,383, so a quoted phrase matches only in the first part of a very long meeting, and a single word always matches.
+The webapp waits 250 ms after the last keystroke and shows "Searching…" until the answer to the current input arrives, with the previous answer (or the full library) dimmed and inert beneath it.
+It renders the returned rows without needing them in the loaded library.
+A hit opens the loaded copy at once, and when the hit's push is newer than that copy, or the meeting is not loaded, the meeting page shows "A newer version was pushed" with a Reload button.
 It renders the snippet as text and marks the runs between the two characters, so meeting content is never parsed as HTML.
-Storage is one row per live meeting, about the size of the live text again plus the index, and it does not grow with history.
-At 1,500 meetings of about 70 KB of transcript each, the table and index took 54 MB beside 18 MB of versions.
+At 1,500 meetings of about 61 KB of transcript each, the table and index took about 53 MB beside 15 MB of versions.
+A search for 25 hits took under 120 ms, including three 400 KB documents.
 
 ## History and reverting
 
@@ -441,7 +451,7 @@ Vercel's Hobby plan allows 100 deployments a day and 100 builds an hour, and can
 Later and unplanned: a hosted Yogurt Cloud, so other people could sign up at one URL without deploying their own.
 That drops the single-owner check in favor of `user_id` isolation alone, which every table already has.
 Holding other people's meetings readable is a different promise than holding your own, so that step reopens the encryption question.
-Search and LLM features over the cloud are also unplanned. Postgres full-text search and a Vercel function are the likely routes, and neither needs a schema change beyond an index.
+LLM features over the cloud are also unplanned, and a Vercel function is the likely route.
 
 ## Decisions
 

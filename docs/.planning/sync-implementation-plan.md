@@ -53,7 +53,7 @@ Rewrite `schema.sql` to the design doc's Cloud schema section:
 - New `yogurt_owner` (one row) and `yogurt_browsers`.
 - `yogurt_is_owner()`, a `security definer` helper that pins `yogurt_owner.user_id` on first use.
   The insert policies call it.
-  It and the other helpers live in a `yogurt_private` schema that PostgREST does not expose, and `authenticated` may execute only the three policy helpers and `yogurt_search_text` there.
+  It and the other helpers live in a `yogurt_private` schema that PostgREST does not expose, and `authenticated` may execute only the three policy helpers there.
 - The RPCs from the design doc's function table, all `security definer` with `set search_path = ''` and schema-qualified names.
 - Revoke `select` on every table from `authenticated`, revoke `execute` on every `yogurt_` function, and grant it back through an explicit allowlist of the RPCs.
 - `yogurt_unlock` returns null on a wrong passcode and never raises, so the failure count commits.
@@ -203,9 +203,12 @@ SYNC-3 to SYNC-6 each add their section of the guide as they land, so SYNC-7 fin
 
 ## SYNC-10: search
 
-1. `schema.sql`: `yogurt_search_index` with a trigger on `yogurt_versions` and a guarded rebuild at the end of every apply (signature hash plus a count check), `yogurt_search(token, query, only_device, lim)`, and a drop of the column and functions an earlier draft added.
-2. `schema_test.sql` covers owner and token checks, the live-only rule, tombstones and late versions, transcript and enhanced text, markup and link labels, accents, prefix and hyphen cases, quotes and `or` and minus, device filter, the cap and `more`, a huge multibyte body, the rebuild, and the private index.
-3. `just test-cloud-schema` also applies `origin/main`'s schema over seeded rows including a huge multibyte body, then this branch's schema twice, then main's again, and checks search and a laptop insert after each step.
-4. The webapp: a search field above the device pills (top of the left column on desktop), hidden in the as-of view, a 250 ms debounce, a pending state, hits rendered from the returned rows, a cap message, clear by the button (which returns focus) or Escape, a reload before opening a hit the library has not seen, and a reload on `visibilitychange`. While an answer is pending, the previous one stays on screen dimmed and inert.
-5. Measured on a throwaway Postgres 16 with 1,500 live meetings of about 70 KB of transcript each, with these results: a rebuild of about 11 seconds that runs only when the signature or the count changed, an unchanged apply under 0.1 seconds, a search under 10 ms for most queries, and about 290 ms when 100 hits each need a snippet from a 70 KB document.
-6. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone".
+1. `schema.sql`: the `unaccent` extension check, the `yogurt_ts` configuration, `yogurt_search_index` with a cascading foreign key to its version and a trigger on `yogurt_versions`, `yogurt_search_ensure()` with a signature in `yogurt_meta`, and `yogurt_search(token, query, only_device)`.
+2. `cloud/scripts/build.mjs` runs `yogurt_search_ensure()` as its own query after the schema transaction commits, and `just test-cloud-schema` applies the schema the same way.
+3. `schema_test.sql` covers owner and token checks, the live-only rule, tombstones and late versions, several link spans with bullets between them, accents, entities, prefix and hyphen cases, quotes, dashes, URLs, `or` and minus, the device filter, the cap and `more`, a huge multibyte body, odd times, the ensure's repairs, and the guide's purge.
+4. `just test-cloud-schema` also applies `origin/main`'s schema over seeded rows including a huge multibyte body, then this branch's deploy twice, then main's again and this branch's once more, and checks search and a laptop insert after each step.
+5. The webapp has a search field above the device pills (top of the left column on desktop), hidden in the as-of view.
+6. It debounces 250 ms, shows a pending state over dimmed results, and renders hits from the returned rows with a cap message.
+7. It clears by the button (which returns focus) or Escape, and it opens a hit from the loaded library with a reload note when the hit is newer.
+8. Measured on a throwaway Postgres 16 with 1,500 live meetings of about 61 KB of transcript each: a first fill of about 11 seconds, an unchanged deploy under 0.1 seconds, a search for 25 hits under 120 ms, and an insert about 7 ms slower per version with the trigger.
+9. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone" and a purge note.
