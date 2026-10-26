@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatTs, markdownToHtml } from "@web/editor/html";
-import { TranscriptLine } from "@web/components/TranscriptLine";
+import { TranscriptLine, scrollToTranscriptTime } from "@web/components/TranscriptLine";
 import { storedSegmentToEvent } from "@web/lib/ws";
 import { Back, DeviceTag } from "../ui";
 import { defaultTab, pushedFrom, started, tabsFor, type Entry, type Tab } from "../lib/library";
@@ -24,6 +24,13 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
   const tabs = tabsFor(entry);
   const [picked, setPicked] = useState<Tab | null>(null);
   const tab = picked && tabs.includes(picked) ? picked : defaultTab(entry);
+  const [target, setTarget] = useState<number | null>(null);
+  const transcript = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (tab !== "transcript" || target === null) return;
+    if (transcript.current) scrollToTranscriptTime(transcript.current, target);
+    setTarget(null);
+  }, [tab, target]);
   return (
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
       {!desktop && <Back to={back} onClick={onBack} />}
@@ -52,9 +59,9 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
       )}
       <div className="cloud-doc text-[11.5px] min-[721px]:text-[13px] leading-[1.55]">
         {tab === "transcript" ? (
-          <div role="tabpanel">{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
+          <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
         ) : (
-          <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? () => setPicked("transcript") : undefined} />
+          <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { setTarget(sec); setPicked("transcript"); } : undefined} />
         )}
       </div>
       <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>
@@ -62,9 +69,12 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
   );
 }
 
-function Doc({ md, onLink }: { md: string; onLink?: () => void }) {
+function Doc({ md, onLink }: { md: string; onLink?: (sec: number) => void }) {
   const html = useMemo(() => render(md), [md]);
-  const open = (e: { target: EventTarget }) => e.target instanceof Element && e.target.closest("[data-transcript-link]") && onLink?.();
+  const open = (e: { target: EventTarget }) => {
+    const link = e.target instanceof Element ? e.target.closest("[data-transcript-link]") : null;
+    if (link) onLink?.(Number(link.getAttribute("data-ts")) || 0);
+  };
   // The markup is sanitized by markdownToHtml, the same allowlist the desktop editor loads.
   return <div role="tabpanel" className="doc" onClick={open} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && open(e)} dangerouslySetInnerHTML={{ __html: html }} />;
 }

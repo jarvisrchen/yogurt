@@ -2,6 +2,8 @@ export interface Status {
   owner_email_set: boolean;
   is_owner: boolean;
   passcode_set: boolean;
+  /** Digits in the PIN, or null before one is set and for a PIN not yet backfilled by an unlock. */
+  passcode_length: number | null;
   locked_until: string | null;
 }
 

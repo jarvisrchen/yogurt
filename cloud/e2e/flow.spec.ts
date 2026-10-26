@@ -36,7 +36,7 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expectScreen(page, "Settings");
-  await expect(page.getByText("This browser", { exact: false })).toBeVisible();
+  await expect(page.getByText(/^This browser( ·|$)/)).toBeVisible();
   await shot(page, info, "p-settings");
 
   const theme = page.locator("html");
@@ -58,6 +58,7 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   // Lock, then a wrong PIN, then the right one with Remember this browser.
   await page.getByRole("button", { name: /^Lock/ }).first().click();
   await expectScreen(page, "Unlock your meetings");
+  await expect(page.locator("i[data-filled]")).toHaveCount(6);
   await shot(page, info, "i-unlock");
   await typePin(page, "000000");
   await page.getByRole("button", { name: "Unlock" }).click();
@@ -89,6 +90,7 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   // Change the PIN. This browser unlocks again with the new one and stays remembered.
   await page.getByRole("button", { name: "Change PIN" }).click();
   await expectScreen(page, "Change PIN");
+  await expect(page.locator('div:has(> input[aria-label="Current PIN"]) i[data-filled]')).toHaveCount(6);
   await page.getByLabel("Current PIN").fill("246810");
   await page.getByRole("button", { name: "4 digits" }).click();
   await page.getByLabel("PIN", { exact: true }).fill("1357");
@@ -101,8 +103,10 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   // Five wrong tries lock unlocking.
   await page.getByRole("button", { name: /^Lock/ }).first().click();
   await expectScreen(page, "Unlock your meetings");
+  await expect(page.locator("i[data-filled]")).toHaveCount(4);
+  await shot(page, info, "i-unlock-four");
   for (let i = 0; i < 5; i++) {
-    await typePin(page, "999999");
+    await typePin(page, "9999");
     await page.getByRole("button", { name: "Unlock" }).click();
     if (i < 4) await expect(page.getByText("Wrong PIN. Try again.")).toBeVisible();
   }

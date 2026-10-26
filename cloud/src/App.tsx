@@ -161,7 +161,7 @@ function Signed({ api }: { api: Api }) {
     case "choose-pin":
       return <ChoosePin onSubmit={choosePin} busy={busy} error={error} />;
     case "unlock":
-      return <Unlock email={email!} lockedUntil={status!.locked_until} notice={notice} onUnlock={unlock} onSignOut={signOut} />;
+      return <Unlock email={email!} length={status!.passcode_length} lockedUntil={status!.locked_until} notice={notice} onUnlock={unlock} onSignOut={signOut} />;
     case "library":
       return (
         <Library
@@ -202,6 +202,7 @@ function Signed({ api }: { api: Api }) {
           onLock={lock}
           onSignOut={signOut}
           onRejected={drop}
+          pinLength={status!.passcode_length}
           onChangePin={changePin}
         />
       );

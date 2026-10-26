@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { browserLabel, formatWait, lockoutMinutes, screenFor, type Status } from "./route";
 import { TOKEN_KEY, clearToken, readToken, saveToken } from "./token";
 
-const owner: Status = { owner_email_set: true, is_owner: true, passcode_set: true, locked_until: null };
+const owner: Status = { owner_email_set: true, is_owner: true, passcode_set: true, passcode_length: 6, locked_until: null };
 const base = { signedIn: true, status: owner, token: "t", view: "library" as const };
 
 describe("screenFor", () => {

@@ -153,7 +153,7 @@ export function Checkbox({ checked, onChange, children }: { checked: boolean; on
 interface PinProps {
   id?: string;
   label: string;
-  length: 4 | 6;
+  length: number;
   value: string;
   onChange: (v: string) => void;
   error?: boolean;

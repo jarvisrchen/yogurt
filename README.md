@@ -15,6 +15,7 @@ bullets fused in place with what was actually said.
 A single Rust binary, a browser UI at `localhost:7878`, MIT licensed.
 Bring your own OpenAI-compatible LLM (Minimax, OpenAI, OpenRouter, local
 Ollama, whatever you already pay for).
+Optionally, Yogurt Cloud lets you read your meetings on your phone, from a webapp on your own Vercel and Supabase accounts.
 
 **Status:** 1.0, stable.
 Released as a Homebrew tap and as GitHub Releases tarballs; see [docs/RELEASE-LOG.md](docs/RELEASE-LOG.md) for the release log.
@@ -154,7 +155,12 @@ version that's safe to paste into a bug report.
 
 Yogurt Cloud mirrors your meetings to a webapp on your own Vercel and Supabase accounts, so you can read them on your phone.
 It is optional and off until you connect it.
-The setup guide is [docs/CLOUD-SYNC.md](docs/CLOUD-SYNC.md).
+
+- Deploy it once with the Deploy with Vercel button in the guide, then create your Cloud login and choose a PIN.
+- Connect each Mac in Settings, then Cloud sync, and push by hand or on an interval.
+- On the phone, read every Mac's meetings with their notes, enhanced notes, and transcript, and look back at the library as of any earlier push.
+
+The setup guide, including how it works and who can read what, is [docs/CLOUD-SYNC.md](docs/CLOUD-SYNC.md).
 
 ## Transcription models
 
@@ -260,6 +266,7 @@ yogurt ctl settings get
 yogurt ctl settings set k=v [k2=v2 ...] [--dry-run]
 yogurt ctl provider list|activate <name>|test [<name>]
 yogurt ctl models list|download <name> [--wait]|delete <name> [--dry-run]
+yogurt ctl cloud status|push                       # Yogurt Cloud: connected or not, meetings not pushed, push now
 yogurt ctl ws [<id|url|last>] [--types a,b] [--count N]   # one JSON frame per line, until Ctrl-C or --count
 ```
 
@@ -325,6 +332,7 @@ notes into any other tool.
 One Rust process runs the audio capture (ScreenCaptureKit), live STT
 (Deepgram cloud or local whisper.cpp), the LLM enhancement pass, an axum
 HTTP/WS server, and SQLite storage.
+When you connect a Yogurt Cloud, the same process pushes meetings to your Supabase project.
 No subprocesses, no IPC, no sidecar binaries, no Electron/Tauri webview.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design,
 sequence diagrams, and trust boundaries.
@@ -335,7 +343,7 @@ sequence diagrams, and trust boundaries.
   and even then only the audio stream goes out.
 - Notes and transcripts leave only to the LLM provider you configure and to a Yogurt Cloud you connect.
   A Yogurt Cloud is a webapp on your own Vercel account backed by your own Supabase project, so yogurt hosts nothing.
-  Nothing is pushed until you press Push meetings, and the meetings sit readable in your Supabase, behind your Cloud login and a PIN you set in the webapp.
+  Nothing is pushed until you press Push meetings or turn on Auto-push, and the meetings sit readable in your Supabase, behind your Cloud login and a PIN you set in the webapp.
   The setup guide is [docs/CLOUD-SYNC.md](docs/CLOUD-SYNC.md).
 - No telemetry, no phone-home, not even opt-in crash reporting.
 - API keys and the Yogurt Cloud connection live in `~/.yogurt/keys.json` (mode 0600), never in the database or in any response body.

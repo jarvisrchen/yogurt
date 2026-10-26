@@ -131,6 +131,7 @@ select pg_temp.expect('22023', array[
 select pg_temp.expect('PT412', array['select yogurt_start_push(gen_random_uuid())']);
 select pg_temp.eq(yogurt_set_passcode('123456')::text, 'true', 'first passcode');
 select pg_temp.eq((yogurt_status()->>'passcode_set'), 'true', 'passcode set');
+select pg_temp.eq((yogurt_status()->>'passcode_length'), '6', 'passcode length recorded');
 
 insert into yogurt_devices (id, name) values (:d1, 'Laptop 1'), (:d2, 'Laptop 2');
 select pg_temp.expect('23502', array['insert into yogurt_devices (name) values (''x'')']);
@@ -314,6 +315,21 @@ set role authenticated;
 select pg_temp.eq(yogurt_unlock('123456'), null, 'old passcode no longer works');
 select yogurt_unlock('654321', false, 'Safari') as tok \gset
 select pg_temp.eq((select count(*)::text from yogurt_library(:'tok')), '5', 'new passcode works');
+
+-- The PIN's length: recorded on set, backfilled by a correct unlock when it is missing, and hidden from non-owners.
+select pg_temp.eq(yogurt_set_passcode('4321', '654321')::text, 'true', 'change to four digits');
+select pg_temp.eq((yogurt_status()->>'passcode_length'), '4', 'length follows the new passcode');
+reset role;
+update yogurt_owner set passcode_length = null;
+set role authenticated;
+select pg_temp.eq((yogurt_status()->>'passcode_length'), null, 'no length before a backfill');
+select pg_temp.eq(yogurt_unlock('0000'), null, 'wrong passcode does not backfill');
+select pg_temp.eq((yogurt_status()->>'passcode_length'), null, 'still no length after a wrong passcode');
+select yogurt_unlock('4321', false, 'Safari') as tok \gset
+select pg_temp.eq((yogurt_status()->>'passcode_length'), '4', 'unlock backfills the length');
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.eq((yogurt_status()->>'passcode_length'), null, 'non-owner sees no length');
+select pg_temp.eq((yogurt_status()->>'passcode_set'), 'false', 'non-owner sees no passcode');
 
 reset role;
 \o

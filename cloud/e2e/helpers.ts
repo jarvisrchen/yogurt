@@ -93,9 +93,15 @@ const meeting = (id: string, title: string, start: number, minutes: number, over
   meeting: { id, title, started_at: start, ended_at: start + minutes * 60_000, notes_md: "", enriched_md: null, transcript_json: "[]", ...over },
 });
 
+/** The two lines the specs read near the top, then 68 more every 10 seconds, so the transcript runs 11 minutes and needs scrolling. */
+export const LATE = { ts_ms: 600_000, text: "Late in the call: sign the vendor contract on Friday." };
 const SEGMENTS = JSON.stringify([
   { ts_ms: 12_000, channel: "them", text: "We should lock the pricing page before the freeze." },
   { ts_ms: 41_000, channel: "me", text: "Agreed. Can you own the migration plan?" },
+  ...Array.from({ length: 68 }, (_, i) => {
+    const ts_ms = 50_000 + i * 10_000;
+    return ts_ms === LATE.ts_ms ? { ...LATE, channel: "me" } : { ts_ms, channel: i % 2 ? "me" : "them", text: `Filler line ${i + 3} about the roadmap.` };
+  }),
 ]);
 
 export const DEVICES = { a: "11111111-1111-4111-8111-111111111111", b: "22222222-2222-4222-8222-222222222222" };
@@ -121,7 +127,7 @@ export async function seed() {
   const vendor = meeting("m-vendor", "Vendor review", at(2, 10, 37), 41, { notes_md: "Ask for the SOC 2 report." });
   const planning = meeting("m-planning", "Q4 planning sync", at(2, 13, 42), 22, {
     notes_md: "## Decisions\n\n- Ship the pricing page before the holiday freeze",
-    enriched_md: '## Decisions\n\n- Ship the pricing page before the holiday freeze\n- <span data-ai-grey="">Steven owns the migration plan, due Nov 3</span>\n\n## Open items\n\n- <span data-ai-grey="">Confirm the vendor\'s SOC 2 report</span>',
+    enriched_md: '## Decisions\n\n- Ship the pricing page before the holiday freeze\n- <span data-ai-grey="">Steven owns the migration plan, due Nov 3</span>\n\n## Open items\n\n- <span data-ai-grey="">Confirm the vendor\'s SOC 2 report</span> <span data-transcript-link data-ts="600">↳ 10:00</span>',
     transcript_json: SEGMENTS,
   });
   const steven = meeting("m-steven", "1:1 with Steven", at(10, 11, 59), 30, { notes_md: "Career path." });

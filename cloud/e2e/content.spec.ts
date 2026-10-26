@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { API, DEVICES, KEY, OWNER, PASSWORD, PIN, expectScreen, isPhone, onboard, reset, seed, shot, typePin } from "./helpers";
+import { API, DEVICES, KEY, OWNER, PASSWORD, LATE, PIN, expectScreen, isPhone, onboard, reset, seed, shot, typePin } from "./helpers";
 
 test.beforeAll(reset);
 
@@ -160,4 +160,18 @@ test("signing out of the webapp leaves a laptop's session alive", async ({ page 
 
   const { error } = await laptop.auth.refreshSession();
   expect(error).toBeNull();
+});
+
+test("a transcript link in Enhanced scrolls the Transcript tab to that moment and tints the line", async ({ page }, info) => {
+  await reset();
+  await onboard(page);
+  await seed();
+  await page.reload();
+  await page.getByRole("button", { name: /Q4 planning sync/ }).click();
+  await page.getByRole("tabpanel").locator("[data-transcript-link]").click();
+  await expect(page.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
+  const line = page.locator("[data-transcript-ts-sec]", { hasText: LATE.text });
+  await expect(line).toBeInViewport({ ratio: 1 });
+  await expect(line).toHaveClass(/transcript-highlight/);
+  await shot(page, info, "s-transcript-link");
 });

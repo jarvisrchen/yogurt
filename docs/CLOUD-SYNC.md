@@ -12,20 +12,21 @@ The design is in [docs/.planning/sync-cloud-mirror-design.md](.planning/sync-clo
 
 Yogurt Cloud has four parts, and you own all of them.
 
-1. **Your Supabase project.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
-2. **Your Vercel project.** It serves the Yogurt Cloud webapp, a set of static files.
-   It has no server code, so it never sees a meeting.
+1. **Your Vercel project, which is your Yogurt Cloud.** It serves the Yogurt Cloud webapp at your Cloud address, for example `yogurt-cloud.vercel.app`.
+   That address is what you open on your phone and type into each laptop.
+   The webapp is a set of static files with no server code, so Vercel never sees a meeting.
+2. **Your Supabase project, where your Yogurt Cloud keeps its data.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
 3. **Your laptops.** Each Mac running Yogurt pushes its meetings to your Supabase project.
-4. **Your phone, or any browser.** It opens the webapp, signs in, and reads your meetings.
+4. **Your phone, or any browser.** It opens your Cloud address, signs in, and reads your meetings.
 
 ```mermaid
 flowchart LR
   L1["Laptop 1<br/>yogurt"]
   L2["Laptop 2<br/>yogurt"]
-  subgraph VC["Your Vercel project"]
-    WEB["Webapp<br/>static files + config.json"]
+  subgraph VC["Your Yogurt Cloud: your Vercel project"]
+    WEB["Yogurt Cloud webapp<br/>at your Cloud address<br/>static files + config.json"]
   end
-  subgraph SB["Your Supabase project"]
+  subgraph SB["Its data: your Supabase project"]
     AUTH["Auth<br/>the Cloud login"]
     DB[("Postgres<br/>meeting versions")]
   end
@@ -51,11 +52,56 @@ The first push sends every meeting, and later pushes send only what changed.
 When you connect, the laptop reads `config.json` from your webapp to find your Supabase project.
 That file holds the project address and a publishable key, and both are public by design.
 
+```mermaid
+sequenceDiagram
+  participant L as Laptop
+  participant W as Yogurt Cloud webapp
+  participant A as Supabase Auth
+  participant D as Supabase database
+  Note over L,D: Connect, once per laptop
+  L->>W: GET config.json
+  W-->>L: project address and publishable key
+  L->>A: sign in with email and password
+  A-->>L: session and refresh token
+  L->>D: yogurt_status
+  D-->>L: owner, and a PIN is set
+  L->>D: insert yogurt_devices (new device id, machine name)
+  Note over L: keys.json keeps the refresh token, and the password is dropped
+  Note over L,D: Each push
+  L->>A: refresh the session
+  A-->>L: new session and refresh token
+  L->>D: yogurt_device_meetings
+  D-->>L: meeting ids this device has in the Cloud
+  Note over L: compare with local meetings, and stop if nothing changed
+  L->>D: yogurt_start_push
+  D-->>L: push id
+  L->>D: insert yogurt_versions, in batches
+```
+
 To read, your phone opens the webapp from Vercel.
 You sign in with the Cloud login, then type your PIN.
 Supabase checks the PIN in the database and hands the browser a token.
 The webapp uses that token to call database functions (RPCs) that return your meetings.
 The Cloud login alone cannot read a meeting.
+
+```mermaid
+sequenceDiagram
+  participant P as Phone
+  participant W as Yogurt Cloud webapp
+  participant A as Supabase Auth
+  participant D as Supabase database
+  P->>W: open your Cloud address
+  W-->>P: webapp and config.json
+  P->>A: sign in with email and password, once per browser
+  A-->>P: session
+  P->>D: yogurt_status
+  D-->>P: owner, PIN set, not locked out
+  P->>D: yogurt_unlock(PIN, remember this browser)
+  D-->>P: browser token, kept in localStorage
+  P->>D: yogurt_device_list(token) and yogurt_library(token)
+  D-->>P: devices and the newest version of each meeting
+  Note over P,D: History calls yogurt_history(token), then yogurt_library(token, push id)
+```
 
 History works because versions are kept.
 The library as of any earlier push is the newest version of each meeting at or before that push.
@@ -210,6 +256,7 @@ Your first visit has no login yet, so follow these steps once.
    If no email arrives, see Troubleshooting.
 5. Choose a 4 or 6 digit PIN, type it again under Confirm PIN, and select Save PIN.
    You type this PIN in a browser to read meetings, and your laptops never see it.
+   Unlock shows as many boxes as your PIN has digits.
 
 The webapp then opens the library, which says "No machine has pushed yet" until you connect a laptop (section 4).
 
