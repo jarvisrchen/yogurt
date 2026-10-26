@@ -11,13 +11,17 @@ end $$;
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select yogurt_start_push('00000000-0000-0000-0000-0000000000d1') as push \gset
--- A laptop can push a huge multibyte body, and a laptop's insert succeeds whichever schema is applied.
+-- A laptop can push a huge multibyte body, and its insert succeeds whichever schema is applied.
 insert into yogurt_versions (meeting_id, push_id, device_id, body)
 values (:'phase' || '-big', :push, '00000000-0000-0000-0000-0000000000d1',
   jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Pushed after ' || :'phase', 'started_at', 3000, 'notes_md', :'phase' || 'word ' || repeat('日本語 é€ ', 400000), 'transcript_json', '[]')));
+\if :search
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the laptop catches search up after its push');
+\endif
 reset role;
 select pg_temp.eq((select count(*)::text from yogurt_versions where meeting_id = :'phase' || '-big'), '1', 'the laptop insert landed');
 \if :search
+select pg_temp.eq((select extnamespace::regnamespace::text from pg_extension where extname = 'unaccent'), 'extensions', 'unaccent installed in public moves to extensions');
 select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index), (select count(*)::text from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l where body is not null), 'the index holds every live meeting');
 set role authenticated;
 select yogurt_unlock('123456') as tok \gset

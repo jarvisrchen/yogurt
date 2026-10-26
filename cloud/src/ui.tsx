@@ -306,6 +306,9 @@ export function SearchField({ value, onChange, inputRef }: { value: string; onCh
         placeholder="Search notes & transcripts"
         aria-label="Search notes and transcripts"
         autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         className="flex-1 min-w-0 bg-transparent border-0 outline-none font-sans text-[16px] min-[721px]:text-[12px] text-ink placeholder:text-mut p-[0px] pr-[10px]"
       />
       {value && (

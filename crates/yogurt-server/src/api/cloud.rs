@@ -514,6 +514,12 @@ async fn run_pass(
     // The deletion markers went out with this pass.
     let repo = state.meeting_repo.clone();
     blocking(move || repo.clear_cloud_tombstones()).await?;
+    // A lagging index only delays search, so its failure never fails the pass.
+    match push::catch_up_search(project, session).await {
+        Ok(0) => {}
+        Ok(left) => tracing::info!(left, "search index still catching up"),
+        Err(e) => tracing::warn!(code = e.code(), error = %e, "search index catch-up failed"),
+    }
     Ok(plan)
 }
 
@@ -884,6 +890,69 @@ mod tests {
         assert_eq!(attempt_at(&state), None, "no pass, so nothing could fail");
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["at"], T0 + 15 * MIN);
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
+    }
+
+    /// A mock Supabase that takes one push, and `state` connected to it. Search catch-up is left for each test to mount.
+    async fn mock_cloud(state: &AppState) -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let cloud = MockServer::start().await;
+        let answer = |p: &str, status: u16, body: Value| {
+            Mock::given(method("POST"))
+                .and(path(p))
+                .respond_with(ResponseTemplate::new(status).set_body_json(body))
+        };
+        let session = json!({ "access_token": "a", "refresh_token": "r2", "expires_at": now_ms() / 1000 + 3600, "user": { "id": "u" } });
+        answer("/auth/v1/token", 200, session).mount(&cloud).await;
+        answer("/rest/v1/rpc/yogurt_device_meetings", 200, json!([]))
+            .mount(&cloud)
+            .await;
+        answer("/rest/v1/rpc/yogurt_start_push", 200, json!(7))
+            .mount(&cloud)
+            .await;
+        answer("/rest/v1/yogurt_versions", 201, Value::Null)
+            .mount(&cloud)
+            .await;
+        let mut conn = load(state).unwrap().unwrap();
+        conn.supabase_url = cloud.uri();
+        save(state, &conn).unwrap();
+        cloud
+    }
+
+    fn catch_up(status: u16, body: Value) -> wiremock::Mock {
+        wiremock::Mock::given(wiremock::matchers::path(
+            "/rest/v1/rpc/yogurt_search_catch_up",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(status).set_body_json(body))
+    }
+
+    #[tokio::test]
+    async fn a_failed_search_catch_up_leaves_the_push_successful() {
+        let (state, _tmp) = state();
+        let cloud = mock_cloud(&state).await;
+        catch_up(500, json!({ "message": "boom" }))
+            .expect(1)
+            .mount(&cloud)
+            .await;
+        let Json(v) = push_now(State(state.clone())).await.unwrap();
+        assert_eq!(v["changed"], 1);
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 1);
+        assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
+        assert_eq!(pending(&state).await.unwrap().not_pushed, 0);
+    }
+
+    #[tokio::test]
+    async fn a_pass_with_nothing_to_push_still_catches_search_up_until_none_is_left() {
+        let (state, _tmp) = idle_state();
+        let cloud = mock_cloud(&state).await;
+        catch_up(200, json!(4))
+            .up_to_n_times(2)
+            .expect(2)
+            .mount(&cloud)
+            .await;
+        catch_up(200, json!(0)).expect(1).mount(&cloud).await;
+        let Json(v) = push_now(State(state.clone())).await.unwrap();
+        assert_eq!(v["changed"], 0);
     }
 
     #[tokio::test]

@@ -3,7 +3,8 @@ import { groupMeetingsByDay } from "@web/components/library/dayGroups";
 import { Logo } from "@web/components/Logo";
 import { Brand, DayList, DevicePills, DeviceTag, ListRow, LoadError, LockButton, SearchField, useDesktop } from "../ui";
 import type { Api, SearchHit } from "../lib/api";
-import { asOfLabel, clock, duration, forDevice, toEntries, type Entry } from "../lib/library";
+import { asOfLabel, clock, duration, forDevice, hitEntry, toEntries, type Entry } from "../lib/library";
+import { hitNote, searchStatus } from "../lib/search";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { HOME, type Loc } from "../lib/hash";
@@ -16,15 +17,7 @@ export const GearIcon = () => (
   </svg>
 );
 
-interface Row {
-  key: string;
-  title: string;
-  started_at: number;
-  endedAt: number | null;
-  device_id: string;
-  snippet: string | null;
-  hit: SearchHit | null;
-}
+type Row = Entry & { snippet: string | null; hit: SearchHit | null };
 
 interface Props {
   api: Api;
@@ -42,7 +35,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
   const [device, setDevice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const { asOf: pushId, meeting: open } = loc;
-  const { data, error, retry } = useCloudLoad(
+  const { data, error, loading, retry } = useCloudLoad(
     async () => {
       const [devices, rows, history] = await Promise.all([api.devices(token), api.library(token, pushId ?? undefined), pushId ? api.history(token) : null]);
       return { devices, entries: toEntries(rows), pushedAt: history?.find((h) => h.push_id === pushId)?.pushed_at ?? null };
@@ -55,32 +48,19 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
 
   const [hit, setHit] = useState<SearchHit | null>(null);
   const field = useRef<HTMLInputElement>(null);
+  // The as-of view has no search, so the hook gets an empty query there.
   const search = useSearch(api, token, pushId ? "" : query, device, data, onRejected);
-  const searching = search.active && !pushId;
-  const pending = searching && search.pending;
-  const hits = searching ? (pending ? search.previous : search.hits) : null;
+  const hits = search.active ? (search.pending ? search.previous : search.hits) : null;
   const rows = useMemo<Row[]>(
-    () =>
-      hits
-        ? hits.map((h) => ({ key: `${h.device_id}/${h.meeting_id}`, title: h.title.trim() || "Untitled meeting", started_at: h.started_at, endedAt: h.ended_at, device_id: h.device_id, snippet: h.snippet, hit: h }))
-        : forDevice(entries ?? [], device).map((e) => ({ key: e.key, title: e.title, started_at: e.started_at, endedAt: e.endedAt, device_id: e.device_id, snippet: null, hit: null })),
+    () => (hits ? hits.map((h) => ({ ...hitEntry(h), snippet: h.snippet, hit: h })) : forDevice(entries ?? [], device).map((e) => ({ ...e, snippet: null, hit: null }))),
     [hits, entries, device],
   );
   const groups = useMemo(() => groupMeetingsByDay(rows), [rows]);
-  const text = !searching
-    ? ""
-    : search.pending
-      ? "Searching…"
-      : !search.hits?.length
-        ? `No meetings match ${query.trim().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, "")}.`
-        : search.more
-          ? "Showing the newest matches. Add words to narrow."
-          : `${search.hits.length} ${search.hits.length === 1 ? "match" : "matches"}`;
 
   // A search hit can be newer than the loaded library, or missing from it, so the meeting opens from what is loaded and offers a reload.
   const loaded = entries?.find((e) => e.key === open) ?? null;
-  const newer = !!hit && `${hit.device_id}/${hit.meeting_id}` === open && (!loaded || loaded.pushId < hit.push_id);
-  const opened: Entry | null = loaded ?? (newer && hit ? { key: open!, device_id: hit.device_id, pushId: 0, pushedAt: "", title: hit.title.trim() || "Untitled meeting", started_at: hit.started_at, endedAt: hit.ended_at, notes: "", enhanced: null, segments: [] } : null);
+  const note = hitNote(hit, open, loaded, !!pushId);
+  const opened = loaded ?? (note === "missing" && hit ? hitEntry(hit) : null);
 
   const meta = (startedAt: number, endedAt: number | null) => {
     const min = duration({ started_at: startedAt, endedAt });
@@ -98,7 +78,8 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
       back={devices?.find((d) => d.id === device)?.name ?? "All devices"}
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
-      onReload={newer ? retry : undefined}
+      stub={!loaded}
+      reload={note ? { text: note === "missing" ? "This meeting isn't loaded on this page yet." : "A newer version was pushed.", loading, error, onReload: retry } : undefined}
     />
   );
   if (!desktop && open && !entries && !error) return null;
@@ -122,10 +103,10 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
       {!!devices?.length && <DevicePills devices={devices} value={device} onChange={setDevice} />}
       {!pushId && (
         <p role="status" className="text-[12px] text-mut m-[0px] break-words [overflow-wrap:anywhere] empty:hidden">
-          {text}
+          {searchStatus(search, query)}
         </p>
       )}
-      {searching && search.error ? (
+      {search.error ? (
         <LoadError
           message={`Search failed. ${search.error}`}
           onRetry={() => {
@@ -134,7 +115,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
           }}
         />
       ) : (
-        <div aria-busy={pending || undefined} inert={pending || undefined} className={`flex flex-col gap-[10px] min-[721px]:gap-[8px] ${pending ? "opacity-50" : ""}`}>
+        <div aria-busy={search.pending || undefined} inert={search.pending || undefined} className={`flex flex-col gap-[10px] min-[721px]:gap-[8px] ${search.pending ? "opacity-50" : ""}`}>
           <DayList
             groups={groups}
             render={(r) => (
@@ -152,7 +133,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
               />
             )}
           />
-          {!searching && entries && !rows.length && <p className="text-[12px] text-mut m-[0px]">No meetings here.</p>}
+          {!search.active && entries && !rows.length && <p className="text-[12px] text-mut m-[0px]">No meetings here.</p>}
         </div>
       )}
     </>
@@ -170,7 +151,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
           {desktop && <LockButton onClick={onLock} />}
         </div>
       </header>
-      {error ? (
+      {error && !entries ? (
         <main className="flex-1 flex flex-col items-center px-[16px] pt-[80px]">
           <LoadError message={`Could not load your library. ${error}`} onRetry={retry} />
         </main>

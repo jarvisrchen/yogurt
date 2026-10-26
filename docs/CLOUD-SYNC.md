@@ -356,7 +356,9 @@ A row that matches outside its title shows a short snippet with the match marked
 Search works inside the selected machine, and the clear button or Escape restores the full list.
 A search shows the newest 25 matches and says so when there are more, so add words to narrow it.
 Chinese, Japanese, and Korean words inside a sentence do not match unless you type the whole run of characters.
-A quoted phrase matches only in the first part of a very long meeting, and a single word always matches.
+Search reads only about the first 400,000 characters of a meeting, so a word only in the tail of a very long meeting is not found.
+A quoted phrase matches only in the first part of a long meeting.
+A new push becomes searchable once the laptop finishes indexing after the push, usually seconds later.
 
 Tap a meeting to read it.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.

@@ -20,7 +20,16 @@ function render(md: string): string {
 
 const LABELS: Record<Tab, string> = { notes: "Notes", enhanced: "Enhanced", transcript: "Transcript" };
 
-export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, onReload }: { entry: Entry; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; onReload?: () => void }) {
+/** A note above the meeting that offers to reload the library, with the reload's progress or failure. */
+export interface ReloadNote {
+  text: string;
+  loading: boolean;
+  error: string | null;
+  onReload: () => void;
+}
+
+/** `stub` is a meeting the loaded library lacks: only its header and the reload note show. */
+export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, reload, stub }: { entry: Entry; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; reload?: ReloadNote; stub?: boolean }) {
   const tabs = tabsFor(entry);
   const [picked, setPicked] = useState<Tab | null>(null);
   const tab = picked && tabs.includes(picked) ? picked : defaultTab(entry);
@@ -42,15 +51,20 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
           {started(entry)}
         </div>
       </div>
-      {onReload && (
-        <div role="status" className="flex items-center justify-between gap-[8px] text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
-          A newer version was pushed.
-          <button type="button" onClick={onReload} className="flex-none text-blue font-semibold cursor-pointer bg-transparent border-0 p-[0px] font-[inherit]">
-            Reload
+      {reload && (
+        <div role={reload.error ? "alert" : "status"} className="flex items-center justify-between gap-[8px] text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
+          <span className="min-w-0 break-words">{reload.error ? `Could not reload. ${reload.error}` : reload.text}</span>
+          <button
+            type="button"
+            onClick={reload.onReload}
+            disabled={reload.loading}
+            className="flex-none text-blue font-semibold cursor-pointer disabled:cursor-default disabled:text-mut bg-transparent border-0 p-[0px] font-[inherit]"
+          >
+            {reload.loading ? "Reloading…" : reload.error ? "Retry" : "Reload"}
           </button>
         </div>
       )}
-      {tabs.length > 1 && (
+      {!stub && tabs.length > 1 && (
         <div role="tablist" className="flex gap-[4px] border-b border-line">
           {tabs.map((t) => (
             <button
@@ -66,14 +80,14 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
           ))}
         </div>
       )}
-      <div className="cloud-doc text-[11.5px] min-[721px]:text-[13px] leading-[1.55]">
+      {!stub && <div className="cloud-doc text-[11.5px] min-[721px]:text-[13px] leading-[1.55]">
         {tab === "transcript" ? (
           <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
         ) : (
           <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); } : undefined} />
         )}
-      </div>
-      {entry.pushedAt && <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>}
+      </div>}
+      {!stub && <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>}
     </article>
   );
 }

@@ -183,6 +183,30 @@ pub async fn run(
     Ok(plan)
 }
 
+/// Calls per pass, each about 2 seconds of server time, so one pass catches up a large push and a longer backlog continues on the next pass.
+const CATCH_UP_CALLS: usize = 10;
+
+/// Search work never runs inside a push, so a pass ends by bringing the cloud's search index up to the latest versions.
+/// Returns how many meetings were still behind after the last call.
+pub async fn catch_up_search(project: &Project, session: &Session) -> Result<i64> {
+    let mut left = 0;
+    for _ in 0..CATCH_UP_CALLS {
+        left = project
+            .rpc(
+                session,
+                "yogurt_search_catch_up",
+                &json!({ "max_ms": 2000 }),
+            )
+            .await?
+            .as_i64()
+            .ok_or_else(|| Error::Network("search catch-up returned no count".into()))?;
+        if left == 0 {
+            break;
+        }
+    }
+    Ok(left)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -110,6 +110,7 @@ export const DEVICES = { a: "11111111-1111-4111-8111-111111111111", b: "22222222
 /**
  * Two laptops and four pushes, written the way a laptop writes them: the owner inserts devices and versions and starts each push through its RPC.
  * Push 1 (Laptop 1) and 2 (Laptop 2) add four meetings, push 3 (Laptop 1) edits one and removes one, push 4 (Laptop 2) removes one.
+ * Then search catches up, as a laptop does after its push.
  */
 export async function seed() {
   const sb = createClient(API, KEY);
@@ -136,5 +137,6 @@ export async function seed() {
   await push(DEVICES.b, [{ meeting_id: "m-planning", body: planning }, { meeting_id: "m-steven", body: steven }]);
   await push(DEVICES.a, [{ meeting_id: "m-standup", body: { ...standup, meeting: { ...standup.meeting, title: "edis update (revised)" } } }, { meeting_id: "m-vendor", body: null }]);
   await push(DEVICES.b, [{ meeting_id: "m-steven", body: null }]);
+  ok(await sb.rpc("yogurt_search_catch_up"));
   await sb.auth.signOut();
 }

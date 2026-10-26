@@ -39,10 +39,13 @@ if (production) {
   try {
     await client.query(readFileSync(here("../../crates/yogurt-cloud/schema.sql"), "utf8"));
     await client.query(readFileSync(here("../../crates/yogurt-cloud/owner.sql"), "utf8"), [owner]);
-    // The search index refill can run for many seconds, so it is its own query after the schema transaction has committed, and it takes only row locks.
-    await client.query("set statement_timeout = 0");
-    const { rows } = await client.query("select yogurt_private.yogurt_search_ensure() as wrote");
-    console.log(`yogurt-cloud build: schema applied, owner ${owner}, search index ${rows[0].wrote ? "updated" : "unchanged"}`);
+    // The search index catches up after the schema commits, in calls of about 2 seconds that each commit, so no long transaction holds what a push needs.
+    // Laptops finish whatever is left after their next push.
+    let left = -1;
+    for (let call = 0; call < 100 && left !== 0; call++) {
+      ({ rows: [{ left }] } = await client.query("select yogurt_private.yogurt_search_catch_up(2000) as left"));
+    }
+    console.log(`yogurt-cloud build: schema applied, owner ${owner}, search index ${left ? `${left} meetings behind, which the next push finishes` : "up to date"}`);
   } finally {
     await client.end();
   }

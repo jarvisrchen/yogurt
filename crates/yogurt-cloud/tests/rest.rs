@@ -159,6 +159,11 @@ async fn a_stranger_is_not_the_owner_and_can_do_nothing() {
         matches!(call, Err(Error::Http { status: 403, ref code, .. }) if code == "42501"),
         "{call:?}"
     );
+    let catch_up = yogurt_cloud::push::catch_up_search(&env.project, &s).await;
+    assert!(
+        matches!(catch_up, Err(Error::Http { status: 403, ref code, .. }) if code == "42501"),
+        "{catch_up:?}"
+    );
     let insert = env
         .project
         .insert(
@@ -230,6 +235,8 @@ async fn owner_pushes_unlocks_and_pages_the_library() {
             .await
             .unwrap();
     }
+
+    assert_eq!(yogurt_cloud::push::catch_up_search(p, &s).await.unwrap(), 0);
 
     let live = p
         .rpc_all(

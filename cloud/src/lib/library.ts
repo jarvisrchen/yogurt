@@ -1,5 +1,5 @@
 import type { StoredTranscriptSegment } from "@web/lib/ws";
-import type { LibraryRow } from "./api";
+import type { LibraryRow, SearchHit } from "./api";
 
 export interface Entry {
   key: string;
@@ -30,17 +30,20 @@ export function parseSegments(json: string): StoredTranscriptSegment[] {
   }
 }
 
+export const keyOf = (r: { device_id: string; meeting_id: string }) => `${r.device_id}/${r.meeting_id}`;
+const titleOf = (title: string) => title.trim() || "Untitled meeting";
+
 /** Newest first, like the desktop library. */
 export function toEntries(rows: LibraryRow[]): Entry[] {
   return rows
     .map((r): Entry => {
       const m = r.body.meeting;
       return {
-        key: `${r.device_id}/${r.meeting_id}`,
+        key: keyOf(r),
         device_id: r.device_id,
         pushId: r.push_id,
         pushedAt: r.pushed_at,
-        title: m.title.trim() || "Untitled meeting",
+        title: titleOf(m.title),
         started_at: m.started_at,
         endedAt: m.ended_at,
         notes: m.notes_md ?? "",
@@ -50,6 +53,20 @@ export function toEntries(rows: LibraryRow[]): Entry[] {
     })
     .sort((a, b) => b.started_at - a.started_at);
 }
+
+/** A search hit as an entry without content, for its list row or for a meeting the loaded library lacks. */
+export const hitEntry = (h: SearchHit): Entry => ({
+  key: keyOf(h),
+  device_id: h.device_id,
+  pushId: h.push_id,
+  pushedAt: "",
+  title: titleOf(h.title),
+  started_at: h.started_at,
+  endedAt: h.ended_at,
+  notes: "",
+  enhanced: null,
+  segments: [],
+});
 
 export const forDevice = <T extends { device_id: string }>(items: T[], id: string | null): T[] => (id ? items.filter((i) => i.device_id === id) : items);
 

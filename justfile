@@ -144,7 +144,7 @@ test-web:
     pnpm --dir web test
     pnpm --dir web e2e
 
-# Apply yogurt-cloud's schema.sql twice and run its SQL test (with owner.sql prepared as set_owner) in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Then apply origin/main's schema over seeded rows, this branch's schema twice, and main's again, checking search and a laptop insert after each. Needs Docker. CI's cloud-schema job runs this.
+# Deploy yogurt-cloud's schema.sql twice the way the build does and run its SQL test (with owner.sql prepared as set_owner) in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Then apply origin/main's schema over seeded rows, this branch's deploy twice, main's schema again, and this branch's deploy once more, checking search and a laptop push after each. Needs Docker. CI's cloud-schema job runs this.
 test-cloud-schema:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -158,11 +158,17 @@ test-cloud-schema:
     done
     [ -n "$ready" ] || { echo "test-cloud-schema: postgres did not become ready in 60s" >&2; exit 1; }
     psql() { docker exec -i -e PGOPTIONS='-c client_min_messages=warning' "$id" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
-    # The build applies the schema in one transaction, then runs the search ensure as its own statement. This does the same.
-    deploy() { psql -1 -d "$1" < schema.sql; psql -d "$1" -c "select yogurt_private.yogurt_search_ensure()" >/dev/null; }
+    # Like the build: the schema in one transaction, then search catch-up calls, each its own transaction, until none is left.
+    deploy() {
+        psql -1 -d "$1" < schema.sql
+        for _ in $(seq 100); do
+            [ "$(psql -d "$1" -tAc 'select yogurt_private.yogurt_search_catch_up(2000)')" = 0 ] && return
+        done
+        echo "test-cloud-schema: search catch-up did not finish" >&2
+        return 1
+    }
     cd crates/yogurt-cloud
     docker cp schema.sql "$id:/schema.sql"
-    docker cp tests/deploy.sql "$id:/deploy.sql"
     for mode in on off; do
         db="defaults_$mode"
         echo "== old default grants: $mode"
@@ -179,13 +185,12 @@ test-cloud-schema:
     psql -d upgrade -v old_defaults=off < tests/supabase_stub.sql
     psql -d upgrade < "$main_schema"
     psql -d upgrade < tests/upgrade_seed.sql
+    psql -d upgrade -c "create extension unaccent schema public"
     deploy upgrade
     deploy upgrade
     psql -d upgrade -v phase=upgrade -v search=true < tests/upgrade_test.sql
     psql -d upgrade < "$main_schema"
     psql -d upgrade -v phase=revert -v search=false < tests/upgrade_test.sql
-    # Main's schema leaves the trigger running but knows nothing of the index, so a row can go missing while it is applied.
-    psql -d upgrade -c "delete from yogurt_private.yogurt_search_index where meeting_id = 'u1'"
     deploy upgrade
     psql -d upgrade -v phase=reupgrade -v search=true < tests/upgrade_test.sql
 

@@ -203,12 +203,15 @@ SYNC-3 to SYNC-6 each add their section of the guide as they land, so SYNC-7 fin
 
 ## SYNC-10: search
 
-1. `schema.sql`: the `unaccent` extension check, the `yogurt_ts` configuration, `yogurt_search_index` with a cascading foreign key to its version and a trigger on `yogurt_versions`, `yogurt_search_ensure()` with a signature in `yogurt_meta`, and `yogurt_search(token, query, only_device)`.
-2. `cloud/scripts/build.mjs` runs `yogurt_search_ensure()` as its own query after the schema transaction commits, and `just test-cloud-schema` applies the schema the same way.
-3. `schema_test.sql` covers owner and token checks, the live-only rule, tombstones and late versions, several link spans with bullets between them, accents, entities, prefix and hyphen cases, quotes, dashes, URLs, `or` and minus, the device filter, the cap and `more`, a huge multibyte body, odd times, the ensure's repairs, and the guide's purge.
-4. `just test-cloud-schema` also applies `origin/main`'s schema over seeded rows including a huge multibyte body, then this branch's deploy twice, then main's again and this branch's once more, and checks search and a laptop insert after each step.
-5. The webapp has a search field above the device pills (top of the left column on desktop), hidden in the as-of view.
-6. It debounces 250 ms, shows a pending state over dimmed results, and renders hits from the returned rows with a cap message.
-7. It clears by the button (which returns focus) or Escape, and it opens a hit from the loaded library with a reload note when the hit is newer.
-8. Measured on a throwaway Postgres 16 with 1,500 live meetings of about 61 KB of transcript each: a first fill of about 11 seconds, an unchanged deploy under 0.1 seconds, a search for 25 hits under 120 ms, and an insert about 7 ms slower per version with the trigger.
+1. `schema.sql`: the `unaccent` extension (created in `extensions`, or moved there from another schema), the `yogurt_ts` configuration with its mapping applied on every deploy, `yogurt_search_index` with a per-row signature and a cascading foreign key to its version, `yogurt_search_catch_up` (a private one for the build and an owner-only public wrapper capped at 3 seconds), and `yogurt_search(token, query, only_device)`.
+   `yogurt_versions` has no trigger.
+2. `cloud/scripts/build.mjs` calls the private catch-up in 2 second calls after the schema transaction commits, until it returns 0 or 100 calls have passed.
+   `just test-cloud-schema` deploys the same way.
+3. The laptop calls the public catch-up after each pass, while it returns more than 0 and at most 10 times, and only logs a failure.
+4. `schema_test.sql` covers owner and token checks, the live-only rule, tombstones and late versions, several link spans with bullets between them, accents, entities, prefix and hyphen cases, emails, hosts, URLs, and file names, pasted bullets, quotes, dashes, `or` and minus, the device filter, the cap and `more`, a huge multibyte body, long runs without spaces, odd times, catch-up's repairs, its time limit, a deletion during a catch-up, a mapping change, and the guide's purge.
+5. `just test-cloud-schema` also applies `origin/main`'s schema over seeded rows including a huge multibyte body and `unaccent` in `public`, then this branch's deploy twice, then main's again and this branch's once more, and checks search and a laptop push after each step.
+6. The webapp has a search field above the device pills (top of the left column on desktop), hidden in the as-of view.
+7. It debounces 250 ms, shows a pending state over the previous answer, and renders hits from the returned rows with a cap message.
+8. It clears by the button (which returns focus) or Escape.
+   A hit opens from the loaded library, with a reload note when the loaded copy is older or missing, and the reload keeps the page.
 9. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone" and a purge note.
