@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayLabel, groupMeetingsByDay } from "./DateGroup";
+import { dayLabel, groupMeetingsByDay } from "./dayGroups";
 import type { Meeting } from "../../lib/api/meetings";
 
 function fakeMeeting(id: string, startedAt: Date): Meeting {

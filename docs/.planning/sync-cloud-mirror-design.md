@@ -344,7 +344,6 @@ The webapp:
 - **Sign in, then Unlock.** Passcode with "Remember this browser".
 - **Library** with the device picker, a read-only **meeting** page, and **History**, which shows the library as of a push under a "Viewing <time>" banner with a Latest button.
 - **Settings** (a gear in the library header): the account and Sign out, Lock, Change PIN, remembered browsers with Forget, and History under Recovery.
-  Until SYNC-5 the History row is a disabled placeholder that says "Coming soon".
 
 ## Webapp
 

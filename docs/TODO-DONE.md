@@ -1267,3 +1267,7 @@ New closed items go at the bottom.
 - [x] **SYNC-8** Webapp polish: friendly network errors, a Choose PIN retry that lands on Unlock, one status call on load, a gear icon for Settings, and an Appearance control with a matching theme-color
 
   The webapp shows "Couldn't reach your Cloud" for network failures, recovers when a first PIN save landed but its reply was lost, reads the session from one source, uses a gear for Settings, and has an Appearance control with system bars that follow the theme.
+
+- [x] **SYNC-5** Webapp library with a device picker, read-only meeting page, and push history
+
+  The webapp reads the Cloud: a library with a device picker, a read-only meeting page, History with an as-of library, and back-button routing in the URL hash.

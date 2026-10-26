@@ -2,12 +2,7 @@
 // Click and keyboard activation are handled by the host editor's event delegation.
 
 import { Node, mergeAttributes } from "@tiptap/core";
-
-function formatTs(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-}
+import { formatTs } from "../html";
 
 export const TranscriptLink = Node.create({
   name: "transcriptLink",

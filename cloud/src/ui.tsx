@@ -239,3 +239,78 @@ export function Keypad({ onDigit, onBackspace, disabled }: { onDigit: (d: string
     </div>
   );
 }
+
+export const LockButton = ({ onClick }: { onClick: () => void }) => (
+  <Button variant="secondary" onClick={onClick} className="!px-[12px] !py-[5px] !text-[12.5px] !font-bold !leading-normal">
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <path d="M5.5 7V5a2.5 2.5 0 015 0v2" />
+    </svg>
+    Lock
+  </Button>
+);
+
+export function Back({ to, onClick }: { to: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="text-[11px] min-[721px]:text-[13px] text-mut bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] self-start min-[721px]:self-auto">
+      ← {to}
+    </button>
+  );
+}
+
+const TONES = ["bg-blsoft text-blue", "bg-honeysoft text-honey", "bg-slatesoft text-slate"];
+
+/** A device keeps one colour by its place in the device list, in the library, in a meeting and in History alike. */
+export function DeviceTag({ name, index }: { name: string; index: number }) {
+  return <span className={`text-[9.5px] leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap ${TONES[index % TONES.length]}`}>{name}</span>;
+}
+
+/** "All devices" first, then one pill per device. `value` is a device id, or null for all. */
+export function DevicePills({ devices, value, onChange }: { devices: { id: string; name: string }[]; value: string | null; onChange: (id: string | null) => void }) {
+  const pill = (on: boolean) =>
+    `flex-none text-[11px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border cursor-pointer font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
+  return (
+    <div role="group" aria-label="Device" className="flex gap-[6px] overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible">
+      <button type="button" aria-pressed={value === null} onClick={() => onChange(null)} className={pill(value === null)}>
+        All devices
+      </button>
+      {devices.map((d) => (
+        <button key={d.id} type="button" aria-pressed={value === d.id} onClick={() => onChange(d.id)} className={pill(value === d.id)}>
+          {d.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A tappable card: bold title, then a muted line on the left and a device tag on the right. */
+export function ListRow({ title, meta, tag, selected, onClick }: { title: string; meta: string; tag: ReactNode; selected?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={selected || undefined}
+      className={`block w-full text-left font-[inherit] text-ink bg-card border rounded-button px-[11px] py-[9px] cursor-pointer ${selected ? "border-blue shadow-[0_0_0_1px_var(--color-blue)]" : "border-line"}`}
+    >
+      <b className="block text-[12px] font-bold truncate">{title}</b>
+      <span className="flex justify-between items-center gap-[6px] text-[10px] text-mut mt-[2px]">
+        <span>{meta}</span>
+        {tag}
+      </span>
+    </button>
+  );
+}
+
+/** Rows under day labels. `items` come from the shared day grouping. */
+export function DayList<T>({ groups, render }: { groups: { key: number; label: string; meetings: T[] }[]; render: (item: T) => ReactNode }) {
+  return (
+    <>
+      {groups.map((g) => (
+        <section key={g.key} className="flex flex-col gap-[10px] min-[721px]:gap-[8px]">
+          <h2 className="font-mono text-[9.5px] font-normal uppercase tracking-[.08em] text-mut mt-[4px] m-[0px]">{g.label}</h2>
+          {g.meetings.map(render)}
+        </section>
+      ))}
+    </>
+  );
+}

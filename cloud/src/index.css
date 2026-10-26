@@ -1,3 +1,31 @@
 @import "../../web/src/index.css";
 /* Tailwind scans the project root only, so name the shared components it must also scan. */
-@source "../../web/src/components/{Button,Logo}.tsx";
+@source "../../web/src/components/{Button,Logo,TranscriptLine}.tsx";
+
+/* The mock's read-only document: small bold section heads and tight lists. AI text and transcript links come from the shared web styles. */
+.cloud-doc .doc :is(h1, h2, h3, h4) {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+.cloud-doc .doc :is(p, ul, ol, li) {
+  margin: 0;
+}
+.cloud-doc .doc :is(ul, ol) {
+  padding-left: 16px;
+  list-style: revert;
+}
+.cloud-doc .doc [data-ai-grey] {
+  color: var(--color-ai);
+}
+.cloud-doc .doc blockquote {
+  margin: 0.6em 0;
+  padding-left: 0.9em;
+  border-left: 3px solid var(--color-line);
+  color: var(--color-mut);
+}
+@media (min-width: 721px) {
+  .cloud-doc .doc :is(h1, h2, h3, h4) {
+    font-size: 13px;
+  }
+}

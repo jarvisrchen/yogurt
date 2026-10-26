@@ -118,7 +118,29 @@ Settings also has an Appearance control (System, Light, Dark), and the installed
 If you forget the PIN, the webapp cannot reset it.
 Set a new one in the Supabase SQL editor with the statement in the design doc's unlocking section.
 
-Viewing an earlier push is not written yet (SYNC-5 and SYNC-7).
+### Read your meetings
+
+The library lists every meeting you pushed, grouped by day with the newest first.
+The pills above the list pick one machine, and All devices shows them together.
+Each row shows the title, the start time, the length, and the machine that pushed it.
+
+Tap a meeting to read it.
+The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
+A tab is missing when that meeting has no such content.
+The footer says which machine pushed the meeting and when.
+
+### See your library as of an earlier push
+
+Settings, then Recovery, then History lists every push with its machine and time.
+A row says how many meetings the push updated and removed.
+Tap a row to see the library as it was right after that push, under a "Viewing" banner.
+Meetings you open there show the version from that moment.
+Latest returns to the live library.
+
+### A closed Cloud
+
+If sign-ups are turned off in the Supabase project, Create login says the Cloud is not taking new logins.
+Sign in with the owner account instead.
 
 ## 8. Troubleshooting
 

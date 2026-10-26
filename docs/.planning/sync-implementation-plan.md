@@ -157,7 +157,15 @@ Tests:
 - Library with the device picker (All devices by default), grouped by day, reusing the existing date grouping.
 - A read-only meeting page reusing the markdown renderer and transcript line. Where a component reaches for the local API, the webapp passes data in instead of forking it.
 - History from `yogurt_history`, and the as-of library from `yogurt_library(token, N)` under a "Viewing <time>" banner with Latest.
-- Tests: Vitest for the grouping and the device filter, and Playwright against the local Supabase with two seeded devices, at phone width in light and dark.
+- The webapp imports `markdown-it` and `dompurify` itself, because the shared renderer (`web/src/editor/html.ts`) needs them and Vercel installs only `cloud/node_modules`.
+  It does not ship TipTap.
+- The day grouping moved to `web/src/components/library/dayGroups.ts` so the webapp does not pull in the desktop library card.
+- The meeting page draws the mock's underline tabs, not the `Segmented` control, and hides a tab with no content.
+- The location after unlock lives in the URL hash (`#/settings`, `#/history`, `#/m/<device>/<meeting>`, `#/at/<push>`), so reload and the back gesture work.
+  Auth screens leave the hash alone, so a deep link survives sign-in and unlock.
+- Create login maps GoTrue's `signup_disabled` to a plain message.
+- Tests: Vitest for the grouping, the device filter, the History label and the hash.
+  Playwright runs against the local Supabase with two seeded devices and four pushes, at phone and desktop width in light and dark.
 
 ## SYNC-6: auto-push
 

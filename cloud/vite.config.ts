@@ -18,8 +18,8 @@ export default defineConfig({
       // web/src/index.css does `@import "tailwindcss"`. Vercel installs only cloud/node_modules, so pin it there.
       tailwindcss: here("node_modules/tailwindcss/index.css"),
     },
-    // Components in ../web/src would otherwise resolve react from web/node_modules and bundle a second copy.
-    dedupe: ["react", "react-dom"],
+    // Imports in ../web/src resolve from web/node_modules, which Vercel never installs, and react would bundle twice.
+    dedupe: ["react", "react-dom", "markdown-it", "dompurify"],
   },
   // build.mjs clears dist and writes config.json before Vite runs, so Vite must keep it.
   build: { outDir: "dist", emptyOutDir: false },
