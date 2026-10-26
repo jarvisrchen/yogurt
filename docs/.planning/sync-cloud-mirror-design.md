@@ -305,7 +305,18 @@ Purging data for real, for example a work laptop's meetings, is done in the Supa
 
 Size check against the current `~/.yogurt/db.sqlite`: 45 meetings total 630 KB, and the largest (1 hour 58 minutes) is 148 KB.
 An average version is about 14 KB, so the free tier's 500 MB holds about 35,000 versions.
-If the database nears the cap, the upgrade is a `pg_cron` job that drops versions older than a set age while keeping each meeting's latest.
+
+### Pruning (SYNC-14, planned)
+
+History keeps 30 days.
+A daily `pg_cron` job keeps, for each meeting, every version from the last 30 days plus the newest version before that, which is the meeting as it stood 30 days ago, and drops the rest.
+If that pre-window version is a deletion marker, the job drops it too, so a deleted meeting is gone for good 30 days after its deletion.
+A live meeting always keeps its current version, however old.
+The window is counted in days rather than pushes, because pushes need only a laptop's login: a stolen laptop token could otherwise push junk until real history aged out.
+
+The webapp adds a Recently deleted list in settings, with Delete forever for a meeting whose latest version is a deletion marker.
+It calls `yogurt_purge_meeting(token, meeting_id)`, which removes every version of that meeting and needs a PIN-unlocked browser token, so a laptop cannot call it.
+A meeting that still exists on a laptop is not offered, because the next push would upload it again.
 
 ## Who can read what
 
