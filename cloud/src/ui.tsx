@@ -287,6 +287,11 @@ export function DevicePills({ devices, value, onChange }: { devices: { id: strin
 }
 
 export function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const clear = () => {
+    onChange("");
+    input.current?.focus();
+  };
   return (
     <div role="search" className="flex items-center gap-[7px] bg-card border border-line rounded-pill px-[12px] py-[6px] focus-within:border-blue focus-within:ring-1 focus-within:ring-blue">
       <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="text-mut flex-none" aria-hidden>
@@ -294,17 +299,23 @@ export function SearchField({ value, onChange }: { value: string; onChange: (v: 
         <path d="M10.5 10.5L14 14" />
       </svg>
       <input
+        ref={input}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => e.key === "Escape" && onChange("")}
+        onKeyDown={(e) => e.key === "Escape" && clear()}
         placeholder="Search notes & transcripts"
         aria-label="Search notes and transcripts"
         autoComplete="off"
         className="flex-1 min-w-0 bg-transparent border-0 outline-none font-sans text-[16px] min-[721px]:text-[12px] text-ink placeholder:text-mut p-[0px]"
       />
       {value && (
-        <button type="button" aria-label="Clear search" onClick={() => onChange("")} className="flex-none grid place-items-center w-[16px] h-[16px] rounded-full border-0 bg-line text-mut cursor-pointer p-[0px]">
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={clear}
+          className="relative flex-none grid place-items-center w-[16px] h-[16px] rounded-full border-0 bg-line text-mut cursor-pointer p-[0px] before:absolute before:-inset-[14px]"
+        >
           <svg viewBox="0 0 10 10" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
             <path d="M2 2l6 6M8 2l-6 6" />
           </svg>
@@ -329,10 +340,10 @@ export function ListRow({ title, meta, tag, snippet, selected, onClick }: { titl
         {tag}
       </span>
       {snippet && (
-        <span className="block text-[10.5px] leading-snug text-mut mt-[4px] line-clamp-2">
+        <span className="text-[10.5px] leading-snug text-mut mt-[4px] line-clamp-2">
           {snippetParts(snippet).map((p, i) =>
             p.hit ? (
-              <mark key={i} className="bg-blsoft text-blue font-semibold rounded-[3px]">
+              <mark key={i} className="bg-blsoft text-ink font-semibold rounded-[3px]">
                 {p.text}
               </mark>
             ) : (

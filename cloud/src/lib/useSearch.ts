@@ -3,26 +3,47 @@ import { TokenRejected, type Api, type SearchHit } from "./api";
 
 const DEBOUNCE_MS = 250;
 
-/** Hits for `query` from the server, or null while the query is blank or nothing has come back yet. A reply for an older query or push is dropped, and the previous hits stay until the new ones land. */
-export function useSearch(api: Api, token: string, atPush: number | null, query: string, onRejected: () => void) {
-  const [state, setState] = useState<{ hits: SearchHit[] | null; error: string | null }>({ hits: null, error: null });
+interface Outcome {
+  q: string;
+  device: string | null;
+  hits?: SearchHit[];
+  error?: string;
+}
+
+/**
+ * Server search for `query`, optionally within one device.
+ * Hits and errors are stored with the query they answer, so a reply to an older input is never shown as the answer to the current one, and `pending` covers the debounce and the request.
+ * `previous` is the last answer while the next one is pending, for showing it dimmed.
+ */
+export function useSearch(api: Api, token: string, query: string, device: string | null, onRejected: () => void) {
   const q = query.trim();
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!q) {
-      setState({ hits: null, error: null });
-      return;
-    }
+    if (!q) return;
     let stale = false;
     const id = setTimeout(() => {
-      api.search(token, q, atPush ?? undefined).then(
-        (hits) => !stale && setState({ hits, error: null }),
-        (e) => !stale && (e instanceof TokenRejected ? onRejected() : setState({ hits: null, error: e.message })),
+      api.search(token, q, device).then(
+        (hits) => !stale && setOutcome({ q, device, hits }),
+        (e) => !stale && (e instanceof TokenRejected ? onRejected() : setOutcome({ q, device, error: e.message })),
       );
     }, DEBOUNCE_MS);
     return () => {
       stale = true;
       clearTimeout(id);
     };
-  }, [api, token, atPush, q, onRejected]);
-  return { ...state, active: !!q };
+  }, [api, token, q, device, onRejected, attempt]);
+  const current = outcome && outcome.q === q && outcome.device === device ? outcome : null;
+  return {
+    active: !!q,
+    pending: !!q && !current,
+    hits: current?.hits ?? null,
+    previous: outcome?.hits?.length ? outcome.hits : null,
+    more: !!current?.hits?.[0]?.more,
+    error: current?.error ?? null,
+    retry: () => {
+      setOutcome(null);
+      setAttempt((n) => n + 1);
+    },
+  };
 }

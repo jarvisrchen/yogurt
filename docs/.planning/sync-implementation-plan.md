@@ -203,8 +203,9 @@ SYNC-3 to SYNC-6 each add their section of the guide as they land, so SYNC-7 fin
 
 ## SYNC-10: search
 
-1. `schema.sql`: `yogurt_private.yogurt_search_text(body)`, the stored `yogurt_versions.search` column with a GIN index, `yogurt_search(token, query, at_push)`, its grant, and the `execute` grant on the text function because the generated column runs as the inserting role.
-2. `schema_test.sql`: owner only, a token required, `at_push` respected, a deleted meeting excluded, an edited-away word found only in the old version, transcript and enhanced text matched, markup and tag names not matched, prefix and minus, and the allowlists.
-3. The webapp: a search field above the device pills (top of the left column on desktop), a 250 ms debounce with a stale-reply guard, hits mapped to the library rows by device and meeting id, the snippet under the row's meta line, an empty state, and clear by the button or Escape.
-4. Measured on a throwaway Postgres 16 with 1,500 meetings of about 25 KB each: a rare word under 5 ms, a word in every title about 50 ms, and a one-letter prefix with 100 snippets about 190 ms.
-5. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone".
+1. `schema.sql`: `yogurt_search_index` with a trigger on `yogurt_versions` and a guarded rebuild at the end of every apply (signature hash plus a count check), `yogurt_search(token, query, only_device, lim)`, and a drop of the column and functions an earlier draft added.
+2. `schema_test.sql` covers owner and token checks, the live-only rule, tombstones and late versions, transcript and enhanced text, markup and link labels, accents, prefix and hyphen cases, quotes and `or` and minus, device filter, the cap and `more`, a huge multibyte body, the rebuild, and the private index.
+3. `just test-cloud-schema` also applies `origin/main`'s schema over seeded rows including a huge multibyte body, then this branch's schema twice, then main's again, and checks search and a laptop insert after each step.
+4. The webapp: a search field above the device pills (top of the left column on desktop), hidden in the as-of view, a 250 ms debounce, a pending state, hits rendered from the returned rows, a cap message, clear by the button (which returns focus) or Escape, a reload before opening a hit the library has not seen, and a reload on `visibilitychange`. While an answer is pending, the previous one stays on screen dimmed and inert.
+5. Measured on a throwaway Postgres 16 with 1,500 live meetings of about 70 KB of transcript each, with these results: a rebuild of about 11 seconds that runs only when the signature or the count changed, an unchanged apply under 0.1 seconds, a search under 10 ms for most queries, and about 290 ms when 100 hits each need a snippet from a 70 KB document.
+6. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone".

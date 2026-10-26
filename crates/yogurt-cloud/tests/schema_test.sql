@@ -96,7 +96,7 @@ select pg_temp.expect('42501', array[
   'select yogurt_private.yogurt_require_owner()'
 ]);
 
--- The API roles can execute exactly the public RPCs, the policy helpers, and the search text function.
+-- The API roles can execute exactly the public RPCs and the three policy helpers.
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
@@ -104,7 +104,7 @@ select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_is_owner,yogurt_owns_device,yogurt_push_open,yogurt_search_text', 'private allowlist');
+  'yogurt_is_owner,yogurt_owns_device,yogurt_push_open', 'private allowlist');
 select pg_temp.eq((select count(*)::text from pg_proc
   where pronamespace in ('public'::regnamespace, 'yogurt_private'::regnamespace) and proname like 'yogurt\_%'
     and has_function_privilege('anon', oid, 'execute')), '0', 'anon executes nothing');
@@ -334,56 +334,147 @@ set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select pg_temp.eq((yogurt_status()->>'passcode_length'), null, 'non-owner sees no length');
 select pg_temp.eq((yogurt_status()->>'passcode_set'), 'false', 'non-owner sees no passcode');
 
--- Search: the latest live version of each meeting, matched on title, notes, enhanced notes, and transcript, never on markup.
-reset role;
-insert into yogurt_devices (id, user_id, name) values ('00000000-0000-0000-0000-0000000000d3', :o, 'Search');
-with p as (insert into yogurt_pushes (device_id, user_id) values ('00000000-0000-0000-0000-0000000000d3', :o) returning id)
-select id as push_a from p \gset
-with p as (insert into yogurt_pushes (device_id, user_id) values ('00000000-0000-0000-0000-0000000000d3', :o) returning id)
-select id as push_b from p \gset
-insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body)
-select m, :push_a, '00000000-0000-0000-0000-0000000000d3', :o, jsonb_build_object('v', 1, 'meeting', b)
-from (values
-  ('s1', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', 'Ship the **pricing** page', 'enriched_md', '<span data-ai-grey="">Greywords here</span> and <span data-transcript-link="">linkword</span>',
-     'transcript_json', '[{"ts_ms":1,"channel":"me","text":"Who brings the kombucha?"}]')),
-  ('s2', jsonb_build_object('title', 'Beta', 'started_at', 2000, 'notes_md', 'Pricing again', 'transcript_json', 'not json')),
-  ('s3', jsonb_build_object('title', 'Gamma', 'started_at', 3000, 'notes_md', 'zebra crossing', 'transcript_json', '[]'))
-) t(m, b);
-insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body) values
-  ('s1', :push_b, '00000000-0000-0000-0000-0000000000d3', :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', 'Ship the roadmap', 'transcript_json', '[]'))),
-  ('s3', :push_b, '00000000-0000-0000-0000-0000000000d3', :o, null);
-
+-- Search: one index row per live meeting, kept by a trigger as the laptop inserts versions.
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+\set d3 '''00000000-0000-0000-0000-0000000000d3'''
+\set d4 '''00000000-0000-0000-0000-0000000000d4'''
+insert into yogurt_devices (id, name) values (:d3, 'Search 3'), (:d4, 'Search 4');
+select yogurt_start_push(:d3) as push_a \gset
+select yogurt_start_push(:d3) as push_b \gset
+select yogurt_start_push(:d4) as push_c \gset
 select yogurt_unlock('4321', false, 'Search') as stok \gset
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'PRICING', :push_a)), 's2,s1', 'search as of push A, newest first, case-insensitive');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pricing')), 's2', 'an edited-away word matches only the old version');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'zebra', :push_a)), 's3', 'a meeting is found before its deletion');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'zebra')), '0', 'a deleted meeting is excluded');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'kombucha', :push_a)), 's1', 'transcript text matches');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'kombucha')), '0', 'the latest version has no transcript');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'greywords linkword', :push_a)), 's1', 'enhanced text matches inside spans');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'data-ai-grey', :push_a)), '0', 'markup does not match');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'span', :push_a)), '0', 'tag names do not match');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pric', :push_a)), 's2,s1', 'the last word matches as a prefix');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'ship the pric', :push_a)), 's1', 'earlier words must match whole');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pricing -again', :push_a)), 's1', 'a minus excludes');
-select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'bud', :push_a)), 's1', 'title prefix matches');
-select pg_temp.eq((select snippet from yogurt_search(:'stok', 'budget', :push_a)), null, 'a title match has no snippet');
-select pg_temp.eq((select snippet like '%' || chr(57344) || 'kombucha' || chr(57345) || '%' and snippet not like '%<%' from yogurt_search(:'stok', 'kombucha', :push_a))::text, 'true', 'snippet marks the match');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', '   ')), '0', 'a blank query matches nothing');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', '"unbalanced')), '0', 'an unbalanced quote does not raise');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', null)), '0', 'a null query matches nothing');
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'pricing', 0)), '0', 'search before any push');
+
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+select m, :push_a, :d3, jsonb_build_object('v', 1, 'meeting', b)
+from (values
+  ('s1', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', E'# Plan\n\n- Ship the **pricing** page', 'enriched_md', '<span data-ai-grey="">Greywords here</span> and <span data-transcript-link="">↳ 00:12 linklabel</span>',
+     'transcript_json', '[{"ts_ms":1,"channel":"me","text":"Who brings the kombucha?"}]')),
+  ('s2', jsonb_build_object('title', 'Beta', 'started_at', 2000, 'notes_md', 'Pricing again', 'transcript_json', 'not json')),
+  ('s3', jsonb_build_object('title', 'Gamma', 'started_at', 3000, 'notes_md', 'zebra crossing', 'transcript_json', '[]')),
+  ('s4', jsonb_build_object('title', 'Cafe', 'started_at', 4000, 'notes_md', 'Résumé at the café, latency<target', 'transcript_json', '[]')),
+  ('f1', jsonb_build_object('title', 'Filler one', 'started_at', 100, 'notes_md', '', 'transcript_json', '[]')),
+  ('f2', jsonb_build_object('title', 'Filler two', 'started_at', 200, 'notes_md', '', 'transcript_json', '[]')),
+  ('f3', jsonb_build_object('title', 'Filler three', 'started_at', 200, 'notes_md', '', 'transcript_json', '[]'))
+) t(m, b);
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('s1', :push_b, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', 'Ship the roadmap',
+     'enriched_md', '<span data-ai-grey="">Greywords here</span> and <span data-transcript-link="">↳ 00:12 linklabel</span>',
+     'transcript_json', '[{"ts_ms":1,"channel":"me","text":"Who brings the kombucha?"}]'))),
+  ('s3', :push_b, :d3, null),
+  ('s7', :push_b, :d3, null);
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('s7', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Late', 'started_at', 7000, 'notes_md', 'lateword', 'transcript_json', '[]'))),
+  ('s5', :push_c, :d4, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Vendor', 'started_at', 5000, 'notes_md', 'vendor contract renewal, pears and apples', 'transcript_json', '[]'))),
+  ('s6', :push_c, :d4, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Q4', 'started_at', 6000, 'notes_md', 'bananas for q4-plan, follow-up and api_k', 'transcript_json', '[]')));
+
+create or replace function pg_temp.ids(tok text, q text, dev uuid default null, lim int default 100) returns text language sql as $$
+  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select s.*, row_number() over () ord from yogurt_search(tok, q, dev, lim) s) x
+$$;
+grant execute on function pg_temp.ids(text, text, uuid, int) to public;
+
+select pg_temp.eq(pg_temp.ids(:'stok', 'PRICING'), 's2', 'an edited-away word matches only what is live, case-insensitively');
+select pg_temp.eq(pg_temp.ids(:'stok', 'roadmap'), 's1', 'the edited text matches');
+select pg_temp.eq(pg_temp.ids(:'stok', 'zebra'), '', 'a deleted meeting is excluded');
+select pg_temp.eq(pg_temp.ids(:'stok', 'lateword'), '', 'a version older than a tombstone is ignored');
+select pg_temp.eq(pg_temp.ids(:'stok', 'kombucha'), 's1', 'transcript text matches');
+select pg_temp.eq(pg_temp.ids(:'stok', 'greywords'), 's1', 'enhanced text matches inside spans');
+select pg_temp.eq(pg_temp.ids(:'stok', 'data-ai-grey'), '', 'markup does not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'span'), '', 'tag names do not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'linklabel'), '', 'a transcript link label does not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'plan'), 's6', 'heading markers are not words');
+select pg_temp.eq(pg_temp.ids(:'stok', 'cafe'), 's4', 'accents fold in the text');
+select pg_temp.eq(pg_temp.ids(:'stok', 'résumé'), 's4', 'accents fold in the query');
+select pg_temp.eq((select snippet like '%' || chr(57344) || 'latency' || chr(57345) || '<target%' from yogurt_search(:'stok', 'latency'))::text, 'true', 'text with a bare angle bracket survives');
+select pg_temp.eq(pg_temp.ids(:'stok', 'pric'), 's2', 'the last word matches as a prefix');
+select pg_temp.eq(pg_temp.ids(:'stok', 'ship the road'), 's1', 'earlier words match whole');
+select pg_temp.eq(pg_temp.ids(:'stok', 'ship the pric'), '', 'a prefix needs every word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'apples or bananas'), 's6,s5', 'or, newest first');
+select pg_temp.eq(pg_temp.ids(:'stok', '"vendor contract" or pears'), 's5', 'a phrase, then or');
+select pg_temp.eq(pg_temp.ids(:'stok', E'“vendor contract”'), 's5', 'curly quotes make a phrase');
+select pg_temp.eq(pg_temp.ids(:'stok', '"vendor contract'), 's5', 'an unbalanced quote does not raise');
+select pg_temp.eq(pg_temp.ids(:'stok', '"contract vendor"'), '', 'a phrase keeps its order');
+select pg_temp.eq(pg_temp.ids(:'stok', 'q4-plan'), 's6', 'a hyphenated word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'api_k'), 's6', 'an underscored word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'follow-u'), 's6', 'a half-typed hyphenated word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'apples -pears'), '', 'a minus excludes');
+select pg_temp.eq(pg_temp.ids(:'stok', '-zzz'), '', 'only an exclusion returns nothing');
+select pg_temp.eq(pg_temp.ids(:'stok', '   '), '', 'a blank query');
+select pg_temp.eq(pg_temp.ids(:'stok', null), '', 'a null query');
+select pg_temp.eq(pg_temp.ids(:'stok', 'review', :d3), 's1', 'a device filter keeps its meetings');
+select pg_temp.eq(pg_temp.ids(:'stok', 'review', :d4), '', 'a device filter drops the others');
+select pg_temp.eq((select snippet from yogurt_search(:'stok', 'budget')), null, 'a title match has no snippet');
+select pg_temp.eq((select snippet like '%' || chr(57344) || 'kombucha' || chr(57345) || '%' and snippet not like '%<%' from yogurt_search(:'stok', 'kombucha'))::text, 'true', 'the snippet marks the match');
+select pg_temp.eq((select title || ':' || started_at || ':' || push_id from yogurt_search(:'stok', 'budget')), 'Budget review:1000:' || :push_b, 'summary columns');
+
+select pg_temp.eq(pg_temp.ids(:'stok', 'filler', null, 2), 'f2,f3', 'the cap keeps the newest, ties by meeting id');
+select pg_temp.eq((select bool_and(more)::text from yogurt_search(:'stok', 'filler', null, 2)), 'true', 'more when the cap is hit');
+select pg_temp.eq((select bool_or(more)::text from yogurt_search(:'stok', 'filler', null, 3)), 'false', 'no more at exactly the cap');
+select pg_temp.eq(pg_temp.ids(:'stok', 'filler', null, 0), 'f2', 'a cap below one is one');
+
+-- A laptop's insert never fails because of search, and a huge multibyte body is indexed within bounds.
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+values ('big', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Big', 'started_at', 1, 'notes_md', repeat('日本語 é€ ', 400000) || ' needleword', 'transcript_json', '[]')));
 reset role;
--- Another owner's rows are never returned.
-update yogurt_versions set user_id = :n where device_id = '00000000-0000-0000-0000-0000000000d3';
+select pg_temp.eq((select (octet_length(doc) <= 400000)::text from yogurt_private.yogurt_search_index where meeting_id = 'big'), 'true', 'the indexed text is byte-capped');
+select pg_temp.eq((select (tsv is not null)::text from yogurt_private.yogurt_search_index where meeting_id = 'big'), 'true', 'a huge body still gets a tsvector');
+delete from yogurt_versions where meeting_id = 'big';
+delete from yogurt_private.yogurt_search_index where meeting_id = 'big';
+
+-- A non-numeric time still indexes the meeting, so the count check never sees a permanent gap.
+insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body)
+values ('oddtime', :push_a, :d3, :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Odd time', 'started_at', 'soon', 'ended_at', '1.5e3', 'notes_md', 'oddword', 'transcript_json', '[]')));
+select pg_temp.eq((select started_at::text || '/' || coalesce(ended_at::text, 'null') from yogurt_private.yogurt_search_index where meeting_id = 'oddtime'), '0/null', 'a non-numeric time indexes with defaults');
+delete from yogurt_versions where meeting_id = 'oddtime';
+delete from yogurt_private.yogurt_search_index where meeting_id = 'oddtime';
+
+-- The rebuild restores the index from versions, with the current extractor.
+select count(*) as n_before from yogurt_private.yogurt_search_index \gset
+update yogurt_private.yogurt_search_index set doc = 'stale', tsv = null;
+delete from yogurt_private.yogurt_search_index where meeting_id = 's2';
+select yogurt_private.yogurt_search_rebuild();
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index), :'n_before', 'rebuild restores every live meeting');
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's3'), '0', 'rebuild skips deleted meetings');
+select pg_temp.eq((select doc from yogurt_private.yogurt_search_index where meeting_id = 's1'), 'Ship the roadmap Greywords here and Who brings the kombucha?', 'rebuild rewrites the text');
+
+-- A deploy that changed nothing leaves the index alone. A changed signature, a lost row, or a recreated table rebuilds it.
+select xmin::text as x0 from yogurt_private.yogurt_search_index where meeting_id = 's1' \gset
+\i /schema.sql
+select pg_temp.eq((select xmin::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), :'x0', 'a second apply does not rebuild');
+update yogurt_private.yogurt_meta set value = 'an older extractor' where key = 'search_signature';
+\i /schema.sql
+select pg_temp.eq((select (xmin::text <> :'x0')::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), 'true', 'a changed signature rebuilds');
+select pg_temp.eq((select (value = yogurt_private.yogurt_search_signature())::text from yogurt_private.yogurt_meta where key = 'search_signature'), 'true', 'the new signature is stored');
+select xmin::text as x1 from yogurt_private.yogurt_search_index where meeting_id = 's1' \gset
+\i /schema.sql
+select pg_temp.eq((select xmin::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), :'x1', 'an unchanged apply after a rebuild leaves it alone');
+delete from yogurt_private.yogurt_search_index where meeting_id = 's1';
+\i /schema.sql
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), '1', 'a lost row is rebuilt');
+drop table yogurt_private.yogurt_search_index;
+\i /schema.sql
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), '1', 'a recreated table is rebuilt');
+delete from yogurt_private.yogurt_meta;
+select xmin::text as x2 from yogurt_private.yogurt_search_index where meeting_id = 's1' \gset
+\i /schema.sql
+select pg_temp.eq((select (xmin::text <> :'x2')::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), 'true', 'a missing signature rebuilds');
+
+-- The index is private, and each owner sees only their own rows.
 set role authenticated;
-select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'pricing', :push_a)), '0', 'only the caller''s rows');
+select pg_temp.expect('42501', array['select * from yogurt_private.yogurt_search_index', 'insert into yogurt_private.yogurt_search_index (device_id, meeting_id, user_id, push_id) values (gen_random_uuid(), ''x'', gen_random_uuid(), 1)']);
 reset role;
-delete from yogurt_versions where device_id = '00000000-0000-0000-0000-0000000000d3';
-delete from yogurt_pushes where device_id = '00000000-0000-0000-0000-0000000000d3';
-delete from yogurt_devices where id = '00000000-0000-0000-0000-0000000000d3';
+update yogurt_private.yogurt_search_index set user_id = :n;
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'budget'), '', 'only the caller''s rows');
+reset role;
+select yogurt_private.yogurt_search_rebuild();
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'budget'), 's1', 'rebuild restores the owner');
+reset role;
+delete from yogurt_versions where device_id in (:d3, :d4);
+delete from yogurt_pushes where device_id in (:d3, :d4);
+delete from yogurt_devices where id in (:d3, :d4);
+delete from yogurt_private.yogurt_search_index;
 
 \o
 \echo schema_test: ok

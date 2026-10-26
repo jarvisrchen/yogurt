@@ -273,7 +273,7 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
 | `yogurt_library(token, at_push)` | webapp | for each live meeting on each device, the latest version at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `body`, ordered by `meeting_id` then `device_id` for paging |
-| `yogurt_search(token, query, at_push)` | webapp | the live meetings whose latest version at or before `at_push`, or now, matches the query: `device_id`, `meeting_id`, `push_id`, and a `snippet`, newest meeting first, at most 100 |
+| `yogurt_search(token, query, only_device, lim)` | webapp | the live meetings matching the query, newest first, at most `lim` (100 by default, 200 at most): `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when the cap was reached |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 
@@ -289,16 +289,32 @@ PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with l
 ## Search
 
 Search runs in the database, because the webapp will not always hold every body, and a full library can pass the response cap and the free egress budget.
-`yogurt_search_text(body)` joins the title, notes, enhanced notes, and each transcript segment's text, strips HTML tags such as `data-ai-grey` and `data-transcript-link` spans, and treats a malformed `transcript_json` as no transcript.
-`yogurt_versions.search` is a stored `tsvector` of that text under the `simple` configuration, with a GIN index.
-`simple` stems nothing and drops no stop words, so names and non-English words match as typed.
-The column is stored instead of an expression index because the planner scanned the table for a common word and rebuilt every transcript's `tsvector` in the filter, which took about 2.6 seconds over 1,500 meetings of 25 KB.
-`yogurt_search` parses the query with `websearch_to_tsquery` (quotes and a leading minus work) and matches the last word as a prefix, so a half-typed word finds its meeting.
-The index finds every matching version, and a `not exists` against the primary key drops the ones a later version replaced or deleted, which keeps "latest per meeting at or before `at_push`" without ranking the whole table.
+It covers the live library only, one row per live meeting, and the History view of an earlier push has no search field, because History is for recovery.
+`yogurt_private.yogurt_search_index` holds one row per device and meeting: the title, the plain text of the notes, enhanced notes, and transcript, and a `tsvector` of both with a GIN index.
+It has row security on and no client grants, so only the `security definer` RPC reads it.
+An `after insert` trigger on `yogurt_versions` keeps it current.
+It indexes a live version unless a later version of that meeting already exists, and it deletes the row for a null body.
+The trigger swallows every error, so a laptop's insert never fails because of search, and the next deploy repairs the row.
+Triggers do not check `execute` when they fire, so `authenticated` needs no grant on the trigger's functions.
+`schema.sql` empties and refills the table from the latest live version of each meeting when the stored signature differs from the current one, or when the table and the live meetings disagree in count.
+The signature is an md5 over the text-search configuration, the unaccent version, the table's columns, and the definitions of the functions that build and maintain rows, and it lives in `yogurt_private.yogurt_meta`.
+The count check repairs rows the trigger skipped, a table that was dropped and recreated, and anything a revert left behind.
+A deploy that changes neither leaves the index alone, because the refill locks the index table and a push waits for it.
+At 1,500 meetings the refill takes about 11 seconds and an unchanged apply takes under 0.1 seconds.
+The plain-text step removes a transcript link's label whole, drops editor tags and markdown markers, folds accents with `unaccent`, and caps the text at 400,000 bytes.
+It leaves text such as `latency<target` alone.
+The `simple` configuration stems nothing and drops no stop words, so names and non-English words match as typed.
+It also splits on spaces and punctuation only, so Chinese, Japanese, and Korean words inside a sentence do not match unless typed as the whole run.
+`yogurt_search` folds curly quotes to straight ones and accents out of the query, then parses the whole input once with `websearch_to_tsquery`, so quotes, `or`, and a leading minus work.
+A query of only exclusions returns nothing.
+The last lexeme matches as a prefix, so a half-typed word finds its meeting, and a half-typed hyphenated word matches by its parts.
+Rows come newest first with fixed tiebreakers, filtered by device before the cap, and the RPC reads one row past the cap to set `more`.
 A title match returns a null snippet, and any other match returns a `ts_headline` with the matched words wrapped in U+E000 and U+E001.
-The webapp waits 250 ms after the last keystroke, drops a reply for an older query, and maps each hit to the library row it already holds by device and meeting id.
+The webapp waits 250 ms after the last keystroke and shows "Searching…" until the answer to the current input arrives, with the previous answer (or the full library) dimmed and inert beneath it, and renders the returned rows without needing them in the loaded library.
+Opening a hit that is newer than the loaded copy reloads the library first, and the library also reloads when the page returns to the foreground.
 It renders the snippet as text and marks the runs between the two characters, so meeting content is never parsed as HTML.
-The search field filters by device in the webapp, after the 100-hit cap.
+Storage is one row per live meeting, about the size of the live text again plus the index, and it does not grow with history.
+At 1,500 meetings of about 70 KB of transcript each, the table and index took 54 MB beside 18 MB of versions.
 
 ## History and reverting
 
