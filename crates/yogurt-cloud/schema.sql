@@ -140,6 +140,32 @@ begin
   end if;
 end $$;
 
+-- The text a search matches: title, notes, enhanced notes, and each transcript segment, with HTML tags removed.
+-- transcript_json is a JSON string inside the body, and a malformed one counts as no transcript instead of raising, so one bad push cannot block an insert.
+-- The text is cut at 400,000 characters because a tsvector over 1 MB raises.
+create or replace function yogurt_private.yogurt_search_text(body jsonb) returns text
+language plpgsql immutable set search_path = '' as $$
+declare
+  transcript text;
+begin
+  begin
+    select string_agg(s ->> 'text', ' ') into transcript
+    from jsonb_array_elements((body #>> '{meeting,transcript_json}')::jsonb) s;
+  exception when others then
+    transcript := null;
+  end;
+  return left(regexp_replace(
+    concat_ws(' ', body #>> '{meeting,title}', body #>> '{meeting,notes_md}', body #>> '{meeting,enriched_md}', transcript),
+    '<[a-zA-Z/][^>]*>', ' ', 'g'), 400000);
+end $$;
+
+-- The searchable text is stored as a tsvector instead of indexed as an expression.
+-- With an expression index the planner scans the table and rebuilds every transcript's tsvector for a common word, which took seconds, while the stored column makes that scan cheap.
+-- 'simple' stems nothing and drops no stop words, so names and non-English words match as typed.
+alter table public.yogurt_versions add column if not exists search tsvector
+  generated always as (to_tsvector('simple', yogurt_private.yogurt_search_text(body))) stored;
+create index if not exists yogurt_versions_search on public.yogurt_versions using gin (search);
+
 -- RPCs
 
 create or replace function public.yogurt_status() returns jsonb
@@ -292,6 +318,53 @@ begin
     where l.body is not null order by l.meeting_id, l.device_id;
 end $$;
 
+-- Meetings whose latest version at or before at_push, or now when null, matches the query. The last word matches as a prefix, so a half-typed word finds its meeting.
+-- The index finds every version that matches, and the not exists keeps only the ones no later version replaced or deleted.
+-- snippet is null when the title matches, and otherwise a headline with the matched words wrapped in U+E000 and U+E001.
+create or replace function public.yogurt_search(token text, query text, at_push bigint default null)
+returns table (device_id uuid, meeting_id text, push_id bigint, snippet text)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  q text := btrim(coalesce(query, ''));
+  tail text[] := regexp_match(btrim(coalesce(query, '')), '^(.*\s)?([^\s[:punct:]]+)$');
+  tsq tsquery;
+  prefix tsquery;
+  opts text := format('StartSel=%s, StopSel=%s, MaxWords=20, MinWords=10, MaxFragments=1, ShortWord=0', chr(57344), chr(57345));
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  if (length(q) - length(replace(q, '"', ''))) % 2 = 0 and tail is not null then
+    begin
+      prefix := to_tsquery('simple', tail[2] || ':*');
+    exception when others then
+      prefix := null;
+    end;
+    if prefix is not null then q := coalesce(btrim(tail[1]), ''); end if;
+  end if;
+  if q <> '' then tsq := websearch_to_tsquery('simple', q); end if;
+  tsq := case when tsq is null then prefix when prefix is null then tsq else tsq && prefix end;
+  if tsq is null or numnode(tsq) = 0 then return; end if;
+  return query
+    select c.device_id, c.meeting_id, c.push_id,
+      case when to_tsvector('simple', coalesce(c.body #>> '{meeting,title}', '')) @@ tsq then null
+           else ts_headline('simple', yogurt_private.yogurt_search_text(c.body #- '{meeting,title}'), tsq, opts) end
+    from (
+      select v.device_id, v.meeting_id, v.push_id, v.body, coalesce((v.body #>> '{meeting,started_at}')::bigint, 0) as started
+      from public.yogurt_versions v
+      where v.user_id = auth.uid()
+        and v.search @@ tsq
+        and (at_push is null or v.push_id <= at_push)
+        and not exists (
+          select from public.yogurt_versions n
+          where n.device_id = v.device_id and n.meeting_id = v.meeting_id and n.push_id > v.push_id
+            and (at_push is null or n.push_id <= at_push)
+        )
+      order by started desc limit 100
+    ) c
+    order by c.started desc, c.meeting_id, c.device_id;
+end $$;
+
 create or replace function public.yogurt_history(token text)
 returns table (push_id bigint, device_id uuid, device_name text, pushed_at timestamptz, changed bigint, deleted bigint)
 language plpgsql security definer set search_path = '' as $$
@@ -370,14 +443,16 @@ grant execute on function
   public.yogurt_start_push(uuid),
   public.yogurt_device_meetings(uuid),
   public.yogurt_library(text, bigint),
+  public.yogurt_search(text, text, bigint),
   public.yogurt_history(text),
   public.yogurt_device_list(text)
 to authenticated;
 
--- The insert policies run as the caller, so the three policy helpers are the only private functions it may execute.
+-- The insert policies run as the caller, and so does the search index on insert. These four are the only private functions it may execute.
 grant usage on schema yogurt_private to authenticated;
 grant execute on function
   yogurt_private.yogurt_is_owner(),
   yogurt_private.yogurt_owns_device(uuid),
-  yogurt_private.yogurt_push_open(bigint, uuid)
+  yogurt_private.yogurt_push_open(bigint, uuid),
+  yogurt_private.yogurt_search_text(jsonb)
 to authenticated;

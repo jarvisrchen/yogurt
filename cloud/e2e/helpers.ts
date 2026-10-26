@@ -98,6 +98,7 @@ export const LATE = { ts_ms: 600_000, text: "Late in the call: sign the vendor c
 const SEGMENTS = JSON.stringify([
   { ts_ms: 12_000, channel: "them", text: "We should lock the pricing page before the freeze." },
   { ts_ms: 41_000, channel: "me", text: "Agreed. Can you own the migration plan?" },
+  { ts_ms: 45_000, channel: "them", text: "Also, who is bringing the kombucha to the offsite?" },
   ...Array.from({ length: 68 }, (_, i) => {
     const ts_ms = 50_000 + i * 10_000;
     return ts_ms === LATE.ts_ms ? { ...LATE, channel: "me" } : { ts_ms, channel: i % 2 ? "me" : "them", text: `Filler line ${i + 3} about the roadmap.` };

@@ -273,17 +273,32 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
 | `yogurt_library(token, at_push)` | webapp | for each live meeting on each device, the latest version at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `body`, ordered by `meeting_id` then `device_id` for paging |
+| `yogurt_search(token, query, at_push)` | webapp | the live meetings whose latest version at or before `at_push`, or now, matches the query: `device_id`, `meeting_id`, `push_id`, and a `snippet`, newest meeting first, at most 100 |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 
 The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST. A plain `GET /rest/v1/yogurt_versions` answers 403 with code 42501.
 It keeps column-level `insert` grants on `yogurt_devices` (`id`, `name`) and `yogurt_versions`, and these policies: a row's `user_id` must be the caller, the caller must be the owner, and a version can only join a push of its own device created in the last hour.
 The policy checks call small `security definer` helpers in a `yogurt_private` schema that PostgREST does not expose, returning only a boolean, because a policy subquery runs as the caller, who has no `select`.
-Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authenticated`, and an explicit allowlist then grants it to `authenticated`: the RPCs and the three policy helpers.
+Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authenticated`, and an explicit allowlist then grants it to `authenticated`: the RPCs, the three policy helpers, and the search text function.
 `owner.sql` is the one statement the build runs with the owner email as `$1`: it inserts the `yogurt_owner` row, and a changed email applies only while `user_id` is still null.
 Grants stay explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
 The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
 PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with limit and offset.
+
+## Search
+
+Search runs in the database, because the webapp will not always hold every body, and a full library can pass the response cap and the free egress budget.
+`yogurt_search_text(body)` joins the title, notes, enhanced notes, and each transcript segment's text, strips HTML tags such as `data-ai-grey` and `data-transcript-link` spans, and treats a malformed `transcript_json` as no transcript.
+`yogurt_versions.search` is a stored `tsvector` of that text under the `simple` configuration, with a GIN index.
+`simple` stems nothing and drops no stop words, so names and non-English words match as typed.
+The column is stored instead of an expression index because the planner scanned the table for a common word and rebuilt every transcript's `tsvector` in the filter, which took about 2.6 seconds over 1,500 meetings of 25 KB.
+`yogurt_search` parses the query with `websearch_to_tsquery` (quotes and a leading minus work) and matches the last word as a prefix, so a half-typed word finds its meeting.
+The index finds every matching version, and a `not exists` against the primary key drops the ones a later version replaced or deleted, which keeps "latest per meeting at or before `at_push`" without ranking the whole table.
+A title match returns a null snippet, and any other match returns a `ts_headline` with the matched words wrapped in U+E000 and U+E001.
+The webapp waits 250 ms after the last keystroke, drops a reply for an older query, and maps each hit to the library row it already holds by device and meeting id.
+It renders the snippet as text and marks the runs between the two characters, so meeting content is never parsed as HTML.
+The search field filters by device in the webapp, after the 100-hit cap.
 
 ## History and reverting
 

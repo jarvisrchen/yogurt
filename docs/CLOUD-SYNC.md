@@ -349,6 +349,10 @@ The library lists every meeting you pushed, grouped by day with the newest first
 The pills above the list pick one machine, and All devices shows them together.
 Each row shows the title, the start time, the length, and the machine that pushed it.
 
+The search field above the pills finds meetings by title, notes, enhanced notes, and transcript text as you type.
+A row that matches outside its title shows a short snippet with the match marked.
+Search works inside the selected machine and inside an earlier push, and the clear button or Escape restores the full list.
+
 Tap a meeting to read it.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
 A tab is missing when that meeting has no such content, and a meeting with one kind of content shows no tabs.

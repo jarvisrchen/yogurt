@@ -80,6 +80,7 @@ select pg_temp.expect('42501', array[
   'select yogurt_start_push(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_library(''x'')',
+  'select * from yogurt_search(''x'', ''x'')',
   'select * from yogurt_history(''x'')',
   'select * from yogurt_device_list(''x'')',
   'insert into yogurt_devices (id, name) values (gen_random_uuid(), ''evil'')',
@@ -95,15 +96,15 @@ select pg_temp.expect('42501', array[
   'select yogurt_private.yogurt_require_owner()'
 ]);
 
--- The API roles can execute exactly the public RPCs and the three policy helpers.
+-- The API roles can execute exactly the public RPCs, the policy helpers, and the search text function.
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_search,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_is_owner,yogurt_owns_device,yogurt_push_open', 'private allowlist');
+  'yogurt_is_owner,yogurt_owns_device,yogurt_push_open,yogurt_search_text', 'private allowlist');
 select pg_temp.eq((select count(*)::text from pg_proc
   where pronamespace in ('public'::regnamespace, 'yogurt_private'::regnamespace) and proname like 'yogurt\_%'
     and has_function_privilege('anon', oid, 'execute')), '0', 'anon executes nothing');
@@ -207,6 +208,8 @@ select pg_temp.eq((select string_agg(x, ',') from yogurt_device_meetings(:d2) x)
 select pg_temp.expect('28000', array[
   'select * from yogurt_library(''no such token'')',
   'select * from yogurt_library(null)',
+  'select * from yogurt_search(''no such token'', ''x'')',
+  'select * from yogurt_search(null, ''x'')',
   'select * from yogurt_history(''no such token'')',
   'select * from yogurt_device_list(''no such token'')',
   'select * from yogurt_browsers(''no such token'')',
@@ -331,6 +334,56 @@ set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select pg_temp.eq((yogurt_status()->>'passcode_length'), null, 'non-owner sees no length');
 select pg_temp.eq((yogurt_status()->>'passcode_set'), 'false', 'non-owner sees no passcode');
 
+-- Search: the latest live version of each meeting, matched on title, notes, enhanced notes, and transcript, never on markup.
 reset role;
+insert into yogurt_devices (id, user_id, name) values ('00000000-0000-0000-0000-0000000000d3', :o, 'Search');
+with p as (insert into yogurt_pushes (device_id, user_id) values ('00000000-0000-0000-0000-0000000000d3', :o) returning id)
+select id as push_a from p \gset
+with p as (insert into yogurt_pushes (device_id, user_id) values ('00000000-0000-0000-0000-0000000000d3', :o) returning id)
+select id as push_b from p \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body)
+select m, :push_a, '00000000-0000-0000-0000-0000000000d3', :o, jsonb_build_object('v', 1, 'meeting', b)
+from (values
+  ('s1', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', 'Ship the **pricing** page', 'enriched_md', '<span data-ai-grey="">Greywords here</span> and <span data-transcript-link="">linkword</span>',
+     'transcript_json', '[{"ts_ms":1,"channel":"me","text":"Who brings the kombucha?"}]')),
+  ('s2', jsonb_build_object('title', 'Beta', 'started_at', 2000, 'notes_md', 'Pricing again', 'transcript_json', 'not json')),
+  ('s3', jsonb_build_object('title', 'Gamma', 'started_at', 3000, 'notes_md', 'zebra crossing', 'transcript_json', '[]'))
+) t(m, b);
+insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body) values
+  ('s1', :push_b, '00000000-0000-0000-0000-0000000000d3', :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', 'Ship the roadmap', 'transcript_json', '[]'))),
+  ('s3', :push_b, '00000000-0000-0000-0000-0000000000d3', :o, null);
+
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select yogurt_unlock('654321', false, 'Search') as stok \gset
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'PRICING', :push_a)), 's2,s1', 'search as of push A, newest first, case-insensitive');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pricing')), 's2', 'an edited-away word matches only the old version');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'zebra', :push_a)), 's3', 'a meeting is found before its deletion');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'zebra')), '0', 'a deleted meeting is excluded');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'kombucha', :push_a)), 's1', 'transcript text matches');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'kombucha')), '0', 'the latest version has no transcript');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'greywords linkword', :push_a)), 's1', 'enhanced text matches inside spans');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'data-ai-grey', :push_a)), '0', 'markup does not match');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'span', :push_a)), '0', 'tag names do not match');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pric', :push_a)), 's2,s1', 'the last word matches as a prefix');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'ship the pric', :push_a)), 's1', 'earlier words must match whole');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pricing -again', :push_a)), 's1', 'a minus excludes');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'bud', :push_a)), 's1', 'title prefix matches');
+select pg_temp.eq((select snippet from yogurt_search(:'stok', 'budget', :push_a)), null, 'a title match has no snippet');
+select pg_temp.eq((select snippet like '%' || chr(57344) || 'kombucha' || chr(57345) || '%' and snippet not like '%<%' from yogurt_search(:'stok', 'kombucha', :push_a))::text, 'true', 'snippet marks the match');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', '   ')), '0', 'a blank query matches nothing');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', '"unbalanced')), '0', 'an unbalanced quote does not raise');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', null)), '0', 'a null query matches nothing');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'pricing', 0)), '0', 'search before any push');
+reset role;
+-- Another owner's rows are never returned.
+update yogurt_versions set user_id = :n where device_id = '00000000-0000-0000-0000-0000000000d3';
+set role authenticated;
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'pricing', :push_a)), '0', 'only the caller''s rows');
+reset role;
+delete from yogurt_versions where device_id = '00000000-0000-0000-0000-0000000000d3';
+delete from yogurt_pushes where device_id = '00000000-0000-0000-0000-0000000000d3';
+delete from yogurt_devices where id = '00000000-0000-0000-0000-0000000000d3';
+
 \o
 \echo schema_test: ok

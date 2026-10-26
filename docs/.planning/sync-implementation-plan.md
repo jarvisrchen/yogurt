@@ -53,7 +53,7 @@ Rewrite `schema.sql` to the design doc's Cloud schema section:
 - New `yogurt_owner` (one row) and `yogurt_browsers`.
 - `yogurt_is_owner()`, a `security definer` helper that pins `yogurt_owner.user_id` on first use.
   The insert policies call it.
-  It and the other helpers live in a `yogurt_private` schema that PostgREST does not expose, and `authenticated` may execute only the three policy helpers there.
+  It and the other helpers live in a `yogurt_private` schema that PostgREST does not expose, and `authenticated` may execute only the three policy helpers and `yogurt_search_text` there.
 - The RPCs from the design doc's function table, all `security definer` with `set search_path = ''` and schema-qualified names.
 - Revoke `select` on every table from `authenticated`, revoke `execute` on every `yogurt_` function, and grant it back through an explicit allowlist of the RPCs.
 - `yogurt_unlock` returns null on a wrong passcode and never raises, so the failure count commits.
@@ -200,3 +200,11 @@ Rehearsal: Richard runs the guide top to bottom while I follow along and fix the
 Creating the Vercel and Supabase accounts and confirming the email are Richard's own steps, because those are real account credentials.
 Laptop 2 is a real second machine if one is at hand, otherwise a second instance with its own `YOGURT_DATA_DIR`.
 SYNC-3 to SYNC-6 each add their section of the guide as they land, so SYNC-7 finishes and checks a draft.
+
+## SYNC-10: search
+
+1. `schema.sql`: `yogurt_private.yogurt_search_text(body)`, the stored `yogurt_versions.search` column with a GIN index, `yogurt_search(token, query, at_push)`, its grant, and the `execute` grant on the text function because the generated column runs as the inserting role.
+2. `schema_test.sql`: owner only, a token required, `at_push` respected, a deleted meeting excluded, an edited-away word found only in the old version, transcript and enhanced text matched, markup and tag names not matched, prefix and minus, and the allowlists.
+3. The webapp: a search field above the device pills (top of the left column on desktop), a 250 ms debounce with a stale-reply guard, hits mapped to the library rows by device and meeting id, the snippet under the row's meta line, an empty state, and clear by the button or Escape.
+4. Measured on a throwaway Postgres 16 with 1,500 meetings of about 25 KB each: a rare word under 5 ms, a word in every title about 50 ms, and a one-letter prefix with 100 snippets about 190 ms.
+5. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone".

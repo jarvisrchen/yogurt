@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { groupMeetingsByDay } from "@web/components/library/dayGroups";
 import { Logo } from "@web/components/Logo";
-import { Brand, DayList, DevicePills, DeviceTag, ListRow, LoadError, LockButton, useDesktop } from "../ui";
+import { Brand, DayList, DevicePills, DeviceTag, ListRow, LoadError, LockButton, Note, SearchField, useDesktop } from "../ui";
 import type { Api } from "../lib/api";
 import { asOfLabel, clock, duration, forDevice, toEntries } from "../lib/library";
+import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { HOME, type Loc } from "../lib/hash";
 import { MeetingView } from "./Meeting";
@@ -29,6 +30,7 @@ interface Props {
 export function Library({ api, token, loc, go, back, onSettings, onLock, onRejected }: Props) {
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const { asOf: pushId, meeting: open } = loc;
   const { data, error, retry } = useCloudLoad(
     async () => {
@@ -41,7 +43,12 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
   const devices = data?.devices;
   const entries = data?.entries;
 
-  const shown = useMemo(() => forDevice(entries ?? [], device), [entries, device]);
+  const search = useSearch(api, token, pushId, query, onRejected);
+  const snippets = useMemo(() => new Map(search.hits?.map((h) => [`${h.device_id}/${h.meeting_id}`, h.snippet])), [search.hits]);
+  const shown = useMemo(() => {
+    const inDevice = forDevice(entries ?? [], device);
+    return search.active && search.hits ? inDevice.filter((e) => snippets.has(e.key)) : inDevice;
+  }, [entries, device, search.active, search.hits, snippets]);
   const groups = useMemo(() => groupMeetingsByDay(shown), [shown]);
   const opened = shown.find((e) => e.key === open) ?? null;
   const indexOf = (id: string) => Math.max(0, devices?.findIndex((d) => d.id === id) ?? 0);
@@ -75,6 +82,7 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
           </button>
         </div>
       )}
+      <SearchField value={query} onChange={setQuery} />
       {!!devices?.length && <DevicePills devices={devices} value={device} onChange={setDevice} />}
       <DayList
         groups={groups}
@@ -84,12 +92,14 @@ export function Library({ api, token, loc, go, back, onSettings, onLock, onRejec
             title={e.title}
             meta={`${clock(e.started_at)}${duration(e) ? ` · ${duration(e)}` : ""}`}
             tag={<DeviceTag name={nameOf(e.device_id)} index={indexOf(e.device_id)} />}
+            snippet={snippets.get(e.key)}
             selected={e.key === open}
             onClick={() => go({ ...loc, meeting: e.key })}
           />
         )}
       />
-      {entries && !shown.length && <p className="text-[12px] text-mut m-[0px]">No meetings here.</p>}
+      {search.error && <Note>{`Search failed. ${search.error}`}</Note>}
+      {entries && !shown.length && <p className="text-[12px] text-mut m-[0px]">{search.active ? `No meetings match "${query.trim()}".` : "No meetings here."}</p>}
     </>
   );
 

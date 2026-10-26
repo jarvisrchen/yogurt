@@ -31,6 +31,29 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toHaveCount(0);
   await devices.getByRole("button", { name: "All devices" }).click();
 
+  // Search finds a word only the transcript has, composes with the device pills, and clears.
+  const search = page.getByRole("textbox", { name: "Search notes and transcripts" });
+  await search.fill("KOMBUCHA");
+  await expect(page.getByRole("button", { name: /edis update/ })).toHaveCount(0);
+  const hit = page.getByRole("button", { name: /Q4 planning sync/ });
+  await expect(hit).toBeVisible();
+  await expect(hit.locator("mark")).toHaveText("kombucha");
+  await expect(hit).toContainText("bringing the kombucha to the offsite");
+  await shot(page, info, "t-search");
+  await devices.getByRole("button", { name: "Laptop 1" }).click();
+  await expect(hit).toHaveCount(0);
+  await expect(page.getByText('No meetings match "KOMBUCHA".')).toBeVisible();
+  await shot(page, info, "t-search-empty");
+  await devices.getByRole("button", { name: "All devices" }).click();
+  await expect(hit).toBeVisible();
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(page.getByRole("button", { name: /edis update/ })).toBeVisible();
+  await search.fill("dashboard");
+  await expect(page.getByRole("button", { name: /edis update/ }).locator("mark")).toHaveText("dashboard");
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toBeVisible();
+
   // A meeting with notes, an enhanced version, and a transcript.
   await page.getByRole("button", { name: /Q4 planning sync/ }).click();
   await expect(page.getByRole("heading", { name: "Q4 planning sync" })).toBeVisible();
