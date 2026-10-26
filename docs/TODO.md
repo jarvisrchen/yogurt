@@ -126,4 +126,4 @@ The note is a file, not a shell argument, because real resolution notes contain 
 Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
-- [ ] **SYNC-7** Setup guide in `docs/CLOUD-SYNC.md` with the deploy button, checked by a rehearsal on real accounts
+- [ ] **SYNC-9** Rehearse `docs/CLOUD-SYNC.md` on real accounts: a laptop and the phone, then the Deploy with Vercel button on a fresh project
