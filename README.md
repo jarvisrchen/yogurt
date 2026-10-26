@@ -150,6 +150,12 @@ Something not working? Run `yogurt doctor` for a rust/macOS/permissions/
 providers/STT/models dump, or `yogurt doctor --json` for a machine-readable
 version that's safe to paste into a bug report.
 
+## Read on your phone
+
+Yogurt Cloud mirrors your meetings to a webapp on your own Vercel and Supabase accounts, so you can read them on your phone.
+It is optional and off until you connect it.
+The setup guide is [docs/CLOUD-SYNC.md](docs/CLOUD-SYNC.md).
+
 ## Transcription models
 
 Transcription runs one of two ways, switchable under **Settings -> Transcription**:

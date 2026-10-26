@@ -77,7 +77,9 @@ Laptops and browsers talk to Supabase directly.
 The guide's Deploy with Vercel button opens Vercel's clone flow with these parameters, all documented on Vercel's deploy button pages (checked 2026-10-24):
 
 - `repository-url` points at the yogurt repo, and `root-directory=cloud`.
-- `stores` adds the Supabase Marketplace integration, which creates a new Supabase project and syncs `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and other variables into the Vercel project (Supabase's Vercel Marketplace page, checked 2026-10-24).
+- `integration-ids=oac_VqOgBHqhEoFTPzGkPd7L0iH6` requires the Supabase Marketplace integration before the import (Vercel's deploy button integrations page, checked 2026-10-25).
+  The ID comes from Supabase's Vercel Marketplace page, and the rehearsal confirms it.
+  The integration creates a new Supabase project and syncs `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and other variables into the Vercel project (Supabase's Vercel Marketplace page, checked 2026-10-24).
 - `env=YOGURT_OWNER_EMAIL` asks for the email of the one Cloud login allowed to read and push.
 
 A user with an existing Supabase project skips the integration and enters `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `POSTGRES_URL_NON_POOLING` by hand.
@@ -88,7 +90,7 @@ The build runs `cloud/scripts/build.mjs`:
 
 1. Write `config.json` with `{"v":1,"supabase_url":...,"publishable_key":...}`.
    Both values are public by design.
-   The script reads `SUPABASE_URL` and the key from `SUPABASE_PUBLISHABLE_KEY`, and also accepts `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, because Supabase's page documents only the two `NEXT_PUBLIC_` names.
+   The script reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, which the Supabase integration sets (Supabase's Vercel Marketplace page, checked 2026-10-25).
    A missing value fails the build with a message naming the variable.
 2. Run the Vite build into `cloud/dist`.
 3. On production builds only (`VERCEL_ENV=production`), connect with `POSTGRES_URL_NON_POOLING`, apply `crates/yogurt-cloud/schema.sql`, and upsert `YOGURT_OWNER_EMAIL` into `yogurt_owner`.
@@ -381,7 +383,7 @@ The archived PRD's "There is no Yogurt cloud" still holds too, because yogurt ho
 ## Free tiers
 
 Supabase, from its pricing and project-pausing pages (checked during SYNC-2's first attempt): 500 MB of database per project, 2 active free projects, and a pause after 7 days of low activity, where API calls count as activity. A paused project resumes by hand within 1 year. Pro at $25 a month never pauses.
-Vercel's Hobby plan covers a static site at personal scale. Verify its current limits before SYNC-7.
+Vercel's Hobby plan allows 100 deployments a day and 100 builds an hour, and cannot connect to a GitHub organization (Vercel's limits page, checked 2026-10-25).
 
 ## Phasing
 

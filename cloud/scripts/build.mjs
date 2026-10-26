@@ -6,22 +6,16 @@ import { dbConfig } from "./db.mjs";
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const env = process.env;
-const first = (...names) => names.map((n) => env[n]).find(Boolean);
 const fail = (msg) => {
   console.error(`yogurt-cloud build: ${msg}`);
   process.exit(1);
 };
 
-// The Supabase Vercel integration names these variables itself, so accept every documented spelling.
-const supabaseUrl = first("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
-const publishableKey = first(
-  "SUPABASE_PUBLISHABLE_KEY",
-  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_ANON_KEY",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-);
-if (!supabaseUrl) fail("set SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL).");
-if (!publishableKey) fail("set SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY).");
+// The Supabase Vercel integration sets both, and a manual setup sets them by hand.
+const supabaseUrl = env.SUPABASE_URL;
+const publishableKey = env.SUPABASE_PUBLISHABLE_KEY;
+if (!supabaseUrl) fail("set SUPABASE_URL.");
+if (!publishableKey) fail("set SUPABASE_PUBLISHABLE_KEY.");
 
 const production = env.VERCEL_ENV === "production";
 const dbUrl = env.POSTGRES_URL_NON_POOLING;

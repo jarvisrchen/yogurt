@@ -1,22 +1,197 @@
 # Yogurt Cloud setup guide
 
-This is a draft.
-Each SYNC ticket adds its own section as it lands, and SYNC-7 finishes the guide with a rehearsal on real accounts.
-Headings marked "not written yet" belong to a later ticket.
-
 Yogurt Cloud lets you read your meetings on your phone.
 It is a webapp on your own Vercel account, backed by your own Supabase project.
-Yogurt hosts nothing, and nothing leaves your Mac until you press Push meetings in Settings.
+Yogurt hosts nothing, and no meeting leaves your Mac until you press Push meetings in Settings or turn on Auto-push.
+You need a Vercel account and a Supabase account, both free.
 The design is in [docs/.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 
-## 1. What Yogurt Cloud is, and who can read it
+## 1. How Yogurt Cloud works
 
-Not written yet (SYNC-7).
+### The parts
+
+Yogurt Cloud has four parts, and you own all of them.
+
+1. **Your Supabase project.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
+2. **Your Vercel project.** It serves the Yogurt Cloud webapp, a set of static files.
+   It has no server code, so it never sees a meeting.
+3. **Your laptops.** Each Mac running Yogurt pushes its meetings to your Supabase project.
+4. **Your phone, or any browser.** It opens the webapp, signs in, and reads your meetings.
+
+```mermaid
+flowchart LR
+  L1["Laptop 1<br/>yogurt"]
+  L2["Laptop 2<br/>yogurt"]
+  subgraph VC["Your Vercel project"]
+    WEB["Webapp<br/>static files + config.json"]
+  end
+  subgraph SB["Your Supabase project"]
+    AUTH["Auth<br/>the Cloud login"]
+    DB[("Postgres<br/>meeting versions")]
+  end
+  PH["Phone or browser"]
+
+  L1 & L2 -- "push: insert only" --> DB
+  L1 & L2 -. "sign in" .-> AUTH
+  L1 & L2 -- "config.json, at connect" --> WEB
+  WEB -- "each production deploy: apply schema" --> DB
+  WEB -- "serves the webapp" --> PH
+  PH -- "sign in, PIN, read" --> SB
+```
+
+### How data moves
+
+When you press Push meetings, your laptop signs in to your Supabase project with the Cloud login and sends meetings to its REST API.
+Each pushed meeting is one JSON document with its title, times, labels, notes, enhanced notes, transcript, and chat messages.
+Every push is insert only.
+A push writes one new row (a version) for each meeting that changed since the last push, and a row with an empty body for each meeting you deleted on that laptop.
+Nothing is ever updated or overwritten, so the cloud keeps the whole history.
+The first push sends every meeting, and later pushes send only what changed.
+
+When you connect, the laptop reads `config.json` from your webapp to find your Supabase project.
+That file holds the project address and a publishable key, and both are public by design.
+
+To read, your phone opens the webapp from Vercel.
+You sign in with the Cloud login, then type your PIN.
+Supabase checks the PIN in the database and hands the browser a token.
+The webapp uses that token to call database functions (RPCs) that return your meetings.
+The Cloud login alone cannot read a meeting.
+
+History works because versions are kept.
+The library as of any earlier push is the newest version of each meeting at or before that push.
+
+Vercel's only other job is the deploy.
+Each production build applies the Yogurt database schema to your Supabase project and records the owner email.
+A preview build skips that step, so an unmerged branch never changes your live schema.
+
+### What leaves your Mac
+
+Connecting sends the Cloud login email and password to your Supabase project to sign in, and registers the machine name.
+After that, only meetings leave, and only when a push runs.
+A push sends titles, notes, transcripts, and chat messages to your own Supabase project and nowhere else.
+Audio never leaves your Mac for Yogurt Cloud.
+API keys never leave either, because `keys.json` is not part of a push.
+Yogurt sends nothing to Yogurt or to any third party you did not configure.
+
+### Where the secrets live
+
+- The laptop keeps the Cloud connection in `keys.json` in its data directory, `~/.yogurt/keys.json` by default, with mode 0600.
+  It holds the Cloud address, the login email, the Supabase project address and publishable key, a refresh token, the device id, and the machine name.
+  It never goes into the database or a log.
+- The Cloud login password is used once to sign in and then dropped.
+- The PIN is typed only into the webapp.
+  It never reaches a laptop.
+- A browser that unlocked keeps a token in its `localStorage`.
+  The database stores only a hash of that token.
+
+### The owner
+
+Your Yogurt Cloud has one owner.
+You name the owner by email when you deploy, in the `YOGURT_OWNER_EMAIL` variable.
+The owner is the first confirmed Cloud login whose email matches that address.
+The first time that login calls the database, Yogurt Cloud pins the owner to that Supabase user id.
+After that, no other account can take over, even one that later signs up with the same email.
+Anyone else may be able to create a login while sign-ups are on, but every table and function checks the owner, so that login can neither read nor write a meeting.
+
+### Who can read what
+
+| | Cloud login | PIN | Can read meetings |
+| --- | --- | --- | --- |
+| A laptop | refresh token in `keys.json` | never | No. It can insert, and list its own meeting ids. |
+| A browser after unlock | session | a browser token for 12 hours, or 90 days with "Remember this browser" | Yes |
+| Someone with the email and password | yes | no | No |
+| The Supabase dashboard, its owner, or Supabase staff | n/a | n/a | Yes, because the data is stored readable |
+
+Yogurt Cloud does not encrypt meetings on your Mac.
+The PIN protects against a stolen Cloud login.
+It does not protect against anyone with access to your Supabase project itself.
+
+If IT controls a work laptop, they could take its refresh token, or the email and password if you typed them there.
+That lets them add junk meetings or deletion markers in new pushes.
+It does not let them read a meeting or erase history.
+A push can only be added to for one hour, so the library as of a push from before the damage still shows the real data.
+They could also type wrong PINs on purpose to lock you out, since each lockout doubles up to about 10 days.
+[A forgotten PIN](#a-forgotten-pin) shows how to reset the PIN and clear the lockout from the Supabase dashboard.
 
 ## 2. Deploy your Yogurt Cloud
 
-Placeholder: the Deploy with Vercel button and its steps wait for the throwaway Vercel check (SYNC-7).
-The build already needs `YOGURT_OWNER_EMAIL` (the email of the one Cloud login) and the Supabase integration's variables, and it fails with a message naming any that is missing.
+You do it in a browser, and no laptop is involved.
+
+### Before you start
+
+1. Create a Supabase account at [supabase.com](https://supabase.com) and note the email you used.
+2. Create a Vercel account at [vercel.com](https://vercel.com) with a personal GitHub account.
+   A Vercel Hobby account cannot connect to a GitHub organization, so use your personal account.
+3. Decide the owner email.
+   Use the email of your Supabase account.
+   Supabase's built-in mail service sends only to members of your Supabase organization, so a confirmation sent to any other address is refused with `email_address_not_authorized`.
+   If you must use another address, either invite it to your Supabase organization or set up custom SMTP, for example Resend, under Authentication in the Supabase dashboard.
+   The built-in service also sends only 2 emails an hour, so do not retry the confirmation in a loop.
+
+### Deploy with Vercel
+
+[Deploy with Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjarvisrchen%2Fyogurt&root-directory=cloud&project-name=yogurt-cloud&repository-name=yogurt-cloud&env=YOGURT_OWNER_EMAIL&envDescription=The%20email%20of%20your%20Supabase%20account.%20It%20becomes%20the%20one%20Cloud%20login.&envLink=https%3A%2F%2Fgithub.com%2Fjarvisrchen%2Fyogurt%2Fblob%2Fmain%2Fdocs%2FCLOUD-SYNC.md%232-deploy-your-yogurt-cloud&integration-ids=oac_VqOgBHqhEoFTPzGkPd7L0iH6)
+
+1. Select the button above and sign in to Vercel.
+2. Vercel asks you to add the Supabase integration.
+   Follow its prompts to sign in to Supabase and create a new Supabase project.
+   Vercel then fills in the Supabase variables for you.
+3. Vercel asks you to create a Git repository.
+   Pick your personal GitHub account and keep the name `yogurt-cloud`.
+4. Enter your owner email for `YOGURT_OWNER_EMAIL`.
+5. Select Deploy.
+   The first build takes a minute or two.
+   It writes the webapp's `config.json`, builds the webapp, then applies the database schema and records the owner email.
+6. When the deploy finishes, copy the address Vercel shows, for example `yogurt-cloud.vercel.app`.
+   This is your Cloud address.
+
+If the build fails, open the build log.
+A message that starts with `yogurt-cloud build:` names the missing variable.
+
+### Use a Supabase project you already have
+
+The button sets up a new Supabase project through the integration, so reuse one you already have by skipping it.
+All Yogurt tables start with `yogurt_`, so they stay apart from your other tables.
+The login settings below apply to the whole Supabase project, so another app on the same project gets them too.
+Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
+Use a project of its own when another app signs users up on it.
+
+1. Fork or copy the Yogurt repository into your own GitHub account.
+   In Vercel, select Add New, then Project, import that repository, and set Root Directory to `cloud`.
+2. In your Vercel project, open Settings, then Environment Variables, and add the four variables in the table below the steps.
+   Limit `POSTGRES_URL_NON_POOLING` to the Production environment and mark it Sensitive, because the build uses it only to apply the schema.
+
+| Name | Value | Where to find it in Supabase |
+| --- | --- | --- |
+| `SUPABASE_URL` | the project URL | the Connect dialog, or Settings, then API Keys |
+| `SUPABASE_PUBLISHABLE_KEY` | the key that starts with `sb_publishable_` | the Connect dialog, or Settings, then API Keys |
+| `POSTGRES_URL_NON_POOLING` | the Session pooler connection string, on port 5432, with your database password filled in | Connect at the top of the project page, then Session pooler |
+| `YOGURT_OWNER_EMAIL` | the owner email | your choice |
+
+3. Redeploy the project so the build sees the variables.
+4. In the Supabase dashboard, open Authentication, then URL Configuration.
+   Set Site URL to your Cloud address, for example `https://yogurt-cloud.vercel.app`.
+   Add the same address to Redirect URLs.
+   Without this, the confirmation email link returns to the wrong address, such as `localhost`.
+   After a button deploy, check the same two fields if that happens.
+5. Confirm email must stay on, which is Supabase's default.
+   The owner match depends on it.
+6. Check the owner email against [Before you start](#before-you-start).
+
+### The variables the build reads
+
+The Supabase integration sets about a dozen variables in your Vercel project, listed on [Supabase's Vercel Marketplace page](https://supabase.com/docs/guides/integrations/vercel-marketplace).
+The Yogurt build reads `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and `YOGURT_OWNER_EMAIL`.
+It ignores the rest, including the secret key.
+Nothing in the webapp holds a secret.
+
+### Free tiers
+
+A Supabase free project pauses after 7 days of low activity, and API calls count as activity.
+A push counts, but an auto-push check with nothing to push makes no network call, so auto-push alone does not keep a project awake.
+[A paused Supabase project](#a-paused-supabase-project) shows how to wake it.
+A free organization allows 2 active projects.
+Vercel's Hobby plan allows 100 deployments a day and 100 builds an hour, far above what this project needs (Vercel's limits page, checked 2026-10-25).
 
 ## 3. First visit to the webapp
 
@@ -26,16 +201,31 @@ Your first visit has no login yet, so follow these steps once.
 
 1. Select Create your Cloud login.
 2. Type the email you entered as `YOGURT_OWNER_EMAIL` when you deployed, and a password of at least 6 characters.
-   Any other email can sign up, but it cannot read or push anything.
+   Any other email can sign up while sign-ups are on, but it cannot read or push anything.
 3. Select Create login.
    The webapp says "Check your email".
 4. Open the confirmation email and select its link.
    The link returns to your webapp already signed in.
-   Supabase's built-in mail sends only to the project owner's own email at a low rate, so use that email as the owner email until you set up your own mail service.
-5. Choose a 4 or 6 digit PIN, type it again to confirm, and select Save PIN.
+   If the webapp shows Sign in instead, sign in with the same email and password.
+   If no email arrives, see Troubleshooting.
+5. Choose a 4 or 6 digit PIN, type it again under Confirm PIN, and select Save PIN.
    You type this PIN in a browser to read meetings, and your laptops never see it.
 
 The webapp then opens the library, which says "No machine has pushed yet" until you connect a laptop (section 4).
+
+### Turn sign-ups off
+
+Do this once you have a PIN and have opened your library.
+
+1. Open the Supabase dashboard, then your project, then Authentication, then Sign In / Providers.
+2. Turn off "Allow new users to sign up".
+
+Nobody else can create a login after this.
+The owner is already pinned, so your existing login keeps working on every browser and laptop.
+If you ever need to create the owner login again, turn the setting back on first.
+While it is off, Create login in the webapp says "This Cloud isn't taking new logins. Sign in with the owner account."
+
+### Add the webapp to your phone
 
 Add the webapp to your phone's home screen so it opens like an app.
 In Safari on iPhone, select Share, then Add to Home Screen.
@@ -44,7 +234,7 @@ The icon is the Yogurt logo.
 
 From then on, a browser that is already signed in only asks for the PIN.
 Tick "Remember this browser" to stay unlocked for 90 days, or leave it unticked for 12 hours.
-Five wrong PINs in a row lock unlocking for 15 minutes, and each further five doubles the wait.
+Five wrong PINs in a row lock unlocking for 15 minutes, and each further five doubles the wait, up to about 10 days.
 
 ## 4. Connect each laptop
 
@@ -52,10 +242,12 @@ Do this on every Mac that should push its meetings.
 You need the Cloud address of your webapp and the Cloud login email and password.
 You must have chosen a PIN in the webapp first, or Yogurt will say "Choose a PIN in the webapp first".
 
-1. Open Settings, then Cloud sync, then Connect.
+1. Open Settings, then Cloud sync.
+   Under "Connect to a Yogurt Cloud", select Connect.
+   The same page has "Create a Yogurt Cloud", which opens this guide.
 2. Type the Cloud address, for example `richard-yogurt.vercel.app`.
    When you leave the field, Yogurt says "Found a Yogurt Cloud" if the address serves a Yogurt Cloud config.
-3. Type the Cloud login email and password, and a machine name such as "Work laptop".
+3. Type the Login email and Login password, and a Machine name such as "Work laptop".
    The webapp's device picker shows the machine name.
 4. Select Connect.
    Yogurt signs in once and keeps only a refresh token in `~/.yogurt/keys.json`.
@@ -63,14 +255,19 @@ You must have chosen a PIN in the webapp first, or Yogurt will say "Choose a PIN
 
 If the login does not own that Yogurt Cloud, Yogurt says "This login does not own that Yogurt Cloud".
 
-## 5. Push your meetings
+Each connection registers a new device with a new id, even on a Mac that connected before.
+The first push after it sends every meeting again, and the old device's meetings stay in the Cloud next to the new ones until you [purge](#purge-one-devices-data) the old device.
+
+## 5. Everyday use
+
+### Push your meetings
 
 Select Push meetings on the Cloud sync page.
 The first push sends every meeting, and later pushes send only the meetings you changed, plus a deletion marker for each meeting you deleted.
 The meeting you are recording right now is skipped until it ends.
 The page shows how many meetings are not pushed and the result of the last push.
 
-The Library header shows a "N not pushed" pill while this Mac is connected and behind.
+The Library header shows a "N not pushed" pill beside "N meetings · all on this Mac" while this Mac is connected and behind.
 Select the pill to open the Cloud sync page.
 You can also run `yogurt ctl cloud status` and `yogurt ctl cloud push` from a terminal.
 
@@ -94,31 +291,9 @@ It resumes after you sign in again, connect again, or push by hand successfully.
 When nothing has changed, a check costs no network call.
 `yogurt ctl cloud status` prints the interval on its `auto-push:` line.
 
-## 6. Disconnect a laptop
+## 6. Read on your phone
 
-Select Disconnect on the Cloud sync page.
-You can first run one last push that marks this machine's meetings deleted, so the webapp's current library drops them.
-History in the webapp keeps them either way.
-Disconnecting removes the connection from `~/.yogurt/keys.json` and signs this Mac out of the Cloud.
-
-## 7. History and recovery
-
-Locking and forgetting browsers is done in the webapp's Settings, which the gear in the library header opens.
-Settings also has an Appearance control (System, Light, Dark), and the installed app's system bars follow the chosen theme.
-
-- **Lock** forgets the unlock token in this browser, so the next visit asks for the PIN.
-- **Remembered browsers** lists every unlocked browser with its expiry.
-  Forget removes one, and that browser asks for the PIN on its next visit.
-  Forgetting the browser you are using locks it.
-- **Change PIN** asks for the current PIN and a new 4 or 6 digit one.
-  It forgets every remembered browser, then unlocks the one you are using again with the new PIN.
-- **Sign out** ends the Cloud login in this browser.
-  Signing in again asks for the PIN.
-
-If you forget the PIN, the webapp cannot reset it.
-Set a new one in the Supabase SQL editor with the statement in the design doc's unlocking section.
-
-### Read your meetings
+Open the webapp from the home screen, type your PIN, and select Unlock.
 
 The library lists every meeting you pushed, grouped by day with the newest first.
 The pills above the list pick one machine, and All devices shows them together.
@@ -126,22 +301,192 @@ Each row shows the title, the start time, the length, and the machine that pushe
 
 Tap a meeting to read it.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
-A tab is missing when that meeting has no such content.
+A tab is missing when that meeting has no such content, and a meeting with one kind of content shows no tabs.
+Enhanced opens first when the meeting has it.
+A transcript link inside the notes jumps to the Transcript tab.
 The footer says which machine pushed the meeting and when.
+
+The address in the browser tracks where you are, so the back gesture goes from a meeting to the library, and a reload keeps your place.
+A link to a meeting survives signing in and unlocking.
+
+On a wide screen the library and the open meeting show side by side.
+
+## 7. History and recovery
 
 ### See your library as of an earlier push
 
-Settings, then Recovery, then History lists every push with its machine and time.
+In Settings, under Recovery, select History.
+It lists every push with its machine and time.
 A row says how many meetings the push updated and removed.
 Tap a row to see the library as it was right after that push, under a "Viewing" banner.
 Meetings you open there show the version from that moment.
 Latest returns to the live library.
 
-### A closed Cloud
+Viewing is read-only.
+Nothing flows back to a laptop, and the next push continues from the laptop's local state.
 
-If sign-ups are turned off in the Supabase project, Create login says the Cloud is not taking new logins.
-Sign in with the owner account instead.
+### A wiped laptop
 
-## 8. Troubleshooting
+What happens depends on what the wipe removed.
 
-Not written yet (SYNC-7).
+If only the database was wiped and `~/.yogurt/keys.json` is intact, the Mac is still the same device.
+The next push finds every cloud meeting missing locally and marks them deleted.
+The current library drops them, and History still shows them.
+
+If the whole Mac or `keys.json` is gone, connect again from section 4.
+The new connection is a new device, so the old device and all its meetings stay in your library and device picker as they were.
+The same happens when you disconnect a laptop without marking its meetings deleted and connect it again later.
+To remove the old device's data for real, purge it, as described below.
+
+Yogurt cannot restore meetings from the cloud back onto a laptop.
+
+### Purge one device's data
+
+Purging is the only way to remove meetings for real, for example a work laptop's.
+Do it in the Supabase SQL editor, because no client can update or delete a row.
+Open the Supabase dashboard, then your project, then SQL Editor.
+
+1. List your devices and copy the id of the one to remove.
+
+```sql
+select id, name, created_at from yogurt_devices order by created_at;
+```
+
+2. Delete its rows, in this order, replacing the id.
+   Versions point to pushes and devices, and pushes point to devices, so the order matters.
+
+```sql
+delete from yogurt_versions where device_id = '00000000-0000-0000-0000-000000000000';
+delete from yogurt_pushes where device_id = '00000000-0000-0000-0000-000000000000';
+delete from yogurt_devices where id = '00000000-0000-0000-0000-000000000000';
+```
+
+This removes that device's meetings from the library and its pushes from History.
+Other devices are untouched.
+If that laptop is still connected, its next push says "This machine was removed from the Yogurt Cloud. Disconnect, then connect again."
+
+### A forgotten PIN
+
+The webapp cannot reset a forgotten PIN.
+You reset it in the Supabase SQL editor, which needs your Supabase account.
+This also clears a lockout.
+Run this with your new 4 or 6 digit PIN in place of `1234`.
+
+```sql
+update yogurt_owner
+set passcode_hash = extensions.crypt('1234', extensions.gen_salt('bf')),
+    failed_attempts = 0,
+    consecutive_lockouts = 0,
+    locked_until = null
+where id;
+
+delete from yogurt_browsers where true;
+```
+
+The second statement forgets every remembered browser, so each one asks for the new PIN.
+Laptops are not affected, because they never use the PIN.
+
+## 8. Disconnect a laptop, forget a browser, lock, change PIN
+
+### Disconnect a laptop
+
+Select Disconnect… on the Cloud sync page.
+Yogurt asks "Disconnect from this Yogurt Cloud?"
+You can first tick "First mark this machine's meetings deleted, so the current library drops them", which runs one last push.
+History in the webapp keeps them either way.
+Select Disconnect to finish.
+Yogurt signs this Mac out of the Cloud when it can reach it, removes the connection from `~/.yogurt/keys.json`, and forgets what it pushed.
+If the last push fails, nothing is disconnected, so you can retry or disconnect without it.
+Disconnecting does not delete the device or its meetings from the cloud.
+
+### Settings in the webapp
+
+The gear in the library header opens the webapp's Settings.
+
+- **Lock** forgets the unlock token in this browser, so the next visit asks for the PIN.
+- **Remembered browsers** lists every unlocked browser with its expiry.
+  Forget removes one, and that browser asks for the PIN on its next visit.
+  Forgetting the browser you are using locks it.
+- **Change PIN** asks for the current PIN and a new 4 or 6 digit one.
+  It forgets every remembered browser, then unlocks the one you are using again with the new PIN.
+- **Sign out** ends the Cloud login in this browser only, and your laptops stay connected.
+  Signing in again asks for the PIN.
+- **Appearance** picks System, Light, or Dark, and the installed app's system bars follow it.
+
+## 9. Troubleshooting
+
+### A network blocks Yogurt Cloud
+
+Some work and school networks block `*.supabase.co` or `*.vercel.app`.
+A blocked laptop cannot connect or push, and a blocked phone cannot open the webapp.
+Yogurt cannot get around this.
+Try another network, such as a phone hotspot, or ask your network admin to allow both domains.
+
+### A paused Supabase project
+
+When a free project has been quiet for 7 days, Supabase pauses it.
+The webapp shows a connection error, for example "Couldn't reach your Cloud. Check your connection and try again."
+A laptop push fails with a network error.
+Open the Supabase dashboard, find the project, and restore it.
+Your data is kept.
+Restoring takes a few minutes, and then pushes and the webapp work again.
+A Vercel redeploy needs the project awake too, because the build applies the schema.
+
+### "Your Cloud session expired" on the laptop
+
+Supabase revoked or expired the laptop's session, for example after a Cloud password change.
+Type the Cloud login password into the field on the Cloud sync page and select Sign in, as in [Push your meetings](#push-your-meetings).
+If you removed the login, connect again instead.
+
+### The build fails with a missing variable
+
+The build prints `yogurt-cloud build:` followed by the name it could not find.
+These are the messages:
+
+```text
+set SUPABASE_URL.
+set SUPABASE_PUBLISHABLE_KEY.
+production builds need POSTGRES_URL_NON_POOLING, which the Supabase integration provides.
+production builds need YOGURT_OWNER_EMAIL, the email of the one Cloud login.
+```
+
+Add the variable in Vercel under Settings, then Environment Variables, and redeploy.
+Check that `POSTGRES_URL_NON_POOLING` and `YOGURT_OWNER_EMAIL` apply to the Production environment.
+
+### The confirmation email does not arrive
+
+Supabase's built-in mail service sends only to members of your Supabase organization, and only 2 emails an hour.
+[Before you start](#before-you-start) has the fixes for the first, and for the second, wait an hour before trying again.
+Also look in your spam folder.
+Addresses like `example.com` are rejected before any mail is sent.
+
+If the owner email was wrong, change `YOGURT_OWNER_EMAIL` in Vercel and redeploy.
+The new email applies only until the owner has signed in once, because the first sign in pins the owner.
+
+### "This login does not own this Yogurt Cloud"
+
+The webapp shows this when you sign in with an account that is not the owner.
+Sign out and sign in with the owner email.
+
+### Keep your copy up to date
+
+The deploy button copies the Yogurt repository into a new repository in your GitHub account.
+That copy is not a fork, so it does not follow the Yogurt repository.
+Vercel redeploys your project when you push to your copy, and each production deploy re-applies the database schema.
+
+When you upgrade Yogurt on your laptops, update your copy to the same release, so the laptops and the schema stay in step.
+Replace `v1.7.0` with the version `yogurt --version` prints.
+
+```bash
+# once
+git clone https://github.com/<you>/yogurt-cloud.git
+cd yogurt-cloud
+git remote add upstream https://github.com/jarvisrchen/yogurt.git
+
+# each update
+git fetch upstream --tags
+git checkout v1.7.0 -- .
+git commit -m "Update Yogurt Cloud to v1.7.0" && git push origin HEAD
+```
+
+Files that Yogurt deleted stay in your copy, which does no harm.
