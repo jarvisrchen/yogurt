@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { API, DEVICES, KEY, OWNER, PASSWORD, PIN, expectScreen, isPhone, onboard, reset, seed, shot, typePin } from "./helpers";
+import { API, DEVICES, KEY, OWNER, PASSWORD, LATE, PIN, expectScreen, isPhone, onboard, reset, seed, shot, typePin } from "./helpers";
 
 test.beforeAll(reset);
 
@@ -39,6 +39,14 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await expect(page.getByText("Steven owns the migration plan")).toBeVisible();
   await expect(page.getByText(/^Pushed from Laptop 2 · \d+\/\d+\/\d+ \d+:\d\d [AP]M$/)).toBeVisible();
   await shot(page, info, phone ? "n-meeting" : "o-desktop-meeting");
+
+  // A transcript link in Enhanced opens the Transcript tab at that moment and tints the line.
+  await page.getByRole("tabpanel").locator("[data-transcript-link]").click();
+  await expect(page.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
+  const late = page.locator("[data-transcript-ts-sec]", { hasText: LATE.text });
+  await expect(late).toHaveClass(/transcript-highlight/);
+  await expect(late).toBeInViewport({ ratio: 1 });
+  await shot(page, info, "s-transcript-link");
   await page.getByRole("tab", { name: "Notes" }).click();
   await expect(page.getByText("Steven owns the migration plan")).toHaveCount(0);
   await expect(page.getByText("Ship the pricing page before the holiday freeze")).toBeVisible();

@@ -1275,3 +1275,8 @@ New closed items go at the bottom.
 - [x] **SYNC-7** Setup guide in `docs/CLOUD-SYNC.md` with the deploy button, checked by a rehearsal on real accounts
 
   The Yogurt Cloud guide is finished, with how it works, deploy, recovery, and troubleshooting, and webapp Sign out no longer signs laptops out. The rehearsal moved to SYNC-9.
+
+- [x] **SYNC-9** Rehearse `docs/CLOUD-SYNC.md` with a laptop and the phone, and fix what it finds
+
+  The laptop and phone rehearsal found four things, now fixed: transcript links jump to their moment, Unlock shows as many boxes as the PIN has digits, the guide's diagram shows the Vercel webapp and the Supabase data as one Yogurt Cloud and gains two sequence diagrams, and the README covers Yogurt Cloud.
+  The Deploy with Vercel rehearsal moved to SYNC-11.

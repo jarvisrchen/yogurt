@@ -24,6 +24,9 @@ create table if not exists public.yogurt_owner (
   locked_until    timestamptz
 );
 
+-- The PIN's digit count, so the webapp can draw as many boxes. Set with the PIN, and backfilled by the next correct unlock for a PIN set before this column existed.
+alter table public.yogurt_owner add column if not exists passcode_length smallint;
+
 create table if not exists public.yogurt_browsers (
   id           bigint generated always as identity primary key,
   token_hash   bytea not null unique,  -- sha256 of the token, which is never stored
@@ -150,6 +153,7 @@ begin
     'owner_email_set', found,
     'is_owner', mine,
     'passcode_set', mine and o.passcode_hash is not null,
+    'passcode_length', case when mine then o.passcode_length end,
     'locked_until', case when mine and o.locked_until > now() then o.locked_until end
   );
 end $$;
@@ -173,7 +177,7 @@ begin
     return false;
   end if;
   update public.yogurt_owner
-  set passcode_hash = extensions.crypt(new_passcode, extensions.gen_salt('bf')), failed_attempts = 0, consecutive_lockouts = 0, locked_until = null
+  set passcode_hash = extensions.crypt(new_passcode, extensions.gen_salt('bf')), passcode_length = length(new_passcode), failed_attempts = 0, consecutive_lockouts = 0, locked_until = null
   where id;
   delete from public.yogurt_browsers where true;
   return true;
@@ -193,7 +197,7 @@ begin
     perform yogurt_private.yogurt_note_failure();
     return null;
   end if;
-  update public.yogurt_owner set failed_attempts = 0, consecutive_lockouts = 0, locked_until = null where id;
+  update public.yogurt_owner set passcode_length = length(passcode), failed_attempts = 0, consecutive_lockouts = 0, locked_until = null where id;
   delete from public.yogurt_browsers where expires_at < now();
   token := encode(extensions.gen_random_bytes(32), 'hex');
   insert into public.yogurt_browsers (token_hash, label, expires_at)

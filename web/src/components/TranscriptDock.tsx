@@ -6,7 +6,7 @@ import {
   type StoredTranscriptSegment,
   type TranscriptEvent,
 } from "../lib/ws";
-import { TranscriptLine } from "./TranscriptLine";
+import { TranscriptLine, scrollToTranscriptTime } from "./TranscriptLine";
 import { AudioWaveIcon } from "./AudioWaveIcon";
 
 const INK = "var(--color-ink)";
@@ -101,29 +101,7 @@ export function TranscriptDock({
   function tryScrollTo(ts: number): boolean {
     const root = listRef.current;
     if (!root) return false;
-    const lines = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-transcript-ts-sec]"),
-    );
-    if (lines.length === 0) return false;
-    let bestEl: HTMLElement | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (const line of lines) {
-      const raw = line.getAttribute("data-transcript-ts-sec");
-      const sec = Number(raw);
-      if (!Number.isFinite(sec)) continue;
-      const dist = Math.abs(sec - ts);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestEl = line;
-      }
-    }
-    if (!bestEl) return false;
-    bestEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    // Brief tint (CSS keyframe) so the eye lands on the line mid-smooth-scroll.
-    bestEl.classList.add("transcript-highlight");
-    const el = bestEl;
-    setTimeout(() => el.classList.remove("transcript-highlight"), 1500);
-    return true;
+    return scrollToTranscriptTime(root, ts);
   }
 
   // A request arriving while the dock is closed (MeetingPost force-opens and dispatches in the same tick) finds no DOM nodes. Stash it and retry on mount.

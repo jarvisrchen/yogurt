@@ -153,7 +153,9 @@ export function Checkbox({ checked, onChange, children }: { checked: boolean; on
 interface PinProps {
   id?: string;
   label: string;
-  length: 4 | 6;
+  length: number;
+  /** Most digits the input takes, when more than the boxes drawn. */
+  max?: number;
   value: string;
   onChange: (v: string) => void;
   error?: boolean;
@@ -165,7 +167,7 @@ interface PinProps {
 }
 
 /** Boxes with dots, over one real input so a hardware or native numeric keyboard types into it too. */
-export function PinField({ id, label, length, value, onChange, error, disabled, keypad, autoFocus, onFull }: PinProps) {
+export function PinField({ id, label, length, max = length, value, onChange, error, disabled, keypad, autoFocus, onFull }: PinProps) {
   const ref = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   useEffect(() => {
@@ -198,13 +200,13 @@ export function PinField({ id, label, length, value, onChange, error, disabled, 
         inputMode="numeric"
         autoComplete="off"
         pattern="[0-9]*"
-        maxLength={length}
+        maxLength={max}
         disabled={disabled}
         value={value}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onChange={(e) => {
-          const v = e.target.value.replace(/\D/g, "").slice(0, length);
+          const v = e.target.value.replace(/\D/g, "").slice(0, max);
           onChange(v);
           if (v.length === length) onFull?.();
         }}

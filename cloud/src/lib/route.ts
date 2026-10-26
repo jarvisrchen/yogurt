@@ -2,8 +2,16 @@ export interface Status {
   owner_email_set: boolean;
   is_owner: boolean;
   passcode_set: boolean;
+  /** Digits in the PIN, or null before one is set and for a PIN not yet backfilled by an unlock. */
+  passcode_length: number | null;
   locked_until: string | null;
 }
+
+/** A PIN is 4 or 6 digits. The stored length only picks how many boxes to draw, so the server stays the judge of a PIN. */
+export const validPin = (pin: string): boolean => /^(\d{4}|\d{6})$/.test(pin);
+
+/** Boxes to draw: the stored length while what is typed still fits in it, else 6. */
+export const pinBoxes = (stored: number | null, typed: string): number => (stored && typed.length <= stored ? stored : 6);
 
 export type View = "library" | "settings" | "change-pin" | "history";
 export type Screen = "signin" | "not-owner" | "choose-pin" | "unlock" | View;

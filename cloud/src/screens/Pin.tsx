@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@web/components/Button";
 import { AuthShell, Checkbox, FieldLabel, Keypad, LockIcon, Note, PinField, Segmented, TextLink, h3, sub } from "../ui";
-import { formatWait, lockoutMinutes } from "../lib/route";
+import { formatWait, lockoutMinutes, pinBoxes, validPin } from "../lib/route";
 
 type Len = "4" | "6";
 export const LENGTHS = [
@@ -53,7 +53,7 @@ export function ChoosePin({ onSubmit, busy, error }: { onSubmit: (pin: string) =
   );
 }
 
-export function Unlock({ email, lockedUntil, notice, onUnlock, onSignOut }: { email: string; lockedUntil: string | null; notice: string | null; onUnlock: (pin: string, remember: boolean) => Promise<"ok" | "wrong">; onSignOut: () => void }) {
+export function Unlock({ email, length, lockedUntil, notice, onUnlock, onSignOut }: { email: string; length: number | null; lockedUntil: string | null; notice: string | null; onUnlock: (pin: string, remember: boolean) => Promise<"ok" | "wrong">; onSignOut: () => void }) {
   const [pin, setPin] = useState("");
   const [remember, setRemember] = useState(true);
   const [wrong, setWrong] = useState(false);
@@ -67,7 +67,7 @@ export function Unlock({ email, lockedUntil, notice, onUnlock, onSignOut }: { em
   }, [lockedUntil]);
   const minutes = lockoutMinutes(lockedUntil, now);
   const locked = minutes > 0;
-  const valid = pin.length === 4 || pin.length === 6;
+  const valid = validPin(pin);
 
   const submit = async () => {
     if (!valid || busy || locked) return;
@@ -98,7 +98,7 @@ export function Unlock({ email, lockedUntil, notice, onUnlock, onSignOut }: { em
           void submit();
         }}
       >
-        <PinField label="PIN" length={6} value={pin} onChange={(v) => { setWrong(false); setPin(v); }} error={wrong || locked} disabled={locked} keypad autoFocus />
+        <PinField label="PIN" length={pinBoxes(length, pin)} max={6} value={pin} onChange={(v) => { setWrong(false); setPin(v); }} error={wrong || locked} disabled={locked} keypad autoFocus />
         {locked && <Note>Too many wrong tries. Try again in {formatWait(minutes)}.</Note>}
         {wrong && !locked && <Note>Wrong PIN. Try again.</Note>}
         {(failed ?? notice) && <Note>{failed ?? notice}</Note>}

@@ -170,7 +170,7 @@ Changing the passcode deletes every browser, including the current one, and the 
 A forgotten passcode is reset in the Supabase SQL editor by setting a new PIN directly:
 
 ```sql
-update yogurt_owner set passcode_hash = extensions.crypt('<new pin>', extensions.gen_salt('bf')), failed_attempts = 0, consecutive_lockouts = 0, locked_until = null where id;
+update yogurt_owner set passcode_hash = extensions.crypt('<new pin>', extensions.gen_salt('bf')), passcode_length = null, failed_attempts = 0, consecutive_lockouts = 0, locked_until = null where id;
 delete from yogurt_browsers where true;
 ```
 
@@ -255,7 +255,7 @@ If a batch fails, its meetings keep their old `cloud_hash`, so the next pass sen
 
 | Table | Columns | Clients may |
 | --- | --- | --- |
-| `yogurt_owner` (one row) | `email`, `user_id`, `passcode_hash`, `failed_attempts`, `consecutive_lockouts`, `locked_until` | nothing directly. The build writes `email` with `crates/yogurt-cloud/owner.sql`, and RPCs do the rest. |
+| `yogurt_owner` (one row) | `email`, `user_id`, `passcode_hash`, `passcode_length`, `failed_attempts`, `consecutive_lockouts`, `locked_until` | nothing directly. The build writes `email` with `crates/yogurt-cloud/owner.sql`, and RPCs do the rest. |
 | `yogurt_browsers` | `id`, `token_hash`, `label`, `created_at`, `expires_at`, `last_used_at` | nothing directly |
 | `yogurt_devices` | `id` (laptop-generated), `user_id`, `name`, `created_at` | insert `id`, `name` |
 | `yogurt_pushes` | `id`, `device_id`, `user_id`, `pushed_at` | nothing directly. `yogurt_start_push` creates one, because `insert ... returning` needs `select`. |
@@ -265,7 +265,7 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 
 | Function | Who calls it | Returns |
 | --- | --- | --- |
-| `yogurt_status()` | webapp, laptop | a JSON object: `owner_email_set`, `is_owner`, `passcode_set`, and `locked_until` (null unless locked). Callable by any signed-in user. |
+| `yogurt_status()` | webapp, laptop | a JSON object: `owner_email_set`, `is_owner`, `passcode_set`, `passcode_length` (the owner's PIN length when known, for drawing the boxes only), and `locked_until` (null unless locked). Callable by any signed-in user. |
 | `yogurt_set_passcode(new_passcode, old_passcode)` | webapp | true when set. `old_passcode` is required once a passcode exists. A wrong `old_passcode` or a lockout returns false. Hashes with `extensions.crypt` and `gen_salt('bf')`. Deletes every `yogurt_browsers` row, and the webapp then unlocks the current browser again with the new passcode. |
 | `yogurt_unlock(passcode, remember, label)` | webapp | a browser token as 64 hex characters, or null |
 | `yogurt_lock(token)`, `yogurt_forget_browser(token, browser_id)` | webapp | true when a browser was removed |

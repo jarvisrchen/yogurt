@@ -12,6 +12,26 @@ export function formatTs(ms: number): string {
 const INK = "var(--color-ink)";
 const GREY = "var(--color-grey)";
 
+/** Scrolls the line closest to `sec` (seconds) into view and tints it briefly. False when `root` holds no lines. */
+export function scrollToTranscriptTime(root: ParentNode, sec: number): boolean {
+  let best: HTMLElement | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const line of root.querySelectorAll<HTMLElement>("[data-transcript-ts-sec]")) {
+    const dist = Math.abs(Number(line.getAttribute("data-transcript-ts-sec")) - sec);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = line;
+    }
+  }
+  if (!best) return false;
+  best.scrollIntoView({ behavior: "smooth", block: "center" });
+  // Brief tint (CSS keyframe) so the eye lands on the line mid-smooth-scroll.
+  best.classList.add("transcript-highlight");
+  const el = best;
+  setTimeout(() => el.classList.remove("transcript-highlight"), 1500);
+  return true;
+}
+
 /** Partial (non-final) events render at opacity 0.7 to signal "still listening". */
 export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
   const isMic = ev.channel === "mic";
@@ -24,7 +44,7 @@ export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
       className="py-2 text-[14px] leading-snug"
       data-channel={ev.channel}
       data-final={ev.is_final}
-      // TranscriptDock finds the closest line to a scrollTo request via `[data-transcript-ts-sec]`.
+      // scrollToTranscriptTime finds the closest line via `[data-transcript-ts-sec]`.
       data-transcript-ts-sec={Math.floor(ev.ts_ms / 1000)}
     >
       <span
