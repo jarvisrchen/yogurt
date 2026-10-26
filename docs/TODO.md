@@ -17,6 +17,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `CLI` | CLI |
 | `DX` | Developer experience |
 | `SYNC` | Sync |
+| `IMP` | Import |
 
 Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` and the titles and branch names of open PRs too.
 Never reuse or renumber an ID, including when an item moves to DONE.
@@ -127,3 +128,14 @@ Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-desi
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
 - [ ] **SYNC-9** Rehearse `docs/CLOUD-SYNC.md` on real accounts: a laptop and the phone, then the Deploy with Vercel button on a fresh project
+- [ ] **SYNC-12** Page the webapp library with slim rows and fetch one meeting's body on open, so it never downloads every transcript or hits Supabase's 1,000-row cap ([design](.planning/granola-import-design.md#yogurt-cloud-after-an-import))
+- [ ] **SYNC-13** Push in the background in small paced batches with retries and a progress pill on every page, so a large backlog uploads slowly instead of failing ([design](.planning/granola-import-design.md#pushing-a-backlog-slowly-sync-13))
+
+## Import
+
+Design: [.planning/granola-import-design.md](.planning/granola-import-design.md).
+
+- [ ] **IMP-1** Paginate the Library (10, 25, 50, or 100 a page) and return slim summary rows from the list and search APIs
+- [ ] **IMP-2** Import Granola meetings through the public API: V015 source columns, the import job and routes, and `yogurt ctl import granola`
+- [ ] **IMP-3** Settings Import section with the Granola key, preview, progress, and cancel, plus an import pill on every page
+- [ ] **IMP-4** Show "Imported from Granola" with the capturer and an Open in Granola link on imported meetings, and confirm before Enhance replaces Granola's notes
