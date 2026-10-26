@@ -355,7 +355,7 @@ insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body) valu
 
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
-select yogurt_unlock('654321', false, 'Search') as stok \gset
+select yogurt_unlock('4321', false, 'Search') as stok \gset
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'PRICING', :push_a)), 's2,s1', 'search as of push A, newest first, case-insensitive');
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'pricing')), 's2', 'an edited-away word matches only the old version');
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'zebra', :push_a)), 's3', 'a meeting is found before its deletion');
