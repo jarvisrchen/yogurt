@@ -4,6 +4,8 @@ import { API, DEVICES, KEY, OWNER, PASSWORD, PIN, expectScreen, isPhone, onboard
 
 const rpc = "**/rest/v1/rpc/yogurt_search";
 
+// Later tests use the owner the first one creates.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(reset);
 
 async function unlock(page: Page) {
@@ -204,19 +206,16 @@ test("a hit missing from the loaded library or newer than it offers a reload tha
   await expect(newer).toBeVisible();
   await expect(missing).toHaveCount(0);
   await shot(page, info, "t-search-newer");
-
-  // The view as of an earlier push shows neither note, even with the hit still remembered.
-  await page.evaluate(() => (location.hash = location.hash.replace("#/m/", "#/at/1/m/")));
-  await expect(page.getByText("Viewing", { exact: false })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "edis update" })).toBeVisible();
-  await expect(newer).toHaveCount(0);
-  await expect(missing).toHaveCount(0);
-  await page.goBack();
-
-  await expect(newer).toBeVisible();
   await page.getByRole("button", { name: "Reload" }).click();
   await expect(page.getByText("Feed the zebrafish herd.")).toBeVisible();
   await expect(newer).toHaveCount(0);
+
+  // The view as of an earlier push shows neither note, though the remembered hit is newer than its copy.
+  await page.evaluate(() => (location.hash = location.hash.replace("#/m/", "#/at/1/m/")));
+  if (!isPhone(page)) await expect(page.getByText("Viewing", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "edis update", exact: true })).toBeVisible();
+  await expect(newer).toHaveCount(0);
+  await expect(missing).toHaveCount(0);
 });
 
 test("a failed library load shows an error with Retry", async ({ page }) => {

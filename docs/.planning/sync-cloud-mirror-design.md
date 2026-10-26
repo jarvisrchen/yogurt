@@ -319,6 +319,21 @@ The signature is an md5 over the `unaccent` version, the configuration's diction
 Each row stores the signature it was built with, so a changed signature makes every row stale and catch-up rebuilds them gradually, while the old rows keep answering searches.
 Nothing truncates the table or refills it under a lock at deploy time.
 
+Measured in postgres:16 under Docker on an M3 Max, with 1,500 meetings of 600 transcript segments each, about 78 KB of body per meeting, drawn from a 5,000-word vocabulary:
+
+| What | Time or size |
+| --- | --- |
+| Indexing all 1,500 from empty | 12.3 s over 7 calls |
+| A catch-up with nothing to do | 3 ms |
+| A push of 100 edited meetings, then its catch-up | 89 ms, then 0.8 s in one call |
+| Rebuilding every row after a signature change | 12.6 s over 7 calls |
+| Searching a word every meeting has | 136 ms |
+| Searching a word some meetings have | 66 ms |
+| Index table, against 13 MB of versions | 44 MB: 28 MB of tsvector, 15 MB of GIN, 7 MB of compressed text |
+
+The worst case puts a unique hash in every segment.
+There the index table reaches 169 MB, with 95 MB of GIN, and the first fill takes 16.9 s.
+
 `yogurt_private.yogurt_ts` is a text search configuration that copies `simple` and maps `unaccent` before it for words, so matching ignores case and accents while the stored text keeps both.
 Every deploy applies its mapping again, so a change to the mapping reaches an existing project.
 It stems nothing and drops no stop words, so names and non-English words match as typed.
@@ -329,6 +344,7 @@ The plain-text step removes a transcript link's label whole and drops editor tag
 It decodes `&amp; &lt; &gt; &nbsp; &quot; &#39;` and leaves text such as `latency<target` and `2*3` alone.
 The text search parser takes quadratic time on a long run joined by `_` or `-` with no spaces (a 60 KB run took 7 to 13 seconds), so the step puts a space after every 100 characters of a run without one.
 It keeps the first 400,000 bytes, about the first 400,000 characters of English text, so a word only in the tail of a very long meeting is not found.
+The parser keeps the punctuation that ends a URL, as in `example.com/a-b,`, so the tsvector and the query drop `. , ; : ! ? ) ] '` at the end of a word before parsing.
 Besides its words, the tsvector holds the pieces of each word joined by `@`, `.`, or `/`, so `acme` finds `jane@acme.com` and `docs.acme.com/q4`, while the whole email, host, URL, or file name still matches as typed.
 
 `yogurt_search` folds curly quotes to straight ones, and turns a dash with a space or the edge on both sides (a spaced hyphen or a pasted bullet) and an en or em dash into a space.

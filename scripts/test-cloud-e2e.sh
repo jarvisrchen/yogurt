@@ -135,6 +135,7 @@ expect "changed" "$(field .changed)" 2
 expect "deleted" "$(field .deleted)" 0
 expect "versions" "$(psql -c "select count(*) from yogurt_versions v join yogurt_devices d on d.id=v.device_id where d.name='Laptop 1'")" 2
 expect "body shape" "$(psql -c "select body->>'v' || ':' || (body->'meeting'->>'title') from yogurt_versions where meeting_id='$a1'")" "1:Standup A"
+expect "the push indexed both for search" "$(psql -c "select count(*) from yogurt_private.yogurt_search_index i join yogurt_devices d on d.id=i.device_id where d.name='Laptop 1'")" 2
 expect "pill clears" "$(api a GET /api/cloud)" 200
 expect "not pushed after push" "$(field .not_pushed)" 0
 expect "last push" "$(field '.last_push.changed')" 2
@@ -160,6 +161,7 @@ expect "edited body, NUL stripped" "$(psql -c "select body->'meeting'->>'notes_m
 expect "pill after the deletion marker went out" "$(api a GET /api/cloud)" 200
 expect "not pushed" "$(field .not_pushed)" 0
 expect "deletion marker" "$(psql -c "select count(*) from yogurt_versions where meeting_id='$a2' and body is null")" 1
+expect "the index follows the edit and the deletion" "$(psql -c "select string_agg(meeting_id || ':' || (doc ~ 'edited notes'), ',') from yogurt_private.yogurt_search_index where meeting_id in ('$a1', '$a2')")" "$a1:true"
 
 echo "== two devices push into one cloud, and two overlapping pushes both succeed"
 expect "push b" "$(api b POST /api/cloud/push)" 200

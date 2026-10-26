@@ -444,6 +444,7 @@ select pg_temp.eq(pg_temp.ids(:'stok', 'jane-doe@example.com'), 's10', 'a hyphen
 select pg_temp.eq(pg_temp.ids(:'stok', 'my-company.com'), 's10', 'a hyphenated host');
 select pg_temp.eq(pg_temp.ids(:'stok', 'write to jane-doe@example.com'), 's10', 'words, then an email');
 select pg_temp.eq(pg_temp.ids(:'stok', 'https://example.com/my-first-post'), 's10', 'a URL with a hyphenated path');
+select pg_temp.eq(pg_temp.ids(:'stok', '(see example.com/my-first-post).'), 's10', 'a URL in parentheses');
 select pg_temp.eq(pg_temp.ids(:'stok', 'github.com/rchen3/rchen-vault'), 's10', 'a URL without a scheme');
 select pg_temp.eq(pg_temp.ids(:'stok', 'q4-report.pdf'), 's10', 'a hyphenated file name');
 select pg_temp.eq(pg_temp.ids(:'stok', 'https://meet.google.com/abc-defg-hij'), 's10', 'a meeting link');
@@ -504,7 +505,8 @@ select xmin::text as x0 from yogurt_private.yogurt_search_index where meeting_id
 select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text, '0', 'nothing to repair');
 select pg_temp.eq((select xmin::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), :'x0', 'a current row is left alone');
 delete from yogurt_private.yogurt_search_index where meeting_id = 's1';
-select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text || ':' || (select count(*) from yogurt_private.yogurt_search_index where meeting_id = 's1'), '0:1', 'a missing row is written');
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text, '0', 'a missing row is repaired');
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), '1', 'a missing row is written');
 update yogurt_private.yogurt_search_index set push_id = :push_a, title = 'outdated' where meeting_id = 's1';
 select yogurt_private.yogurt_search_catch_up(2000);
 select pg_temp.eq((select push_id::text || ':' || title from yogurt_private.yogurt_search_index where meeting_id = 's1'), :'push_b' || ':Budget review', 'an outdated row is replaced');

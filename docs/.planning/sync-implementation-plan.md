@@ -214,4 +214,5 @@ SYNC-3 to SYNC-6 each add their section of the guide as they land, so SYNC-7 fin
 7. It debounces 250 ms, shows a pending state over the previous answer, and renders hits from the returned rows with a cap message.
 8. It clears by the button (which returns focus) or Escape.
    A hit opens from the loaded library, with a reload note when the loaded copy is older or missing, and the reload keeps the page.
-9. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone" and a purge note.
+9. The measurement in the design doc's Search section: 1,500 hour-long meetings index in 12 s and take 44 MB, and a search answers in under 150 ms.
+10. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone" and a purge note.

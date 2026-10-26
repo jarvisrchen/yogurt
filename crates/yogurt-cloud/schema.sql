@@ -272,7 +272,9 @@ begin
   exception when others then
     doc := '';
   end;
-  tsv := to_tsvector('yogurt_private.yogurt_ts', title) || to_tsvector('yogurt_private.yogurt_ts', doc)
+  -- The parser keeps the punctuation that ends a URL, as in "x.com/a-b,", so it goes before parsing, here and in yogurt_search.
+  tsv := to_tsvector('yogurt_private.yogurt_ts', regexp_replace(title, '[.,;:!?)\]'']+(?=\s|$)', '', 'g'))
+    || to_tsvector('yogurt_private.yogurt_ts', regexp_replace(doc, '[.,;:!?)\]'']+(?=\s|$)', '', 'g'))
     || to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_parts(title || ' ' || doc));
 end $$;
 
@@ -523,7 +525,7 @@ begin
   -- A dash with space or the edge on both sides, such as a pasted bullet or a spaced hyphen, separates words, and so does an en or em dash anywhere.
   q := regexp_replace(regexp_replace(q, '(^|\s)[-–—]+(?=\s|$)', '\1', 'g'), '[–—]', ' ', 'g');
   -- A pasted URL matches by its host and path.
-  q := regexp_replace(q, 'https?://', '', 'gi');
+  q := regexp_replace(regexp_replace(q, 'https?://', '', 'gi'), '[.,;:!?)\]'']+(?=\s|$)', '', 'g');
   if q ~ '[^[:space:][:punct:]]$' then
     -- A half-typed hyphenated word needs its parts. A hyphen before a digit belongs to the token, as in ABC-123, and an excluded word, an email, a host, a URL, or a file name stays whole.
     if substring(q from '\S+$') !~ '^-|[@./]' then
