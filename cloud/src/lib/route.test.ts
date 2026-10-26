@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { browserLabel, formatWait, lockoutMinutes, screenFor, type Status } from "./route";
+import { browserLabel, formatWait, lockoutMinutes, pinBoxes, screenFor, validPin, type Status } from "./route";
 import { TOKEN_KEY, clearToken, readToken, saveToken } from "./token";
 
 const owner: Status = { owner_email_set: true, is_owner: true, passcode_set: true, passcode_length: 6, locked_until: null };
@@ -73,5 +73,26 @@ describe("token storage", () => {
     expect(readToken()).toBeNull();
     expect(() => saveToken({ token: "x", remember: false })).not.toThrow();
     expect(() => clearToken()).not.toThrow();
+  });
+});
+
+describe("pinBoxes", () => {
+  it("draws the stored length while the typed digits fit", () => {
+    expect(pinBoxes(4, "")).toBe(4);
+    expect(pinBoxes(4, "1234")).toBe(4);
+  });
+  it("grows to 6 once more is typed than the stored length", () => {
+    expect(pinBoxes(4, "12345")).toBe(6);
+  });
+  it("draws 6 when the length is unknown", () => {
+    expect(pinBoxes(null, "")).toBe(6);
+    expect(pinBoxes(null, "1234")).toBe(6);
+  });
+});
+
+describe("validPin", () => {
+  it("takes 4 or 6 digits only", () => {
+    expect(["1234", "123456"].map(validPin)).toEqual([true, true]);
+    expect(["", "123", "12345", "1234567", "12a4"].map(validPin)).toEqual([false, false, false, false, false]);
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@web/components/Button";
 import { AuthShell, Checkbox, FieldLabel, Keypad, LockIcon, Note, PinField, Segmented, TextLink, h3, sub } from "../ui";
-import { formatWait, lockoutMinutes } from "../lib/route";
+import { formatWait, lockoutMinutes, pinBoxes, validPin } from "../lib/route";
 
 type Len = "4" | "6";
 export const LENGTHS = [
@@ -67,8 +67,7 @@ export function Unlock({ email, length, lockedUntil, notice, onUnlock, onSignOut
   }, [lockedUntil]);
   const minutes = lockoutMinutes(lockedUntil, now);
   const locked = minutes > 0;
-  const boxes = length ?? 6;
-  const valid = length ? pin.length === length : pin.length === 4 || pin.length === 6;
+  const valid = validPin(pin);
 
   const submit = async () => {
     if (!valid || busy || locked) return;
@@ -99,7 +98,7 @@ export function Unlock({ email, length, lockedUntil, notice, onUnlock, onSignOut
           void submit();
         }}
       >
-        <PinField label="PIN" length={boxes} value={pin} onChange={(v) => { setWrong(false); setPin(v); }} error={wrong || locked} disabled={locked} keypad autoFocus />
+        <PinField label="PIN" length={pinBoxes(length, pin)} max={6} value={pin} onChange={(v) => { setWrong(false); setPin(v); }} error={wrong || locked} disabled={locked} keypad autoFocus />
         {locked && <Note>Too many wrong tries. Try again in {formatWait(minutes)}.</Note>}
         {wrong && !locked && <Note>Wrong PIN. Try again.</Note>}
         {(failed ?? notice) && <Note>{failed ?? notice}</Note>}
@@ -109,7 +108,7 @@ export function Unlock({ email, length, lockedUntil, notice, onUnlock, onSignOut
           </Checkbox>
           <p className="hidden min-[721px]:block text-[11.5px] text-mut mt-[4px] mb-[0px]">Checked: unlocked for 90 days. Unchecked: 12 hours.</p>
         </div>
-        <Keypad disabled={locked} onDigit={(d) => { setWrong(false); setPin((p) => (p.length < boxes ? p + d : p)); }} onBackspace={() => setPin((p) => p.slice(0, -1))} />
+        <Keypad disabled={locked} onDigit={(d) => { setWrong(false); setPin((p) => (p.length < 6 ? p + d : p)); }} onBackspace={() => setPin((p) => p.slice(0, -1))} />
         <Button type="submit" disabled={!valid || busy || locked} className="w-full !leading-normal">
           Unlock
         </Button>

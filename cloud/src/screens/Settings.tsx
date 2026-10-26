@@ -3,6 +3,7 @@ import { Button } from "@web/components/Button";
 import { getThemePref, setThemePref, type ThemePref } from "@web/lib/theme";
 import { Back, Brand, LockButton, FieldLabel, LoadError, PinField, Segmented, useDesktop, h3 } from "../ui";
 import { NewPin } from "./Pin";
+import { pinBoxes, validPin } from "../lib/route";
 import { TokenRejected, type Api, type Browser } from "../lib/api";
 
 const THEMES: { value: ThemePref; label: string }[] = [
@@ -53,8 +54,8 @@ interface Props {
   onLock: () => void;
   onSignOut: () => void;
   onRejected: () => void;
-  /** Sets the new PIN, then unlocks this browser again with it. Resolves to an error message, or null on success. */
   pinLength: number | null;
+  /** Sets the new PIN, then unlocks this browser again with it. Resolves to an error message, or null on success. */
   onChangePin: (oldPin: string, newPin: string) => Promise<string | null>;
   view: "settings" | "change-pin";
   setView: (v: "settings" | "change-pin") => void;
@@ -232,7 +233,7 @@ function ChangePin(p: Props) {
         <h1 className={h3}>Change PIN</h1>
         <div className="flex flex-col gap-[5px]">
           <FieldLabel>Current PIN</FieldLabel>
-          <PinField label="Current PIN" length={p.pinLength ?? 6} value={old} onChange={setOld} autoFocus />
+          <PinField label="Current PIN" length={pinBoxes(p.pinLength, old)} max={6} value={old} onChange={setOld} autoFocus />
           <p className="text-[11.5px] text-mut m-[0px]">{p.pinLength ? `Type the ${p.pinLength} digits you use today.` : "Type the 4 digits or 6 digits you use today."}</p>
         </div>
         <NewPin
@@ -241,7 +242,7 @@ function ChangePin(p: Props) {
           busy={busy}
           error={error}
           onSubmit={async (pin) => {
-            if (p.pinLength ? old.length !== p.pinLength : old.length !== 4 && old.length !== 6) return setError("Enter your current PIN first.");
+            if (!validPin(old)) return setError("Enter your current PIN first.");
             setBusy(true);
             setError(null);
             try {

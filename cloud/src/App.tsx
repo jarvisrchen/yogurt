@@ -130,6 +130,7 @@ function Signed({ api }: { api: Api }) {
       const t = await api.unlock(newPin, remember, browserLabel());
       if (t) {
         keep({ token: t, remember });
+        setStatus((st) => st && { ...st, passcode_length: newPin.length });
         setPinChanged(true);
         back({ ...HOME, view: "settings" });
         return null;

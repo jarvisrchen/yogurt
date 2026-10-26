@@ -24,13 +24,14 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
   const tabs = tabsFor(entry);
   const [picked, setPicked] = useState<Tab | null>(null);
   const tab = picked && tabs.includes(picked) ? picked : defaultTab(entry);
-  const [target, setTarget] = useState<number | null>(null);
+  // A link tap records its time here and the tab switch renders the lines; the effect then scrolls once and clears it.
+  const pendingSec = useRef<number | null>(null);
   const transcript = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (tab !== "transcript" || target === null) return;
-    if (transcript.current) scrollToTranscriptTime(transcript.current, target);
-    setTarget(null);
-  }, [tab, target]);
+    if (tab !== "transcript" || pendingSec.current === null) return;
+    if (transcript.current) scrollToTranscriptTime(transcript.current, pendingSec.current);
+    pendingSec.current = null;
+  }, [tab]);
   return (
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
       {!desktop && <Back to={back} onClick={onBack} />}
@@ -61,7 +62,7 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop 
         {tab === "transcript" ? (
           <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
         ) : (
-          <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { setTarget(sec); setPicked("transcript"); } : undefined} />
+          <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); } : undefined} />
         )}
       </div>
       <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>
@@ -76,5 +77,9 @@ function Doc({ md, onLink }: { md: string; onLink?: (sec: number) => void }) {
     if (link) onLink?.(Number(link.getAttribute("data-ts")) || 0);
   };
   // The markup is sanitized by markdownToHtml, the same allowlist the desktop editor loads.
-  return <div role="tabpanel" className="doc" onClick={open} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && open(e)} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div role="tabpanel" className="doc" onClick={open} onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (e.target instanceof Element && e.target.closest("[data-transcript-link]")) e.preventDefault();
+        open(e);
+      }} dangerouslySetInnerHTML={{ __html: html }} />;
 }

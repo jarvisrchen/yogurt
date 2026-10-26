@@ -10,12 +10,13 @@ The design is in [docs/.planning/sync-cloud-mirror-design.md](.planning/sync-clo
 
 ### The parts
 
-Yogurt Cloud has four parts, and you own all of them.
+Your Yogurt Cloud is two projects you own, a Vercel project and a Supabase project.
+Your laptops push to it, and your phone reads from it.
 
-1. **Your Vercel project, which is your Yogurt Cloud.** It serves the Yogurt Cloud webapp at your Cloud address, for example `yogurt-cloud.vercel.app`.
-   That address is what you open on your phone and type into each laptop.
-   The webapp is a set of static files with no server code, so Vercel never sees a meeting.
-2. **Your Supabase project, where your Yogurt Cloud keeps its data.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
+1. **The webapp, on your Vercel project.** This is the Yogurt Cloud you see.
+   It lives at your Cloud address, for example `yogurt-cloud.vercel.app`, which you open on your phone and type into each laptop.
+   It is a set of static files with no server code, so Vercel never sees a meeting.
+2. **The data, in your Supabase project.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
 3. **Your laptops.** Each Mac running Yogurt pushes its meetings to your Supabase project.
 4. **Your phone, or any browser.** It opens your Cloud address, signs in, and reads your meetings.
 
@@ -23,12 +24,14 @@ Yogurt Cloud has four parts, and you own all of them.
 flowchart LR
   L1["Laptop 1<br/>yogurt"]
   L2["Laptop 2<br/>yogurt"]
-  subgraph VC["Your Yogurt Cloud: your Vercel project"]
-    WEB["Yogurt Cloud webapp<br/>at your Cloud address<br/>static files + config.json"]
-  end
-  subgraph SB["Its data: your Supabase project"]
-    AUTH["Auth<br/>the Cloud login"]
-    DB[("Postgres<br/>meeting versions")]
+  subgraph YC["Your Yogurt Cloud"]
+    subgraph VC["Your Vercel project"]
+      WEB["Yogurt Cloud webapp<br/>at your Cloud address<br/>static files + config.json"]
+    end
+    subgraph SB["Your Supabase project"]
+      AUTH["Auth<br/>the Cloud login"]
+      DB[("Postgres<br/>meeting versions")]
+    end
   end
   PH["Phone or browser"]
 
@@ -350,7 +353,7 @@ Tap a meeting to read it.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
 A tab is missing when that meeting has no such content, and a meeting with one kind of content shows no tabs.
 Enhanced opens first when the meeting has it.
-A transcript link inside the notes jumps to the Transcript tab.
+A transcript link in the notes opens the Transcript tab, scrolls to the line nearest that time, and tints it briefly.
 The footer says which machine pushed the meeting and when.
 
 The address in the browser tracks where you are, so the back gesture goes from a meeting to the library, and a reload keeps your place.
@@ -422,6 +425,7 @@ Run this with your new 4 or 6 digit PIN in place of `1234`.
 ```sql
 update yogurt_owner
 set passcode_hash = extensions.crypt('1234', extensions.gen_salt('bf')),
+    passcode_length = null,
     failed_attempts = 0,
     consecutive_lockouts = 0,
     locked_until = null

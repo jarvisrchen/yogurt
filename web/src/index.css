@@ -355,8 +355,8 @@ html, body {
 
 /* Brief highlight when a deep-link scrolls the transcript dock to the nearest segment. */
 @keyframes transcript-highlight-fade {
-  0%   { background-color: var(--color-blsoft); }
-  100% { background-color: transparent; }
+  0%   { background-color: var(--color-blsoft); box-shadow: 0 0 0 6px var(--color-blsoft); }
+  100% { background-color: transparent; box-shadow: 0 0 0 6px transparent; }
 }
 .transcript-highlight {
   animation: transcript-highlight-fade 1.5s ease-out;
