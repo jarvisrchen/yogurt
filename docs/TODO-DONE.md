@@ -1332,3 +1332,7 @@ New closed items go at the bottom.
 - [x] **IMP-3** Settings Import section with the Granola key, preview, progress, and cancel, plus an import pill on every page
 
   Settings has an Import section that saves the Granola key, previews the import, shows progress with Cancel, and reports the counts, and an import pill on every page shows progress and the result.
+
+- [x] **SYNC-12** Page the webapp library with slim rows and fetch one meeting's body on open, so it never downloads every transcript or hits Supabase's 1,000-row cap ([design](.planning/granola-import-design.md#yogurt-cloud-after-an-import))
+
+  The webapp library loads one page of summary rows with a pager and a total, opens a meeting through `yogurt_meeting`, and pages search results with an offset, so it never downloads every transcript or hits the 1,000-row cap.

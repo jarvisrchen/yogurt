@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
+import { PAGE_SIZES, parsePage } from "@web/components/library/pagination";
 import type { View } from "./route";
 
-/** Where the signed-in webapp is. `meeting` is `<device_id>/<meeting_id>`, the key of a library entry. */
+/** Where the signed-in webapp is. `meeting` is `<device_id>/<meeting_id>`, the key of a library entry. `size` is null until the URL names one. */
 export interface Loc {
   view: View;
   asOf: number | null;
   meeting: string | null;
+  page: number;
+  size: number | null;
 }
 
-export const HOME: Loc = { view: "library", asOf: null, meeting: null };
+export const HOME: Loc = { view: "library", asOf: null, meeting: null, page: 1, size: null };
 
 export function parse(hash: string): Loc {
   let parts: string[];
@@ -17,7 +20,7 @@ export function parse(hash: string): Loc {
   } catch {
     return HOME;
   }
-  const [a, b, c, d, e] = parts;
+  const [a, b] = parts;
   if (a === "settings") return { ...HOME, view: b === "pin" ? "change-pin" : "settings" };
   if (a === "history") return { ...HOME, view: "history" };
   let asOf: number | null = null;
@@ -25,10 +28,17 @@ export function parse(hash: string): Loc {
   if (a === "at") {
     asOf = Number(b);
     if (!Number.isSafeInteger(asOf) || asOf < 1) return HOME;
-    rest = [c, d, e];
+    rest = parts.slice(2);
   }
-  if (rest[0] === "m" && rest[1] && rest[2]) return { view: "library", asOf, meeting: `${rest[1]}/${rest[2]}` };
-  return { ...HOME, asOf };
+  const loc: Loc = { ...HOME, asOf };
+  for (let i = 0; i < rest.length; ) {
+    if (rest[i] === "p") loc.page = parsePage(rest[i + 1] ?? null);
+    else if (rest[i] === "n") loc.size = PAGE_SIZES.find((n) => String(n) === rest[i + 1]) ?? null;
+    else if (rest[i] === "m" && rest[i + 1] && rest[i + 2]) return { ...loc, meeting: `${rest[i + 1]}/${rest[i + 2]}` };
+    else break;
+    i += 2;
+  }
+  return loc;
 }
 
 export function format(l: Loc): string {
@@ -36,10 +46,11 @@ export function format(l: Loc): string {
   if (l.view === "change-pin") return "#/settings/pin";
   if (l.view === "history") return "#/history";
   const at = l.asOf ? `/at/${l.asOf}` : "";
+  const paging = `${l.page > 1 ? `/p/${l.page}` : ""}${l.size ? `/n/${l.size}` : ""}`;
   // A meeting id may hold a slash, so only the first one separates the device.
   const i = l.meeting?.indexOf("/") ?? -1;
   const m = l.meeting ? `/m/${encodeURIComponent(l.meeting.slice(0, i))}/${encodeURIComponent(l.meeting.slice(i + 1))}` : "";
-  return at + m ? `#${at}${m}` : "";
+  return at + paging + m ? `#${at}${paging}${m}` : "";
 }
 
 interface Mark {
@@ -74,10 +85,16 @@ export function useLoc() {
     setLoc(to);
   }, []);
 
+  /** Swaps the current entry for `to`, keeping the back-stack marker. For a location that should not be a stop of its own. */
+  const replace = useCallback((to: Loc) => {
+    history.replaceState(history.state, "", url(format(to)));
+    setLoc(to);
+  }, []);
+
   const reset = useCallback(() => {
     history.replaceState(null, "", url(""));
     setLoc(HOME);
   }, []);
 
-  return { loc, go, back, reset };
+  return { loc, go, replace, back, reset };
 }

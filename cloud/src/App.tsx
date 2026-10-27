@@ -30,7 +30,7 @@ function Signed({ api }: { api: Api }) {
   const [email, setEmail] = useState<string | null | undefined>(undefined);
   const [status, setStatus] = useState<Status | null>(null);
   const [stored, setStored] = useState<StoredToken | null>(readToken);
-  const { loc, go, back, reset } = useLoc();
+  const { loc, go, replace, back, reset } = useLoc();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinChanged, setPinChanged] = useState(false);
@@ -170,6 +170,7 @@ function Signed({ api }: { api: Api }) {
           token={token!}
           loc={loc}
           go={go}
+          replace={replace}
           back={back}
           onSettings={() => go({ ...HOME, view: "settings" })}
           onLock={lock}

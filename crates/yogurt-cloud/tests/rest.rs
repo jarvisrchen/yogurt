@@ -268,14 +268,27 @@ async fn owner_pushes_unlocks_and_pages_the_library() {
         .unwrap();
     let token = token.as_str().unwrap();
 
-    let library = p
-        .rpc_all(&s, "yogurt_library", &json!({ "token": token }), "")
+    let page = |at: Option<i64>, offset: i64| json!({ "token": token, "at_push": at, "page_limit": 100, "page_offset": offset });
+    let first = p
+        .rpc(&s, "yogurt_library", &page(None, 1000))
         .await
         .unwrap();
-    assert_eq!(library.len(), 1001);
-    assert_eq!(library[1000]["meeting_id"], "m1000");
-    assert_eq!(library[1000]["body"]["n"], 1000);
-    assert_eq!(library[1000]["push_id"], push1);
+    let first = first.as_array().unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["meeting_id"], "m1000");
+    assert_eq!(first[0]["total"], 1001);
+    assert_eq!(first[0]["push_id"], push1);
+    assert!(first[0].get("body").is_none());
+    let body = p
+        .rpc(
+            &s,
+            "yogurt_meeting",
+            &json!({ "token": token, "device_id": device, "meeting_id": "m1000" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(body[0]["body"]["n"], 1000);
+    assert_eq!(body[0]["push_id"], push1);
 
     let push2 = p
         .rpc(&s, "yogurt_start_push", &json!({ "device_id": device }))
@@ -290,22 +303,33 @@ async fn owner_pushes_unlocks_and_pages_the_library() {
     )
     .await
     .unwrap();
-    let args = |at: i64| json!({ "token": token, "at_push": at });
-    let after = p
-        .rpc_all(
+    let after = p.rpc(&s, "yogurt_library", &page(None, 0)).await.unwrap();
+    assert_eq!(after[0]["total"], 1000);
+    assert_eq!(after[0]["meeting_id"], "m0001");
+    let as_of_first = p
+        .rpc(&s, "yogurt_library", &page(Some(push1), 0))
+        .await
+        .unwrap();
+    assert_eq!(as_of_first[0]["total"], 1001);
+    assert_eq!(as_of_first[0]["meeting_id"], "m0000");
+    let gone = p
+        .rpc(
             &s,
-            "yogurt_library",
-            &json!({ "token": token }),
-            "select=meeting_id",
+            "yogurt_meeting",
+            &json!({ "token": token, "device_id": device, "meeting_id": "m0000" }),
         )
         .await
         .unwrap();
-    assert_eq!(after.len(), 1000);
-    let as_of_first = p
-        .rpc_all(&s, "yogurt_library", &args(push1), "select=meeting_id")
+    assert!(gone.as_array().unwrap().is_empty());
+    let then = p
+        .rpc(
+            &s,
+            "yogurt_meeting",
+            &json!({ "token": token, "device_id": device, "meeting_id": "m0000", "at_push": push1 }),
+        )
         .await
         .unwrap();
-    assert_eq!(as_of_first.len(), 1001);
+    assert_eq!(then[0]["body"]["n"], 0);
 
     let history = p
         .rpc_all(&s, "yogurt_history", &json!({ "token": token }), "")

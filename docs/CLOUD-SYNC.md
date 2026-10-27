@@ -101,10 +101,15 @@ sequenceDiagram
   D-->>P: owner, PIN set, not locked out
   P->>D: yogurt_unlock(PIN, remember this browser)
   D-->>P: browser token, kept in localStorage
-  P->>D: yogurt_device_list(token) and yogurt_library(token)
-  D-->>P: devices and the newest version of each meeting
-  Note over P,D: History calls yogurt_history(token), then yogurt_library(token, push id)
+  P->>D: yogurt_device_list(token) and yogurt_library(token, one page)
+  D-->>P: devices and one page of meeting summaries with the total
+  P->>D: yogurt_meeting(token, device, meeting) when you open one
+  D-->>P: that meeting's notes and transcript
+  Note over P,D: History calls yogurt_history(token), then yogurt_library(token, push id, one page) and yogurt_meeting with the push id
 ```
+
+The library call returns summaries only: title, times, starred, labels, and which machine pushed it.
+A meeting's notes and transcript come from `yogurt_meeting` when you open it, so a library of thousands of meetings never downloads them all.
 
 History works because versions are kept.
 The library as of any earlier push is the newest version of each meeting at or before that push.
@@ -325,7 +330,9 @@ When nothing has changed, a check costs no network call.
 
 Open the webapp from the home screen, type your PIN, and select Unlock.
 
-The library lists every meeting you pushed, grouped by day with the newest first.
+The library lists every meeting you pushed, grouped by day with the newest first, one page at a time.
+Under the list, a range such as "26–50 of 1,412" shows where you are, Previous and Next move between pages, and Per page offers 10, 25, 50, or 100.
+The page and the page size are in the address, so a reload or a shared link keeps them, and a size you pick is remembered.
 The pills above the list pick one machine, and All devices shows them together.
 Each row shows the title, the start time, the length, and the machine that pushed it.
 
@@ -334,13 +341,14 @@ It searches the live library only, so an earlier push shown from History has no 
 Capital letters and accents do not matter, quotes find a phrase, `or` finds either word, and a minus sign leaves a word out.
 A row that matches outside its title shows a short snippet with the match marked.
 Search works inside the selected machine, and the clear button or Escape restores the full list.
-A search shows the newest 25 matches and says so when there are more, so add words to narrow it.
+A search shows 25 matches a page, newest first, with Previous and Next under the list when there are more.
 Chinese, Japanese, and Korean words inside a sentence do not match unless you type the whole run of characters.
 Search reads only about the first 400,000 characters of a meeting, so a word only in the tail of a very long meeting is not found.
 A quoted phrase matches only in the first part of a long meeting.
 A new push becomes searchable once the laptop finishes indexing after the push, usually seconds later.
 
 Tap a meeting to read it.
+Its notes and transcript load when you open it, from the library or from a search result, and they are always the latest version.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
 A tab is missing when that meeting has no such content, and a meeting with one kind of content shows no tabs.
 Enhanced opens first when the meeting has it.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@web/components/Button";
 import { Logo } from "@web/components/Logo";
+import { PAGER_BUTTON } from "@web/components/library/Pager";
 import { snippetParts } from "./lib/search";
 
 const DESKTOP = "(min-width: 721px)";
@@ -369,5 +370,19 @@ export function DayList<T>({ groups, render }: { groups: { key: number; label: s
         </section>
       ))}
     </>
+  );
+}
+
+/** Previous and Next for results with no known total, styled like the shared library Pager. */
+export function SearchPager({ canPrevious, canNext, onPrevious, onNext }: { canPrevious: boolean; canNext: boolean; onPrevious: () => void; onNext: () => void }) {
+  return (
+    <nav aria-label="Pagination" className="mt-4 flex items-center justify-end gap-2">
+      <button type="button" className={PAGER_BUTTON} disabled={!canPrevious} onClick={onPrevious}>
+        Previous
+      </button>
+      <button type="button" className={PAGER_BUTTON} disabled={!canNext} onClick={onNext}>
+        Next
+      </button>
+    </nav>
   );
 }

@@ -1,5 +1,5 @@
 import type { StoredTranscriptSegment } from "@web/lib/ws";
-import type { LibraryRow, SearchHit } from "./api";
+import type { LibraryRow, MeetingRow, SearchHit } from "./api";
 
 export interface Entry {
   key: string;
@@ -33,28 +33,38 @@ export function parseSegments(json: string): StoredTranscriptSegment[] {
 export const keyOf = (r: { device_id: string; meeting_id: string }) => `${r.device_id}/${r.meeting_id}`;
 const titleOf = (title: string) => title.trim() || "Untitled meeting";
 
-/** Newest first, like the desktop library. */
-export function toEntries(rows: LibraryRow[]): Entry[] {
-  return rows
-    .map((r): Entry => {
-      const m = r.body.meeting;
-      return {
-        key: keyOf(r),
-        device_id: r.device_id,
-        pushId: r.push_id,
-        pushedAt: r.pushed_at,
-        title: titleOf(m.title),
-        started_at: m.started_at,
-        endedAt: m.ended_at,
-        notes: m.notes_md ?? "",
-        enhanced: m.enriched_md,
-        segments: parseSegments(m.transcript_json ?? "[]"),
-      };
-    })
-    .sort((a, b) => b.started_at - a.started_at);
+/** A library page row as an entry without content, for its list row and the header of its meeting while the body loads. */
+export const summaryEntry = (r: LibraryRow): Entry => ({
+  key: keyOf(r),
+  device_id: r.device_id,
+  pushId: r.push_id,
+  pushedAt: r.pushed_at,
+  title: titleOf(r.title),
+  started_at: r.started_at,
+  endedAt: r.ended_at,
+  notes: "",
+  enhanced: null,
+  segments: [],
+});
+
+/** A meeting with its content, from `yogurt_meeting`. */
+export function toEntry(device_id: string, meeting_id: string, r: MeetingRow): Entry {
+  const m = r.body.meeting;
+  return {
+    key: keyOf({ device_id, meeting_id }),
+    device_id,
+    pushId: r.push_id,
+    pushedAt: r.pushed_at,
+    title: titleOf(m.title),
+    started_at: m.started_at,
+    endedAt: m.ended_at,
+    notes: m.notes_md ?? "",
+    enhanced: m.enriched_md,
+    segments: parseSegments(m.transcript_json ?? "[]"),
+  };
 }
 
-/** A search hit as an entry without content, for its list row or for a meeting the loaded library lacks. */
+/** A search hit as an entry without content, for its list row. */
 export const hitEntry = (h: SearchHit): Entry => ({
   key: keyOf(h),
   device_id: h.device_id,

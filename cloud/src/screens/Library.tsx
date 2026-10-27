@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { groupMeetingsByDay } from "@web/components/library/dayGroups";
+import { Pager } from "@web/components/library/Pager";
+import { rememberPageSize, resolvePageSize } from "@web/components/library/pagination";
 import { Logo } from "@web/components/Logo";
 import {
   Brand,
@@ -10,23 +12,24 @@ import {
   LoadError,
   LockButton,
   SearchField,
+  SearchPager,
   useDesktop,
 } from "../ui";
-import type { Api, SearchHit } from "../lib/api";
+import type { Api } from "../lib/api";
 import {
   asOfLabel,
   clock,
   duration,
-  forDevice,
   hitEntry,
-  toEntries,
+  summaryEntry,
+  toEntry,
   type Entry,
 } from "../lib/library";
-import { hitNote, searchStatus } from "../lib/search";
+import { SEARCH_PAGE, searchStatus } from "../lib/search";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { HOME, type Loc } from "../lib/hash";
-import { MeetingView } from "./Meeting";
+import { MeetingView, type BodyState } from "./Meeting";
 
 export const GearIcon = () => (
   <svg
@@ -44,13 +47,14 @@ export const GearIcon = () => (
   </svg>
 );
 
-type Row = Entry & { snippet: string | null; hit: SearchHit | null };
+type Row = Entry & { snippet: string | null };
 
 interface Props {
   api: Api;
   token: string;
   loc: Loc;
   go: (to: Loc) => void;
+  replace: (to: Loc) => void;
   back: (to: Loc) => void;
   onSettings: () => void;
   onLock: () => void;
@@ -62,6 +66,7 @@ export function Library({
   token,
   loc,
   go,
+  replace,
   back,
   onSettings,
   onLock,
@@ -70,39 +75,52 @@ export function Library({
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const { asOf: pushId, meeting: open } = loc;
-  const { data, error, loading, retry } = useCloudLoad(
+  const { asOf: pushId, meeting: open, page } = loc;
+  const size = loc.size ?? resolvePageSize(null);
+
+  const base = useCloudLoad(
     async () => {
-      const [devices, rows, history] = await Promise.all([
+      const [devices, history] = await Promise.all([
         api.devices(token),
-        api.library(token, pushId ?? undefined),
         pushId ? api.history(token) : null,
       ]);
       return {
         devices,
-        entries: toEntries(rows),
         pushedAt: history?.find((h) => h.push_id === pushId)?.pushed_at ?? null,
       };
     },
     onRejected,
     [api, token, pushId],
   );
-  const devices = data?.devices;
-  const entries = data?.entries;
+  const devices = base.data?.devices;
 
-  const [hit, setHit] = useState<SearchHit | null>(null);
-  // A reload's progress and failure belong to the meeting whose note started it.
-  const [reloadFor, setReloadFor] = useState<string | null>(null);
+  // One page at a time. The last page stays up, dimmed, while the next loads.
+  const pageLoad = useCloudLoad(
+    async () => {
+      const rows = await api.library(token, {
+        atPush: pushId,
+        limit: size,
+        offset: (page - 1) * size,
+        device,
+      });
+      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0 };
+    },
+    onRejected,
+    [api, token, pushId, size, page, device],
+  );
+  const shown = pageLoad.data ?? pageLoad.previous;
+  const turning = pageLoad.loading && !pageLoad.data;
+
+  // A page past the end has no rows to say how many there are, so start over.
+  const stale = !!pageLoad.data && !pageLoad.data.entries.length && page > 1;
+  useEffect(() => {
+    if (stale) replace({ ...loc, page: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stale]);
+
   const field = useRef<HTMLInputElement>(null);
   // The as-of view has no search, so the hook gets an empty query there.
-  const search = useSearch(
-    api,
-    token,
-    pushId ? "" : query,
-    device,
-    data,
-    onRejected,
-  );
+  const search = useSearch(api, token, pushId ? "" : query, device, onRejected);
   const hits = search.active
     ? search.pending
       ? search.previous
@@ -111,20 +129,33 @@ export function Library({
   const rows = useMemo<Row[]>(
     () =>
       hits
-        ? hits.map((h) => ({ ...hitEntry(h), snippet: h.snippet, hit: h }))
-        : forDevice(entries ?? [], device).map((e) => ({
-            ...e,
-            snippet: null,
-            hit: null,
-          })),
-    [hits, entries, device],
+        ? hits.map((h) => ({ ...hitEntry(h), snippet: h.snippet }))
+        : (shown?.entries ?? []).map((e) => ({ ...e, snippet: null })),
+    [hits, shown],
   );
   const groups = useMemo(() => groupMeetingsByDay(rows), [rows]);
 
-  // A search hit can be newer than the loaded library, or missing from it, so the meeting opens from what is loaded and offers a reload.
-  const loaded = entries?.find((e) => e.key === open) ?? null;
-  const note = hitNote(hit, open, loaded, !!pushId);
-  const opened = loaded ?? (note === "missing" && hit ? hitEntry(hit) : null);
+  // Opening a meeting, from a page or a search hit, fetches that one body.
+  const bodyLoad = useCloudLoad(
+    async () => {
+      if (!open) return null;
+      const i = open.indexOf("/");
+      const deviceId = open.slice(0, i);
+      const id = open.slice(i + 1);
+      const row = await api.meeting(token, deviceId, id, pushId);
+      return { entry: row ? toEntry(deviceId, id, row) : null };
+    },
+    onRejected,
+    [api, token, open, pushId],
+  );
+  const entry = bodyLoad.data?.entry ?? rows.find((r) => r.key === open) ?? null;
+  const body: BodyState = bodyLoad.error
+    ? { status: "error", message: bodyLoad.error, onRetry: bodyLoad.retry }
+    : !bodyLoad.data
+      ? { status: "loading" }
+      : bodyLoad.data.entry
+        ? { status: "ready" }
+        : { status: "gone" };
 
   const meta = (startedAt: number, endedAt: number | null) => {
     const min = duration({ started_at: startedAt, endedAt });
@@ -135,35 +166,19 @@ export function Library({
   const nameOf = (id: string) =>
     devices?.find((d) => d.id === id)?.name ?? "Unknown device";
 
-  const meeting = opened && (
+  const openDevice = open ? open.slice(0, open.indexOf("/")) : "";
+  const meeting = open && (
     <MeetingView
-      key={opened.key}
-      entry={opened}
-      device={nameOf(opened.device_id)}
-      deviceIndex={indexOf(opened.device_id)}
+      key={open}
+      entry={entry}
+      device={nameOf(openDevice)}
+      deviceIndex={indexOf(openDevice)}
       back={devices?.find((d) => d.id === device)?.name ?? "All devices"}
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
-      stub={!loaded}
-      reload={
-        note
-          ? {
-              text:
-                note === "missing"
-                  ? "This meeting isn't loaded on this page yet."
-                  : "A newer version was pushed.",
-              loading: loading && reloadFor === open,
-              error: reloadFor === open ? error : null,
-              onReload: () => {
-                setReloadFor(open);
-                retry();
-              },
-            }
-          : undefined
-      }
+      body={body}
     />
   );
-  if (!desktop && open && !entries && !error) return null;
   if (!desktop && meeting)
     return (
       <main className="min-h-dvh flex flex-col px-[16px] pt-[16px] pb-[16px]">
@@ -171,6 +186,14 @@ export function Library({
       </main>
     );
 
+  const chooseDevice = (id: string | null) => {
+    setDevice(id);
+    if (page > 1) go({ ...loc, page: 1 });
+  };
+  const failed = base.error ?? pageLoad.error;
+  const retry = () => (base.error ? base : pageLoad).retry();
+
+  const dim = search.active ? search.pending : turning;
   const list = (
     <>
       {pushId && (
@@ -179,7 +202,7 @@ export function Library({
           <span className="flex-1 min-w-0 truncate">
             <span className="text-mut">Viewing </span>
             <b className="font-semibold">
-              {data?.pushedAt ? asOfLabel(data.pushedAt) : `push ${pushId}`}
+              {base.data?.pushedAt ? asOfLabel(base.data.pushedAt) : `push ${pushId}`}
             </b>
           </span>
           <button
@@ -195,7 +218,7 @@ export function Library({
         <SearchField value={query} onChange={setQuery} inputRef={field} />
       )}
       {!!devices?.length && (
-        <DevicePills devices={devices} value={device} onChange={setDevice} />
+        <DevicePills devices={devices} value={device} onChange={chooseDevice} />
       )}
       {!pushId && (
         <p
@@ -215,9 +238,9 @@ export function Library({
         />
       ) : (
         <div
-          aria-busy={search.pending || undefined}
-          inert={search.pending || undefined}
-          className={`flex flex-col gap-[10px] min-[721px]:gap-[8px] ${search.pending ? "opacity-50" : ""}`}
+          aria-busy={dim || undefined}
+          inert={dim || undefined}
+          className={`flex flex-col gap-[10px] min-[721px]:gap-[8px] ${dim ? "opacity-50" : ""}`}
         >
           <DayList
             groups={groups}
@@ -234,17 +257,46 @@ export function Library({
                 }
                 snippet={r.snippet}
                 selected={r.key === open}
-                onClick={() => {
-                  setHit(r.hit);
-                  go({ ...loc, meeting: r.key });
-                }}
+                onClick={() => go({ ...loc, meeting: r.key })}
               />
             )}
           />
-          {!search.active && entries && !rows.length && (
+          {!search.active && shown && !rows.length && (
             <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">No meetings here.</p>
           )}
         </div>
+      )}
+      {pageLoad.error && shown ? (
+        <LoadError
+          message={`Could not load this page. ${pageLoad.error}`}
+          onRetry={pageLoad.retry}
+        />
+      ) : search.active ? (
+        (search.offset > 0 || search.more) &&
+        !search.error && (
+          <SearchPager
+            canPrevious={search.offset > 0 && !search.pending}
+            canNext={search.more && !search.pending}
+            onPrevious={() => search.setPage(search.offset / SEARCH_PAGE - 1)}
+            onNext={() => search.setPage(search.offset / SEARCH_PAGE + 1)}
+          />
+        )
+      ) : (
+        !!shown?.total && (
+          <Pager
+            page={page}
+            size={size}
+            total={shown.total}
+            onPage={(next) => {
+              go({ ...loc, page: next });
+              window.scrollTo(0, 0);
+            }}
+            onSize={(next) => {
+              rememberPageSize(next);
+              go({ ...loc, size: next, page: 1 });
+            }}
+          />
+        )
       )}
     </>
   );
@@ -268,14 +320,14 @@ export function Library({
           {desktop && <LockButton onClick={onLock} />}
         </div>
       </header>
-      {error && !entries ? (
+      {failed && !(devices && shown) ? (
         <main className="flex-1 flex flex-col items-center px-[16px] pt-[80px]">
           <LoadError
-            message={`Could not load your library. ${error}`}
+            message={`Could not load your library. ${failed}`}
             onRetry={retry}
           />
         </main>
-      ) : !devices || !entries ? null : !entries.length && !pushId ? (
+      ) : !devices || !shown ? null : !shown.total && !pushId && !device ? (
         <main className="flex-1 flex flex-col items-center text-center px-[16px] pt-[80px]">
           <div className="float-3500 mb-[32px]">
             <Logo size={64} ariaLabel="Yogurt" />

@@ -80,6 +80,7 @@ select pg_temp.expect('42501', array[
   'select yogurt_start_push(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_library(''x'')',
+  'select * from yogurt_meeting(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'')',
   'select * from yogurt_search(''x'', ''x'')',
   'select yogurt_search_catch_up()',
   'select * from yogurt_history(''x'')',
@@ -101,7 +102,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -210,6 +211,8 @@ select pg_temp.eq((select string_agg(x, ',') from yogurt_device_meetings(:d2) x)
 select pg_temp.expect('28000', array[
   'select * from yogurt_library(''no such token'')',
   'select * from yogurt_library(null)',
+  'select * from yogurt_meeting(''no such token'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'')',
+  'select * from yogurt_search(''no such token'', ''x'', null, 25)',
   'select * from yogurt_search(''no such token'', ''x'')',
   'select * from yogurt_search(null, ''x'')',
   'select * from yogurt_history(''no such token'')',
@@ -221,15 +224,33 @@ select pg_temp.eq(yogurt_unlock('wrong passcode', false, 'Safari'), null, 'wrong
 select yogurt_unlock('123456', false, 'Safari on iPhone') as tok \gset
 select pg_temp.eq(length(:'tok')::text, '64', 'token is 32 bytes of hex');
 
-select pg_temp.eq((select string_agg(l.device_id::text || ':' || l.meeting_id || ':' || (l.body->>'t'), ',' order by ord)
+select pg_temp.eq((select string_agg(l.device_id::text || ':' || l.meeting_id, ',' order by ord)
   from (select *, row_number() over () ord from yogurt_library(:'tok')) l),
-  '00000000-0000-0000-0000-0000000000d1:m1:v1b,00000000-0000-0000-0000-0000000000d2:m1:v2,00000000-0000-0000-0000-0000000000d1:m2:v1,00000000-0000-0000-0000-0000000000d1:m4:v1,00000000-0000-0000-0000-0000000000d2:m5:v1',
+  '00000000-0000-0000-0000-0000000000d1:m1,00000000-0000-0000-0000-0000000000d2:m1,00000000-0000-0000-0000-0000000000d1:m2,00000000-0000-0000-0000-0000000000d1:m4,00000000-0000-0000-0000-0000000000d2:m5',
   'latest library');
+select pg_temp.eq((select string_agg(l.meeting_id || (case when l.device_id = :d1 then 'a' else 'b' end) || l.push_id || ':' || l.total, ',') from yogurt_library(:'tok', null, 2, 1) l),
+  'm1b2:5,m2a1:5', 'a page from the middle carries the total');
+select pg_temp.eq((select count(*)::text from yogurt_library(:'tok', null, 2, 5)), '0', 'a page past the end is empty');
+select pg_temp.eq((select count(*)::text from yogurt_library(:'tok', null, 0, 0)) || (select count(*)::text from yogurt_library(:'tok', null, 5, -3)), '15', 'a zero limit counts as 1 and a negative offset as 0');
+select pg_temp.eq((select string_agg(l.meeting_id || (case when l.device_id = :d1 then 'a' else 'b' end) || l.push_id || ':' || l.total, ',') from yogurt_library(:'tok', 1, 2, 0) l),
+  'm1a1:3,m2a1:3', 'a page as of push 1');
+select pg_temp.eq((select string_agg(l.meeting_id || ':' || l.total, ',') from yogurt_library(:'tok', 1, 2, 2) l), 'm3:3', 'the last page as of push 1');
+select pg_temp.eq((select string_agg(k, ',' order by k collate "C") from (select jsonb_object_keys(to_jsonb(l)) k from yogurt_library(:'tok', null, 1, 0) l) x),
+  'device_id,ended_at,labels,meeting_id,push_id,pushed_at,starred,started_at,title,total', 'a library row has no body');
+select pg_temp.eq((select string_agg(m.push_id || ':' || (m.body->>'t'), ',') from yogurt_meeting(:'tok', :d1, 'm1') m), '3:v1b', 'the live version of a meeting');
+select pg_temp.eq((select string_agg(m.push_id || ':' || (m.body->>'t'), ',') from yogurt_meeting(:'tok', :d1, 'm1', 2) m), '1:v1', 'a meeting as of push 2');
+select pg_temp.eq((select string_agg(m.push_id || ':' || (m.body->>'t'), ',') from yogurt_meeting(:'tok', :d2, 'm1', 2) m), '2:v2', 'the same meeting id on another device');
+select pg_temp.eq((select count(*)::text from yogurt_meeting(:'tok', :d1, 'm3')), '0', 'a deleted meeting has no body');
+select pg_temp.eq((select count(*)::text from yogurt_meeting(:'tok', :d1, 'm3', 2)), '1', 'a meeting before its deletion');
+select pg_temp.eq((select count(*)::text from yogurt_meeting(:'tok', :d1, 'm5') ) || (select count(*)::text from yogurt_meeting(:'tok', :d1, 'm1', 0)), '00', 'an unknown meeting, and one not yet pushed');
+select pg_temp.eq((select pushed_at is not null from yogurt_meeting(:'tok', :d1, 'm1'))::text, 'true', 'meeting pushed_at present');
 select pg_temp.eq((select string_agg(l.meeting_id || (case when l.device_id = :d1 then 'a' else 'b' end) || l.push_id, ',') from yogurt_library(:'tok', 1) l),
   'm1a1,m2a1,m3a1', 'library as of push 1');
 select pg_temp.eq((select string_agg(l.meeting_id || (case when l.device_id = :d1 then 'a' else 'b' end) || l.push_id, ',') from yogurt_library(:'tok', 2) l),
   'm1a1,m1b2,m2a1,m3a1,m5b2', 'library as of push 2');
 select pg_temp.eq((select count(*)::text from yogurt_library(:'tok', 0)), '0', 'library before any push');
+select pg_temp.eq((select string_agg(l.meeting_id || ':' || l.total, ',') from yogurt_library(:'tok', null, 25, 0, :d1) l), 'm1:3,m2:3,m4:3', 'a library page for one device counts only its meetings');
+select pg_temp.eq((select string_agg(l.meeting_id || ':' || l.total, ',') from yogurt_library(:'tok', null, 1, 1, :d2) l), 'm5:2', 'a later page for one device');
 select pg_temp.eq((select pushed_at is not null from yogurt_library(:'tok', 1) limit 1)::text, 'true', 'pushed_at present');
 select pg_temp.eq((select string_agg(h.push_id || ':' || h.device_name || ':' || h.changed || '/' || h.deleted, ',') from yogurt_history(:'tok') h),
   '3:Laptop 1:2/1,2:Laptop 2:2/0,1:Laptop 1:3/0', 'history skips empty pushes, newest first');
@@ -474,6 +495,44 @@ select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'bulk')), '
 select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_search(:'stok', 'bulk') where meeting_id in ('g01', 'g25', 'g26')), 'g01,g25', 'the cap keeps the first by meeting id among equal times');
 select pg_temp.eq((select bool_and(more)::text from yogurt_search(:'stok', 'bulk')), 'true', 'more when there were more');
 select pg_temp.eq((select count(*)::text || ':' || bool_or(more)::text from yogurt_search(:'stok', 'exact')), '25:false', 'no more at exactly the cap');
+select pg_temp.eq((select min(meeting_id) || ':' || count(*) || ':' || bool_or(more) from yogurt_search(:'stok', 'bulk', null, 4)), 'g05:25:true', 'an offset skips rows and still reports more');
+select pg_temp.eq((select min(meeting_id) || ':' || count(*) || ':' || bool_or(more) from yogurt_search(:'stok', 'bulk', null, 5)), 'g06:25:false', 'the last full page has no more');
+select pg_temp.eq((select min(meeting_id) || ':' || count(*) || ':' || bool_or(more) from yogurt_search(:'stok', 'bulk', null, 25)), 'g26:5:false', 'a short last page');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'bulk', null, 30)), '0', 'an offset past the end is empty');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'bulk', null, -7)), '25', 'a negative offset counts as 0');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'bulk', :d3, 0)), '0', 'an offset call still filters by device');
+-- A deletion pushed after the index last caught up hides the meeting on every page.
+select yogurt_start_push(:d4) as push_d \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('g30', :push_d, :d4, null), ('g29', :push_d, :d4, null);
+select pg_temp.eq((select count(*)::text || ':' || bool_or(more) from yogurt_search(:'stok', 'bulk', null, 25)), '3:false', 'deleted meetings are hidden on a later page before the catch-up');
+select pg_temp.eq((select count(*)::text || ':' || bool_or(more) from yogurt_search(:'stok', 'bulk', null, 0)), '25:true', 'and the first page still has more');
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the catch-up after the deletions');
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'bulk', null, 25)), '3', 'still hidden once caught up');
+
+-- The library lists summaries newest first, with the labels and star, and deleted meetings drop out of the rows and the total.
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+values ('star1', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Zq starred', 'started_at', 99999, 'ended_at', 100999, 'starred', true,
+  'labels', jsonb_build_array(jsonb_build_object('id', 'l1', 'name', 'Team', 'color', 'blue')), 'notes_md', repeat('x', 5000), 'transcript_json', '[]')));
+reset role;
+select count(*)::text as live from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l where body is not null \gset
+set role authenticated;
+select pg_temp.eq((select total::text from yogurt_library(:'stok', null, 1, 0)), :'live', 'the total counts live meetings only');
+select pg_temp.eq((select title || ':' || started_at || ':' || ended_at || ':' || starred || ':' || labels || ':' || total from yogurt_library(:'stok', null, 1, 0)),
+  'Zq starred:99999:100999:true:[{"id": "l1", "name": "Team", "color": "blue"}]:' || :'live', 'the newest meeting leads with its summary fields');
+select pg_temp.eq((select string_agg(meeting_id || device_id, ',' order by o) from (select l.*, row_number() over () o from yogurt_library(:'stok', null, 10, 0) l) x),
+  (select string_agg(meeting_id || device_id, ',' order by o) from (select l.*, row_number() over () o from yogurt_library(:'stok', null, 100, 0) l limit 10) x), 'a page of 10 is the head of a page of 100');
+select pg_temp.eq((select string_agg(meeting_id || device_id, ',' order by o) from (select l.*, row_number() over () o from yogurt_library(:'stok', null, 10, 10) l) x),
+  (select string_agg(meeting_id || device_id, ',' order by o) from (select l.*, row_number() over () o from yogurt_library(:'stok', null, 100, 0) l offset 10 limit 10) x), 'the next page continues it');
+select pg_temp.eq((select (array_agg(started_at) = array_agg(started_at order by started_at desc))::text from yogurt_library(:'stok', null, 100, 0)), 'true', 'newest first');
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+select 'fill' || n, :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Fill ' || n, 'started_at', 50000 + n, 'notes_md', '', 'transcript_json', '[]'))
+from generate_series(1, 110) n;
+select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 1000, 0)), '100', 'a page is capped at 100 rows');
+select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 100, 0) where meeting_id in ('g29', 'g30')), '0', 'a deleted meeting is not listed');
+select pg_temp.eq(((select length(string_agg(to_jsonb(l)::text, '')) from yogurt_library(:'stok', null, 100, 0) l) < 30000)::text, 'true', 'a page of summaries stays small');
+reset role;
+delete from yogurt_versions where meeting_id like 'fill%' or meeting_id = 'star1';
+set role authenticated;
 
 -- A huge multibyte body is indexed within bounds, and a long run without spaces indexes quickly.
 insert into yogurt_versions (meeting_id, push_id, device_id, body)

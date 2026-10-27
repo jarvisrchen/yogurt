@@ -269,8 +269,9 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_browsers(token)` | webapp | live browsers with label, times, and whether each is the caller's |
 | `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
-| `yogurt_library(token, at_push)` | webapp | for each live meeting on each device, the latest version at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `body`, ordered by `meeting_id` then `device_id` for paging |
-| `yogurt_search(token, query, only_device)` | webapp | the live meetings matching the query, newest first, at most 25: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches |
+| `yogurt_library(token, at_push, page_limit, page_offset, only_device)` | webapp | one page of summaries, newest meeting first, for the latest version of each live meeting on each device at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, and `total`, the count of live meetings in the view. No note or transcript text. `page_limit` is clamped to 1 through 100. |
+| `yogurt_meeting(token, device_id, meeting_id, at_push)` | webapp | one meeting's `push_id`, `pushed_at`, and full `body`, the latest version at or before `at_push`, or now. No row when it is unknown or deleted by then. |
+| `yogurt_search(token, query, only_device, page_offset)` | webapp | the live meetings matching the query, newest first, 25 from `page_offset`: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches after this page |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 
@@ -281,7 +282,7 @@ Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authen
 `owner.sql` is the one statement the build runs with the owner email as `$1`: it inserts the `yogurt_owner` row, and a changed email applies only while `user_id` is still null.
 Grants stay explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
 The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
-PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with limit and offset.
+PostgREST caps a response at 1,000 rows. The webapp never asks for more than 100 rows of `yogurt_library` at a time.
 
 ## Search
 
@@ -358,12 +359,7 @@ The webapp waits 250 ms after the last keystroke and shows "Searching…" until 
 A previous answer with no hits stays too, so the next keystroke after a miss does not flash the whole library.
 A failed search shows only its error and Retry.
 It renders the returned rows without needing them in the loaded library.
-A hit opens the loaded copy at once.
-When the loaded copy is older than the hit, the meeting page says "A newer version was pushed" with a Reload button.
-When the loaded library lacks the meeting, the page shows its title and "This meeting isn't loaded on this page yet" with Reload.
-Reload keeps the page on screen while the library loads again, and a failed reload shows its error with Retry.
-The view as of an earlier push shows neither note.
-SYNC-12 replaces this with a fetch of the one meeting.
+A hit opens through `yogurt_meeting`, which returns the live version, so no note about a newer version or a meeting missing from the page is needed.
 It renders the snippet as text and marks the runs between the two characters, so meeting content is never parsed as HTML.
 
 ## History and reverting

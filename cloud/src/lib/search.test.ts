@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchHit } from "./api";
-import { hitNote, searchStatus, snippetParts } from "./search";
+import { searchStatus, snippetParts } from "./search";
 
 describe("snippetParts", () => {
   it("splits text around marked matches", () => {
@@ -34,7 +34,7 @@ describe("snippetParts", () => {
 const hit = (over: Partial<SearchHit> = {}): SearchHit => ({ device_id: "d", meeting_id: "m", push_id: 5, started_at: 0, ended_at: null, title: "T", snippet: null, more: false, ...over });
 
 describe("searchStatus", () => {
-  const idle = { active: true, pending: false, hits: [] as SearchHit[], more: false, error: null };
+  const idle = { active: true, pending: false, hits: [] as SearchHit[], more: false, offset: 0, error: null };
   it("says nothing without a query or after a failure", () => {
     expect(searchStatus({ ...idle, active: false }, "")).toBe("");
     expect(searchStatus({ ...idle, hits: null, error: "boom" }, "kombucha")).toBe("");
@@ -49,26 +49,17 @@ describe("searchStatus", () => {
     expect(searchStatus(idle, "James'")).toBe("No meetings match James'.");
     expect(searchStatus(idle, '"')).toBe("No meetings match.");
   });
-  it("counts the hits, or says the cap was reached", () => {
+  it("counts the hits of a single page", () => {
     expect(searchStatus({ ...idle, hits: [hit()] }, "x")).toBe("1 match");
     expect(searchStatus({ ...idle, hits: [hit(), hit()] }, "x")).toBe("2 matches");
-    expect(searchStatus({ ...idle, hits: [hit()], more: true }, "x")).toBe("Showing the newest matches. Add words to narrow.");
   });
-});
-
-describe("hitNote", () => {
-  it("is missing only when the loaded library lacks the hit", () => {
-    expect(hitNote(hit(), "d/m", null, false)).toBe("missing");
-    expect(hitNote(hit(), "d/m", { pushId: 5 }, false)).toBe(null);
+  it("gives the range once there is more than one page", () => {
+    const page = Array.from({ length: 25 }, () => hit());
+    expect(searchStatus({ ...idle, hits: page, more: true }, "x")).toBe("Matches 1–25");
+    expect(searchStatus({ ...idle, hits: page, more: true, offset: 25 }, "x")).toBe("Matches 26–50");
+    expect(searchStatus({ ...idle, hits: [hit(), hit()], offset: 50 }, "x")).toBe("Matches 51–52");
   });
-  it("is newer only when the loaded copy is older", () => {
-    expect(hitNote(hit(), "d/m", { pushId: 4 }, false)).toBe("newer");
-    expect(hitNote(hit({ push_id: 3 }), "d/m", { pushId: 4 }, false)).toBe(null);
-  });
-  it("is nothing for another meeting, without a hit, or in the as-of view", () => {
-    expect(hitNote(hit(), "d/other", null, false)).toBe(null);
-    expect(hitNote(null, "d/m", null, false)).toBe(null);
-    expect(hitNote(hit(), "d/m", null, true)).toBe(null);
-    expect(hitNote(hit(), "d/m", { pushId: 4 }, true)).toBe(null);
+  it("says so when a later page has nothing left", () => {
+    expect(searchStatus({ ...idle, offset: 25 }, "x")).toBe("No more matches.");
   });
 });

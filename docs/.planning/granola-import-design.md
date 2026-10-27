@@ -423,10 +423,10 @@ The read side does not handle an import, and SYNC-12 fixes it before the first p
 
 SYNC-12 gives the webapp the IMP-1 treatment:
 
-- `yogurt_library` returns summary fields only (title, times, labels, starred, device, push), with `limit`, `offset`, and a total, ordered newest first.
-- A new `yogurt_meeting(token, device_id, meeting_id, at_push)` returns one full body for the meeting page.
+- `yogurt_library` returns summary fields only (title, times, labels, starred, device, push), with `page_limit`, `page_offset`, an optional `only_device`, and a `total` on every row, ordered newest first. The device filter is server side because a page filtered in the browser would be short and its total wrong.
+- A new `yogurt_meeting(token, device_id, meeting_id, at_push)` returns one full body for the meeting page. With no `at_push` it returns the live version, and History passes one.
 - The webapp Library gets the same pager and page sizes as the local one.
-- Search is already server-side. SYNC-10 adds `yogurt_search(token, query, only_device)`, a Postgres full-text search over the latest version of each meeting that returns summary rows and a snippet, newest first. Today the webapp opens a hit from the full library rows it already holds. Once the library is paged, SYNC-12 opens a search hit through `yogurt_meeting`, the same way it opens a paged row.
+- Search is already server-side. SYNC-10 added `yogurt_search(token, query, only_device)`, a Postgres full-text search over the latest version of each meeting that returns summary rows and a snippet, newest first. It searches the live library only, and the History view hides search. SYNC-12 adds a `page_offset` argument, keeps the 25 row cap and the `more` flag, and opens a hit through `yogurt_meeting`, the same way it opens a paged row, so a hit always shows the live version and the "not loaded on this page yet" and "newer version" notes are gone.
 
 ```mermaid
 sequenceDiagram

@@ -4,6 +4,7 @@ import { TokenRejected } from "./api";
 /**
  * Runs `load` again when `deps` change or on `retry`. A reply from a superseded run is dropped, so a slow earlier request never overwrites a newer one.
  * `data` is what the last run for the current `deps` returned, so a retry keeps it on screen while `loading`, and new `deps` start from null.
+ * `previous` is the last result for any `deps`, for keeping a screen up, dimmed, while the next run loads.
  */
 export function useCloudLoad<T>(load: () => Promise<T>, onRejected: () => void, deps: unknown[]) {
   const [loaded, setLoaded] = useState<{ deps: unknown[]; data: T } | null>(null);
@@ -34,5 +35,5 @@ export function useCloudLoad<T>(load: () => Promise<T>, onRejected: () => void, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, onRejected, attempt]);
   const current = loaded && loaded.deps.length === deps.length && loaded.deps.every((d, i) => Object.is(d, deps[i]));
-  return { data: current ? loaded.data : null, error, loading, retry: () => setAttempt((n) => n + 1) };
+  return { data: current ? loaded.data : null, previous: loaded?.data ?? null, error, loading, retry: () => setAttempt((n) => n + 1) };
 }

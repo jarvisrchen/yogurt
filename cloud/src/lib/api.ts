@@ -36,12 +36,31 @@ export interface Bundle {
   };
 }
 
+/** One meeting's full body from `yogurt_meeting`. */
+export interface MeetingRow {
+  push_id: number;
+  pushed_at: string;
+  body: Bundle;
+}
+
+export interface Label {
+  id: string;
+  name: string;
+  color: string;
+}
+
+/** One row of a library page, without note or transcript text. `total` is every live meeting in the view and repeats on each row. */
 export interface LibraryRow {
   device_id: string;
   push_id: number;
   pushed_at: string;
   meeting_id: string;
-  body: Bundle;
+  title: string;
+  started_at: number;
+  ended_at: number | null;
+  starred: boolean;
+  labels: Label[];
+  total: number;
 }
 
 /** A meeting matching a search. `snippet` is null when the title matched, and otherwise text with the matches marked (see `snippetParts`). `more` is true when the server stopped at its cap. */
@@ -129,8 +148,13 @@ export class Api {
   browsers = (token: string) => this.rpc<Browser[]>("yogurt_browsers", { token });
   forgetBrowser = (token: string, browserId: number) =>
     this.rpc<boolean>("yogurt_forget_browser", { token, browser_id: browserId });
-  library = (token: string, atPush?: number) => this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: atPush ?? null });
-  search = (token: string, query: string, device: string | null) => this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: device });
+  library = (token: string, o: { atPush: number | null; limit: number; offset: number; device: string | null }) =>
+    this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: o.atPush, page_limit: o.limit, page_offset: o.offset, only_device: o.device });
+  /** The full body of one meeting, live or as of a push. Null when it is unknown or was deleted by then. */
+  meeting = async (token: string, device: string, meeting: string, atPush: number | null) =>
+    (await this.rpc<MeetingRow[]>("yogurt_meeting", { token, device_id: device, meeting_id: meeting, at_push: atPush }))[0] ?? null;
+  search = (token: string, query: string, device: string | null, offset: number) =>
+    this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: device, page_offset: offset });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
 }

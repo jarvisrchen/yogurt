@@ -20,16 +20,49 @@ function render(md: string): string {
 
 const LABELS: Record<Tab, string> = { notes: "Notes", enhanced: "Enhanced", transcript: "Transcript" };
 
-/** A note above the meeting that offers to reload the library, with the reload's progress or failure. */
-export interface ReloadNote {
-  text: string;
-  loading: boolean;
-  error: string | null;
-  onReload: () => void;
+/** What the open meeting's body is doing. Until it is `ready`, `entry` carries only a header. */
+export type BodyState = { status: "loading" } | { status: "ready" } | { status: "error"; message: string; onRetry: () => void } | { status: "gone" };
+
+const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
+
+/** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
+export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, body }: { entry: Entry | null; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; body: BodyState }) {
+  return (
+    <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
+      {!desktop && <Back to={back} onClick={onBack} />}
+      {entry && (
+        <div>
+          <h1 className="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">{entry.title}</h1>
+          <div className="flex flex-wrap items-center gap-[6px] min-[721px]:gap-[8px] text-[13px] min-[721px]:text-[12px] text-mut mt-[3px] min-[721px]:mt-[4px]">
+            <DeviceTag name={device} index={deviceIndex} />
+            {started(entry)}
+          </div>
+        </div>
+      )}
+      {body.status === "loading" && (
+        <p role="status" className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
+          Loading…
+        </p>
+      )}
+      {body.status === "gone" && (
+        <p role="status" className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
+          This meeting is no longer in your Cloud.
+        </p>
+      )}
+      {body.status === "error" && (
+        <div role="alert" className={NOTE}>
+          <span className="min-w-0 break-words">Could not load this meeting. {body.message}</span>
+          <button type="button" onClick={body.onRetry} className="flex-none text-blue font-semibold cursor-pointer bg-transparent border-0 p-[0px] font-[inherit]">
+            Retry
+          </button>
+        </div>
+      )}
+      {body.status === "ready" && entry && <MeetingBody entry={entry} device={device} />}
+    </article>
+  );
 }
 
-/** `stub` is a meeting the loaded library lacks: only its header and the reload note show. */
-export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, reload, stub }: { entry: Entry; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; reload?: ReloadNote; stub?: boolean }) {
+function MeetingBody({ entry, device }: { entry: Entry; device: string }) {
   const tabs = tabsFor(entry);
   const [picked, setPicked] = useState<Tab | null>(null);
   const tab = picked && tabs.includes(picked) ? picked : defaultTab(entry);
@@ -42,29 +75,8 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
     pendingSec.current = null;
   }, [tab]);
   return (
-    <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
-      {!desktop && <Back to={back} onClick={onBack} />}
-      <div>
-        <h1 className="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">{entry.title}</h1>
-        <div className="flex flex-wrap items-center gap-[6px] min-[721px]:gap-[8px] text-[13px] min-[721px]:text-[12px] text-mut mt-[3px] min-[721px]:mt-[4px]">
-          <DeviceTag name={device} index={deviceIndex} />
-          {started(entry)}
-        </div>
-      </div>
-      {reload && (
-        <div role={reload.error ? "alert" : "status"} className="flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
-          <span className="min-w-0 break-words">{reload.error ? `Could not reload. ${reload.error}` : reload.text}</span>
-          <button
-            type="button"
-            onClick={reload.onReload}
-            disabled={reload.loading}
-            className="flex-none text-blue font-semibold cursor-pointer disabled:cursor-default disabled:text-mut bg-transparent border-0 p-[0px] font-[inherit]"
-          >
-            {reload.loading ? "Reloading…" : reload.error ? "Retry" : "Reload"}
-          </button>
-        </div>
-      )}
-      {!stub && tabs.length > 1 && (
+    <>
+      {tabs.length > 1 && (
         <div role="tablist" className="flex gap-[4px] border-b border-line">
           {tabs.map((t) => (
             <button
@@ -80,15 +92,15 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
           ))}
         </div>
       )}
-      {!stub && <div className="cloud-doc text-[16px] min-[721px]:text-[13px] leading-[1.55]">
+      <div className="cloud-doc text-[16px] min-[721px]:text-[13px] leading-[1.55]">
         {tab === "transcript" ? (
           <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
         ) : (
           <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); } : undefined} />
         )}
-      </div>}
-      {!stub && <p className="text-[13px] min-[721px]:text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>}
-    </article>
+      </div>
+      <p className="text-[13px] min-[721px]:text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>
+    </>
   );
 }
 
