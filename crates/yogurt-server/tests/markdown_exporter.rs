@@ -1,4 +1,4 @@
-//! `MarkdownExporter` contract: filename `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md` (id6 prevents same-minute same-slug collisions), YAML front-matter plus body, atomic write, in-place overwrite, and an `untitled` fallback for blank titles.
+//! `MarkdownExporter` contract: filename `<YYYY-MM-DD-HHmm>-<slug>-<id6>.md` (id6 is the random tail of the id, so same-minute same-slug meetings stay apart), YAML front-matter plus body, atomic write, in-place overwrite, and an `untitled` fallback for blank titles.
 
 use std::fs;
 use yogurt_server::__test_only_markdown_exporter as me;
@@ -19,13 +19,13 @@ fn it_writes_atomic_yaml_markdown_with_dated_slug_filename() {
 
     assert!(path.exists(), "final file written");
     let fname = path.file_name().unwrap().to_str().unwrap();
-    // id6 is the first 6 alnum chars of the meeting id ("01J2AB" for "01J2ABCD").
+    // id6 is the last 6 alnum chars of the meeting id ("2ABCD" plus "J" for "01J2ABCD").
     assert!(
-        fname.contains("-q3-pricing-sync-") && fname.ends_with("-01J2AB.md"),
+        fname.contains("-q3-pricing-sync-") && fname.ends_with("-J2ABCD.md"),
         "filename ends with slug + id6, got {fname}"
     );
     assert!(
-        fname.len() > "-q3-pricing-sync-01J2AB.md".len(),
+        fname.len() > "-q3-pricing-sync-J2ABCD.md".len(),
         "filename has dated prefix, got {fname}"
     );
 
@@ -89,4 +89,73 @@ fn it_falls_back_to_untitled_for_empty_title() {
             .ends_with("-untitled-X.md"),
         "blank title + short id falls back to -untitled-X.md, got {path:?}"
     );
+}
+
+const V7_A: &str = "01937a3e-5c1b-7000-8000-aaaaaaaaaaaa";
+const V7_B: &str = "01937a3e-5c1b-7000-8000-bbbbbbbbbbbb";
+
+fn meeting<'a>(id: &'a str, body: &'a str) -> me::Meeting<'a> {
+    me::Meeting {
+        id,
+        title: "Meeting Jun 2",
+        started_at_unix_ms: 1_782_655_800_000,
+        ended_at_unix_ms: None,
+        body_md: body,
+    }
+}
+
+fn md_count(dir: &std::path::Path) -> usize {
+    fs::read_dir(dir).unwrap().count()
+}
+
+#[test]
+fn it_keeps_same_minute_same_title_v7_meetings_apart() {
+    let tmp = tempfile::tempdir().unwrap();
+    let exporter = me::MarkdownExporter::new(tmp.path().to_path_buf()).unwrap();
+    let a = exporter.write(&meeting(V7_A, "a\n")).unwrap();
+    let b = exporter.write(&meeting(V7_B, "b\n")).unwrap();
+    assert_ne!(a, b);
+    assert!(fs::read_to_string(&a).unwrap().ends_with("a\n"));
+    assert!(fs::read_to_string(&b).unwrap().ends_with("b\n"));
+}
+
+#[test]
+fn it_removes_only_its_own_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let exporter = me::MarkdownExporter::new(tmp.path().to_path_buf()).unwrap();
+    let a = exporter.write(&meeting(V7_A, "a\n")).unwrap();
+    let b = exporter.write(&meeting(V7_B, "b\n")).unwrap();
+    exporter.remove(&meeting(V7_A, "a\n")).unwrap();
+    assert!(!a.exists());
+    assert!(b.exists());
+}
+
+fn write_legacy(dir: &std::path::Path, id: &str, name: &str) -> std::path::PathBuf {
+    let p = dir.join(name);
+    fs::write(&p, format!("---\nid: {id}\ntitle: \"x\"\n---\n\nold\n")).unwrap();
+    p
+}
+
+const LEGACY_NAME: &str = "2026-06-28-1410-meeting-jun-2-01937a.md";
+
+#[test]
+fn it_replaces_a_legacy_named_file_on_rewrite() {
+    let tmp = tempfile::tempdir().unwrap();
+    let exporter = me::MarkdownExporter::new(tmp.path().to_path_buf()).unwrap();
+    let legacy = write_legacy(tmp.path(), V7_A, LEGACY_NAME);
+    let new = exporter.write(&meeting(V7_A, "a\n")).unwrap();
+    assert!(new.exists());
+    assert!(!legacy.exists(), "legacy file replaced");
+    assert_eq!(md_count(tmp.path()), 1);
+}
+
+#[test]
+fn it_leaves_a_twins_legacy_file_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let exporter = me::MarkdownExporter::new(tmp.path().to_path_buf()).unwrap();
+    let twin = write_legacy(tmp.path(), V7_B, LEGACY_NAME);
+    exporter.write(&meeting(V7_A, "a\n")).unwrap();
+    assert!(twin.exists(), "write kept the twin's legacy file");
+    exporter.remove(&meeting(V7_A, "a\n")).unwrap();
+    assert!(twin.exists(), "remove kept the twin's legacy file");
 }

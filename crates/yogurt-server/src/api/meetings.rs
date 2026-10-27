@@ -396,25 +396,14 @@ async fn delete_one(
 ) -> Result<StatusCode, ApiError> {
     let repo = s.meeting_repo.clone();
     let exporter = s.markdown_exporter.clone();
-    // `path_for` needs the row's fields, so resolve the path before deleting it.
     let removed = tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
-        let path = if q.delete_file {
-            repo.get(&id)?
-                .map(|m| exporter.path_for(&exporter_view(&m)))
-                .transpose()?
-        } else {
-            None
-        };
+        let m = if q.delete_file { repo.get(&id)? } else { None };
         let removed = repo.delete(&id)?;
         // Unlink only after the row is gone. A missing file is fine since the exporter writes lazily.
         if removed {
-            if let Some(path) = path {
-                match std::fs::remove_file(&path) {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(e) => {
-                        tracing::warn!(?e, path = %path.display(), "delete: could not remove markdown file");
-                    }
+            if let Some(m) = m {
+                if let Err(e) = exporter.remove(&exporter_view(&m)) {
+                    tracing::warn!(?e, "delete: could not remove markdown file");
                 }
             }
         }

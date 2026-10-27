@@ -1300,3 +1300,7 @@ New closed items go at the bottom.
 - [x] **IMP-1** Paginate the Library (10, 25, 50, or 100 a page) and return slim summary rows from the list and search APIs
 
   The Library pages in SQL with 10, 25, 50, or 100 a page, the list and search routes return slim summary rows with a total, and `yogurt ctl meeting last` and `list` page instead of downloading every meeting.
+
+- [x] **MTG-20** Name note files by the random end of the meeting id, so two same-minute, same-title meetings stop overwriting each other's file
+
+  Note files end in the last 6 characters of the meeting id, so same-minute, same-title meetings get separate files, and deleting one no longer deletes its twin's file. A rewrite removes the old prefix-named file only when its front-matter id matches.
