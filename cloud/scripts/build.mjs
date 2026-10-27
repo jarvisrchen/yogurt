@@ -11,7 +11,6 @@ const fail = (msg) => {
   process.exit(1);
 };
 
-// The Supabase Vercel integration sets both, and a manual setup sets them by hand.
 const supabaseUrl = env.SUPABASE_URL;
 const publishableKey = env.SUPABASE_PUBLISHABLE_KEY;
 if (!supabaseUrl) fail("set SUPABASE_URL.");
@@ -20,7 +19,7 @@ if (!publishableKey) fail("set SUPABASE_PUBLISHABLE_KEY.");
 const production = env.VERCEL_ENV === "production";
 const dbUrl = env.POSTGRES_URL_NON_POOLING;
 const owner = env.YOGURT_OWNER_EMAIL?.trim();
-if (production && !dbUrl) fail("production builds need POSTGRES_URL_NON_POOLING, which the Supabase integration provides.");
+if (production && !dbUrl) fail("production builds need POSTGRES_URL_NON_POOLING, the Supabase Session pooler connection string.");
 if (production && !owner) fail("production builds need YOGURT_OWNER_EMAIL, the email of the one Cloud login.");
 
 const dist = here("../dist");

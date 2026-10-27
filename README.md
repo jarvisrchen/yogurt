@@ -156,7 +156,7 @@ version that's safe to paste into a bug report.
 Yogurt Cloud mirrors your meetings to a webapp on your own Vercel and Supabase accounts, so you can read them on your phone.
 It is optional and off until you connect it.
 
-- Deploy it once with the Deploy with Vercel button in the guide, then create your Cloud login and choose a PIN.
+- Deploy it once by following the guide, then create your Cloud login and choose a PIN.
 - Connect each Mac in Settings, then Cloud sync, and push by hand or on an interval.
 - On the phone, read every Mac's meetings with their notes, enhanced notes, and transcript, and look back at the library as of any earlier push.
 

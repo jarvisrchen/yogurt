@@ -1284,3 +1284,7 @@ New closed items go at the bottom.
 - [x] **SYNC-10** Search the webapp library by title, notes, and transcript
 
   The webapp searches titles, notes, enhanced notes, and transcripts in the database, with accents and case folded, prefix matching on the last word, and highlighted snippets. Pushes never run search work: the laptop and the build call a time-bounded catch-up afterwards, so search can never fail a push.
+
+- [x] **SYNC-11** Rehearse the Deploy with Vercel button on a fresh Vercel and Supabase project
+
+  Yogurt Cloud has one user, so the Deploy with Vercel button and its Supabase integration path came out of the guide, the README, and the build's error message instead of being rehearsed. The by-hand setup that SYNC-9 rehearsed is the guide's one deploy path.
