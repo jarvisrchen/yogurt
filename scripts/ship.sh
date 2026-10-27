@@ -387,7 +387,7 @@ land_cleanup() {
   fi
 
   if $dry_run; then
-    echo "would run: git fetch origin --prune; git push origin --delete $branch (if it still exists); git fetch origin --prune"
+    echo "would run: git fetch origin --prune; git push origin --delete $branch (if it still exists); git fetch origin --prune; git merge --ff-only origin/main"
     return 0
   fi
 
@@ -402,6 +402,14 @@ land_cleanup() {
     echo "origin branch $branch already deleted"
   fi
   git fetch origin --prune --quiet
+
+  if [ "$(git symbolic-ref --short -q HEAD)" = main ] \
+    && [ -z "$(git status --porcelain --untracked-files=no)" ] \
+    && git merge --ff-only --quiet origin/main 2>/dev/null; then
+    echo "main checkout at $(git log -1 --format='%h %s')"
+  else
+    echo "main checkout not updated: it is off main, has uncommitted changes, or cannot fast-forward"
+  fi
 }
 
 cmd_land() {

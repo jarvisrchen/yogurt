@@ -173,7 +173,7 @@ CI runs on every PR (fmt, clippy at `-D warnings`, Rust tests, web typecheck, we
 Tracked git hooks back this up locally: `.githooks/pre-commit` refuses a commit on `main`, and `.githooks/commit-msg` refuses agent attribution and em dashes.
 `just bootstrap` and `./scripts/setup.sh` both point git at them (`git config core.hooksPath .githooks`), which covers every worktree; bypass a hook with `git commit --no-verify` when a rule misfires.
 
-`just pr "<title>" --body-file <f>` validates the title, body, and (for a code change) an absolute-path handover line, then pushes and opens the PR; `just land [pr]` waits for CI, squash-merges, and removes the worktree and branch.
+`just pr "<title>" --body-file <f>` validates the title, body, and (for a code change) an absolute-path handover line, then pushes and opens the PR; `just land [pr]` waits for CI, squash-merges, removes the worktree and branch, and fast-forwards the main checkout.
 See `docs/.planning/agent-workflow.md` section 4B for the full design.
 
 ```bash

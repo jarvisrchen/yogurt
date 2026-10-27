@@ -1344,3 +1344,7 @@ New closed items go at the bottom.
 - [x] **UI-23** Show the server's real data folder in the Settings footer, the empty Library, and the delete confirm
 
   Landed in the UI-23 PR (2026-10-27). `GET /api/settings` returns `paths` (`data_dir`, `keys`, `notes`) from the running server, with the home directory shown as `~`, so an instance started with `--data-dir` or `$YOGURT_DATA_DIR` names its own files instead of a hardcoded `~/.yogurt`. The Settings footer breaks a long path after a `/`. The models folder stays `~/.yogurt/models` because models never move.
+
+- [x] **DX-20** Fast-forward the main checkout at the end of `just land`, skipping it when the checkout is off `main` or has uncommitted changes
+
+  Ran `scripts/tests/ship_test.sh`: 54 passed, and the two new checks fail without the change.
