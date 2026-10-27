@@ -1320,3 +1320,7 @@ New closed items go at the bottom.
 - [x] **SYNC-16** Match the webapp library row text to the search bar at phone width, where the search input is 16px but row titles were 12px and the meta and snippet lines 10-10.5px
 
   Below 721px the library rows now use a 16px title and 13-13.5px meta and snippet lines, so they match the 16px search input. Desktop sizes are unchanged.
+
+- [x] **IMP-5** Drop the Open in Granola link from an imported meeting's header
+
+  An imported meeting header reads "Imported from Granola", plus "Captured by" for someone else's meeting, with no link back to Granola, since the import is meant to replace it.

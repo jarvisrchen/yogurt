@@ -175,7 +175,7 @@ CREATE UNIQUE INDEX idx_meetings_source ON meetings(source, source_id) WHERE sou
 
 The unique index is what makes a re-run safe, and the insert is `INSERT ... ON CONFLICT DO NOTHING`.
 `source_json` holds the fields that are shown but never queried.
-`owner` records who captured the meeting, `web_url` backs an "Open in Granola" link, and `updated_at` leaves room for a future refresh.
+`owner` records who captured the meeting, `web_url` keeps the link back to the Granola note, and `updated_at` leaves room for a future refresh.
 `Meeting` gains `source` and a parsed `source_json`, so the API, the markdown export's front matter, and the Yogurt Cloud bundle all carry them with no further work.
 
 The migration rebuilds nothing, because `meetings_fts` indexes title, notes, enriched notes, and transcript, and none of those change.
@@ -186,7 +186,7 @@ It must land on `main` before any branch build touches `~/.yogurt`, per the shar
 | Granola data | In yogurt today | Present in this account | Decision |
 | --- | --- | --- | --- |
 | Who captured the note (`owner`) | No. Every meeting is implicitly the user's. | 73 of 1,365 are someone else's | **Add**, as `source_json.owner`, shown in the meeting header. |
-| Link back to Granola (`web_url`) | No | Every note | **Add**, as `source_json.web_url`, shown as "Open in Granola". |
+| Link back to Granola (`web_url`) | No | Every note | **Add**, as `source_json.web_url`, stored but not shown. |
 | Granola ID | No | Every note | **Add**, as `source_id`. Needed to skip duplicates. |
 | Attendees (name, email) | No | Only the owner, in 51 of 51 sampled. The account has no calendar connected, so the list never holds anyone else. | **Defer.** An `attendees` column would be empty for every import. Add it when yogurt or Granola can fill it, with a V013-style FTS rebuild so names become searchable. |
 | Calendar event | No | 0 of 51 | **Skip**, by the user's decision. |
@@ -389,7 +389,7 @@ When the job finishes it reads "Imported 1,365" and clicking it opens the Librar
 The pill stays until it is clicked, like the download pill, so a result is not missed while the user is elsewhere.
 `ProgressRing` moves out of `DownloadPill.tsx` into a shared component so both pills use it.
 
-The post-meeting header of an imported meeting gains one quiet line: "Imported from Granola", then "· Captured by Abhigyan Pandey" when the owner is not the user, then "Open in Granola".
+The post-meeting header of an imported meeting gains one quiet line: "Imported from Granola", then "· Captured by Abhigyan Pandey" when the owner is not the user.
 Library cards are unchanged, and folders arrive as labels, so the existing label filter covers browsing by client.
 
 Enhance stays available on imported meetings.
