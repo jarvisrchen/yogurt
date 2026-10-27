@@ -1,10 +1,10 @@
-import type { Meeting } from "../../lib/api/meetings";
+import type { MeetingSummary } from "../../lib/api/meetings";
 import { MeetingCard } from "./MeetingCard";
 import { LABEL } from "../settings/labelClass";
 import { groupMeetingsByDay } from "./dayGroups";
 
 interface Props {
-  meetings: ReadonlyArray<Meeting>;
+  meetings: ReadonlyArray<MeetingSummary>;
   now?: Date;
   activeId?: string | null;
   selectionActive?: boolean;

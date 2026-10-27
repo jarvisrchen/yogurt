@@ -333,7 +333,7 @@ Both return `{"meetings": [MeetingSummary], "total": <n>}`, where `total` counts
 `label_id` and `starred` are optional, and they move the Library's label and starred filters from the browser to SQL.
 They have to move, because filtering one page in the browser would show 3 starred meetings out of a page of 25 instead of the first 25 starred meetings.
 
-`MeetingSummary` is `id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, and `has_enriched`, plus `source` and the capturer once IMP-2 adds them.
+`MeetingSummary` is `id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, `has_enriched`, and the `stt_engine` and `llm_model` the card shows as pills, plus `source` and the capturer once IMP-2 adds them.
 That is a few hundred bytes a row, so a page of 25 is about 10 KB, and a page of 100 is about 40 KB.
 Search keeps its current FTS ranking, and its `total` comes from a `COUNT(*)` over the same match.
 `GET /api/meetings/{id}` is unchanged and remains the only route that returns a transcript.

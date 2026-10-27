@@ -33,7 +33,10 @@ Reads fall back to the local database (`source: db`) when no server answers, so 
 `yogurt ctl meeting search <word> --json` is full-text over title, notes, and transcript, newest first among equal matches.
 Search one word (a person's name, a topic), not a phrase - "Steven" matches, "1:1 with Steven" only matches that exact string, and "Steve" does not match "Steven".
 Narrow by date client-side on `started_at`, then read it with `ctl meeting summary <id>`.
-`ctl meeting show last` is the most recent meeting; `ctl meeting list --json` is everything, newest first.
+`ctl meeting show last` is the most recent meeting.
+`ctl meeting list --json` is newest first and returns `{"meetings":[...],"total":n}`, where each row is a summary (`id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, `has_enriched`) with no notes or transcript.
+Add `--limit N` for the newest N rows, since `total` still counts every meeting; without it `ctl` pages through them all.
+`ctl meeting show <id>` or `summary <id>` reads the body.
 
 Three rules:
 

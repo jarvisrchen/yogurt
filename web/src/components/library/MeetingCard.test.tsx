@@ -4,31 +4,26 @@ import "@testing-library/jest-dom/vitest";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MeetingCard } from "./MeetingCard";
-import type { Meeting } from "../../lib/api/meetings";
+import type { MeetingSummary } from "../../lib/api/meetings";
 
 const START = new Date("2026-06-25T14:45:00").getTime();
 
-function meeting(over: Partial<Meeting> = {}): Meeting {
+function meeting(over: Partial<MeetingSummary> = {}): MeetingSummary {
   return {
     id: "m1",
     title: "Standup",
     started_at: START,
     ended_at: null,
-    notes_md: "",
-    enriched_md: null,
-    transcript_json: "[]",
     starred: false,
     stt_engine: null,
     llm_model: null,
-    template: null,
+    has_enriched: false,
     labels: [],
-    created_at: new Date(START).toISOString(),
-    updated_at: new Date(START).toISOString(),
     ...over,
   };
 }
 
-function renderCard(m: Meeting, activeId?: string | null) {
+function renderCard(m: MeetingSummary, activeId?: string | null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>

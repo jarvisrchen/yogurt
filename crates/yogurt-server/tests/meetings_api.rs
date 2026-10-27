@@ -81,8 +81,16 @@ async fn it_creates_and_lists_meetings() {
         .await
         .unwrap();
     assert_eq!(list_resp.status(), 200);
-    let xs: Vec<serde_json::Value> = list_resp.json().await.unwrap();
+    let page: serde_json::Value = list_resp.json().await.unwrap();
+    assert_eq!(page["total"], 1);
+    let xs = page["meetings"].as_array().unwrap();
     assert_eq!(xs.len(), 1);
+    assert!(
+        xs[0].get("transcript_json").is_none() && xs[0].get("notes_md").is_none(),
+        "list rows are summaries: {}",
+        xs[0]
+    );
+    assert_eq!(xs[0]["has_enriched"], false);
     assert_eq!(xs[0]["id"].as_str().unwrap(), id);
     assert_eq!(xs[0]["title"].as_str().unwrap(), "Standup");
 
@@ -174,7 +182,7 @@ async fn it_rejects_malformed_transcript_json_naming_the_bad_field() {
     );
 
     // A rejected create must not leave a stray row.
-    let list_resp: Vec<serde_json::Value> = client
+    let list_resp: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
         .send()
@@ -184,7 +192,7 @@ async fn it_rejects_malformed_transcript_json_naming_the_bad_field() {
         .await
         .unwrap();
     assert!(
-        list_resp.is_empty(),
+        list_resp["meetings"].as_array().unwrap().is_empty(),
         "expected no meeting rows: {list_resp:?}"
     );
 
@@ -438,7 +446,7 @@ async fn it_fts_searches_meetings() {
         .error_for_status()
         .unwrap();
 
-    let hits: Vec<serde_json::Value> = client
+    let hits: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings/search?q=palette"))
         .bearer_auth(&token)
         .send()
@@ -447,10 +455,10 @@ async fn it_fts_searches_meetings() {
         .json()
         .await
         .unwrap();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0]["id"], a["id"]);
+    assert_eq!(hits["total"], 1);
+    assert_eq!(hits["meetings"][0]["id"], a["id"]);
 
-    let none: Vec<serde_json::Value> = client
+    let none: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings/search?q=zzzzz"))
         .bearer_auth(&token)
         .send()
@@ -459,9 +467,10 @@ async fn it_fts_searches_meetings() {
         .json()
         .await
         .unwrap();
-    assert!(none.is_empty());
+    assert_eq!(none["total"], 0);
+    assert!(none["meetings"].as_array().unwrap().is_empty());
 
-    let all: Vec<serde_json::Value> = client
+    let all: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings/search?q="))
         .bearer_auth(&token)
         .send()
@@ -470,7 +479,7 @@ async fn it_fts_searches_meetings() {
         .json()
         .await
         .unwrap();
-    assert_eq!(all.len(), 2, "empty q must return the full list");
+    assert_eq!(all["total"], 2, "empty q must return the full list");
 
     handle.abort();
 }
@@ -810,4 +819,102 @@ async fn active_recording_serializes_stt_engine_once_set() {
         .unwrap();
     assert_eq!(body["id"], m.id.to_string());
     assert_eq!(body["stt"], "cloud");
+}
+
+async fn get_json(
+    client: &reqwest::Client,
+    addr: std::net::SocketAddr,
+    token: &str,
+    path: &str,
+) -> (reqwest::StatusCode, serde_json::Value) {
+    let r = client
+        .get(format!("http://{addr}{path}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    // Axum's own query rejection is plain text, so a non-JSON body reads as null.
+    (r.status(), r.json().await.unwrap_or_default())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn list_and_search_page_with_totals_and_sql_filters() {
+    let (addr, token, handle, _notes_dir, _tmp) = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let mut ids = Vec::new();
+    for i in 0..7 {
+        let m: serde_json::Value = client
+            .post(format!("http://{addr}/api/meetings"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({
+                "title": format!("Budget {i}"),
+                "started_at_unix_ms": 1_000 * (i + 1),
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        ids.push(m["id"].as_str().unwrap().to_string());
+    }
+    for id in [&ids[1], &ids[5]] {
+        client
+            .patch(format!("http://{addr}/api/meetings/{id}"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "starred": true }))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+    }
+
+    let (status, page) = get_json(&client, addr, &token, "/api/meetings?limit=3&offset=3").await;
+    assert_eq!(status, 200);
+    assert_eq!(page["total"], 7, "total counts every match before paging");
+    let got: Vec<&str> = page["meetings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(got, [&ids[3], &ids[2], &ids[1]]);
+
+    let (_, page) = get_json(&client, addr, &token, "/api/meetings").await;
+    assert_eq!(
+        page["meetings"].as_array().unwrap().len(),
+        7,
+        "default limit is 25"
+    );
+
+    let (_, page) = get_json(&client, addr, &token, "/api/meetings?starred=true&limit=1").await;
+    assert_eq!(page["total"], 2);
+    assert_eq!(page["meetings"][0]["id"], ids[5].as_str());
+
+    let (_, page) = get_json(
+        &client,
+        addr,
+        &token,
+        "/api/meetings/search?q=budget&starred=true&limit=1&offset=1",
+    )
+    .await;
+    assert_eq!(page["total"], 2);
+    assert_eq!(page["meetings"][0]["id"], ids[1].as_str());
+
+    let (_, page) = get_json(&client, addr, &token, "/api/meetings?label_id=nope").await;
+    assert_eq!(page["total"], 0);
+
+    for bad in ["limit=0", "limit=101", "limit=-1", "offset=-1"] {
+        let (status, _) = get_json(&client, addr, &token, &format!("/api/meetings?{bad}")).await;
+        assert!(
+            status.is_client_error(),
+            "{bad} should be rejected: {status}"
+        );
+    }
+    let (status, _) = get_json(&client, addr, &token, "/api/meetings/search?q=x&limit=101").await;
+    assert_eq!(status, 400);
+
+    handle.abort();
 }

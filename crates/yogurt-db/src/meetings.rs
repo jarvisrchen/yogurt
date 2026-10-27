@@ -47,6 +47,35 @@ pub struct Meeting {
     pub labels: Vec<Label>,
 }
 
+/// What a Library card shows. Carries no note or transcript bodies, so a page of 100 stays around 40 KB.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MeetingSummary {
+    pub id: String,
+    pub title: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub starred: bool,
+    pub stt_engine: Option<String>,
+    pub llm_model: Option<String>,
+    /// `enriched_md` is set. The card flags an ended meeting that has none.
+    pub has_enriched: bool,
+    pub labels: Vec<Label>,
+}
+
+/// One page of a listing. `total` counts every match before `limit` and `offset`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MeetingPage {
+    pub meetings: Vec<MeetingSummary>,
+    pub total: usize,
+}
+
+/// Narrows [`MeetingRepo::list_page`] and [`MeetingRepo::search_page`] in SQL, so paging and `total` see only matching rows.
+#[derive(Debug, Clone, Default)]
+pub struct MeetingFilter {
+    pub label_id: Option<String>,
+    pub starred: bool,
+}
+
 /// One [`MeetingRepo::retrieve`] result. `excerpt` is the transcript text around the matched terms, empty when nothing matched there.
 #[derive(Debug, Clone)]
 pub struct RetrievalHit {
@@ -159,17 +188,23 @@ impl MeetingRepo {
         })
     }
 
-    /// All meetings newest-first by `started_at`.
-    pub fn list(&self) -> Result<Vec<Meeting>> {
-        self.db.with_conn(|conn| -> Result<Vec<Meeting>> {
-            let mut stmt = conn.prepare_cached(SELECT_ALL_ORDER_BY_STARTED_DESC)?;
-            let rows = stmt.query_map([], row_to_meeting)?;
-            let mut out = Vec::new();
-            for r in rows {
-                out.push(r?);
-            }
-            hydrate_labels(conn, &mut out)?;
-            Ok(out)
+    /// A page of meetings, newest first by `started_at` with `id` breaking ties so pages stay stable.
+    pub fn list_page(
+        &self,
+        filter: &MeetingFilter,
+        limit: usize,
+        offset: usize,
+    ) -> Result<MeetingPage> {
+        self.db.with_conn(|conn| {
+            query_page(
+                conn,
+                &format!("meetings m WHERE {FILTER_SQL}"),
+                "m.started_at DESC, m.id DESC",
+                &[],
+                filter,
+                limit,
+                offset,
+            )
         })
     }
 
@@ -310,61 +345,47 @@ impl MeetingRepo {
         Ok(Some(bundle_value(&m, &chat)))
     }
 
-    /// FTS5 keyword search across title + notes_md + transcript_text.
+    /// FTS5 keyword search across title + notes_md + transcript_text, one page at a time.
     ///
-    /// Empty or whitespace-only `query` short-circuits to `self.list()` (capped at `limit`); the Library UI relies on this when the search pill is cleared.
+    /// Empty or whitespace-only `query` short-circuits to [`Self::list_page`]; the Library UI relies on this when the search pill is cleared.
     ///
     /// The query is wrapped as `"<sanitized>"*`, a single prefix-matched phrase, with embedded `"` doubled (FTS5 quoting).
     /// That keeps FTS5 operators (`OR`, `NEAR`, column filters) out: typing `notes:foo` searches the literal string.
     ///
-    /// Ranking: `bm25(meetings_fts)`, ties broken by `started_at DESC`.
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<Meeting>> {
+    /// Ranking: `bm25(meetings_fts)`, ties broken by `started_at DESC, id DESC`.
+    /// A date-shaped query ("10/6/26") also matches every meeting that started that local day, ahead of the text matches.
+    pub fn search_page(
+        &self,
+        query: &str,
+        filter: &MeetingFilter,
+        limit: usize,
+        offset: usize,
+    ) -> Result<MeetingPage> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
-            // Truncate to `limit` for parity with the matched branch.
-            let mut all = self.list()?;
-            all.truncate(limit);
-            return Ok(all);
+            return self.list_page(filter, limit, offset);
         }
-        // Double `"` (FTS5 quoting), wrap in quotes, and suffix `*` for prefix matching.
-        let escaped = trimmed.replace('"', "\"\"");
-        let match_expr = format!("\"{escaped}\"*");
-        // A date-shaped query ("10/6/26") also returns every meeting that
-        // started that local day, ahead of the text matches.
+        let match_expr = format!("\"{}\"*", trimmed.replace('"', "\"\""));
         let day = parse_short_date(trimmed).and_then(local_day_bounds_ms);
-        self.db.with_conn(|conn| -> Result<Vec<Meeting>> {
-            let mut out = Vec::new();
-            if let Some((start, end)) = day {
-                let mut stmt = conn.prepare_cached(
-                    "SELECT id, title, started_at, ended_at, notes_md, enriched_md, \
-                            transcript_json, starred, created_at, updated_at, \
-                            stt_engine, llm_model, template \
-                     FROM meetings WHERE started_at >= ?1 AND started_at < ?2 \
-                     ORDER BY started_at DESC LIMIT ?3",
-                )?;
-                for r in stmt.query_map(params![start, end, limit as i64], row_to_meeting)? {
-                    out.push(r?);
-                }
-            }
-            let mut stmt = conn.prepare_cached(
-                "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
-                        m.enriched_md, m.transcript_json, m.starred, \
-                        m.created_at, m.updated_at, m.stt_engine, m.llm_model, m.template \
-                 FROM meetings m \
-                 JOIN meetings_fts f ON f.rowid = m.rowid \
-                 WHERE meetings_fts MATCH ?1 \
-                 ORDER BY bm25(meetings_fts), m.started_at DESC \
-                 LIMIT ?2",
-            )?;
-            let rows = stmt.query_map(params![match_expr, limit as i64], row_to_meeting)?;
-            for r in rows {
-                let m = r?;
-                if out.len() < limit && !out.iter().any(|o| o.id == m.id) {
-                    out.push(m);
-                }
-            }
-            hydrate_labels(conn, &mut out)?;
-            Ok(out)
+        let (day_start, day_end) = (day.map(|d| d.0), day.map(|d| d.1));
+        const ON_DAY: &str = "(m.started_at >= :ds AND m.started_at < :de)";
+        self.db.with_conn(|conn| {
+            query_page(
+                conn,
+                &format!(
+                    "meetings m LEFT JOIN (SELECT rowid AS rid, bm25(meetings_fts) AS rank \
+                         FROM meetings_fts WHERE meetings_fts MATCH :q) f ON f.rid = m.rowid \
+                     WHERE (f.rid IS NOT NULL OR {ON_DAY}) AND {FILTER_SQL}"
+                ),
+                &format!(
+                    "COALESCE({ON_DAY}, 0) DESC, CASE WHEN {ON_DAY} THEN NULL ELSE f.rank END, \
+                     m.started_at DESC, m.id DESC"
+                ),
+                &[(":q", &match_expr), (":ds", &day_start), (":de", &day_end)],
+                filter,
+                limit,
+                offset,
+            )
         })
     }
 
@@ -511,10 +532,6 @@ const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
     notes_md, enriched_md, transcript_json, starred, created_at, updated_at, \
     stt_engine, llm_model, template FROM meetings WHERE id = ?1";
 
-const SELECT_ALL_ORDER_BY_STARTED_DESC: &str = "SELECT id, title, started_at, \
-    ended_at, notes_md, enriched_md, transcript_json, starred, created_at, \
-    updated_at, stt_engine, llm_model, template FROM meetings ORDER BY started_at DESC, id DESC";
-
 /// Coerces SQL NULL on `notes_md` / `transcript_json` to `""` / `"[]"` because legacy rows may have NULLs there.
 fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     let id: String = r.get(0)?;
@@ -591,13 +608,63 @@ fn labels_for(
     Ok(map)
 }
 
-fn hydrate_labels(conn: &Connection, out: &mut [Meeting]) -> rusqlite::Result<()> {
-    let ids: Vec<String> = out.iter().map(|m| m.id.clone()).collect();
-    let mut map = labels_for(conn, &ids)?;
-    for m in out.iter_mut() {
-        m.labels = map.remove(&m.id).unwrap_or_default();
+const FILTER_SQL: &str = "(:label IS NULL OR EXISTS (SELECT 1 FROM meeting_labels ml \
+     WHERE ml.meeting_id = m.id AND ml.label_id = :label)) AND (:starred = 0 OR m.starred = 1)";
+
+/// Counts `from_where` (a `FROM` body whose table alias is `m`), then fetches one page of it.
+/// `extra` binds the named parameters `from_where` and `order_by` use beyond `FILTER_SQL`.
+fn query_page(
+    conn: &Connection,
+    from_where: &str,
+    order_by: &str,
+    extra: &[(&str, &dyn rusqlite::ToSql)],
+    filter: &MeetingFilter,
+    limit: usize,
+    offset: usize,
+) -> Result<MeetingPage> {
+    let starred = i64::from(filter.starred);
+    let mut named: Vec<(&str, &dyn rusqlite::ToSql)> = extra.to_vec();
+    named.push((":label", &filter.label_id));
+    named.push((":starred", &starred));
+    let total: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {from_where}"),
+            &*named,
+            |r| r.get(0),
+        )
+        .context("count meetings")?;
+    let (limit, offset) = (limit as i64, offset as i64);
+    named.push((":limit", &limit));
+    named.push((":offset", &offset));
+    let mut stmt = conn.prepare(&format!(
+        "SELECT m.id, m.title, m.started_at, m.ended_at, m.starred, m.stt_engine, m.llm_model, \
+                m.enriched_md IS NOT NULL \
+         FROM {from_where} ORDER BY {order_by} LIMIT :limit OFFSET :offset"
+    ))?;
+    let mut meetings = stmt
+        .query_map(&*named, |r| {
+            Ok(MeetingSummary {
+                id: r.get(0)?,
+                title: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                started_at: r.get(2)?,
+                ended_at: r.get(3)?,
+                starred: r.get::<_, i64>(4)? != 0,
+                stt_engine: r.get(5)?,
+                llm_model: r.get(6)?,
+                has_enriched: r.get(7)?,
+                labels: Vec::new(),
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let ids: Vec<String> = meetings.iter().map(|m| m.id.clone()).collect();
+    let mut labels = labels_for(conn, &ids)?;
+    for m in &mut meetings {
+        m.labels = labels.remove(&m.id).unwrap_or_default();
     }
-    Ok(())
+    Ok(MeetingPage {
+        meetings,
+        total: total as usize,
+    })
 }
 
 fn ms_to_dt(ms: i64) -> DateTime<Utc> {
@@ -615,6 +682,18 @@ mod tests {
     fn fresh_repo() -> MeetingRepo {
         let db = Db::open_in_memory().expect("open in-memory db");
         MeetingRepo::new(db)
+    }
+
+    fn search(repo: &MeetingRepo, q: &str, limit: usize) -> Result<Vec<MeetingSummary>> {
+        Ok(repo
+            .search_page(q, &MeetingFilter::default(), limit, 0)?
+            .meetings)
+    }
+
+    fn list(repo: &MeetingRepo) -> Vec<MeetingSummary> {
+        repo.list_page(&MeetingFilter::default(), 100, 0)
+            .unwrap()
+            .meetings
     }
 
     #[test]
@@ -697,14 +776,9 @@ mod tests {
             Some("standup")
         );
         assert_eq!(
-            repo.list().unwrap()[0].template.as_deref(),
-            Some("standup"),
-            "list carries the stamp too"
-        );
-        // list() uses a different SELECT than get(); both must project the column.
-        assert_eq!(
-            repo.list().unwrap()[0].llm_model.as_deref(),
-            Some("MiniMax-Text-01")
+            list(&repo)[0].llm_model.as_deref(),
+            Some("MiniMax-Text-01"),
+            "the summary projects the column too"
         );
     }
 
@@ -738,7 +812,7 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        let xs = repo.list().unwrap();
+        let xs = list(&repo);
         assert_eq!(xs.len(), 2);
         assert_eq!(xs[0].id, b.id, "newer first");
         assert_eq!(xs[1].id, a.id);
@@ -855,7 +929,7 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        let hits = repo.search("standup", 50).unwrap();
+        let hits = search(&repo, "standup", 50).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, m.id);
     }
@@ -878,7 +952,7 @@ mod tests {
             },
         )
         .unwrap();
-        let hits = repo.search("palette", 50).unwrap();
+        let hits = search(&repo, "palette", 50).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, m.id);
     }
@@ -901,7 +975,7 @@ mod tests {
             },
         )
         .unwrap();
-        let hits = repo.search("homebrew", 50).unwrap();
+        let hits = search(&repo, "homebrew", 50).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, m.id);
     }
@@ -932,8 +1006,8 @@ mod tests {
             )
         })
         .unwrap();
-        assert_eq!(repo.search("homebrew", 50).unwrap().len(), 1);
-        assert_eq!(repo.search("pricing", 50).unwrap().len(), 1);
+        assert_eq!(search(&repo, "homebrew", 50).unwrap().len(), 1);
+        assert_eq!(search(&repo, "pricing", 50).unwrap().len(), 1);
     }
 
     #[test]
@@ -1002,7 +1076,7 @@ mod tests {
             })
             .unwrap();
         assert!(repo.delete(&m.id).unwrap());
-        let hits = repo.search("findable", 50).unwrap();
+        let hits = search(&repo, "findable", 50).unwrap();
         assert!(hits.is_empty(), "delete must drop the FTS index row");
     }
 
@@ -1021,8 +1095,8 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        let hits = repo.search("", 50).unwrap();
-        let list = repo.list().unwrap();
+        let hits = search(&repo, "", 50).unwrap();
+        let list = list(&repo);
         assert_eq!(hits.len(), list.len());
         assert_eq!(
             hits.iter().map(|m| &m.id).collect::<Vec<_>>(),
@@ -1065,7 +1139,7 @@ mod tests {
             },
         )
         .unwrap();
-        let hits = repo.search("palette", 50).unwrap();
+        let hits = search(&repo, "palette", 50).unwrap();
         assert_eq!(hits.len(), 2, "both meetings should match");
         assert_eq!(
             hits[0].id, b.id,
@@ -1120,7 +1194,7 @@ mod tests {
         let typed = mk("Planning 10/6/26", at(2026, 9, 1, 12));
 
         let ids = |q: &str| -> Vec<String> {
-            repo.search(q, 50)
+            search(&repo, q, 50)
                 .unwrap()
                 .into_iter()
                 .map(|m| m.id)
@@ -1216,5 +1290,197 @@ mod tests {
         assert_eq!(repo.cloud_tombstones().unwrap(), [pushed.id]);
         repo.clear_cloud_tombstones().unwrap();
         assert!(repo.cloud_tombstones().unwrap().is_empty());
+    }
+
+    fn seed(repo: &MeetingRepo, n: usize) -> Vec<Meeting> {
+        (0..n)
+            .map(|i| {
+                repo.create(NewMeeting {
+                    title: format!("Sync {i}"),
+                    started_at_unix_ms: Some(1_000 * (i as i64 + 1)),
+                    ..Default::default()
+                })
+                .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn list_page_reports_total_before_paging_and_orders_newest_first() {
+        let repo = fresh_repo();
+        let ms = seed(&repo, 7);
+        let f = MeetingFilter::default();
+        let p1 = repo.list_page(&f, 3, 0).unwrap();
+        let p3 = repo.list_page(&f, 3, 6).unwrap();
+        let past = repo.list_page(&f, 3, 30).unwrap();
+        assert_eq!(p1.total, 7);
+        assert_eq!(
+            p1.meetings
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            [&ms[6].id, &ms[5].id, &ms[4].id]
+        );
+        assert_eq!(p3.meetings.len(), 1);
+        assert_eq!(p3.meetings[0].id, ms[0].id);
+        assert!(past.meetings.is_empty());
+        assert_eq!(past.total, 7);
+    }
+
+    #[test]
+    fn equal_start_times_page_stably_by_id() {
+        let repo = fresh_repo();
+        for i in 0..5 {
+            repo.create(NewMeeting {
+                title: format!("Same {i}"),
+                started_at_unix_ms: Some(5_000),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let f = MeetingFilter::default();
+        let ids: Vec<String> = (0..5)
+            .flat_map(|o| repo.list_page(&f, 1, o).unwrap().meetings)
+            .map(|m| m.id)
+            .collect();
+        let mut sorted = ids.clone();
+        sorted.sort();
+        sorted.reverse();
+        assert_eq!(ids, sorted, "id DESC breaks the tie, with no repeats");
+    }
+
+    #[test]
+    fn filters_apply_before_total_and_paging() {
+        let repo = fresh_repo();
+        let ms = seed(&repo, 6);
+        let labels = crate::LabelRepo::new(repo.db.clone());
+        let (l, _) = labels.find_or_create("Sales", None).unwrap();
+        for m in [&ms[0], &ms[2], &ms[4]] {
+            labels
+                .set_for_meeting(&m.id, std::slice::from_ref(&l.id))
+                .unwrap();
+        }
+        for m in [&ms[2], &ms[3]] {
+            repo.patch(
+                &m.id,
+                MeetingPatch {
+                    starred: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let by_label = MeetingFilter {
+            label_id: Some(l.id.clone()),
+            starred: false,
+        };
+        let page = repo.list_page(&by_label, 2, 0).unwrap();
+        assert_eq!(page.total, 3);
+        assert_eq!(page.meetings[0].id, ms[4].id);
+        assert_eq!(page.meetings[0].labels[0].name, "Sales");
+
+        let starred = MeetingFilter {
+            label_id: None,
+            starred: true,
+        };
+        let page = repo.list_page(&starred, 1, 1).unwrap();
+        assert_eq!(page.total, 2);
+        assert_eq!(page.meetings[0].id, ms[2].id);
+
+        let both = MeetingFilter {
+            label_id: Some(l.id),
+            starred: true,
+        };
+        let page = repo.list_page(&both, 25, 0).unwrap();
+        assert_eq!((page.total, page.meetings.len()), (1, 1));
+        assert_eq!(page.meetings[0].id, ms[2].id);
+    }
+
+    #[test]
+    fn summary_flags_enriched_notes() {
+        let repo = fresh_repo();
+        let ms = seed(&repo, 2);
+        repo.patch(
+            &ms[0].id,
+            MeetingPatch {
+                enriched_md: Some(Some("# Notes".into())),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let by_id: HashMap<String, bool> = list(&repo)
+            .into_iter()
+            .map(|m| (m.id, m.has_enriched))
+            .collect();
+        assert!(by_id[&ms[0].id]);
+        assert!(!by_id[&ms[1].id]);
+    }
+
+    #[test]
+    fn search_page_counts_the_whole_match_and_honors_filters() {
+        let repo = fresh_repo();
+        for i in 0..5 {
+            let m = repo
+                .create(NewMeeting {
+                    title: format!("Budget review {i}"),
+                    started_at_unix_ms: Some(1_000 * (i + 1)),
+                    ..Default::default()
+                })
+                .unwrap();
+            if i % 2 == 0 {
+                repo.patch(
+                    &m.id,
+                    MeetingPatch {
+                        starred: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            }
+        }
+        seed(&repo, 3);
+        let none = MeetingFilter::default();
+        let p = repo.search_page("budget", &none, 2, 2).unwrap();
+        assert_eq!(p.total, 5);
+        assert_eq!(p.meetings.len(), 2);
+
+        let starred = MeetingFilter {
+            label_id: None,
+            starred: true,
+        };
+        let p = repo.search_page("budget", &starred, 25, 0).unwrap();
+        assert_eq!(p.total, 3);
+        assert!(p.meetings.iter().all(|m| m.starred));
+
+        let p = repo.search_page("  ", &none, 25, 0).unwrap();
+        assert_eq!(p.total, 8, "blank query lists everything");
+    }
+
+    #[test]
+    fn search_page_total_includes_day_matches_without_duplicates() {
+        let repo = fresh_repo();
+        let noon = |d| {
+            Local
+                .with_ymd_and_hms(2026, 10, d, 12, 0, 0)
+                .unwrap()
+                .timestamp_millis()
+        };
+        let mk = |title: &str, ms| {
+            repo.create(NewMeeting {
+                title: title.into(),
+                started_at_unix_ms: Some(ms),
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        mk("Standup", noon(6));
+        mk("Planning 10/6/26", noon(6));
+        mk("Other", noon(7));
+        let p = repo
+            .search_page("10/6/26", &MeetingFilter::default(), 1, 1)
+            .unwrap();
+        assert_eq!(p.total, 2);
+        assert_eq!(p.meetings.len(), 1);
     }
 }

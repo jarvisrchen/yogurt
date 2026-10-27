@@ -1,27 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { metaParts } from "./MeetingCard";
 
-const texts = (m: Meeting) => metaParts(m).map((p) => p.text);
-import type { Meeting } from "../../lib/api/meetings";
+const texts = (m: MeetingSummary) => metaParts(m).map((p) => p.text);
+import type { MeetingSummary } from "../../lib/api/meetings";
 
 const START = new Date("2026-06-25T14:45:00").getTime();
 
-function meeting(over: Partial<Meeting> = {}): Meeting {
+function meeting(over: Partial<MeetingSummary> = {}): MeetingSummary {
   return {
     id: "m1",
     title: "T",
     started_at: START,
     ended_at: null,
-    notes_md: "",
-    enriched_md: null,
-    transcript_json: "[]",
     starred: false,
     stt_engine: null,
     llm_model: null,
-    template: null,
+    has_enriched: false,
     labels: [],
-    created_at: new Date(START).toISOString(),
-    updated_at: new Date(START).toISOString(),
     ...over,
   };
 }
@@ -34,7 +29,7 @@ const startTime = new Date(START).toLocaleTimeString(undefined, {
 
 describe("metaParts", () => {
   it("shows date, start time, and duration when the meeting has ended", () => {
-    const m = meeting({ ended_at: START + 47 * 60_000, enriched_md: "x" });
+    const m = meeting({ ended_at: START + 47 * 60_000, has_enriched: true });
     expect(texts(m)).toEqual([DATE, startTime, "47 min"]);
   });
 
@@ -43,19 +38,19 @@ describe("metaParts", () => {
   });
 
   it("rounds sub-minute meetings up to 1 min", () => {
-    const m = meeting({ ended_at: START + 10_000, enriched_md: "x" });
+    const m = meeting({ ended_at: START + 10_000, has_enriched: true });
     expect(texts(m)).toEqual([DATE, startTime, "1 min"]);
   });
 
   it("does not tag the normal case (ended + enhanced)", () => {
-    const m = meeting({ ended_at: START + 60_000, enriched_md: "x" });
+    const m = meeting({ ended_at: START + 60_000, has_enriched: true });
     expect(texts(m)).toEqual([DATE, startTime, "1 min"]);
   });
 
   it("flags 'not enhanced' (warn tone) only when ended without enrichment", () => {
-    const ended = meeting({ ended_at: START + 60_000, enriched_md: null });
+    const ended = meeting({ ended_at: START + 60_000, has_enriched: false });
     expect(metaParts(ended).at(-1)).toEqual({ text: "not enhanced", tone: "warn" });
     // Still live: no verdict yet, so no flag.
-    expect(texts(meeting({ enriched_md: null }))).toEqual([DATE, startTime]);
+    expect(texts(meeting({ has_enriched: false }))).toEqual([DATE, startTime]);
   });
 });

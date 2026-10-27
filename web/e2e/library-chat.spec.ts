@@ -59,7 +59,7 @@ async function mockBackend(page: Page) {
     r.fulfill({ json: MEETING }),
   );
   await page.route(/\/api\/meetings(\?|$)/, (r) =>
-    r.fulfill({ json: [MEETING] }),
+    r.fulfill({ json: { meetings: [MEETING], total: 1 } }),
   );
   await page.route("**/api/chat", async (r) => {
     chatBodies.push(r.request().postDataJSON());

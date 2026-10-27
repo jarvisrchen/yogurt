@@ -1296,3 +1296,7 @@ New closed items go at the bottom.
 - [x] **SYNC-15** Build the webapp when Vercel's ignore step cannot diff against the previous deploy, such as after a force-push
 
   The Vercel ignore step builds whenever git cannot diff against the previous deploy's commit, so a force-pushed branch gets a preview instead of an Error.
+
+- [x] **IMP-1** Paginate the Library (10, 25, 50, or 100 a page) and return slim summary rows from the list and search APIs
+
+  The Library pages in SQL with 10, 25, 50, or 100 a page, the list and search routes return slim summary rows with a total, and `yogurt ctl meeting last` and `list` page instead of downloading every meeting.

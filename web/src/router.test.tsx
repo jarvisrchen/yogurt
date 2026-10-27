@@ -11,8 +11,11 @@ vi.mock("./lib/api/meetings", async () => {
     );
   return {
     ...actual,
-    useMeetings: () => ({ data: [], isLoading: false, error: null }),
-    useMeetingsSearch: () => ({ data: [], isLoading: false, error: null }),
+    useMeetings: () => ({
+      data: { meetings: [], total: 0 },
+      isLoading: false,
+      error: null,
+    }),
     useCreateMeeting: () => ({
       mutateAsync: vi.fn(),
       isPending: false,

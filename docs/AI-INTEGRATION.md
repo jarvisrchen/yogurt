@@ -26,9 +26,9 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | Method | Path | Purpose | `ctl` |
 |---|---|---|---|
 | GET | `/api/health` | liveness | - |
-| GET | `/api/meetings` | list | `ctl meeting list` |
+| GET | `/api/meetings` | one page of summaries, newest first (paging below) | `ctl meeting list` |
 | POST | `/api/meetings` | create (seedable, below) | `ctl meeting new` |
-| GET | `/api/meetings/search` | search | `ctl meeting search` |
+| GET | `/api/meetings/search` | search, ranked, same paging as the list | `ctl meeting search` |
 | GET | `/api/meetings/active` | what's recording | `ctl status` |
 | GET | `/api/meetings/{id}` | full row | `ctl meeting show` |
 | PATCH | `/api/meetings/{id}` | update title/notes | - |
@@ -63,6 +63,27 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | POST | `/api/cloud/disconnect` | disconnect: `{mark_deleted?}` | - |
 | GET | `/ws/meetings/{id}` | transcript/enhance/chat/audio frames | `ctl ws <id>`, `ctl meeting transcript --follow` |
 | GET | `/ws` | model-download frames | `ctl ws` |
+
+## Listing meetings
+
+`GET /api/meetings` and `GET /api/meetings/search?q=<text>` take the same query parameters and return `{"meetings":[MeetingSummary],"total":n}`.
+
+| Parameter | Meaning |
+|---|---|
+| `limit` | Rows per page, 1 to 100, default 25. Anything else is a 400. |
+| `offset` | Rows to skip, default 0. |
+| `label_id` | Only meetings with this label. |
+| `starred` | `true` keeps only starred meetings. |
+
+`total` counts every match before `limit` and `offset`, and the filters run in SQL, so a filtered `total` is the filtered count.
+The list is ordered `started_at DESC, id DESC`. Search keeps its relevance ranking.
+
+A `MeetingSummary` is `id`, `title`, `started_at`, `ended_at`, `starred`, `stt_engine`, `llm_model`, `has_enriched`, and `labels`.
+It carries no notes or transcript, so a page of 100 is about 40 KB.
+`GET /api/meetings/{id}` returns the full row.
+
+`ctl meeting list` and `ctl meeting search` print the same shape under `--json`.
+`ctl meeting list --limit N` fetches N rows, and without `--limit` it pages through every meeting at 100 a request.
 
 ## Fixture meetings
 
