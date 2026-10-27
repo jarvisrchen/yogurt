@@ -66,7 +66,7 @@ export function AuthFlow({ api }: { api: Api }) {
       <AuthShell>
         <h1 className={h3}>Create your Cloud login</h1>
         <p className={sub}>
-          Use the email you entered as <span className="font-mono text-[10.5px]">YOGURT_OWNER_EMAIL</span> when you deployed.
+          Use the email you entered as <span className="font-mono text-[13px] min-[721px]:text-[10.5px]">YOGURT_OWNER_EMAIL</span> when you deployed.
         </p>
         <Credentials
           submit="Create login"
@@ -99,7 +99,7 @@ export function NotOwner({ email, onSignOut }: { email: string; onSignOut: () =>
     <AuthShell>
       <h1 className={h3}>This login does not own this Yogurt Cloud</h1>
       <p className={sub}>
-        {email} is signed in, but the owner is the email entered as <span className="font-mono text-[10.5px]">YOGURT_OWNER_EMAIL</span> when this Yogurt Cloud was deployed.
+        {email} is signed in, but the owner is the email entered as <span className="font-mono text-[13px] min-[721px]:text-[10.5px]">YOGURT_OWNER_EMAIL</span> when this Yogurt Cloud was deployed.
       </p>
       <Button variant="secondary" className="w-full !leading-normal" onClick={onSignOut}>
         Sign out

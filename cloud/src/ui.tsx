@@ -16,9 +16,9 @@ export function useDesktop(): boolean {
   return useSyncExternalStore(subscribeDesktop, isDesktop);
 }
 
-export const h3 = "text-[20px] font-extrabold tracking-[-0.01em] text-ink m-[0px]";
-export const sub = "text-[12px] min-[721px]:text-[12.5px] text-mut m-[0px]";
-const kLabel = "font-mono text-[10px] uppercase tracking-[.08em] text-mut";
+export const h3 = "text-[22px] min-[721px]:text-[20px] font-extrabold tracking-[-0.01em] text-ink m-[0px]";
+export const sub = "text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]";
+const kLabel = "font-mono text-[12px] min-[721px]:text-[10px] uppercase tracking-[.08em] text-mut";
 
 export function Brand() {
   return (
@@ -83,7 +83,7 @@ export const MailIcon = () => (
 
 export function Note({ children }: { children: ReactNode }) {
   return (
-    <div role="alert" className="flex gap-[8px] items-start text-[12px] rounded-button px-[12px] py-[9px] bg-strsoft text-straw">
+    <div role="alert" className="flex gap-[8px] items-start text-[15px] min-[721px]:text-[12px] rounded-button px-[12px] py-[9px] bg-strsoft text-straw">
       <svg viewBox="0 0 16 16" width="15" height="15" className="flex-none mt-px" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
         <path d="M8 2l6.5 11.5h-13z" />
         <path d="M8 6.5v3.2M8 11.6v.1" />
@@ -98,7 +98,7 @@ export function LoadError({ message, onRetry }: { message: string; onRetry: () =
   return (
     <div className="flex flex-col gap-[10px] items-start">
       <Note>{message}</Note>
-      <Button variant="secondary" onClick={onRetry} className="!px-[14px] !py-[8px] !text-[12.5px] !font-bold !leading-normal">
+      <Button variant="secondary" onClick={onRetry} className="!px-[14px] !py-[8px] !text-[15px] min-[721px]:!text-[12.5px] !font-bold !leading-normal">
         Retry
       </Button>
     </div>
@@ -107,7 +107,7 @@ export function LoadError({ message, onRetry }: { message: string; onRetry: () =
 
 export function TextLink({ lead, children, onClick }: { lead?: string; children: ReactNode; onClick: () => void }) {
   return (
-    <div className="text-[11.5px] min-[721px]:text-[12.5px] font-semibold text-center text-mut">
+    <div className="text-[14px] min-[721px]:text-[12.5px] font-semibold text-center text-mut">
       {lead}
       {lead ? " " : ""}
       <button type="button" onClick={onClick} className="text-blue font-semibold cursor-pointer bg-transparent border-0 p-[0px] font-[inherit]">
@@ -126,7 +126,7 @@ export function Segmented<T extends string>({ options, value, onChange, label }:
           type="button"
           aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
-          className={`font-sans text-[11px] font-semibold px-[12px] py-[3px] rounded-[9px] cursor-pointer border-0 ${o.value === value ? "bg-card text-ink shadow-[0_2px_6px_rgba(40,30,15,.10)]" : "bg-transparent text-mut"}`}
+          className={`font-sans text-[13px] min-[721px]:text-[11px] font-semibold px-[12px] py-[3px] rounded-[9px] cursor-pointer border-0 ${o.value === value ? "bg-card text-ink shadow-[0_2px_6px_rgba(40,30,15,.10)]" : "bg-transparent text-mut"}`}
         >
           {o.label}
         </button>
@@ -137,7 +137,7 @@ export function Segmented<T extends string>({ options, value, onChange, label }:
 
 export function Checkbox({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
   return (
-    <label className="flex items-center gap-[8px] text-[11.5px] min-[721px]:text-[13px] cursor-pointer">
+    <label className="flex items-center gap-[8px] text-[14px] min-[721px]:text-[13px] cursor-pointer">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
       <span className={`w-[14px] h-[14px] rounded-[4px] grid place-items-center flex-none border peer-focus-visible:ring-2 peer-focus-visible:ring-blue/40 ${checked ? "bg-blue border-blue" : "bg-card border-line"}`}>
         {checked && (
@@ -220,13 +220,13 @@ export function PinField({ id, label, length, max = length, value, onChange, err
 const LETTERS: Record<string, string> = { "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ" };
 
 export function Keypad({ onDigit, onBackspace, disabled }: { onDigit: (d: string) => void; onBackspace: () => void; disabled?: boolean }) {
-  const key = "h-[44px] rounded-[10px] bg-card border border-line flex flex-col items-center justify-center text-[15px] font-semibold leading-none text-ink cursor-pointer disabled:cursor-default";
+  const key = "h-[44px] rounded-[10px] bg-card border border-line flex flex-col items-center justify-center text-[20px] min-[721px]:text-[15px] font-semibold leading-none text-ink cursor-pointer disabled:cursor-default";
   return (
     <div className={`grid grid-cols-3 gap-[6px] min-[721px]:hidden ${disabled ? "opacity-45" : ""}`}>
       {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
         <button key={d} type="button" disabled={disabled} onClick={() => onDigit(d)} className={key}>
           {d}
-          {LETTERS[d] && <small className="text-[6.5px] tracking-[.14em] text-mut mt-[2px] font-bold">{LETTERS[d]}</small>}
+          {LETTERS[d] && <small className="text-[8px] min-[721px]:text-[6.5px] tracking-[.14em] text-mut mt-[2px] font-bold">{LETTERS[d]}</small>}
         </button>
       ))}
       <span />
@@ -244,7 +244,7 @@ export function Keypad({ onDigit, onBackspace, disabled }: { onDigit: (d: string
 }
 
 export const LockButton = ({ onClick }: { onClick: () => void }) => (
-  <Button variant="secondary" onClick={onClick} className="!px-[12px] !py-[5px] !text-[12.5px] !font-bold !leading-normal">
+  <Button variant="secondary" onClick={onClick} className="!px-[12px] !py-[5px] !text-[15px] min-[721px]:!text-[12.5px] !font-bold !leading-normal">
     <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
       <rect x="3" y="7" width="10" height="7" rx="1.5" />
       <path d="M5.5 7V5a2.5 2.5 0 015 0v2" />
@@ -255,7 +255,7 @@ export const LockButton = ({ onClick }: { onClick: () => void }) => (
 
 export function Back({ to, onClick }: { to: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="text-[11px] min-[721px]:text-[13px] text-mut bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] self-start min-[721px]:self-auto">
+    <button type="button" onClick={onClick} className="text-[14px] min-[721px]:text-[13px] text-mut bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] self-start min-[721px]:self-auto">
       ← {to}
     </button>
   );
@@ -265,13 +265,13 @@ const TONES = ["bg-blsoft text-blue", "bg-honeysoft text-honey", "bg-slatesoft t
 
 /** A device keeps one colour by its place in the device list, in the library, in a meeting and in History alike. */
 export function DeviceTag({ name, index }: { name: string; index: number }) {
-  return <span className={`text-[9.5px] leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap ${TONES[index % TONES.length]}`}>{name}</span>;
+  return <span className={`text-[11px] min-[721px]:text-[9.5px] leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap ${TONES[index % TONES.length]}`}>{name}</span>;
 }
 
 /** "All devices" first, then one pill per device. `value` is a device id, or null for all. */
 export function DevicePills({ devices, value, onChange }: { devices: { id: string; name: string }[]; value: string | null; onChange: (id: string | null) => void }) {
   const pill = (on: boolean) =>
-    `flex-none text-[11px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border cursor-pointer font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
+    `flex-none text-[13px] min-[721px]:text-[11px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border cursor-pointer font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
   return (
     <div role="group" aria-label="Device" className="flex gap-[6px] overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible">
       <button type="button" aria-pressed={value === null} onClick={() => onChange(null)} className={pill(value === null)}>
@@ -364,7 +364,7 @@ export function DayList<T>({ groups, render }: { groups: { key: number; label: s
     <>
       {groups.map((g) => (
         <section key={g.key} className="flex flex-col gap-[10px] min-[721px]:gap-[8px]">
-          <h2 className="font-mono text-[9.5px] font-normal uppercase tracking-[.08em] text-mut mt-[4px] m-[0px]">{g.label}</h2>
+          <h2 className="font-mono text-[11px] min-[721px]:text-[9.5px] font-normal uppercase tracking-[.08em] text-mut mt-[4px] m-[0px]">{g.label}</h2>
           {g.meetings.map(render)}
         </section>
       ))}

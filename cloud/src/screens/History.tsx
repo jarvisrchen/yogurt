@@ -27,8 +27,8 @@ export function History({ api, token, onBack, onOpen, onLock, onRejected }: { ap
       <main className="w-full max-w-[640px] mx-auto flex flex-col gap-[10px] px-[16px] pt-[16px] pb-[16px] min-[721px]:px-[24px] min-[721px]:pt-[22px] min-[721px]:pb-[28px]">
         {!desktop && <Back to="Settings" onClick={onBack} />}
         <div>
-          <h1 className="text-[16px] min-[721px]:text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">History</h1>
-          <p className="text-[10.5px] min-[721px]:text-[12.5px] text-mut mt-[3px] mb-[0px]">Every push is kept. Tap one to see your library as it was then.</p>
+          <h1 className="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">History</h1>
+          <p className="text-[13px] min-[721px]:text-[12.5px] text-mut mt-[3px] mb-[0px]">Every push is kept. Tap one to see your library as it was then.</p>
         </div>
         {error ? (
           <LoadError message={`Could not load History. ${error}`} onRetry={retry} />
@@ -49,7 +49,7 @@ export function History({ api, token, onBack, onOpen, onLock, onRejected }: { ap
                   />
                 )}
               />
-              {!groups.length && <p className="text-[12px] text-mut m-[0px]">No pushes yet.</p>}
+              {!groups.length && <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">No pushes yet.</p>}
             </>
           )
         )}

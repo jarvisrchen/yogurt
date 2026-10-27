@@ -174,7 +174,7 @@ export function Library({
   const list = (
     <>
       {pushId && (
-        <div className="flex items-center gap-[7px] pl-[10px] pr-[4px] py-[4px] bg-card border border-line rounded-pill shadow-[0_8px_18px_-6px_var(--shadow-card-color)] text-[11px] min-w-0">
+        <div className="flex items-center gap-[7px] pl-[10px] pr-[4px] py-[4px] bg-card border border-line rounded-pill shadow-[0_8px_18px_-6px_var(--shadow-card-color)] text-[13px] min-[721px]:text-[11px] min-w-0">
           <span className="w-[6px] h-[6px] rounded-full bg-blue flex-none" />
           <span className="flex-1 min-w-0 truncate">
             <span className="text-mut">Viewing </span>
@@ -185,7 +185,7 @@ export function Library({
           <button
             type="button"
             onClick={() => go(HOME)}
-            className="flex-none bg-blue text-white font-semibold text-[10.5px] leading-normal px-[9px] py-[4px] rounded-pill border-0 cursor-pointer font-[inherit]"
+            className="flex-none bg-blue text-white font-semibold text-[13px] min-[721px]:text-[10.5px] leading-normal px-[9px] py-[4px] rounded-pill border-0 cursor-pointer font-[inherit]"
           >
             Latest
           </button>
@@ -200,7 +200,7 @@ export function Library({
       {!pushId && (
         <p
           role="status"
-          className="text-[12px] text-mut m-[0px] break-words [overflow-wrap:anywhere] empty:hidden"
+          className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px] break-words [overflow-wrap:anywhere] empty:hidden"
         >
           {searchStatus(search, query)}
         </p>
@@ -242,7 +242,7 @@ export function Library({
             )}
           />
           {!search.active && entries && !rows.length && (
-            <p className="text-[12px] text-mut m-[0px]">No meetings here.</p>
+            <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">No meetings here.</p>
           )}
         </div>
       )}
@@ -254,7 +254,7 @@ export function Library({
       <header className="flex items-center justify-between gap-[10px] px-[16px] py-[16px] min-[721px]:px-[20px] min-[721px]:py-[12px] min-[721px]:bg-card min-[721px]:border-b min-[721px]:border-line">
         <Brand />
         <div className="flex items-center gap-[6px] min-[721px]:gap-[8px]">
-          <span className="text-[10px] min-[721px]:text-[11px] font-bold px-[10px] py-[3px] rounded-pill bg-slatesoft text-slate">
+          <span className="text-[12px] min-[721px]:text-[11px] font-bold px-[10px] py-[3px] rounded-pill bg-slatesoft text-slate">
             read-only
           </span>
           <button

@@ -13,7 +13,7 @@ const THEMES: { value: ThemePref; label: string }[] = [
 ];
 
 const date = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-const dayLabel = "font-mono text-[9.5px] min-[721px]:text-[10.5px] uppercase tracking-[.08em] text-mut mt-[4px] min-[721px]:mt-[10px]";
+const dayLabel = "font-mono text-[11px] min-[721px]:text-[10.5px] uppercase tracking-[.08em] text-mut mt-[4px] min-[721px]:mt-[10px]";
 
 const Group = ({ title, children }: { title: string; children: ReactNode }) => (
   <>
@@ -25,7 +25,7 @@ const GroupBox = ({ children }: { children: ReactNode }) => (
   <div className="bg-card border border-line rounded-button overflow-hidden [&>*:not(:last-child)]:border-b [&>*]:border-line">{children}</div>
 );
 const Row = ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => {
-  const cls = "flex w-full items-center justify-between gap-[8px] px-[11px] py-[9px] min-[721px]:px-[14px] min-[721px]:py-[11px] text-[11.5px] min-[721px]:text-[13px] text-left font-[inherit] text-ink bg-transparent border-0";
+  const cls = "flex w-full items-center justify-between gap-[8px] px-[11px] py-[9px] min-[721px]:px-[14px] min-[721px]:py-[11px] text-[14px] min-[721px]:text-[13px] text-left font-[inherit] text-ink bg-transparent border-0";
   return onClick ? (
     <button type="button" onClick={onClick} className={`${cls} cursor-pointer`}>
       {children}
@@ -35,11 +35,11 @@ const Row = ({ children, onClick }: { children: ReactNode; onClick?: () => void 
   );
 };
 const Small = ({ children, mono }: { children: ReactNode; mono?: boolean }) => (
-  <small className={`block text-[10px] min-[721px]:text-[11px] text-mut mt-px ${mono ? "font-mono" : ""}`}>{children}</small>
+  <small className={`block text-[12px] min-[721px]:text-[11px] text-mut mt-px ${mono ? "font-mono" : ""}`}>{children}</small>
 );
 const Chev = () => <span className="text-mut flex-none">›</span>;
 const ForgetPill = ({ onClick, label }: { onClick: () => void; label: string }) => (
-  <button type="button" aria-label={label} onClick={onClick} className="text-[10px] leading-normal font-bold px-[10px] py-[3px] rounded-pill bg-strsoft text-straw border-0 cursor-pointer font-[inherit]">
+  <button type="button" aria-label={label} onClick={onClick} className="text-[12px] min-[721px]:text-[10px] leading-normal font-bold px-[10px] py-[3px] rounded-pill bg-strsoft text-straw border-0 cursor-pointer font-[inherit]">
     Forget
   </button>
 );
@@ -100,8 +100,8 @@ export function Settings(p: Props) {
       {bar}
       <main className="w-full max-w-[640px] mx-auto flex flex-col gap-[10px] px-[16px] pt-[16px] pb-[16px] min-[721px]:px-[24px] min-[721px]:pt-[22px] min-[721px]:pb-[28px]">
         {!desktop && <Back to="Library" onClick={p.onBack} />}
-        <h1 className="text-[16px] min-[721px]:text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px] min-[721px]:mb-[2px]">Settings</h1>
-        {p.changed && <div className="text-[12px] rounded-button px-[12px] py-[9px] bg-mtsoft text-matcha" role="status">PIN changed. This browser is unlocked with the new PIN.</div>}
+        <h1 className="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px] min-[721px]:mb-[2px]">Settings</h1>
+        {p.changed && <div className="text-[15px] min-[721px]:text-[12px] rounded-button px-[12px] py-[9px] bg-mtsoft text-matcha" role="status">PIN changed. This browser is unlocked with the new PIN.</div>}
         <Group title="Account">
           <GroupBox>
             <Row>
@@ -234,7 +234,7 @@ function ChangePin(p: Props) {
         <div className="flex flex-col gap-[5px]">
           <FieldLabel>Current PIN</FieldLabel>
           <PinField label="Current PIN" length={pinBoxes(p.pinLength, old)} max={6} value={old} onChange={setOld} autoFocus />
-          <p className="text-[11.5px] text-mut m-[0px]">{p.pinLength ? `Type the ${p.pinLength} digits you use today.` : "Type the 4 digits or 6 digits you use today."}</p>
+          <p className="text-[14px] min-[721px]:text-[11.5px] text-mut m-[0px]">{p.pinLength ? `Type the ${p.pinLength} digits you use today.` : "Type the 4 digits or 6 digits you use today."}</p>
         </div>
         <NewPin
           submit="Save PIN"

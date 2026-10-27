@@ -1324,3 +1324,7 @@ New closed items go at the bottom.
 - [x] **IMP-5** Drop the Open in Granola link from an imported meeting's header
 
   An imported meeting header reads "Imported from Granola", plus "Captured by" for someone else's meeting, with no link back to Granola, since the import is meant to replace it.
+
+- [x] **SYNC-17** Enlarge the webapp text on every phone screen to the scale SYNC-16 set for the library rows: 16px body, 13-15px secondary text, 22px page titles
+
+  Every webapp screen below 721px now uses one scale: 16px body and meeting notes, 13-15px secondary text, 22px page titles. Desktop sizes are unchanged.
