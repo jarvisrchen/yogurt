@@ -200,3 +200,19 @@ Rehearsal: Richard runs the guide top to bottom while I follow along and fix the
 Creating the Vercel and Supabase accounts and confirming the email are Richard's own steps, because those are real account credentials.
 Laptop 2 is a real second machine if one is at hand, otherwise a second instance with its own `YOGURT_DATA_DIR`.
 SYNC-3 to SYNC-6 each add their section of the guide as they land, so SYNC-7 finishes and checks a draft.
+
+## SYNC-10: search
+
+1. `schema.sql`: the `unaccent` extension (created in `extensions`, or moved there from another schema), the `yogurt_ts` configuration with its mapping applied on every deploy, `yogurt_search_index` with a per-row signature and a cascading foreign key to its version, `yogurt_search_catch_up` (a private one for the build and an owner-only public wrapper capped at 3 seconds), and `yogurt_search(token, query, only_device)`.
+   `yogurt_versions` has no trigger.
+2. `cloud/scripts/build.mjs` calls the private catch-up in 2 second calls after the schema transaction commits, until it returns 0 or 100 calls have passed.
+   `just test-cloud-schema` deploys the same way.
+3. The laptop calls the public catch-up after each pass, while it returns more than 0 and at most 10 times, and only logs a failure.
+4. `schema_test.sql` covers owner and token checks, the live-only rule, tombstones and late versions, several link spans with bullets between them, accents, entities, prefix and hyphen cases, emails, hosts, URLs, and file names, pasted bullets, quotes, dashes, `or` and minus, the device filter, the cap and `more`, a huge multibyte body, long runs without spaces, odd times, catch-up's repairs, its time limit, a deletion during a catch-up, a mapping change, and the guide's purge.
+5. `just test-cloud-schema` also applies `origin/main`'s schema over seeded rows including a huge multibyte body and `unaccent` in `public`, then this branch's deploy twice, then main's again and this branch's once more, and checks search and a laptop push after each step.
+6. The webapp has a search field above the device pills (top of the left column on desktop), hidden in the as-of view.
+7. It debounces 250 ms, shows a pending state over the previous answer, and renders hits from the returned rows with a cap message.
+8. It clears by the button (which returns focus) or Escape.
+   A hit opens from the loaded library, with a reload note when the loaded copy is older or missing, and the reload keeps the page.
+9. The measurement in the design doc's Search section: 1,500 hour-long meetings index in 13 s and take 44 MB, and a search answers in under 150 ms.
+10. `docs/CLOUD-SYNC.md` gets a short search paragraph under "Read on your phone" and a purge note.

@@ -349,6 +349,17 @@ The library lists every meeting you pushed, grouped by day with the newest first
 The pills above the list pick one machine, and All devices shows them together.
 Each row shows the title, the start time, the length, and the machine that pushed it.
 
+The search field above the pills finds meetings by title, notes, enhanced notes, and transcript text as you type.
+It searches the live library only, so an earlier push shown from History has no search field.
+Capital letters and accents do not matter, quotes find a phrase, `or` finds either word, and a minus sign leaves a word out.
+A row that matches outside its title shows a short snippet with the match marked.
+Search works inside the selected machine, and the clear button or Escape restores the full list.
+A search shows the newest 25 matches and says so when there are more, so add words to narrow it.
+Chinese, Japanese, and Korean words inside a sentence do not match unless you type the whole run of characters.
+Search reads only about the first 400,000 characters of a meeting, so a word only in the tail of a very long meeting is not found.
+A quoted phrase matches only in the first part of a long meeting.
+A new push becomes searchable once the laptop finishes indexing after the push, usually seconds later.
+
 Tap a meeting to read it.
 The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
 A tab is missing when that meeting has no such content, and a meeting with one kind of content shows no tabs.
@@ -411,7 +422,7 @@ delete from yogurt_pushes where device_id = '00000000-0000-0000-0000-00000000000
 delete from yogurt_devices where id = '00000000-0000-0000-0000-000000000000';
 ```
 
-This removes that device's meetings from the library and its pushes from History.
+This removes that device's meetings from the library and from search, and its pushes from History.
 Other devices are untouched.
 If that laptop is still connected, its next push says "This machine was removed from the Yogurt Cloud. Disconnect, then connect again."
 

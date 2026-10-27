@@ -239,6 +239,9 @@ sequenceDiagram
       Y->>DB: store the batch's new cloud_hash values
     end
   end
+  loop while meetings are left, at most 10 calls
+    Y->>P: rpc yogurt_search_catch_up(), returns how many are left
+  end
 ```
 
 Each meeting is one JSON document, `{"v":1,"meeting":{...},"chat":[...]}`, stored in `yogurt_versions.body`.
@@ -273,6 +276,7 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
 | `yogurt_library(token, at_push)` | webapp | for each live meeting on each device, the latest version at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `body`, ordered by `meeting_id` then `device_id` for paging |
+| `yogurt_search(token, query, only_device)` | webapp | the live meetings matching the query, newest first, at most 25: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 
@@ -284,6 +288,89 @@ Every `yogurt_` function first loses `execute` for `public`, `anon`, and `authen
 Grants stay explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
 The `yogurt_` prefix keeps these tables apart from anything else in a reused project.
 PostgREST caps a response at 1,000 rows, so clients page `yogurt_library` with limit and offset.
+
+## Search
+
+Search runs in the database, because the webapp will not always hold every body, and a full library can pass the response cap and the free egress budget.
+It covers the live library only, one row per live meeting, and the History view of an earlier push has no search field, because History is for recovery.
+`yogurt_private.yogurt_search_index` holds one row per device and meeting: the raw title, the plain text of the notes, enhanced notes, and transcript in its original case and accents, a `tsvector` of both, and the signature the row was built with.
+It has a GIN index on the `tsvector`, row security on, and no client grants, so only the `security definer` RPC reads it.
+A foreign key from the row to its version cascades on delete, so purging a device in the SQL editor, or deleting the account, removes its text from search as well.
+
+Search work never runs inside a push, because anything slow there fails the laptop's insert under the 8 second statement timeout of the `authenticated` role.
+`yogurt_versions` has no trigger.
+`yogurt_private.yogurt_search_catch_up(max_ms)` brings the index up to the latest versions instead.
+It finds rows that are missing, outdated (built from an older push than the latest version), extra (the latest version is a deletion), or built with an older signature.
+It repairs them one at a time until about `max_ms` has passed and returns how many still need it, so 0 means up to date.
+It walks the latest version of each meeting in descending key order, which a backward scan of the versions primary key gives without a sort, and it only counts the rest once its time is up.
+Each repair is one statement that reads the meeting's latest version itself, so a deletion that commits while a catch-up runs is never undone, and the upsert never lets an older push replace a newer one.
+An advisory lock runs one catch-up at a time, so a call that starts after a push sees every row an earlier call wrote.
+A row that fails is counted and passed over, so every call makes progress and a stuck row shows up in the count.
+`public.yogurt_search_catch_up(max_ms default 2000)` wraps it for the owner and caps `max_ms` at 3 seconds, so a call stays well under the statement timeout even after waiting for another catch-up.
+
+After every pass, including one that failed after some of its batches committed, the laptop calls `yogurt_search_catch_up` while it returns more than 0, at most 10 times.
+A pass with nothing to push still calls it once, which costs one scan of the latest versions, so a push heals an index a deploy left behind.
+The timer's idle wake makes no network call, so it does not call it.
+A failure there is logged as a warning and never changes the push result or its error state.
+A new push becomes searchable once the laptop finishes that catch-up, usually seconds later.
+The build applies the schema in one transaction, then calls the private function as `postgres` in 2 second calls, each its own transaction, until it returns 0 or 100 calls have passed, and laptops finish whatever is left.
+
+The signature is an md5 over the `unaccent` version, the configuration's dictionaries, and the bodies of the functions that build a row.
+Each row stores the signature it was built with, so a changed signature makes every row stale and catch-up rebuilds them gradually, while the old rows keep answering searches.
+Nothing truncates the table or refills it under a lock at deploy time.
+
+Measured in postgres:16 under Docker on an M3 Max, with 1,500 meetings of 600 transcript segments each, about 78 KB of body per meeting, drawn from a 5,000-word vocabulary:
+
+| What | Time or size |
+| --- | --- |
+| Indexing all 1,500 from empty | 13.1 s over 7 calls |
+| A catch-up with nothing to do | 2 ms |
+| A push of 100 edited meetings, then its catch-up | 105 ms, then 0.9 s in one call |
+| Rebuilding every row after a signature change | 13.5 s over 7 calls |
+| Searching a word every meeting has | 127 ms |
+| Searching a word some meetings have | 63 ms |
+| Index table, against 13 MB of versions | 44 MB: 28 MB of tsvector, 15 MB of GIN, 7 MB of compressed text |
+
+The worst case puts a unique hash in every segment.
+There the index table reaches 169 MB, with 95 MB of GIN, and the first fill takes 16.9 s.
+
+`yogurt_private.yogurt_ts` is a text search configuration that copies `simple` and maps `unaccent` before it for words, so matching ignores case and accents while the stored text keeps both.
+Every deploy applies its mapping again, so a change to the mapping reaches an existing project.
+It stems nothing and drops no stop words, so names and non-English words match as typed.
+It splits on spaces and punctuation only, so Chinese, Japanese, and Korean words inside a sentence match only when typed as the whole run.
+The tsvector, the query, and `ts_headline` all use it, so a highlight lands on the original word.
+If `unaccent` is installed in another schema, the schema step moves it to `extensions`, and otherwise it creates it there.
+The plain-text step removes a transcript link's label whole and drops editor tags, markdown markers at line or word boundaries, and U+E000 and U+E001.
+It decodes `&amp; &lt; &gt; &nbsp; &quot; &#39;` and leaves text such as `latency<target` and `2*3` alone.
+The text search parser takes quadratic time on a long run joined by `_` or `-` with no spaces (a 60 KB run took 7 to 13 seconds), so the step puts a space after every 100 characters of a run without one.
+It keeps the first 400,000 bytes, about the first 400,000 characters of English text, so a word only in the tail of a very long meeting is not found.
+The parser keeps the punctuation that ends a URL, as in `example.com/a-b,`, so the tsvector and the query drop `. , ; : ! ? ) ] '` at the end of a word before parsing.
+The configuration does not index the parser's tag tokens, so both also read `<` and `>` as spaces, and `<runbook>` or `List<Order>` matches by its words.
+Text dense with URLs or hosts can pass the 1 MB tsvector limit, and such a meeting indexes its title alone instead of failing every catch-up.
+Besides its words, the tsvector holds the pieces of each word joined by `@`, `.`, or `/`, so `acme` finds `jane@acme.com` and `docs.acme.com/q4`, while the whole email, host, URL, or file name still matches as typed.
+
+`yogurt_search` folds curly quotes to straight ones, and turns a dash with a space or the edge on both sides (a spaced hyphen or a pasted bullet) and an en or em dash into a space.
+It strips `https://` and `http://` and parses the whole input once with `websearch_to_tsquery`.
+Quotes, `or`, and a leading minus work, and a query with no word outside an exclusion returns nothing.
+The last lexeme matches as a prefix, so a half-typed word finds its meeting.
+A last word with a hyphen before a letter becomes a phrase of its parts, so `follow-u` finds `follow-up` and `follow up` but not `follow along and update`, while `ABC-123`, `2024-01-15`, and `555-0100` match as typed.
+The phrase skips a last word that is excluded, quoted, or holds `@`, `.`, or `/`, so `-follow-up`, `jane-doe@example.com`, `my-company.com`, and `q4-report.pdf` stay whole.
+A meeting whose latest version is a deletion is left out even before catch-up removes its row, since a deletion should take effect at once.
+Rows come newest first with fixed tiebreakers, filtered by device before the cap of 25, and the RPC reads one row past the cap to set `more`.
+A title match returns a null snippet, and any other match returns a `ts_headline` of about 14 words with the matched words wrapped in U+E000 and U+E001.
+Positions in a `tsvector` stop at 16,383, so a quoted phrase matches only in the first part of a very long meeting.
+
+The webapp waits 250 ms after the last keystroke and shows "Searching…" until the answer to the current input arrives, with the previous answer (or the full library) dimmed and inert beneath it.
+A previous answer with no hits stays too, so the next keystroke after a miss does not flash the whole library.
+A failed search shows only its error and Retry.
+It renders the returned rows without needing them in the loaded library.
+A hit opens the loaded copy at once.
+When the loaded copy is older than the hit, the meeting page says "A newer version was pushed" with a Reload button.
+When the loaded library lacks the meeting, the page shows its title and "This meeting isn't loaded on this page yet" with Reload.
+Reload keeps the page on screen while the library loads again, and a failed reload shows its error with Retry.
+The view as of an earlier push shows neither note.
+SYNC-12 replaces this with a fetch of the one meeting.
+It renders the snippet as text and marks the runs between the two characters, so meeting content is never parsed as HTML.
 
 ## History and reverting
 
@@ -410,7 +497,7 @@ Vercel's Hobby plan allows 100 deployments a day and 100 builds an hour, and can
 Later and unplanned: a hosted Yogurt Cloud, so other people could sign up at one URL without deploying their own.
 That drops the single-owner check in favor of `user_id` isolation alone, which every table already has.
 Holding other people's meetings readable is a different promise than holding your own, so that step reopens the encryption question.
-Search and LLM features over the cloud are also unplanned. Postgres full-text search and a Vercel function are the likely routes, and neither needs a schema change beyond an index.
+LLM features over the cloud are also unplanned, and a Vercel function is the likely route.
 
 ## Decisions
 

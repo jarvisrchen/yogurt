@@ -144,12 +144,13 @@ test-web:
     pnpm --dir web test
     pnpm --dir web e2e
 
-# Apply yogurt-cloud's schema.sql twice and run its SQL test (with owner.sql prepared as set_owner) in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Needs Docker. CI's cloud-schema job runs this.
+# Deploy yogurt-cloud's schema.sql twice the way the build does and run its SQL test (with owner.sql prepared as set_owner) in a throwaway postgres:16 container, once with Supabase's old default grants and once with none. Then apply origin/main's schema over seeded rows, this branch's deploy twice, main's schema again, and this branch's deploy once more, checking search and a laptop push after each. Needs Docker. CI's cloud-schema job runs this.
 test-cloud-schema:
     #!/usr/bin/env bash
     set -euo pipefail
+    main_schema=$(mktemp)
     id=$(docker run --rm -d -e POSTGRES_PASSWORD=postgres postgres:16)
-    trap 'docker stop "$id" >/dev/null' EXIT
+    trap 'docker stop "$id" >/dev/null; rm -f "$main_schema"' EXIT
     ready=
     for _ in $(seq 60); do
         docker exec "$id" pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1 && ready=1 && break
@@ -157,16 +158,42 @@ test-cloud-schema:
     done
     [ -n "$ready" ] || { echo "test-cloud-schema: postgres did not become ready in 60s" >&2; exit 1; }
     psql() { docker exec -i -e PGOPTIONS='-c client_min_messages=warning' "$id" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
+    # Like the build: the schema in one transaction, then search catch-up calls, each its own transaction, until none is left.
+    deploy() {
+        psql -1 -d "$1" < schema.sql
+        for _ in $(seq 100); do
+            [ "$(psql -d "$1" -tAc 'select yogurt_private.yogurt_search_catch_up(2000)')" = 0 ] && return
+        done
+        echo "test-cloud-schema: search catch-up did not finish" >&2
+        return 1
+    }
     cd crates/yogurt-cloud
+    docker cp schema.sql "$id:/schema.sql"
     for mode in on off; do
         db="defaults_$mode"
         echo "== old default grants: $mode"
         psql -c "create database $db" -d postgres
         psql -d "$db" -v old_defaults="$mode" < tests/supabase_stub.sql
-        psql -d "$db" < schema.sql
-        psql -d "$db" < schema.sql
+        deploy "$db"
+        deploy "$db"
         { echo "prepare set_owner(text) as"; cat owner.sql; cat tests/schema_test.sql; } | psql -d "$db"
     done
+    echo "== upgrade from main, then revert to it"
+    git rev-parse -q --verify origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main
+    git show origin/main:crates/yogurt-cloud/schema.sql > "$main_schema"
+    psql -c "create database upgrade" -d postgres
+    psql -d upgrade -v old_defaults=off < tests/supabase_stub.sql
+    psql -d upgrade < "$main_schema"
+    psql -d upgrade < tests/upgrade_seed.sql
+    # An unaccent in public, as some projects have, moves to extensions on deploy. Once main has search, it already made one in extensions, so that one moves.
+    psql -d upgrade -c "do \$\$ begin if exists (select from pg_extension where extname = 'unaccent') then alter extension unaccent set schema public; else create extension unaccent schema public; end if; end \$\$"
+    deploy upgrade
+    deploy upgrade
+    psql -d upgrade -v phase=upgrade -v search=true < tests/upgrade_test.sql
+    psql -d upgrade < "$main_schema"
+    psql -d upgrade -v phase=revert -v search=false < tests/upgrade_test.sql
+    deploy upgrade
+    psql -d upgrade -v phase=reupgrade -v search=true < tests/upgrade_test.sql
 
 # Run yogurt-cloud's #[ignore]d integration tests against a local Supabase stack (project yogurt-cloud-test, ports 56420-56429). Starts the stack if it is not running (slow the first time), drops the yogurt_ tables and every auth user, reapplies schema.sql and owner.sql for owner@yogurt-cloud.test, then runs the tests single-threaded. Leaves the stack running: stop it with `supabase stop --workdir crates/yogurt-cloud`. Needs Docker and the supabase CLI.
 test-cloud:

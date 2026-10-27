@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@web/components/Button";
 import { Logo } from "@web/components/Logo";
+import { snippetParts } from "./lib/search";
 
 const DESKTOP = "(min-width: 721px)";
 
@@ -285,8 +286,49 @@ export function DevicePills({ devices, value, onChange }: { devices: { id: strin
   );
 }
 
-/** A tappable card: bold title, then a muted line on the left and a device tag on the right. */
-export function ListRow({ title, meta, tag, selected, onClick }: { title: string; meta: string; tag: ReactNode; selected?: boolean; onClick: () => void }) {
+export function SearchField({ value, onChange, inputRef }: { value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement | null> }) {
+  const clear = () => {
+    onChange("");
+    inputRef.current?.focus();
+  };
+  return (
+    <div role="search" className="flex items-center gap-[7px] bg-card border border-line rounded-pill px-[12px] py-[6px] focus-within:border-blue focus-within:ring-1 focus-within:ring-blue">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="text-mut flex-none" aria-hidden>
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14" />
+      </svg>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && !e.nativeEvent.isComposing && clear()}
+        placeholder="Search notes & transcripts"
+        aria-label="Search notes and transcripts"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        className="flex-1 min-w-0 bg-transparent border-0 outline-none font-sans text-[16px] min-[721px]:text-[12px] text-ink placeholder:text-mut p-[0px] pr-[10px]"
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={clear}
+          className="relative flex-none grid place-items-center w-[16px] h-[16px] rounded-full border-0 bg-line text-mut cursor-pointer p-[0px] before:absolute before:-inset-[14px]"
+        >
+          <svg viewBox="0 0 10 10" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+            <path d="M2 2l6 6M8 2l-6 6" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A tappable card: bold title, then a muted line on the left and a device tag on the right. A search hit adds a snippet with the match marked. */
+export function ListRow({ title, meta, tag, snippet, selected, onClick }: { title: string; meta: string; tag: ReactNode; snippet?: string | null; selected?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -299,6 +341,19 @@ export function ListRow({ title, meta, tag, selected, onClick }: { title: string
         <span>{meta}</span>
         {tag}
       </span>
+      {snippet && (
+        <span className="text-[10.5px] leading-snug text-mut mt-[4px] line-clamp-2">
+          {snippetParts(snippet).map((p, i) =>
+            p.hit ? (
+              <mark key={i} className="bg-blsoft text-ink font-semibold rounded-[3px]">
+                {p.text}
+              </mark>
+            ) : (
+              p.text
+            ),
+          )}
+        </span>
+      )}
     </button>
   );
 }

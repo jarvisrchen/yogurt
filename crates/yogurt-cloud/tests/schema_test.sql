@@ -80,6 +80,8 @@ select pg_temp.expect('42501', array[
   'select yogurt_start_push(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_library(''x'')',
+  'select * from yogurt_search(''x'', ''x'')',
+  'select yogurt_search_catch_up()',
   'select * from yogurt_history(''x'')',
   'select * from yogurt_device_list(''x'')',
   'insert into yogurt_devices (id, name) values (gen_random_uuid(), ''evil'')',
@@ -99,7 +101,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -114,6 +116,7 @@ set role anon;
 select pg_temp.expect('42501', array[
   'select yogurt_status()',
   'select yogurt_unlock(''x'')',
+  'select yogurt_search_catch_up()',
   'select yogurt_private.yogurt_is_owner()',
   'select yogurt_private.yogurt_note_failure()',
   'select count(*) from yogurt_owner',
@@ -207,6 +210,8 @@ select pg_temp.eq((select string_agg(x, ',') from yogurt_device_meetings(:d2) x)
 select pg_temp.expect('28000', array[
   'select * from yogurt_library(''no such token'')',
   'select * from yogurt_library(null)',
+  'select * from yogurt_search(''no such token'', ''x'')',
+  'select * from yogurt_search(null, ''x'')',
   'select * from yogurt_history(''no such token'')',
   'select * from yogurt_device_list(''no such token'')',
   'select * from yogurt_browsers(''no such token'')',
@@ -331,6 +336,281 @@ set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select pg_temp.eq((yogurt_status()->>'passcode_length'), null, 'non-owner sees no length');
 select pg_temp.eq((yogurt_status()->>'passcode_set'), 'false', 'non-owner sees no passcode');
 
+-- Search: one index row per live meeting, brought up to date by a catch-up after each push.
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+\set d3 '''00000000-0000-0000-0000-0000000000d3'''
+\set d4 '''00000000-0000-0000-0000-0000000000d4'''
+insert into yogurt_devices (id, name) values (:d3, 'Search 3'), (:d4, 'Search 4');
+select yogurt_start_push(:d3) as push_a \gset
+select yogurt_start_push(:d3) as push_b \gset
+select yogurt_start_push(:d4) as push_c \gset
+select yogurt_unlock('4321', false, 'Search') as stok \gset
+
+create or replace function pg_temp.ids(tok text, q text, dev uuid default null) returns text language sql as $$
+  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select s.*, row_number() over () ord from yogurt_search(tok, q, dev) s) x
+$$;
+grant execute on function pg_temp.ids(text, text, uuid) to public;
+
+\set enriched '''- <span data-ai-grey="">Greywords here</span> <span data-transcript-link="">↳ 00:12 linkone</span>\n- middlebullet text <span data-transcript-link="">↳ 00:34 linktwo</span>\n- tailword <span data-transcript-link="">↳ 01:02 linkthree</span>'''
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+select m, :push_a, :d3, jsonb_build_object('v', 1, 'meeting', b)
+from (values
+  ('s1', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', E'# Plan\n\n- Ship the **pricing** page', 'enriched_md', replace(:enriched, '\n', E'\n'),
+     'transcript_json', '[{"ts_ms":1,"channel":"me","text":"Who brings the kombucha?"}]')),
+  ('s2', jsonb_build_object('title', 'Beta', 'started_at', 2000, 'notes_md', 'Pricing again', 'transcript_json', 'not json')),
+  ('s3', jsonb_build_object('title', 'Gamma', 'started_at', 3000, 'notes_md', 'zebra crossing', 'transcript_json', '[]')),
+  ('s4', jsonb_build_object('title', 'Résumé', 'started_at', 4000, 'notes_md', 'Résumé at the café, latency<target &amp; &lt;b&gt;bold&lt;/b&gt; &nbsp;done, see &lt;runbook&gt;', 'transcript_json', '[]')),
+  ('s8', jsonb_build_object('title', 'Codes', 'started_at', 8000, 'notes_md', 'Order ABC-123 shipped 2024-01-15 during covid-19, call 555-0100, see https://example.com/billing/page', 'transcript_json', '[]')),
+  ('s9', jsonb_build_object('title', 'Kick', 'started_at', 9000, 'notes_md', 'kickoff notes with 2*3 and snake_case_name, _italic_ and **bold**', 'transcript_json', '[]')),
+  ('s10', jsonb_build_object('title', 'Links', 'started_at', 10000, 'notes_md',
+     E'write to jane-doe@example.com about my-company.com\n- Ship the quokka page\nsee https://example.com/my-first-post, github.com/rchen3/rchen-vault, q4-report.pdf and https://meet.google.com/abc-defg-hij\nmail jane@acme.com',
+     'transcript_json', '[]')),
+  ('s11', jsonb_build_object('title', 'Deck', 'started_at', 11000, 'notes_md', 'the deck lives at docs.acme.com/q4', 'transcript_json', '[]'))
+) t(m, b);
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('s1', :push_b, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Budget review', 'started_at', 1000, 'notes_md', 'Ship the roadmap',
+     'enriched_md', replace(:enriched, '\n', E'\n'),
+     'transcript_json', '[{"ts_ms":1,"channel":"me","text":"Who brings the kombucha?"}]'))),
+  ('s3', :push_b, :d3, null),
+  ('s7', :push_b, :d3, null),
+  ('s12', :push_b, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Newer', 'started_at', 12000, 'notes_md', 'twelveword', 'transcript_json', '[]')));
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('s7', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Late', 'started_at', 7000, 'notes_md', 'lateword', 'transcript_json', '[]'))),
+  ('s12', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Older', 'started_at', 12000, 'notes_md', 'twelveword', 'transcript_json', '[]'))),
+  ('s5', :push_c, :d4, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Vendor', 'started_at', 5000, 'notes_md', 'vendor contract renewal, pears and apples, follow along and update', 'transcript_json', '[]'))),
+  ('s6', :push_c, :d4, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Q4', 'started_at', 6000, 'notes_md', 'bananas for q4-plan, follow-up and api_k', 'transcript_json', '[]')));
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+select 'g' || lpad(n::text, 2, '0'), :push_c, :d4, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'bulk ' || n, 'started_at', 500, 'notes_md', '', 'transcript_json', '[]'))
+from generate_series(1, 30) n;
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+select 'h' || lpad(n::text, 2, '0'), :push_c, :d4, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'exact ' || n, 'started_at', 400, 'notes_md', '', 'transcript_json', '[]'))
+from generate_series(1, 25) n;
+
+select pg_temp.eq(pg_temp.ids(:'stok', 'roadmap'), '', 'a push alone indexes nothing');
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the catch-up after a push indexes everything');
+
+select pg_temp.eq(pg_temp.ids(:'stok', 'PRICING'), 's2', 'an edited-away word matches only what is live, case-insensitively');
+select pg_temp.eq(pg_temp.ids(:'stok', 'roadmap'), 's1', 'the edited text matches');
+select pg_temp.eq(pg_temp.ids(:'stok', 'zebra'), '', 'a deleted meeting is excluded');
+select pg_temp.eq(pg_temp.ids(:'stok', 'lateword'), '', 'a version older than a tombstone is ignored');
+select pg_temp.eq((select title from yogurt_search(:'stok', 'twelveword')), 'Newer', 'an older push that arrives late never replaces a newer one');
+select pg_temp.eq(pg_temp.ids(:'stok', 'kombucha'), 's1', 'transcript text matches');
+select pg_temp.eq(pg_temp.ids(:'stok', 'greywords'), 's1', 'enhanced text matches inside spans');
+select pg_temp.eq(pg_temp.ids(:'stok', 'middlebullet'), 's1', 'text between several link spans is kept');
+select pg_temp.eq(pg_temp.ids(:'stok', 'tailword'), 's1', 'text after the last link span is kept');
+select pg_temp.eq(pg_temp.ids(:'stok', 'data-ai-grey'), '', 'markup does not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'span'), '', 'tag names do not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'linkone'), '', 'a transcript link label does not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'linktwo'), '', 'a second transcript link label does not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'linkthree'), '', 'a third transcript link label does not match');
+select pg_temp.eq(pg_temp.ids(:'stok', 'plan'), 's6', 'heading markers are not words');
+select pg_temp.eq(pg_temp.ids(:'stok', 'cafe'), 's4', 'accents fold in the text');
+select pg_temp.eq(pg_temp.ids(:'stok', 'résumé'), 's4', 'accents fold in the query');
+select pg_temp.eq(pg_temp.ids(:'stok', 'RESUME'), 's4', 'accents and case fold together');
+select pg_temp.eq((select snippet like '%' || chr(57344) || 'café' || chr(57345) || '%' from yogurt_search(:'stok', 'cafe'))::text, 'true', 'the snippet shows the original accented word');
+select pg_temp.eq((select title from yogurt_search(:'stok', 'resume')), 'Résumé', 'the title keeps its accents');
+select pg_temp.eq((select snippet like '%' || chr(57344) || 'latency' || chr(57345) || '<target%' from yogurt_search(:'stok', 'latency'))::text, 'true', 'text with a bare angle bracket survives');
 reset role;
+select pg_temp.eq((select doc from yogurt_private.yogurt_search_index where meeting_id = 's4'), 'Résumé at the café, latency<target & <b>bold</b> done, see <runbook>', 'entities are decoded for display');
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', '2*3'), 's9', 'a star inside a word is kept');
+select pg_temp.eq(pg_temp.ids(:'stok', 'snake_case_name'), 's9', 'underscores inside a word are kept');
+reset role;
+select pg_temp.eq((select doc from yogurt_private.yogurt_search_index where meeting_id = 's9'), 'kickoff notes with 2*3 and snake_case_name, italic and bold', 'emphasis markers go and word characters stay');
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'pric'), 's2', 'the last word matches as a prefix');
+select pg_temp.eq(pg_temp.ids(:'stok', 'ship the road'), 's1', 'earlier words match whole');
+select pg_temp.eq(pg_temp.ids(:'stok', 'ship the pric'), '', 'a prefix needs every word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'apples or bananas'), 's6,s5', 'or, newest first');
+select pg_temp.eq(pg_temp.ids(:'stok', '"vendor contract" or pears'), 's5', 'a phrase, then or');
+select pg_temp.eq(pg_temp.ids(:'stok', E'“vendor contract”'), 's5', 'curly quotes make a phrase');
+select pg_temp.eq(pg_temp.ids(:'stok', '"vendor contract'), 's5', 'an unbalanced quote does not raise');
+select pg_temp.eq(pg_temp.ids(:'stok', '"contract vendor"'), '', 'a phrase keeps its order');
+select pg_temp.eq(pg_temp.ids(:'stok', 'q4-plan'), 's6', 'a hyphenated word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'api_k'), 's6', 'an underscored word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'follow-u'), 's6', 'a half-typed hyphenated word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'follow-up'), 's6', 'a hyphenated last word is a phrase, not its parts anywhere');
+select pg_temp.eq(pg_temp.ids(:'stok', 'runbook'), 's4', 'a tag-shaped word is indexed');
+select pg_temp.eq(pg_temp.ids(:'stok', 'ABC-123'), 's8', 'a code with a digit after the hyphen');
+select pg_temp.eq(pg_temp.ids(:'stok', '2024-01-15'), 's8', 'a date');
+select pg_temp.eq(pg_temp.ids(:'stok', 'covid-19'), 's8', 'a word then a number');
+select pg_temp.eq(pg_temp.ids(:'stok', '555-0100'), 's8', 'a phone number');
+select pg_temp.eq(pg_temp.ids(:'stok', 'vendor - contract'), 's5', 'a spaced hyphen separates words');
+select pg_temp.eq(pg_temp.ids(:'stok', E'vendor – contract'), 's5', 'an en dash separates words');
+select pg_temp.eq(pg_temp.ids(:'stok', E'vendor — contract'), 's5', 'an em dash separates words');
+select pg_temp.eq(pg_temp.ids(:'stok', '- Ship the quokka page'), 's10', 'a pasted bullet');
+select pg_temp.eq(pg_temp.ids(:'stok', '- - quokka'), 's10', 'two pasted dashes');
+select pg_temp.eq(pg_temp.ids(:'stok', 'https://example.com/billing/page'), 's8', 'a pasted URL matches the same URL in a note');
+select pg_temp.eq(pg_temp.ids(:'stok', 'jane-doe@example.com'), 's10', 'a hyphenated email');
+select pg_temp.eq(pg_temp.ids(:'stok', 'my-company.com'), 's10', 'a hyphenated host');
+select pg_temp.eq(pg_temp.ids(:'stok', 'write to jane-doe@example.com'), 's10', 'words, then an email');
+select pg_temp.eq(pg_temp.ids(:'stok', 'https://example.com/my-first-post'), 's10', 'a URL with a hyphenated path');
+select pg_temp.eq(pg_temp.ids(:'stok', '(see example.com/my-first-post).'), 's10', 'a URL in parentheses');
+select pg_temp.eq(pg_temp.ids(:'stok', 'github.com/rchen3/rchen-vault'), 's10', 'a URL without a scheme');
+select pg_temp.eq(pg_temp.ids(:'stok', 'q4-report.pdf'), 's10', 'a hyphenated file name');
+select pg_temp.eq(pg_temp.ids(:'stok', 'https://meet.google.com/abc-defg-hij'), 's10', 'a meeting link');
+select pg_temp.eq(pg_temp.ids(:'stok', 'acme'), 's11,s10', 'a part of an email or a host');
+select pg_temp.eq(pg_temp.ids(:'stok', 'acm'), 's11,s10', 'a half-typed part');
+select pg_temp.eq(pg_temp.ids(:'stok', 'rchen-vault'), 's10', 'a part of a URL path');
+select pg_temp.eq(pg_temp.ids(:'stok', 'apples -pears'), '', 'a minus excludes');
+select pg_temp.eq(pg_temp.ids(:'stok', 'cafe -follow-up'), 's4', 'a minus excludes a hyphenated word');
+select pg_temp.eq(pg_temp.ids(:'stok', 'cafe -"follow up"'), 's4', 'a minus excludes a phrase');
+select pg_temp.eq(pg_temp.ids(:'stok', '-follow-up'), '', 'only an excluded hyphenated word returns nothing');
+select pg_temp.eq((pg_temp.ids(:'stok', 'kickoff or -zebra') like '%s9%')::text, 'true', 'or with an exclusion still matches the positive word');
+select pg_temp.eq(pg_temp.ids(:'stok', '-zzz'), '', 'only an exclusion returns nothing');
+select pg_temp.eq(pg_temp.ids(:'stok', '-zzz -yyy'), '', 'only exclusions return nothing');
+select pg_temp.eq(pg_temp.ids(:'stok', '   '), '', 'a blank query');
+select pg_temp.eq(pg_temp.ids(:'stok', null), '', 'a null query');
+select pg_temp.eq(pg_temp.ids(:'stok', '-'), '', 'a lone dash');
+select pg_temp.eq(pg_temp.ids(:'stok', '"'), '', 'a lone quote');
+select pg_temp.eq(pg_temp.ids(:'stok', 'review', :d3), 's1', 'a device filter keeps its meetings');
+select pg_temp.eq(pg_temp.ids(:'stok', 'review', :d4), '', 'a device filter drops the others');
+select pg_temp.eq((select snippet from yogurt_search(:'stok', 'budget')), null, 'a title match has no snippet');
+select pg_temp.eq((select snippet like '%' || chr(57344) || 'kombucha' || chr(57345) || '%' and snippet not like '%<%' from yogurt_search(:'stok', 'kombucha'))::text, 'true', 'the snippet marks the match');
+select pg_temp.eq((select title || ':' || started_at || ':' || push_id from yogurt_search(:'stok', 'budget')), 'Budget review:1000:' || :push_b, 'summary columns');
+
+select pg_temp.eq((select count(*)::text from yogurt_search(:'stok', 'bulk')), '25', 'the cap is 25');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_search(:'stok', 'bulk') where meeting_id in ('g01', 'g25', 'g26')), 'g01,g25', 'the cap keeps the first by meeting id among equal times');
+select pg_temp.eq((select bool_and(more)::text from yogurt_search(:'stok', 'bulk')), 'true', 'more when there were more');
+select pg_temp.eq((select count(*)::text || ':' || bool_or(more)::text from yogurt_search(:'stok', 'exact')), '25:false', 'no more at exactly the cap');
+
+-- A huge multibyte body is indexed within bounds, and a long run without spaces indexes quickly.
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+values ('big', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Big', 'started_at', 1, 'notes_md', repeat('日本語 é€ ', 400000) || ' needleword', 'transcript_json', '[]')));
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'a huge body is indexed');
+reset role;
+select pg_temp.eq((select (octet_length(doc) <= 400000)::text from yogurt_private.yogurt_search_index where meeting_id = 'big'), 'true', 'the indexed text is byte-capped');
+select pg_temp.eq((select (tsv is not null)::text from yogurt_private.yogurt_search_index where meeting_id = 'big'), 'true', 'a huge body still gets a tsvector');
+delete from yogurt_versions where meeting_id = 'big';
+select pg_temp.eq((length(yogurt_private.yogurt_plain('é' || repeat('abcd ', 80000))) > 399990)::text, 'true', 'one byte over the cap drops about one character');
+insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body)
+values ('dense', :push_a, :d3, :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Dense hosts', 'started_at', 1, 'notes_md', repeat('srv-1a2b3.prod.example.net/abc123 ', 12000), 'transcript_json', '[]')));
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(30000)::text, '0', 'text past the tsvector limit does not block the catch-up');
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'dense'), 'dense', 'it still indexes its title');
+reset role;
+delete from yogurt_versions where meeting_id = 'dense';
+set role authenticated;
+insert into yogurt_versions (meeting_id, push_id, device_id, body)
+values ('run', :push_a, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Run', 'started_at', 1, 'notes_md', 'runword ' || repeat('ab_', 34000) || ' tailrun ' || repeat('x-1-', 25000), 'transcript_json', '[]')));
+select clock_timestamp() as t0 \gset
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'a body of long runs without spaces is indexed');
+select pg_temp.eq((clock_timestamp() - :'t0'::timestamptz < interval '1 second')::text, 'true', 'within a second');
+select pg_temp.eq(pg_temp.ids(:'stok', 'tailrun'), 'run', 'a word after a long run matches');
+
+-- A non-numeric or overflowing time still indexes the meeting.
+reset role;
+insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body)
+values ('oddtime', :push_a, :d3, :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Odd time', 'started_at', 'soon', 'ended_at', '1.5e3', 'notes_md', 'oddword', 'transcript_json', '[]'))),
+       ('hugetime', :push_a, :d3, :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Huge time', 'started_at', 1e30::numeric, 'ended_at', 12.6, 'notes_md', 'hugeword', 'transcript_json', '[]')));
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text, '0', 'odd times are indexed');
+select pg_temp.eq((select started_at::text || '/' || coalesce(ended_at::text, 'null') from yogurt_private.yogurt_search_index where meeting_id = 'oddtime'), '0/null', 'a non-numeric time indexes with defaults');
+select pg_temp.eq((select started_at::text || '/' || coalesce(ended_at::text, 'null') from yogurt_private.yogurt_search_index where meeting_id = 'hugetime'), '0/13', 'an overflowing time indexes with defaults and a fraction rounds');
+delete from yogurt_versions where meeting_id in ('oddtime', 'hugetime', 'run');
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id in ('oddtime', 'hugetime', 'run')), '0', 'deleting a version removes its text');
+
+-- A catch-up leaves a current row alone, and repairs a missing, outdated, or extra row and one built with another signature.
+select xmin::text as x0 from yogurt_private.yogurt_search_index where meeting_id = 's1' \gset
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text, '0', 'nothing to repair');
+select pg_temp.eq((select xmin::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), :'x0', 'a current row is left alone');
+delete from yogurt_private.yogurt_search_index where meeting_id = 's1';
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text, '0', 'a missing row is repaired');
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's1'), '1', 'a missing row is written');
+update yogurt_private.yogurt_search_index set push_id = :push_a, title = 'outdated' where meeting_id = 's1';
+select yogurt_private.yogurt_search_catch_up(2000);
+select pg_temp.eq((select push_id::text || ':' || title from yogurt_private.yogurt_search_index where meeting_id = 's1'), :'push_b' || ':Budget review', 'an outdated row is replaced');
+insert into yogurt_private.yogurt_search_index (device_id, meeting_id, user_id, push_id, title, tsv, sig) values (:d3, 's3', :o, :push_a, 'extra', to_tsvector('ghostword'), yogurt_private.yogurt_search_signature());
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'ghostword'), '', 'a meeting deleted since the last catch-up is hidden');
+reset role;
+select yogurt_private.yogurt_search_catch_up(2000);
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's3'), '0', 'an extra row for a deleted meeting is removed');
+update yogurt_private.yogurt_search_index set sig = 'older', user_id = :n;
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(2000)::text, '0', 'a changed signature is caught up');
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where sig is distinct from yogurt_private.yogurt_search_signature()), '0', 'every row is rebuilt');
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'budget'), 's1', 'the rebuild restores the owner');
+reset role;
+
+-- The signature follows the configuration, and a deploy puts the mapping back.
+select yogurt_private.yogurt_search_signature() as sig0 \gset
+alter text search configuration yogurt_private.yogurt_ts alter mapping for asciiword, word with pg_catalog.simple;
+select pg_temp.eq((yogurt_private.yogurt_search_signature() <> :'sig0')::text, 'true', 'a changed mapping changes the signature');
+select pg_temp.eq((yogurt_private.yogurt_search_catch_up(0) > 0)::text, 'true', 'and makes rows stale');
+\i /schema.sql
+select pg_temp.eq(yogurt_private.yogurt_search_signature(), :'sig0', 'a deploy restores the mapping');
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(0)::text, '0', 'so rows built before the change are current again');
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'cafe'), 's4', 'accents fold again');
+reset role;
+
+-- A catch-up stops after about max_ms and says how many rows are left, and later calls finish them.
+insert into yogurt_versions (meeting_id, push_id, device_id, user_id, body)
+select 'long' || n, :push_c, :d4, :o, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Long ' || n, 'started_at', 1, 'notes_md', repeat('lorem ipsum dolor sit amet consectetur ', 1550), 'transcript_json', '[]'))
+from generate_series(1, 40) n;
+select clock_timestamp() as t0 \gset
+select yogurt_private.yogurt_search_catch_up(100) as left1 \gset
+select pg_temp.eq((clock_timestamp() - :'t0'::timestamptz < interval '600 milliseconds')::text, 'true', 'a catch-up stops near its limit');
+select pg_temp.eq((:left1 between 1 and 39)::text, 'true', 'and reports what is left after making progress');
+select pg_temp.eq(yogurt_private.yogurt_search_catch_up(10000)::text, '0', 'a later call finishes');
+delete from yogurt_versions where meeting_id like 'long%';
+
+-- A meeting deleted while a catch-up runs stays deleted, because each write rereads the meeting's latest version.
+-- The catch-up rebuilds every row in descending key order, so a lock on the first one holds it until the deletion has committed.
+create extension if not exists dblink schema extensions;
+update yogurt_private.yogurt_search_index set sig = 'older';
+select extensions.dblink_connect('holder', 'dbname=' || current_database());
+select extensions.dblink_connect('runner', 'dbname=' || current_database());
+select extensions.dblink_exec('holder', 'begin');
+select * from extensions.dblink('holder', format('select 1 from yogurt_private.yogurt_search_index where (device_id, meeting_id) = (%L, %L) for update', :d4, 's6')) as t(x int);
+select extensions.dblink_send_query('runner', 'select yogurt_private.yogurt_search_catch_up(10000)');
+do $$ begin
+  for i in 1..200 loop
+    perform pg_stat_clear_snapshot();
+    exit when exists (select from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query like '%yogurt_search_catch_up(10000)%');
+    perform pg_sleep(0.02);
+  end loop;
+  if not exists (select from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query like '%yogurt_search_catch_up(10000)%') then
+    raise exception 'the catch-up never waited on the held row';
+  end if;
+end $$;
+set role authenticated;
+select yogurt_start_push(:d3) as push_d \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('s4', :push_d, :d3, null);
+reset role;
+select extensions.dblink_exec('holder', 'commit');
+select pg_temp.eq((select n::text from extensions.dblink_get_result('runner') as t(n int)), '0', 'the concurrent catch-up finishes');
+select extensions.dblink_disconnect('holder'), extensions.dblink_disconnect('runner');
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where meeting_id = 's4'), '0', 'the deleted meeting did not come back');
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'cafe'), '', 'and is not found');
+
+-- The index is private, and each owner sees only their own rows.
+select pg_temp.expect('42501', array['select * from yogurt_private.yogurt_search_index', 'insert into yogurt_private.yogurt_search_index (device_id, meeting_id, user_id, push_id) values (gen_random_uuid(), ''x'', gen_random_uuid(), 1)']);
+reset role;
+update yogurt_private.yogurt_search_index set user_id = :n;
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'budget'), '', 'only the caller''s rows');
+reset role;
+
+-- The guide's purge removes a device's text from search along with its versions.
+update yogurt_private.yogurt_search_index set sig = 'older';
+select yogurt_private.yogurt_search_catch_up(2000);
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'vendor'), 's5', 'before the purge');
+reset role;
+delete from yogurt_versions where device_id = :d4;
+delete from yogurt_pushes where device_id = :d4;
+delete from yogurt_devices where id = :d4;
+set role authenticated;
+select pg_temp.eq(pg_temp.ids(:'stok', 'vendor'), '', 'a purged device is gone from search');
+select pg_temp.eq(pg_temp.ids(:'stok', 'bulk'), '', 'every purged meeting is gone from search');
+reset role;
+delete from yogurt_versions where device_id = :d3;
+delete from yogurt_pushes where device_id = :d3;
+delete from yogurt_devices where id = :d3;
+select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where device_id in (:d3, :d4)), '0', 'no text is left once every device is purged');
+
 \o
 \echo schema_test: ok

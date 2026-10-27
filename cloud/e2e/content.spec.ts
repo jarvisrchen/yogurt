@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { API, DEVICES, KEY, OWNER, PASSWORD, LATE, PIN, expectScreen, isPhone, onboard, reset, seed, shot, typePin } from "./helpers";
 
+// Later tests use the owner the first one creates.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(reset);
 
 test("read the library by device, open a meeting, browse History, and view an earlier push", async ({ page, browser }, info) => {

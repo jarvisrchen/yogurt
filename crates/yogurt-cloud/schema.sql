@@ -140,6 +140,215 @@ begin
   end if;
 end $$;
 
+-- Search. One row per live meeting, so the index never grows with history.
+-- Search work never runs inside a push. yogurt_search_catch_up() brings the index up to the latest versions afterwards: the laptop calls it after each push, and the build after each deploy.
+
+do $$ begin
+  if to_regprocedure('extensions.unaccent(text)') is null then
+    if exists (select from pg_catalog.pg_extension where extname = 'unaccent') then
+      alter extension unaccent set schema extensions;
+    else
+      create extension unaccent with schema extensions;
+    end if;
+  end if;
+end $$;
+
+-- Matching folds accents and case and stems nothing, so names and non-English words match as typed, while the stored text keeps its original form for display.
+-- The mapping is applied on every deploy, so a change to it reaches an existing project.
+do $$ begin
+  if not exists (select from pg_catalog.pg_ts_config where cfgname = 'yogurt_ts' and cfgnamespace = 'yogurt_private'::regnamespace) then
+    create text search configuration yogurt_private.yogurt_ts (copy = pg_catalog.simple);
+  end if;
+end $$;
+alter text search configuration yogurt_private.yogurt_ts drop mapping if exists for
+  asciiword, word, numword, asciihword, hword, numhword, hword_asciipart, hword_part, hword_numpart,
+  email, protocol, url, host, url_path, file, sfloat, float, int, uint, version, tag, entity, blank;
+alter text search configuration yogurt_private.yogurt_ts add mapping for
+  asciiword, word, numword, asciihword, hword, numhword, hword_asciipart, hword_part, hword_numpart
+  with extensions.unaccent, pg_catalog.simple;
+alter text search configuration yogurt_private.yogurt_ts add mapping for
+  email, url, host, url_path, file, sfloat, float, int, uint, version
+  with pg_catalog.simple;
+
+create table if not exists yogurt_private.yogurt_search_index (
+  device_id  uuid   not null,
+  meeting_id text   not null,
+  user_id    uuid   not null,
+  push_id    bigint not null,
+  started_at bigint not null default 0,
+  ended_at   bigint,
+  title      text   not null default '',
+  doc        text   not null default '',  -- notes, enhanced notes, and transcript as plain text, for snippets
+  tsv        tsvector,
+  sig        text,                        -- the yogurt_search_signature() the row was built with
+  primary key (device_id, meeting_id)
+);
+create index if not exists yogurt_search_index_tsv on yogurt_private.yogurt_search_index using gin (tsv);
+alter table yogurt_private.yogurt_search_index enable row level security;
+
+-- A purge or an account deletion removes the version, and the cascade removes its text.
+-- Dropping yogurt_versions with cascade, as a reset does, drops the constraint, so a deploy deletes the rows that orphaned and adds it back.
+do $$ begin
+  if not exists (select from pg_catalog.pg_constraint where conname = 'yogurt_search_index_version' and conrelid = 'yogurt_private.yogurt_search_index'::regclass) then
+    delete from yogurt_private.yogurt_search_index i
+    where not exists (select from public.yogurt_versions v where v.device_id = i.device_id and v.meeting_id = i.meeting_id and v.push_id = i.push_id);
+    alter table yogurt_private.yogurt_search_index add constraint yogurt_search_index_version
+      foreign key (device_id, meeting_id, push_id) references public.yogurt_versions on delete cascade;
+  end if;
+end $$;
+
+-- Plain words from markdown or editor HTML, in their original case and accents.
+-- A transcript link's label is dropped whole, other editor tags are dropped alone, and text such as "latency<target" stays.
+-- Markdown markers go only at a line or word boundary, so "2*3" and "api_key" keep their characters.
+-- U+E000 and U+E001 are removed because the search headline uses them as markers.
+-- The text search parser takes quadratic time on a long run without spaces, so a space follows every 100 characters of one.
+-- The result is at most 400,000 bytes.
+create or replace function yogurt_private.yogurt_plain(md text) returns text
+language plpgsql immutable set search_path = '' as $$
+declare
+  t text := left(coalesce(md, ''), 400000);
+begin
+  t := regexp_replace(t, '<span\s[^<>]*data-transcript-link[^<>]*>[^<]*</span>', ' ', 'g');
+  t := regexp_replace(t, '</?(span|br|p|div|b|i|u|em|strong|code|pre|ul|ol|li|a|h[1-6])\y[^<>]*>', ' ', 'g');
+  t := regexp_replace(t, '!?\[([^\]]*)\]\([^)]*\)', '\1', 'g');
+  t := regexp_replace(t, '^\s{0,3}(#{1,6}|>|[-*+]|[0-9]+\.)\s+', '', 'gn');
+  t := regexp_replace(t, '(^|[\s(\[])(\*{1,3}|_{1,3}|~~)(\S)', '\1\3', 'g');
+  t := regexp_replace(t, '(\S)(\*{1,3}|_{1,3}|~~)($|[\s.,;:!?)\]])', '\1\3', 'g');
+  t := replace(t, '`', '');
+  t := translate(t, chr(57344) || chr(57345), '');
+  t := replace(replace(replace(replace(replace(replace(t, '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&');
+  t := regexp_replace(t, '\S{100}', '\& ', 'g');
+  t := btrim(regexp_replace(t, '\s+', ' ', 'g'));
+  -- No character is longer than 4 bytes, so each step drops one character for every 4 bytes over and never cuts below the cap by more than 3.
+  while octet_length(t) > 400000 loop
+    t := left(t, length(t) - greatest((octet_length(t) - 400000) / 4, 1));
+  end loop;
+  return t;
+end $$;
+
+-- Notes, enhanced notes, and each transcript segment of a pushed meeting. transcript_json is a JSON string inside the body, and a malformed one counts as no transcript.
+create or replace function yogurt_private.yogurt_search_doc(body jsonb) returns text
+language plpgsql stable set search_path = '' as $$
+declare
+  transcript text;
+begin
+  begin
+    select string_agg(s ->> 'text', ' ') into transcript
+    from jsonb_array_elements((body #>> '{meeting,transcript_json}')::jsonb) s;
+  exception when others then
+    transcript := null;
+  end;
+  return yogurt_private.yogurt_plain(concat_ws(E'\n', body #>> '{meeting,notes_md}', body #>> '{meeting,enriched_md}', transcript));
+end $$;
+
+-- The pieces of each word joined by @ . or /, such as an email, a host, a URL, or a file name, so "acme" finds jane@acme.com and docs.acme.com/q4.
+create or replace function yogurt_private.yogurt_search_parts(t text) returns text
+language sql immutable set search_path = '' as $$
+  select coalesce(string_agg(regexp_replace(r.m[1], '[^[:alnum:]_-]+', ' ', 'g'), ' '), '')
+  from regexp_matches(t, '(\S*[[:alnum:]][@./][[:alnum:]]\S*)', 'g') as r(m)
+$$;
+
+-- What the parser reads, for the index and the query alike. The parser keeps the punctuation that ends a URL, as in "x.com/a-b,", and reads a run such as "<runbook>" as a tag, which the configuration does not index.
+create or replace function yogurt_private.yogurt_search_words(t text) returns text
+language sql immutable set search_path = '' as $$
+  select regexp_replace(translate(t, '<>', '  '), '[.,;:!?)\]'']+(?=\s|$)', '', 'g')
+$$;
+
+-- A JSON number as milliseconds, or null when it is missing, not a number, or too large for a bigint.
+create or replace function yogurt_private.yogurt_ms(j jsonb) returns bigint
+language sql immutable set search_path = '' as $$
+  select case when jsonb_typeof(j) = 'number' and (j #>> '{}')::numeric between -9000000000000000000 and 9000000000000000000
+    then round((j #>> '{}')::numeric)::bigint end
+$$;
+
+-- What the index holds for one live version. A body whose text cannot be read still indexes its title.
+create or replace function yogurt_private.yogurt_search_row(body jsonb, out title text, out started_at bigint, out ended_at bigint, out doc text, out tsv tsvector)
+language plpgsql stable set search_path = '' as $$
+begin
+  title := left(coalesce(body #>> '{meeting,title}', ''), 1000);
+  started_at := coalesce(yogurt_private.yogurt_ms(body #> '{meeting,started_at}'), 0);
+  ended_at := yogurt_private.yogurt_ms(body #> '{meeting,ended_at}');
+  begin
+    doc := yogurt_private.yogurt_search_doc(body);
+  exception when others then
+    doc := '';
+  end;
+  begin
+    tsv := to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_words(title))
+      || to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_words(doc))
+      || to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_parts(title || ' ' || doc));
+  exception when others then
+    -- Text dense with URLs or hosts can pass the 1 MB tsvector limit, and the meeting still indexes its title.
+    doc := '';
+    tsv := to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_words(title));
+  end;
+end $$;
+
+-- A hash of what decides a row's contents: the unaccent version, the configuration's dictionaries, and the bodies of the functions that build a row.
+create or replace function yogurt_private.yogurt_search_signature() returns text
+language sql stable set search_path = '' as $$
+  select md5(concat_ws(E'\n',
+    (select extversion from pg_catalog.pg_extension where extname = 'unaccent'),
+    (select string_agg(m.maptokentype || ':' || m.mapseqno || ':' || m.mapdict::regdictionary::text, ',' order by m.maptokentype, m.mapseqno)
+      from pg_catalog.pg_ts_config_map m where m.mapcfg = 'yogurt_private.yogurt_ts'::regconfig),
+    (select string_agg(p.proname || E'\n' || p.prosrc, E'\n' order by p.proname) from pg_catalog.pg_proc p
+      where p.pronamespace = 'yogurt_private'::regnamespace
+        and p.proname in ('yogurt_plain', 'yogurt_search_doc', 'yogurt_search_words', 'yogurt_search_parts', 'yogurt_ms', 'yogurt_search_row'))))
+$$;
+
+-- Repairs index rows that are missing, outdated, built with another signature, or left behind by a deleted meeting, until about max_ms has passed, and returns how many still need it.
+-- Each repair reads the meeting's latest version in the statement that writes, so a deletion that commits meanwhile is never undone.
+-- The advisory lock runs one catch-up at a time, so a call that starts after a push sees every row an earlier call wrote.
+-- Keys go in a fixed order and a row that fails is counted and passed over, so each call makes progress.
+create or replace function yogurt_private.yogurt_search_catch_up(max_ms int) returns int
+language plpgsql security definer set search_path = '' as $$
+declare
+  cur_sig text := yogurt_private.yogurt_search_signature();
+  deadline timestamptz;
+  left_over int := 0;
+  k record;
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('yogurt_search_catch_up'));
+  deadline := clock_timestamp() + greatest(coalesce(max_ms, 0), 0) * interval '1 millisecond';
+  for k in
+    select l.device_id, l.meeting_id
+    from (
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body is null as dead
+      from public.yogurt_versions v
+      order by v.device_id desc, v.meeting_id desc, v.push_id desc
+    ) l
+    left join yogurt_private.yogurt_search_index i on i.device_id = l.device_id and i.meeting_id = l.meeting_id
+    where case when l.dead then i.device_id is not null else i.push_id is distinct from l.push_id or i.sig is distinct from cur_sig end
+    order by l.device_id desc, l.meeting_id desc
+  loop
+    if clock_timestamp() > deadline then
+      left_over := left_over + 1;
+      continue;
+    end if;
+    begin
+      with l as (
+        select v.user_id, v.push_id, v.body from public.yogurt_versions v
+        where v.device_id = k.device_id and v.meeting_id = k.meeting_id
+        order by v.push_id desc limit 1
+      ), gone as (
+        delete from yogurt_private.yogurt_search_index i
+        where i.device_id = k.device_id and i.meeting_id = k.meeting_id and not exists (select from l where l.body is not null)
+      )
+      insert into yogurt_private.yogurt_search_index as i (device_id, meeting_id, user_id, push_id, started_at, ended_at, title, doc, tsv, sig)
+      select k.device_id, k.meeting_id, l.user_id, l.push_id, r.started_at, r.ended_at, r.title, r.doc, r.tsv, cur_sig
+      from l cross join lateral yogurt_private.yogurt_search_row(l.body) r
+      where l.body is not null
+      on conflict (device_id, meeting_id) do update set
+        user_id = excluded.user_id, push_id = excluded.push_id, started_at = excluded.started_at, ended_at = excluded.ended_at,
+        title = excluded.title, doc = excluded.doc, tsv = excluded.tsv, sig = excluded.sig
+      where excluded.push_id >= i.push_id;
+    exception when others then
+      left_over := left_over + 1;
+    end;
+  end loop;
+  return left_over;
+end $$;
+
 -- RPCs
 
 create or replace function public.yogurt_status() returns jsonb
@@ -292,6 +501,70 @@ begin
     where l.body is not null order by l.meeting_id, l.device_id;
 end $$;
 
+-- The laptop calls this after each push. max_ms is capped at 3 seconds so a call stays well under the authenticated role's 8 second statement timeout, even after waiting for another catch-up.
+create or replace function public.yogurt_search_catch_up(max_ms int default 2000) returns int
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  return yogurt_private.yogurt_search_catch_up(least(max_ms, 3000));
+end $$;
+
+-- Live meetings matching the query, newest first, optionally on one device, at most 25. `more` is true on every row when there were more.
+-- Quotes work, a leading minus excludes, and the last word matches as a prefix so a half-typed word finds its meeting.
+-- snippet is null when the title matches, and otherwise a headline with the matched words wrapped in U+E000 and U+E001.
+create or replace function public.yogurt_search(token text, query text, only_device uuid default null)
+returns table (device_id uuid, meeting_id text, push_id bigint, started_at bigint, ended_at bigint, title text, snippet text, more boolean)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  cap constant int := 25;
+  cfg constant regconfig := 'yogurt_private.yogurt_ts';
+  lexeme constant text := '''([^'']|'''')*''';
+  q text := coalesce(query, '');
+  tsq tsquery;
+  prefix boolean := false;
+  opts text := format('StartSel=%s, StopSel=%s, MaxWords=14, MinWords=6, MaxFragments=1, ShortWord=0', chr(57344), chr(57345));
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  q := translate(q, E'“”‘’', '""' || chr(39) || chr(39));
+  -- A dash with space or the edge on both sides, such as a pasted bullet or a spaced hyphen, separates words, and so does an en or em dash anywhere.
+  q := regexp_replace(regexp_replace(q, '(^|\s)[-–—]+(?=\s|$)', '\1', 'g'), '[–—]', ' ', 'g');
+  -- A pasted URL matches by its host and path.
+  q := yogurt_private.yogurt_search_words(regexp_replace(q, 'https?://', '', 'gi'));
+  -- An ICU collation leaves $ + < = > ^ ` | ~ out of [:punct:], so they are listed.
+  if q ~ '[^[:space:][:punct:]$+<=>^`|~]$' then
+    -- A half-typed hyphenated word matches as a phrase of its parts, so "follow-u" finds "follow-up" and "follow up" and nothing with the parts apart.
+    -- A hyphen before a digit belongs to the token, as in ABC-123, and an excluded or quoted word, an email, a host, a URL, or a file name stays whole.
+    if substring(q from '\S+$') !~ '^-|[@./"]' and substring(q from '\S+$') ~ '[[:alnum:]]-[[:alpha:]]' then
+      q := regexp_replace(regexp_replace(q, '(\S+)$', '"\1"'), '([[:alnum:]])-(?=[[:alpha:]][^[:space:]]*$)', '\1 ', 'g');
+    end if;
+    prefix := true;
+  end if;
+  tsq := websearch_to_tsquery(cfg, q);
+  -- A query with no word outside an exclusion returns nothing.
+  if regexp_replace(tsq::text, '!\s*(\([^()]*\)|' || lexeme || ')', '', 'g') !~ '''' then return; end if;
+  if prefix and tsq::text !~ ('!\s*' || lexeme || '$') then
+    tsq := regexp_replace(tsq::text, '(' || lexeme || ')$', '\1:*')::tsquery;
+  end if;
+  return query
+    with m as (
+      select i.device_id, i.meeting_id, i.push_id, i.started_at, i.ended_at, i.title, i.doc,
+             row_number() over (order by i.started_at desc, i.meeting_id, i.device_id) as rn
+      from yogurt_private.yogurt_search_index i
+      where i.user_id = auth.uid() and i.tsv @@ tsq and (only_device is null or i.device_id = only_device)
+        -- A deletion pushed after the index last caught up hides the meeting at once.
+        and (select v.body is not null from public.yogurt_versions v
+             where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
+      order by i.started_at desc, i.meeting_id, i.device_id
+      limit cap + 1
+    )
+    select m.device_id, m.meeting_id, m.push_id, m.started_at, m.ended_at, m.title,
+           case when to_tsvector(cfg, m.title) @@ tsq then null else ts_headline(cfg, m.doc, tsq, opts) end,
+           (select count(*) from m) > cap
+    from m where m.rn <= cap order by m.rn;
+end $$;
+
 create or replace function public.yogurt_history(token text)
 returns table (push_id bigint, device_id uuid, device_name text, pushed_at timestamptz, changed bigint, deleted bigint)
 language plpgsql security definer set search_path = '' as $$
@@ -343,6 +616,7 @@ create policy add on public.yogurt_versions for insert to authenticated
 -- Grants are explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
 revoke all on public.yogurt_owner, public.yogurt_browsers, public.yogurt_devices, public.yogurt_pushes, public.yogurt_versions
   from public, anon, authenticated;
+revoke all on yogurt_private.yogurt_search_index from public, anon, authenticated;
 revoke all on sequence public.yogurt_browsers_id_seq, public.yogurt_pushes_id_seq from public, anon, authenticated;
 grant insert (id, name) on public.yogurt_devices to authenticated;
 grant insert (meeting_id, push_id, device_id, body) on public.yogurt_versions to authenticated;
@@ -370,6 +644,8 @@ grant execute on function
   public.yogurt_start_push(uuid),
   public.yogurt_device_meetings(uuid),
   public.yogurt_library(text, bigint),
+  public.yogurt_search_catch_up(int),
+  public.yogurt_search(text, text, uuid),
   public.yogurt_history(text),
   public.yogurt_device_list(text)
 to authenticated;
@@ -381,3 +657,4 @@ grant execute on function
   yogurt_private.yogurt_owns_device(uuid),
   yogurt_private.yogurt_push_open(bigint, uuid)
 to authenticated;
+

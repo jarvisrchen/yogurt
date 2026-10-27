@@ -44,6 +44,18 @@ export interface LibraryRow {
   body: Bundle;
 }
 
+/** A meeting matching a search. `snippet` is null when the title matched, and otherwise text with the matches marked (see `snippetParts`). `more` is true when the server stopped at its cap. */
+export interface SearchHit {
+  device_id: string;
+  meeting_id: string;
+  push_id: number;
+  started_at: number;
+  ended_at: number | null;
+  title: string;
+  snippet: string | null;
+  more: boolean;
+}
+
 export interface HistoryRow {
   push_id: number;
   device_id: string;
@@ -118,6 +130,7 @@ export class Api {
   forgetBrowser = (token: string, browserId: number) =>
     this.rpc<boolean>("yogurt_forget_browser", { token, browser_id: browserId });
   library = (token: string, atPush?: number) => this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: atPush ?? null });
+  search = (token: string, query: string, device: string | null) => this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: device });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
 }

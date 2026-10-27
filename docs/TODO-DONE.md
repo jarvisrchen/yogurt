@@ -1280,3 +1280,7 @@ New closed items go at the bottom.
 
   The laptop and phone rehearsal found four things, now fixed: transcript links jump to their moment, Unlock shows as many boxes as the PIN has digits, the guide's diagram shows the Vercel webapp and the Supabase data as one Yogurt Cloud and gains two sequence diagrams, and the README covers Yogurt Cloud.
   The Deploy with Vercel rehearsal moved to SYNC-11.
+
+- [x] **SYNC-10** Search the webapp library by title, notes, and transcript
+
+  The webapp searches titles, notes, enhanced notes, and transcripts in the database, with accents and case folded, prefix matching on the last word, and highlighted snippets. Pushes never run search work: the laptop and the build call a time-bounded catch-up afterwards, so search can never fail a push.
