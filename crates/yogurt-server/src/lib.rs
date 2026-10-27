@@ -57,7 +57,7 @@ pub fn __test_only_aux_state(
     Ok((me, prompts))
 }
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -129,6 +129,10 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
         storage,
         session,
         notes_dir,
+        data_dir: db_path
+            .parent()
+            .context("db path has no parent directory")?
+            .to_path_buf(),
         app_db_path: cfg.app_db_path,
         keys_path: cfg.keys_path,
     })?;

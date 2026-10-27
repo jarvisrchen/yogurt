@@ -42,6 +42,8 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         // MemoryKeyStore so this test doesn't touch the real key file.
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
+        data_dir: tmp.path().to_path_buf(),
+        keys_path: tmp.path().join("keys.json"),
         // Phase 6 (Plan 06-01): test wiring uses MockLlm.
         llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         // Phase 7 (Plan 07-01): SQLite-backed Library directory.

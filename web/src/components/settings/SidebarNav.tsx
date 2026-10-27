@@ -1,6 +1,7 @@
+import { Fragment } from "react";
 import { Link } from "react-router";
 import { ArrowLeft } from "lucide-react";
-import type { ProviderView } from "../../lib/api/settings";
+import type { DataPaths, ProviderView } from "../../lib/api/settings";
 import { Pill } from "../Pill";
 import { useCloudStatus } from "../../lib/api/cloud";
 
@@ -14,6 +15,7 @@ interface Props {
   active: SettingsSection;
   onChange: (s: SettingsSection) => void;
   providers: ProviderView[];
+  paths: DataPaths;
 }
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
@@ -25,7 +27,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "import", label: "Import" },
 ];
 
-export function SidebarNav({ active, onChange, providers }: Props) {
+export function SidebarNav({ active, onChange, providers, paths }: Props) {
   // Local-only holds iff no active provider points to a non-localhost host.
   const localOnly = !providers.some(
     (p) => p.is_active && !/localhost|127\.0\.0\.1/.test(p.base_url),
@@ -95,11 +97,29 @@ export function SidebarNav({ active, onChange, providers }: Props) {
           </span>
         ) : null}
         <div className="text-[13px] text-mut leading-relaxed">
-          keys → <code className="font-mono">~/.yogurt/keys.json</code>
+          keys → <PathCode path={paths.keys} />
           <br />
-          data → <code className="font-mono">~/.yogurt/</code>
+          data → <PathCode path={`${paths.data_dir}/`} />
         </div>
       </footer>
     </nav>
+  );
+}
+
+/** Wraps a long path after a `/` rather than mid-name. `<wbr>` keeps a copied path clean. */
+function PathCode({ path }: { path: string }) {
+  return (
+    <code className="font-mono [overflow-wrap:anywhere]">
+      {path.split("/").map((seg, i) => (
+        <Fragment key={i}>
+          {i > 0 && (
+            <>
+              /<wbr />
+            </>
+          )}
+          {seg}
+        </Fragment>
+      ))}
+    </code>
   );
 }

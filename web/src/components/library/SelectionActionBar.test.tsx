@@ -15,6 +15,14 @@ vi.mock("../../lib/api/meetings", () => ({
   useBulkSetLabel: vi.fn(),
 }));
 
+vi.mock("../../lib/api/settings", () => ({
+  useDataPaths: () => ({
+    data_dir: "/tmp/scratch",
+    keys: "/tmp/scratch/keys.json",
+    notes: "/tmp/scratch/notes",
+  }),
+}));
+
 function meetings(n: number): Pick<Meeting, "id" | "labels">[] {
   return Array.from({ length: n }, (_, i) => ({ id: `m${i}`, labels: [] }));
 }

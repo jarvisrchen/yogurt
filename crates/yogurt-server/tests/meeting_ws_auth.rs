@@ -50,6 +50,8 @@ async fn spawn() -> TestSetup {
         prompts,
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
+        data_dir: tmp.path().to_path_buf(),
+        keys_path: tmp.path().join("keys.json"),
         llm_override: Some(Arc::new(yogurt_server::__test_only_llm_mock::MockLlm)),
         meeting_repo,
         label_repo,

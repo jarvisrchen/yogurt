@@ -99,6 +99,23 @@ struct SettingsView {
     presets: Vec<PresetView>,
     /// Mask of the `stt-deepgram` key-file entry. Never the raw key.
     deepgram_key_masked: Option<String>,
+    paths: PathsView,
+}
+
+/// Display strings, with the home directory shortened to `~`.
+#[derive(Serialize)]
+struct PathsView {
+    data_dir: String,
+    keys: String,
+    notes: String,
+}
+
+fn display_path(p: &std::path::Path, home: Option<&std::path::Path>) -> String {
+    match home.and_then(|h| p.strip_prefix(h).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => p.display().to_string(),
+    }
 }
 
 async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, Error> {
@@ -110,11 +127,19 @@ async fn get_settings(State(s): State<AppState>) -> Result<Json<SettingsView>, E
         .masked(crate::meetings::DEEPGRAM_KEY_ID)
         .ok()
         .flatten();
+    let base = directories::BaseDirs::new();
+    let home = base.as_ref().map(|b| b.home_dir());
+    let paths = PathsView {
+        data_dir: display_path(&s.data_dir, home),
+        keys: display_path(&s.keys_path, home),
+        notes: display_path(s.markdown_exporter.notes_dir(), home),
+    };
     Ok(Json(SettingsView {
         general,
         providers,
         presets,
         deepgram_key_masked,
+        paths,
     }))
 }
 
@@ -763,5 +788,23 @@ impl IntoResponse for Error {
             )
                 .into_response(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_path;
+    use std::path::Path;
+
+    #[test]
+    fn display_path_shortens_only_the_home_prefix() {
+        let home = Some(Path::new("/Users/a"));
+        assert_eq!(
+            display_path(Path::new("/Users/a/.yogurt/keys.json"), home),
+            "~/.yogurt/keys.json"
+        );
+        assert_eq!(display_path(Path::new("/Users/a"), home), "~");
+        assert_eq!(display_path(Path::new("/Users/ab/x"), home), "/Users/ab/x");
+        assert_eq!(display_path(Path::new("/tmp/y"), None), "/tmp/y");
     }
 }

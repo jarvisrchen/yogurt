@@ -4,10 +4,12 @@ import { useNavigate } from "react-router";
 import { useCreateMeeting } from "../../lib/api/meetings";
 import { Logo } from "../Logo";
 import { Button } from "../Button";
+import { useDataPaths } from "../../lib/api/settings";
 
 export function EmptyLibrary() {
   const create = useCreateMeeting();
   const nav = useNavigate();
+  const notes = useDataPaths()?.notes;
 
   const start = async () => {
     try {
@@ -37,9 +39,11 @@ export function EmptyLibrary() {
           ⌘N
         </kbd>
       </Button>
-      <p className="mt-6 text-[11px] text-mut">
-        notes saved to <code className="font-mono">~/.yogurt/notes/*.md</code>
-      </p>
+      {notes && (
+        <p className="mt-6 text-[11px] text-mut">
+          notes saved to <code className="font-mono">{notes}/*.md</code>
+        </p>
+      )}
     </div>
   );
 }

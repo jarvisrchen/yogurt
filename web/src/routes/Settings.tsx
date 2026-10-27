@@ -82,6 +82,7 @@ export function Settings() {
         active={section}
         onChange={(s) => navigate(`/settings/${s}`)}
         providers={data.providers}
+        paths={data.paths}
       />
       <main className="flex-1 max-w-3xl px-10 py-8 space-y-10">
         {section === "model" && (

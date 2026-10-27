@@ -15,6 +15,14 @@ vi.mock("../../lib/api/meetings", () => ({
   }),
 }));
 
+vi.mock("../../lib/api/settings", () => ({
+  useDataPaths: () => ({
+    data_dir: "/tmp/scratch",
+    keys: "/tmp/scratch/keys.json",
+    notes: "/tmp/scratch/notes",
+  }),
+}));
+
 function renderIcon(onDeleted = vi.fn()) {
   return render(
     <DeleteMeetingConfirm id="m1" variant="icon" onDeleted={onDeleted} />,
@@ -101,5 +109,6 @@ describe("DeleteMeetingConfirm — menuitem variant", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /^delete$/i }));
     expect(screen.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
     expect(screen.getByRole("menuitem", { name: /^delete\?$/i })).toBeInTheDocument();
+    expect(screen.getByText("/tmp/scratch/notes")).toBeInTheDocument();
   });
 });

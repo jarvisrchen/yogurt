@@ -794,6 +794,8 @@ fn build_test_state(
         prompts,
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
+        data_dir: tmp.path().to_path_buf(),
+        keys_path: tmp.path().join("keys.json"),
         llm_override: Some(llm),
         meeting_repo,
         label_repo,

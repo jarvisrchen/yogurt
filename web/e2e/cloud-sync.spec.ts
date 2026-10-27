@@ -31,6 +31,11 @@ const SETTINGS = {
   ],
   presets: [],
   deepgram_key_masked: null,
+  paths: {
+    data_dir: "~/.yogurt",
+    keys: "~/.yogurt/keys.json",
+    notes: "~/.yogurt/notes",
+  },
 };
 
 const PUSHED_AT = new Date(2026, 9, 23, 14, 59).getTime();

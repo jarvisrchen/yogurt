@@ -1340,3 +1340,7 @@ New closed items go at the bottom.
 - [x] **SYNC-13** Push in the background in small paced batches with retries and a progress pill on every page, so a large backlog uploads slowly instead of failing ([design](.planning/granola-import-design.md#pushing-a-backlog-slowly-sync-13))
 
   Push runs in the background in paced batches of 25 meetings or 256 KiB with retries and backoff, resumes from the last committed batch, catches search up after each batch, and shows progress in a pill on every page.
+
+- [x] **UI-23** Show the server's real data folder in the Settings footer, the empty Library, and the delete confirm
+
+  Landed in the UI-23 PR (2026-10-27). `GET /api/settings` returns `paths` (`data_dir`, `keys`, `notes`) from the running server, with the home directory shown as `~`, so an instance started with `--data-dir` or `$YOGURT_DATA_DIR` names its own files instead of a hardcoded `~/.yogurt`. The Settings footer breaks a long path after a `/`. The models folder stays `~/.yogurt/models` because models never move.

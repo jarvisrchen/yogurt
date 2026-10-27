@@ -94,10 +94,6 @@ impl FileKeyStore {
         })
     }
 
-    pub fn open_default() -> Result<Self> {
-        Self::open(crate::paths::keys_path()?)
-    }
-
     /// The file as it is now, so a write never drops entries another process added since this one booted.
     fn read_file(&self) -> Result<BTreeMap<String, String>> {
         match std::fs::read(&self.path) {

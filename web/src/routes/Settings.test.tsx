@@ -57,6 +57,11 @@ const { baseFixture } = vi.hoisted(() => {
       },
     ],
     deepgram_key_masked: null,
+    paths: {
+      data_dir: "~/.yogurt",
+      keys: "~/.yogurt/keys.json",
+      notes: "~/.yogurt/notes",
+    },
   };
   return { baseFixture };
 });
@@ -98,6 +103,22 @@ function renderSettings() {
 describe("Settings page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("names the server's own data folder in the sidebar footer", async () => {
+    vi.mocked(settingsApi.get).mockResolvedValueOnce({
+      ...baseFixture,
+      paths: {
+        data_dir: "/tmp/scratch",
+        keys: "/tmp/scratch/keys.json",
+        notes: "/tmp/scratch/notes",
+      },
+    });
+    renderSettings();
+
+    expect(await screen.findByText("/tmp/scratch/keys.json")).toBeInTheDocument();
+    expect(screen.getByText("/tmp/scratch/")).toBeInTheDocument();
+    expect(screen.queryByText(/\.yogurt/)).toBeNull();
   });
 
   it("renders the active provider card with masked key + Local-only pill", async () => {
