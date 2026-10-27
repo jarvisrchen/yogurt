@@ -164,6 +164,31 @@ describe("ChatWindow", () => {
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 
+  it("collapses on Escape in its own input but not in another field", () => {
+    const onCollapse = vi.fn();
+    render(
+      <>
+        <input aria-label="Search" />
+        <ChatWindow messages={[]} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />
+      </>,
+    );
+    fireEvent.keyDown(screen.getByLabelText("Search"), { key: "Escape" });
+    expect(onCollapse).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByPlaceholderText(/ask this meeting/i), { key: "Escape" });
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send on the Enter that commits an IME composition", () => {
+    const onSend = vi.fn();
+    render(<ChatWindow messages={[]} streamingId={null} onSend={onSend} onCollapse={() => {}} />);
+    const input = screen.getByPlaceholderText(/ask this meeting/i);
+    fireEvent.change(input, { target: { value: "会議" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(onSend).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("会議");
+  });
+
   it("renders assistant bullets and bold text for a markdown-ish reply", () => {
     render(
       <ChatWindow

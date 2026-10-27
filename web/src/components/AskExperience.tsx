@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AskPill } from "./AskPill";
+import { ChatSources } from "./ChatSources";
 import { type ChatCopy, ChatWindow } from "./ChatWindow";
 import { type UseChatResult, useChat } from "../hooks/useChat";
 import { useLibraryChat } from "../hooks/useLibraryChat";
@@ -22,10 +23,10 @@ const LIBRARY_COPY: ChatCopy = {
 };
 
 export function LibraryAskExperience() {
-  return <AskSurface chat={useLibraryChat()} copy={LIBRARY_COPY} />;
+  return <AskSurface chat={useLibraryChat()} copy={LIBRARY_COPY} sources />;
 }
 
-function AskSurface({ chat, copy }: { chat: UseChatResult; copy?: ChatCopy }) {
+function AskSurface({ chat, copy, sources = false }: { chat: UseChatResult; copy?: ChatCopy; sources?: boolean }) {
   const [open, setOpen] = useState(false);
   if (open) {
     return (
@@ -37,6 +38,7 @@ function AskSurface({ chat, copy }: { chat: UseChatResult; copy?: ChatCopy }) {
         }}
         onCollapse={() => setOpen(false)}
         copy={copy}
+        renderExtra={sources ? (m) => <ChatSources message={m} /> : undefined}
       />
     );
   }

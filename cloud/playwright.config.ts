@@ -26,7 +26,8 @@ export default defineConfig({
   webServer: {
     command: `pnpm build && pnpm exec vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: `http://127.0.0.1:${PORT}`,
-    env: { SUPABASE_URL: API, SUPABASE_PUBLISHABLE_KEY: KEY },
+    // The LLM is e2e/chat.spec.ts's fake provider.
+    env: { SUPABASE_URL: API, SUPABASE_PUBLISHABLE_KEY: KEY, YOGURT_LLM_BASE_URL: "http://127.0.0.1:5192/v1", YOGURT_LLM_MODEL: "fake-model", YOGURT_LLM_API_KEY: "fake-key" },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

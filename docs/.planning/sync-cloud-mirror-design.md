@@ -7,7 +7,7 @@ Review surface with diagrams and UI mocks: [../.lavish/sync-cloud-mirror-design.
 jarvisrchen runs yogurt on more than one laptop and wants to read every meeting from his phone.
 Yogurt stays a local app with no login.
 A new, optional Yogurt Cloud is a mirror that local installs push into and a webapp reads from.
-Each user deploys their own Yogurt Cloud: a static webapp on their Vercel account, backed by a Supabase project they own.
+Each user deploys their own Yogurt Cloud: a webapp on their Vercel account, backed by a Supabase project they own.
 No central yogurt server or database exists.
 
 ## Rules
@@ -69,8 +69,8 @@ flowchart LR
   PH -- "sign in, passcode, read" --> SB
 ```
 
-The webapp has no server functions.
-Its build applies `schema.sql` to the database and writes `config.json`, and after that Vercel only serves files.
+The webapp's one server function is chat, in [cloud-chat-design.md](cloud-chat-design.md).
+Its build applies `schema.sql` to the database and writes `config.json`, and after that Vercel serves the files and the chat function.
 Laptops and browsers talk to Supabase directly.
 
 ## Deploying a Yogurt Cloud

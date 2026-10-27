@@ -15,7 +15,8 @@ Your laptops push to it, and your phone reads from it.
 
 1. **The webapp, on your Vercel project.** This is the Yogurt Cloud you see.
    It lives at your Cloud address, for example `yogurt-cloud.vercel.app`, which you open on your phone and type into each laptop.
-   It is a set of static files with no server code, so Vercel never sees a meeting.
+   It is static files plus one function, `/api/chat`, which answers questions about a meeting.
+   Vercel sees a meeting only while that function answers a question about it, and keeps nothing.
 2. **The data, in your Supabase project.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
 3. **Your laptops.** Each Mac running Yogurt pushes its meetings to your Supabase project.
 4. **Your phone, or any browser.** It opens your Cloud address, signs in, and reads your meetings.
@@ -27,6 +28,7 @@ flowchart LR
   subgraph YC["Your Yogurt Cloud"]
     subgraph VC["Your Vercel project"]
       WEB["Yogurt Cloud webapp<br/>at your Cloud address<br/>static files + config.json"]
+      CHAT["/api/chat<br/>chat about a meeting"]
     end
     subgraph SB["Your Supabase project"]
       AUTH["Auth<br/>the Cloud login"]
@@ -34,6 +36,7 @@ flowchart LR
     end
   end
   PH["Phone or browser"]
+  LLM["Your LLM provider"]
 
   L1 & L2 -- "push: insert only" --> DB
   L1 & L2 -. "sign in" .-> AUTH
@@ -41,6 +44,9 @@ flowchart LR
   WEB -- "each production deploy: apply schema" --> DB
   WEB -- "serves the webapp" --> PH
   PH -- "sign in, PIN, read" --> SB
+  PH -- "ask" --> CHAT
+  CHAT -- "read the meeting as you" --> DB
+  CHAT -- "question + transcript" --> LLM
 ```
 
 ### How data moves
@@ -137,6 +143,8 @@ Yogurt sends nothing to Yogurt or to any third party you did not configure.
   It never reaches a laptop.
 - A browser that unlocked keeps a token in its `localStorage`.
   The database stores only a hash of that token.
+- The LLM API key for chat lives in your Vercel project's environment, marked Sensitive and limited to Production.
+  The chat function never returns it or writes it to a log.
 
 ### The owner
 
@@ -155,6 +163,8 @@ Anyone else may be able to create a login while sign-ups are on, but every table
 | A browser after unlock | session | a browser token for 12 hours, or 90 days with "Remember this browser" | Yes |
 | Someone with the email and password | yes | no | No |
 | The Supabase dashboard, its owner, or Supabase staff | n/a | n/a | Yes, because the data is stored readable |
+| The chat function on Vercel | your session and browser token, sent with each question | n/a | Only the meeting you ask about, while it answers |
+| Your LLM provider | n/a | n/a | The transcript of a meeting you ask about, with your questions |
 
 Yogurt Cloud does not encrypt meetings on your Mac.
 The PIN protects against a stolen Cloud login.
@@ -218,6 +228,20 @@ A message that starts with `yogurt-cloud build:` names the missing variable.
 The login settings apply to the whole Supabase project, so another app on the same project gets them too.
 Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
 Use a project of its own when another app signs users up on it.
+
+### Turn on chat
+
+Chat answers questions about a meeting through any OpenAI-compatible chat completions API, the same kind of provider as an HTTP provider in Yogurt's Settings.
+Add three more variables, limited to Production, and redeploy:
+
+| Name | Value |
+| --- | --- |
+| `YOGURT_LLM_BASE_URL` | the API's base address, for example `https://api.minimax.io/v1` |
+| `YOGURT_LLM_MODEL` | the model name, for example `MiniMax-M3` |
+| `YOGURT_LLM_API_KEY` | the API key, marked Sensitive |
+
+Until all three are set, chat answers "Chat isn't set up on this Cloud."
+The local command-line providers, such as Claude Code, cannot run on Vercel.
 
 ### Free tiers
 
@@ -361,6 +385,12 @@ A tab is missing when that meeting has no such content, and a meeting with one k
 Enhanced opens first when the meeting has it.
 A transcript link in the notes opens the Transcript tab, scrolls to the line nearest that time, and tints it briefly.
 The footer says which machine pushed the meeting and when.
+
+Ask this meeting, at the bottom of a meeting, opens a chat about it.
+Your question and the meeting's transcript go to the LLM provider you set in [Turn on chat](#turn-on-chat), and the answer streams back.
+The chat sees the transcript only, as the chat in Yogurt on your Mac does.
+The conversation stays on the page: leaving the meeting or reloading clears it, and nothing is saved to your Cloud.
+A meeting opened from an earlier push in History has no chat.
 
 The address in the browser tracks where you are, so the back gesture goes from a meeting to the library, and a reload keeps your place.
 A link to a meeting survives signing in and unlocking.

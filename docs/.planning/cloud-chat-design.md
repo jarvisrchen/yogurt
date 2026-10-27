@@ -1,6 +1,6 @@
 # Chat in the Yogurt Cloud webapp
 
-Design, not started. Written 2026-10-27.
+SYNC-18 is built. SYNC-19 is not started. Written 2026-10-27.
 Tickets: `docs/TODO.md` SYNC-18 (chat about one meeting) and SYNC-19 (chat across meetings).
 
 The phone can read and search every meeting but cannot ask about them.
@@ -80,9 +80,14 @@ It returns 400, before any read, unless:
 - the last turn is a non-empty user question of at most 4 KB.
 
 SYNC-19 sends the last 6 earlier turns to the model, as local `HISTORY_TURNS` does.
-SYNC-18 sends the whole page conversation, as local per-meeting chat sends its whole saved history, within the 64 KB body cap.
+SYNC-18 sends the whole page conversation, as local per-meeting chat sends its whole saved history.
+Past 60 KB the webapp drops the oldest exchanges first, so a long chat stays under the 64 KB cap.
 
-The function logs status codes and error kinds only, never a question, an answer, meeting text, or a token.
+The function logs nothing, so no question, answer, meeting text, or token reaches Vercel's logs.
+It trims each variable, scrubs the key from a provider's whole error body before shortening it, and scrubs credentials from a base URL in an error.
+The LLM call stops after 50 seconds, under the function's 60 second limit, and ends with a stream error the user sees, as the desktop's 60 second request timeout does.
+Closing the meeting or the page cancels the request, and the function then cancels the LLM call, so the model stops spending the owner's key.
+A failed Supabase read returns 502 with "Chat couldn't reach your Cloud. Try again." instead of throwing.
 
 Both calls use plain `fetch`: PostgREST's `/rest/v1/rpc/...` for Supabase, and `chat/completions` with `stream: true` for the LLM, whose server-sent events the function reads and re-emits.
 
@@ -106,8 +111,10 @@ The client refreshes the Supabase session before each request, as supabase-js do
 
 ### Prompts
 
-`cloud/api/prompts.ts` holds `chat-system.md` and `library-chat-system.md` from `crates/yogurt-prompts/templates` as string constants.
-A Vitest case reads both template files and fails when a constant differs, so a prompt change must update both, and the change lands inside `cloud/`, which redeploys the webapp.
+`cloud/api/_prompts.ts` holds `chat-system.md` from `crates/yogurt-prompts/templates` verbatim in a template literal, and SYNC-19 adds `library-chat-system.md` the same way.
+`scripts/check-docs.sh` fails when the copy differs from the template.
+It runs in the Docs workflow on every PR, including a prompt-only one that the main CI skips as docs.
+The fix lands inside `cloud/`, which redeploys the webapp.
 Copying in code avoids depending on how Vercel bundles a file from outside `cloud/`, and Vite's `?raw` never runs on `cloud/api/`.
 
 ## SYNC-18: chat about one meeting
@@ -119,11 +126,17 @@ Copying in code avoids depending on how Vercel bundles a file from outside `clou
 Local per-meeting chat sends the transcript and not the notes, and the webapp matches it.
 Adding the notes is a prompt change for both apps together.
 
-**UI.** An Ask button in the meeting page header opens the chat over the meeting, a sheet from the bottom on a phone and a side panel on desktop.
-The webapp builds its own message list and composer in `cloud/src`, styled like local `ChatWindow`.
-Local `ChatMessage.tsx` pulls in `react-router` and TanStack Query, which the webapp does not have and Vercel does not install, so it cannot be imported as is.
+**UI.** The desktop's own Ask this meeting pill and chat window, imported from `web/src/components`.
+They sit at the bottom of the meeting's column and stay in view while it scrolls, on a phone and in the desktop's meeting pane.
+`ChatMessage.tsx` drew the cross-meeting citation chips with `react-router` and TanStack Query, which the webapp does not have, so the chips moved to `ChatSources.tsx` and the window takes them through `renderExtra`.
+`AskPill` and `ChatWindow` take a `position`, defaulting to the desktop's floating one, and hide the ⌘K hint on touch screens.
+On a phone the webapp scales the chat's 14px and 13px text to 16px and 15px, the webapp's phone scale.
 Chat shows only on the current library, never on a meeting opened from an earlier push in History.
-The implementation PR adds light and dark mocks to the review surface before building.
+The conversation's state lives in the library screen, above the phone and desktop layouts, so rotating a phone across the breakpoint keeps it.
+A transcript link collapses the chat, so the line it scrolls to is not under the window.
+In the shared window, Enter that commits an IME composition does not send, and Escape typed into another field, such as search, does not collapse the chat.
+One question streams at a time.
+The desktop chat is the reference design, so there are no separate mocks.
 
 **Not kept.** The conversation lives in the page, as local cross-meeting chat does.
 A reload or leaving the meeting clears it, and nothing is written to Supabase.
@@ -153,7 +166,7 @@ The client hook follows `web/src/hooks/useLibraryChat.ts`, reading the same NDJS
 
 ## Testing
 
-- **Function unit tests.** Vitest covers the ports, the SSE-to-NDJSON relay, the 400 rules, the 403 pass-through, the `process.env` scan, the prompt copies, and that a failed Supabase read makes no LLM call.
+- **Function unit tests.** Vitest covers the ports, the SSE-to-NDJSON relay, the 400 rules, the 403 pass-through, the `process.env` scan, key scrubbing, error frames, content parts, cancellation, and that a failed Supabase read makes no LLM call.
 - **End to end.** `just test-cloud-web` runs Playwright against `vite preview`.
   A Vite plugin mounts the handler at `/api/chat` through `configurePreviewServer`, and a fake OpenAI-compatible server streams fixed tokens and records each request.
   The specs check that the recorded prompt holds the meeting's transcript, that a locked browser reaches Unlock while the fake server sees nothing, and, for SYNC-19, that each chip opens its meeting.
@@ -171,7 +184,7 @@ These lines say the webapp has no server code, and each changes in SYNC-18:
 
 `docs/CLOUD-SYNC.md` also gains a Chat section, the three variables in setup, and the LLM provider in "who can read what".
 AGENTS.md and `docs/ARCHITECTURE.md` record the Vercel key exception.
-`docs/FEATURES.md` gains the two webapp chat rows.
+`docs/FEATURES.md` maps the local app only, so it does not change.
 
 ## Open questions
 

@@ -1,24 +1,27 @@
 import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
+import { FLOATING } from "./ChatWindow";
 
 interface AskPillProps {
   onExpand: () => void;
   label?: string;
+  /** Where the pill sits, matching the window it opens. */
+  position?: string;
 }
 
 /** Shares ChatWindow's bottom-center anchor so the popUp keyframe reads as one morph, not a re-center. */
-export function AskPill({ onExpand, label = "Ask this meeting…" }: AskPillProps) {
+export function AskPill({ onExpand, label = "Ask this meeting…", position = FLOATING }: AskPillProps) {
   useKeyboardShortcut({ key: "k", metaOrCtrl: true }, onExpand);
   return (
     <button
       type="button"
       onClick={onExpand}
       aria-label={label.replace("…", "")}
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px] h-12 flex items-center justify-between gap-3 px-4 py-2 bg-[var(--color-card)] border border-[var(--color-line)] rounded-full shadow-pop text-left text-[14px] text-[var(--color-mut)] hover:border-[var(--color-blue)] hover:text-[var(--color-ink)] transition-colors z-30"
+      className={`${position} h-12 flex items-center justify-between gap-3 px-4 py-2 bg-[var(--color-card)] border border-[var(--color-line)] rounded-full shadow-pop text-left text-[14px] text-[var(--color-mut)] hover:border-[var(--color-blue)] hover:text-[var(--color-ink)] transition-colors z-30`}
     >
       <span className="flex-1 truncate">{label}</span>
       <span
         aria-hidden="true"
-        className="inline-flex items-center justify-center h-6 px-2 rounded-chip text-[11px] font-mono text-[var(--color-mut)] bg-[var(--color-blsoft)]"
+        className="inline-flex [@media(pointer:coarse)]:hidden items-center justify-center h-6 px-2 rounded-chip text-[11px] font-mono text-[var(--color-mut)] bg-[var(--color-blsoft)]"
       >
         ⌘K
       </span>

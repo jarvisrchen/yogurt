@@ -828,8 +828,10 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 
 - **Privacy:** audio never leaves the machine unless the user opts into cloud STT, and even then only audio.
 Notes and transcripts leave only to the LLM provider the user configures (enhance and chat) and to a Yogurt Cloud the user connects, which is their own Supabase project ([§12](#12-yogurt-cloud-sync)).
+That Cloud's chat sends a meeting's transcript from the user's Vercel project to the LLM provider set there.
 Captured audio is deleted after transcription.
 API keys and the Yogurt Cloud connection live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
+The one exception is the Cloud chat's LLM key, which lives in the user's Vercel project's environment and is never returned or logged.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-4, 2026-08-31): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM provider, but only when the user has explicitly picked it in Settings - never as an automatic fallback behind another provider. See [§7.6](#76-the-cli-provider-exception-llm-4) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
@@ -860,13 +862,15 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 - **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
 - **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
 - **`cloud/` webapp**: a separate Vite app for the Yogurt Cloud, deployed to the user's own Vercel project and never embedded in the binary. `cloud/vite.config.ts` aliases `web/src` as `@web` to reuse the logo, buttons, and `@theme` tokens, serves `web/public` as its public folder, and dedupes `react`. `cloud/scripts/build.mjs` applies `crates/yogurt-cloud/schema.sql` on production builds and writes `config.json`. CI builds it in the web job because a change under `web/src` can break it.
+  `cloud/api/chat.ts` is its one Vercel function, chat about one meeting ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)), which `vite.config.ts` also mounts for `vite preview` so the e2e specs reach it.
 
 ---
 
 ## 12. Yogurt Cloud sync
 
 Optional, one-way, and off until the user connects it in Settings > Cloud sync.
-A laptop pushes its meetings to a Yogurt Cloud the user deployed: a static webapp on their Vercel account, backed by their own Supabase project.
+A laptop pushes its meetings to a Yogurt Cloud the user deployed: a webapp on their Vercel account, backed by their own Supabase project.
+The webapp is static apart from one chat function.
 Yogurt hosts nothing.
 The design, schema, and who can read what are in [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md), and `crates/yogurt-cloud/schema.sql` is the schema.
 

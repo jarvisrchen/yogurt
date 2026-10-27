@@ -30,6 +30,7 @@ import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { HOME, type Loc } from "../lib/hash";
 import { MeetingView, type BodyState } from "./Meeting";
+import { useMeetingChat } from "../lib/useMeetingChat";
 
 export const GearIcon = () => (
   <svg
@@ -167,6 +168,8 @@ export function Library({
     devices?.find((d) => d.id === id)?.name ?? "Unknown device";
 
   const openDevice = open ? open.slice(0, open.indexOf("/")) : "";
+  // Chat asks about the live library only, never a meeting as of an earlier push.
+  const chat = useMeetingChat(api, token, open && !pushId ? { device: openDevice, meeting: open.slice(open.indexOf("/") + 1) } : null, onRejected);
   const meeting = open && (
     <MeetingView
       key={open}
@@ -177,6 +180,7 @@ export function Library({
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
       body={body}
+      chat={chat}
     />
   );
   if (!desktop && meeting)

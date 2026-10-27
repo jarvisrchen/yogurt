@@ -56,6 +56,7 @@ vi.mock("../lib/api/settings", () => {
     },
     audioApi: {
       devices: vi.fn().mockResolvedValue([]),
+      outputDevices: vi.fn().mockResolvedValue([]),
     },
   };
 });
