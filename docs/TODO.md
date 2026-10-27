@@ -117,6 +117,8 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## LLM
 
+- [ ] **LLM-10** Improve how Enhance weaves the user's notes with the transcript, since today's augmented notes are weak; collect a few real meetings where the output falls short, name the failure (notes dropped, transcript facts missed, wrong structure, weak links back to timestamps), then A/B prompt changes in `crates/yogurt-prompts/templates` with `scripts/eval/compare.sh` ([MODEL-EVAL](MODEL-EVAL.md))
+
 ## CLI
 
 ## Developer experience
