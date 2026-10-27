@@ -140,3 +140,36 @@ export async function seed() {
   ok(await sb.rpc("yogurt_search_catch_up"));
   await sb.auth.signOut();
 }
+
+/**
+ * `count` synthetic meetings on one laptop in one push, newest first by number: "Synthetic meeting 01" is the newest, three hours after number 02. `skewMin` moves them all earlier, to interleave two laptops.
+ * Each carries `kb` kilobytes of notes and a 40 line transcript, so a page that downloaded bodies would be heavy.
+ */
+export async function seedBulk(count: number, { device = DEVICES.a, name = "Laptop 1", prefix = "Synthetic meeting", kb = 8, skewMin = 0 } = {}) {
+  const sb = createClient(API, KEY);
+  const { error: authError } = await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
+  if (authError) throw authError;
+  const registered = await sb.from("yogurt_devices").insert({ id: device, name });
+  if (registered.error && registered.error.code !== "23505") throw new Error(registered.error.message);
+  const { data: push, error } = await sb.rpc("yogurt_start_push", { device_id: device });
+  if (error) throw new Error(error.message);
+  const now = Date.now();
+  const filler = "Discussed the roadmap, the budget, and who owns the follow ups. ".repeat(Math.ceil((kb * 1024) / 62));
+  const rows = Array.from({ length: count }, (_, i) => {
+    const n = String(i + 1).padStart(2, "0");
+    const transcript = JSON.stringify(Array.from({ length: 40 }, (_, k) => ({ ts_ms: k * 10_000, channel: k % 2 ? "me" : "them", text: `Line ${k} of meeting ${n} about the roadmap.` })));
+    return {
+      meeting_id: `bulk-${prefix.replaceAll(" ", "-")}-${n}`,
+      push_id: push,
+      device_id: device,
+      body: meeting(`bulk-${n}`, `${prefix} ${n}`, now - (i + 1) * 3 * 3_600_000 - skewMin * 60_000, 25, { notes_md: `Notes for meeting ${n}. ${filler}`, transcript_json: transcript }),
+    };
+  });
+  for (let i = 0; i < rows.length; i += 20) {
+    const r = await sb.from("yogurt_versions").insert(rows.slice(i, i + 20));
+    if (r.error) throw new Error(r.error.message);
+  }
+  const caught = await sb.rpc("yogurt_search_catch_up");
+  if (caught.error) throw new Error(caught.error.message);
+  await sb.auth.signOut();
+}

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { API, DEVICES, KEY, OWNER, PASSWORD, PIN, expectScreen, isPhone, onboard, reset, seed, shot, signIn, typePin } from "./helpers";
+import { API, DEVICES, KEY, OWNER, PASSWORD, PIN, expectScreen, onboard, reset, seed, shot, signIn, typePin } from "./helpers";
 
 const rpc = "**/rest/v1/rpc/yogurt_search";
 
@@ -93,13 +93,15 @@ test("search the live library by transcript, within a device, with a cap message
   await search.fill('"');
   await expect(page.getByRole("status")).toHaveText("No meetings match.");
 
-  // A full page of results says so.
+  // A full page of results says which ones it shows.
   await page.route(rpc, async (r) => {
     const res = await r.fetch();
     await r.fulfill({ response: res, json: (await res.json()).map((x: object) => ({ ...x, more: true })) });
   });
   await search.fill("ship");
-  await expect(page.getByRole("status")).toHaveText("Showing the newest matches. Add words to narrow.");
+  await expect(page.getByRole("status")).toHaveText("Matches 1–2");
+  await expect(page.getByRole("button", { name: "Next" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
   await page.unroute(rpc);
 
   // A pasted URL wraps inside the page.
@@ -149,73 +151,49 @@ test("a failed search says so, retries with focus kept, and a retyped query does
   await page.unroute(rpc);
 });
 
-test("a hit missing from the loaded library or newer than it offers a reload that keeps the page", async ({ page }, info) => {
+test("a search hit opens through yogurt_meeting with its live body, and a failed fetch offers Retry", async ({ page }, info) => {
   await unlock(page);
   const search = page.getByRole("textbox", { name: "Search notes and transcripts" });
-  const missing = page.getByText("This meeting isn't loaded on this page yet.");
-  const newer = page.getByText("A newer version was pushed.");
-  const library = "**/rest/v1/rpc/yogurt_library";
+  const meetingRpc = "**/rest/v1/rpc/yogurt_meeting";
+  const loading = page.getByText("Loading…");
 
-  // Tapping one hit and then another leaves the second open, since nothing waits on the network.
-  if (!isPhone(page)) {
-    await search.fill("ship");
-    await expect(page.getByRole("status")).toHaveText("2 matches");
-    await page.getByRole("button", { name: /edis update/ }).click();
-    await page.getByRole("button", { name: /Q4 planning sync/ }).click();
-    await page.waitForTimeout(500);
-    await expect(page.getByRole("heading", { name: "Q4 planning sync" })).toBeVisible();
-    await expect(missing).toHaveCount(0);
-    await expect(newer).toHaveCount(0);
-    await search.fill("");
-  }
-
-  // A meeting the loaded library lacks opens with its title and says so. A failed reload says so too and keeps the page.
+  // A meeting pushed after the page loaded opens with its body, and the header shows while the body loads.
   await push("m-new", { title: "Fresh meeting", started_at: Date.now() - 1000, notes_md: "Quokka notes." });
   await search.fill("quokka");
   await page.getByRole("button", { name: /Fresh meeting/ }).click();
   await expect(page.getByRole("heading", { name: "Fresh meeting" })).toBeVisible();
-  await expect(missing).toBeVisible();
-  await expect(newer).toHaveCount(0);
-  await shot(page, info, "t-search-missing");
-  await page.route(library, (r) => r.abort());
-  await page.getByRole("button", { name: "Reload" }).click();
-  await expect(page.getByRole("alert")).toContainText("Could not reload.");
-  await expect(page.getByRole("heading", { name: "Fresh meeting" })).toBeVisible();
-  await page.unroute(library);
+  await expect(page.getByText("Quokka notes.")).toBeVisible();
+  await expect(page.getByText("isn't loaded on this page")).toHaveCount(0);
 
-  // Retry keeps the page up while it loads, then fills the meeting in.
-  await page.route(library, async (r) => {
+  // A failed fetch says so and keeps the header. Retry fills the body in.
+  await page.route(meetingRpc, (r) => r.abort());
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText("Could not load this meeting.");
+  await page.unroute(meetingRpc);
+  await page.route(meetingRpc, async (r) => {
     await new Promise((done) => setTimeout(done, 700));
     await r.continue();
   });
   await page.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByRole("button", { name: "Reloading…" })).toBeDisabled();
-  await expect(page.getByRole("heading", { name: "Fresh meeting" })).toBeVisible();
+  await expect(loading).toBeVisible();
+  await shot(page, info, "t-meeting-loading");
   await expect(page.getByText("Quokka notes.")).toBeVisible();
-  await expect(missing).toHaveCount(0);
   await expect(page).toHaveURL(/#\/m\//);
-  await page.unroute(library);
+  await page.unroute(meetingRpc);
 
-  // A newer version of a loaded meeting opens the loaded copy with its own note.
+  // A hit for a meeting edited since the page loaded opens the live version, with no note about it.
   await push("m-standup", { title: "edis update (zebrafish)", started_at: Date.now(), notes_md: "Feed the zebrafish herd." });
-  if (isPhone(page)) await page.getByRole("button", { name: /All devices/ }).click();
+  await page.goto("/");
   await search.fill("zebrafish");
   await page.getByRole("button", { name: /edis update/ }).click();
-  await expect(page.getByRole("heading", { name: "edis update (revised)" })).toBeVisible();
-  await expect(page.getByText("Ship the edis dashboard.")).toBeVisible();
-  await expect(newer).toBeVisible();
-  await expect(missing).toHaveCount(0);
-  await shot(page, info, "t-search-newer");
-  await page.getByRole("button", { name: "Reload" }).click();
+  await expect(page.getByRole("heading", { name: "edis update (zebrafish)" })).toBeVisible();
   await expect(page.getByText("Feed the zebrafish herd.")).toBeVisible();
-  await expect(newer).toHaveCount(0);
+  await expect(page.getByText("A newer version was pushed.")).toHaveCount(0);
 
-  // The view as of an earlier push shows neither note, though the remembered hit is newer than its copy.
+  // The same meeting as of an earlier push is that earlier version.
   await page.evaluate(() => (location.hash = location.hash.replace("#/m/", "#/at/1/m/")));
-  if (!isPhone(page)) await expect(page.getByText("Viewing", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "edis update", exact: true })).toBeVisible();
-  await expect(newer).toHaveCount(0);
-  await expect(missing).toHaveCount(0);
+  await expect(page.getByText("Ship the edis dashboard.")).toBeVisible();
 });
 
 test("a failed library load shows an error with Retry", async ({ page }) => {

@@ -8,7 +8,7 @@ interface Props {
   onSize: (size: number) => void;
 }
 
-const BUTTON =
+export const PAGER_BUTTON =
   "px-3 py-1.5 rounded-button border border-line text-[13px] font-medium text-ink hover:bg-paper disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40";
 
 export function Pager({ page, size, total, onPage, onSize }: Props) {
@@ -37,7 +37,7 @@ export function Pager({ page, size, total, onPage, onSize }: Props) {
         </label>
         <button
           type="button"
-          className={BUTTON}
+          className={PAGER_BUTTON}
           disabled={page <= 1}
           onClick={() => onPage(page - 1)}
         >
@@ -45,7 +45,7 @@ export function Pager({ page, size, total, onPage, onSize }: Props) {
         </button>
         <button
           type="button"
-          className={BUTTON}
+          className={PAGER_BUTTON}
           disabled={page >= last}
           onClick={() => onPage(page + 1)}
         >

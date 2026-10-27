@@ -483,22 +483,64 @@ begin
     where l.body is not null order by l.meeting_id;
 end $$;
 
--- The latest version of each live meeting per device at or before at_push, or now when null.
-create or replace function public.yogurt_library(token text, at_push bigint default null)
-returns table (device_id uuid, push_id bigint, pushed_at timestamptz, meeting_id text, body jsonb)
+-- The previous shapes of the two functions below. A changed argument list is a new function, so the old ones go.
+drop function if exists public.yogurt_library(text, bigint);
+drop function if exists public.yogurt_search(text, text, uuid);
+
+-- One page of the library, newest meeting first: the latest version of each live meeting per device at or before at_push, or now when null.
+-- Rows are summaries and carry no note or transcript body (yogurt_meeting returns one). total is the number of live meetings and repeats on every row, so a page past the end returns no rows.
+-- page_limit is clamped to 1..100, which keeps a page far under the 1,000 row response cap. only_device narrows the page and the total to one device.
+create or replace function public.yogurt_library(token text, at_push bigint default null, page_limit int default 25, page_offset int default 0, only_device uuid default null)
+returns table (device_id uuid, push_id bigint, pushed_at timestamptz, meeting_id text, title text, started_at bigint, ended_at bigint, starred boolean, labels jsonb, total bigint)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
 begin
   perform yogurt_private.yogurt_require_owner();
   perform yogurt_private.yogurt_check_token(token);
   return query
-    select l.device_id, l.push_id, l.pushed_at, l.meeting_id, l.body from (
-      select distinct on (v.device_id, v.meeting_id) v.device_id, v.push_id, p.pushed_at, v.meeting_id, v.body
-      from public.yogurt_versions v join public.yogurt_pushes p on p.id = v.push_id
-      where v.user_id = auth.uid() and (at_push is null or v.push_id <= at_push)
+    with latest as (
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body is not null as live
+      from public.yogurt_versions v
+      where v.user_id = auth.uid() and (at_push is null or v.push_id <= at_push) and (only_device is null or v.device_id = only_device)
       order by v.device_id, v.meeting_id, v.push_id desc
+    ),
+    ordered as (
+      select s.* from (
+        select l.device_id, l.meeting_id, l.push_id,
+               coalesce((v.body->'meeting'->>'started_at')::bigint, 0) as started_at,
+               count(*) over () as total
+        from latest l
+        join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (l.device_id, l.meeting_id, l.push_id)
+        where l.live
+      ) s
+      order by s.started_at desc, s.meeting_id, s.device_id
+      limit least(greatest(page_limit, 1), 100) offset greatest(page_offset, 0)
+    )
+    select o.device_id, o.push_id, p.pushed_at, o.meeting_id,
+           coalesce(v.body->'meeting'->>'title', ''), o.started_at, (v.body->'meeting'->>'ended_at')::bigint,
+           coalesce((v.body->'meeting'->>'starred')::boolean, false), coalesce(v.body->'meeting'->'labels', '[]'::jsonb), o.total
+    from ordered o
+    join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (o.device_id, o.meeting_id, o.push_id)
+    join public.yogurt_pushes p on p.id = o.push_id
+    order by o.started_at desc, o.meeting_id, o.device_id;
+end $$;
+
+-- One meeting's full body: its latest version at or before at_push, or now when null. No row when it is unknown or deleted by then.
+create or replace function public.yogurt_meeting(token text, device_id uuid, meeting_id text, at_push bigint default null)
+returns table (push_id bigint, pushed_at timestamptz, body jsonb)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  return query
+    select l.push_id, l.pushed_at, l.body from (
+      select v.push_id, p.pushed_at, v.body
+      from public.yogurt_versions v join public.yogurt_pushes p on p.id = v.push_id
+      where v.user_id = auth.uid() and v.device_id = $2 and v.meeting_id = $3 and (at_push is null or v.push_id <= at_push)
+      order by v.push_id desc limit 1
     ) l
-    where l.body is not null order by l.meeting_id, l.device_id;
+    where l.body is not null;
 end $$;
 
 -- The laptop calls this after each push. max_ms is capped at 3 seconds so a call stays well under the authenticated role's 8 second statement timeout, even after waiting for another catch-up.
@@ -509,15 +551,16 @@ begin
   return yogurt_private.yogurt_search_catch_up(least(max_ms, 3000));
 end $$;
 
--- Live meetings matching the query, newest first, optionally on one device, at most 25. `more` is true on every row when there were more.
+-- Live meetings matching the query, newest first, optionally on one device, 25 from page_offset. `more` is true on every row when there were more after them.
 -- Quotes work, a leading minus excludes, and the last word matches as a prefix so a half-typed word finds its meeting.
 -- snippet is null when the title matches, and otherwise a headline with the matched words wrapped in U+E000 and U+E001.
-create or replace function public.yogurt_search(token text, query text, only_device uuid default null)
+create or replace function public.yogurt_search(token text, query text, only_device uuid default null, page_offset int default 0)
 returns table (device_id uuid, meeting_id text, push_id bigint, started_at bigint, ended_at bigint, title text, snippet text, more boolean)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
 declare
   cap constant int := 25;
+  skip int := least(greatest(coalesce(page_offset, 0), 0), 10000);
   cfg constant regconfig := 'yogurt_private.yogurt_ts';
   lexeme constant text := '''([^'']|'''')*''';
   q text := coalesce(query, '');
@@ -557,12 +600,12 @@ begin
         and (select v.body is not null from public.yogurt_versions v
              where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
       order by i.started_at desc, i.meeting_id, i.device_id
-      limit cap + 1
+      limit skip + cap + 1
     )
     select m.device_id, m.meeting_id, m.push_id, m.started_at, m.ended_at, m.title,
            case when to_tsvector(cfg, m.title) @@ tsq then null else ts_headline(cfg, m.doc, tsq, opts) end,
-           (select count(*) from m) > cap
-    from m where m.rn <= cap order by m.rn;
+           (select count(*) from m) > skip + cap
+    from m where m.rn > skip and m.rn <= skip + cap order by m.rn;
 end $$;
 
 create or replace function public.yogurt_history(token text)
@@ -643,9 +686,10 @@ grant execute on function
   public.yogurt_browsers(text),
   public.yogurt_start_push(uuid),
   public.yogurt_device_meetings(uuid),
-  public.yogurt_library(text, bigint),
+  public.yogurt_library(text, bigint, int, int, uuid),
+  public.yogurt_meeting(text, uuid, text, bigint),
   public.yogurt_search_catch_up(int),
-  public.yogurt_search(text, text, uuid),
+  public.yogurt_search(text, text, uuid, int),
   public.yogurt_history(text),
   public.yogurt_device_list(text)
 to authenticated;
