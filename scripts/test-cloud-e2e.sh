@@ -68,7 +68,7 @@ start_laptop() { # name -> sets <name>_port
     for _ in $(seq 100); do curl -fs "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break; sleep 0.2; done
     curl -fs "http://127.0.0.1:$port/api/health" >/dev/null || { cat "$tmp/$name/log"; fail "$name did not start"; }
     eval "${name}_port=$port"
-    eval "${name}_token=\$(cat \"$tmp/$name/home/.yogurt/session-token\")"
+    eval "${name}_token=\$(cat \"$tmp/$name/data/session-token\")"
 }
 start_laptop a
 start_laptop b

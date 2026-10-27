@@ -227,7 +227,7 @@ Launches the local server and opens the browser.
 | `--port <PORT>` | `7878` | TCP port to bind. Always binds `127.0.0.1` only, never a LAN interface. |
 | `--no-open` | off | Do not auto-open `http://localhost:<port>` in your default browser once the server is listening. |
 | `--dev` | off | Developer mode. Proxies every non-`/api` request to the Vite dev server on `:5173` instead of serving the web bundle embedded in the binary, loads `.env.local` from the current directory, and allows WebSocket upgrades from the `:5173` origin for hot reload. Never use this for normal use; see [CONTRIBUTING.md](CONTRIBUTING.md). |
-| `--data-dir <PATH>` | `~/.yogurt` | Directory for the SQLite database and `keys.json`. Models and notes still live under `~/.yogurt`. Also settable via `$YOGURT_DATA_DIR`; the flag wins if both are given. |
+| `--data-dir <PATH>` | `~/.yogurt` | Directory for the SQLite database, `keys.json`, the `notes/` folder, and `session-token`. Models still live under `~/.yogurt`. Also settable via `$YOGURT_DATA_DIR`; the flag wins if both are given. |
 
 Without `--dev` the UI you see is whatever was compiled into the binary at build time.
 
