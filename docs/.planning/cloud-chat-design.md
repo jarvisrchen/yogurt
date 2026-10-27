@@ -1,0 +1,184 @@
+# Chat in the Yogurt Cloud webapp
+
+Design, not started. Written 2026-10-27.
+Tickets: `docs/TODO.md` SYNC-18 (chat about one meeting) and SYNC-19 (chat across meetings).
+
+The phone can read and search every meeting but cannot ask about them.
+Local yogurt has two chats, and the webapp gets both, built from the same prompts and context.
+
+| Local feature | Local code | Webapp |
+| --- | --- | --- |
+| Chat about one meeting | `crates/yogurt-server/src/api/chat.rs`, `web/src/components/ChatWindow.tsx` | SYNC-18, on the meeting page |
+| Chat across meetings | `crates/yogurt-server/src/api/library_chat.rs`, `web/src/hooks/useLibraryChat.ts` | SYNC-19, on the library |
+
+## What changes in the rules
+
+The webapp has been static files, so no Yogurt Cloud piece has ever called an LLM or seen a meeting outside Supabase.
+Chat needs a server, because an LLM API key cannot ship in browser code.
+
+- **A Vercel function.** `cloud/api/chat.ts` runs in the same Vercel project as the webapp, at `/api/chat` on the Cloud address.
+  It is the only server code Yogurt Cloud adds.
+- **Vercel sees meeting text.** The function reads the meetings a question needs and passes them to the LLM provider.
+  It keeps nothing and logs no content, but "Vercel never sees a meeting" stops being true.
+- **A new home for one secret.** The LLM key lives in the Vercel project's environment, as a production-only sensitive variable.
+  AGENTS.md's hard constraint says API keys live only in `keys.json`, which stays true for the laptop and gains this one exception for the Cloud.
+- **Content to the LLM provider from Vercel.** Notes and transcripts already leave the Mac for the LLM provider the user configures.
+  With chat, the Cloud sends them to the provider configured for the Cloud, and to nothing else.
+
+### The database URL in the function's environment
+
+Vercel gives a function every project variable, with no build-only scope.
+So `POSTGRES_URL_NON_POOLING`, which `build.mjs` uses to apply the schema, and any other variable the Supabase integration set, are in the function's environment too.
+The function never reads them.
+It reads exactly five names: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and the three `YOGURT_LLM_*` below.
+A Vitest case scans `cloud/api/` and fails on any other `process.env` read, and the function adds no dependencies, only `fetch`.
+
+## Configuration
+
+Three environment variables on the Vercel project:
+
+```
+YOGURT_LLM_BASE_URL   https://api.minimax.io/v1
+YOGURT_LLM_MODEL      MiniMax-M3
+YOGURT_LLM_API_KEY    (sensitive, production only)
+```
+
+Any OpenAI-compatible chat completions endpoint works, the same as an HTTP provider in local Settings.
+The local CLI providers (Claude Code, Cursor Agent, OpenCode) cannot run on Vercel.
+With any of them unset, the function answers "Chat isn't set up on this Cloud." as a final delta.
+
+For Richard's Cloud, setup copies the active local provider, MiniMax-M3, piping the key from `keys.json` into `vercel env add --sensitive` so it is never printed.
+
+## How a question is answered
+
+```mermaid
+sequenceDiagram
+  participant P as Phone
+  participant F as /api/chat (Vercel)
+  participant D as Supabase
+  participant L as LLM provider
+  P->>F: question, conversation, Supabase session, browser token
+  F->>D: yogurt_meeting or yogurt_retrieve, as the caller
+  D-->>F: meeting text, or rows the caller may read
+  F->>L: prompt + meeting text + conversation
+  L-->>F: streamed tokens
+  F-->>P: NDJSON lines
+```
+
+The function calls Supabase with the caller's own session and browser token through the publishable key, exactly as the browser would.
+Postgres enforces the owner and passcode checks as it does for every read, so through this path the function reads only what the caller could.
+A request without a valid PIN-unlocked browser token fails at that read, before any LLM call, so the endpoint is never an open proxy to the key.
+
+### Requests
+
+The function takes meeting text from the database and never from the request.
+The request carries the conversation, the meeting's device and meeting ids for SYNC-18, and the browser's time zone for SYNC-19.
+It returns 400, before any read, unless:
+
+- the body is at most 64 KB,
+- every turn's role is `user` or `assistant`, as local `post_library_chat` checks,
+- the last turn is a non-empty user question of at most 4 KB.
+
+SYNC-19 sends the last 6 earlier turns to the model, as local `HISTORY_TURNS` does.
+SYNC-18 sends the whole page conversation, as local per-meeting chat sends its whole saved history, within the 64 KB body cap.
+
+The function logs status codes and error kinds only, never a question, an answer, meeting text, or a token.
+
+Both calls use plain `fetch`: PostgREST's `/rest/v1/rpc/...` for Supabase, and `chat/completions` with `stream: true` for the LLM, whose server-sent events the function reads and re-emits.
+
+### Responses
+
+NDJSON, the format of local `POST /api/chat`:
+
+```
+{"sources":[{"device_id":"...","meeting_id":"...","title":"...","started_at":1761000000000}]}
+{"delta":"The vendor decision was "}
+{"delta":"Acme [1]."}
+```
+
+The `sources` line comes first and only for SYNC-19.
+A failure after streaming starts arrives as a final `{"delta":"[...]"}`, as local does.
+Local per-meeting chat streams over the meeting WebSocket instead, which Vercel cannot host, so SYNC-18 uses this NDJSON too.
+
+A rejected browser token comes back from the read as PostgREST's 403 with code `28000`.
+The function returns that status and code unchanged, and the webapp's chat client maps it through the same check as `cloud/src/lib/api.ts`, raising `TokenRejected`, which sends the user to Unlock.
+The client refreshes the Supabase session before each request, as supabase-js does for every other read.
+
+### Prompts
+
+`cloud/api/prompts.ts` holds `chat-system.md` and `library-chat-system.md` from `crates/yogurt-prompts/templates` as string constants.
+A Vitest case reads both template files and fails when a constant differs, so a prompt change must update both, and the change lands inside `cloud/`, which redeploys the webapp.
+Copying in code avoids depending on how Vercel bundles a file from outside `cloud/`, and Vite's `?raw` never runs on `cloud/api/`.
+
+## SYNC-18: chat about one meeting
+
+**Reading the meeting.** The function calls `yogurt_meeting(token, device_id, meeting_id, null)` from SYNC-12, which returns the current version.
+
+**Context.** The same as local `run_stream`: the `chat-system.md` prompt, then `TRANSCRIPT SO FAR (most recent at bottom):` followed by the transcript as `[mm:ss] me:` and `[mm:ss] them:` lines, then the conversation.
+`transcript_lines` moves to TypeScript with its Rust test cases copied.
+Local per-meeting chat sends the transcript and not the notes, and the webapp matches it.
+Adding the notes is a prompt change for both apps together.
+
+**UI.** An Ask button in the meeting page header opens the chat over the meeting, a sheet from the bottom on a phone and a side panel on desktop.
+The webapp builds its own message list and composer in `cloud/src`, styled like local `ChatWindow`.
+Local `ChatMessage.tsx` pulls in `react-router` and TanStack Query, which the webapp does not have and Vercel does not install, so it cannot be imported as is.
+Chat shows only on the current library, never on a meeting opened from an earlier push in History.
+The implementation PR adds light and dark mocks to the review surface before building.
+
+**Not kept.** The conversation lives in the page, as local cross-meeting chat does.
+A reload or leaving the meeting clears it, and nothing is written to Supabase.
+The laptop's own saved chat for the meeting, which rides in each pushed version's `chat` array, is not shown.
+
+## SYNC-19: chat across meetings
+
+**Retrieval.** A new RPC, `yogurt_retrieve(token, terms text[], from_ms bigint, to_ms bigint, k int)`, approximates local `MeetingRepo::retrieve`:
+
+- With terms, it ORs them as prefix matches against `yogurt_search_index` and returns the top `k` (6, local `TOP_K`).
+  It ranks with `ts_rank` and length normalization, newest first on ties, where local uses FTS5's `bm25`, so the two can order close matches differently.
+- The excerpt is about 64 words from `ts_headline` over the version's transcript text alone, as local `snippet` reads only the transcript column.
+  The index's `doc` joins notes and transcript, and the notes are already in the prompt.
+- With no terms, it returns the newest `k` in the date range.
+- Each row carries the title, start time, device and meeting ids, and the notes: the enhanced notes when present, else the user's notes.
+- It reads only the live library and hides a meeting whose latest version is a deletion, as `yogurt_search` does.
+- It checks the owner and the browser token like every other read.
+
+**Ported from Rust.** `extract_terms`, `date_range`, and `yogurt_notes::ast::strip_markers` move to TypeScript in `cloud/api/`, with the stopword and month lists unchanged and their Rust test cases copied into Vitest.
+"Today", "this week", "in December", and each hit's date use the time zone the browser sends.
+
+**Context.** The same as local `build_messages`: the `library-chat-system.md` prompt with today's date, then a `MEETINGS:` block numbering each hit `[1]` to `[6]` with its title, date, notes with markers stripped, and excerpt, then the conversation.
+
+**UI.** An Ask field beside the search field on the library opens the conversation, with each cited meeting shown as a chip.
+A chip opens `#/m/<device>/<meeting>`, keyed by the `device_id` and `meeting_id` in `sources`.
+The client hook follows `web/src/hooks/useLibraryChat.ts`, reading the same NDJSON.
+
+## Testing
+
+- **Function unit tests.** Vitest covers the ports, the SSE-to-NDJSON relay, the 400 rules, the 403 pass-through, the `process.env` scan, the prompt copies, and that a failed Supabase read makes no LLM call.
+- **End to end.** `just test-cloud-web` runs Playwright against `vite preview`.
+  A Vite plugin mounts the handler at `/api/chat` through `configurePreviewServer`, and a fake OpenAI-compatible server streams fixed tokens and records each request.
+  The specs check that the recorded prompt holds the meeting's transcript, that a locked browser reaches Unlock while the fake server sees nothing, and, for SYNC-19, that each chip opens its meeting.
+- **Schema.** `just test-cloud-schema` covers `yogurt_retrieve`: ORed prefix terms, the date range, transcript-only excerpts, the deletion rule, the token check, and the upgrade from main and back.
+- **Vercel bundling.** The plugin runs the handler through Vite, not through Vercel's function build, so each PR's Vercel preview is checked by posting a question to its `/api/chat`.
+  Previews have no `YOGURT_LLM_*` variables, so the expected answer is "Chat isn't set up on this Cloud.", which proves the function bundles and runs.
+- **Production.** After landing, ask a question on the phone about a recent meeting, and for SYNC-19 one that names a month.
+
+## Docs
+
+These lines say the webapp has no server code, and each changes in SYNC-18:
+
+- `docs/CLOUD-SYNC.md` line 18, "so Vercel never sees a meeting".
+- `docs/.planning/sync-cloud-mirror-design.md` line 10, "a static webapp", and line 72, "The webapp has no server functions".
+
+`docs/CLOUD-SYNC.md` also gains a Chat section, the three variables in setup, and the LLM provider in "who can read what".
+AGENTS.md and `docs/ARCHITECTURE.md` record the Vercel key exception.
+`docs/FEATURES.md` gains the two webapp chat rows.
+
+## Open questions
+
+Each has a default the tickets build unless Richard picks otherwise.
+
+1. **Keep phone chats?** Default: no, the conversation lives in the page.
+   Keeping them needs a new owner-only table and a list of past chats.
+2. **Same key as the Mac, or a separate one?** Default: copy the Mac's active provider and key.
+   A separate key from the same provider can be revoked without breaking the Mac.
+3. **Show the laptop's saved chat on the meeting page?** Default: no.
