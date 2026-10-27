@@ -1292,3 +1292,7 @@ New closed items go at the bottom.
 - [x] **DX-18** The yogurt-ship skill attaches light and dark screenshots to every UI PR
 
   The yogurt-ship skill now has UI PRs carry a light and dark Screenshots table hosted on the pr-screenshots branch, shot at a real viewport against test meetings.
+
+- [x] **SYNC-15** Build the webapp when Vercel's ignore step cannot diff against the previous deploy, such as after a force-push
+
+  The Vercel ignore step builds whenever git cannot diff against the previous deploy's commit, so a force-pushed branch gets a preview instead of an Error.
