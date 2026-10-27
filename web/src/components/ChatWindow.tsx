@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ChatMessage as Msg } from "../lib/api";
 import { ChatMessage } from "./ChatMessage";
 import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
@@ -23,7 +23,13 @@ interface Props {
   onSend: (content: string) => void;
   onCollapse: () => void;
   copy?: ChatCopy;
+  /** Shown under each finished reply, such as the meetings it cites. */
+  renderExtra?: (message: Msg) => ReactNode;
+  /** Where the window sits. The default floats it over the bottom center of the page. */
+  position?: string;
 }
+
+export const FLOATING = "fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px]";
 
 /** Sticky: outside-click does not collapse the window (no document mousedown listener). Only the header caret and Escape do. */
 export function ChatWindow({
@@ -32,6 +38,8 @@ export function ChatWindow({
   onSend,
   onCollapse,
   copy = MEETING_CHAT_COPY,
+  renderExtra,
+  position = FLOATING,
 }: Props) {
   const [draft, setDraft] = useState("");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -59,7 +67,7 @@ export function ChatWindow({
     <div
       role="region"
       aria-label={`${copy.title} chat`}
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px] max-h-[60vh] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-panel shadow-pop anim-popUp z-30"
+      className={`${position} max-h-[60vh] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-panel shadow-pop anim-popUp z-30`}
     >
       <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)]">
         <div className="flex items-center gap-2">
@@ -117,7 +125,9 @@ export function ChatWindow({
               key={m.id}
               message={m}
               isStreaming={streamingId === m.id}
-            />
+            >
+              {renderExtra?.(m)}
+            </ChatMessage>
           ))
         )}
       </div>

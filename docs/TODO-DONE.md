@@ -1348,3 +1348,8 @@ New closed items go at the bottom.
 - [x] **DX-20** Fast-forward the main checkout at the end of `just land`, skipping it when the checkout is off `main` or a local edit is in the way
 
   Ran `scripts/tests/ship_test.sh`: 56 passed, and three of the new checks fail against the old `ship.sh`.
+
+- [x] **SYNC-18** Chat about one meeting in the webapp through a Vercel function at `/api/chat` that reads the meeting as the caller and streams from the OpenAI-compatible provider set in the Vercel project's environment ([design](.planning/cloud-chat-design.md#sync-18-chat-about-one-meeting))
+
+  Chat about one meeting in the webapp, through `cloud/api/chat.ts` on Vercel.
+  `just test-cloud-web` 44 passed, with `cloud/e2e/chat.spec.ts` in all four projects, `pnpm --dir cloud test` 82 passed, and `just test-web` 471 unit and 12 Playwright passed.

@@ -1,6 +1,6 @@
 # Chat in the Yogurt Cloud webapp
 
-Design, not started. Written 2026-10-27.
+SYNC-18 is built. SYNC-19 is not started. Written 2026-10-27.
 Tickets: `docs/TODO.md` SYNC-18 (chat about one meeting) and SYNC-19 (chat across meetings).
 
 The phone can read and search every meeting but cannot ask about them.
@@ -119,11 +119,13 @@ Copying in code avoids depending on how Vercel bundles a file from outside `clou
 Local per-meeting chat sends the transcript and not the notes, and the webapp matches it.
 Adding the notes is a prompt change for both apps together.
 
-**UI.** An Ask button in the meeting page header opens the chat over the meeting, a sheet from the bottom on a phone and a side panel on desktop.
-The webapp builds its own message list and composer in `cloud/src`, styled like local `ChatWindow`.
-Local `ChatMessage.tsx` pulls in `react-router` and TanStack Query, which the webapp does not have and Vercel does not install, so it cannot be imported as is.
+**UI.** The desktop's own Ask this meeting pill and chat window, imported from `web/src/components`.
+They sit at the bottom of the meeting's column and stay in view while it scrolls, on a phone and in the desktop's meeting pane.
+`ChatMessage.tsx` drew the cross-meeting citation chips with `react-router` and TanStack Query, which the webapp does not have, so the chips moved to `ChatSources.tsx` and the window takes them through `renderExtra`.
+`AskPill` and `ChatWindow` take a `position`, defaulting to the desktop's floating one, and hide the ⌘K hint on touch screens.
+On a phone the webapp scales the chat's 14px and 13px text to 16px and 15px, the webapp's phone scale.
 Chat shows only on the current library, never on a meeting opened from an earlier push in History.
-The implementation PR adds light and dark mocks to the review surface before building.
+The desktop chat is the reference design, so there are no separate mocks.
 
 **Not kept.** The conversation lives in the page, as local cross-meeting chat does.
 A reload or leaving the meeting clears it, and nothing is written to Supabase.
@@ -171,7 +173,7 @@ These lines say the webapp has no server code, and each changes in SYNC-18:
 
 `docs/CLOUD-SYNC.md` also gains a Chat section, the three variables in setup, and the LLM provider in "who can read what".
 AGENTS.md and `docs/ARCHITECTURE.md` record the Vercel key exception.
-`docs/FEATURES.md` gains the two webapp chat rows.
+`docs/FEATURES.md` maps the local app only, so it does not change.
 
 ## Open questions
 

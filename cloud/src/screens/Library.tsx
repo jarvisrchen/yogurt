@@ -177,6 +177,7 @@ export function Library({
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
       body={body}
+      chat={pushId ? undefined : { api, token, deviceId: openDevice, meetingId: open.slice(open.indexOf("/") + 1), onRejected }}
     />
   );
   if (!desktop && meeting)

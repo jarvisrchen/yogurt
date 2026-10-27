@@ -25,6 +25,17 @@ export async function reset() {
   await fetch(`${MAIL}/api/v1/messages`, { method: "DELETE" });
 }
 
+/** Revokes every browser token, as a Lock on another device would. */
+export async function revokeBrowsers() {
+  const c = new pg.Client({ connectionString: DB });
+  await c.connect();
+  try {
+    await c.query("delete from yogurt_browsers");
+  } finally {
+    await c.end();
+  }
+}
+
 /** The confirmation link from the newest message in the local mail catcher. */
 export async function confirmationLink(): Promise<string> {
   let link = "";
