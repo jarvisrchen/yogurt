@@ -1,6 +1,6 @@
 // No caret of its own: the note format lives in the sibling <TemplatePicker>, and this button just carries its value.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   postEnhance,
   type EnhanceRequestBody,
@@ -20,6 +20,8 @@ export interface ReEnhanceButtonProps {
   endedAtUnixMs?: number;
   /** Note format id to force; undefined lets the model auto-detect. */
   template?: string;
+  /** When set, the first click asks this before enhancing. */
+  confirmMessage?: string;
   onEnhanced: (response: EnhanceResponse) => void;
   /** Called with `true` on click, `false` when the POST resolves/throws. */
   onEnhancing?: (busy: boolean) => void;
@@ -35,15 +37,30 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
     startedAtUnixMs,
     endedAtUnixMs,
     template,
+    confirmMessage,
     onEnhanced,
     onEnhancing,
     onError,
   } = props;
 
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
-  async function handleClick() {
+  // Same auto-cancel as the delete confirm, a little longer to fit a sentence.
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(false), 6000);
+    return () => clearTimeout(t);
+  }, [confirming]);
+
+  function handleClick() {
     if (busy) return;
+    if (confirmMessage) setConfirming(true);
+    else void run();
+  }
+
+  async function run() {
+    setConfirming(false);
     setBusy(true);
     onEnhancing?.(true);
     try {
@@ -67,7 +84,7 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
     }
   }
 
-  return (
+  const button = (
     <button
       type="button"
       data-testid="re-enhance-button"
@@ -89,5 +106,39 @@ export function ReEnhanceButton(props: ReEnhanceButtonProps) {
     >
       {busy ? "Re-enhancing…" : "Re-enhance"}
     </button>
+  );
+
+  if (!confirmMessage) return button;
+  return (
+    <div className="relative inline-block">
+      {button}
+      {confirming && (
+        <div
+          role="alertdialog"
+          aria-label="Confirm re-enhance"
+          data-testid="re-enhance-confirm"
+          className="absolute top-full right-0 mt-1 z-20 w-64 px-3 py-2 flex flex-col gap-2 bg-card border border-line rounded-card shadow-pop text-[12px] text-ink"
+        >
+          <p>{confirmMessage}</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => void run()}
+              className="px-2 py-1 rounded-button bg-strsoft text-ink border border-straw/40 font-semibold hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-straw/50"
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="px-2 py-1 rounded-button text-mut hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

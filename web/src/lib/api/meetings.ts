@@ -19,6 +19,14 @@ export interface Label {
   color: LabelColor;
 }
 
+/** Provenance of an imported meeting. `owner.is_user` is set by `GET /api/meetings/{id}` only. */
+export interface MeetingSourceJson {
+  owner?: { name?: string | null; email?: string | null; is_user?: boolean };
+  web_url?: string;
+  updated_at?: string;
+  imported_at?: string;
+}
+
 export interface Meeting {
   id: string;
   title: string;
@@ -36,6 +44,10 @@ export interface Meeting {
   llm_model: string | null;
   /** Note format that shaped `enriched_md` (e.g. "standup"); `null` until enhanced. */
   template: string | null;
+  /** E.g. "granola". Absent for a meeting recorded in yogurt. */
+  source?: string;
+  source_id?: string;
+  source_json?: MeetingSourceJson;
   /** ISO 8601 UTC string. */
   created_at: string;
   /** ISO 8601 UTC string. */
@@ -57,6 +69,9 @@ export interface MeetingSummary {
   /** `enriched_md` is set. */
   has_enriched: boolean;
   labels: Label[];
+  source?: string;
+  /** Who captured an imported meeting: the owner's name, or their email. */
+  source_owner?: string;
 }
 
 /** `total` counts every match before paging. */

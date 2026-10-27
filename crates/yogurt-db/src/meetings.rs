@@ -274,6 +274,21 @@ impl MeetingRepo {
         })
     }
 
+    /// The owner email shared by most meetings imported from `source`, which stands in for the user.
+    /// Ties break on the email so the answer is stable.
+    pub fn most_common_source_owner(&self, source: &str) -> Result<Option<String>> {
+        self.db.with_conn(|conn| -> Result<_> {
+            Ok(conn
+                .query_row(
+                    "SELECT json_extract(source_json, '$.owner.email') AS e FROM meetings \
+                     WHERE source = ?1 AND e IS NOT NULL GROUP BY e ORDER BY COUNT(*) DESC, e LIMIT 1",
+                    [source],
+                    |r| r.get(0),
+                )
+                .optional()?)
+        })
+    }
+
     /// `Ok(None)` for a missing row; the REST handler maps it to 404.
     pub fn get(&self, id: &str) -> Result<Option<Meeting>> {
         self.db.with_conn(|conn| -> Result<Option<Meeting>> {

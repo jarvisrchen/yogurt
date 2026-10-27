@@ -11,6 +11,7 @@ import { TranscriptDock } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
+import { ImportedFromLine } from "../components/ImportedFromLine";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
 import { CopyUrlButton } from "../components/CopyUrlButton";
@@ -22,6 +23,7 @@ import {
   meetingsKey,
   useActiveRecording,
   useMeeting,
+  type MeetingSourceJson,
 } from "../lib/api/meetings";
 import { postEnhance, type EnhanceResponse } from "../lib/api";
 
@@ -42,6 +44,8 @@ interface MeetingFetchResponse {
   stt_engine?: string | null;
   llm_model?: string | null;
   template?: string | null;
+  source?: string | null;
+  source_json?: MeetingSourceJson | null;
 }
 
 interface LocationStateShape {
@@ -84,6 +88,7 @@ export function MeetingPost() {
   const [sttEngine, setSttEngine] = useState<string | undefined>(undefined);
   const [llmModel, setLlmModel] = useState<string | undefined>(undefined);
   const [template, setTemplate] = useState<string>(AUTO_TEMPLATE);
+  const [source, setSource] = useState<{ name: string; json: MeetingSourceJson } | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -172,6 +177,7 @@ export function MeetingPost() {
           setSttEngine(json.stt_engine ?? undefined);
           setLlmModel(json.llm_model ?? undefined);
           if (json.template) setTemplate(json.template);
+          setSource(json.source ? { name: json.source, json: json.source_json ?? {} } : null);
         } catch (e) {
           // AbortError from cleanup is expected.
           if (cancelled || generationRef.current !== myGen) return;
@@ -459,6 +465,7 @@ export function MeetingPost() {
                 llmModel={llmModel}
               />
               {meetingId && <MeetingLabels meetingId={meetingId} />}
+              {source?.name === "granola" && <ImportedFromLine source={source.json} />}
             </div>
           </div>
         </div>
@@ -480,6 +487,7 @@ export function MeetingPost() {
             startedAtUnixMs={startedAtUnixMs}
             endedAtUnixMs={endedAtUnixMs}
             template={template === AUTO_TEMPLATE ? undefined : template}
+            confirmMessage={source?.name === "granola" ? "This replaces the notes imported from Granola." : undefined}
             onEnhanced={handleEnhanced}
             onEnhancing={handleEnhancing}
             onError={handleError}
