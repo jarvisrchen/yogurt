@@ -336,13 +336,13 @@ export function ListRow({ title, meta, tag, snippet, selected, onClick }: { titl
       aria-current={selected || undefined}
       className={`block w-full text-left font-[inherit] text-ink bg-card border rounded-button px-[11px] py-[9px] cursor-pointer ${selected ? "border-blue shadow-[0_0_0_1px_var(--color-blue)]" : "border-line"}`}
     >
-      <b className="block text-[12px] font-bold truncate">{title}</b>
-      <span className="flex justify-between items-center gap-[6px] text-[10px] text-mut mt-[2px]">
+      <b className="block text-[16px] min-[721px]:text-[12px] font-bold truncate">{title}</b>
+      <span className="flex justify-between items-center gap-[6px] text-[13px] min-[721px]:text-[10px] text-mut mt-[2px]">
         <span>{meta}</span>
         {tag}
       </span>
       {snippet && (
-        <span className="text-[10.5px] leading-snug text-mut mt-[4px] line-clamp-2">
+        <span className="text-[13.5px] min-[721px]:text-[10.5px] leading-snug text-mut mt-[4px] line-clamp-2">
           {snippetParts(snippet).map((p, i) =>
             p.hit ? (
               <mark key={i} className="bg-blsoft text-ink font-semibold rounded-[3px]">

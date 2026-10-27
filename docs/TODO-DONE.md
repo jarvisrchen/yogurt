@@ -1316,3 +1316,7 @@ New closed items go at the bottom.
 - [x] **IMP-4** Show "Imported from Granola" with the capturer and an Open in Granola link on imported meetings, and confirm before Enhance replaces Granola's notes
 
   An imported meeting shows "Imported from Granola", "Captured by" when someone else captured it, and "Open in Granola" under its title, and Re-enhance asks before replacing the notes imported from Granola.
+
+- [x] **SYNC-16** Match the webapp library row text to the search bar at phone width, where the search input is 16px but row titles were 12px and the meta and snippet lines 10-10.5px
+
+  Below 721px the library rows now use a 16px title and 13-13.5px meta and snippet lines, so they match the 16px search input. Desktop sizes are unchanged.
