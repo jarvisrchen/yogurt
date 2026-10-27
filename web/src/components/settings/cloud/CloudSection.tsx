@@ -14,6 +14,7 @@ import {
   type PushStatus,
   type PushInterval,
 } from "../../../lib/api/cloud";
+import { useLivePush } from "../../../hooks/useCloudPush";
 import { ConnectForm } from "./ConnectForm";
 import { INPUT, K } from "./Field";
 import { Note } from "./Note";
@@ -198,7 +199,7 @@ function AutoPush({ value }: { value: PushInterval }) {
         <div className="min-w-0">
           <div className={K}>Auto-push</div>
           <p className="mt-0.5 text-[11.5px] text-mut">
-            Push changed meetings in the background while Yogurt is running. Off by default.
+            Push changed meetings in the background while yogurt is running. Off by default.
           </p>
         </div>
         <Segmented
@@ -279,7 +280,9 @@ function Connected({ status }: { status: CloudConnected }) {
   useEffect(() => {
     if (sawExpired) setNeedsSignIn(true);
   }, [sawExpired]);
-  const running = status.push != null;
+  const livePush = useLivePush(status.push);
+  const running = livePush != null;
+  const notPushed = livePush && livePush.total > 0 ? Math.max(0, livePush.total - livePush.sent) : status.not_pushed;
   const error = needsSignIn || running ? null : (push.error?.message ?? status.last_error?.error);
   return (
     <section>
@@ -296,9 +299,9 @@ function Connected({ status }: { status: CloudConnected }) {
         </div>
         <div className="mb-3.5 mt-2.5 flex flex-wrap gap-6">
           <Stat value={status.meetings} label="meetings on this Mac" />
-          <Stat value={status.not_pushed} label="not pushed" tone={status.not_pushed > 0 ? "text-honeyink" : ""} />
+          <Stat value={notPushed} label="not pushed" tone={notPushed > 0 ? "text-honeyink" : ""} />
         </div>
-        {status.push && <PushProgress push={status.push} />}
+        {livePush && <PushProgress push={livePush} />}
         {!(running && !status.last_push) && (
           <div className="text-[11.5px] text-mut">{describeLastPush(status.last_push)}</div>
         )}

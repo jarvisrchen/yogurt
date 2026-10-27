@@ -84,3 +84,12 @@ export function hideCloudPushPill() {
 export function clearCloudPush() {
   set(null);
 }
+
+/** The one live view of a running push, so every surface reads the same numbers as the pill. The polled status fills in until the first frame lands. */
+export function useLivePush(polled: PushStatus | null): PushStatus | null {
+  const live = useCloudPush();
+  if (!polled) return null;
+  if (live?.state.kind !== "running") return polled;
+  const { sent, total } = live.state;
+  return { ...polled, sent, total };
+}

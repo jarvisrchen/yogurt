@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { useLivePush } from "../../hooks/useCloudPush";
 import { useGreeting } from "../../hooks/useGreeting";
 import { useCloudStatus } from "../../lib/api/cloud";
 import { Pill } from "../Pill";
@@ -12,7 +13,7 @@ export function Greeting({ count }: Props) {
   const { greeting } = useGreeting();
   const cloud = useCloudStatus().data;
   const notPushed = cloud?.connected ? cloud.not_pushed : 0;
-  const pushing = cloud?.connected ? cloud.push : null;
+  const pushing = useLivePush(cloud?.connected ? cloud.push : null);
   const plural = count === 1 ? "meeting" : "meetings";
   return (
     <header className="mb-8">

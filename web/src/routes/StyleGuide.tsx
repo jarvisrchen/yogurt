@@ -55,7 +55,7 @@ export function StyleGuide() {
         <Logo size={60} />
         <div>
           <h1 className="heading-hero">
-            Yogurt style guide
+            yogurt style guide
           </h1>
           <p className="mt-2 text-[14px] text-mut max-w-xl">
             Every token and component primitive defined in PRD §16, rendered
@@ -274,7 +274,7 @@ export function StyleGuide() {
             </div>
             <div className="flex items-center gap-4 flex-wrap">
               <Button variant="secondary">Enhance</Button>
-              <Button variant="secondary">Restart Yogurt</Button>
+              <Button variant="secondary">Restart yogurt</Button>
               <Button variant="secondary">Cancel</Button>
               <Button variant="secondary" disabled>
                 Disabled secondary
