@@ -32,7 +32,7 @@ const text = (v: unknown): v is string => typeof v === "string" && v !== "";
 
 /** The request, or why it is refused. */
 export function parseRequest(raw: string): ChatRequest | string {
-  if (bytes(raw) > MAX_BODY) return "The conversation is too long. Close the chat and start again.";
+  if (bytes(raw) > MAX_BODY) return "The conversation is too long.";
   let b: Partial<ChatRequest>;
   try {
     b = JSON.parse(raw);
@@ -72,7 +72,21 @@ export function transcriptLines(transcriptJson: string): string {
     .join("\n");
 }
 
-export async function handleChat(req: Request, env: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
+// Under the function's 60 s limit, so a stalled provider still ends in an error the user sees, as the desktop's 60 s request timeout does.
+const LLM_TIMEOUT_MS = 50_000;
+const UNREACHABLE = "Chat couldn't reach your Cloud. Try again.";
+
+export async function handleChat(req: Request, rawEnv: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
+  // A value pasted with a stray space or newline would otherwise break a URL, or slip past the key scrub.
+  const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, v?.trim()])) as Env;
+  try {
+    return await respond(req, env, fetchImpl);
+  } catch {
+    return json(502, { message: UNREACHABLE });
+  }
+}
+
+async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise<Response> {
   if (req.method !== "POST") return json(405, { message: "Use POST." });
   const jwt = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
   if (!jwt) return json(401, { message: "Sign in again." });
@@ -99,8 +113,10 @@ export async function handleChat(req: Request, env: Env, fetchImpl: typeof fetch
     { role: "system", content: `TRANSCRIPT SO FAR (most recent at bottom):\n\n${transcriptLines(meeting.transcript_json)}` },
     ...body.messages,
   ];
-  const abort = new AbortController();
-  const deltas = answer(messages, env, fetchImpl, abort.signal)[Symbol.asyncIterator]();
+  // Stop generating, on the owner's key, once nobody is reading.
+  const gone = new AbortController();
+  req.signal?.addEventListener("abort", () => gone.abort());
+  const deltas = answer(messages, env, fetchImpl, gone.signal)[Symbol.asyncIterator]();
   const encode = (delta: string) => new TextEncoder().encode(JSON.stringify({ delta }) + "\n");
   return new Response(
     new ReadableStream({
@@ -110,15 +126,22 @@ export async function handleChat(req: Request, env: Env, fetchImpl: typeof fetch
         else c.enqueue(encode(value));
       },
       cancel() {
-        abort.abort();
+        gone.abort();
       },
     }),
     { headers: { "content-type": "application/x-ndjson" } },
   );
 }
 
+/** The visible text of a streamed delta. Some providers send content as a list of parts, of which only the text ones show. */
+function deltaText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((p) => (p?.type === "text" && typeof p.text === "string" ? p.text : "")).join("");
+}
+
 /** The model's visible answer, chunk by chunk, with any failure as a last bracketed chunk. */
-async function* answer(messages: Message[], env: Env, fetchImpl: typeof fetch, signal: AbortSignal): AsyncGenerator<string> {
+async function* answer(messages: Message[], env: Env, fetchImpl: typeof fetch, gone: AbortSignal): AsyncGenerator<string> {
   const { YOGURT_LLM_BASE_URL: base, YOGURT_LLM_MODEL: model, YOGURT_LLM_API_KEY: key } = env;
   if (!base || !model || !key) {
     yield NOT_SET_UP;
@@ -126,30 +149,40 @@ async function* answer(messages: Message[], env: Env, fetchImpl: typeof fetch, s
   }
   // As in yogurt-llm: MiniMax spends minutes on hidden reasoning unless thinking is disabled, and splits any it does into another field.
   const minimax = model.toLowerCase().startsWith("minimax-");
-  const scrub = (s: string) => (key.length < 4 ? s : s.replaceAll(key, "[key redacted]"));
+  // Providers quote the key back in error bodies, and a fetch error can quote a base URL that carries credentials.
+  const scrub = (s: string) => (key.length < 4 ? s : s.replaceAll(key, "[key redacted]")).replace(/\/\/[^/\s@]+@/g, "//[credentials redacted]@");
+  const timeout = AbortSignal.timeout(LLM_TIMEOUT_MS);
   try {
     const res = await fetchImpl(`${base.replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({ model, messages, stream: true, ...(minimax && { reasoning_split: true, thinking: { type: "disabled" } }) }),
-      signal,
+      signal: AbortSignal.any([gone, timeout]),
     });
     if (!res.ok || !res.body) {
-      yield `[stream error: LLM stream open failed: ${res.status} - ${scrub((await res.text()).slice(0, 500))}]`;
+      yield `[stream error: LLM stream open failed: ${res.status} - ${scrub(await res.text()).slice(0, 500)}]`;
       return;
     }
     const strip = new ThinkStripper();
     for await (const data of sseData(res.body)) {
       if (data.trim() === "[DONE]") break;
-      const choice = JSON.parse(data).choices?.[0];
-      const visible = strip.push(choice?.delta?.content ?? "");
+      const chunk = JSON.parse(data);
+      if (chunk.error) {
+        yield `\n\n[stream error: ${scrub(String(chunk.error.message ?? JSON.stringify(chunk.error)))}]`;
+        return;
+      }
+      const choice = chunk.choices?.[0];
+      const visible = strip.push(deltaText(choice?.delta?.content));
       if (visible) yield visible;
       if (choice?.finish_reason) break;
     }
     const rest = strip.flush();
     if (rest) yield rest;
   } catch (e) {
-    if (!signal.aborted) yield `\n\n[stream error: ${scrub(e instanceof Error ? e.message : String(e))}]`;
+    if (gone.aborted) return;
+    yield timeout.aborted
+      ? `\n\n[stream error: the LLM took longer than ${LLM_TIMEOUT_MS / 1000} seconds]`
+      : `\n\n[stream error: ${scrub(e instanceof Error ? e.message : String(e))}]`;
   }
 }
 
@@ -177,6 +210,7 @@ export async function* sseData(body: ReadableStream<Uint8Array>): AsyncGenerator
     }
     if (data.length) yield data.join("\n");
   } finally {
-    reader.releaseLock();
+    // Closes the provider's connection when the relay stops early, at [DONE] or finish_reason.
+    await reader.cancel().catch(() => undefined);
   }
 }

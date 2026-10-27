@@ -120,3 +120,61 @@ test("the function reads only its five environment variables", () => {
   expect(reads).toHaveLength(1);
   expect(reads[0].split(",").map((s) => s.trim()).sort()).toEqual(["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_URL", "YOGURT_LLM_API_KEY", "YOGURT_LLM_BASE_URL", "YOGURT_LLM_MODEL"]);
 });
+
+test("the key is scrubbed from the whole error body before it is shortened", async () => {
+  const body = `${"x".repeat(490)} sk-test-secret and more`;
+  const { f } = fakeFetch(meetingRead(), () => new Response(body, { status: 401 }));
+  const [line] = await lines(await handleChat(post(ASK), ENV, f));
+  expect(line).not.toContain("sk-test");
+});
+
+test("a padded key and base URL still work and the key is still scrubbed", async () => {
+  const { f, calls } = fakeFetch(meetingRead(), () => new Response("echo sk-test-secret", { status: 401 }));
+  const [line] = await lines(await handleChat(post(ASK), { ...ENV, YOGURT_LLM_API_KEY: " sk-test-secret \n", YOGURT_LLM_BASE_URL: "http://llm.test/v1 " }, f));
+  expect(line).toContain("[key redacted]");
+  expect(calls[1].url).toBe("http://llm.test/v1/chat/completions");
+  expect(calls[1].init.headers).toMatchObject({ authorization: "Bearer sk-test-secret" });
+});
+
+test("credentials in a base URL never reach the answer", async () => {
+  const f = (async (url: string) => {
+    if (url.includes("/rest/v1/")) return meetingRead();
+    throw new TypeError(`Request cannot be constructed from a URL that includes credentials: ${url}`);
+  }) as unknown as typeof fetch;
+  const [line] = await lines(await handleChat(post(ASK), { ...ENV, YOGURT_LLM_BASE_URL: "https://user:s3cret@llm.test/v1" }, f));
+  expect(line).not.toContain("s3cret");
+});
+
+test("a mid-stream error frame ends the answer with a stream error", async () => {
+  const { f } = fakeFetch(meetingRead(), () => sse(delta("Partial "), `data: ${JSON.stringify({ error: { message: "overloaded" } })}\n\n`, "data: [DONE]\n\n"));
+  expect(await lines(await handleChat(post(ASK), ENV, f))).toEqual(["Partial ", "\n\n[stream error: overloaded]"]);
+});
+
+test("content sent as a list of parts shows only its text", async () => {
+  const parts = [{ type: "thinking", thinking: "hmm" }, { type: "text", text: "Friday." }];
+  const { f } = fakeFetch(meetingRead(), () => sse(`data: ${JSON.stringify({ choices: [{ delta: { content: parts } }] })}\n\n`, "data: [DONE]\n\n"));
+  expect(await lines(await handleChat(post(ASK), ENV, f))).toEqual(["Friday."]);
+});
+
+test("an unreachable Cloud is a 502 rather than a crash", async () => {
+  const f = (async () => {
+    throw new TypeError("fetch failed");
+  }) as unknown as typeof fetch;
+  const res = await handleChat(post(ASK), ENV, f);
+  expect(res.status).toBe(502);
+  expect(await res.json()).toEqual({ message: "Chat couldn't reach your Cloud. Try again." });
+});
+
+test("cancelling the answer cancels the LLM call", async () => {
+  let llmSignal: AbortSignal | undefined;
+  const f = (async (url: string, init: RequestInit) => {
+    if (url.includes("/rest/v1/")) return meetingRead();
+    llmSignal = init.signal ?? undefined;
+    return sse(delta("first "));
+  }) as unknown as typeof fetch;
+  const res = await handleChat(post(ASK), ENV, f);
+  const reader = res.body!.getReader();
+  await reader.read();
+  await reader.cancel();
+  expect(llmSignal?.aborted).toBe(true);
+});

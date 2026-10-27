@@ -152,6 +152,14 @@ normalized_routes=$(echo "$routes" | sed -E 's/\{\*([A-Za-z0-9_]+)\}/:\1/g; s/\{
     violate "docs/FEATURES.md:1" "route-coverage" "route not in feature map: $r"
 done
 
+# --- Cloud chat prompt -------------------------------------------------------
+# cloud/api/_prompts.ts carries the desktop's chat prompt verbatim, because the Vercel function cannot read crates/.
+prompt=$(cat crates/yogurt-prompts/templates/chat-system.md)
+case "$(cat cloud/api/_prompts.ts)" in
+  *"$prompt"*) ;;
+  *) violate "cloud/api/_prompts.ts:1" "prompt-copy" "differs from crates/yogurt-prompts/templates/chat-system.md" ;;
+esac
+
 # --- Report ------------------------------------------------------------------
 
 if [ -s "$VIOLATIONS" ]; then

@@ -24,7 +24,13 @@ function chatApi(): Plugin {
   };
   // A hook that returns a function has it run later as a post hook, so this returns nothing.
   const mount = (server: { middlewares: { use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void } }) => {
-    server.middlewares.use("/api/chat", (req, res) => void serve(req, res));
+    // An unhandled rejection here would exit the whole server, which the e2e specs run against.
+    server.middlewares.use("/api/chat", (req, res) =>
+      void serve(req, res).catch(() => {
+        if (!res.headersSent) res.statusCode = 500;
+        res.end();
+      }),
+    );
   };
   return { name: "yogurt-chat-api", configureServer: mount, configurePreviewServer: mount };
 }

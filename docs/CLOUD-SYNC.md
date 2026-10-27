@@ -225,6 +225,10 @@ You do it in a browser, and no laptop is involved.
 If the build fails, open the build log.
 A message that starts with `yogurt-cloud build:` names the missing variable.
 
+The login settings apply to the whole Supabase project, so another app on the same project gets them too.
+Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
+Use a project of its own when another app signs users up on it.
+
 ### Turn on chat
 
 Chat answers questions about a meeting through any OpenAI-compatible chat completions API, the same kind of provider as an HTTP provider in Yogurt's Settings.
@@ -238,10 +242,6 @@ Add three more variables, limited to Production, and redeploy:
 
 Until all three are set, chat answers "Chat isn't set up on this Cloud."
 The local command-line providers, such as Claude Code, cannot run on Vercel.
-
-The login settings apply to the whole Supabase project, so another app on the same project gets them too.
-Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
-Use a project of its own when another app signs users up on it.
 
 ### Free tiers
 

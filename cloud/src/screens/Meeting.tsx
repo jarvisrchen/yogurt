@@ -5,8 +5,7 @@ import { storedSegmentToEvent } from "@web/lib/ws";
 import { AskPill } from "@web/components/AskPill";
 import { ChatWindow } from "@web/components/ChatWindow";
 import { Back, DeviceTag } from "../ui";
-import type { Api } from "../lib/api";
-import { useMeetingChat } from "../lib/useMeetingChat";
+import type { MeetingChat } from "../lib/useMeetingChat";
 import { defaultTab, pushedFrom, started, tabsFor, type Entry, type Tab } from "../lib/library";
 
 /** The sanitized HTML, with each transcript link given the "↳ mm:ss" text the desktop editor draws for it. */
@@ -29,17 +28,8 @@ export type BodyState = { status: "loading" } | { status: "ready" } | { status: 
 
 const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
 
-/** What chat needs to ask about the open meeting. Absent on a meeting opened from an earlier push. */
-export interface ChatTarget {
-  api: Api;
-  token: string;
-  deviceId: string;
-  meetingId: string;
-  onRejected: () => void;
-}
-
 /** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
-export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, body, chat }: { entry: Entry | null; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat?: ChatTarget }) {
+export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, body, chat }: { entry: Entry | null; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: MeetingChat | null }) {
   return (
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
       {!desktop && <Back to={back} onClick={onBack} />}
@@ -70,13 +60,13 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
           </button>
         </div>
       )}
-      {body.status === "ready" && entry && <MeetingBody entry={entry} device={device} />}
-      {body.status === "ready" && chat && <Ask {...chat} />}
+      {body.status === "ready" && entry && <MeetingBody entry={entry} device={device} onLink={() => chat?.setOpen(false)} />}
+      {body.status === "ready" && chat && <Ask chat={chat} />}
     </article>
   );
 }
 
-function MeetingBody({ entry, device }: { entry: Entry; device: string }) {
+function MeetingBody({ entry, device, onLink }: { entry: Entry; device: string; onLink: () => void }) {
   const tabs = tabsFor(entry);
   const [picked, setPicked] = useState<Tab | null>(null);
   const tab = picked && tabs.includes(picked) ? picked : defaultTab(entry);
@@ -110,7 +100,7 @@ function MeetingBody({ entry, device }: { entry: Entry; device: string }) {
         {tab === "transcript" ? (
           <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
         ) : (
-          <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); } : undefined} />
+          <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); onLink(); } : undefined} />
         )}
       </div>
       <p className="text-[13px] min-[721px]:text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>
@@ -135,12 +125,10 @@ function Doc({ md, onLink }: { md: string; onLink?: (sec: number) => void }) {
 // Sticks to the bottom of the screen while the meeting scrolls under it, within the meeting's own column.
 const DOCKED = "cloud-chat sticky bottom-[16px] self-center w-full max-w-[480px]";
 
-function Ask({ api, token, deviceId, meetingId, onRejected }: ChatTarget) {
-  const chat = useMeetingChat(api, token, deviceId, meetingId, onRejected);
-  const [open, setOpen] = useState(false);
-  return open ? (
-    <ChatWindow messages={chat.messages} streamingId={chat.streamingId} onSend={(q) => void chat.send(q)} onCollapse={() => setOpen(false)} position={DOCKED} />
+function Ask({ chat }: { chat: MeetingChat }) {
+  return chat.open ? (
+    <ChatWindow messages={chat.messages} streamingId={chat.streamingId} onSend={chat.send} onCollapse={() => chat.setOpen(false)} position={DOCKED} />
   ) : (
-    <AskPill onExpand={() => setOpen(true)} position={DOCKED} />
+    <AskPill onExpand={() => chat.setOpen(true)} position={DOCKED} />
   );
 }

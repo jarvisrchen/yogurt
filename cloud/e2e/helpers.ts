@@ -25,7 +25,7 @@ export async function reset() {
   await fetch(`${MAIL}/api/v1/messages`, { method: "DELETE" });
 }
 
-/** Revokes every browser token, as a Lock on another device would. */
+/** Revokes every browser token, so the next read from any browser is rejected. */
 export async function revokeBrowsers() {
   const c = new pg.Client({ connectionString: DB });
   await c.connect();

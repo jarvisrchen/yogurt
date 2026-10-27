@@ -54,7 +54,8 @@ export function ChatWindow({
     inputRef.current?.focus();
   }, []);
 
-  useKeyboardShortcut({ key: "Escape" }, onCollapse);
+  // Escape typed into another field, such as a search box, belongs to that field. The window's own input handles it below.
+  useKeyboardShortcut({ key: "Escape", ignoreWhenTyping: true }, onCollapse);
 
   function trySubmit() {
     const trimmed = draft.trim();
@@ -139,9 +140,13 @@ export function ChatWindow({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // Enter that commits an IME composition picks the characters and must not send.
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 trySubmit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onCollapse();
               }
             }}
             placeholder={copy.placeholder}

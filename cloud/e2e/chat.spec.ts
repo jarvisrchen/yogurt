@@ -24,7 +24,7 @@ test.beforeAll(async () => {
   });
   await new Promise<void>((r) => llm.listen(LLM_PORT, "127.0.0.1", r));
 });
-test.afterAll(() => new Promise<void>((r) => llm.close(() => r())));
+test.afterAll(() => new Promise<void>((r) => (llm ? llm.close(() => r()) : r())));
 
 test("ask a meeting about its transcript", async ({ page }, info) => {
   const phone = isPhone(page);
@@ -64,6 +64,20 @@ test("ask a meeting about its transcript", async ({ page }, info) => {
   await expect.poll(() => asked.length).toBe(before + 2);
   expect(asked[before + 1].messages.map((m) => m.role)).toEqual(["system", "system", "user", "assistant", "user"]);
   expect(asked[before + 1].messages[3].content).toBe(ANSWER.join(""));
+
+  // Crossing the phone and desktop breakpoint, as rotating a phone does, keeps the conversation.
+  const size = page.viewportSize()!;
+  await page.setViewportSize(phone ? { width: 844, height: 390 } : { width: 390, height: 844 });
+  await expect(chat.getByText("When do we sign the vendor contract?")).toBeVisible();
+  await page.setViewportSize(size);
+  await expect(chat.getByText("When do we sign the vendor contract?")).toBeVisible();
+
+  // A transcript link folds the chat away, so the line it scrolls to is in view.
+  await page.getByRole("tab", { name: "Enhanced" }).click();
+  await page.getByRole("tabpanel").locator("[data-transcript-link]").click();
+  await expect(pill).toBeVisible();
+  await expect(page.locator("[data-transcript-ts-sec]", { hasText: LATE.text })).toBeInViewport({ ratio: 1 });
+  await pill.click();
 
   // Escape folds the chat back into the pill, and leaving the meeting forgets the conversation.
   await page.keyboard.press("Escape");
