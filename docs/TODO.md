@@ -133,4 +133,3 @@ Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan
 
 Design: [.planning/granola-import-design.md](.planning/granola-import-design.md).
 
-- [ ] **IMP-3** Settings Import section with the Granola key, preview, progress, and cancel, plus an import pill on every page

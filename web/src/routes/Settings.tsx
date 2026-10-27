@@ -13,8 +13,9 @@ import { STTPicker } from "../components/settings/STTPicker";
 import { AudioSection } from "../components/settings/AudioSection";
 import { GeneralSection } from "../components/settings/GeneralSection";
 import { CloudSection } from "../components/settings/cloud/CloudSection";
+import { ImportSection } from "../components/settings/ImportSection";
 
-const VALID_SECTIONS = ["model", "transcription", "audio", "general", "cloud"] as const;
+const VALID_SECTIONS = ["model", "transcription", "audio", "general", "cloud", "import"] as const;
 
 function isValidSection(s: unknown): s is SettingsSection {
   return typeof s === "string" && (VALID_SECTIONS as readonly string[]).includes(s);
@@ -188,6 +189,8 @@ export function Settings() {
         {section === "general" && <GeneralSection general={data.general} />}
 
         {section === "cloud" && <CloudSection view={params.view} />}
+
+        {section === "import" && <ImportSection />}
       </main>
     </div>
   );

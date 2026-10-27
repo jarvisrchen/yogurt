@@ -11,6 +11,8 @@ import {
   sttKeys,
 } from "../lib/api/stt";
 import { ensureSessionToken } from "../lib/session";
+import { importApi } from "../lib/api/granolaImport";
+import { applyImportEvent, applyImportStatus, type ImportEvent } from "./useGranolaImport";
 
 export interface DownloadState {
   bytesDownloaded: number;
@@ -151,7 +153,7 @@ async function reconcile() {
   else withProgress({ error: "The download stopped before it finished." });
 }
 
-/** Mounted once, in the Shell. */
+/** Mounted once, in the Shell. It also carries the Granola import frames, which share the one socket. */
 export function useModelDownloadEvents() {
   const qc = useQueryClient();
 
@@ -177,6 +179,7 @@ export function useModelDownloadEvents() {
         `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`,
       );
       ws.onopen = () => {
+        importApi.status().then(applyImportStatus, () => {});
         if (!isReconnect) return;
         onModelsChanged();
         reconcile().catch(() => {});
@@ -188,12 +191,11 @@ export function useModelDownloadEvents() {
         } catch {
           return;
         }
-        if (
-          frame &&
-          typeof frame === "object" &&
-          String((frame as { type?: unknown }).type).startsWith("stt_model_download_")
-        ) {
+        const type = String((frame as { type?: unknown } | null)?.type);
+        if (type.startsWith("stt_model_download_")) {
           applyDownloadEvent(frame as DownloadEvent, onModelsChanged);
+        } else if (type.startsWith("import_")) {
+          applyImportEvent(frame as ImportEvent);
         }
       };
       ws.onclose = () => {
