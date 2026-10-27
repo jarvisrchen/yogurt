@@ -359,7 +359,7 @@ sequenceDiagram
     E->>E: render::to_markdown -> sanitize (ammonia allowlist)
     par single spawn_blocking
         E->>DB: UPSERT meetings (notes_md, transcript_json, enriched_md, enriched_doc_json)
-        E->>FS: atomic write tmp + rename + fsync of <slug>.md
+        E->>FS: atomic write tmp + rename + fsync of <date>-<slug>-<id6>.md (id6 = last 6 alphanumeric id chars)
     end
     E->>WS: enhance_progress { phase: "done" }
     E-->>B: { enriched_md, notes_file }
