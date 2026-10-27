@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::ApiError;
 use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
-use yogurt_db::{Meeting, MeetingPatch, NewMeeting};
+use yogurt_db::{Meeting, MeetingFilter, MeetingPage, MeetingPatch, NewMeeting};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -79,34 +79,67 @@ pub struct PatchBody {
     pub label_ids: Option<Vec<String>>,
 }
 
-/// An empty `q` falls through to the chronological list. `limit` defaults to 50 and is capped at 200.
+const DEFAULT_LIMIT: usize = 25;
+const MAX_LIMIT: usize = 100;
+
+/// Paging and filters shared by the list and search routes. `starred=false` is the same as leaving it out.
+#[derive(Debug, Deserialize)]
+struct PageQuery {
+    limit: Option<usize>,
+    #[serde(default)]
+    offset: usize,
+    label_id: Option<String>,
+    #[serde(default)]
+    starred: bool,
+}
+
+impl PageQuery {
+    fn parts(self) -> Result<(MeetingFilter, usize, usize), ApiError> {
+        let limit = self.limit.unwrap_or(DEFAULT_LIMIT);
+        if !(1..=MAX_LIMIT).contains(&limit) {
+            return Err(ApiError::BadRequest(format!(
+                "limit must be between 1 and {MAX_LIMIT}"
+            )));
+        }
+        let filter = MeetingFilter {
+            label_id: self.label_id,
+            starred: self.starred,
+        };
+        Ok((filter, limit, self.offset))
+    }
+}
+
+/// An empty `q` falls through to the chronological list. Paging comes from a second `Query<PageQuery>`, since serde cannot flatten typed fields out of a query string.
 #[derive(Debug, Deserialize)]
 struct SearchQuery {
     q: String,
-    #[serde(default)]
-    limit: Option<usize>,
 }
 
 async fn search(
     State(s): State<AppState>,
-    axum::extract::Query(qs): axum::extract::Query<SearchQuery>,
-) -> Result<Json<Vec<Meeting>>, ApiError> {
-    let limit = qs.limit.unwrap_or(50).min(200);
+    Query(qs): Query<SearchQuery>,
+    Query(page): Query<PageQuery>,
+) -> Result<Json<MeetingPage>, ApiError> {
+    let (filter, limit, offset) = page.parts()?;
     let repo = s.meeting_repo.clone();
-    let xs = tokio::task::spawn_blocking(move || repo.search(&qs.q, limit))
+    let page = tokio::task::spawn_blocking(move || repo.search_page(&qs.q, &filter, limit, offset))
         .await
         .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
         .map_err(ApiError::from)?;
-    Ok(Json(xs))
+    Ok(Json(page))
 }
 
-async fn list(State(s): State<AppState>) -> Result<Json<Vec<Meeting>>, ApiError> {
+async fn list(
+    State(s): State<AppState>,
+    Query(qs): Query<PageQuery>,
+) -> Result<Json<MeetingPage>, ApiError> {
+    let (filter, limit, offset) = qs.parts()?;
     let repo = s.meeting_repo.clone();
-    let xs = tokio::task::spawn_blocking(move || repo.list())
+    let page = tokio::task::spawn_blocking(move || repo.list_page(&filter, limit, offset))
         .await
         .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
         .map_err(ApiError::from)?;
-    Ok(Json(xs))
+    Ok(Json(page))
 }
 
 async fn create(

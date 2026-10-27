@@ -227,6 +227,27 @@ async fn meeting_new_then_show_and_list() {
     let stdout = String::from_utf8(last.get_output().stdout.clone()).unwrap();
     let last: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(last["meeting"]["id"], id);
+
+    // `--limit` caps the rows but `total` still counts every meeting, and rows are summaries.
+    ctl(
+        port,
+        tmp.path(),
+        &["meeting", "new", "--title", "second", "--json"],
+    )
+    .success();
+    let capped = ctl(
+        port,
+        tmp.path(),
+        &["meeting", "list", "--limit", "1", "--json"],
+    )
+    .success();
+    let stdout = String::from_utf8(capped.get_output().stdout.clone()).unwrap();
+    let capped: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(capped["total"], 2);
+    let rows = capped["meetings"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["title"], "second");
+    assert!(rows[0].get("transcript_json").is_none(), "got {}", rows[0]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

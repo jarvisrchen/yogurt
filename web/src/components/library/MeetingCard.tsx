@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { Star } from "lucide-react";
-import type { Meeting } from "../../lib/api/meetings";
+import type { MeetingSummary } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
 import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
 import { InlineTitle, shortDate } from "./InlineTitle";
@@ -8,7 +8,7 @@ import { MeetingCardActions } from "./MeetingCardActions";
 
 // The "not enhanced" warn pill marks only an ended meeting with no enrichment
 // pass. Flagging the normal enhanced case would be noise.
-export function metaParts(m: Meeting): { text: string; tone: "neutral" | "warn" }[] {
+export function metaParts(m: MeetingSummary): { text: string; tone: "neutral" | "warn" }[] {
   const parts: { text: string; tone: "neutral" | "warn" }[] = [
     {
       text: shortDate(m.started_at),
@@ -26,14 +26,14 @@ export function metaParts(m: Meeting): { text: string; tone: "neutral" | "warn" 
     const minutes = Math.max(1, Math.round((m.ended_at - m.started_at) / 60_000));
     parts.push({ text: `${minutes} min`, tone: "neutral" });
   }
-  if (m.ended_at != null && m.enriched_md == null) {
+  if (m.ended_at != null && !m.has_enriched) {
     parts.push({ text: "not enhanced", tone: "warn" });
   }
   return parts;
 }
 
 interface Props {
-  meeting: Meeting;
+  meeting: MeetingSummary;
   // Passed down from the Library route so the list shares one poll.
   activeId?: string | null;
   selectionActive?: boolean;

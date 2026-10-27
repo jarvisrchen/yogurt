@@ -148,7 +148,7 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
         .unwrap();
     assert_eq!(counts[0]["meeting_count"].as_i64().unwrap(), 1);
 
-    let list_resp: Vec<serde_json::Value> = client
+    let list_resp: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings"))
         .bearer_auth(&token)
         .send()
@@ -157,7 +157,12 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
         .json()
         .await
         .unwrap();
-    assert_eq!(list_resp[0]["labels"][0]["id"].as_str().unwrap(), lid);
+    assert_eq!(
+        list_resp["meetings"][0]["labels"][0]["id"]
+            .as_str()
+            .unwrap(),
+        lid
+    );
 
     let rename_resp = client
         .patch(format!("http://{addr}/api/labels/{lid}"))

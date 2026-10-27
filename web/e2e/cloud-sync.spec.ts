@@ -77,7 +77,14 @@ async function mockBackend(page: Page, state: State) {
   await page.route("**/api/audio/permission", (r) =>
     r.fulfill({ json: { screen_recording: "granted", microphone: "granted" } }),
   );
-  await page.route(/\/api\/meetings(\?|$)/, (r) => r.fulfill({ json: meetings(46) }));
+  await page.route(/\/api\/meetings(\?|$)/, (r) => {
+    const q = new URL(r.request().url()).searchParams;
+    const limit = Number(q.get("limit") ?? 25);
+    const offset = Number(q.get("offset") ?? 0);
+    return r.fulfill({
+      json: { meetings: meetings(46).slice(offset, offset + limit), total: 46 },
+    });
+  });
   await page.route("**/api/labels", (r) => r.fulfill({ json: [] }));
   await page.route(/\/api\/cloud(\/[a-z-]+)?(\?|$)/, (r) => {
     const req = r.request();

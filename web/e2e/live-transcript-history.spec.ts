@@ -78,7 +78,7 @@ async function mockBackend(page: Page) {
   await page.route(/\/api\/meetings\/[0-9a-f-]+(\?|$)/, (r) =>
     r.fulfill({ json: MEETING }),
   );
-  await page.route(/\/api\/meetings(\?|$)/, (r) => r.fulfill({ json: [MEETING] }));
+  await page.route(/\/api\/meetings(\?|$)/, (r) => r.fulfill({ json: { meetings: [MEETING], total: 1 } }));
 }
 
 test("live transcript history survives a Library round trip (MTG-1)", async ({

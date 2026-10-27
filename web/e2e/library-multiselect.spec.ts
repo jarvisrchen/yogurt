@@ -74,9 +74,10 @@ async function mockBackend(page: Page, deletedIds: Set<string>) {
     }
     return r.fulfill({ json: MEETINGS[0] });
   });
-  await page.route(/\/api\/meetings(\?|$)/, (r) =>
-    r.fulfill({ json: MEETINGS.filter((m) => !deletedIds.has(m.id)) }),
-  );
+  await page.route(/\/api\/meetings(\?|$)/, (r) => {
+    const live = MEETINGS.filter((m) => !deletedIds.has(m.id));
+    return r.fulfill({ json: { meetings: live, total: live.length } });
+  });
   // Registered last so these literal matches win over the id regex above.
   await page.route("**/api/meetings/active", (r) => r.fulfill({ json: null }));
   await page.route("**/api/meetings/detected", (r) => r.fulfill({ json: null }));

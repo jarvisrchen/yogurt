@@ -192,10 +192,15 @@ pub(super) async fn client_for_ref(
         MeetingRef::Id(id) => Ok((Client::discover(port_flag).await?, id.clone())),
         MeetingRef::Last => {
             let c = Client::discover(port_flag).await?;
-            let list: Vec<yogurt_db::Meeting> = c.get("/api/meetings").await?;
-            let id = list.into_iter().next().map(|m| m.id).ok_or_else(|| {
-                CtlError::local("no meetings found", "run `yogurt ctl meeting new`")
-            })?;
+            let page: yogurt_db::MeetingPage = c.get("/api/meetings?limit=1").await?;
+            let id = page
+                .meetings
+                .into_iter()
+                .next()
+                .map(|m| m.id)
+                .ok_or_else(|| {
+                    CtlError::local("no meetings found", "run `yogurt ctl meeting new`")
+                })?;
             Ok((c, id))
         }
     }
@@ -216,14 +221,16 @@ async fn resolve_read(port_flag: Option<u16>, r: &MeetingRef) -> Result<Resolved
                 MeetingRef::Url { id, .. } | MeetingRef::Id(id) => id.clone(),
                 MeetingRef::Last => {
                     let repo = yogurt_db::MeetingRepo::new(db.clone());
-                    let mut xs = repo.list().map_err(db_err)?;
-                    if xs.is_empty() {
+                    let page = repo
+                        .list_page(&yogurt_db::MeetingFilter::default(), 1, 0)
+                        .map_err(db_err)?;
+                    let Some(m) = page.meetings.into_iter().next() else {
                         return Err(CtlError::local(
                             "no meetings found",
                             "run `yogurt ctl meeting new` (needs a running server)",
                         ));
-                    }
-                    xs.remove(0).id
+                    };
+                    m.id
                 }
             };
             Ok(Resolved::Db(db, id))
@@ -270,27 +277,56 @@ fn get_or_not_found(
     })
 }
 
+/// The server's largest page.
+const PAGE_SIZE: usize = 100;
+
+/// Pages through `fetch(limit, offset)` until `limit` rows (or all of them, when `None`) are collected.
+/// Returns the rows and the `total` the last page reported.
+async fn collect_pages(
+    limit: Option<usize>,
+    mut fetch: impl AsyncFnMut(usize, usize) -> Result<yogurt_db::MeetingPage, CtlError>,
+) -> Result<(Vec<yogurt_db::MeetingSummary>, usize), CtlError> {
+    let mut rows = Vec::new();
+    loop {
+        let want = limit.map_or(PAGE_SIZE, |n| {
+            n.saturating_sub(rows.len()).clamp(1, PAGE_SIZE)
+        });
+        let page = fetch(want, rows.len()).await?;
+        let got = page.meetings.len();
+        rows.extend(page.meetings);
+        if got == 0 || rows.len() >= page.total || limit.is_some_and(|n| rows.len() >= n) {
+            if let Some(n) = limit {
+                rows.truncate(n);
+            }
+            return Ok((rows, page.total));
+        }
+    }
+}
+
 async fn list(
     port_flag: Option<u16>,
     json_out: bool,
     limit: Option<usize>,
 ) -> Result<(), CtlError> {
-    let (mut meetings, source) = match Client::discover(port_flag).await {
-        Ok(c) => (
-            c.get::<Vec<yogurt_db::Meeting>>("/api/meetings").await?,
-            "server",
-        ),
+    let (meetings, total, source) = match Client::discover(port_flag).await {
+        Ok(c) => {
+            let (rows, total) = collect_pages(limit, async |l, o| {
+                c.get(&format!("/api/meetings?limit={l}&offset={o}")).await
+            })
+            .await?;
+            (rows, total, "server")
+        }
         Err(CtlError::NoServer(_)) => {
-            let db = open_db_readonly()?;
-            let repo = yogurt_db::MeetingRepo::new(db);
-            (repo.list().map_err(db_err)?, "db")
+            let repo = yogurt_db::MeetingRepo::new(open_db_readonly()?);
+            let (rows, total) = collect_pages(limit, async |l, o| {
+                repo.list_page(&yogurt_db::MeetingFilter::default(), l, o)
+                    .map_err(db_err)
+            })
+            .await?;
+            (rows, total, "db")
         }
         Err(e) => return Err(e),
     };
-    let total = meetings.len();
-    if let Some(n) = limit {
-        meetings.truncate(n);
-    }
     if json_out {
         println!(
             "{}",
@@ -814,18 +850,16 @@ async fn search(
     limit: Option<usize>,
 ) -> Result<(), CtlError> {
     let c = Client::discover(port_flag).await?;
-    let mut path = format!("/api/meetings/search?q={}", encode_query(query));
-    if let Some(n) = limit {
-        path.push_str(&format!("&limit={n}"));
-    }
-    let meetings: Vec<yogurt_db::Meeting> = c.get(&path).await?;
+    let q = encode_query(query);
+    let (meetings, total) = collect_pages(Some(limit.unwrap_or(50)), async |l, o| {
+        c.get(&format!("/api/meetings/search?q={q}&limit={l}&offset={o}"))
+            .await
+    })
+    .await?;
     if json_out {
-        println!(
-            "{}",
-            json!({ "meetings": meetings, "total": meetings.len() })
-        );
+        println!("{}", json!({ "meetings": meetings, "total": total }));
     } else {
-        println!("{} meeting(s)", meetings.len());
+        println!("{total} meeting(s)");
         for m in &meetings {
             let state = if m.ended_at.is_some() {
                 "ended"
@@ -885,7 +919,7 @@ async fn delete(
 
 #[cfg(test)]
 mod tests {
-    use super::MeetingRef;
+    use super::{collect_pages, MeetingRef};
 
     #[test]
     fn plain_id_is_id() {
@@ -936,5 +970,63 @@ mod tests {
         assert_eq!(super::encode_query("standup"), "standup");
         assert_eq!(super::encode_query("q4 planning"), "q4+planning");
         assert_eq!(super::encode_query("50% done?"), "50%25+done%3F");
+    }
+
+    fn fake_page(all: usize, limit: usize, offset: usize) -> yogurt_db::MeetingPage {
+        let meetings = (offset..all.min(offset + limit))
+            .map(|i| yogurt_db::MeetingSummary {
+                id: i.to_string(),
+                title: format!("m{i}"),
+                started_at: 0,
+                ended_at: None,
+                starred: false,
+                stt_engine: None,
+                llm_model: None,
+                has_enriched: false,
+                labels: vec![],
+            })
+            .collect();
+        yogurt_db::MeetingPage {
+            meetings,
+            total: all,
+        }
+    }
+
+    #[tokio::test]
+    async fn collect_pages_walks_every_page_at_the_server_max() {
+        let mut calls = Vec::new();
+        let (rows, total) = collect_pages(None, async |l, o| {
+            calls.push((l, o));
+            Ok(fake_page(250, l, o))
+        })
+        .await
+        .unwrap();
+        assert_eq!((rows.len(), total), (250, 250));
+        assert_eq!(calls, [(100, 0), (100, 100), (100, 200)]);
+    }
+
+    #[tokio::test]
+    async fn collect_pages_stops_at_the_limit_and_keeps_the_total() {
+        let mut calls = Vec::new();
+        let (rows, total) = collect_pages(Some(150), async |l, o| {
+            calls.push((l, o));
+            Ok(fake_page(250, l, o))
+        })
+        .await
+        .unwrap();
+        assert_eq!((rows.len(), total), (150, 250));
+        assert_eq!(calls, [(100, 0), (50, 100)]);
+    }
+
+    #[tokio::test]
+    async fn collect_pages_handles_empty_and_zero_limit() {
+        let (rows, total) = collect_pages(None, async |l, o| Ok(fake_page(0, l, o)))
+            .await
+            .unwrap();
+        assert_eq!((rows.len(), total), (0, 0));
+        let (rows, total) = collect_pages(Some(0), async |l, o| Ok(fake_page(5, l, o)))
+            .await
+            .unwrap();
+        assert_eq!((rows.len(), total), (0, 5));
     }
 }

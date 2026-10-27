@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useGreeting } from "../../hooks/useGreeting";
 import { useCloudStatus } from "../../lib/api/cloud";
 import { Pill } from "../Pill";
+import { formatCount } from "./pagination";
 
 interface Props {
   count: number;
@@ -17,7 +18,7 @@ export function Greeting({ count }: Props) {
       <h1 className="heading-greeting">{greeting}</h1>
       <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-mut">
         <span>
-          {count} {plural} · all on this Mac
+          {formatCount(count)} {plural} · all on this Mac
         </span>
         {notPushed > 0 && (
           <>

@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -42,6 +43,38 @@ export interface Meeting {
   labels: Label[];
 }
 
+/** One Library row: no note or transcript bodies. `GET /api/meetings/{id}` returns the full `Meeting`. */
+export interface MeetingSummary {
+  id: string;
+  title: string;
+  /** Unix ms. */
+  started_at: number;
+  /** Unix ms; null while the meeting is live. */
+  ended_at: number | null;
+  starred: boolean;
+  stt_engine: string | null;
+  llm_model: string | null;
+  /** `enriched_md` is set. */
+  has_enriched: boolean;
+  labels: Label[];
+}
+
+/** `total` counts every match before paging. */
+export interface MeetingsPage {
+  meetings: MeetingSummary[];
+  total: number;
+}
+
+export interface MeetingsParams {
+  /** 1-based. */
+  page: number;
+  size: number;
+  labelId: string | null;
+  starred: boolean;
+  /** Trimmed. Empty lists chronologically instead of searching. */
+  q: string;
+}
+
 /** See Rust `MeetingPatch` for the tri-state semantics. */
 export interface MeetingPatch {
   title?: string;
@@ -63,7 +96,16 @@ export const meetingKey = (id: string) => ["meetings", id] as const;
 export const json = bearerJson;
 
 export const meetingsApi = {
-  list: () => json<Meeting[]>("/api/meetings"),
+  list: ({ page, size, labelId, starred, q }: MeetingsParams) => {
+    const qs = new URLSearchParams({
+      limit: String(size),
+      offset: String((page - 1) * size),
+    });
+    if (q) qs.set("q", q);
+    if (labelId) qs.set("label_id", labelId);
+    if (starred) qs.set("starred", "true");
+    return json<MeetingsPage>(`/api/meetings${q ? "/search" : ""}?${qs}`);
+  },
   get: (id: string) => json<Meeting>(`/api/meetings/${id}`),
   create: (body: { title?: string; started_at_unix_ms?: number } = {}) =>
     json<Meeting>("/api/meetings", {
@@ -81,11 +123,17 @@ export const meetingsApi = {
     }),
 };
 
-export function useMeetings(): UseQueryResult<Meeting[], Error> {
+/** The key starts with `meetingsKey`, so invalidating that refetches every cached page. `keepPreviousData` holds the old page on screen while the next loads. */
+export function useMeetings(
+  params: MeetingsParams,
+  enabled = true,
+): UseQueryResult<MeetingsPage, Error> {
   return useQuery({
-    queryKey: meetingsKey,
-    queryFn: meetingsApi.list,
+    queryKey: ["meetings", params],
+    queryFn: () => meetingsApi.list(params),
     staleTime: 5_000,
+    placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -110,23 +158,6 @@ export function useCreateMeeting(): UseMutationResult<
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: meetingsKey });
     },
-  });
-}
-
-export const meetingsSearchKey = (q: string) =>
-  ["meetings", "search", q] as const;
-
-/** An empty or whitespace-only `q` disables the query, so the Library renders the chronological feed instead. */
-export function useMeetingsSearch(
-  q: string,
-): UseQueryResult<Meeting[], Error> {
-  const trimmed = q.trim();
-  return useQuery({
-    queryKey: meetingsSearchKey(trimmed),
-    queryFn: () =>
-      json<Meeting[]>(`/api/meetings/search?q=${encodeURIComponent(trimmed)}`),
-    staleTime: 5_000,
-    enabled: trimmed.length > 0,
   });
 }
 
@@ -161,7 +192,7 @@ export function useToggleStarred(): UseMutationResult<
   });
 }
 
-/** Invalidating `meetingsKey` also covers search keys via the shared prefix. Label counts change too. */
+/** Label counts change too. */
 export function useSetMeetingLabels(): UseMutationResult<
   Meeting,
   Error,
