@@ -27,7 +27,7 @@ dev-stop *args:
 pr title *rest:
     ./scripts/ship.sh pr "{{title}}" {{rest}}
 
-# Wait for CI, squash-merge, then remove the worktree, delete the branch, and re-print the handover: `just land [pr] [--dry-run]`.
+# Wait for CI, squash-merge, then remove the worktree, delete the branch, fast-forward the main checkout, and re-print the handover: `just land [pr] [--dry-run]`.
 land pr='' *rest:
     ./scripts/ship.sh land {{pr}} {{rest}}
 

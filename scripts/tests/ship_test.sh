@@ -47,6 +47,8 @@ case "${1:-}/${2:-}" in
     fi
     ;;
   pr/merge)
+    # Stand in for GitHub's squash merge so land has a new origin/main to fast-forward to.
+    [ -n "${GH_STUB_MERGE_FROM:-}" ] && git -C "$GH_STUB_MERGE_FROM" push -q origin HEAD:main
     echo "merged"
     ;;
   run/view)
@@ -254,7 +256,7 @@ jq -n --arg body "$(cat "$BODY_LAND")" \
 LOG_LAND="$WORK/log-land"
 : > "$LOG_LAND"
 status=0
-out="$(cd "$WROOT/land-docs-merge" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_LAND" GH_STUB_PR_VIEW_FILE="$VIEW_LAND" YOGURT_MAIN="$MAIN" "$SHIP" land 2>&1)" || status=$?
+out="$(cd "$WROOT/land-docs-merge" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_LAND" GH_STUB_PR_VIEW_FILE="$VIEW_LAND" GH_STUB_MERGE_FROM="$WROOT/land-docs-merge" YOGURT_MAIN="$MAIN" "$SHIP" land 2>&1)" || status=$?
 t "land on a docs-only PR succeeds (exit 0)" [ "$status" -eq 0 ]
 t "land prints ci skipped (docs-only)" bash -c 'printf "%s" "$1" | grep -q "ci skipped (docs-only)"' _ "$out"
 t "land never calls gh pr checks for a docs-only PR" bash -c '! grep -q "^pr checks" "$1"' _ "$LOG_LAND"
@@ -265,6 +267,7 @@ t "merge body excludes the Manual test section" bash -c '! grep -q "Manual test"
 t "merge body keeps the sections around it" grep -q "Caveats" "$LOG_LAND"
 t "land removes the worktree" [ ! -d "$WROOT/land-docs-merge" ]
 t "land deletes the local branch" bash -c '! git -C "$1" show-ref --verify --quiet refs/heads/land-docs-merge' _ "$MAIN"
+t "land fast-forwards the main checkout to the merge" [ -f "$MAIN/docs/LAND.md" ]
 
 # ── land: resume (already MERGED skips to cleanup) ──────────────────
 
@@ -281,12 +284,17 @@ jq -n '{number: 43, headRefName: "land-resume-clean", title: "docs: resume test"
 LOG_RESUME="$WORK/log-resume"
 : > "$LOG_RESUME"
 status=0
+git -C "$WROOT/land-resume-clean" push -q origin HEAD:main
+echo "local edit" >> "$MAIN/docs/TODO.md"
 out="$(cd "$WROOT/land-resume-clean" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_RESUME" GH_STUB_PR_VIEW_FILE="$VIEW_MERGED_CLEAN" YOGURT_MAIN="$MAIN" "$SHIP" land 2>&1)" || status=$?
 t "land on an already-merged PR succeeds (exit 0)" [ "$status" -eq 0 ]
 t "land on an already-merged PR skips to cleanup" bash -c 'printf "%s" "$1" | grep -q "already merged"' _ "$out"
 t "land never re-merges an already-merged PR" bash -c '! grep -q "^pr merge" "$1"' _ "$LOG_RESUME"
 t "resume removes the worktree" [ ! -d "$WROOT/land-resume-clean" ]
 t "resume deletes the local branch" bash -c '! git -C "$1" show-ref --verify --quiet refs/heads/land-resume-clean' _ "$MAIN"
+t "land fast-forwards past an unrelated uncommitted edit" [ -f "$MAIN/docs/RESUME.md" ]
+t "land keeps the unrelated edit" grep -q "local edit" "$MAIN/docs/TODO.md"
+git -C "$MAIN" checkout -q -- docs/TODO.md
 
 # ── land: refuses cleanup on a dirty worktree ────────────────────────
 
@@ -309,6 +317,29 @@ t "land refuses to clean up a dirty worktree (exit 1)" [ "$status" -eq 1 ]
 t "refusal mentions the dirty worktree" grep -qi "dirty" "$WORK/err-dirty"
 t "dirty worktree is not removed" [ -d "$WROOT/land-resume-dirty" ]
 t "branch survives a refused cleanup" bash -c 'git -C "$1" show-ref --verify --quiet refs/heads/land-resume-dirty' _ "$MAIN"
+
+# ── land: leaves a main checkout that is off main alone ─────────────
+
+add_worktree land-off-main
+echo "notes" > "$WROOT/land-off-main/docs/OFFMAIN.md"
+git -C "$WROOT/land-off-main" add -A
+git -C "$WROOT/land-off-main" commit -q -m "docs: off-main test"
+git -C "$WROOT/land-off-main" push -q -u origin land-off-main
+git -C "$WROOT/land-off-main" push -q origin HEAD:main
+git -C "$MAIN" checkout -q -b side
+
+VIEW_OFF_MAIN="$WORK/view-off-main.json"
+jq -n '{number: 45, headRefName: "land-off-main", title: "docs: off-main test", body: "## What\nx\n", state: "MERGED"}' \
+  > "$VIEW_OFF_MAIN"
+
+LOG_OFF_MAIN="$WORK/log-off-main"
+: > "$LOG_OFF_MAIN"
+side_before="$(git -C "$MAIN" rev-parse HEAD)"
+out="$(cd "$WROOT/land-off-main" && PATH="$BIN:$PATH" GH_STUB_LOG="$LOG_OFF_MAIN" GH_STUB_PR_VIEW_FILE="$VIEW_OFF_MAIN" YOGURT_MAIN="$MAIN" "$SHIP" land 2>&1)" || true
+t "land leaves a checkout on another branch alone" [ "$(git -C "$MAIN" rev-parse HEAD)" = "$side_before" ]
+t "land says main was not updated and how to update it" bash -c 'printf "%s" "$1" | grep -q "not on main. update it with"' _ "$out"
+git -C "$MAIN" checkout -q main
+git -C "$MAIN" merge -q --ff-only origin/main
 
 # ── pr: check_worktree_branch refuses on main ────────────────────────
 

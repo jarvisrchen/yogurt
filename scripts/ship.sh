@@ -387,7 +387,7 @@ land_cleanup() {
   fi
 
   if $dry_run; then
-    echo "would run: git fetch origin --prune; git push origin --delete $branch (if it still exists); git fetch origin --prune"
+    echo "would run: git fetch origin --prune; git push origin --delete $branch (if it still exists); git fetch origin --prune; git -C $main merge --ff-only origin/main (if main is checked out)"
     return 0
   fi
 
@@ -402,6 +402,16 @@ land_cleanup() {
     echo "origin branch $branch already deleted"
   fi
   git fetch origin --prune --quiet
+
+  # --ff-only keeps unrelated local edits and refuses to overwrite one the merge touches.
+  local fix="update it with: git -C $main merge --ff-only origin/main"
+  if [ "$(git -C "$main" symbolic-ref --short -q HEAD)" != main ]; then
+    echo "main checkout not updated: it is not on main. $fix"
+  elif git -C "$main" merge --ff-only --quiet origin/main; then
+    echo "main checkout at $(git -C "$main" log -1 --format='%h %s')"
+  else
+    echo "main checkout not updated: see git's message above. $fix"
+  fi
 }
 
 cmd_land() {
