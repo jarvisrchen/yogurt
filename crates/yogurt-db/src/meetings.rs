@@ -426,6 +426,31 @@ impl MeetingRepo {
         Ok(())
     }
 
+    /// Changes whenever something a pushed bundle is built from, or the push state, changes. It reads counts and newest timestamps instead of every row.
+    pub fn cloud_fingerprint(&self) -> Result<String> {
+        self.db.with_conn(|conn| -> Result<_> {
+            Ok(conn.query_row(
+                "SELECT \
+                   (SELECT count(*) || '/' || COALESCE(max(updated_at), 0) || '/' || count(cloud_hash) || '/' || COALESCE(sum(length(cloud_hash)), 0) FROM meetings), \
+                   (SELECT count(*) || '/' || COALESCE(max(created_at), 0) || '/' || COALESCE(sum(length(content)), 0) FROM chat_messages), \
+                   (SELECT count(*) || '/' || COALESCE(max(updated_at), 0) FROM labels), \
+                   (SELECT count(*) FROM meeting_labels), \
+                   (SELECT count(*) FROM cloud_deleted)",
+                [],
+                |r| {
+                    Ok(format!(
+                        "{}|{}|{}|{}|{}",
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, i64>(3)?,
+                        r.get::<_, i64>(4)?
+                    ))
+                },
+            )?)
+        })
+    }
+
     /// Called on connect and disconnect, so a new cloud gets a full push. Pending deletions go too.
     pub fn clear_cloud_hashes(&self) -> Result<()> {
         self.db.with_conn(|conn| {
@@ -1492,6 +1517,46 @@ mod tests {
         repo.clear_cloud_hashes().unwrap();
         assert_eq!(repo.cloud_hashes().unwrap(), [(m.id, None)]);
         assert!(repo.meeting_bundle("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn the_cloud_fingerprint_moves_with_edits_pushes_and_deletions() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "A".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let mut last = repo.cloud_fingerprint().unwrap();
+        assert_eq!(
+            repo.cloud_fingerprint().unwrap(),
+            last,
+            "reading changes nothing"
+        );
+        let moved = |what: &str, last: &mut String| {
+            let now = repo.cloud_fingerprint().unwrap();
+            assert_ne!(&now, last, "{what}");
+            *last = now;
+        };
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        repo.patch(
+            &m.id,
+            MeetingPatch {
+                notes_md: Some("edited".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        moved("an edit", &mut last);
+        repo.set_cloud_hash(&m.id, "abc").unwrap();
+        moved("a push", &mut last);
+        repo.clear_cloud_hashes().unwrap();
+        moved("a cleared hash", &mut last);
+        repo.set_cloud_hash(&m.id, "abc").unwrap();
+        moved("a second push", &mut last);
+        repo.delete(&m.id).unwrap();
+        moved("a deletion", &mut last);
     }
 
     #[test]

@@ -126,7 +126,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
-- [ ] **SYNC-13** Push in the background in small paced batches with retries and a progress pill on every page, so a large backlog uploads slowly instead of failing ([design](.planning/granola-import-design.md#pushing-a-backlog-slowly-sync-13))
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
 ## Import
 

@@ -886,10 +886,17 @@ sequenceDiagram
   S->>P: insert yogurt_devices {id, name}
   S->>K: set yogurt-cloud (refresh token, device id, ...)
   UI->>S: POST /api/cloud/push
+  S-->>UI: 202, the push runs in the background
   S->>K: refresh the session, store the rotated refresh token
   S->>P: rpc yogurt_device_meetings, then yogurt_start_push
-  S->>P: insert yogurt_versions in batches
-  S->>S: store each batch's cloud_hash in SQLite
+  loop small batches, paused between them
+    S->>S: build this batch's bundles
+    S->>P: insert yogurt_versions, retried on 429, 5xx, and network errors
+    S->>S: store the batch's cloud_hash in SQLite
+    S->>P: rpc yogurt_search_catch_up
+    S-)UI: cloud_push_progress {sent, total, retry_in}
+  end
+  S-)UI: cloud_push_complete or cloud_push_error
 ```
 
 - **Crates.**
@@ -912,6 +919,11 @@ sequenceDiagram
   Every path that needs a session goes through `link()`, which takes the lock guard as a parameter, refreshes, and writes the new refresh token to `keys.json` before the session is used.
   A pass also renews the access token when it is within 5 minutes of expiring, and saves the rotated refresh token each time.
   A pass holds the lock to the end, so a manual push and a later timer push never overlap.
+  `AppState::cloud_push` (`cloud_push.rs`) allows one background push at a time, and the Push button and the timer both start it through `start_push`.
+  The pass builds bundles per batch, so memory holds one batch.
+  Batches are 25 meetings or 256 KiB with a 1 second pause, and a request that fails with a 429, a 5xx, a `57014`, or a network error is retried after 5, 15, 45, then 120 seconds (or `Retry-After`, if longer).
+  A retry that finds its rows already committed (`23505`) counts as sent.
+  Disconnect cancels a running push at the next batch boundary or retry wait.
 - **Errors.**
   Every failure carries a stable `code` next to its message: `bad_address`, `bad_config`, `bad_credentials`, `not_owner`, `passcode_not_set`, `session_expired`, `device_removed`, `network`, `cloud_error`, `not_connected`, `already_connected`, `bad_request`, `local_error`, `internal`.
   The server records the last success (`cloud.last_push`) and the last failure (`cloud.last_error`) separately, so a failed pass never hides when the cloud was last in step.

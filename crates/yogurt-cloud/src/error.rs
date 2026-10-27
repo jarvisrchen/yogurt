@@ -15,12 +15,17 @@ pub enum Error {
         status: u16,
         code: String,
         message: String,
+        /// Seconds from a `Retry-After` header, when the server sent one.
+        retry_after: Option<u64>,
     },
     #[error("cloud unreachable: {0}")]
     Network(String),
     /// A failure on this machine while a pass was running, such as the database write that records a pushed hash.
     #[error("{0}")]
     Local(String),
+    /// The caller stopped a pass at a batch boundary, such as a disconnect.
+    #[error("the push was stopped")]
+    Cancelled,
 }
 
 impl Error {
@@ -33,6 +38,7 @@ impl Error {
             Error::BadConfig(_) => "bad_config",
             Error::Network(_) => "network",
             Error::Local(_) => "local_error",
+            Error::Cancelled => "cancelled",
             Error::Http { status, code, .. } => match (status, code.as_str()) {
                 (412, _) | (_, "PT412") => "passcode_not_set",
                 (404, "PT404") => "device_removed",
@@ -52,6 +58,7 @@ mod tests {
             status,
             code: code.into(),
             message: String::new(),
+            retry_after: None,
         }
     }
 

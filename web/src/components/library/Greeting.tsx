@@ -12,6 +12,7 @@ export function Greeting({ count }: Props) {
   const { greeting } = useGreeting();
   const cloud = useCloudStatus().data;
   const notPushed = cloud?.connected ? cloud.not_pushed : 0;
+  const pushing = cloud?.connected ? cloud.push : null;
   const plural = count === 1 ? "meeting" : "meetings";
   return (
     <header className="mb-8">
@@ -20,12 +21,16 @@ export function Greeting({ count }: Props) {
         <span>
           {formatCount(count)} {plural} · all on this Mac
         </span>
-        {notPushed > 0 && (
+        {(notPushed > 0 || pushing) && (
           <>
             <span aria-hidden="true">·</span>
             <Link to="/settings/cloud" className="rounded-pill focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue">
               <Pill tone="honey" className="px-2.5! py-[3px]! text-[10.5px]! font-bold!">
-                {notPushed} not pushed
+                {pushing && pushing.total > 0
+                  ? `Pushing ${formatCount(pushing.sent)} of ${formatCount(pushing.total)}`
+                  : pushing
+                    ? "Pushing"
+                    : `${formatCount(notPushed)} not pushed`}
               </Pill>
             </Link>
           </>

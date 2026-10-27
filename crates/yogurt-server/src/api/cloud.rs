@@ -15,15 +15,15 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
-use tokio::sync::MutexGuard;
-use yogurt_cloud::push::{self, LocalMeeting, Plan};
+use tokio::sync::{watch, MutexGuard};
+use yogurt_cloud::push::{self, LocalMeeting, Pass, Plan, Progress};
 use yogurt_cloud::{config, Error as CloudError, Project, Session};
 use yogurt_db::keys::ProcessLock;
 use yogurt_db::MeetingRepo;
 
+use crate::ws::{self, WsEvent};
 use crate::AppState;
 
 const ACCOUNT: &str = "yogurt-cloud";
@@ -98,7 +98,9 @@ fn status_for(code: &str) -> StatusCode {
         "bad_credentials" | "session_expired" => StatusCode::UNAUTHORIZED,
         "not_owner" => StatusCode::FORBIDDEN,
         "passcode_not_set" => StatusCode::PRECONDITION_FAILED,
-        "not_connected" | "already_connected" | "device_removed" => StatusCode::CONFLICT,
+        "not_connected" | "already_connected" | "device_removed" | "push_running" => {
+            StatusCode::CONFLICT
+        }
         "bad_config" | "network" | "cloud_error" => StatusCode::BAD_GATEWAY,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -113,6 +115,7 @@ fn message_for(code: &str, fallback: &str) -> String {
         "passcode_not_set" => "Choose a PIN in the webapp first",
         "not_connected" => "This Mac is not connected to a Yogurt Cloud.",
         "already_connected" => "This Mac is already connected. Disconnect first.",
+        "cancelled" => "The push was stopped.",
         "device_removed" => {
             "This machine was removed from the Yogurt Cloud. Disconnect, then connect again."
         }
@@ -226,12 +229,13 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| CloudApiError::internal(format!("{e:#}")))
 }
 
+/// Every meeting's hash and size, built one bundle at a time so the library is never in memory at once.
 fn local_meetings(repo: &MeetingRepo) -> anyhow::Result<Vec<LocalMeeting>> {
-    let stored: HashMap<String, Option<String>> = repo.cloud_hashes()?.into_iter().collect();
+    let stored = repo.cloud_hashes()?;
     let mut out = Vec::with_capacity(stored.len());
     for (id, hash) in stored {
         if let Some(body) = repo.meeting_bundle(&id)? {
-            out.push(LocalMeeting::new(id, hash, body));
+            out.push(LocalMeeting::new(id, hash, &body));
         }
     }
     Ok(out)
@@ -338,13 +342,46 @@ async fn pending(state: &AppState) -> ApiResult<Pending> {
     })
 }
 
+/// For display only: the Library and Settings ask on every visit, and an exact answer builds every bundle. The timer decides with [`pending`] instead.
+async fn counted(state: &AppState) -> ApiResult<Pending> {
+    let repo = state.meeting_repo.clone();
+    let recording = recording_id(state).await.unwrap_or_default();
+    let fingerprint = blocking(move || repo.cloud_fingerprint()).await? + &recording;
+    if let Some((meetings, not_pushed)) = state.cloud_push.counted(&fingerprint) {
+        return Ok(Pending {
+            meetings,
+            not_pushed,
+        });
+    }
+    let p = pending(state).await?;
+    state
+        .cloud_push
+        .remember(fingerprint, p.meetings, p.not_pushed);
+    Ok(p)
+}
+
 async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let Some(conn) = load(&state)? else {
         return Ok(Json(json!({ "connected": false })));
     };
-    let pending = pending(&state).await?;
+    let push = state.cloud_push.status(now_ms());
+    let left = push["total"].as_u64().filter(|t| *t > 0);
+    let pending = match left {
+        // Building every bundle again would cost a poll a second while a large pass runs, and the job already knows what is left.
+        Some(total) => {
+            let repo = state.meeting_repo.clone();
+            let meetings = blocking(move || Ok(repo.cloud_hashes()?.len())).await?;
+            let sent = push["sent"].as_u64().unwrap_or(0);
+            Pending {
+                meetings,
+                not_pushed: total.saturating_sub(sent) as usize,
+            }
+        }
+        None => counted(&state).await?,
+    };
     Ok(Json(json!({
         "connected": true,
+        "push": push,
         "address": conn.address,
         "email": conn.email,
         "machine_name": conn.machine_name,
@@ -480,42 +517,77 @@ async fn sign_in(
     .await
 }
 
+struct PassHooks<'a> {
+    state: &'a AppState,
+    conn: &'a mut Connection,
+    repo: std::sync::Arc<MeetingRepo>,
+    /// Whether this pass belongs to the background job, whose progress clients hear about.
+    job: bool,
+}
+
+impl push::Hooks for PassHooks<'_> {
+    fn bundle(&mut self, id: &str) -> Result<Option<Value>, String> {
+        self.repo.meeting_bundle(id).map_err(|e| format!("{e:#}"))
+    }
+
+    fn refreshed(&mut self, renewed: &Session) -> Result<(), String> {
+        self.conn.refresh_token = renewed.refresh_token.clone();
+        save(self.state, self.conn).map_err(|e| e.message)
+    }
+
+    fn stored(&mut self, hashes: &[(String, String)]) -> Result<(), String> {
+        hashes
+            .iter()
+            .try_for_each(|(id, hash)| self.repo.set_cloud_hash(id, hash))
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    fn progress(&mut self, p: &Progress) {
+        if self.job && self.state.cloud_push.update(p, now_ms()) {
+            ws::send_event(
+                &self.state.app_events_tx,
+                WsEvent::CloudPushProgress {
+                    sent: p.sent,
+                    total: p.total,
+                    retry_in: p.retry_in.map(|d| d.as_secs_f64().ceil() as u64),
+                },
+            );
+        }
+    }
+}
+
 /// One pass. `local` is every meeting on this Mac, or nothing when the whole device is being marked deleted.
 async fn run_pass(
     state: &AppState,
     link: &mut Link,
     local: Vec<LocalMeeting>,
     skip: Option<String>,
+    cancel: &mut watch::Receiver<bool>,
+    job: bool,
 ) -> ApiResult<Plan> {
-    let repo = state.meeting_repo.clone();
     let Link {
         conn,
         project,
         session,
     } = link;
-    let plan = push::run(
+    let device_id = conn.device_id.clone();
+    let pass = Pass {
         project,
-        session,
-        &conn.device_id.clone(),
-        &local,
-        skip.as_deref(),
-        |renewed| {
-            conn.refresh_token = renewed.refresh_token.clone();
-            save(state, conn).map_err(|e| e.message)
-        },
-        |hashes| {
-            hashes
-                .iter()
-                .try_for_each(|(id, hash)| repo.set_cloud_hash(id, hash))
-                .map_err(|e| format!("{e:#}"))
-        },
-    )
-    .await;
-    // A failed pass may have committed its earlier batches, so the index catches up either way. A lagging index only delays search, so its failure never fails the pass.
-    match push::catch_up_search(project, session).await {
-        Ok(0) => {}
-        Ok(left) => tracing::info!(left, "search index still catching up"),
-        Err(e) => tracing::warn!(code = e.code(), error = %e, "search index catch-up failed"),
+        device_id: &device_id,
+        local: &local,
+        skip: skip.as_deref(),
+        pacing: state.cloud_push.pacing(),
+    };
+    let mut hooks = PassHooks {
+        state,
+        conn,
+        repo: state.meeting_repo.clone(),
+        job,
+    };
+    let plan = pass.run(session, cancel, &mut hooks).await;
+    // A failed pass may have committed its earlier batches, and a pass with nothing to send may follow one that left the index behind, so the index catches up either way.
+    if !matches!(plan, Err(CloudError::Cancelled)) {
+        push::catch_up_quietly(project, session).await;
     }
     let plan = plan?;
     // The deletion markers went out with this pass.
@@ -524,14 +596,19 @@ async fn run_pass(
     Ok(plan)
 }
 
-/// The shared pass behind the Push button and the timer. `now` stamps the success or failure record.
-async fn push_locked(state: &AppState, held: &Held<'_>, now: i64) -> ApiResult<Value> {
+/// The pass behind the Push button and the timer. `now` stamps the success or failure record.
+async fn push_locked(
+    state: &AppState,
+    held: &Held<'_>,
+    cancel: &mut watch::Receiver<bool>,
+    now: i64,
+) -> ApiResult<Plan> {
     let pass = async {
         let recording = recording_id(state).await;
         let repo = state.meeting_repo.clone();
         let local = blocking(move || local_meetings(&repo)).await?;
         let mut link = link(state, held).await?;
-        run_pass(state, &mut link, local, recording).await
+        run_pass(state, &mut link, local, recording, cancel, true).await
     };
     match pass.await {
         Ok(plan) => {
@@ -539,10 +616,10 @@ async fn push_locked(state: &AppState, held: &Held<'_>, now: i64) -> ApiResult<V
                 json!({ "at": now, "changed": plan.changed.len(), "deleted": plan.deleted.len() });
             record(state, LAST_PUSH_KEY, &v);
             record(state, LAST_ERROR_KEY, &Value::Null);
-            Ok(v)
+            Ok(plan)
         }
         Err(e) => {
-            if e.code != "not_connected" {
+            if !matches!(e.code, "not_connected" | "cancelled") {
                 record_failure(state, &e, now);
             }
             Err(e)
@@ -550,12 +627,56 @@ async fn push_locked(state: &AppState, held: &Held<'_>, now: i64) -> ApiResult<V
     }
 }
 
-async fn push_now(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    detached(async move {
-        let held = acquire(&state).await?;
-        push_locked(&state, &held, now_ms()).await.map(Json)
-    })
-    .await
+/// Runs to the end of the pass, then tells clients how it went if they were following it.
+async fn push_task(state: AppState, mut cancel: watch::Receiver<bool>, now: i64) {
+    let result = match acquire(&state).await {
+        Ok(held) => push_locked(&state, &held, &mut cancel, now).await,
+        Err(e) => {
+            record_failure(&state, &e, now);
+            Err(e)
+        }
+    };
+    let announced = state.cloud_push.finish();
+    match &result {
+        Ok(plan) => tracing::info!(
+            changed = plan.changed.len(),
+            deleted = plan.deleted.len(),
+            "cloud push finished"
+        ),
+        Err(e) => tracing::warn!(code = e.code, "cloud push stopped"),
+    }
+    if announced {
+        let ev = match result {
+            Ok(plan) => WsEvent::CloudPushComplete {
+                pushed: plan.changed.len(),
+                deleted: plan.deleted.len(),
+            },
+            Err(e) if e.code == "cancelled" => WsEvent::CloudPushCancelled,
+            Err(e) => WsEvent::CloudPushError {
+                error: e.message,
+                code: e.code.to_string(),
+            },
+        };
+        ws::send_event(&state.app_events_tx, ev);
+    }
+}
+
+/// Starts the one background push, or says why not. The result of the push itself arrives as frames and in `GET /api/cloud`.
+fn start_push(state: &AppState, now: i64) -> ApiResult<()> {
+    if load(state)?.is_none() {
+        return Err(CloudApiError::coded("not_connected"));
+    }
+    let cancel = state
+        .cloud_push
+        .begin()
+        .ok_or_else(|| CloudApiError::new("push_running", "A push is already running."))?;
+    tokio::spawn(push_task(state.clone(), cancel, now));
+    Ok(())
+}
+
+async fn push_now(State(state): State<AppState>) -> ApiResult<(StatusCode, Json<Value>)> {
+    start_push(&state, now_ms())?;
+    Ok((StatusCode::ACCEPTED, Json(json!({ "started": true }))))
 }
 
 /// Whether the timer should push now.
@@ -579,9 +700,12 @@ async fn auto_tick(state: &AppState, now: i64) {
     let Some(interval_ms) = interval_ms(push_interval(state)) else {
         return;
     };
+    if state.cloud_push.is_running() {
+        return;
+    }
     let state = state.clone();
     let result = detached(async move {
-        let held = acquire(&state).await?;
+        let _held = acquire(&state).await?;
         if load(&state)?.is_none() {
             return Ok(());
         }
@@ -602,9 +726,7 @@ async fn auto_tick(state: &AppState, now: i64) {
             record(&state, LAST_ERROR_KEY, &Value::Null);
             return Ok(());
         }
-        let v = push_locked(&state, &held, now).await?;
-        tracing::info!(changed = %v["changed"], deleted = %v["deleted"], "auto-push finished");
-        Ok(())
+        start_push(&state, now)
     })
     .await;
     if let Err(e) = result {
@@ -641,6 +763,7 @@ async fn disconnect(
     body: Option<Json<DisconnectBody>>,
 ) -> ApiResult<Json<Value>> {
     let Json(body) = body.unwrap_or_default();
+    state.cloud_push.cancel();
     detached(async move {
         let held = acquire(&state).await?;
         let linked = link(&state, &held).await;
@@ -655,7 +778,8 @@ async fn disconnect(
             Err(_) => None,
         };
         if let (true, Some(l)) = (body.mark_deleted, linked.as_mut()) {
-            if let Err(e) = run_pass(&state, l, Vec::new(), None).await {
+            let (_stay, mut never) = watch::channel(false);
+            if let Err(e) = run_pass(&state, l, Vec::new(), None, &mut never, false).await {
                 record_failure(&state, &e, now_ms());
                 return Err(e);
             }
@@ -687,15 +811,21 @@ mod tests {
 
     /// Connected to a cloud nobody listens on, so an attempted pass fails fast with a `network` error stamped with its `now`.
     fn state() -> (AppState, tempfile::TempDir) {
+        with_meetings(1)
+    }
+
+    fn with_meetings(n: usize) -> (AppState, tempfile::TempDir) {
         let (state, tmp) = idle_state();
-        state
-            .meeting_repo
-            .create(yogurt_db::NewMeeting {
-                title: "unpushed".into(),
-                started_at_unix_ms: None,
-                id: None,
-            })
-            .unwrap();
+        for i in 0..n {
+            state
+                .meeting_repo
+                .create(yogurt_db::NewMeeting {
+                    title: format!("unpushed {i}"),
+                    started_at_unix_ms: None,
+                    id: None,
+                })
+                .unwrap();
+        }
         (state, tmp)
     }
 
@@ -706,7 +836,7 @@ mod tests {
             Arc::new(crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap());
         let session =
             Arc::new(crate::session::load_or_create(&tmp.path().join("session-token")).unwrap());
-        let state = AppState::in_memory(
+        let mut state = AppState::in_memory(
             crate::Mode::Release,
             storage,
             session,
@@ -714,6 +844,7 @@ mod tests {
             tmp.path().join("notes"),
         )
         .unwrap();
+        state.cloud_push = std::sync::Arc::new(crate::cloud_push::PushJob::new(fast(2)));
         save(
             &state,
             &Connection {
@@ -733,6 +864,32 @@ mod tests {
             &json!({ "at": T0, "changed": 0, "deleted": 0 }),
         );
         (state, tmp)
+    }
+
+    /// Two meetings per request and millisecond waits, so a test sees several batches and every retry in well under a second.
+    fn fast(rows: usize) -> push::Pacing {
+        push::Pacing {
+            rows,
+            bytes: usize::MAX,
+            pause: Duration::from_millis(20),
+            retries: vec![Duration::from_millis(10); 3],
+        }
+    }
+
+    /// Waits for the background push to end.
+    async fn settle(state: &AppState) {
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while state.cloud_push.is_running() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the push ended");
+    }
+
+    async fn push_and_settle(state: &AppState) {
+        start_push(state, now_ms()).unwrap();
+        settle(state).await;
     }
 
     fn set_interval(state: &AppState, v: &str) {
@@ -798,12 +955,16 @@ mod tests {
         let (state, _tmp) = state();
 
         auto_tick(&state, T0 + 99 * 60 * MIN).await;
+
+        settle(&state).await;
         assert_eq!(attempt_at(&state), None, "off never pushes");
 
         set_interval(&state, "15m");
         auto_tick(&state, T0 + 14 * MIN).await;
+        settle(&state).await;
         assert_eq!(attempt_at(&state), None, "not yet due");
         auto_tick(&state, T0 + 15 * MIN).await;
+        settle(&state).await;
         assert_eq!(
             attempt_at(&state),
             Some(T0 + 15 * MIN),
@@ -812,12 +973,15 @@ mod tests {
         assert_eq!(recorded(&state, LAST_ERROR_KEY)["code"], "network");
 
         auto_tick(&state, T0 + 19 * MIN).await;
+
+        settle(&state).await;
         assert_eq!(
             attempt_at(&state),
             Some(T0 + 15 * MIN),
             "a failure waits out the retry gap"
         );
         auto_tick(&state, T0 + 20 * MIN).await;
+        settle(&state).await;
         assert_eq!(attempt_at(&state), Some(T0 + 20 * MIN), "then retries");
 
         record(
@@ -826,6 +990,7 @@ mod tests {
             &json!({ "at": T0 + 20 * MIN, "error": "x", "code": "session_expired" }),
         );
         auto_tick(&state, T0 + 24 * 60 * MIN).await;
+        settle(&state).await;
         assert_eq!(
             attempt_at(&state),
             Some(T0 + 20 * MIN),
@@ -835,6 +1000,7 @@ mod tests {
         record(&state, LAST_ERROR_KEY, &Value::Null);
         state.keys.delete(ACCOUNT).unwrap();
         auto_tick(&state, T0 + 24 * 60 * MIN).await;
+        settle(&state).await;
         assert_eq!(attempt_at(&state), None, "not connected, nothing to push");
     }
 
@@ -888,35 +1054,56 @@ mod tests {
         let (state, _tmp) = idle_state();
         set_interval(&state, "15m");
         auto_tick(&state, T0 + 15 * MIN).await;
+        settle(&state).await;
         assert_eq!(attempt_at(&state), None, "no pass, so nothing could fail");
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["at"], T0 + 15 * MIN);
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
     }
 
-    /// A mock Supabase that answers a push's insert with `insert_status`, and `state` connected to it. Search catch-up is left for each test to mount.
-    async fn mock_cloud(state: &AppState, insert_status: u16) -> wiremock::MockServer {
-        use wiremock::matchers::{method, path};
+    /// A mock Supabase with everything a push needs except the insert and the search catch-up, which each test mounts, and `state` connected to it.
+    async fn bare_cloud(state: &AppState) -> wiremock::MockServer {
+        cloud_listing(state, &[]).await
+    }
+
+    /// [`bare_cloud`] whose first page of `yogurt_device_meetings` lists `listed`.
+    async fn cloud_listing(state: &AppState, listed: &[String]) -> wiremock::MockServer {
+        use wiremock::matchers::{method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};
         let cloud = MockServer::start().await;
-        let answer = |p: &str, status: u16, body: Value| {
+        let answer = |p: &str, body: Value| {
             Mock::given(method("POST"))
                 .and(path(p))
-                .respond_with(ResponseTemplate::new(status).set_body_json(body))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
         };
         let session = json!({ "access_token": "a", "refresh_token": "r2", "expires_at": now_ms() / 1000 + 3600, "user": { "id": "u" } });
-        answer("/auth/v1/token", 200, session).mount(&cloud).await;
-        answer("/rest/v1/rpc/yogurt_device_meetings", 200, json!([]))
+        answer("/auth/v1/token", session).mount(&cloud).await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_device_meetings"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!(listed)))
             .mount(&cloud)
             .await;
-        answer("/rest/v1/rpc/yogurt_start_push", 200, json!(7))
+        answer("/rest/v1/rpc/yogurt_device_meetings", json!([]))
             .mount(&cloud)
             .await;
-        answer("/rest/v1/yogurt_versions", insert_status, Value::Null)
+        answer("/rest/v1/rpc/yogurt_start_push", json!(7))
             .mount(&cloud)
             .await;
         let mut conn = load(state).unwrap().unwrap();
         conn.supabase_url = cloud.uri();
         save(state, &conn).unwrap();
+        cloud
+    }
+
+    fn insert(status: u16) -> wiremock::Mock {
+        wiremock::Mock::given(wiremock::matchers::path("/rest/v1/yogurt_versions"))
+            .respond_with(wiremock::ResponseTemplate::new(status))
+    }
+
+    /// [`bare_cloud`] whose insert answers `insert_status`.
+    async fn mock_cloud(state: &AppState, insert_status: u16) -> wiremock::MockServer {
+        let cloud = bare_cloud(state).await;
+        insert(insert_status).mount(&cloud).await;
         cloud
     }
 
@@ -927,16 +1114,41 @@ mod tests {
         .respond_with(wiremock::ResponseTemplate::new(status).set_body_json(body))
     }
 
+    async fn hits(cloud: &wiremock::MockServer, p: &str) -> usize {
+        cloud
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == p)
+            .count()
+    }
+
+    /// Frames from the app-wide stream until the push ends, as `(type, frame)`.
+    async fn frames_until_end(rx: &mut tokio::sync::broadcast::Receiver<Value>) -> Vec<Value> {
+        let mut out = Vec::new();
+        loop {
+            let f = tokio::time::timeout(Duration::from_secs(20), rx.recv())
+                .await
+                .expect("a frame")
+                .unwrap();
+            let end = f["type"] != "cloud_push_progress";
+            out.push(f);
+            if end {
+                return out;
+            }
+        }
+    }
+
     #[tokio::test]
     async fn a_failed_search_catch_up_leaves_the_push_successful() {
         let (state, _tmp) = state();
         let cloud = mock_cloud(&state, 201).await;
         catch_up(500, json!({ "message": "boom" }))
-            .expect(1)
+            .expect(2)
             .mount(&cloud)
             .await;
-        let Json(v) = push_now(State(state.clone())).await.unwrap();
-        assert_eq!(v["changed"], 1);
+        push_and_settle(&state).await;
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 1);
         assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
         assert_eq!(pending(&state).await.unwrap().not_pushed, 0);
@@ -947,7 +1159,9 @@ mod tests {
         let (state, _tmp) = state();
         let cloud = mock_cloud(&state, 500).await;
         catch_up(200, json!(0)).expect(1).mount(&cloud).await;
-        assert!(push_now(State(state.clone())).await.is_err());
+        push_and_settle(&state).await;
+        assert_eq!(recorded(&state, LAST_ERROR_KEY)["code"], "cloud_error");
+        assert_eq!(hits(&cloud, "/rest/v1/yogurt_versions").await, 4);
     }
 
     #[tokio::test]
@@ -960,8 +1174,230 @@ mod tests {
             .mount(&cloud)
             .await;
         catch_up(200, json!(0)).expect(1).mount(&cloud).await;
-        let Json(v) = push_now(State(state.clone())).await.unwrap();
-        assert_eq!(v["changed"], 0);
+        push_and_settle(&state).await;
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
+    }
+
+    #[tokio::test]
+    async fn push_returns_at_once_and_only_one_runs_at_a_time() {
+        let (state, _tmp) = with_meetings(3);
+        let cloud = bare_cloud(&state).await;
+        wiremock::Mock::given(wiremock::matchers::path("/rest/v1/yogurt_versions"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(201).set_delay(Duration::from_millis(150)),
+            )
+            .mount(&cloud)
+            .await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+
+        let started = std::time::Instant::now();
+        let (code, Json(body)) = push_now(State(state.clone())).await.unwrap();
+        assert_eq!(code, StatusCode::ACCEPTED);
+        assert_eq!(body["started"], true);
+        assert!(started.elapsed() < Duration::from_millis(100));
+
+        let again = push_now(State(state.clone())).await.unwrap_err();
+        assert_eq!(
+            (again.code, again.status),
+            ("push_running", StatusCode::CONFLICT)
+        );
+        let Json(st) = status(State(state.clone())).await.unwrap();
+        assert!(st["push"].is_object(), "{st}");
+        auto_tick(&state, T0 + 99 * 60 * MIN).await;
+
+        settle(&state).await;
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_start_push").await, 1);
+        let Json(st) = status(State(state.clone())).await.unwrap();
+        assert!(st["push"].is_null());
+        assert_eq!(st["not_pushed"], 0);
+        push_and_settle(&state).await;
+    }
+
+    #[tokio::test]
+    async fn the_not_pushed_count_follows_edits_without_rebuilding_every_bundle() {
+        let (state, _tmp) = with_meetings(3);
+        let count = |state: AppState| async move {
+            let Json(st) = status(State(state)).await.unwrap();
+            st["not_pushed"].as_u64().unwrap()
+        };
+        assert_eq!(count(state.clone()).await, 3);
+        let id = state.meeting_repo.cloud_hashes().unwrap()[0].0.clone();
+        let hash = {
+            let b = state.meeting_repo.meeting_bundle(&id).unwrap().unwrap();
+            push::hash_body(&b)
+        };
+        state.meeting_repo.set_cloud_hash(&id, &hash).unwrap();
+        assert_eq!(count(state.clone()).await, 2, "a push shows at once");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        state
+            .meeting_repo
+            .patch(
+                &id,
+                yogurt_db::MeetingPatch {
+                    notes_md: Some("edited".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(count(state.clone()).await, 3, "an edit shows at once");
+    }
+
+    #[tokio::test]
+    async fn the_count_drops_to_zero_after_a_push_that_only_replaced_hashes() {
+        let (state, _tmp) = with_meetings(2);
+        let cloud = mock_cloud(&state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        push_and_settle(&state).await;
+        let count = || async {
+            let Json(st) = status(State(state.clone())).await.unwrap();
+            st["not_pushed"].as_u64().unwrap()
+        };
+        assert_eq!(count().await, 0);
+        let id = state.meeting_repo.cloud_hashes().unwrap()[0].0.clone();
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        state
+            .meeting_repo
+            .patch(
+                &id,
+                yogurt_db::MeetingPatch {
+                    notes_md: Some("edited".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(count().await, 1);
+        push_and_settle(&state).await;
+        assert_eq!(count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn push_while_disconnected_is_refused_at_once() {
+        let (state, _tmp) = state();
+        state.keys.delete(ACCOUNT).unwrap();
+        assert_eq!(
+            push_now(State(state)).await.unwrap_err().code,
+            "not_connected"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_large_pass_streams_progress_then_completes_and_a_small_one_stays_quiet() {
+        let (state, _tmp) = with_meetings(5);
+        let cloud = mock_cloud(&state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let mut rx = state.app_events_tx.subscribe();
+        start_push(&state, now_ms()).unwrap();
+        let frames = frames_until_end(&mut rx).await;
+        let sent: Vec<_> = frames[..frames.len() - 1]
+            .iter()
+            .map(|f| (f["sent"].as_u64().unwrap(), f["total"].as_u64().unwrap()))
+            .collect();
+        assert_eq!(sent, [(0, 5), (2, 5), (4, 5), (5, 5)]);
+        assert!(frames[0]["retry_in"].is_null());
+        let end = frames.last().unwrap();
+        assert_eq!(
+            (end["type"].as_str(), end["pushed"].as_u64()),
+            (Some("cloud_push_complete"), Some(5))
+        );
+        settle(&state).await;
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 5);
+        assert_eq!(hits(&cloud, "/rest/v1/yogurt_versions").await, 3);
+
+        let (state, _tmp) = with_meetings(2);
+        let cloud = mock_cloud(&state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let mut rx = state.app_events_tx.subscribe();
+        push_and_settle(&state).await;
+        assert!(rx.try_recv().is_err(), "one batch sends no frames");
+        assert_eq!(hits(&cloud, "/rest/v1/yogurt_versions").await, 1);
+    }
+
+    #[tokio::test]
+    async fn a_throttled_batch_reports_its_wait_then_the_pass_goes_on() {
+        let (state, _tmp) = with_meetings(5);
+        let cloud = bare_cloud(&state).await;
+        wiremock::Mock::given(wiremock::matchers::path("/rest/v1/yogurt_versions"))
+            .respond_with(wiremock::ResponseTemplate::new(429).insert_header("Retry-After", "1"))
+            .up_to_n_times(1)
+            .mount(&cloud)
+            .await;
+        insert(201).mount(&cloud).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let mut rx = state.app_events_tx.subscribe();
+        start_push(&state, now_ms()).unwrap();
+        let frames = frames_until_end(&mut rx).await;
+        let waits: Vec<_> = frames
+            .iter()
+            .filter_map(|f| f["retry_in"].as_u64())
+            .collect();
+        assert_eq!(waits, [1]);
+        assert_eq!(frames.last().unwrap()["type"], "cloud_push_complete");
+        settle(&state).await;
+        assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
+    }
+
+    #[tokio::test]
+    async fn a_failure_midway_keeps_the_committed_batches_and_the_next_push_resumes() {
+        let (state, _tmp) = with_meetings(6);
+        let cloud = bare_cloud(&state).await;
+        insert(201).up_to_n_times(2).mount(&cloud).await;
+        insert(403).mount(&cloud).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let mut rx = state.app_events_tx.subscribe();
+        start_push(&state, now_ms()).unwrap();
+        let frames = frames_until_end(&mut rx).await;
+        let end = frames.last().unwrap();
+        assert_eq!(end["type"], "cloud_push_error");
+        assert_eq!(end["code"], "cloud_error");
+        settle(&state).await;
+        assert_eq!(recorded(&state, LAST_ERROR_KEY)["code"], "cloud_error");
+        assert_eq!(pending(&state).await.unwrap().not_pushed, 2);
+
+        let repo = state.meeting_repo.clone();
+        let committed: Vec<String> = repo
+            .cloud_hashes()
+            .unwrap()
+            .into_iter()
+            .filter_map(|(id, hash)| hash.map(|_| id))
+            .collect();
+        assert_eq!(committed.len(), 4);
+        let cloud2 = cloud_listing(&state, &committed).await;
+        insert(201).mount(&cloud2).await;
+        catch_up(200, json!(0)).mount(&cloud2).await;
+        push_and_settle(&state).await;
+        assert_eq!(pending(&state).await.unwrap().not_pushed, 0);
+        assert_eq!(
+            hits(&cloud2, "/rest/v1/yogurt_versions").await,
+            1,
+            "only the two uncommitted meetings go out"
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnect_stops_a_running_push_at_the_next_boundary() {
+        let (mut state, _tmp) = with_meetings(6);
+        state.cloud_push = std::sync::Arc::new(crate::cloud_push::PushJob::new(push::Pacing {
+            pause: Duration::from_secs(60),
+            ..fast(2)
+        }));
+        let cloud = mock_cloud(&state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let mut rx = state.app_events_tx.subscribe();
+        start_push(&state, now_ms()).unwrap();
+        loop {
+            let f = rx.recv().await.unwrap();
+            if f["sent"] == 2 {
+                break;
+            }
+        }
+        let started = std::time::Instant::now();
+        let _ = disconnect(State(state.clone()), None).await.unwrap();
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let end = rx.recv().await.unwrap();
+        assert_eq!(end["type"], "cloud_push_cancelled");
+        assert!(!state.cloud_push.is_running());
+        assert!(load(&state).unwrap().is_none());
+        assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
     }
 
     #[tokio::test]

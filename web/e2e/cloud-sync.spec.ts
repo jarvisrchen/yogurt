@@ -45,6 +45,7 @@ const connected = (over: Record<string, unknown> = {}) => ({
   last_push: { at: PUSHED_AT, changed: 1, deleted: 0 },
   last_error: null,
   push_interval: "off",
+  push: null,
   ...over,
 });
 
@@ -105,14 +106,10 @@ async function mockBackend(page: Page, state: State) {
       return r.fulfill({ json: state.status });
     }
     if (path === "/api/cloud/push") {
-      if (state.pushError) {
-        state.status = connected({
-          last_error: { at: PUSHED_AT, error: state.pushError.error, code: state.pushError.code },
-        });
-        return r.fulfill({ status: state.pushError.status, json: state.pushError });
-      }
-      state.status = connected({ not_pushed: 0, last_push: { at: PUSHED_AT, changed: 3, deleted: 0 } });
-      return r.fulfill({ json: { at: PUSHED_AT, changed: 3, deleted: 0 } });
+      state.status = state.pushError
+        ? connected({ last_error: { at: PUSHED_AT, error: state.pushError.error, code: state.pushError.code } })
+        : connected({ not_pushed: 0, last_push: { at: PUSHED_AT, changed: 3, deleted: 0 } });
+      return r.fulfill({ status: 202, json: { started: true } });
     }
     if (path === "/api/cloud/sign-in") {
       if (body.password === "nope") {

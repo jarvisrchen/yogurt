@@ -16,6 +16,15 @@ export interface LastError {
   code: string;
 }
 
+/** A push in progress. `announced` is true once the pass needs more than one batch, which is when the pill shows. */
+export interface PushStatus {
+  sent: number;
+  total: number;
+  /** Seconds before a failed request is tried again, `null` when none is waiting. */
+  retry_in: number | null;
+  announced: boolean;
+}
+
 export type PushInterval = "off" | "15m" | "1h" | "1d";
 
 export type CloudStatus =
@@ -31,6 +40,7 @@ export type CloudStatus =
       last_push: LastPush | null;
       last_error: LastError | null;
       push_interval: PushInterval;
+      push: PushStatus | null;
     };
 
 export type CloudConnected = Extract<CloudStatus, { connected: true }>;
@@ -81,7 +91,8 @@ export const cloudApi = {
   check: (address: string) => post<{ address: string }>("/api/cloud/check", { address }),
   connect: (req: ConnectRequest) => post<CloudStatus>("/api/cloud/connect", req),
   signIn: (password: string) => post<CloudStatus>("/api/cloud/sign-in", { password }),
-  push: () => post<{ at: number; changed: number; deleted: number }>("/api/cloud/push", {}),
+  /** Starts the background push and returns at once. Progress arrives as frames and in the status. */
+  push: () => post<{ started: true }>("/api/cloud/push", {}),
   setPushInterval: (interval: PushInterval) => post<CloudStatus>("/api/cloud/push-interval", { interval }),
   disconnect: (markDeleted: boolean) => post<CloudStatus>("/api/cloud/disconnect", { mark_deleted: markDeleted }),
 };
@@ -89,7 +100,13 @@ export const cloudApi = {
 export const CLOUD_KEY = ["cloud"] as const;
 
 export function useCloudStatus() {
-  return useQuery({ queryKey: CLOUD_KEY, queryFn: cloudApi.status, retry: false });
+  return useQuery({
+    queryKey: CLOUD_KEY,
+    queryFn: cloudApi.status,
+    retry: false,
+    // A running push changes the counts every second or so, and its end also arrives as a frame.
+    refetchInterval: (q) => (q.state.data?.connected && q.state.data.push ? 1000 : false),
+  });
 }
 
 /**

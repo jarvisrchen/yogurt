@@ -45,6 +45,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         detect: Default::default(),
         cloud_lock: Default::default(),
         import: Default::default(),
+        cloud_push: Default::default(),
     };
     (state, token_str, tmp)
 }

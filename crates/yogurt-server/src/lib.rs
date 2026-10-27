@@ -1,6 +1,7 @@
 mod api;
 mod assets;
 pub mod audio;
+mod cloud_push;
 mod detect;
 mod dev_proxy;
 pub(crate) mod enhance;

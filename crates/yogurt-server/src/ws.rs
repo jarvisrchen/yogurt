@@ -71,6 +71,21 @@ pub enum WsEvent {
         skipped: usize,
         failed: usize,
     },
+    /// Yogurt Cloud push frames for a pass of more than one batch. `retry_in` is the seconds left before a failed request is retried.
+    CloudPushProgress {
+        sent: usize,
+        total: usize,
+        retry_in: Option<u64>,
+    },
+    CloudPushComplete {
+        pushed: usize,
+        deleted: usize,
+    },
+    CloudPushError {
+        error: String,
+        code: String,
+    },
+    CloudPushCancelled,
 }
 
 /// Meeting-independent sibling of the per-meeting `events_tx`, surfaced on the global `/ws`.
@@ -511,6 +526,42 @@ mod tests {
             failed: 0,
         });
         assert_eq!(x["type"], "import_cancelled");
+    }
+
+    #[test]
+    fn cloud_push_frames_serialize_with_tags() {
+        let json = |ev: WsEvent| serde_json::to_value(&ev).unwrap();
+        let p = json(WsEvent::CloudPushProgress {
+            sent: 340,
+            total: 1412,
+            retry_in: Some(45),
+        });
+        assert_eq!(p["type"], "cloud_push_progress");
+        assert_eq!(
+            (
+                p["sent"].as_u64(),
+                p["total"].as_u64(),
+                p["retry_in"].as_u64()
+            ),
+            (Some(340), Some(1412), Some(45))
+        );
+        let c = json(WsEvent::CloudPushComplete {
+            pushed: 1412,
+            deleted: 2,
+        });
+        assert_eq!(c["type"], "cloud_push_complete");
+        let e = json(WsEvent::CloudPushError {
+            error: "x".into(),
+            code: "network".into(),
+        });
+        assert_eq!(
+            (e["type"].as_str(), e["code"].as_str()),
+            (Some("cloud_push_error"), Some("network"))
+        );
+        assert_eq!(
+            json(WsEvent::CloudPushCancelled)["type"],
+            "cloud_push_cancelled"
+        );
     }
 
     #[test]

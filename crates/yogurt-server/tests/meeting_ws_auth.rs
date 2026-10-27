@@ -57,6 +57,7 @@ async fn spawn() -> TestSetup {
         detect: Default::default(),
         cloud_lock: Default::default(),
         import: Default::default(),
+        cloud_push: Default::default(),
     };
     let app = yogurt_server::__test_router(state.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
