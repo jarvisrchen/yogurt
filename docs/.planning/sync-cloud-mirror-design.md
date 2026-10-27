@@ -13,7 +13,7 @@ No central yogurt server or database exists.
 ## Rules
 
 - A local install works exactly as today with no account, and sync stays off until the user connects it in Settings.
-- Yogurt Cloud is the user's own Vercel project and Supabase project. Yogurt ships the webapp, a SQL file, and a deploy button, and hosts nothing.
+- Yogurt Cloud is the user's own Vercel project and Supabase project. Yogurt ships the webapp, a SQL file, and a setup guide, and hosts nothing.
 - Meetings are stored readable in the user's Supabase. There is no client-side encryption.
 - Reading requires the Cloud login and a passcode, and Postgres enforces both.
 - Sync is one-way. A laptop pushes and never reads meeting content back. The webapp is read-only.
@@ -74,17 +74,11 @@ Laptops and browsers talk to Supabase directly.
 
 ## Deploying a Yogurt Cloud
 
-The guide's Deploy with Vercel button opens Vercel's clone flow with these parameters, all documented on Vercel's deploy button pages (checked 2026-10-24):
-
-- `repository-url` points at the yogurt repo, and `root-directory=cloud`.
-- `integration-ids=oac_VqOgBHqhEoFTPzGkPd7L0iH6` requires the Supabase Marketplace integration before the import (Vercel's deploy button integrations page, checked 2026-10-25).
-  The ID comes from Supabase's Vercel Marketplace page, and the rehearsal confirms it.
-  The integration creates a new Supabase project and syncs `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and other variables into the Vercel project (Supabase's Vercel Marketplace page, checked 2026-10-24).
-- `env=YOGURT_OWNER_EMAIL` asks for the email of the one Cloud login allowed to read and push.
-
-A user with an existing Supabase project skips the integration and enters `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `POSTGRES_URL_NON_POOLING` by hand.
+The user imports their own fork or copy of the yogurt repo into a new Vercel project with Root Directory `cloud`, and sets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and `YOGURT_OWNER_EMAIL` by hand.
+`YOGURT_OWNER_EMAIL` is the email of the one Cloud login allowed to read and push.
 Richard's own cloud is a Vercel project on the jarvisrchen Vercel account, imported straight from `jarvisrchen/yogurt` with the same settings, so it redeploys on every merge to `main`.
-A deploy button copy is a new repo in the user's GitHub and does not follow `main`, so it updates only when the user syncs it.
+A fork or copy does not follow `main`, so it updates only when the user syncs it.
+Yogurt Cloud has one user, so the guide has no Deploy with Vercel button, which nobody would have rehearsed.
 
 The build runs `cloud/scripts/build.mjs`:
 
@@ -204,7 +198,7 @@ If `yogurt_status` says `passcode_set` is false, the laptop says to choose a pas
 The laptop never sees the passcode, a Supabase secret, or a Vercel or Supabase account.
 The login email is kept in the same `keys.json` entry so the Connected page can show it and a dead session can be renewed with only the password.
 The password itself is used once and dropped.
-"Create a Yogurt Cloud" on the same page opens the setup guide with the deploy button in the browser.
+"Create a Yogurt Cloud" on the same page opens the setup guide in the browser.
 
 A refresh token that Supabase has revoked or expired shows "Sign in again" on the Connected page with an inline password field, which signs in with the stored email and replaces the token.
 Disconnect removes the `keys.json` entry.

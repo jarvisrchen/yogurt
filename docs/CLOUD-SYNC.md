@@ -177,37 +177,14 @@ You do it in a browser, and no laptop is involved.
    If you must use another address, either invite it to your Supabase organization or set up custom SMTP, for example Resend, under Authentication in the Supabase dashboard.
    The built-in service also sends only 2 emails an hour, so do not retry the confirmation in a loop.
 
-### Deploy with Vercel
+### Deploy
 
-[Deploy with Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjarvisrchen%2Fyogurt&root-directory=cloud&project-name=yogurt-cloud&repository-name=yogurt-cloud&env=YOGURT_OWNER_EMAIL&envDescription=The%20email%20of%20your%20Supabase%20account.%20It%20becomes%20the%20one%20Cloud%20login.&envLink=https%3A%2F%2Fgithub.com%2Fjarvisrchen%2Fyogurt%2Fblob%2Fmain%2Fdocs%2FCLOUD-SYNC.md%232-deploy-your-yogurt-cloud&integration-ids=oac_VqOgBHqhEoFTPzGkPd7L0iH6)
-
-1. Select the button above and sign in to Vercel.
-2. Vercel asks you to add the Supabase integration.
-   Follow its prompts to sign in to Supabase and create a new Supabase project.
-   Vercel then fills in the Supabase variables for you.
-3. Vercel asks you to create a Git repository.
-   Pick your personal GitHub account and keep the name `yogurt-cloud`.
-4. Enter your owner email for `YOGURT_OWNER_EMAIL`.
-5. Select Deploy.
-   The first build takes a minute or two.
-   It writes the webapp's `config.json`, builds the webapp, then applies the database schema and records the owner email.
-6. When the deploy finishes, copy the address Vercel shows, for example `yogurt-cloud.vercel.app`.
-   This is your Cloud address.
-
-If the build fails, open the build log.
-A message that starts with `yogurt-cloud build:` names the missing variable.
-
-### Use a Supabase project you already have
-
-The button sets up a new Supabase project through the integration, so reuse one you already have by skipping it.
-All Yogurt tables start with `yogurt_`, so they stay apart from your other tables.
-The login settings below apply to the whole Supabase project, so another app on the same project gets them too.
-Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
-Use a project of its own when another app signs users up on it.
-
-1. Fork or copy the Yogurt repository into your own GitHub account.
+1. In the Supabase dashboard, create a project, or pick one you already have.
+   All Yogurt tables start with `yogurt_`, so they stay apart from your other tables.
+2. Fork or copy the Yogurt repository into your own GitHub account.
    In Vercel, select Add New, then Project, import that repository, and set Root Directory to `cloud`.
-2. In your Vercel project, open Settings, then Environment Variables, and add the four variables in the table below the steps.
+   This first deploy fails, because the variables are not set yet.
+3. In your Vercel project, open Settings, then Environment Variables, and add the four variables in the table below the steps.
    Limit `POSTGRES_URL_NON_POOLING` to the Production environment and mark it Sensitive, because the build uses it only to apply the schema.
 
 | Name | Value | Where to find it in Supabase |
@@ -217,22 +194,25 @@ Use a project of its own when another app signs users up on it.
 | `POSTGRES_URL_NON_POOLING` | the Session pooler connection string, on port 5432, with your database password filled in | Connect at the top of the project page, then Session pooler |
 | `YOGURT_OWNER_EMAIL` | the owner email | your choice |
 
-3. Redeploy the project so the build sees the variables.
-4. In the Supabase dashboard, open Authentication, then URL Configuration.
+4. Redeploy the project so the build sees the variables.
+   The build takes a minute or two.
+   It writes the webapp's `config.json`, builds the webapp, then applies the database schema and records the owner email.
+5. When the deploy finishes, copy the address Vercel shows, for example `yogurt-cloud.vercel.app`.
+   This is your Cloud address.
+6. In the Supabase dashboard, open Authentication, then URL Configuration.
    Set Site URL to your Cloud address, for example `https://yogurt-cloud.vercel.app`.
    Add the same address to Redirect URLs.
    Without this, the confirmation email link returns to the wrong address, such as `localhost`.
-   After a button deploy, check the same two fields if that happens.
-5. Confirm email must stay on, which is Supabase's default.
+7. Confirm email must stay on, which is Supabase's default.
    The owner match depends on it.
-6. Check the owner email against [Before you start](#before-you-start).
+8. Check the owner email against [Before you start](#before-you-start).
 
-### The variables the build reads
+If the build fails, open the build log.
+A message that starts with `yogurt-cloud build:` names the missing variable.
 
-The Supabase integration sets about a dozen variables in your Vercel project, listed on [Supabase's Vercel Marketplace page](https://supabase.com/docs/guides/integrations/vercel-marketplace).
-The Yogurt build reads `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `POSTGRES_URL_NON_POOLING`, and `YOGURT_OWNER_EMAIL`.
-It ignores the rest, including the secret key.
-Nothing in the webapp holds a secret.
+The login settings apply to the whole Supabase project, so another app on the same project gets them too.
+Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
+Use a project of its own when another app signs users up on it.
 
 ### Free tiers
 
@@ -508,7 +488,7 @@ These are the messages:
 ```text
 set SUPABASE_URL.
 set SUPABASE_PUBLISHABLE_KEY.
-production builds need POSTGRES_URL_NON_POOLING, which the Supabase integration provides.
+production builds need POSTGRES_URL_NON_POOLING, the Supabase Session pooler connection string.
 production builds need YOGURT_OWNER_EMAIL, the email of the one Cloud login.
 ```
 
@@ -532,8 +512,7 @@ Sign out and sign in with the owner email.
 
 ### Keep your copy up to date
 
-The deploy button copies the Yogurt repository into a new repository in your GitHub account.
-That copy is not a fork, so it does not follow the Yogurt repository.
+Your Vercel project builds from your fork or copy of the Yogurt repository, which does not follow the Yogurt repository on its own.
 Vercel redeploys your project when you push to your copy, and each production deploy re-applies the database schema.
 
 When you upgrade Yogurt on your laptops, update your copy to the same release, so the laptops and the schema stay in step.
