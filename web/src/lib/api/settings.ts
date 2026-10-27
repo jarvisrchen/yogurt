@@ -83,6 +83,14 @@ export interface SettingsView {
   presets: Preset[];
   /** "••••XXXX" when a Deepgram STT key is stored, null otherwise. */
   deepgram_key_masked: string | null;
+  /** Where this server keeps its files, with the home directory shown as `~`. */
+  paths: DataPaths;
+}
+
+export interface DataPaths {
+  data_dir: string;
+  keys: string;
+  notes: string;
 }
 
 export interface NewProvider {
@@ -255,6 +263,11 @@ export function useSettings(): UseQueryResult<SettingsView, Error> {
     queryFn: () => settingsApi.get(),
     staleTime: 30_000,
   });
+}
+
+/** Undefined until settings load. */
+export function useDataPaths(): DataPaths | undefined {
+  return useSettings().data?.paths;
 }
 
 export function useSetFirstRunCompleted(): UseMutationResult<

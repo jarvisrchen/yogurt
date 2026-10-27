@@ -188,6 +188,21 @@ async fn data_dir_moves_notes_and_token_and_ctl_follows() {
     ctl(true).assert().success();
     ctl(false).assert().failure();
 
+    let token = std::fs::read_to_string(data_dir.path().join("session-token")).unwrap();
+    let settings: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{port}/api/settings"))
+        .bearer_auth(token.trim())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let dir = data_dir.path().display();
+    assert_eq!(settings["paths"]["data_dir"], format!("{dir}"));
+    assert_eq!(settings["paths"]["keys"], format!("{dir}/keys.json"));
+    assert_eq!(settings["paths"]["notes"], format!("{dir}/notes"));
+
     child.kill().await.ok();
     assert!(
         !home.path().join(".yogurt").join("session-token").exists(),

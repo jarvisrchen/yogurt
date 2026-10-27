@@ -72,6 +72,11 @@ describe("EchoDevicePicker", () => {
       providers: [],
       presets: [],
       deepgram_key_masked: null,
+      paths: {
+        data_dir: "~/.yogurt",
+        keys: "~/.yogurt/keys.json",
+        notes: "~/.yogurt/notes",
+      },
     });
     vi.mocked(settingsApi.patch).mockResolvedValue(
       baseGeneral({ audio_echo_output_device: "BlackHole 2ch" }),
@@ -146,6 +151,11 @@ describe("EchoDevicePicker", () => {
       providers: [],
       presets: [],
       deepgram_key_masked: null,
+      paths: {
+        data_dir: "~/.yogurt",
+        keys: "~/.yogurt/keys.json",
+        notes: "~/.yogurt/notes",
+      },
     });
 
     renderPicker(false);

@@ -31,6 +31,11 @@ const SETTINGS = {
   ],
   presets: [],
   deepgram_key_masked: null,
+  paths: {
+    data_dir: "~/.yogurt",
+    keys: "~/.yogurt/keys.json",
+    notes: "~/.yogurt/notes",
+  },
 };
 
 test("granola import: key, preview, progress on every page, done", async ({ page }) => {

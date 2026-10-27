@@ -26,6 +26,9 @@ pub struct AppState {
     pub db: Db,
     /// `FileKeyStore` in production, `MemoryKeyStore` in tests.
     pub keys: Arc<dyn ApiKeyStore>,
+    /// Shown in Settings, so a `$YOGURT_DATA_DIR` instance names its own files.
+    pub data_dir: PathBuf,
+    pub keys_path: PathBuf,
     /// Test-only. A fixed client set in production would ignore the user's configured provider,
     /// so enhance and chat resolve per request via `llm_openai::resolve`.
     pub llm_override: Option<Arc<dyn LlmClient>>,
@@ -100,6 +103,7 @@ pub struct ProductionConfig {
     pub storage: Arc<Storage>,
     pub session: Arc<SessionToken>,
     pub notes_dir: PathBuf,
+    pub data_dir: PathBuf,
     /// Defaults to `~/.yogurt/db.sqlite`. Tests pass a tempdir so parallel suites do not
     /// collide on the real DB's WAL lock.
     pub app_db_path: Option<PathBuf>,
@@ -124,6 +128,10 @@ impl AppState {
         let meeting_repo = Arc::new(MeetingRepo::new(db.clone()));
         let label_repo = Arc::new(LabelRepo::new(db.clone()));
         let (app_events_tx, _) = tokio::sync::broadcast::channel(64);
+        let keys_path = match cfg.keys_path {
+            Some(p) => p,
+            None => yogurt_db::paths::keys_path()?,
+        };
         // Integration/CLI tests set `YOGURT_MEMORY_KEYSTORE` so they never
         // touch the user's real key file.
         let keys: Arc<dyn ApiKeyStore> =
@@ -131,10 +139,7 @@ impl AppState {
                 tracing::info!("YOGURT_MEMORY_KEYSTORE set — using in-memory key store");
                 Arc::new(MemoryKeyStore::default())
             } else {
-                Arc::new(match cfg.keys_path {
-                    Some(p) => FileKeyStore::open(p)?,
-                    None => FileKeyStore::open_default()?,
-                })
+                Arc::new(FileKeyStore::open(keys_path.clone())?)
             };
         Ok(Self {
             mode: cfg.mode,
@@ -146,6 +151,8 @@ impl AppState {
             prompts,
             db,
             keys,
+            data_dir: cfg.data_dir,
+            keys_path,
             llm_override: None,
             meeting_repo,
             label_repo,
@@ -166,6 +173,7 @@ impl AppState {
         bind_port: u16,
         notes_dir: PathBuf,
     ) -> Result<Self> {
+        let data_dir = notes_dir.parent().unwrap_or(&notes_dir).to_path_buf();
         let exporter = Arc::new(MarkdownExporter::new(notes_dir)?);
         let prompt_mode = match mode {
             Mode::Dev => yogurt_prompts::Mode::Dev,
@@ -186,6 +194,8 @@ impl AppState {
             prompts,
             db,
             keys: Arc::new(MemoryKeyStore::default()),
+            keys_path: data_dir.join("keys.json"),
+            data_dir,
             llm_override: None,
             meeting_repo,
             label_repo,

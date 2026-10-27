@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useDeleteMeeting } from "../../lib/api/meetings";
+import { useDataPaths } from "../../lib/api/settings";
 
 interface Props {
   id: string;
@@ -108,6 +109,8 @@ export function ConfirmPanel({
   stop,
   isPending,
 }: ConfirmPanelProps) {
+  const notes = useDataPaths()?.notes;
+  const folder = notes ? <code className="font-mono">{notes}</code> : "the notes folder";
   return (
     <div
       {...(testId ? { "data-testid": testId } : {})}
@@ -146,9 +149,9 @@ export function ConfirmPanel({
         />
         <span>
           {deleteFile ? (
-            <>also delete .md in <code className="font-mono">~/.yogurt/notes</code></>
+            <>also delete .md in {folder}</>
           ) : (
-            <><code className="font-mono">.md</code> file stays in <code className="font-mono">~/.yogurt/notes</code></>
+            <><code className="font-mono">.md</code> file stays in {folder}</>
           )}
         </span>
       </label>

@@ -107,6 +107,8 @@ pub async fn run_with_mock_llm(
         prompts,
         db,
         keys: Arc::new(yogurt_db::keys::MemoryKeyStore::default()),
+        data_dir: tmp.path().to_path_buf(),
+        keys_path: tmp.path().join("keys.json"),
         llm_override: Some(Arc::new(llm.clone())),
         meeting_repo,
         label_repo,

@@ -61,6 +61,7 @@ vi.mock("./lib/api/settings", () => {
       isLoading: false,
       error: null,
     }),
+    useDataPaths: () => undefined,
     useSetFirstRunCompleted: () => ({
       mutateAsync: vi.fn().mockResolvedValue(fixture.general),
       isPending: false,

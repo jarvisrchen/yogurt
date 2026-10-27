@@ -12,6 +12,14 @@ vi.mock("../../lib/api/meetings", () => ({
   }),
 }));
 
+vi.mock("../../lib/api/settings", () => ({
+  useDataPaths: () => ({
+    data_dir: "/tmp/scratch",
+    keys: "/tmp/scratch/keys.json",
+    notes: "/tmp/scratch/notes",
+  }),
+}));
+
 function renderEmpty() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -42,8 +50,8 @@ describe("EmptyLibrary", () => {
     expect(getByText("⌘N")).toBeInTheDocument();
   });
 
-  it("shows the mono `~/.yogurt/notes/*.md` caption", () => {
+  it("names the server's notes folder in the caption", () => {
     const { getByText } = renderEmpty();
-    expect(getByText(/~\/\.yogurt\/notes\/\*\.md/)).toBeInTheDocument();
+    expect(getByText("/tmp/scratch/notes/*.md")).toBeInTheDocument();
   });
 });

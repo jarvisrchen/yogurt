@@ -24,6 +24,11 @@ function fixture(overrides: Partial<SettingsView> = {}): SettingsView {
     providers: [],
     presets: [],
     deepgram_key_masked: null,
+    paths: {
+      data_dir: "~/.yogurt",
+      keys: "~/.yogurt/keys.json",
+      notes: "~/.yogurt/notes",
+    },
     ...overrides,
   };
 }

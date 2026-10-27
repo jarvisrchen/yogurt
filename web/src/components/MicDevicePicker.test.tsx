@@ -66,6 +66,11 @@ describe("MicDevicePicker", () => {
       providers: [],
       presets: [],
       deepgram_key_masked: null,
+      paths: {
+        data_dir: "~/.yogurt",
+        keys: "~/.yogurt/keys.json",
+        notes: "~/.yogurt/notes",
+      },
     });
     vi.mocked(settingsApi.patch).mockResolvedValue({
       port: 7878,
@@ -192,6 +197,11 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
       providers: [],
       presets: [],
       deepgram_key_masked: null,
+      paths: {
+        data_dir: "~/.yogurt",
+        keys: "~/.yogurt/keys.json",
+        notes: "~/.yogurt/notes",
+      },
     });
     vi.mocked(settingsApi.patch).mockResolvedValue({
       port: 7878,
@@ -252,6 +262,11 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
       providers: [],
       presets: [],
       deepgram_key_masked: null,
+      paths: {
+        data_dir: "~/.yogurt",
+        keys: "~/.yogurt/keys.json",
+        notes: "~/.yogurt/notes",
+      },
     });
 
     renderPicker(false);
