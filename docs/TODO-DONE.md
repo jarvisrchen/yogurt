@@ -1336,3 +1336,7 @@ New closed items go at the bottom.
 - [x] **SYNC-12** Page the webapp library with slim rows and fetch one meeting's body on open, so it never downloads every transcript or hits Supabase's 1,000-row cap ([design](.planning/granola-import-design.md#yogurt-cloud-after-an-import))
 
   The webapp library loads one page of summary rows with a pager and a total, opens a meeting through `yogurt_meeting`, and pages search results with an offset, so it never downloads every transcript or hits the 1,000-row cap.
+
+- [x] **SYNC-13** Push in the background in small paced batches with retries and a progress pill on every page, so a large backlog uploads slowly instead of failing ([design](.planning/granola-import-design.md#pushing-a-backlog-slowly-sync-13))
+
+  Push runs in the background in paced batches of 25 meetings or 256 KiB with retries and backoff, resumes from the last committed batch, catches search up after each batch, and shows progress in a pill on every page.

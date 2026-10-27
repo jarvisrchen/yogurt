@@ -801,6 +801,7 @@ fn build_test_state(
         detect: Default::default(),
         cloud_lock: Default::default(),
         import: Default::default(),
+        cloud_push: Default::default(),
     };
     (state, token_str, tmp)
 }

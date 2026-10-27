@@ -13,6 +13,8 @@ import {
 import { ensureSessionToken } from "../lib/session";
 import { importApi } from "../lib/api/granolaImport";
 import { applyImportEvent, applyImportStatus, type ImportEvent } from "./useGranolaImport";
+import { applyCloudPushEvent, applyCloudPushStatus, type CloudPushEvent } from "./useCloudPush";
+import { CLOUD_KEY, cloudApi, type CloudStatus } from "../lib/api/cloud";
 
 export interface DownloadState {
   bytesDownloaded: number;
@@ -153,7 +155,7 @@ async function reconcile() {
   else withProgress({ error: "The download stopped before it finished." });
 }
 
-/** Mounted once, in the Shell. It also carries the Granola import frames, which share the one socket. */
+/** Mounted once, in the Shell. It also carries the Granola import and Cloud push frames, which share the one socket. */
 export function useModelDownloadEvents() {
   const qc = useQueryClient();
 
@@ -180,6 +182,10 @@ export function useModelDownloadEvents() {
       );
       ws.onopen = () => {
         importApi.status().then(applyImportStatus, () => {});
+        qc.fetchQuery({ queryKey: CLOUD_KEY, queryFn: cloudApi.status, staleTime: 5000 }).then(
+          (s) => applyCloudPushStatus(s.connected ? s.push : null),
+          () => {},
+        );
         if (!isReconnect) return;
         onModelsChanged();
         reconcile().catch(() => {});
@@ -196,6 +202,13 @@ export function useModelDownloadEvents() {
           applyDownloadEvent(frame as DownloadEvent, onModelsChanged);
         } else if (type.startsWith("import_")) {
           applyImportEvent(frame as ImportEvent);
+        } else if (type.startsWith("cloud_push_")) {
+          applyCloudPushEvent(frame as CloudPushEvent);
+          // The first frame tells a page that loaded before the push to start reading its status, which then polls until the push ends.
+          const cached = qc.getQueryData<CloudStatus>(CLOUD_KEY);
+          if (type !== "cloud_push_progress" || (cached?.connected && !cached.push)) {
+            qc.invalidateQueries({ queryKey: CLOUD_KEY });
+          }
         }
       };
       ws.onclose = () => {

@@ -298,6 +298,12 @@ The first push after it sends every meeting again, and the old device's meetings
 ### Push your meetings
 
 Select Push meetings on the Cloud sync page.
+The push runs in the background and the button returns at once.
+It sends meetings in small batches with a short pause between them, so a library of over a thousand meetings uploads in several minutes without overloading a free Supabase project.
+A request that fails because the cloud is busy or unreachable is retried after 5, 15, 45, and 120 seconds, and the push stops only when those are used up.
+Batches already sent are kept, so the next push picks up where this one stopped.
+A push of more than one batch shows a pill at the top of every page ("Pushing to Cloud · 340 of 1,412", "Retrying in 45s", then "Pushed 1,412"), and the Cloud sync page shows the same count with a bar.
+Only one push runs at a time.
 The first push sends every meeting, and later pushes send only the meetings you changed, plus a deletion marker for each meeting you deleted.
 The meeting you are recording right now is skipped until it ends.
 The page shows how many meetings are not pushed and the result of the last push.
@@ -305,6 +311,7 @@ The page shows how many meetings are not pushed and the result of the last push.
 The Library header shows a "N not pushed" pill beside "N meetings · all on this Mac" while this Mac is connected and behind.
 Select the pill to open the Cloud sync page.
 You can also run `yogurt ctl cloud status` and `yogurt ctl cloud push` from a terminal.
+`ctl cloud push` waits until the push ends and prints its result.
 
 If the page says "Your Cloud session expired", type the Cloud login password into the field under the message and select Sign in.
 Your meetings are not affected.

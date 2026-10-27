@@ -43,6 +43,8 @@ pub struct AppState {
     pub cloud_lock: Arc<tokio::sync::Mutex<()>>,
     /// The Granola import job and its last result.
     pub import: Arc<crate::granola_import::ImportJob>,
+    /// The one background Yogurt Cloud push and its progress.
+    pub cloud_push: Arc<crate::cloud_push::PushJob>,
 }
 
 impl AppState {
@@ -151,6 +153,7 @@ impl AppState {
             detect: Default::default(),
             cloud_lock: Default::default(),
             import: Default::default(),
+            cloud_push: Default::default(),
         })
     }
 
@@ -190,6 +193,7 @@ impl AppState {
             detect: Default::default(),
             cloud_lock: Default::default(),
             import: Default::default(),
+            cloud_push: Default::default(),
         })
     }
 }

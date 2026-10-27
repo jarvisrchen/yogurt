@@ -34,11 +34,11 @@ export function PermissionDenied() {
       </div>
 
       <h2 className="heading-state mb-3">
-        Yogurt can&apos;t hear the call yet
+        yogurt can&apos;t hear the call yet
       </h2>
 
       <p className="text-[15px] text-mut max-w-lg mb-8">
-        macOS requires Screen Recording permission so Yogurt can listen to
+        macOS requires Screen Recording permission so yogurt can listen to
         the other side of the call without joining as a bot.
       </p>
 

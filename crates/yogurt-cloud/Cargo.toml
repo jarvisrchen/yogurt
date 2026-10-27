@@ -13,7 +13,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
-tokio = { workspace = true }
+wiremock = { workspace = true }

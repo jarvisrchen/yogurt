@@ -196,6 +196,11 @@ async fn send(req: reqwest::RequestBuilder) -> Result<reqwest::Response> {
     if status.is_success() {
         return Ok(resp);
     }
+    let retry_after = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse().ok());
     // A gateway error page is not JSON, and then the status line is all there is to say.
     let body: Value = resp.json().await.unwrap_or(Value::Null);
     let text = |k: &str| match &body[k] {
@@ -212,5 +217,6 @@ async fn send(req: reqwest::RequestBuilder) -> Result<reqwest::Response> {
             .or_else(|| text("message"))
             .or_else(|| text("error_description"))
             .unwrap_or_else(|| format!("Supabase returned {}", status.as_u16())),
+        retry_after,
     })
 }

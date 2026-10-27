@@ -11,12 +11,16 @@ import {
   useCloudStatus,
   type CloudConnected,
   type LastPush,
+  type PushStatus,
   type PushInterval,
 } from "../../../lib/api/cloud";
+import { useLivePush } from "../../../hooks/useCloudPush";
 import { ConnectForm } from "./ConnectForm";
 import { INPUT, K } from "./Field";
 import { Note } from "./Note";
 import { QrCode } from "./QrCode";
+
+const n = (v: number) => v.toLocaleString("en-US");
 
 const GUIDE_URL = "https://github.com/jarvisrchen/yogurt/blob/main/docs/CLOUD-SYNC.md";
 
@@ -90,7 +94,7 @@ export function formatPushTime(ms: number): string {
 
 export function describeLastPush(p: LastPush | null): string {
   if (!p) return "Not pushed yet";
-  return `Last push ${formatPushTime(p.at)} · ${p.changed} uploaded, ${p.deleted} deleted`;
+  return `Last push ${formatPushTime(p.at)} · ${n(p.changed)} uploaded, ${n(p.deleted)} deleted`;
 }
 
 /** Stays up until a sign-in succeeds, so a wrong password does not dismiss the prompt. */
@@ -147,10 +151,34 @@ function SignInAgain({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
+/** The running push's counts and bar, or its retry countdown. */
+export function PushProgress({ push }: { push: PushStatus }) {
+  const pct = push.total > 0 ? Math.min(100, Math.round((push.sent / push.total) * 100)) : 0;
+  const waiting = push.retry_in != null;
+  return (
+    <div className="mb-3" data-testid="push-progress">
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-[12.5px]">
+        <b>{push.total > 0 ? `Pushing ${n(push.sent)} of ${n(push.total)}` : "Preparing to push…"}</b>
+        {waiting && <span className="text-mut">Retrying in {push.retry_in}s</span>}
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Cloud push progress"
+        aria-valuemin={0}
+        aria-valuemax={push.total}
+        aria-valuenow={push.sent}
+        className="h-1.5 overflow-hidden rounded-full bg-mtsoft"
+      >
+        <div className="h-full rounded-full bg-matcha transition-[width] duration-200" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function Stat({ value, label, tone }: { value: number; label: string; tone?: string }) {
   return (
     <div className="flex flex-col">
-      <b className={`text-[18px] font-extrabold ${tone ?? ""}`}>{value}</b>
+      <b className={`text-[18px] font-extrabold ${tone ?? ""}`}>{n(value)}</b>
       <span className="text-[11px] text-mut">{label}</span>
     </div>
   );
@@ -171,7 +199,7 @@ function AutoPush({ value }: { value: PushInterval }) {
         <div className="min-w-0">
           <div className={K}>Auto-push</div>
           <p className="mt-0.5 text-[11.5px] text-mut">
-            Push changed meetings in the background while Yogurt is running. Off by default.
+            Push changed meetings in the background while yogurt is running. Off by default.
           </p>
         </div>
         <Segmented
@@ -252,7 +280,10 @@ function Connected({ status }: { status: CloudConnected }) {
   useEffect(() => {
     if (sawExpired) setNeedsSignIn(true);
   }, [sawExpired]);
-  const error = needsSignIn ? null : (push.error?.message ?? status.last_error?.error);
+  const livePush = useLivePush(status.push);
+  const running = livePush != null;
+  const notPushed = livePush && livePush.total > 0 ? Math.max(0, livePush.total - livePush.sent) : status.not_pushed;
+  const error = needsSignIn || running ? null : (push.error?.message ?? status.last_error?.error);
   return (
     <section>
       <Header connected intro={`Signed in as ${status.email}`} />
@@ -262,15 +293,18 @@ function Connected({ status }: { status: CloudConnected }) {
             <div className={K}>Machine name</div>
             <b className="text-[15px]">{status.machine_name}</b>
           </div>
-          <Button size="sm" disabled={push.isPending || needsSignIn} onClick={() => push.mutate(undefined)}>
-            {push.isPending ? "Pushing…" : "Push meetings"}
+          <Button size="sm" disabled={push.isPending || running || needsSignIn} onClick={() => push.mutate(undefined)}>
+            {push.isPending || running ? "Pushing…" : "Push meetings"}
           </Button>
         </div>
         <div className="mb-3.5 mt-2.5 flex flex-wrap gap-6">
           <Stat value={status.meetings} label="meetings on this Mac" />
-          <Stat value={status.not_pushed} label="not pushed" tone={status.not_pushed > 0 ? "text-honeyink" : ""} />
+          <Stat value={notPushed} label="not pushed" tone={notPushed > 0 ? "text-honeyink" : ""} />
         </div>
-        <div className="text-[11.5px] text-mut">{describeLastPush(status.last_push)}</div>
+        {livePush && <PushProgress push={livePush} />}
+        {!(running && !status.last_push) && (
+          <div className="text-[11.5px] text-mut">{describeLastPush(status.last_push)}</div>
+        )}
         {error && (
           <Note tone="straw" role="alert" className="mt-3">
             {error}

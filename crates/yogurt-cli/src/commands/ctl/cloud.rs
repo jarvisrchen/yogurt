@@ -25,14 +25,32 @@ pub async fn run(cmd: CloudCmd, port: Option<u16>, json_out: bool) -> Result<(),
             }
         }
         CloudCmd::Push => {
-            let v: Value = c
+            let _: Value = c
                 .post("/api/cloud/push", &json!({}))
                 .await
                 .map_err(with_help)?;
+            let v = loop {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let v: Value = c.get("/api/cloud").await.map_err(with_help)?;
+                if v["push"].is_null() {
+                    break v;
+                }
+            };
             if json_out {
-                println!("{v}");
+                println!(
+                    "{}",
+                    json!({ "last_push": v["last_push"], "last_error": v["last_error"] })
+                );
+            } else if let Some(err) = v["last_error"]["error"]
+                .as_str()
+                .filter(|_| v["last_error"]["at"].as_i64() > v["last_push"]["at"].as_i64())
+            {
+                return Err(CtlError::local(
+                    err.to_string(),
+                    "check `yogurt ctl cloud status`",
+                ));
             } else {
-                println!("{}", describe_push(&v));
+                println!("{}", describe_push(&v["last_push"]));
             }
         }
     }
@@ -89,6 +107,9 @@ fn print_status(v: &Value) {
         v["meetings"], v["not_pushed"]
     );
     println!("auto-push: {}", describe_interval(s("push_interval")));
+    if let Some(sent) = v["push"]["sent"].as_u64() {
+        println!("push: running, {sent} of {} sent", v["push"]["total"]);
+    }
     let last = &v["last_push"];
     if last.is_null() {
         println!("last push: never");

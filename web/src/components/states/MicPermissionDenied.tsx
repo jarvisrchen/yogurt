@@ -33,11 +33,11 @@ export function MicPermissionDenied() {
       </div>
 
       <h2 className="heading-state mb-3">
-        Yogurt can&apos;t hear your voice yet
+        yogurt can&apos;t hear your voice yet
       </h2>
 
       <p className="text-[15px] text-mut max-w-lg mb-8">
-        macOS requires Microphone permission so Yogurt can capture your
+        macOS requires Microphone permission so yogurt can capture your
         own side of the call.
       </p>
 

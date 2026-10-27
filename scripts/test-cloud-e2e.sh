@@ -81,9 +81,21 @@ api() {
         ${body:+-H 'Content-Type: application/json' -d "$body"}
     cat "$tmp/body.json" >> "$tmp/responses.txt"
 }
+# push_wait <laptop>: starts a push, prints the start request's status code, then waits for the background push to end and leaves the final GET /api/cloud in $tmp/body.json.
+push_wait() {
+    local name=$1 code
+    code=$(api "$name" POST /api/cloud/push)
+    [ "$code" = 202 ] || { echo "$code"; return; }
+    for _ in $(seq 300); do
+        api "$name" GET /api/cloud >/dev/null
+        [ "$(jq -r .push "$tmp/body.json")" = null ] && break
+        sleep 0.2
+    done
+    echo "$code"
+}
 field() { jq -r "$1" "$tmp/body.json"; }
 connect_body() { printf '{"address":"%s","email":"%s","password":"%s","machine_name":"%s"}' "$ADDRESS" "$1" "$PASSWORD" "$2"; }
-ctl() { local name=$1; shift; eval "HOME=\$tmp/$name/home \"\$bin\" ctl --port \$${name}_port \"\$@\""; }
+ctl() { local name=$1; shift; eval "HOME=\$tmp/$name/home YOGURT_DATA_DIR=\$tmp/$name/data \"\$bin\" ctl --port \$${name}_port \"\$@\""; }
 
 echo "== connect is refused until the owner has a PIN"
 expect "connect before PIN" "$(api a POST /api/cloud/connect "$(connect_body "$OWNER" 'Laptop 1')")" 412
@@ -130,21 +142,21 @@ grep -qF "Standup A" "$tmp/a.dump" || fail "the SQLite dump is missing the seede
 ! grep -qF -e "$PASSWORD" -e "$refresh_a" "$tmp/a.dump" || fail "a secret reached SQLite"
 
 echo "== first push"
-expect "push a" "$(api a POST /api/cloud/push)" 200
-expect "changed" "$(field .changed)" 2
-expect "deleted" "$(field .deleted)" 0
+expect "push a" "$(push_wait a)" 202
+expect "changed" "$(field .last_push.changed)" 2
+expect "deleted" "$(field .last_push.deleted)" 0
+expect "nothing left running" "$(field .push)" null
 expect "versions" "$(psql -c "select count(*) from yogurt_versions v join yogurt_devices d on d.id=v.device_id where d.name='Laptop 1'")" 2
 expect "body shape" "$(psql -c "select body->>'v' || ':' || (body->'meeting'->>'title') from yogurt_versions where meeting_id='$a1'")" "1:Standup A"
 expect "the push indexed both for search" "$(psql -c "select count(*) from yogurt_private.yogurt_search_index i join yogurt_devices d on d.id=i.device_id where d.name='Laptop 1'")" 2
-expect "pill clears" "$(api a GET /api/cloud)" 200
 expect "not pushed after push" "$(field .not_pushed)" 0
 expect "last push" "$(field '.last_push.changed')" 2
 [ "$(jq -r '."yogurt-cloud" | fromjson | .refresh_token' "$keys")" != "$refresh_a" ] || fail "refresh token did not rotate"
 
 echo "== a pass that changes nothing writes nothing"
 pushes=$(psql -c 'select count(*) from yogurt_pushes')
-expect "push again" "$(api a POST /api/cloud/push)" 200
-expect "changed" "$(field .changed)" 0
+expect "push again" "$(push_wait a)" 202
+expect "changed" "$(field .last_push.changed)" 0
 expect "pushes unchanged" "$(psql -c 'select count(*) from yogurt_pushes')" "$pushes"
 
 echo "== edit one meeting (with a NUL character), delete another, push"
@@ -154,9 +166,9 @@ expect "not pushed after edit" "$(field .not_pushed)" 1
 ctl a meeting delete "$a2" --yes >/dev/null
 expect "pill" "$(api a GET /api/cloud)" 200
 expect "a local deletion counts as not pushed" "$(field .not_pushed)" 2
-expect "push edit+delete" "$(api a POST /api/cloud/push)" 200
-expect "changed" "$(field .changed)" 1
-expect "deleted" "$(field .deleted)" 1
+expect "push edit+delete" "$(push_wait a)" 202
+expect "changed" "$(field .last_push.changed)" 1
+expect "deleted" "$(field .last_push.deleted)" 1
 expect "edited body, NUL stripped" "$(psql -c "select body->'meeting'->>'notes_md' from yogurt_versions where meeting_id='$a1' order by push_id desc limit 1")" "edited notes"
 expect "pill after the deletion marker went out" "$(api a GET /api/cloud)" 200
 expect "not pushed" "$(field .not_pushed)" 0
@@ -164,7 +176,7 @@ expect "deletion marker" "$(psql -c "select count(*) from yogurt_versions where 
 expect "the index follows the edit and the deletion" "$(psql -c "select string_agg(meeting_id || ':' || (doc ~ 'edited notes'), ',') from yogurt_private.yogurt_search_index where meeting_id in ('$a1', '$a2')")" "$a1:true"
 
 echo "== two devices push into one cloud, and two overlapping pushes both succeed"
-expect "push b" "$(api b POST /api/cloud/push)" 200
+expect "push b" "$(push_wait b)" 202
 expect "b versions" "$(psql -c "select count(*) from yogurt_versions v join yogurt_devices d on d.id=v.device_id where d.name='Laptop 2' and body is not null")" 1
 expect "devices that pushed" "$(psql -c 'select count(distinct device_id) from yogurt_pushes')" 2
 expect "patch" "$(api a PATCH "/api/meetings/$a1" '{"notes_md":"edited again"}')" 200
@@ -172,10 +184,15 @@ push_code() { curl -sS -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:
 push_code > "$tmp/c1" & p1=$!
 push_code > "$tmp/c2" & p2=$!
 wait "$p1" "$p2"
-expect "overlap 1" "$(cat "$tmp/c1")" 200
-expect "overlap 2" "$(cat "$tmp/c2")" 200
+# The second request is refused with 409 while the first still runs, or starts a no-op push if the first already ended.
+case "$(sort "$tmp/c1" "$tmp/c2" | tr '\n' ' ')" in "202 202 " | "202 409 ") ;; *) fail "overlapping pushes answered $(cat "$tmp/c1" "$tmp/c2")" ;; esac
+for _ in $(seq 300); do
+    api a GET /api/cloud >/dev/null
+    [ "$(field .push)" = null ] && break
+    sleep 0.2
+done
 expect "ctl status" "$(ctl a --json cloud status | jq -r .not_pushed)" 0
-expect "ctl push" "$(ctl a --json cloud push | jq -r .changed)" 0
+expect "ctl push" "$(ctl a --json cloud push | jq -r .last_push.changed)" 0
 
 echo "== auto-push interval"
 expect "default" "$(ctl a --json cloud status | jq -r .push_interval)" off
@@ -198,20 +215,19 @@ expect "interval while disconnected" "$(api a POST /api/cloud/push-interval '{"i
 
 echo "== a revoked session asks to sign in again, and sign-in restores it"
 psql -c "delete from auth.sessions" >/dev/null
-expect "push revoked" "$(api b POST /api/cloud/push)" 401
-expect "code" "$(field .code)" session_expired
-expect "last push error" "$(api b GET /api/cloud)" 200
+expect "push revoked" "$(push_wait b)" 202
 expect "recorded" "$(field .last_error.code)" session_expired
 expect "the earlier success is kept" "$(field '.last_push.changed')" 1
 expect "sign-in wrong" "$(api b POST /api/cloud/sign-in '{"password":"nope"}')" 401
 expect "sign-in" "$(api b POST /api/cloud/sign-in "{\"password\":\"$PASSWORD\"}")" 200
 expect "sign-in clears the error and keeps the success" "$(field '[.last_error, .last_push.changed] | @json')" "[null,1]"
-expect "push after sign-in" "$(api b POST /api/cloud/push)" 200
+expect "push after sign-in" "$(push_wait b)" 202
+expect "pushed" "$(field .last_error)" null
 
 echo "== a removed device is reported"
 psql -c "delete from yogurt_versions where device_id=(select id from yogurt_devices where name='Laptop 2'); delete from yogurt_pushes where device_id=(select id from yogurt_devices where name='Laptop 2'); delete from yogurt_devices where name='Laptop 2'" >/dev/null
-expect "push removed" "$(api b POST /api/cloud/push)" 409
-expect "code" "$(field .code)" device_removed
+expect "push removed" "$(push_wait b)" 202
+expect "code" "$(field .last_error.code)" device_removed
 
 echo "== no secret appeared in a response or a log"
 refresh_b=$(jq -r '."yogurt-cloud" | fromjson | .refresh_token' "$tmp/b/data/keys.json")

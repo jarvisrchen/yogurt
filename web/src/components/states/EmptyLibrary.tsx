@@ -22,13 +22,13 @@ export function EmptyLibrary() {
   return (
     <div className="flex flex-col items-center text-center mt-24">
       <div className="float-3500 mb-8">
-        <Logo size={64} ariaLabel="Yogurt" />
+        <Logo size={64} ariaLabel="yogurt" />
       </div>
       <h2 className="heading-state mb-3">
         No meetings yet
       </h2>
       <p className="text-[15px] text-mut max-w-md mb-6">
-        Start one and Yogurt listens to both sides of the call without
+        Start one and yogurt listens to both sides of the call without
         joining it as a bot. Your notes and audio stay on this Mac.
       </p>
       <Button onClick={start} disabled={create.isPending}>

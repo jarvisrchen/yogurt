@@ -151,7 +151,7 @@ export function Welcome() {
           Welcome to yogurt.
         </h1>
         <p className="text-[15px] text-mut max-w-md mb-10">
-          Yogurt hears both sides of the call without joining it, and folds
+          yogurt hears both sides of the call without joining it, and folds
           what was said into the notes you type. All of it runs on this Mac.
         </p>
 
