@@ -44,6 +44,8 @@ fn migrations() -> Migrations<'static> {
         )),
         // `meetings.cloud_hash`, the bundle hash last pushed to Yogurt Cloud.
         M::up(include_str!("../migrations/V014__meetings_cloud_hash.sql")),
+        // `meetings.source`, `source_id`, `source_json`: provenance of imported meetings, unique per (source, source_id).
+        M::up(include_str!("../migrations/V015__meetings_source.sql")),
     ])
 }
 
@@ -93,6 +95,35 @@ fn existing_columns(conn: &Connection, table: &str) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v015_adds_source_columns_and_a_unique_index_for_imports_only() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrations().to_version(&mut conn, 15).unwrap();
+        conn.execute_batch(
+            "INSERT INTO meetings (id, title, started_at) VALUES ('a', 'Old', 0), ('b', 'Old', 0);",
+        )
+        .unwrap();
+        migrations().to_latest(&mut conn).unwrap();
+        let ins = |id: &str, src: Option<&str>, sid: Option<&str>| {
+            conn.execute(
+                "INSERT INTO meetings (id, title, started_at, source, source_id) VALUES (?1, 't', 0, ?2, ?3)",
+                rusqlite::params![id, src, sid],
+            )
+        };
+        assert!(ins("c", Some("granola"), Some("not_1")).is_ok());
+        assert!(ins("d", Some("granola"), Some("not_1")).is_err());
+        assert!(ins("e", Some("granola"), Some("not_2")).is_ok());
+        assert!(ins("f", None, None).is_ok());
+        let native: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM meetings WHERE source IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(native, 3);
+    }
 
     #[test]
     fn v013_backfills_enriched_and_transcript_text_for_existing_rows() {

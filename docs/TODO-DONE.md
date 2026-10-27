@@ -1308,3 +1308,7 @@ New closed items go at the bottom.
 - [x] **DX-19** `YOGURT_DATA_DIR` also moves the notes folder and the session token, and `yogurt ctl` reads the token from it
 
   With `YOGURT_DATA_DIR` or `--data-dir`, the markdown notes folder and the session token live under the data dir, and `yogurt ctl` reads the token from there, so a scratch instance no longer writes notes into the real `~/.yogurt/notes`.
+
+- [x] **IMP-2** Import Granola meetings through the public API: V015 source columns, the import job and routes, and `yogurt ctl import granola`
+
+  `yogurt ctl import granola` and `/api/import/granola` import every Granola note that has a summary and a transcript through the public API into V015 source columns, newest first, paced at 4 requests a second, resumable, cancellable, and never overwriting a meeting already imported.

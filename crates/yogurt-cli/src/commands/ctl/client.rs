@@ -317,6 +317,22 @@ impl Client {
         Self::handle_json(resp).await
     }
 
+    pub async fn put<B: Serialize + ?Sized, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, CtlError> {
+        let resp = self
+            .http
+            .put(self.url(path))
+            .bearer_auth(&self.token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| self.conn_error(e))?;
+        Self::handle_json(resp).await
+    }
+
     pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, CtlError> {
         let resp = self
             .http

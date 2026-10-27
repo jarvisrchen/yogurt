@@ -113,6 +113,7 @@ pub async fn run_with_mock_llm(
         app_events_tx,
         detect: Default::default(),
         cloud_lock: Default::default(),
+        import: Default::default(),
     };
 
     let app = crate::__test_router(state.clone());

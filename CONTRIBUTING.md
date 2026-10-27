@@ -139,6 +139,7 @@ Release builds never read `.env.local`.
 | Variable | Read by | Effect |
 |----------|---------|--------|
 | `YOGURT_DEEPGRAM_API_KEY` | bootstrap | Seeds the Deepgram key into `keys.json` (`~/.yogurt/`, or the `YOGURT_DATA_DIR` override) on first run. |
+| `YOGURT_GRANOLA_API_KEY` | bootstrap | Seeds the Granola import key into `keys.json` as the `import-granola` account. A stored key is never overwritten. |
 | `YOGURT_OPENAI_API_KEY`, `YOGURT_OPENROUTER_API_KEY`, `YOGURT_MINIMAX_API_KEY`, `YOGURT_GEMINI_API_KEY`, `YOGURT_DEEPSEEK_API_KEY` | bootstrap | Seed the matching LLM provider preset. One per entry in `ENV_PRESETS` (`crates/yogurt-server/src/bootstrap.rs`). |
 | `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`, `YOGURT_LLM_MODEL` | LLM resolver | Override the active LLM provider for this process without touching Settings or the key file. |
 | `YOGURT_DEEPGRAM_MODEL` | cloud STT | Deepgram model name (default `nova-3`). Stamped into each meeting's `stt_engine`. |

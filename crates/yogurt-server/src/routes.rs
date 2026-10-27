@@ -45,6 +45,7 @@ pub fn router(state: AppState) -> Router {
         .merge(crate::api::meetings::router())
         .merge(crate::api::labels::router())
         .merge(crate::api::cloud::router())
+        .merge(crate::granola_import::router())
         // axum 0.8 prefers literal segments over `{id}` regardless of registration order,
         // so `active` and `detected` are never swallowed as ids.
         // `route_order_guard` in tests/meetings_api.rs asserts this.

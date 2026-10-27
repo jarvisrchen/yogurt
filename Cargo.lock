@@ -4014,6 +4014,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "yogurt-granola"
+version = "1.6.0"
+dependencies = [
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+ "wiremock",
+ "yogurt-db",
+]
+
+[[package]]
 name = "yogurt-llm"
 version = "1.6.0"
 dependencies = [
@@ -4078,6 +4093,7 @@ dependencies = [
  "yogurt-audio",
  "yogurt-cloud",
  "yogurt-db",
+ "yogurt-granola",
  "yogurt-llm",
  "yogurt-notes",
  "yogurt-prompts",

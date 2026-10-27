@@ -29,6 +29,7 @@ yogurt-llm = { path = "../yogurt-llm" }
 futures-util = { workspace = true }
 yogurt-db = { path = "../yogurt-db" }
 yogurt-cloud = { path = "../yogurt-cloud" }
+yogurt-granola = { path = "../yogurt-granola" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }

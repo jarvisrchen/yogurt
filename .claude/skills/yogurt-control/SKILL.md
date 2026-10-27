@@ -22,6 +22,7 @@ Needs yogurt 0.8.0 or newer: check with `yogurt --version`, and run `brew upgrad
   - `yogurt ctl provider` - Configured LLM providers: list, activate, test
   - `yogurt ctl models` - STT models: list, download, cancel, delete
   - `yogurt ctl cloud` - Yogurt Cloud sync: status and push. Connecting stays in the UI
+  - `yogurt ctl import` - Import meetings from another app. Today that is Granola
   - `yogurt ctl ws` - Subscribe to the server websocket, printing one JSON frame per line
 <!-- yogurt-cli:end -->
 

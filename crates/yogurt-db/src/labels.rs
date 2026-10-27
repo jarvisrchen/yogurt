@@ -73,56 +73,8 @@ impl LabelRepo {
 
     /// Trims `name`; bails on empty or > 40 chars. A case-insensitive match returns the existing row (`created = false`).
     pub fn find_or_create(&self, name: &str, color: Option<&str>) -> Result<(Label, bool)> {
-        let name = validate_name(name)?;
-        let color = color.map(normalize_color).transpose()?;
-        self.db.with_conn(|conn| -> Result<(Label, bool)> {
-            if let Some(existing) = find_by_name(conn, &name)? {
-                return Ok((existing, false));
-            }
-            // Auto-color: first palette entry no existing label uses, so
-            // adjacent labels stay visually distinct even after the user
-            // recolors one; once every color is taken, cycle by count.
-            let color = match &color {
-                Some(c) => c.clone(),
-                None => {
-                    let mut stmt = conn.prepare("SELECT color FROM labels")?;
-                    let used: Vec<String> = stmt
-                        .query_map([], |r| r.get(0))?
-                        .collect::<rusqlite::Result<_>>()?;
-                    COLORS
-                        .iter()
-                        .find(|c| !used.iter().any(|u| u == *c))
-                        .map(|c| c.to_string())
-                        .unwrap_or_else(|| COLORS[used.len() % COLORS.len()].to_string())
-                }
-            };
-            let id = Ulid::new().to_string();
-            let now_ms = chrono::Utc::now().timestamp_millis();
-            // Append at the end of the custom order rather than defaulting
-            // to 0, so a freshly-created label doesn't jump to the front
-            // of a list the user has already hand-ordered.
-            let position: i64 = conn.query_row(
-                "SELECT COALESCE(MAX(position), -1) + 1 FROM labels",
-                [],
-                |r| r.get(0),
-            )?;
-            conn.execute(
-                "INSERT INTO labels (id, name, color, created_at, position, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?4)",
-                params![id, name, color, now_ms, position],
-            )
-            .context("insert label")?;
-            Ok((
-                Label {
-                    id,
-                    name,
-                    color,
-                    position,
-                    updated_at: now_ms,
-                },
-                true,
-            ))
-        })
+        self.db
+            .with_conn(|conn| find_or_create_conn(conn, name, color))
     }
 
     /// Same validation as create. A duplicate name bails "label name already exists"; an unknown id bails "label not found".
@@ -194,6 +146,62 @@ impl LabelRepo {
         self.db
             .with_conn(|conn| set_for_meeting_conn(conn, meeting_id, label_ids))
     }
+}
+
+/// Shared by [`LabelRepo::find_or_create`] and `MeetingRepo::import`, which runs it inside its own transaction.
+pub(crate) fn find_or_create_conn(
+    conn: &rusqlite::Connection,
+    name: &str,
+    color: Option<&str>,
+) -> Result<(Label, bool)> {
+    let name = validate_name(name)?;
+    let color = color.map(normalize_color).transpose()?;
+    if let Some(existing) = find_by_name(conn, &name)? {
+        return Ok((existing, false));
+    }
+    // Auto-color: first palette entry no existing label uses, so
+    // adjacent labels stay visually distinct even after the user
+    // recolors one; once every color is taken, cycle by count.
+    let color = match &color {
+        Some(c) => c.clone(),
+        None => {
+            let mut stmt = conn.prepare("SELECT color FROM labels")?;
+            let used: Vec<String> = stmt
+                .query_map([], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            COLORS
+                .iter()
+                .find(|c| !used.iter().any(|u| u == *c))
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| COLORS[used.len() % COLORS.len()].to_string())
+        }
+    };
+    let id = Ulid::new().to_string();
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    // Append at the end of the custom order rather than defaulting
+    // to 0, so a freshly-created label doesn't jump to the front
+    // of a list the user has already hand-ordered.
+    let position: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM labels",
+        [],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "INSERT INTO labels (id, name, color, created_at, position, updated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?4)",
+        params![id, name, color, now_ms, position],
+    )
+    .context("insert label")?;
+    Ok((
+        Label {
+            id,
+            name,
+            color,
+            position,
+            updated_at: now_ms,
+        },
+        true,
+    ))
 }
 
 /// Shared by `LabelRepo::set_for_meeting` and `MeetingRepo::patch` so one place rewrites a meeting's label set.

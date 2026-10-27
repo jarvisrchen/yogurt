@@ -10,6 +10,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 - Audio never leaves the machine unless the user opted into cloud STT (then only audio).
   Notes and transcripts leave only to the LLM provider the user configures and to a Yogurt Cloud the user connects, which is their own Supabase project.
   Captured audio is deleted after transcription.
+  The Granola import sends Granola only the user's API key and read requests, and only after the user saves a key and starts an import.
 - API keys and the Yogurt Cloud connection (the `yogurt-cloud` account, with its refresh token) live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, `FileKeyStore`) - never in SQLite, a response, or a log.
   The Cloud password is used once to sign in and dropped.
 - One process: no subprocesses, no IPC, no sidecars - except the locked-down `yogurt-llm::CliClient`, an LLM provider only when the user opts in via Settings (see [docs/ARCHITECTURE.md §7.6](docs/ARCHITECTURE.md#76-the-cli-provider-exception-llm-4) for the lockdown and the no-fallback rule), and `/usr/bin/open` via the `open` crate, used only to open the browser on start and raise the installed yogurt app on meeting detection and nothing else; do not generalize either into a pattern for other subprocesses without revisiting this constraint.

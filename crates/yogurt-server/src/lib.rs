@@ -4,6 +4,7 @@ pub mod audio;
 mod detect;
 mod dev_proxy;
 pub(crate) mod enhance;
+mod granola_import;
 pub(crate) mod llm_mock;
 pub(crate) mod llm_openai;
 pub(crate) mod markdown_exporter;
@@ -147,6 +148,7 @@ pub async fn run_with_config(cfg: RunConfig) -> Result<()> {
     }
 
     bootstrap::seed_stt_key_from_env(&state);
+    bootstrap::seed_granola_key_from_env(&state);
 
     if let Err(e) = bootstrap::repair_escaped_span_rows(&state) {
         tracing::warn!(error = %e, "escaped-span repair failed; continuing");

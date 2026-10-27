@@ -10,6 +10,7 @@ members = [
     "crates/yogurt-llm",
     "crates/yogurt-db",
     "crates/yogurt-cloud",
+    "crates/yogurt-granola",
 ]
 
 [workspace.package]
