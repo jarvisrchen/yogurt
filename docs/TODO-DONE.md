@@ -1312,3 +1312,7 @@ New closed items go at the bottom.
 - [x] **IMP-2** Import Granola meetings through the public API: V015 source columns, the import job and routes, and `yogurt ctl import granola`
 
   `yogurt ctl import granola` and `/api/import/granola` import every Granola note that has a summary and a transcript through the public API into V015 source columns, newest first, paced at 4 requests a second, resumable, cancellable, and never overwriting a meeting already imported.
+
+- [x] **IMP-4** Show "Imported from Granola" with the capturer and an Open in Granola link on imported meetings, and confirm before Enhance replaces Granola's notes
+
+  An imported meeting shows "Imported from Granola", "Captured by" when someone else captured it, and "Open in Granola" under its title, and Re-enhance asks before replacing the notes imported from Granola.

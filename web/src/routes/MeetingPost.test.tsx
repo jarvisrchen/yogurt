@@ -188,6 +188,71 @@ describe("MeetingPost — live-recording redirect", () => {
     expect(screen.queryByTestId("live-view")).toBeNull();
   });
 
+  describe("imported from Granola", () => {
+    const base = {
+      id: MEETING_ID,
+      title: "Synthetic sync",
+      started_at: 1000,
+      ended_at: 2000,
+      notes_md: "",
+      enriched_md: "## Granola summary",
+      transcript_json: "[]",
+    };
+    const imported = {
+      ...base,
+      source: "granola",
+      source_json: {
+        owner: { name: "Alex Example", email: "a@example.com", is_user: false },
+        web_url: "https://notes.granola.ai/d/example",
+      },
+    };
+    const posts = () =>
+      vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST");
+
+    it("shows the provenance line only for an imported meeting", async () => {
+      mockMeetingFetch(imported);
+      const first = renderPost();
+      expect(await screen.findByTestId("imported-from")).toHaveTextContent(
+        "Captured by Alex Example",
+      );
+      first.unmount();
+
+      mockMeetingFetch(base);
+      renderPost();
+      await screen.findByText("Granola summary");
+      expect(screen.queryByTestId("imported-from")).toBeNull();
+    });
+
+    it("asks before enhancing an imported meeting and Cancel does not enhance", async () => {
+      mockMeetingFetch(imported);
+      renderPost();
+      await screen.findByTestId("imported-from");
+
+      fireEvent.click(screen.getByTestId("re-enhance-button"));
+      expect(screen.getByTestId("re-enhance-confirm")).toHaveTextContent(
+        "This replaces the notes imported from Granola.",
+      );
+      expect(posts()).toHaveLength(0);
+
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByTestId("re-enhance-confirm")).toBeNull();
+      expect(posts()).toHaveLength(0);
+
+      fireEvent.click(screen.getByTestId("re-enhance-button"));
+      fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+      await waitFor(() => expect(posts()).toHaveLength(1));
+    });
+
+    it("enhances a native meeting with no confirmation", async () => {
+      mockMeetingFetch(base);
+      renderPost();
+      await screen.findByText("Granola summary");
+      fireEvent.click(screen.getByTestId("re-enhance-button"));
+      expect(screen.queryByTestId("re-enhance-confirm")).toBeNull();
+      await waitFor(() => expect(posts()).toHaveLength(1));
+    });
+  });
+
   it("keeps raw notes separate and sends only them to Re-enhance", async () => {
     mockMeetingFetch({
       id: MEETING_ID,

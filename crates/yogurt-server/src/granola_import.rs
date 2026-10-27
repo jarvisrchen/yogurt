@@ -754,6 +754,13 @@ mod tests {
             "other@example.com"
         );
         assert_eq!(full.labels[0].name, "Clients");
+        let alpha = page.meetings.iter().find(|m| m.title == "Alpha").unwrap();
+        for (id, is_user) in [(&shared.id, false), (&alpha.id, true)] {
+            let (_, got) = h
+                .call(reqwest::Method::GET, &format!("/api/meetings/{id}"), None)
+                .await;
+            assert_eq!(got["source_json"]["owner"]["is_user"], is_user);
+        }
         assert!(
             !full.enriched_md.unwrap().contains("<script"),
             "summary is sanitized"

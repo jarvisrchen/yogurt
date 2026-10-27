@@ -225,11 +225,35 @@ async fn get_one(
     Path(id): Path<String>,
 ) -> Result<Json<Meeting>, ApiError> {
     let repo = s.meeting_repo.clone();
-    let opt = tokio::task::spawn_blocking(move || repo.get(&id))
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
-        .map_err(ApiError::from)?;
-    opt.map(Json).ok_or(ApiError::NotFound)
+    let (opt, me) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let m = repo.get(&id)?;
+        let me = match m.as_ref().and_then(|m| m.source.as_deref()) {
+            Some(src) => repo.most_common_source_owner(src)?,
+            None => None,
+        };
+        Ok((m, me))
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
+    let mut m = opt.ok_or(ApiError::NotFound)?;
+    mark_owner_is_user(&mut m, me.as_deref());
+    Ok(Json(m))
+}
+
+/// Adds `owner.is_user` to an imported meeting's `source_json`, decided like the import preview's
+/// "captured by someone else": the owner of most imports stands in for the user.
+fn mark_owner_is_user(m: &mut Meeting, me: Option<&str>) {
+    let Some(owner) = m
+        .source_json
+        .as_mut()
+        .and_then(|j| j.get_mut("owner"))
+        .and_then(|o| o.as_object_mut())
+    else {
+        return;
+    };
+    let is_user = me.is_some() && owner.get("email").and_then(|e| e.as_str()) == me;
+    owner.insert("is_user".into(), is_user.into());
 }
 
 async fn patch_one(
