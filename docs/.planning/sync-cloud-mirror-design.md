@@ -20,7 +20,8 @@ No central yogurt server or database exists.
 - Every push is kept. The cloud is an append-only history, so any earlier push can be viewed again, and a client cannot change what a push older than one hour shows.
 - Every meeting is pushed. There is no per-meeting exclusion.
 - One owner per Yogurt Cloud. The schema keys every row by `user_id`, so a hosted multi-user cloud stays possible later.
-- Out of scope: editing in the webapp, LLM chat in the webapp, recording in the webapp, sharing between people, conflict resolution, restoring from the cloud back onto a laptop.
+- Out of scope: editing in the webapp, recording in the webapp, sharing between people, conflict resolution, restoring from the cloud back onto a laptop.
+- LLM chat in the webapp is designed separately in [cloud-chat-design.md](cloud-chat-design.md).
 
 ## The cast
 
@@ -487,7 +488,6 @@ Vercel's Hobby plan allows 100 deployments a day and 100 builds an hour, and can
 Later and unplanned: a hosted Yogurt Cloud, so other people could sign up at one URL without deploying their own.
 That drops the single-owner check in favor of `user_id` isolation alone, which every table already has.
 Holding other people's meetings readable is a different promise than holding your own, so that step reopens the encryption question.
-LLM features over the cloud are also unplanned, and a Vercel function is the likely route.
 
 ## Decisions
 
