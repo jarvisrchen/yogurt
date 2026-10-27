@@ -1347,4 +1347,4 @@ New closed items go at the bottom.
 
 - [x] **DX-20** Fast-forward the main checkout at the end of `just land`, skipping it when the checkout is off `main` or a local edit is in the way
 
-  Ran `scripts/tests/ship_test.sh`: 54 passed, and the two new checks fail without the change.
+  Ran `scripts/tests/ship_test.sh`: 56 passed, and three of the new checks fail against the old `ship.sh`.
