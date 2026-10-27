@@ -39,6 +39,15 @@ pub struct Meeting {
     /// `yogurt_prompts::TEMPLATE_IDS` such as "standup". `None` until the
     /// meeting has been enhanced with a template-aware build.
     pub template: Option<String>,
+    /// Where the meeting came from, such as "granola". `None` for a meeting recorded in yogurt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The source's own id for the meeting. Unique together with `source`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    /// Display-only provenance: `{"owner":{"name","email"},"web_url","updated_at","imported_at"}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_json: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     /// Updated on every `patch` so the Library can re-sort on edit.
     pub updated_at: DateTime<Utc>,
@@ -60,6 +69,11 @@ pub struct MeetingSummary {
     /// `enriched_md` is set. The card flags an ended meeting that has none.
     pub has_enriched: bool,
     pub labels: Vec<Label>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Who captured an imported meeting: the owner's name, or their email when Granola has no name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_owner: Option<String>,
 }
 
 /// One page of a listing. `total` counts every match before `limit` and `offset`.
@@ -94,6 +108,24 @@ pub struct NewMeeting {
     /// The Library REST handler passes `Uuid::now_v7().to_string()` so the UUID-typed streaming routes (`/api/meetings/:id/start` etc.) use the same id.
     #[serde(default)]
     pub id: Option<String>,
+}
+
+/// A finished meeting from an outside source, written whole by [`MeetingRepo::import`].
+#[derive(Debug, Clone)]
+pub struct ImportedMeeting {
+    pub id: String,
+    pub title: String,
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub notes_md: String,
+    pub enriched_md: Option<String>,
+    pub transcript_json: String,
+    pub source: String,
+    pub source_id: String,
+    /// A JSON object. `import` adds `imported_at` to it.
+    pub source_json: serde_json::Value,
+    /// Label names, each found or created.
+    pub labels: Vec<String>,
 }
 
 /// Patch payload for [`MeetingRepo::patch`]. Every field is `Option` because a PATCH only carries the values to change.
@@ -173,6 +205,73 @@ impl MeetingRepo {
         // Reload to build the wire shape and confirm the row landed.
         self.get(&id)?
             .ok_or_else(|| anyhow::anyhow!("create: row vanished after insert"))
+    }
+
+    /// Writes the row, its bodies, and its labels in one transaction, so the FTS trigger runs once.
+    /// `Ok(None)` when `(source, source_id)` is already present: an existing meeting is never overwritten.
+    pub fn import(&self, m: ImportedMeeting) -> Result<Option<Meeting>> {
+        let now = chrono::Utc::now();
+        let now_ms = now.timestamp_millis();
+        let mut source_json = m.source_json;
+        if let Some(o) = source_json.as_object_mut() {
+            o.insert("imported_at".into(), now.to_rfc3339().into());
+        }
+        let inserted = self.db.with_conn(|conn| -> Result<bool> {
+            let tx = conn.unchecked_transaction().context("begin import tx")?;
+            let n = tx
+                .execute(
+                    r#"INSERT INTO meetings
+                           (id, title, started_at, ended_at, notes_md, enriched_md, transcript_json,
+                            starred, created_at, updated_at, source, source_id, source_json)
+                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8, ?9, ?10, ?11)
+                       ON CONFLICT(source, source_id) WHERE source IS NOT NULL DO NOTHING"#,
+                    params![
+                        m.id,
+                        m.title,
+                        m.started_at,
+                        m.ended_at,
+                        m.notes_md,
+                        m.enriched_md,
+                        m.transcript_json,
+                        now_ms,
+                        m.source,
+                        m.source_id,
+                        source_json.to_string()
+                    ],
+                )
+                .context("insert imported meeting")?;
+            if n == 0 {
+                return Ok(false);
+            }
+            for name in &m.labels {
+                let (label, _) = labels::find_or_create_conn(&tx, name, None)?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO meeting_labels (meeting_id, label_id) VALUES (?1, ?2)",
+                    params![m.id, label.id],
+                )?;
+                tx.execute(
+                    "UPDATE labels SET updated_at = ?1 WHERE id = ?2",
+                    params![now_ms, label.id],
+                )?;
+            }
+            tx.commit().context("commit import")?;
+            Ok(true)
+        })?;
+        if inserted {
+            self.get(&m.id)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// The `source_id` of every meeting already imported from `source`.
+    pub fn imported_source_ids(&self, source: &str) -> Result<std::collections::HashSet<String>> {
+        self.db.with_conn(|conn| -> Result<_> {
+            let mut stmt =
+                conn.prepare_cached("SELECT source_id FROM meetings WHERE source = ?1")?;
+            let rows = stmt.query_map([source], |r| r.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
     }
 
     /// `Ok(None)` for a missing row; the REST handler maps it to 404.
@@ -410,7 +509,7 @@ impl MeetingRepo {
                 let mut stmt = conn.prepare_cached(
                     "SELECT id, title, started_at, ended_at, notes_md, enriched_md, \
                             transcript_json, starred, created_at, updated_at, \
-                            stt_engine, llm_model, template \
+                            stt_engine, llm_model, template, source, source_id, source_json \
                      FROM meetings WHERE started_at >= ?1 AND started_at < ?2 \
                      ORDER BY started_at DESC LIMIT ?3",
                 )?;
@@ -425,6 +524,7 @@ impl MeetingRepo {
                     "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
                             m.enriched_md, m.transcript_json, m.starred, \
                             m.created_at, m.updated_at, m.stt_engine, m.llm_model, m.template, \
+                            m.source, m.source_id, m.source_json, \
                             snippet(meetings_fts, 3, '', '', ' … ', 64) \
                      FROM meetings m \
                      JOIN meetings_fts f ON f.rowid = m.rowid \
@@ -435,7 +535,7 @@ impl MeetingRepo {
                 let rows = stmt.query_map(params![match_expr, start, end, limit as i64], |r| {
                     Ok(RetrievalHit {
                         meeting: row_to_meeting(r)?,
-                        excerpt: r.get(13)?,
+                        excerpt: r.get(16)?,
                     })
                 })?;
                 for r in rows {
@@ -530,7 +630,7 @@ fn strip_nul(v: serde_json::Value) -> serde_json::Value {
 
 const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
     notes_md, enriched_md, transcript_json, starred, created_at, updated_at, \
-    stt_engine, llm_model, template FROM meetings WHERE id = ?1";
+    stt_engine, llm_model, template, source, source_id, source_json FROM meetings WHERE id = ?1";
 
 /// Coerces SQL NULL on `notes_md` / `transcript_json` to `""` / `"[]"` because legacy rows may have NULLs there.
 fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
@@ -547,6 +647,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     let stt_engine: Option<String> = r.get(10)?;
     let llm_model: Option<String> = r.get(11)?;
     let template: Option<String> = r.get(12)?;
+    let source_json: Option<String> = r.get(15)?;
     Ok(Meeting {
         id,
         title: title.unwrap_or_default(),
@@ -559,6 +660,9 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
         stt_engine,
         llm_model,
         template,
+        source: r.get(13)?,
+        source_id: r.get(14)?,
+        source_json: source_json.and_then(|j| serde_json::from_str(&j).ok()),
         created_at: ms_to_dt(created_at_ms),
         updated_at: ms_to_dt(updated_at_ms),
         labels: Vec::new(),
@@ -638,7 +742,8 @@ fn query_page(
     named.push((":offset", &offset));
     let mut stmt = conn.prepare(&format!(
         "SELECT m.id, m.title, m.started_at, m.ended_at, m.starred, m.stt_engine, m.llm_model, \
-                m.enriched_md IS NOT NULL \
+                m.enriched_md IS NOT NULL, m.source, \
+                COALESCE(json_extract(m.source_json, '$.owner.name'), json_extract(m.source_json, '$.owner.email')) \
          FROM {from_where} ORDER BY {order_by} LIMIT :limit OFFSET :offset"
     ))?;
     let mut meetings = stmt
@@ -653,6 +758,8 @@ fn query_page(
                 llm_model: r.get(6)?,
                 has_enriched: r.get(7)?,
                 labels: Vec::new(),
+                source: r.get(8)?,
+                source_owner: r.get(9)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1209,6 +1316,104 @@ mod tests {
         assert_eq!(parse_short_date("13/1/26"), None);
         assert_eq!(parse_short_date("10/6"), None);
     }
+    fn imported(source_id: &str, title: &str) -> ImportedMeeting {
+        ImportedMeeting {
+            id: format!("id-{source_id}"),
+            title: title.into(),
+            started_at: 1_000,
+            ended_at: 5_000,
+            notes_md: "typed".into(),
+            enriched_md: Some("### Summary\n\n- zebrafish budget".into()),
+            transcript_json: r#"[{"ts_ms":0,"channel":"them","text":"quokka remarks"}]"#.into(),
+            source: "granola".into(),
+            source_id: source_id.into(),
+            source_json: serde_json::json!({ "owner": { "name": "Pat", "email": "p@example.com" } }),
+            labels: vec!["Clients".into(), "clients".into(), "Q4".into()],
+        }
+    }
+
+    #[test]
+    fn import_writes_everything_once_and_is_searchable() {
+        let repo = fresh_repo();
+        let m = repo
+            .import(imported("not_1", "Synthetic"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (m.source.as_deref(), m.source_id.as_deref()),
+            (Some("granola"), Some("not_1"))
+        );
+        assert_eq!(m.ended_at, Some(5_000));
+        assert_eq!(m.stt_engine, None);
+        assert_eq!(m.llm_model, None);
+        assert_eq!(m.template, None);
+        let json = m.source_json.as_ref().unwrap();
+        assert_eq!(json["owner"]["email"], "p@example.com");
+        assert!(json["imported_at"].is_string());
+        let names: Vec<_> = m.labels.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["Clients", "Q4"]);
+
+        for q in ["quokka", "zebrafish", "typed"] {
+            assert_eq!(search(&repo, q, 10).unwrap().len(), 1, "{q}");
+        }
+        let summary = &list(&repo)[0];
+        assert_eq!(summary.source.as_deref(), Some("granola"));
+        assert_eq!(summary.source_owner.as_deref(), Some("Pat"));
+
+        assert_eq!(
+            repo.imported_source_ids("granola").unwrap(),
+            ["not_1".to_string()].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn import_never_overwrites_an_existing_meeting() {
+        let repo = fresh_repo();
+        let first = repo.import(imported("not_1", "Original")).unwrap().unwrap();
+        repo.patch(
+            &first.id,
+            MeetingPatch {
+                title: Some("Edited".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut again = imported("not_1", "Granola changed it");
+        again.id = "another-id".into();
+        assert!(repo.import(again).unwrap().is_none());
+        assert_eq!(list(&repo).len(), 1);
+        assert_eq!(repo.get(&first.id).unwrap().unwrap().title, "Edited");
+        assert!(repo.get("another-id").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_failed_import_rolls_back_the_row() {
+        let repo = fresh_repo();
+        let mut bad = imported("not_1", "Half written");
+        bad.labels = vec!["x".repeat(41)];
+        assert!(repo.import(bad).is_err());
+        assert!(list(&repo).is_empty());
+        assert!(repo.imported_source_ids("granola").unwrap().is_empty());
+    }
+
+    #[test]
+    fn meetings_recorded_here_keep_their_bundle_without_source_fields() {
+        let repo = fresh_repo();
+        let m = repo
+            .create(NewMeeting {
+                title: "Native".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let v = serde_json::to_value(&m).unwrap();
+        for k in ["source", "source_id", "source_json"] {
+            assert!(
+                v.get(k).is_none(),
+                "{k} must not change a native meeting's hash"
+            );
+        }
+    }
+
     #[test]
     fn bundle_serialization_is_pinned() {
         use crate::chat::{ChatMessage, Role};
@@ -1225,6 +1430,9 @@ mod tests {
             stt_engine: Some("local".into()),
             llm_model: None,
             template: None,
+            source: None,
+            source_id: None,
+            source_json: None,
             created_at: at(1000),
             updated_at: at(9999),
             labels: vec![Label {

@@ -14,8 +14,8 @@ pub mod settings;
 
 pub use labels::{Label, LabelRepo, LabelWithCount};
 pub use meetings::{
-    Meeting, MeetingFilter, MeetingPage, MeetingPatch, MeetingRepo, MeetingSummary, NewMeeting,
-    RetrievalHit,
+    ImportedMeeting, Meeting, MeetingFilter, MeetingPage, MeetingPatch, MeetingRepo,
+    MeetingSummary, NewMeeting, RetrievalHit,
 };
 
 use anyhow::Result;

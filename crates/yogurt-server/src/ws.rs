@@ -49,6 +49,28 @@ pub enum WsEvent {
     SttModelDownloadCancelled {
         model: String,
     },
+    /// Granola import frames, also on the app-wide stream. Progress is sent at most once a second.
+    ImportProgress {
+        done: usize,
+        total: usize,
+        imported: usize,
+        skipped: usize,
+        failed: usize,
+    },
+    ImportComplete {
+        imported: usize,
+        skipped: usize,
+        failed: usize,
+        failed_titles: Vec<String>,
+    },
+    ImportError {
+        error: String,
+    },
+    ImportCancelled {
+        imported: usize,
+        skipped: usize,
+        failed: usize,
+    },
 }
 
 /// Meeting-independent sibling of the per-meeting `events_tx`, surfaced on the global `/ws`.
@@ -70,6 +92,12 @@ pub fn send_stt_model_download_progress(
         bytes_per_sec,
         eta_seconds,
     };
+    if let Ok(value) = serde_json::to_value(&ev) {
+        let _ = tx.send(value);
+    }
+}
+
+pub fn send_event(tx: &AppEventTx, ev: WsEvent) {
     if let Ok(value) = serde_json::to_value(&ev) {
         let _ = tx.send(value);
     }
@@ -448,6 +476,41 @@ mod tests {
         let json = serde_json::to_value(&ev).unwrap();
         assert_eq!(json["type"], "stt_model_download_complete");
         assert_eq!(json["model"], "small.en");
+    }
+
+    #[test]
+    fn import_frames_serialize_with_tags() {
+        let json = |ev: WsEvent| serde_json::to_value(&ev).unwrap();
+        let p = json(WsEvent::ImportProgress {
+            done: 5,
+            total: 9,
+            imported: 3,
+            skipped: 1,
+            failed: 1,
+        });
+        assert_eq!(p["type"], "import_progress");
+        assert_eq!(
+            (p["done"].as_u64(), p["total"].as_u64()),
+            (Some(5), Some(9))
+        );
+        let c = json(WsEvent::ImportComplete {
+            imported: 3,
+            skipped: 1,
+            failed: 1,
+            failed_titles: vec!["Weekly".into()],
+        });
+        assert_eq!(c["type"], "import_complete");
+        assert_eq!(c["failed_titles"][0], "Weekly");
+        assert_eq!(
+            json(WsEvent::ImportError { error: "x".into() })["type"],
+            "import_error"
+        );
+        let x = json(WsEvent::ImportCancelled {
+            imported: 1,
+            skipped: 0,
+            failed: 0,
+        });
+        assert_eq!(x["type"], "import_cancelled");
     }
 
     #[test]

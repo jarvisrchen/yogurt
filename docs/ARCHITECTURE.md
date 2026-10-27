@@ -96,6 +96,7 @@ graph TB
         DG["Deepgram streaming WS"]
         PROV["LLM provider<br/>OpenAI / Ollama / LM Studio / OpenRouter / ..."]
         YC["Yogurt Cloud<br/>the user's own Supabase project"]
+        GR["Granola public API<br/>read-only import"]
     end
 
     KC["~/.yogurt/keys.json<br/>mode 0600"]
@@ -116,6 +117,7 @@ graph TB
     ENH --> NOTES
     CHAT --> LLM
     LLM -.-> PROV
+    REST -.->|"import job, user-started"| GR
     ENH --> DB
     CHAT --> DB
     REG --> DB
@@ -137,6 +139,7 @@ Crate responsibilities, one line each:
 | `yogurt-prompts` | Embedded prompt templates and their render context, including the seven enhance note formats (LLM-9). |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming, and the local agent-CLI provider adapter (§7.6). |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
+| `yogurt-granola` | Granola public REST API client (paging, rate limit, retries, the 413 transcript fallback) and the pure mapping from a Granola note to a meeting. |
 
 ### The one format contract that everything downstream depends on
 
@@ -634,6 +637,7 @@ Notes on the storage layout, since it surprises people reading the code:
 - **The key file is read at boot and held in memory.** `FileKeyStore::open` (`yogurt-db/src/keys.rs`) parses `keys.json` at boot into a map behind an `RwLock`; every `get` is a map lookup, so key reads happen inline in request handlers with no `spawn_blocking` and no timeouts. Every `set`/`delete` re-reads the file, applies its one change, and rewrites the whole file through a same-directory temp file with mode 0600 and an atomic rename, so a crash mid-write can never truncate it and a second process sharing the file keeps its entries. The in-memory map is updated only after the write lands. The file is created on the first write, not at boot.
 - **Tests never touch the real key file.** `YOGURT_MEMORY_KEYSTORE=1` (set by `just test` and CI) makes `AppState::production` use `MemoryKeyStore` instead; everything else behind the `ApiKeyStore` trait is identical.
 - **`keys.json` also holds the Yogurt Cloud connection** as one `yogurt-cloud` account, and `meetings.cloud_hash` (V014) is the only cloud column in SQLite.
+- **`keys.json` also holds the Granola import key** as one `import-granola` account. The import job in `yogurt-server` is the only code that talks to Granola. It sends the key and read requests, only after the user saves a key and starts an import, and writes each note with `MeetingRepo::import` (V015 adds `meetings.source`, `source_id`, and `source_json`). A meeting is imported once, and a later run skips it.
 - **Markdown files are an export, not the source of truth.** SQLite is authoritative; the `.md` file exists so the user's notes are portable and greppable outside the app.
 
 ---
@@ -649,6 +653,7 @@ graph LR
         AU["audio -> Deepgram (cloud STT)"]
         TR["notes + transcript -> the configured LLM provider (enhance, chat)"]
         CL["notes + transcript + chat -> the user's own Yogurt Cloud (push)"]
+        GRN["API key + read requests only -> Granola (import)"]
     end
     subgraph Never["Never sent anywhere"]
         TEL["telemetry (none, not even opt-in)"]
@@ -662,7 +667,7 @@ Enforcement points, all in `routes.rs` unless noted:
 |---|---|
 | `/api/health` | none |
 | `/api/session-token` | Origin allowlist only (it hands out the token) |
-| `/api/meetings*`, `/api/audio/*`, `/api/settings*`, `/api/stt/*`, `/api/cloud*` | `require_session_token` middleware |
+| `/api/meetings*`, `/api/audio/*`, `/api/settings*`, `/api/stt/*`, `/api/cloud*`, `/api/import/*` | `require_session_token` middleware |
 | `/ws`, `/ws/meetings/{id}` | Origin allowlist + `?token=` (`ws.rs::enforce_ws_auth`) |
 | unknown `/api/*` | explicit 404, never falls through to the SPA |
 | everything else | embedded assets with SPA fallback, or Vite proxy in `--dev` |

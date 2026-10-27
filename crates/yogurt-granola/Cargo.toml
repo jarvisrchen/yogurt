@@ -1,0 +1,21 @@
+[package]
+name = "yogurt-granola"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+yogurt-db = { path = "../yogurt-db" }
+
+[dev-dependencies]
+wiremock = { workspace = true }

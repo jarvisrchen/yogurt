@@ -41,6 +41,8 @@ pub struct AppState {
     /// Serializes everything that uses the Yogurt Cloud refresh token: connect, push, disconnect.
     /// Supabase rotates the token on every use, so two overlapping refreshes would kill the connection.
     pub cloud_lock: Arc<tokio::sync::Mutex<()>>,
+    /// The Granola import job and its last result.
+    pub import: Arc<crate::granola_import::ImportJob>,
 }
 
 impl AppState {
@@ -148,6 +150,7 @@ impl AppState {
             app_events_tx,
             detect: Default::default(),
             cloud_lock: Default::default(),
+            import: Default::default(),
         })
     }
 
@@ -186,6 +189,7 @@ impl AppState {
             app_events_tx,
             detect: Default::default(),
             cloud_lock: Default::default(),
+            import: Default::default(),
         })
     }
 }

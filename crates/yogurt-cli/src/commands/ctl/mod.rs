@@ -4,6 +4,7 @@
 mod client;
 mod cloud;
 mod detect_cmd;
+mod import;
 mod meeting;
 mod models;
 mod provider;
@@ -64,6 +65,11 @@ pub enum CtlCmd {
         #[command(subcommand)]
         cmd: cloud::CloudCmd,
     },
+    /// Import meetings from another app. Today that is Granola.
+    Import {
+        #[command(subcommand)]
+        cmd: import::ImportCmd,
+    },
     /// Subscribe to the server websocket, printing one JSON frame per line.
     Ws {
         /// Meeting id, url, or `last` -- scopes to that meeting's transcript
@@ -92,6 +98,7 @@ pub async fn run(args: CtlArgs) -> i32 {
         CtlCmd::Provider { cmd } => provider::run(cmd, port, json_out).await,
         CtlCmd::Models { cmd } => models::run(cmd, port, json_out).await,
         CtlCmd::Cloud { cmd } => cloud::run(cmd, port, json_out).await,
+        CtlCmd::Import { cmd } => import::run(cmd, port, json_out).await,
         CtlCmd::Ws {
             meeting,
             types,

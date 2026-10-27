@@ -978,6 +978,8 @@ mod tests {
                 llm_model: None,
                 has_enriched: false,
                 labels: vec![],
+                source: None,
+                source_owner: None,
             })
             .collect();
         yogurt_db::MeetingPage {

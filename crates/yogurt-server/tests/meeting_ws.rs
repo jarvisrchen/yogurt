@@ -43,6 +43,7 @@ fn build_test_state(bind_port: u16) -> (AppState, String, tempfile::TempDir) {
         app_events_tx: tokio::sync::broadcast::channel(64).0,
         detect: Default::default(),
         cloud_lock: Default::default(),
+        import: Default::default(),
     };
     (state, token_str, tmp)
 }

@@ -47,7 +47,28 @@ const ENV_PRESETS: &[(&str, &str, &str, &str)] = &[
 
 /// Exposed so `tests/bootstrap.rs` can clear every preset var rather than hand-list them.
 pub fn env_key_vars() -> impl Iterator<Item = &'static str> {
-    ENV_PRESETS.iter().map(|&(var, ..)| var)
+    ENV_PRESETS
+        .iter()
+        .map(|&(var, ..)| var)
+        .chain([GRANOLA_ENV])
+}
+
+const GRANOLA_ENV: &str = "YOGURT_GRANOLA_API_KEY";
+/// The `keys.json` account for the Granola import key.
+pub(crate) const GRANOLA_ACCOUNT: &str = "import-granola";
+
+/// Seeds the Granola import key from `YOGURT_GRANOLA_API_KEY`. Like the Deepgram seed, it never overwrites a stored key.
+pub fn seed_granola_key_from_env(state: &AppState) {
+    let Ok(key) = std::env::var(GRANOLA_ENV) else {
+        return;
+    };
+    if key.trim().is_empty() || state.keys.get(GRANOLA_ACCOUNT).ok().flatten().is_some() {
+        return;
+    }
+    match state.keys.set(GRANOLA_ACCOUNT, key.trim()) {
+        Ok(()) => tracing::info!("seeded Granola import key from env"),
+        Err(e) => tracing::warn!(error = %e, "failed to seed Granola import key"),
+    }
 }
 
 #[derive(Debug, Default)]
@@ -222,6 +243,29 @@ mod tests {
         let state = AppState::in_memory(Mode::Release, storage, session, 7878, notes_dir)
             .expect("in_memory");
         (state, tmp)
+    }
+
+    #[tokio::test]
+    async fn seed_granola_key_from_env_seeds_and_never_overwrites() {
+        // SAFETY: no other unit test in this binary touches YOGURT_GRANOLA_API_KEY.
+        unsafe {
+            std::env::set_var(GRANOLA_ENV, " grn_from_env ");
+        }
+        let (state, _tmp) = test_state();
+        seed_granola_key_from_env(&state);
+        assert_eq!(
+            state.keys.get(GRANOLA_ACCOUNT).unwrap().as_deref(),
+            Some("grn_from_env")
+        );
+        state.keys.set(GRANOLA_ACCOUNT, "user_entered").unwrap();
+        seed_granola_key_from_env(&state);
+        assert_eq!(
+            state.keys.get(GRANOLA_ACCOUNT).unwrap().as_deref(),
+            Some("user_entered")
+        );
+        unsafe {
+            std::env::remove_var(GRANOLA_ENV);
+        }
     }
 
     #[tokio::test]
