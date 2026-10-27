@@ -510,16 +510,17 @@ async fn run_pass(
                 .map_err(|e| format!("{e:#}"))
         },
     )
-    .await?;
-    // The deletion markers went out with this pass.
-    let repo = state.meeting_repo.clone();
-    blocking(move || repo.clear_cloud_tombstones()).await?;
-    // A lagging index only delays search, so its failure never fails the pass.
+    .await;
+    // A failed pass may have committed its earlier batches, so the index catches up either way. A lagging index only delays search, so its failure never fails the pass.
     match push::catch_up_search(project, session).await {
         Ok(0) => {}
         Ok(left) => tracing::info!(left, "search index still catching up"),
         Err(e) => tracing::warn!(code = e.code(), error = %e, "search index catch-up failed"),
     }
+    let plan = plan?;
+    // The deletion markers went out with this pass.
+    let repo = state.meeting_repo.clone();
+    blocking(move || repo.clear_cloud_tombstones()).await?;
     Ok(plan)
 }
 
@@ -892,8 +893,8 @@ mod tests {
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
     }
 
-    /// A mock Supabase that takes one push, and `state` connected to it. Search catch-up is left for each test to mount.
-    async fn mock_cloud(state: &AppState) -> wiremock::MockServer {
+    /// A mock Supabase that answers a push's insert with `insert_status`, and `state` connected to it. Search catch-up is left for each test to mount.
+    async fn mock_cloud(state: &AppState, insert_status: u16) -> wiremock::MockServer {
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
         let cloud = MockServer::start().await;
@@ -910,7 +911,7 @@ mod tests {
         answer("/rest/v1/rpc/yogurt_start_push", 200, json!(7))
             .mount(&cloud)
             .await;
-        answer("/rest/v1/yogurt_versions", 201, Value::Null)
+        answer("/rest/v1/yogurt_versions", insert_status, Value::Null)
             .mount(&cloud)
             .await;
         let mut conn = load(state).unwrap().unwrap();
@@ -929,7 +930,7 @@ mod tests {
     #[tokio::test]
     async fn a_failed_search_catch_up_leaves_the_push_successful() {
         let (state, _tmp) = state();
-        let cloud = mock_cloud(&state).await;
+        let cloud = mock_cloud(&state, 201).await;
         catch_up(500, json!({ "message": "boom" }))
             .expect(1)
             .mount(&cloud)
@@ -942,9 +943,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_failed_push_still_catches_search_up() {
+        let (state, _tmp) = state();
+        let cloud = mock_cloud(&state, 500).await;
+        catch_up(200, json!(0)).expect(1).mount(&cloud).await;
+        assert!(push_now(State(state.clone())).await.is_err());
+    }
+
+    #[tokio::test]
     async fn a_pass_with_nothing_to_push_still_catches_search_up_until_none_is_left() {
         let (state, _tmp) = idle_state();
-        let cloud = mock_cloud(&state).await;
+        let cloud = mock_cloud(&state, 201).await;
         catch_up(200, json!(4))
             .up_to_n_times(2)
             .expect(2)

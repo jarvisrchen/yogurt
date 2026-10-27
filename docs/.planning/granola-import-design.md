@@ -426,7 +426,7 @@ SYNC-12 gives the webapp the IMP-1 treatment:
 - `yogurt_library` returns summary fields only (title, times, labels, starred, device, push), with `limit`, `offset`, and a total, ordered newest first.
 - A new `yogurt_meeting(token, device_id, meeting_id, at_push)` returns one full body for the meeting page.
 - The webapp Library gets the same pager and page sizes as the local one.
-- Search is already server-side. SYNC-10 adds `yogurt_search(token, query, at_push)`, a Postgres full-text search over the latest version of each meeting that returns summary rows and a snippet, newest first. Today the webapp opens a hit from the full library rows it already holds. Once the library is paged, SYNC-12 opens a search hit through `yogurt_meeting`, the same way it opens a paged row.
+- Search is already server-side. SYNC-10 adds `yogurt_search(token, query, only_device)`, a Postgres full-text search over the latest version of each meeting that returns summary rows and a snippet, newest first. Today the webapp opens a hit from the full library rows it already holds. Once the library is paged, SYNC-12 opens a search hit through `yogurt_meeting`, the same way it opens a paged row.
 
 ```mermaid
 sequenceDiagram

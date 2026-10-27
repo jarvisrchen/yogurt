@@ -185,7 +185,8 @@ test-cloud-schema:
     psql -d upgrade -v old_defaults=off < tests/supabase_stub.sql
     psql -d upgrade < "$main_schema"
     psql -d upgrade < tests/upgrade_seed.sql
-    psql -d upgrade -c "create extension unaccent schema public"
+    # An unaccent in public, as some projects have, moves to extensions on deploy. Once main has search, it already made one in extensions, so that one moves.
+    psql -d upgrade -c "do \$\$ begin if exists (select from pg_extension where extname = 'unaccent') then alter extension unaccent set schema public; else create extension unaccent schema public; end if; end \$\$"
     deploy upgrade
     deploy upgrade
     psql -d upgrade -v phase=upgrade -v search=true < tests/upgrade_test.sql

@@ -94,7 +94,7 @@ const meeting = (id: string, title: string, start: number, minutes: number, over
 });
 
 export const LATE = { ts_ms: 600_000, text: "Late in the call: sign the vendor contract on Friday." };
-/** The two lines the specs read near the top, then 68 more every 10 seconds, so the transcript runs 12 minutes and needs scrolling. */
+/** The three lines the specs read near the top, then 68 more every 10 seconds, so the transcript runs 12 minutes and needs scrolling. */
 const SEGMENTS = JSON.stringify([
   { ts_ms: 12_000, channel: "them", text: "We should lock the pricing page before the freeze." },
   { ts_ms: 41_000, channel: "me", text: "Agreed. Can you own the migration plan?" },

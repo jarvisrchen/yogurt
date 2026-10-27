@@ -308,7 +308,7 @@ An advisory lock runs one catch-up at a time, so a call that starts after a push
 A row that fails is counted and passed over, so every call makes progress and a stuck row shows up in the count.
 `public.yogurt_search_catch_up(max_ms default 2000)` wraps it for the owner and caps `max_ms` at 3 seconds, so a call stays well under the statement timeout even after waiting for another catch-up.
 
-After a pass commits all its batches, the laptop calls `yogurt_search_catch_up` while it returns more than 0, at most 10 times.
+After every pass, including one that failed after some of its batches committed, the laptop calls `yogurt_search_catch_up` while it returns more than 0, at most 10 times.
 A pass with nothing to push still calls it once, which costs one scan of the latest versions, so a push heals an index a deploy left behind.
 The timer's idle wake makes no network call, so it does not call it.
 A failure there is logged as a warning and never changes the push result or its error state.
@@ -323,12 +323,12 @@ Measured in postgres:16 under Docker on an M3 Max, with 1,500 meetings of 600 tr
 
 | What | Time or size |
 | --- | --- |
-| Indexing all 1,500 from empty | 12.3 s over 7 calls |
-| A catch-up with nothing to do | 3 ms |
-| A push of 100 edited meetings, then its catch-up | 89 ms, then 0.8 s in one call |
-| Rebuilding every row after a signature change | 12.6 s over 7 calls |
-| Searching a word every meeting has | 136 ms |
-| Searching a word some meetings have | 66 ms |
+| Indexing all 1,500 from empty | 13.1 s over 7 calls |
+| A catch-up with nothing to do | 2 ms |
+| A push of 100 edited meetings, then its catch-up | 105 ms, then 0.9 s in one call |
+| Rebuilding every row after a signature change | 13.5 s over 7 calls |
+| Searching a word every meeting has | 127 ms |
+| Searching a word some meetings have | 63 ms |
 | Index table, against 13 MB of versions | 44 MB: 28 MB of tsvector, 15 MB of GIN, 7 MB of compressed text |
 
 The worst case puts a unique hash in every segment.
@@ -345,14 +345,17 @@ It decodes `&amp; &lt; &gt; &nbsp; &quot; &#39;` and leaves text such as `latenc
 The text search parser takes quadratic time on a long run joined by `_` or `-` with no spaces (a 60 KB run took 7 to 13 seconds), so the step puts a space after every 100 characters of a run without one.
 It keeps the first 400,000 bytes, about the first 400,000 characters of English text, so a word only in the tail of a very long meeting is not found.
 The parser keeps the punctuation that ends a URL, as in `example.com/a-b,`, so the tsvector and the query drop `. , ; : ! ? ) ] '` at the end of a word before parsing.
+The configuration does not index the parser's tag tokens, so both also read `<` and `>` as spaces, and `<runbook>` or `List<Order>` matches by its words.
+Text dense with URLs or hosts can pass the 1 MB tsvector limit, and such a meeting indexes its title alone instead of failing every catch-up.
 Besides its words, the tsvector holds the pieces of each word joined by `@`, `.`, or `/`, so `acme` finds `jane@acme.com` and `docs.acme.com/q4`, while the whole email, host, URL, or file name still matches as typed.
 
 `yogurt_search` folds curly quotes to straight ones, and turns a dash with a space or the edge on both sides (a spaced hyphen or a pasted bullet) and an en or em dash into a space.
 It strips `https://` and `http://` and parses the whole input once with `websearch_to_tsquery`.
 Quotes, `or`, and a leading minus work, and a query with no word outside an exclusion returns nothing.
 The last lexeme matches as a prefix, so a half-typed word finds its meeting.
-A hyphen in the last word splits it into parts only when a letter follows, so `follow-u` matches by its parts while `ABC-123`, `2024-01-15`, and `555-0100` match as typed.
-The split skips a last word that is excluded or holds `@`, `.`, or `/`, so `-follow-up`, `jane-doe@example.com`, `my-company.com`, and `q4-report.pdf` stay whole.
+A last word with a hyphen before a letter becomes a phrase of its parts, so `follow-u` finds `follow-up` and `follow up` but not `follow along and update`, while `ABC-123`, `2024-01-15`, and `555-0100` match as typed.
+The phrase skips a last word that is excluded, quoted, or holds `@`, `.`, or `/`, so `-follow-up`, `jane-doe@example.com`, `my-company.com`, and `q4-report.pdf` stay whole.
+A meeting whose latest version is a deletion is left out even before catch-up removes its row, since a deletion should take effect at once.
 Rows come newest first with fixed tiebreakers, filtered by device before the cap of 25, and the RPC reads one row past the cap to set `more`.
 A title match returns a null snippet, and any other match returns a `ts_headline` of about 14 words with the matched words wrapped in U+E000 and U+E001.
 Positions in a `tsvector` stop at 16,383, so a quoted phrase matches only in the first part of a very long meeting.

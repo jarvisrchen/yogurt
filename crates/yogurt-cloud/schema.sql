@@ -181,19 +181,28 @@ create table if not exists yogurt_private.yogurt_search_index (
   doc        text   not null default '',  -- notes, enhanced notes, and transcript as plain text, for snippets
   tsv        tsvector,
   sig        text,                        -- the yogurt_search_signature() the row was built with
-  primary key (device_id, meeting_id),
-  -- A purge or an account deletion removes the version, and the cascade removes its text.
-  constraint yogurt_search_index_version foreign key (device_id, meeting_id, push_id) references public.yogurt_versions on delete cascade
+  primary key (device_id, meeting_id)
 );
 create index if not exists yogurt_search_index_tsv on yogurt_private.yogurt_search_index using gin (tsv);
 alter table yogurt_private.yogurt_search_index enable row level security;
+
+-- A purge or an account deletion removes the version, and the cascade removes its text.
+-- Dropping yogurt_versions with cascade, as a reset does, drops the constraint, so a deploy deletes the rows that orphaned and adds it back.
+do $$ begin
+  if not exists (select from pg_catalog.pg_constraint where conname = 'yogurt_search_index_version' and conrelid = 'yogurt_private.yogurt_search_index'::regclass) then
+    delete from yogurt_private.yogurt_search_index i
+    where not exists (select from public.yogurt_versions v where v.device_id = i.device_id and v.meeting_id = i.meeting_id and v.push_id = i.push_id);
+    alter table yogurt_private.yogurt_search_index add constraint yogurt_search_index_version
+      foreign key (device_id, meeting_id, push_id) references public.yogurt_versions on delete cascade;
+  end if;
+end $$;
 
 -- Plain words from markdown or editor HTML, in their original case and accents.
 -- A transcript link's label is dropped whole, other editor tags are dropped alone, and text such as "latency<target" stays.
 -- Markdown markers go only at a line or word boundary, so "2*3" and "api_key" keep their characters.
 -- U+E000 and U+E001 are removed because the search headline uses them as markers.
 -- The text search parser takes quadratic time on a long run without spaces, so a space follows every 100 characters of one.
--- The result is at most 400,000 bytes, so a tsvector built from it stays far below its 1 MB limit.
+-- The result is at most 400,000 bytes.
 create or replace function yogurt_private.yogurt_plain(md text) returns text
 language plpgsql immutable set search_path = '' as $$
 declare
@@ -210,8 +219,9 @@ begin
   t := replace(replace(replace(replace(replace(replace(t, '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&');
   t := regexp_replace(t, '\S{100}', '\& ', 'g');
   t := btrim(regexp_replace(t, '\s+', ' ', 'g'));
+  -- No character is longer than 4 bytes, so each step drops one character for every 4 bytes over and never cuts below the cap by more than 3.
   while octet_length(t) > 400000 loop
-    t := left(t, length(t) * 3 / 4);
+    t := left(t, length(t) - greatest((octet_length(t) - 400000) / 4, 1));
   end loop;
   return t;
 end $$;
@@ -238,6 +248,12 @@ language sql immutable set search_path = '' as $$
   from regexp_matches(t, '(\S*[[:alnum:]][@./][[:alnum:]]\S*)', 'g') as r(m)
 $$;
 
+-- What the parser reads, for the index and the query alike. The parser keeps the punctuation that ends a URL, as in "x.com/a-b,", and reads a run such as "<runbook>" as a tag, which the configuration does not index.
+create or replace function yogurt_private.yogurt_search_words(t text) returns text
+language sql immutable set search_path = '' as $$
+  select regexp_replace(translate(t, '<>', '  '), '[.,;:!?)\]'']+(?=\s|$)', '', 'g')
+$$;
+
 -- A JSON number as milliseconds, or null when it is missing, not a number, or too large for a bigint.
 create or replace function yogurt_private.yogurt_ms(j jsonb) returns bigint
 language sql immutable set search_path = '' as $$
@@ -257,10 +273,15 @@ begin
   exception when others then
     doc := '';
   end;
-  -- The parser keeps the punctuation that ends a URL, as in "x.com/a-b,", so it goes before parsing, here and in yogurt_search.
-  tsv := to_tsvector('yogurt_private.yogurt_ts', regexp_replace(title, '[.,;:!?)\]'']+(?=\s|$)', '', 'g'))
-    || to_tsvector('yogurt_private.yogurt_ts', regexp_replace(doc, '[.,;:!?)\]'']+(?=\s|$)', '', 'g'))
-    || to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_parts(title || ' ' || doc));
+  begin
+    tsv := to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_words(title))
+      || to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_words(doc))
+      || to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_parts(title || ' ' || doc));
+  exception when others then
+    -- Text dense with URLs or hosts can pass the 1 MB tsvector limit, and the meeting still indexes its title.
+    doc := '';
+    tsv := to_tsvector('yogurt_private.yogurt_ts', yogurt_private.yogurt_search_words(title));
+  end;
 end $$;
 
 -- A hash of what decides a row's contents: the unaccent version, the configuration's dictionaries, and the bodies of the functions that build a row.
@@ -272,7 +293,7 @@ language sql stable set search_path = '' as $$
       from pg_catalog.pg_ts_config_map m where m.mapcfg = 'yogurt_private.yogurt_ts'::regconfig),
     (select string_agg(p.proname || E'\n' || p.prosrc, E'\n' order by p.proname) from pg_catalog.pg_proc p
       where p.pronamespace = 'yogurt_private'::regnamespace
-        and p.proname in ('yogurt_plain', 'yogurt_search_doc', 'yogurt_search_parts', 'yogurt_ms', 'yogurt_search_row'))))
+        and p.proname in ('yogurt_plain', 'yogurt_search_doc', 'yogurt_search_words', 'yogurt_search_parts', 'yogurt_ms', 'yogurt_search_row'))))
 $$;
 
 -- Repairs index rows that are missing, outdated, built with another signature, or left behind by a deleted meeting, until about max_ms has passed, and returns how many still need it.
@@ -510,11 +531,13 @@ begin
   -- A dash with space or the edge on both sides, such as a pasted bullet or a spaced hyphen, separates words, and so does an en or em dash anywhere.
   q := regexp_replace(regexp_replace(q, '(^|\s)[-–—]+(?=\s|$)', '\1', 'g'), '[–—]', ' ', 'g');
   -- A pasted URL matches by its host and path.
-  q := regexp_replace(regexp_replace(q, 'https?://', '', 'gi'), '[.,;:!?)\]'']+(?=\s|$)', '', 'g');
-  if q ~ '[^[:space:][:punct:]]$' then
-    -- A half-typed hyphenated word needs its parts. A hyphen before a digit belongs to the token, as in ABC-123, and an excluded word, an email, a host, a URL, or a file name stays whole.
-    if substring(q from '\S+$') !~ '^-|[@./]' then
-      q := regexp_replace(q, '([[:alnum:]])-(?=[[:alpha:]][^[:space:]]*$)', '\1 ', 'g');
+  q := yogurt_private.yogurt_search_words(regexp_replace(q, 'https?://', '', 'gi'));
+  -- An ICU collation leaves $ + < = > ^ ` | ~ out of [:punct:], so they are listed.
+  if q ~ '[^[:space:][:punct:]$+<=>^`|~]$' then
+    -- A half-typed hyphenated word matches as a phrase of its parts, so "follow-u" finds "follow-up" and "follow up" and nothing with the parts apart.
+    -- A hyphen before a digit belongs to the token, as in ABC-123, and an excluded or quoted word, an email, a host, a URL, or a file name stays whole.
+    if substring(q from '\S+$') !~ '^-|[@./"]' and substring(q from '\S+$') ~ '[[:alnum:]]-[[:alpha:]]' then
+      q := regexp_replace(regexp_replace(q, '(\S+)$', '"\1"'), '([[:alnum:]])-(?=[[:alpha:]][^[:space:]]*$)', '\1 ', 'g');
     end if;
     prefix := true;
   end if;
@@ -530,6 +553,9 @@ begin
              row_number() over (order by i.started_at desc, i.meeting_id, i.device_id) as rn
       from yogurt_private.yogurt_search_index i
       where i.user_id = auth.uid() and i.tsv @@ tsq and (only_device is null or i.device_id = only_device)
+        -- A deletion pushed after the index last caught up hides the meeting at once.
+        and (select v.body is not null from public.yogurt_versions v
+             where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
       order by i.started_at desc, i.meeting_id, i.device_id
       limit cap + 1
     )
