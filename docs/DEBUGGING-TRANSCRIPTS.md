@@ -81,7 +81,7 @@ where meetings.id = '<meeting-id>';
 ## Grab the server log
 
 `yogurt start` writes a second copy of its log to `<data dir>/logs/yogurt.log.YYYY-MM-DD`, rotated daily with the newest 14 files kept.
-The data dir is `~/.yogurt`, or `--data-dir` / `$YOGURT_DATA_DIR` when set.
+The data dir is `~/.yogurt`, or `--data-dir` / `$YOGURT_DATA_DIR` when set. It holds the database, `keys.json`, `notes/`, and `session-token`.
 The file holds yogurt's own `info` events and up. It never holds API keys, the session token, transcript text or notes.
 `RUST_LOG` changes the level for the file and stderr alike.
 

@@ -132,3 +132,69 @@ async fn data_dir_flag_relocates_keys_json() {
         "keys.json must NOT exist under the temp HOME's .yogurt when --data-dir is given"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn data_dir_moves_notes_and_token_and_ctl_follows() {
+    let home = tempfile::tempdir().expect("create tempdir for HOME");
+    let data_dir = tempfile::tempdir().expect("create tempdir for YOGURT_DATA_DIR");
+
+    let probe = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+    let port = probe.local_addr().expect("local_addr").port();
+    drop(probe);
+
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yogurt"))
+        .args(["start", "--port", &port.to_string(), "--no-open"])
+        .env("HOME", home.path())
+        .env("YOGURT_DATA_DIR", data_dir.path())
+        .env("YOGURT_MEMORY_KEYSTORE", "1")
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn yogurt start");
+
+    let mut healthy = false;
+    for _ in 0..100 {
+        if let Ok(resp) = reqwest::get(format!("http://127.0.0.1:{port}/api/health")).await {
+            if resp.status().is_success() {
+                healthy = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(healthy, "server on port {port} never reported healthy");
+
+    assert!(data_dir.path().join("session-token").exists());
+    assert!(data_dir.path().join("notes").is_dir());
+
+    // `ctl meeting new` needs the token, which only exists under the data dir.
+    let ctl = |data_dir_env: bool| {
+        let mut cmd = Command::cargo_bin("yogurt").expect("binary exists");
+        cmd.args([
+            "ctl",
+            "--port",
+            &port.to_string(),
+            "meeting",
+            "new",
+            "--json",
+        ])
+        .env("HOME", home.path());
+        if data_dir_env {
+            cmd.env("YOGURT_DATA_DIR", data_dir.path());
+        } else {
+            cmd.env_remove("YOGURT_DATA_DIR");
+        }
+        cmd
+    };
+    ctl(true).assert().success();
+    ctl(false).assert().failure();
+
+    child.kill().await.ok();
+    assert!(
+        !home.path().join(".yogurt").join("session-token").exists(),
+        "session-token must NOT land under HOME when YOGURT_DATA_DIR is set"
+    );
+    assert!(
+        !home.path().join(".yogurt").join("notes").exists(),
+        "notes must NOT land under HOME when YOGURT_DATA_DIR is set"
+    );
+}

@@ -72,7 +72,7 @@ pub enum Mode {
     Release,
 }
 
-/// Path overrides let tests avoid clobbering the real `~/.yogurt/`.
+/// Path overrides let tests and `$YOGURT_DATA_DIR` avoid clobbering the real `~/.yogurt/`.
 pub struct RunConfig {
     pub addr: SocketAddr,
     pub mode: Mode,

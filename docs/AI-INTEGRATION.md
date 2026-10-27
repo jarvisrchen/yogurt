@@ -9,12 +9,12 @@ The routes are what it wraps, for scripting directly or for what `ctl` doesn't c
 
 ## Auth
 
-Every `/api/*` route except `/api/health` and `/api/session-token` requires a bearer token, on disk at `~/.yogurt/session-token`.
+Every `/api/*` route except `/api/health` and `/api/session-token` requires a bearer token, on disk at `~/.yogurt/session-token` (`$YOGURT_DATA_DIR/session-token` when that variable is set).
 An agent on the same machine can read that file directly - it's already inside the trust boundary the server assumes (see `require_session_token` in `crates/yogurt-server/src/routes.rs`).
 The token is a local secret, equivalent to filesystem access: never send it anywhere but `localhost:7878`, never log it.
 
 ```bash
-TOKEN=$(cat ~/.yogurt/session-token)
+TOKEN=$(cat "${YOGURT_DATA_DIR:-$HOME/.yogurt}/session-token")
 curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOKEN"
 ```
 

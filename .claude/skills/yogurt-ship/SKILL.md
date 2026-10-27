@@ -25,6 +25,7 @@ AGENTS.md owns the lifecycle and its rules; this is the order of operations and 
 5. **Verify end to end.**
    `just dev-bg` in the worktree and drive the real UI.
    To show data without touching `~/.yogurt`, copy the DB into a scratch dir with `sqlite3 ~/.yogurt/db.sqlite ".backup <dir>/db.sqlite"`, copy `keys.json` beside it, and run with `YOGURT_DATA_DIR=<dir>`.
+   The notes folder and session token live in that dir too, and `yogurt ctl` needs the same variable exported.
    For UI work, take Playwright screenshots of the changed surface in light and dark (`colorScheme`) at a real viewport, and look at them.
    Skip `fullPage`, which misplaces the fixed Ask bar.
    Screenshots for the PR show test meetings in a fresh `YOGURT_DATA_DIR`, never real ones, because the repo is public.

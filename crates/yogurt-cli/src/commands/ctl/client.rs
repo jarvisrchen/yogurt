@@ -174,15 +174,17 @@ fn resolve_from_scan(found: Vec<Instance>) -> Result<Instance, CtlError> {
     }
 }
 
+/// `$YOGURT_DATA_DIR` when set, else `~/.yogurt`. `ctl` has no `--data-dir` flag.
 pub(crate) fn yogurt_home() -> Result<PathBuf, CtlError> {
-    directories::BaseDirs::new()
-        .map(|b| b.home_dir().join(".yogurt"))
+    let env = std::env::var_os("YOGURT_DATA_DIR").map(PathBuf::from);
+    let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
+    crate::data_dir::root(env, home)
         .ok_or_else(|| CtlError::local("could not resolve home directory", "check $HOME is set"))
 }
 
 /// No `ctl` subcommand ever prints the token value.
 fn read_session_token() -> Result<String, CtlError> {
-    let path = yogurt_home()?.join("session-token");
+    let path = crate::data_dir::session_token_path(&yogurt_home()?);
     std::fs::read_to_string(&path)
         .map(|s| s.trim().to_string())
         .map_err(|_| {

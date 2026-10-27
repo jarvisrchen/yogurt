@@ -34,8 +34,8 @@ struct StartArgs {
     /// Run in dev mode (proxies non-API routes to Vite on :5173).
     #[arg(long)]
     dev: bool,
-    /// Directory for the SQLite database and keys.json (default `~/.yogurt`).
-    /// Models and notes stay under `~/.yogurt` regardless. Also settable
+    /// Directory for the SQLite database, keys.json, notes, and session token (default `~/.yogurt`).
+    /// Models stay under `~/.yogurt` regardless. Also settable
     /// via `$YOGURT_DATA_DIR`; this flag wins if both are given.
     #[arg(long, value_name = "PATH")]
     data_dir: Option<PathBuf>,

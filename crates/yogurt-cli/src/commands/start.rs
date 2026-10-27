@@ -17,13 +17,15 @@ pub async fn run(args: StartArgs) -> Result<()> {
     let mode = if args.dev { Mode::Dev } else { Mode::Release };
     let url = format!("http://127.0.0.1:{}", args.port);
 
-    // Relocates both SQLite databases and keys.json. Models and notes stay under ~/.yogurt.
+    // Relocates both SQLite databases, keys.json, the notes folder, and the session token. Models stay under ~/.yogurt.
     let mut cfg = RunConfig::new(addr, mode);
     if let Some(dir) = crate::data_dir::resolve(args.data_dir)? {
         let db_path = crate::data_dir::db_path(&dir);
         cfg.db_path = Some(db_path.clone());
         cfg.app_db_path = Some(db_path);
         cfg.keys_path = Some(crate::data_dir::keys_path(&dir));
+        cfg.notes_dir = Some(crate::data_dir::notes_dir(&dir));
+        cfg.session_token_path = Some(crate::data_dir::session_token_path(&dir));
         if let Some((own, default)) = crate::data_dir::keys_not_copied(&dir) {
             tracing::warn!(
                 "no API keys at {}, and this data dir does not read {}. Copy that file here if this instance should use the same keys, and delete its `yogurt-cloud` entry so this instance does not push as the same device.",
