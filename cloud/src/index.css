@@ -4,7 +4,7 @@
 
 /* The mock's read-only document: small bold section heads and tight lists. AI text and transcript links come from the shared web styles. */
 .cloud-doc .doc :is(h1, h2, h3, h4) {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 700;
   margin: 6px 0 2px;
 }

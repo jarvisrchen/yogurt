@@ -45,14 +45,14 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
       {!desktop && <Back to={back} onClick={onBack} />}
       <div>
-        <h1 className="text-[16px] min-[721px]:text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">{entry.title}</h1>
-        <div className="flex flex-wrap items-center gap-[6px] min-[721px]:gap-[8px] text-[10.5px] min-[721px]:text-[12px] text-mut mt-[3px] min-[721px]:mt-[4px]">
+        <h1 className="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">{entry.title}</h1>
+        <div className="flex flex-wrap items-center gap-[6px] min-[721px]:gap-[8px] text-[13px] min-[721px]:text-[12px] text-mut mt-[3px] min-[721px]:mt-[4px]">
           <DeviceTag name={device} index={deviceIndex} />
           {started(entry)}
         </div>
       </div>
       {reload && (
-        <div role={reload.error ? "alert" : "status"} className="flex items-center justify-between gap-[8px] text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
+        <div role={reload.error ? "alert" : "status"} className="flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
           <span className="min-w-0 break-words">{reload.error ? `Could not reload. ${reload.error}` : reload.text}</span>
           <button
             type="button"
@@ -73,21 +73,21 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
               role="tab"
               aria-selected={t === tab}
               onClick={() => setPicked(t)}
-              className={`text-[11px] min-[721px]:text-[12px] font-bold px-[8px] py-[6px] min-[721px]:px-[10px] min-[721px]:py-[7px] bg-transparent border-0 cursor-pointer font-[inherit] ${t === tab ? "text-blue shadow-[inset_0_-2px_0_var(--color-blue)]" : "text-mut"}`}
+              className={`text-[14px] min-[721px]:text-[12px] font-bold px-[10px] py-[8px] min-[721px]:py-[7px] bg-transparent border-0 cursor-pointer font-[inherit] ${t === tab ? "text-blue shadow-[inset_0_-2px_0_var(--color-blue)]" : "text-mut"}`}
             >
               {LABELS[t]}
             </button>
           ))}
         </div>
       )}
-      {!stub && <div className="cloud-doc text-[11.5px] min-[721px]:text-[13px] leading-[1.55]">
+      {!stub && <div className="cloud-doc text-[16px] min-[721px]:text-[13px] leading-[1.55]">
         {tab === "transcript" ? (
           <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
         ) : (
           <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); } : undefined} />
         )}
       </div>}
-      {!stub && <p className="text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>}
+      {!stub && <p className="text-[13px] min-[721px]:text-[11.5px] text-mut mt-auto pt-[10px] mb-[0px]">{pushedFrom(device, entry.pushedAt)}</p>}
     </article>
   );
 }
