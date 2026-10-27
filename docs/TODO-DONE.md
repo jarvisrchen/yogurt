@@ -1328,3 +1328,7 @@ New closed items go at the bottom.
 - [x] **SYNC-17** Enlarge the webapp text on every phone screen to the scale SYNC-16 set for the library rows: 16px body, 13-15px secondary text, 22px page titles
 
   Every webapp screen below 721px now uses one scale: 16px body and meeting notes, 13-15px secondary text, 22px page titles. Desktop sizes are unchanged.
+
+- [x] **IMP-3** Settings Import section with the Granola key, preview, progress, and cancel, plus an import pill on every page
+
+  Settings has an Import section that saves the Granola key, previews the import, shows progress with Cancel, and reports the counts, and an import pill on every page shows progress and the result.
