@@ -25,7 +25,9 @@ AGENTS.md owns the lifecycle and its rules; this is the order of operations and 
 5. **Verify end to end.**
    `just dev-bg` in the worktree and drive the real UI.
    To show data without touching `~/.yogurt`, copy the DB into a scratch dir with `sqlite3 ~/.yogurt/db.sqlite ".backup <dir>/db.sqlite"`, copy `keys.json` beside it, and run with `YOGURT_DATA_DIR=<dir>`.
-   For UI work, take Playwright screenshots of the changed surface and look at them.
+   For UI work, take Playwright screenshots of the changed surface in light and dark (`colorScheme`) at a real viewport, and look at them.
+   Skip `fullPage`, which misplaces the fixed Ask bar.
+   Screenshots for the PR show test meetings in a fresh `YOGURT_DATA_DIR`, never real ones, because the repo is public.
 
 6. **Register and close the ticket in the branch.**
    Add the `- [ ] **ID**` entry under its section in `docs/TODO.md`, then `just ticket done <ID> --note-file <f>`.
@@ -45,6 +47,8 @@ AGENTS.md owns the lifecycle and its rules; this is the order of operations and 
 
 10. **Open the PR and land it.**
     `just pr "<ID>: <title>" --body-file <f>` with Why, What, and an absolute-path Manual test section.
+    A UI change also gets a Screenshots section: a table with a Light and a Dark column.
+    Push the PNGs to the `pr-screenshots` branch under `<slug>/` from a detached worktree of `origin/pr-screenshots` (`git push origin HEAD:pr-screenshots`), and embed them as `https://raw.githubusercontent.com/jarvisrchen/yogurt/pr-screenshots/<slug>/<file>.png`.
     `just land` waits for CI, squash-merges, and removes the worktree.
 
 End the reply with the Manual test commands and the PR link.

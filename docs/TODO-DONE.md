@@ -1288,3 +1288,7 @@ New closed items go at the bottom.
 - [x] **SYNC-11** Rehearse the Deploy with Vercel button on a fresh Vercel and Supabase project
 
   Yogurt Cloud has one user, so the Deploy with Vercel button and its Supabase integration path came out of the guide, the README, and the build's error message instead of being rehearsed. The by-hand setup that SYNC-9 rehearsed is the guide's one deploy path.
+
+- [x] **DX-18** The yogurt-ship skill attaches light and dark screenshots to every UI PR
+
+  The yogurt-ship skill now has UI PRs carry a light and dark Screenshots table hosted on the pr-screenshots branch, shot at a real viewport against test meetings.
