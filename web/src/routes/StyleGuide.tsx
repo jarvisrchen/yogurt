@@ -95,7 +95,7 @@ export function StyleGuide() {
 
       <Section
         title="Typography (PRD §16.3)"
-        caption="Three families. Use them deliberately."
+        caption="Two families. Manrope sets every label, heading, and sentence. JetBrains Mono sets only literal values: commands, paths, URLs, keys, timestamps, and counters. src/designRules.test.ts fails a mono label or a family set outside the tokens."
       >
         <Card padding="lg">
           <div className="space-y-6">
@@ -132,6 +132,7 @@ export function StyleGuide() {
               <p className="heading-sm">
                 Card title style - 16px Manrope 700.
               </p>
+              <p className={`${LABEL} mt-1`}>Eyebrow label - LABEL, 11px Manrope 600</p>
               <p className="font-sans font-extrabold text-[15px] text-ink">
                 The quick brown fox jumps over the lazy dog. 800.
               </p>

@@ -54,11 +54,8 @@ export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
         {isMic ? "Me" : "Them"}
       </span>
       <span
-        className="text-[12px] mr-2"
-        style={{
-          fontFamily: "JetBrains Mono, ui-monospace, monospace",
-          color: GREY,
-        }}
+        className="font-mono text-[12px] mr-2"
+        style={{ color: GREY }}
       >
         {formatTs(ev.ts_ms)}
       </span>

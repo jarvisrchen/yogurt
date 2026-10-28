@@ -1403,3 +1403,9 @@ New closed items go at the bottom.
 - [x] **SYNC-26** Say "24 hours after the last push" in the Daily and After meetings Auto-push copy, so the next push time reads as following from the last push
 
   The Daily description and the After meetings backstop say "24 hours after the last push" instead of "a day", which ties the next push time to the last push shown above it.
+
+- [x] **UI-24** Set the Cloud sync and Import labels in Manrope like the rest of Settings, and add a test that fails a mono label or a font family set outside the tokens
+
+  The Cloud sync and Import eyebrows used a JetBrains Mono label from before UI-11, and now use the shared Manrope LABEL.
+  web/src/designRules.test.ts fails an uppercase or tracked mono class string, an inline fontFamily, an arbitrary font-[...] family, and any @fontsource package but Manrope and JetBrains Mono.
+  The style guide states the rule: Manrope for every label, heading, and sentence, and mono only for literal values.

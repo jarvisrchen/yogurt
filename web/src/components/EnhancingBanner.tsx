@@ -119,9 +119,8 @@ export function EnhancingBanner({
       {hasChars && (
         <span
           data-testid="enhancing-char-count"
+          className="font-mono"
           style={{
-            fontFamily:
-              "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
             fontSize: 12,
             fontWeight: 500,
             color: MUT,

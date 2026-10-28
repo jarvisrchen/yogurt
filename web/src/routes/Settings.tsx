@@ -14,6 +14,7 @@ import { AudioSection } from "../components/settings/AudioSection";
 import { GeneralSection } from "../components/settings/GeneralSection";
 import { CloudSection } from "../components/settings/cloud/CloudSection";
 import { ImportSection } from "../components/settings/ImportSection";
+import { LABEL } from "../components/settings/labelClass";
 
 const VALID_SECTIONS = ["model", "transcription", "audio", "general", "cloud", "import"] as const;
 
@@ -145,7 +146,7 @@ export function Settings() {
             )}
 
             <div className="pt-4 border-t border-line space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-mut mb-2">
+              <div className={`${LABEL} mb-2`}>
                 Clone a preset
               </div>
               <div className="flex flex-wrap gap-2 items-center">
