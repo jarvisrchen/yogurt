@@ -85,6 +85,7 @@ select pg_temp.expect('42501', array[
   'select yogurt_search_catch_up()',
   'select * from yogurt_history(''x'')',
   'select * from yogurt_device_list(''x'')',
+  'select * from yogurt_labels(''x'', ''00000000-0000-0000-0000-0000000000d1'')',
   'insert into yogurt_devices (id, name) values (gen_random_uuid(), ''evil'')',
   'insert into yogurt_versions (meeting_id, push_id, device_id, body) values (''m1'', 1, ''00000000-0000-0000-0000-0000000000d1'', ''{}'')'
 ]);
@@ -102,7 +103,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -217,6 +218,8 @@ select pg_temp.expect('28000', array[
   'select * from yogurt_search(null, ''x'')',
   'select * from yogurt_history(''no such token'')',
   'select * from yogurt_device_list(''no such token'')',
+  'select * from yogurt_labels(''no such token'', ''00000000-0000-0000-0000-0000000000d1'')',
+  'select * from yogurt_labels(null, ''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_browsers(''no such token'')',
   'select yogurt_forget_browser(''no such token'', 1)'
 ]);
@@ -731,6 +734,71 @@ select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', false) || ' ' || pg_temp.ai
 select pg_temp.eq(pg_temp.rids('{shelfword}') || ' ' || pg_temp.rids('{}', 24000, 30000), 'a1 a1,r5', 'and so does chat retrieval');
 select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the catch-up after the archive push');
 select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', false) || ' ' || pg_temp.aids(:'stok', 'shelfword', true), 'a1 a3,a2', 'and once caught up');
+
+-- Each Mac's Starred and labels: yogurt_labels lists one device's labels, and only_starred and only_label narrow the library and search, only within one device.
+\set d5 '''00000000-0000-0000-0000-0000000000d5'''
+\set d6 '''00000000-0000-0000-0000-0000000000d6'''
+insert into yogurt_devices (id, name) values (:d5, 'Labels 5'), (:d6, 'Labels 6');
+create or replace function pg_temp.fm(id text, started bigint, starred boolean, labels jsonb, archived boolean default false) returns jsonb language sql as $$
+  select jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Filter ' || id, 'started_at', started, 'starred', starred, 'labels', labels,
+    'archived_at', case when archived then '2026-10-27T08:00:00Z' end, 'notes_md', 'filterword', 'transcript_json', '[]'))
+$$;
+create or replace function pg_temp.lb(id text, name text, color text) returns jsonb language sql as $$ select jsonb_build_object('id', id, 'name', name, 'color', color) $$;
+create or replace function pg_temp.labs(tok text, dev uuid) returns text language sql as $$
+  select coalesce(string_agg(id || ':' || name || ':' || color, ',' order by ord), '') from (select l.*, row_number() over () ord from yogurt_labels(tok, dev) l) x
+$$;
+create or replace function pg_temp.flib(tok text, dev uuid, starred boolean, label text, archived boolean default false) returns text language sql as $$
+  select coalesce(string_agg(meeting_id || ':' || total, ',' order by ord), '') from (select l.*, row_number() over () ord from yogurt_library(tok, null, 100, 0, dev, archived, starred, label) l) x
+$$;
+create or replace function pg_temp.fids(tok text, dev uuid, starred boolean, label text) returns text language sql as $$
+  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select s.*, row_number() over () ord from yogurt_search(tok, 'filterword', dev, 0, false, starred, label) s) x
+$$;
+grant execute on function pg_temp.fm(text, bigint, boolean, jsonb, boolean), pg_temp.lb(text, text, text), pg_temp.labs(text, uuid),
+  pg_temp.flib(text, uuid, boolean, text, boolean), pg_temp.fids(text, uuid, boolean, text) to public;
+select yogurt_start_push(:d5) as push_f \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('f1', :push_f, :d5, pg_temp.fm('f1', 40001, true, jsonb_build_array(pg_temp.lb('lc', 'Clients', 'honey'), pg_temp.lb('lh', 'Hiring', 'lilac')))),
+  ('f2', :push_f, :d5, pg_temp.fm('f2', 40002, false, jsonb_build_array(pg_temp.lb('lc', 'Clients', 'honey')))),
+  ('f3', :push_f, :d5, pg_temp.fm('f3', 40003, true, '[]')),
+  ('f4', :push_f, :d5, pg_temp.fm('f4', 40004, true, jsonb_build_array(pg_temp.lb('lz', 'Zeta', 'blue')), true)),
+  ('f5', :push_f, :d5, pg_temp.fm('f5', 40005, false, jsonb_build_array(pg_temp.lb('ld', 'Deleted', 'slate')))),
+  ('f6', :push_f, :d5, pg_temp.fm('f6', 40006, false, jsonb_build_array(pg_temp.lb('lo', 'Old', 'slate'))));
+select yogurt_start_push(:d5) as push_f2 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('f2', :push_f2, :d5, pg_temp.fm('f2', 40002, false, jsonb_build_array(pg_temp.lb('lc', 'Customers', 'honey')))),
+  ('f5', :push_f2, :d5, null),
+  ('f6', :push_f2, :d5, pg_temp.fm('f6', 40006, false, jsonb_build_array(pg_temp.lb('lb', 'board', 'slate'))));
+select yogurt_start_push(:d6) as push_g \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('g1', :push_g, :d6, pg_temp.fm('g1', 40007, true, jsonb_build_array(pg_temp.lb('lx', 'Xenon', 'blue'), pg_temp.lb('lc', 'Clients', 'matcha'))));
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the filter meetings are indexed');
+select pg_temp.eq(pg_temp.labs(:'stok', :d5), 'lb:board:slate,lc:Customers:honey,lh:Hiring:lilac',
+  'a device''s labels come from its latest live, unarchived versions, sorted by name with case ignored, named as last pushed');
+select pg_temp.eq(pg_temp.labs(:'stok', :d6), 'lc:Clients:matcha,lx:Xenon:blue', 'another device has its own labels, even under the same id');
+select pg_temp.eq(pg_temp.labs(:'stok', null) || pg_temp.labs(:'stok', gen_random_uuid()), '', 'no device, or an unknown one, has no labels');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, true, null), 'f3:2,f1:2', 'only_starred lists the device''s starred meetings, and total counts them');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, true, null, true), 'f4:1', 'and combines with only_archived');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, false, 'lc'), 'f2:2,f1:2', 'only_label lists the meetings with that label');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, true, 'lc'), 'f1:1', 'and combines with only_starred');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, false, 'lx') || pg_temp.flib(:'stok', :d5, false, 'nope'), '', 'a label id from another device, or an unknown one, matches nothing');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, null, null), 'f6:4,f3:4,f2:4,f1:4', 'a null only_starred counts as false');
+select pg_temp.eq(pg_temp.flib(:'stok', null, true, 'lc'), pg_temp.flib(:'stok', null, false, null),
+  'without a device, only_starred and only_label are ignored');
+select pg_temp.eq((select starred || ':' || labels from yogurt_library(:'stok', null, 1, 0, :d5, false, false, 'lh')), 'true:[{"id": "lc", "name": "Clients", "color": "honey"}, {"id": "lh", "name": "Hiring", "color": "lilac"}]',
+  'a filtered row keeps its star and labels');
+select pg_temp.eq(pg_temp.fids(:'stok', :d5, true, null) || ' ' || pg_temp.fids(:'stok', :d5, false, 'lc') || ' ' || pg_temp.fids(:'stok', :d5, true, 'lc'), 'f3,f1 f2,f1 f1',
+  'search narrows to starred and labeled meetings on one device');
+select pg_temp.eq(pg_temp.fids(:'stok', :d5, false, 'lx'), '', 'search matches nothing for another device''s label id');
+select pg_temp.eq(pg_temp.fids(:'stok', null, true, 'lx'), 'g1,f6,f3,f2,f1', 'search ignores the filters without a device');
+-- Unstarring and unlabeling take effect before the index catches up, as deletions do.
+select yogurt_start_push(:d5) as push_f3 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('f3', :push_f3, :d5, pg_temp.fm('f3', 40003, false, '[]')),
+  ('f2', :push_f3, :d5, pg_temp.fm('f2', 40002, false, '[]'));
+select pg_temp.eq(pg_temp.fids(:'stok', :d5, true, null) || ' ' || pg_temp.fids(:'stok', :d5, false, 'lc'), 'f1 f1', 'search follows a star or label change the index has not caught up to');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, true, null) || ' ' || pg_temp.labs(:'stok', :d5), 'f1:1 lb:board:slate,lc:Clients:honey,lh:Hiring:lilac',
+  'the library and the labels follow it too, and a label keeps the name of the latest push that still has it');
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the catch-up after the filter push');
 
 -- The index is private, and each owner sees only their own rows.
 select pg_temp.expect('42501', array['select * from yogurt_private.yogurt_search_index', 'insert into yogurt_private.yogurt_search_index (device_id, meeting_id, user_id, push_id) values (gen_random_uuid(), ''x'', gen_random_uuid(), 1)']);

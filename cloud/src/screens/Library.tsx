@@ -10,6 +10,7 @@ import {
   DayList,
   DevicePills,
   DeviceTag,
+  LabelMenu,
   ListRow,
   LoadError,
   LockButton,
@@ -18,7 +19,7 @@ import {
   SearchPager,
   useDesktop,
 } from "../ui";
-import type { Api } from "../lib/api";
+import type { Api, Label } from "../lib/api";
 import {
   asOfLabel,
   clock,
@@ -53,11 +54,13 @@ export const GearIcon = () => (
 
 type Row = Entry & { snippet: string | null };
 
-type Filter = "all" | "archive";
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "archive", label: "Archive" },
-];
+// Starred and labels belong to one Mac, so they are offered only once a Mac is picked.
+type Pill = "all" | "starred" | "archive";
+type Filter = Pill | Label;
+const ALL = { value: "all", label: "All" } as const;
+const ARCHIVE = { value: "archive", label: "Archive" } as const;
+const FILTERS: { value: Pill; label: string }[] = [ALL, ARCHIVE];
+const DEVICE_FILTERS: { value: Pill; label: string }[] = [ALL, { value: "starred", label: "Starred" }, ARCHIVE];
 
 interface Props {
   api: Api;
@@ -86,6 +89,9 @@ export function Library({
   const [device, setDevice] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const archived = filter === "archive";
+  const starred = filter === "starred";
+  const label = typeof filter === "object" ? filter : null;
+  const scope = { device, archived, starred, label: label?.id ?? null };
   const [query, setQuery] = useState("");
   const { asOf: pushId, meeting: open, page } = loc;
   const size = loc.size ?? resolvePageSize(null);
@@ -113,18 +119,18 @@ export function Library({
         atPush: pushId,
         limit: size,
         offset: (page - 1) * size,
-        device,
-        archived,
+        ...scope,
       });
       // An empty library shows the welcome screen, unless every meeting is archived and the Archive pill is the way to them.
       const empty =
         !rows.length && page === 1 && !pushId && !device && !archived &&
-        !(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true })).length;
+        !(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true, starred: false, label: null })).length;
       return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, empty };
     },
     onRejected,
-    [api, token, pushId, size, page, device, archived],
+    [api, token, pushId, size, page, device, archived, starred, scope.label],
   );
+  const labels = useCloudLoad(async () => (device ? api.labels(token, device) : null), onRejected, [api, token, device]);
   const shown = pageLoad.data ?? pageLoad.previous;
   const turning = pageLoad.loading && !pageLoad.data;
 
@@ -137,7 +143,7 @@ export function Library({
 
   const field = useRef<HTMLInputElement>(null);
   // The as-of view has no search, so the hook gets an empty query there.
-  const search = useSearch(api, token, pushId ? "" : query, { device, archived }, onRejected);
+  const search = useSearch(api, token, pushId ? "" : query, scope, onRejected);
   const hits = search.active
     ? search.pending
       ? search.previous
@@ -219,7 +225,7 @@ export function Library({
       entry={entry}
       device={nameOf(openDevice)}
       deviceIndex={indexOf(openDevice)}
-      back={archived ? "Archive" : (devices?.find((d) => d.id === device)?.name ?? "All devices")}
+      back={archived ? "Archive" : starred ? "Starred" : (label?.name ?? devices?.find((d) => d.id === device)?.name ?? "All devices")}
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
       body={body}
@@ -233,8 +239,10 @@ export function Library({
       </main>
     );
 
+  // Another Mac's star and labels mean nothing on this one, so a new Mac starts at All.
   const chooseDevice = (id: string | null) => {
     setDevice(id);
+    setFilter("all");
     if (page > 1) go({ ...loc, page: 1 });
   };
   const chooseFilter = (f: Filter) => {
@@ -271,7 +279,9 @@ export function Library({
       {!!devices?.length && (
         <DevicePills devices={devices} value={device} onChange={chooseDevice} />
       )}
-      <Pills label="Filter" options={FILTERS} value={filter} onChange={chooseFilter} />
+      <Pills label="Filter" options={device ? DEVICE_FILTERS : FILTERS} value={typeof filter === "string" ? filter : null} onChange={chooseFilter}>
+        {device && <LabelMenu labels={labels.data} error={labels.error} value={label} onChange={chooseFilter} />}
+      </Pills>
       {!pushId && (
         <p
           role="status"
@@ -302,10 +312,13 @@ export function Library({
                 title={r.title}
                 meta={meta(r.started_at, r.endedAt)}
                 tag={
-                  <DeviceTag
-                    name={nameOf(r.device_id)}
-                    index={indexOf(r.device_id)}
-                  />
+                  // With one Mac picked every row would show the same tag.
+                  !device && (
+                    <DeviceTag
+                      name={nameOf(r.device_id)}
+                      index={indexOf(r.device_id)}
+                    />
+                  )
                 }
                 snippet={r.snippet}
                 selected={r.key === open}

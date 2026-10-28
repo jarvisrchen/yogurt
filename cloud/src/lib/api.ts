@@ -49,11 +49,16 @@ export interface Label {
   color: string;
 }
 
-/** What the library and search show: one device or all (null), and the archive or everything else. */
+/** What the library and search show: one device or all (null), and the archive or everything else. `starred` and `label` narrow one device's meetings. */
 export interface Scope {
   device: string | null;
   archived: boolean;
+  starred: boolean;
+  label: string | null;
 }
+
+// Each filter goes only when set, so All keeps working against a schema from before it, such as a preview build's.
+const filters = (s: Scope) => ({ ...(s.archived && { only_archived: true }), ...(s.starred && { only_starred: true }), ...(s.label && { only_label: s.label }) });
 
 /** One row of a library page, without note or transcript text. `total` is every live meeting in the view and repeats on each row. */
 export interface LibraryRow {
@@ -154,14 +159,15 @@ export class Api {
   browsers = (token: string) => this.rpc<Browser[]>("yogurt_browsers", { token });
   forgetBrowser = (token: string, browserId: number) =>
     this.rpc<boolean>("yogurt_forget_browser", { token, browser_id: browserId });
-  // only_archived goes only when true, so All keeps working against a schema from before it, such as a preview build's.
   library = (token: string, o: { atPush: number | null; limit: number; offset: number } & Scope) =>
-    this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: o.atPush, page_limit: o.limit, page_offset: o.offset, only_device: o.device, ...(o.archived && { only_archived: true }) });
+    this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: o.atPush, page_limit: o.limit, page_offset: o.offset, only_device: o.device, ...filters(o) });
   /** The full body of one meeting, live or as of a push. Null when it is unknown or was deleted by then. */
   meeting = async (token: string, device: string, meeting: string, atPush: number | null) =>
     (await this.rpc<MeetingRow[]>("yogurt_meeting", { token, device_id: device, meeting_id: meeting, at_push: atPush }))[0] ?? null;
   search = (token: string, query: string, scope: Scope, offset: number) =>
-    this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...(scope.archived && { only_archived: true }) });
+    this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
+  /** One device's labels, sorted by name. */
+  labels = (token: string, device: string) => this.rpc<Label[]>("yogurt_labels", { token, only_device: device });
 }

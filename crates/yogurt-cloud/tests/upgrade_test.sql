@@ -30,8 +30,13 @@ select pg_temp.eq((select count(*)::text from yogurt_search(:'tok', 'revertword'
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'tok', 'hugeword')), 'u2', 'search finds the huge meeting written before the upgrade');
 select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_retrieve(:'tok', '{upgradeword}')), 'u1,upgrade-big', 'chat retrieval finds the old and the new meeting, and leaves out the archived one');
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'tok', 'upgradeword', only_archived => true)) || ' ' || (select string_agg(meeting_id || ':' || total, ',') from yogurt_library(:'tok', only_archived => true)), 'u4 u4:1', 'a meeting archived before the upgrade is in the archive');
+select pg_temp.eq((select string_agg(meeting_id || ':' || total, ',') from yogurt_library(:'tok', only_device => '00000000-0000-0000-0000-0000000000d1', only_starred => true))
+  || ' ' || (select string_agg(meeting_id || ':' || total, ',') from yogurt_library(:'tok', only_device => '00000000-0000-0000-0000-0000000000d1', only_label => 'lu'))
+  || ' ' || (select string_agg(meeting_id, ',') from yogurt_search(:'tok', 'upgradeword', '00000000-0000-0000-0000-0000000000d1', only_starred => true, only_label => 'lu'))
+  || ' ' || (select string_agg(id || ':' || name, ',') from yogurt_labels(:'tok', '00000000-0000-0000-0000-0000000000d1')),
+  'u1:1 u1:1 u1 lu:Upgraded', 'a meeting starred and labeled before the upgrade is found by the filters, and its label is listed');
 select pg_temp.eq((select string_agg(oid::regprocedure::text, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('yogurt_library', 'yogurt_search')),
-  'yogurt_library(text,bigint,integer,integer,uuid,boolean),yogurt_search(text,text,uuid,integer,boolean)', 'only the current signatures are left');
+  'yogurt_library(text,bigint,integer,integer,uuid,boolean,boolean,text),yogurt_search(text,text,uuid,integer,boolean,boolean,text)', 'only the current signatures are left');
 reset role;
 \endif
 \o

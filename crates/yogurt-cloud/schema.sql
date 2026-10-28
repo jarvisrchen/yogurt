@@ -61,8 +61,11 @@ create table if not exists public.yogurt_versions (
   primary key (device_id, meeting_id, push_id)
 );
 create index if not exists yogurt_versions_push_id on public.yogurt_versions (push_id);
--- Whether the Mac had archived the meeting, kept beside the body so reads filter on it without detoasting every version.
+-- Whether the Mac had archived or starred the meeting, and its labels, kept beside the body so reads filter on them without detoasting every version.
 alter table public.yogurt_versions add column if not exists archived boolean generated always as (body -> 'meeting' ->> 'archived_at' is not null) stored;
+alter table public.yogurt_versions
+  add column if not exists starred boolean generated always as (coalesce(body -> 'meeting' -> 'starred' = 'true'::jsonb, false)) stored,
+  add column if not exists labels jsonb generated always as (body -> 'meeting' -> 'labels') stored;
 
 -- The helpers used to live in public, and the old insert policies depend on them.
 drop policy if exists add on public.yogurt_devices;
@@ -510,6 +513,32 @@ begin
     where l.body is not null order by l.meeting_id;
 end $$;
 
+-- One device's labels, from the latest version of each of its live, unarchived meetings, sorted by name.
+-- A label carries the name and color of the latest push that has it, so a rename shows as soon as one meeting with it is pushed again.
+create or replace function public.yogurt_labels(token text, only_device uuid)
+returns table (id text, name text, color text)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  return query
+    select x.id, x.name, x.color from (
+      select distinct on (e ->> 'id') e ->> 'id' as id, coalesce(e ->> 'name', '') as name, coalesce(e ->> 'color', '') as color
+      from (
+        select distinct on (v.meeting_id) v.meeting_id, v.push_id, v.body is not null and not v.archived as shown
+        from public.yogurt_versions v
+        where v.user_id = auth.uid() and v.device_id = only_device
+        order by v.meeting_id, v.push_id desc
+      ) l
+      join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (only_device, l.meeting_id, l.push_id)
+      cross join lateral pg_catalog.jsonb_array_elements(case when pg_catalog.jsonb_typeof(v.labels) = 'array' then v.labels else '[]' end) e
+      where l.shown and e ->> 'id' is not null
+      order by e ->> 'id', l.push_id desc
+    ) x
+    order by pg_catalog.lower(x.name), x.name, x.id;
+end $$;
+
 -- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the two below goes first.
 do $$
 declare
@@ -525,7 +554,9 @@ end $$;
 -- Rows are summaries and carry no note or transcript body (yogurt_meeting returns one). total is the number of meetings the view lists and repeats on every row, so a page past the end returns no rows.
 -- page_limit is clamped to 1..100, which keeps a page far under the 1,000 row response cap. only_device narrows the page and the total to one device.
 -- An archived meeting is listed only with only_archived, and then nothing else is.
-create or replace function public.yogurt_library(token text, at_push bigint default null, page_limit int default 25, page_offset int default 0, only_device uuid default null, only_archived boolean default false)
+-- With only_device, only_starred lists only starred meetings and only_label only meetings with that label id. Label ids belong to one device, so both are ignored without it.
+create or replace function public.yogurt_library(token text, at_push bigint default null, page_limit int default 25, page_offset int default 0, only_device uuid default null, only_archived boolean default false,
+  only_starred boolean default false, only_label text default null)
 returns table (device_id uuid, push_id bigint, pushed_at timestamptz, meeting_id text, title text, started_at bigint, ended_at bigint, starred boolean, labels jsonb, total bigint)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -547,13 +578,14 @@ begin
         from latest l
         join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (l.device_id, l.meeting_id, l.push_id)
         where l.live and l.archived = coalesce(only_archived, false)
+          and (only_device is null or ((not coalesce(only_starred, false) or v.starred) and (only_label is null or v.labels @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id', only_label)))))
       ) s
       order by s.started_at desc, s.meeting_id, s.device_id
       limit least(greatest(page_limit, 1), 100) offset greatest(page_offset, 0)
     )
     select o.device_id, o.push_id, p.pushed_at, o.meeting_id,
            coalesce(v.body->'meeting'->>'title', ''), o.started_at, (v.body->'meeting'->>'ended_at')::bigint,
-           coalesce((v.body->'meeting'->>'starred')::boolean, false), coalesce(v.body->'meeting'->'labels', '[]'::jsonb), o.total
+           v.starred, coalesce(v.labels, '[]'::jsonb), o.total
     from ordered o
     join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (o.device_id, o.meeting_id, o.push_id)
     join public.yogurt_pushes p on p.id = o.push_id
@@ -587,10 +619,11 @@ begin
 end $$;
 
 -- Live meetings matching the query, newest first, optionally on one device, 25 from page_offset. `more` is true on every row when there were more after them.
--- Archived meetings match only with only_archived, and then nothing else does.
+-- Archived meetings match only with only_archived, and then nothing else does. only_starred and only_label narrow it as in yogurt_library, and only with only_device.
 -- Quotes work, a leading minus excludes, and the last word matches as a prefix so a half-typed word finds its meeting.
 -- snippet is null when the title matches, and otherwise a headline with the matched words wrapped in U+E000 and U+E001.
-create or replace function public.yogurt_search(token text, query text, only_device uuid default null, page_offset int default 0, only_archived boolean default false)
+create or replace function public.yogurt_search(token text, query text, only_device uuid default null, page_offset int default 0, only_archived boolean default false,
+  only_starred boolean default false, only_label text default null)
 returns table (device_id uuid, meeting_id text, push_id bigint, started_at bigint, ended_at bigint, title text, snippet text, more boolean)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -632,8 +665,10 @@ begin
              row_number() over (order by i.started_at desc, i.meeting_id, i.device_id) as rn
       from yogurt_private.yogurt_search_index i
       where i.user_id = auth.uid() and i.tsv @@ tsq and (only_device is null or i.device_id = only_device)
-        -- Deleted and archived are read from the latest version, so a push the index has not caught up to takes effect at once.
-        and (select v.body is not null and v.archived = coalesce(only_archived, false) from public.yogurt_versions v
+        -- Deleted, archived, starred, and labels are read from the latest version, so a push the index has not caught up to takes effect at once.
+        and (select v.body is not null and v.archived = coalesce(only_archived, false)
+                    and (only_device is null or ((not coalesce(only_starred, false) or v.starred) and (only_label is null or v.labels @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id', only_label)))))
+             from public.yogurt_versions v
              where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
       order by i.started_at desc, i.meeting_id, i.device_id
       limit skip + cap + 1
@@ -777,10 +812,11 @@ grant execute on function
   public.yogurt_browsers(text),
   public.yogurt_start_push(uuid),
   public.yogurt_device_meetings(uuid),
-  public.yogurt_library(text, bigint, int, int, uuid, boolean),
+  public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
+  public.yogurt_labels(text, uuid),
   public.yogurt_meeting(text, uuid, text, bigint),
   public.yogurt_search_catch_up(int),
-  public.yogurt_search(text, text, uuid, int, boolean),
+  public.yogurt_search(text, text, uuid, int, boolean, boolean, text),
   public.yogurt_retrieve(text, text[], bigint, bigint, int),
   public.yogurt_history(text),
   public.yogurt_device_list(text)

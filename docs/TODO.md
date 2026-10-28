@@ -130,7 +130,7 @@ Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-desi
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
-- [ ] **SYNC-22** Starred and Labels filters in the webapp once a Mac is picked, with star and label chips on its rows ([design](.planning/archive-design.md#each-macs-starred-and-labels-sync-22))
+- [ ] **SYNC-22** Starred and Labels filters in the webapp once a Mac is picked, with the device tag dropped from its rows ([design](.planning/archive-design.md#each-macs-starred-and-labels-sync-22))
 
 ## Import
 

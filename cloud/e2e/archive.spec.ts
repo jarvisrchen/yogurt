@@ -52,12 +52,14 @@ test("the Archive pill lists and searches only archived meetings, under All devi
   await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toBeVisible();
   await search.fill("");
 
-  // A device with nothing archived shows the archive's empty state.
-  await filter(page, "Archive").click();
+  // A device with nothing archived shows the archive's empty state, and picking another device starts over at All.
   await device(page, "Laptop 2").click();
+  await filter(page, "Archive").click();
   await expect(page.getByText("No archived meetings.", { exact: false })).toBeVisible();
   await shot(page, info, "a-archive-empty");
   await device(page, "Laptop 1").click();
+  await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
+  await filter(page, "Archive").click();
   await expect(range(page)).toHaveText("1–3 of 3");
 });
 
