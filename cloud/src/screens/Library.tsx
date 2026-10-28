@@ -13,6 +13,7 @@ import {
   ListRow,
   LoadError,
   LockButton,
+  Pills,
   SearchField,
   SearchPager,
   useDesktop,
@@ -52,6 +53,12 @@ export const GearIcon = () => (
 
 type Row = Entry & { snippet: string | null };
 
+type Filter = "all" | "archive";
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "archive", label: "Archive" },
+];
+
 interface Props {
   api: Api;
   token: string;
@@ -77,6 +84,8 @@ export function Library({
 }: Props) {
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const archived = filter === "archive";
   const [query, setQuery] = useState("");
   const { asOf: pushId, meeting: open, page } = loc;
   const size = loc.size ?? resolvePageSize(null);
@@ -105,11 +114,16 @@ export function Library({
         limit: size,
         offset: (page - 1) * size,
         device,
+        archived,
       });
-      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0 };
+      // An empty library shows the welcome screen, unless every meeting is archived and the Archive pill is the way to them.
+      const empty =
+        !rows.length && page === 1 && !pushId && !device && !archived &&
+        !(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true })).length;
+      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, empty };
     },
     onRejected,
-    [api, token, pushId, size, page, device],
+    [api, token, pushId, size, page, device, archived],
   );
   const shown = pageLoad.data ?? pageLoad.previous;
   const turning = pageLoad.loading && !pageLoad.data;
@@ -123,7 +137,7 @@ export function Library({
 
   const field = useRef<HTMLInputElement>(null);
   // The as-of view has no search, so the hook gets an empty query there.
-  const search = useSearch(api, token, pushId ? "" : query, device, onRejected);
+  const search = useSearch(api, token, pushId ? "" : query, { device, archived }, onRejected);
   const hits = search.active
     ? search.pending
       ? search.previous
@@ -223,6 +237,10 @@ export function Library({
     setDevice(id);
     if (page > 1) go({ ...loc, page: 1 });
   };
+  const chooseFilter = (f: Filter) => {
+    setFilter(f);
+    if (page > 1) go({ ...loc, page: 1 });
+  };
   const failed = base.error ?? pageLoad.error;
   const retry = () => (base.error ? base : pageLoad).retry();
 
@@ -253,6 +271,7 @@ export function Library({
       {!!devices?.length && (
         <DevicePills devices={devices} value={device} onChange={chooseDevice} />
       )}
+      <Pills label="Filter" options={FILTERS} value={filter} onChange={chooseFilter} />
       {!pushId && (
         <p
           role="status"
@@ -295,7 +314,9 @@ export function Library({
             )}
           />
           {!search.active && shown && !rows.length && (
-            <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">No meetings here.</p>
+            <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
+              {archived ? "No archived meetings. A meeting you archive on your Mac shows here after its next push." : "No meetings here."}
+            </p>
           )}
         </div>
       )}
@@ -371,7 +392,7 @@ export function Library({
             onRetry={retry}
           />
         </main>
-      ) : !devices || !shown ? null : !shown.total && !pushId && !device ? (
+      ) : !devices || !shown ? null : shown.empty ? (
         <main className="flex-1 flex flex-col items-center text-center px-[16px] pt-[80px]">
           <div className="float-3500 mb-[32px]">
             <Logo size={64} ariaLabel="Yogurt" />

@@ -1373,3 +1373,7 @@ New closed items go at the bottom.
 
   Archived meetings leave the Library, its search, and Ask across meetings, and an Archive view lists and searches only them.
   Archive works from a card's menu, the selection bar, and the meeting page, and Archive older meetings archives everything before a date in one request, skipping the meeting being recorded.
+
+- [x] **SYNC-21** Hide archived meetings in the webapp's library, search, and chat, and add an Archive pill, once MTG-21 lands ([design](.planning/archive-design.md#reading-archive-state-sync-21))
+
+  The webapp's library, search, and Ask across meetings leave out meetings whose latest pushed version carries `archived_at`, and an Archive pill under the device pills lists and searches only those.

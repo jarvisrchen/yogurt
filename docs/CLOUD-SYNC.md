@@ -366,13 +366,17 @@ The library lists every meeting you pushed, grouped by day with the newest first
 Under the list, a range such as "26–50 of 1,412" shows where you are, Previous and Next move between pages, and Per page offers 10, 25, 50, or 100.
 The page and the page size are in the address, so a reload or a shared link keeps them, and a size you pick is remembered.
 The pills above the list pick one machine, and All devices shows them together.
+The row under them picks All or Archive.
+All leaves out the meetings you archived on a Mac, and Archive lists only those, under All devices or one machine.
+The count under the list counts only what the list shows.
 Each row shows the title, the start time, the length, and the machine that pushed it.
 
 The search field above the pills finds meetings by title, notes, enhanced notes, and transcript text as you type.
 It searches the live library only, so an earlier push shown from History has no search field.
 Capital letters and accents do not matter, quotes find a phrase, `or` finds either word, and a minus sign leaves a word out.
 A row that matches outside its title shows a short snippet with the match marked.
-Search works inside the selected machine, and the clear button or Escape restores the full list.
+Search works inside the selected machine and the selected pill, so with Archive picked it searches only the archive.
+The clear button or Escape restores the full list.
 A search shows 25 matches a page, newest first, with Previous and Next under the list when there are more.
 Chinese, Japanese, and Korean words inside a sentence do not match unless you type the whole run of characters.
 Search reads only about the first 400,000 characters of a meeting, so a word only in the tail of a very long meeting is not found.
@@ -394,7 +398,7 @@ The conversation stays on the page: leaving the meeting or reloading clears it, 
 A meeting opened from an earlier push in History has no chat.
 
 Ask across meetings, at the bottom of the library, asks about all of them.
-It finds up to 6 meetings by the words in your question, or your newest meetings when no words match, and a phrase such as "last week" or "in December" narrows them to those dates in your time zone.
+It skips archived meetings and finds up to 6 by the words in your question, or your newest meetings when no words match, and a phrase such as "last week" or "in December" narrows them to those dates in your time zone.
 Those meetings' titles, dates, notes, and transcript excerpts go to your LLM provider, and the answer cites each meeting it uses as a chip that opens it.
 The conversation stays while you open meetings from it, and a reload clears it.
 On a computer, the yogurt logo closes the open meeting and brings the library chat back.
@@ -412,6 +416,7 @@ In Settings, under Recovery, select History.
 It lists every push with its machine and time.
 A row says how many meetings the push updated and removed.
 Tap a row to see the library as it was right after that push, under a "Viewing" banner.
+All and Archive show each meeting as it was archived or not at that push.
 Meetings you open there show the version from that moment.
 Latest returns to the live library.
 

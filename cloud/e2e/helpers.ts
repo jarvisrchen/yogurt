@@ -154,9 +154,9 @@ export async function seed() {
 
 /**
  * `count` synthetic meetings on one laptop in one push, newest first by number: "Synthetic meeting 01" is the newest, three hours after number 02. `skewMin` moves them all earlier, to interleave two laptops.
- * Each carries `kb` kilobytes of notes and a 40 line transcript, so a page that downloaded bodies would be heavy.
+ * Each carries `kb` kilobytes of notes and a 40 line transcript, so a page that downloaded bodies would be heavy. `archivedAt` pushes them archived.
  */
-export async function seedBulk(count: number, { device = DEVICES.a, name = "Laptop 1", prefix = "Synthetic meeting", kb = 8, skewMin = 0 } = {}) {
+export async function seedBulk(count: number, { device = DEVICES.a, name = "Laptop 1", prefix = "Synthetic meeting", kb = 8, skewMin = 0, archivedAt = null as number | null } = {}) {
   const sb = createClient(API, KEY);
   const { error: authError } = await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
   if (authError) throw authError;
@@ -173,7 +173,7 @@ export async function seedBulk(count: number, { device = DEVICES.a, name = "Lapt
       meeting_id: `bulk-${prefix.replaceAll(" ", "-")}-${n}`,
       push_id: push,
       device_id: device,
-      body: meeting(`bulk-${n}`, `${prefix} ${n}`, now - (i + 1) * 3 * 3_600_000 - skewMin * 60_000, 25, { notes_md: `Notes for meeting ${n}. ${filler}`, transcript_json: transcript }),
+      body: meeting(`bulk-${n}`, `${prefix} ${n}`, now - (i + 1) * 3 * 3_600_000 - skewMin * 60_000, 25, { notes_md: `Notes for meeting ${n}. ${filler}`, transcript_json: transcript, archived_at: archivedAt }),
     };
   });
   for (let i = 0; i < rows.length; i += 20) {

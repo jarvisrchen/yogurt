@@ -688,6 +688,49 @@ insert into yogurt_versions (meeting_id, push_id, device_id, body) values
 select pg_temp.eq((select title || ': ' || notes from yogurt_retrieve(:'stok', '{kiwi}') where meeting_id = 'r2'), 'Mango v2: kiwi changed', 'an edit not yet indexed answers with its new text');
 select pg_temp.eq(pg_temp.rids('{}', 19000, 30000), 'r5,r3,r2,r1', 'a meeting not yet indexed counts among the newest');
 
+-- Archive: a meeting whose latest version carries meeting.archived_at leaves the library, search, and chat retrieval, and only_archived shows only such meetings.
+select yogurt_start_push(:d3) as push_x \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('a1', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved one', 'started_at', 26000, 'archived_at', 1761523200000, 'notes_md', 'shelfword', 'transcript_json', '[]'))),
+  ('a2', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved two', 'started_at', 27000, 'archived_at', 1761523200000, 'notes_md', 'shelfword', 'transcript_json', '[]'))),
+  ('a3', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'On the shelf', 'started_at', 28000, 'archived_at', null, 'notes_md', 'shelfword', 'transcript_json', '[]')));
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'archived meetings are indexed');
+reset role;
+select count(*)::text as unarchived from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l
+  where body is not null and body -> 'meeting' ->> 'archived_at' is null \gset
+set role authenticated;
+create or replace function pg_temp.lib(tok text, at_push bigint, dev uuid, archived boolean) returns text language sql as $$
+  select coalesce(string_agg(meeting_id || ':' || total, ',' order by ord), '') from (select l.*, row_number() over () ord from yogurt_library(tok, at_push, 100, 0, dev, archived) l) x
+$$;
+create or replace function pg_temp.aids(tok text, q text, archived boolean) returns text language sql as $$
+  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select s.*, row_number() over () ord from yogurt_search(tok, q, only_archived => archived) s) x
+$$;
+grant execute on function pg_temp.lib(text, bigint, uuid, boolean), pg_temp.aids(text, text, boolean) to public;
+select pg_temp.eq((select total::text from yogurt_library(:'stok', null, 1, 0)), :'unarchived', 'the library''s total leaves archived meetings out');
+select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 100, 0) where meeting_id in ('a1', 'a2')), '0', 'the library lists no archived meeting');
+select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 100, 0) where meeting_id = 'a3'), '1', 'a null archived_at is not archived');
+select pg_temp.eq(pg_temp.lib(:'stok', null, null, true), 'a2:2,a1:2', 'only_archived lists only archived meetings, and total counts them');
+select pg_temp.eq(pg_temp.lib(:'stok', null, :d3, true) || ' ' || pg_temp.lib(:'stok', null, :d4, true), 'a2:2,a1:2 ', 'only_archived combines with only_device');
+select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 1, 5, null, true)), '0', 'a page past the end of the archive is empty');
+select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', false), 'a3', 'search leaves archived meetings out');
+select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', true), 'a2,a1', 'only_archived searches only the archive');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'shelfword', :d4, 0, true)), null, 'and keeps the device filter');
+select pg_temp.eq(pg_temp.rids('{shelfword}'), 'a3', 'chat retrieval leaves archived meetings out');
+select pg_temp.eq(pg_temp.rids('{}', 24000, 30000), 'a3,r5', 'and so does its fallback to the newest');
+select pg_temp.eq(pg_temp.rids('{zzzz}', 24000, 30000), 'a3,r5', 'and its fallback when no term matches');
+-- Unarchiving pushes a version without archived_at, and archiving one with it. Both take effect before the index catches up.
+select yogurt_start_push(:d3) as push_y \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('a1', :push_y, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved one', 'started_at', 26000, 'notes_md', 'shelfword', 'transcript_json', '[]'))),
+  ('a3', :push_y, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'On the shelf', 'started_at', 28000, 'archived_at', 1761609600000, 'notes_md', 'shelfword', 'transcript_json', '[]')));
+select pg_temp.eq(pg_temp.lib(:'stok', null, :d3, true) || ' ' || pg_temp.lib(:'stok', null, null, true), 'a3:2,a2:2 a3:2,a2:2', 'the archive follows the latest version');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_library(:'stok', null, 100, 0) where meeting_id like 'a_'), 'a1', 'an unarchived meeting is listed again');
+select pg_temp.eq(pg_temp.lib(:'stok', :push_x, :d3, true), 'a2:2,a1:2', 'the as-of view shows the archive as it was at that push');
+select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', false) || ' ' || pg_temp.aids(:'stok', 'shelfword', true), 'a1 a3,a2', 'search follows a push the index has not caught up to');
+select pg_temp.eq(pg_temp.rids('{shelfword}') || ' ' || pg_temp.rids('{}', 24000, 30000), 'a1 a1,r5', 'and so does chat retrieval');
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the catch-up after the archive push');
+select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', false) || ' ' || pg_temp.aids(:'stok', 'shelfword', true), 'a1 a3,a2', 'and once caught up');
+
 -- The index is private, and each owner sees only their own rows.
 select pg_temp.expect('42501', array['select * from yogurt_private.yogurt_search_index', 'insert into yogurt_private.yogurt_search_index (device_id, meeting_id, user_id, push_id) values (gen_random_uuid(), ''x'', gen_random_uuid(), 1)']);
 reset role;
