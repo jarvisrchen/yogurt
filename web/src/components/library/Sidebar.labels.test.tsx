@@ -357,9 +357,24 @@ describe("Sidebar — Labels section", () => {
     expect(screen.getByRole("link", { name: /Sales/ })).toHaveTextContent("Sales1");
     expect(screen.getByRole("button", { name: /Archived labels/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("link", { name: /Old clients/ })).toHaveAttribute("aria-current", "page");
+    // Archive is highlighted under a narrowed archive, and only the label row is the current page.
+    expect(screen.getByRole("link", { name: "Archive" })).toHaveClass("bg-blsoft");
     expect(screen.getByRole("link", { name: "Archive" })).not.toHaveAttribute("aria-current");
+    // A modified click keeps its browser meaning, and a plain one on the selected label takes it off.
+    fireEvent.click(screen.getByRole("link", { name: /Old clients/ }), { metaKey: true });
+    expect(screen.getByRole("link", { name: /Old clients/ })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(screen.getByRole("link", { name: /Old clients/ }));
+    expect(screen.getByRole("link", { name: "Archive" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /Old clients/ })).not.toHaveAttribute("aria-current");
+    // The group stays open after the label is taken off, and closes on its toggle.
     fireEvent.click(screen.getByRole("button", { name: /Archived labels/ }));
     expect(screen.getByRole("button", { name: /Archived labels/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Old clients")).not.toBeInTheDocument();
+    cleanup();
+
+    // Outside the Archive, the selected label clicked again goes back to All meetings.
+    renderSidebar("/label/l1");
+    fireEvent.click(screen.getByRole("link", { name: /Sales/ }));
+    expect(screen.getByRole("link", { name: "All meetings" })).toHaveAttribute("aria-current", "page");
   });
 });

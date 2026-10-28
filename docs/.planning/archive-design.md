@@ -107,6 +107,7 @@ A sidebar label counts only its unarchived meetings, and the delete confirmation
 A label with archived meetings and no others moves to a collapsed Archived labels group under the list, derived from the meetings with nothing stored.
 It returns to the list once one of its meetings is unarchived or a new meeting gets it, which is also how a recreated label of the same name combines with it, since names are unique.
 In the Archive view a label opens `/archive/label/:id` and counts its archived meetings, and an archived label always opens there.
+There the Archive nav item stays highlighted beside the label row, and clicking the selected label again goes back to the whole Archive, as it goes back to the whole Library outside it (MTG-26).
 
 The meeting page header (`web/src/routes/MeetingPost.tsx:496`) gains an Archive icon button before Delete.
 On an archived meeting it becomes `ArchiveRestore` on the selected-blue background, and its tooltip reads "Archived Oct 27, 2026", so a meeting opened from a link shows why the Library does not list it.

@@ -1464,3 +1464,9 @@ New closed items go at the bottom.
   A retried backlog is capped at 2,000 words, finals landing within 30 seconds of Resume are dropped, a missing provider shows as an error, and an Update now asked for during a call runs once that call lands.
   The meeting socket opens with the recap's current state, so a reconnect misses nothing, and `useEnhanceProgress` and `useAudioLevels` now go through `subscribeMeetingFrames`.
   </details>
+
+- [x] **MTG-26** Keep Archive highlighted in the sidebar while the Archive view is narrowed to a label, and let a second click on the selected label take it off.
+
+  The Archive nav item stays highlighted while the Archive view is narrowed to a label.
+  Clicking the selected label again takes it off, back to the whole Archive or the whole Library.
+  The Archived labels group opens once per arrival on one of its labels and stays open when the label is taken off.
