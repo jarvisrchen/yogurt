@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router";
-import { Archive, Plus, Settings as SettingsIcon, Star } from "lucide-react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
+import { Archive, ChevronRight, Plus, Settings as SettingsIcon, Star } from "lucide-react";
 import { Logo } from "../Logo";
 import { useCreateMeeting } from "../../lib/api/meetings";
-import { useCreateLabel, useLabels, useReorderLabels } from "../../lib/api/labels";
+import { isArchivedLabel, useCreateLabel, useLabels, useReorderLabels } from "../../lib/api/labels";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { useCloudStatus } from "../../lib/api/cloud";
@@ -29,16 +29,26 @@ export function Sidebar() {
   const [newLabelName, setNewLabelName] = useState("");
   const [sortMode, setSortMode] = useState(getLabelSortMode);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const sortedLabels = sortLabels(labels.data ?? [], sortMode);
+  const [showArchived, setShowArchived] = useState<boolean | null>(null);
+  const allSorted = sortLabels(labels.data ?? [], sortMode);
+  const sortedLabels = allSorted.filter((l) => !isArchivedLabel(l));
+  const archivedLabels = allSorted.filter(isArchivedLabel);
+  const { pathname } = useLocation();
+  const inArchive = pathname.startsWith("/archive");
+  // Until toggled, the group opens on its own when one of its labels is the page on screen.
+  const archivedOpen = showArchived ?? archivedLabels.some((l) => pathname === `/archive/label/${l.id}`);
 
   function handleDrop(targetIndex: number) {
     if (dragIndex === null || dragIndex === targetIndex) {
       setDragIndex(null);
       return;
     }
-    const ids = sortedLabels.map((l) => l.id);
-    const [moved] = ids.splice(dragIndex, 1);
-    ids.splice(targetIndex, 0, moved);
+    // Reorder numbers every id it gets, so the hidden archived labels keep their slots around the move.
+    const ids = allSorted.map((l) => l.id);
+    const moved = sortedLabels[dragIndex].id;
+    ids.splice(ids.indexOf(moved), 1);
+    const target = ids.indexOf(sortedLabels[targetIndex].id);
+    ids.splice(dragIndex < targetIndex ? target + 1 : target, 0, moved);
     reorderLabels.mutate(ids);
     setDragIndex(null);
   }
@@ -46,7 +56,15 @@ export function Sidebar() {
   function commitNewLabel() {
     const name = newLabelName.trim();
     if (name.length > 0) {
-      createLabel.mutate({ name });
+      // A name already taken returns that label, so an archived one opens its group to show where it went.
+      createLabel.mutate(
+        { name },
+        {
+          onSuccess: (l) => {
+            if (archivedLabels.some((a) => a.id === l.id)) setShowArchived(true);
+          },
+        },
+      );
     }
     setNewLabelName("");
     setAddingLabel(false);
@@ -106,7 +124,7 @@ export function Sidebar() {
           <Star size={14} className="shrink-0 fill-current" aria-hidden />
           Starred
         </NavLink>
-        <NavLink to="/archive" className={navClass("flex items-center gap-1.5")}>
+        <NavLink to="/archive" end className={navClass("flex items-center gap-1.5")}>
           <Archive size={14} className="shrink-0" aria-hidden />
           Archive
         </NavLink>
@@ -164,7 +182,7 @@ export function Sidebar() {
             />
           </div>
         )}
-        {sortedLabels.length === 0 && !addingLabel ? (
+        {sortedLabels.length === 0 && archivedLabels.length === 0 && !addingLabel ? (
           <p className="px-3 py-1 text-[12px] text-mut">No labels yet</p>
         ) : (
           sortedLabels.map((l, i) => (
@@ -179,9 +197,29 @@ export function Sidebar() {
               onDragEnd={() => setDragIndex(null)}
               className={dragIndex === i ? "opacity-50" : undefined}
             >
-              <SidebarLabelRow label={l} />
+              <SidebarLabelRow label={l} inArchive={inArchive} />
             </div>
           ))
+        )}
+        {archivedLabels.length > 0 && (
+          <>
+            <button
+              type="button"
+              aria-expanded={archivedOpen}
+              onClick={() => setShowArchived(!archivedOpen)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-button text-[12px] text-mut hover:text-ink"
+            >
+              <ChevronRight
+                size={12}
+                aria-hidden
+                className={`shrink-0 transition-transform ${archivedOpen ? "rotate-90" : ""}`}
+              />
+              <span className="flex-1 text-left">Archived labels</span>
+              {/* The trailing gap lines the count up with the label rows' counts, which sit left of their options button. */}
+              <span className="text-[11px] mr-[22px]">{archivedLabels.length}</span>
+            </button>
+            {archivedOpen && archivedLabels.map((l) => <SidebarLabelRow key={l.id} label={l} inArchive />)}
+          </>
         )}
       </div>
 

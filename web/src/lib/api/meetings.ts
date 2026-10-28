@@ -320,7 +320,11 @@ export function useSetArchived(): UseMutationResult<
         );
       }
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: meetingsKey }),
+    // Labels count their archived meetings apart.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
+    },
     onError: (err) => console.error("archive failed", err),
   });
 }
@@ -343,7 +347,10 @@ export function useArchiveMatching(): UseMutationResult<{ count: number }, Error
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (scope: ArchiveScope) => meetingsApi.archive(scope, false),
-    onSettled: () => qc.invalidateQueries({ queryKey: meetingsKey }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: meetingsKey });
+      qc.invalidateQueries({ queryKey: ["labels"] });
+    },
   });
 }
 

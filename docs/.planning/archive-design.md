@@ -101,6 +101,13 @@ The bound is the chosen date's midnight in the local time zone, and the field ca
 A label's sidebar menu has Archive meetings above Delete (MTG-23), so a Granola folder imported as a label can be archived whole.
 It confirms in the menu like Delete, "Archive?" over "Archives 312 meetings", with the count from the preview call.
 
+MTG-24 tidies labels after that.
+A sidebar label counts only its unarchived meetings, and the delete confirmation still counts all of them.
+`GET /api/labels` returns `archived_count` beside `meeting_count` for this.
+A label with archived meetings and no others moves to a collapsed Archived labels group under the list, derived from the meetings with nothing stored.
+It returns to the list once one of its meetings is unarchived or a new meeting gets it, which is also how a recreated label of the same name combines with it, since names are unique.
+In the Archive view a label opens `/archive/label/:id` and counts its archived meetings, and an archived label always opens there.
+
 The meeting page header (`web/src/routes/MeetingPost.tsx:496`) gains an Archive icon button before Delete.
 On an archived meeting it becomes `ArchiveRestore` on the selected-blue background, and its tooltip reads "Archived Oct 27, 2026", so a meeting opened from a link shows why the Library does not list it.
 

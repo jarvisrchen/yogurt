@@ -1437,6 +1437,12 @@ New closed items go at the bottom.
   It confirms in place with the count of meetings it would archive, and skips the meeting being recorded.
   `POST /api/meetings/archive` takes `label_id` beside `before`, and needs at least one.
 
+- [x] **MTG-24** Count only unarchived meetings on sidebar labels, file a label whose meetings are all archived under a collapsed Archived labels group, and let a label narrow the Archive view.
+
+  Sidebar labels count their unarchived meetings, and a label with only archived meetings moves to a collapsed Archived labels group.
+  In the Archive view a label narrows the archive at `/archive/label/:id` and counts its archived meetings.
+  `GET /api/labels` returns `archived_count`.
+
 - [x] **SYNC-27** In the webapp, let a label narrow the picked pill, so Archive with a label lists that label's archived meetings, and list the archive's labels under Archive.
 
   A label now narrows the picked pill, so All, Starred, or Archive each combine with it, and All labels takes it off.
