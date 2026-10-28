@@ -517,15 +517,16 @@ const searchField = (d) => `
   </div>`;
 
 const deviceTag = (d, i) => `<span class="${d ? "text-[9.5px]" : "text-[11px]"} leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap ${DTONES[i % DTONES.length]}">${DEVICES[i].name}</span>`;
-const listRow = (d, r) => `
+// With one Mac picked every row would carry the same tag, so the tag shows only under All devices.
+const listRow = (d, r, tag) => `
   <button type="button" class="block w-full text-left font-[inherit] text-ink bg-card border rounded-button px-[11px] py-[9px] cursor-pointer border-line">
     <b class="block ${d ? "text-[12px]" : "text-[16px]"} font-bold truncate">${r.title}</b>
-    <span class="flex justify-between items-center gap-[6px] ${d ? "text-[10px]" : "text-[13px]"} text-mut mt-[2px]"><span>${r.meta}</span>${deviceTag(d, r.dev)}</span>
+    <span class="flex justify-between items-center gap-[6px] ${d ? "text-[10px]" : "text-[13px]"} text-mut mt-[2px]"><span>${r.meta}</span>${tag ? deviceTag(d, r.dev) : ""}</span>
   </button>`;
-const dayList = (d, groups) => groups.map((g) => `
+const dayList = (d, groups, tag) => groups.map((g) => `
   <section class="flex flex-col ${d ? "gap-[8px]" : "gap-[10px]"}">
     <h2 class="font-mono ${d ? "text-[9.5px]" : "text-[11px]"} font-normal uppercase tracking-[.08em] text-mut mt-[4px] m-[0px]">${g.label}</h2>
-    ${g.rows.map((r) => listRow(d, r)).join("")}
+    ${g.rows.map((r) => listRow(d, r, tag)).join("")}
   </section>`).join("");
 
 // web/src/components/library/Pager.tsx
@@ -560,7 +561,7 @@ function cloudList(d, device, filter, groups, pagerRange, open) {
     ${searchField(d)}
     ${devicePills(d, device)}
     ${filterPills(d, device, filter, open)}
-    <div class="flex flex-col ${d ? "gap-[8px]" : "gap-[10px]"}">${dayList(d, groups)}</div>
+    <div class="flex flex-col ${d ? "gap-[8px]" : "gap-[10px]"}">${dayList(d, groups, !device)}</div>
     ${pagerRange ? pager(pagerRange) : ""}`;
 }
 
@@ -645,7 +646,7 @@ const SECTIONS = [
   },
   {
     title: "6. Webapp phone: the filter row",
-    caption: "Under All devices the row offers All and Archive. Once a Mac is picked it adds Starred, and a Labels button at the row's end opens that Mac's labels as a list. A picked label takes over the button, and the open list marks it with a check.",
+    caption: "Under All devices the row offers All and Archive. Once a Mac is picked it adds Starred, and a Labels button at the row's end opens that Mac's labels as a list. A picked label takes over the button, and the open list marks it with a check. With one Mac picked the rows drop their device tag, since every row would show the same one.",
     frames: [
       { w: 390, h: 844, phone: true, label: "All devices", html: () => cloudPhone(null, "all", ALL_ROWS) },
       { w: 390, h: 844, phone: true, label: "MacBook Pro, list open", html: () => cloudPhone("mbp", "clients", CLIENT_ROWS, true) },
@@ -654,7 +655,7 @@ const SECTIONS = [
   },
   {
     title: "7. Webapp desktop: a label picked",
-    caption: "On a desktop the same row fits the 300px aside, here with MacBook Pro picked and Clients chosen from the Labels button.",
+    caption: "On a desktop the same row fits the 300px aside, here with MacBook Pro picked and Clients chosen from the Labels button. The rows drop their device tag because only one Mac is shown.",
     frames: [{ ...MAC, html: cloudDesktop }],
   },
 ];

@@ -146,6 +146,7 @@ Both take effect only with `only_device`, and the `only_` names keep clear of `y
 The Labels button opens a list of that Mac's labels with their colors, because a Mac can have too many labels for a row of pills.
 Picking one closes the list, and the button then shows that label's color and name in the selected style.
 Changing the Mac resets the filter to All, because the old Mac's label means nothing on the new one.
+With a Mac picked, rows drop their device tag, since every row would show the same one.
 
 ## Cost
 
@@ -175,11 +176,12 @@ Its e2e specs cover the filter pills and the reset on a Mac change.
 - `docs/CLOUD-SYNC.md`: the pushed body carries `archived_at`, and the webapp's filters.
 - `docs/AI-INTEGRATION.md`: the new routes.
 
-## Open questions
+## Decided after review
 
-1. **A label inside the Archive view on the Mac.** The sidebar's views are separate paths today, so Starred and a label never combine.
-   Archive follows that, and its search is how to find an old meeting.
-   Recommendation: no label filter inside Archive for now.
-2. **A starred meeting that gets archived.** Recommendation: it leaves Starred and keeps its star, so Unarchive puts it back.
-3. **Undo for the date rule.** Every meeting it archives gets the same `archived_at`, so an Undo could unarchive exactly that batch.
-   Recommendation: the confirmation with the count is enough, and a stray archive is recoverable one page at a time.
+- The Archive view has no label filter inside it, matching Starred, whose views never combine with a label.
+  Search is how to find an old meeting in the archive.
+- An archived starred meeting leaves Starred and keeps its star, so Unarchive puts it back.
+- Archive older meetings has no Undo.
+  The confirmation shows the count first, and any meeting can be unarchived.
+- The webapp's label list has no search box.
+- The filter pills keep the device pills' style, so the two rows stay consistent.
