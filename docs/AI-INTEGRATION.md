@@ -104,7 +104,7 @@ The response and the meeting row both carry the resolved `template`.
 ## WebSocket frames
 
 Both sockets share a `{"type": "<snake_case>", ...}` discriminator.
-`/ws/meetings/{id}`: `transcript` (`ts_ms`, `channel`, `text`, `is_final`), `enhance_progress`, `chat_chunk`, `audio_level`, `stt_error`, `live_recap` (the whole recap state on every change).
+`/ws/meetings/{id}`: `transcript` (`ts_ms`, `channel`, `text`, `is_final`), `enhance_progress`, `chat_chunk`, `audio_level`, `stt_error`, `live_recap` (the whole recap state as the socket opens and on every change).
 `/ws`: `stt_model_download_progress`/`complete`/`error`/`cancelled`.
 `ctl ws` prints one frame per line from either; `--types` filters by `type`.
 

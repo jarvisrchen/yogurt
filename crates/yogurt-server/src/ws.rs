@@ -362,6 +362,13 @@ async fn handle_meeting_socket(mut socket: WebSocket, id: Uuid, state: AppState)
     };
     let mut rx = m.transcript_tx.subscribe();
     let mut events_rx = m.events_tx.subscribe();
+    // The recap sends a frame only on change, so a client that connects late, or reconnects after
+    // missing one, starts from the current state.
+    if let Ok(frame) = serde_json::to_string(&WsEvent::LiveRecap(crate::recap::snapshot(&m))) {
+        if socket.send(Message::Text(frame.into())).await.is_err() {
+            return;
+        }
+    }
 
     loop {
         tokio::select! {

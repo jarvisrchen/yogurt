@@ -1,6 +1,6 @@
 //! Live recap: while a meeting records, a few short bullets of what was just discussed, every few minutes.
 //!
-//! One task per recording session buffers final segments and sends only those since the last update,
+//! One task per recording, kept through a quick Stop and resume, buffers final segments and sends only those since the last update,
 //! with the last few bullets as context, so each call stays about the same size however long the
 //! meeting runs. Bullets live only on the in-memory `Meeting` and are dropped once Enhance has saved
 //! the summary, so they never reach SQLite, the markdown export, or Yogurt Cloud.
@@ -18,7 +18,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 use yogurt_llm::{ChatMessage, ChatRequest};
 use yogurt_stt::TranscriptEvent;
@@ -34,6 +34,15 @@ const WORD_FLOOR: usize = 100;
 /// Caps the context so a call is the same size in minute 5 and minute 90.
 const CONTEXT_BULLETS: usize = 20;
 const MAX_NEW_BULLETS: usize = 4;
+/// About two busy windows. A provider that keeps failing would otherwise grow the retried backlog,
+/// and the next prompt, without bound.
+const MAX_PENDING_WORDS: usize = 2_000;
+/// Finals landing this soon after Resume are dropped. A local whisper segment runs up to
+/// `MAX_SEGMENT_MS` and its final lands a few seconds after it closes, so without this the words
+/// said while paused could ride in on one that straddles Resume.
+/// ponytail: wall-clock, so it also drops up to 30s of speech said after Resume. The transcript's
+/// own `ts_ms` cannot stand in, because Deepgram restarts it on every reconnect.
+const RESUME_GRACE: Duration = Duration::from_millis(yogurt_stt::vad::MAX_SEGMENT_MS + 5_000);
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Bullet {
@@ -66,39 +75,63 @@ pub struct Recap {
     state: RecapState,
     /// Final segments since the last update. Shared with the routes so Pause can drop them.
     pending: Vec<TranscriptEvent>,
-    /// Set once Enhance has saved the summary, so a late update cannot bring the bullets back.
-    closed: bool,
+    /// Bumped by `close`, so a call that began before Enhance saved the summary is discarded when it lands.
+    epoch: u64,
+    resumed_at: Option<tokio::time::Instant>,
+    /// A task is alive. It exits after the last update once the meeting stops recording.
+    running: bool,
+    recording: bool,
+    /// Update now, or the last update at Stop. Asked for while a call runs, it waits for that call.
+    wanted: bool,
 }
 
 type Update =
-    Pin<Box<dyn Future<Output = (Vec<TranscriptEvent>, anyhow::Result<Vec<Bullet>>)> + Send>>;
+    Pin<Box<dyn Future<Output = (u64, Vec<TranscriptEvent>, anyhow::Result<Vec<Bullet>>)> + Send>>;
 
-/// `rx` must be subscribed before `Registry::start`, so no final segment slips past.
+/// Starts the recap task, or keeps the one still finishing the last session's final update, so a
+/// quick Stop and resume never has two tasks sharing one buffer. `rx` must be subscribed before
+/// `Registry::start`, so no final segment slips past.
 pub fn spawn(state: AppState, m: Arc<Meeting>, rx: broadcast::Receiver<TranscriptEvent>) {
-    let (stop_tx, stop_rx) = oneshot::channel();
-    *m.recap_stop.lock().unwrap() = Some(stop_tx);
-    // Resuming a meeting that was already enhanced starts a fresh recap.
-    m.recap.lock().unwrap().closed = false;
-    tokio::spawn(run(state, m, rx, stop_rx));
+    let start = {
+        let mut r = m.recap.lock().unwrap();
+        r.recording = true;
+        !std::mem::replace(&mut r.running, true)
+    };
+    if start {
+        tokio::spawn(run(state, m, rx));
+    }
 }
 
-/// The task runs one last update and exits. Not awaited, so the post-meeting page opens as fast as before.
+/// Runs one last update with no word floor, then the task exits. Not awaited, so the post-meeting
+/// page opens as fast as before.
 pub fn stop(m: &Meeting) {
-    if let Some(tx) = m.recap_stop.lock().unwrap().take() {
-        let _ = tx.send(());
-    }
+    let mut r = m.recap.lock().unwrap();
+    r.recording = false;
+    r.wanted = true;
+    drop(r);
+    m.recap_refresh.notify_one();
+}
+
+/// Update now, which skips the word floor.
+fn request_update(m: &Meeting) {
+    m.recap.lock().unwrap().wanted = true;
+    m.recap_refresh.notify_one();
 }
 
 /// Called once Enhance has saved the summary the recap stood in for.
 pub fn close(m: &Meeting) {
     update(m, |r| {
-        r.closed = true;
+        r.epoch += 1;
         r.pending.clear();
         r.state = RecapState {
             paused: r.state.paused,
             ..Default::default()
         };
     });
+}
+
+pub(crate) fn snapshot(m: &Meeting) -> RecapState {
+    m.recap.lock().unwrap().state.clone()
 }
 
 fn enabled(state: &AppState) -> bool {
@@ -118,24 +151,21 @@ fn update(m: &Meeting, f: impl FnOnce(&mut Recap)) -> RecapState {
     snapshot
 }
 
-async fn run(
-    state: AppState,
-    m: Arc<Meeting>,
-    mut rx: broadcast::Receiver<TranscriptEvent>,
-    mut stop_rx: oneshot::Receiver<()>,
-) {
+async fn run(state: AppState, m: Arc<Meeting>, mut rx: broadcast::Receiver<TranscriptEvent>) {
     let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + TICK, TICK);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut call: Option<Update> = None;
     loop {
         tokio::select! {
-            _ = &mut stop_rx => break,
             ev = rx.recv() => match ev {
                 Ok(ev) => accept(&state, &m, ev),
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!(n, "live recap lagged, segments dropped");
                 }
-                Err(broadcast::error::RecvError::Closed) => break,
+                Err(broadcast::error::RecvError::Closed) => {
+                    m.recap.lock().unwrap().running = false;
+                    return;
+                }
             },
             _ = ticker.tick() => {
                 if call.is_none() {
@@ -143,26 +173,31 @@ async fn run(
                     call = begin(&state, &m, WORD_FLOOR);
                 }
             }
-            _ = m.recap_refresh.notified() => {
-                if call.is_none() {
-                    drain(&state, &m, &mut rx);
-                    call = begin(&state, &m, 1);
-                }
-            }
-            (window, res) = async { call.as_mut().expect("guarded").await }, if call.is_some() => {
+            _ = m.recap_refresh.notified() => {}
+            (epoch, window, res) = async { call.as_mut().expect("guarded").await }, if call.is_some() => {
                 call = None;
-                finish(&m, window, res);
+                finish(&m, epoch, window, res);
             }
         }
-    }
-    drain(&state, &m, &mut rx);
-    if let Some(c) = call.take() {
-        let (window, res) = c.await;
-        finish(&m, window, res);
-    }
-    if let Some(c) = begin(&state, &m, 1) {
-        let (window, res) = c.await;
-        finish(&m, window, res);
+        // Under the lock `spawn` and `stop` take, so a resume either finds this task running or
+        // starts a new one, and the last update always runs before the exit. Loops because an asked-for
+        // update can find nothing to send, and the exit must still follow.
+        while call.is_none() {
+            let wanted = {
+                let mut r = m.recap.lock().unwrap();
+                let wanted = std::mem::take(&mut r.wanted);
+                if !wanted && !r.recording {
+                    r.running = false;
+                    return;
+                }
+                wanted
+            };
+            if !wanted {
+                break;
+            }
+            drain(&state, &m, &mut rx);
+            call = begin(&state, &m, 1);
+        }
     }
 }
 
@@ -181,25 +216,29 @@ fn accept(state: &AppState, m: &Meeting, ev: TranscriptEvent) {
     }
     let on = enabled(state);
     let mut r = m.recap.lock().unwrap();
-    if on && !r.state.paused && !r.closed {
+    let settling = r.resumed_at.is_some_and(|t| t.elapsed() < RESUME_GRACE);
+    if on && !r.state.paused && !settling {
         r.pending.push(ev);
     }
+}
+
+fn words(segments: &[TranscriptEvent]) -> usize {
+    segments
+        .iter()
+        .map(|ev| ev.text.split_whitespace().count())
+        .sum()
 }
 
 /// Starts an update when at least `floor` new words are buffered.
 fn begin(state: &AppState, m: &Meeting, floor: usize) -> Option<Update> {
     let on = enabled(state);
-    let (earlier, window) = {
+    let (epoch, earlier, window) = {
         let mut r = m.recap.lock().unwrap();
-        if !on || r.state.paused || r.closed {
+        if !on || r.state.paused {
             r.pending.clear();
             return None;
         }
-        let words: usize = r
-            .pending
-            .iter()
-            .map(|ev| ev.text.split_whitespace().count())
-            .sum();
+        let words = words(&r.pending);
         if words == 0 || words < floor {
             return None;
         }
@@ -209,13 +248,13 @@ fn begin(state: &AppState, m: &Meeting, floor: usize) -> Option<Update> {
             .map(|b| format!("- [{}] {}", mmss(b.ts_ms), b.text))
             .collect::<Vec<_>>()
             .join("\n");
-        (earlier, std::mem::take(&mut r.pending))
+        (r.epoch, earlier, std::mem::take(&mut r.pending))
     };
     update(m, |r| r.state.status = Status::Updating);
     let state = state.clone();
     Some(Box::pin(async move {
         let res = summarize(&state, &earlier, &window).await;
-        (window, res)
+        (epoch, window, res)
     }))
 }
 
@@ -227,7 +266,10 @@ async fn summarize(
     let segments: Vec<_> = window.iter().map(crate::meetings::segment_json).collect();
     let lines = crate::api::chat::transcript_lines(&serde_json::Value::Array(segments).to_string());
     let prompt = state.prompts.render_live_recap(earlier, &lines)?;
-    let llm = crate::llm_openai::resolve(state).await?;
+    // Unlike Enhance, no mock fallback: an empty recap would look like nothing worth noting was said.
+    let llm = crate::llm_openai::resolve_configured(state)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No LLM provider is set up. Add one in Settings > Model"))?;
     let model = llm.model_name();
     let timeout = llm.response_timeout();
     let req = ChatRequest {
@@ -248,13 +290,14 @@ async fn summarize(
     ))
 }
 
-/// A failed window goes back in front of the buffer so the next tick retries it.
-fn finish(m: &Meeting, window: Vec<TranscriptEvent>, res: anyhow::Result<Vec<Bullet>>) {
+/// A failed window goes back in front of the buffer so the next tick retries it, oldest words
+/// dropped past [`MAX_PENDING_WORDS`].
+fn finish(m: &Meeting, epoch: u64, window: Vec<TranscriptEvent>, res: anyhow::Result<Vec<Bullet>>) {
     if let Err(e) = &res {
         tracing::warn!(event = "live_recap_failed", meeting_id = %m.id, error = %e, "live recap update failed");
     }
     update(m, |r| {
-        if r.closed {
+        if r.epoch != epoch {
             return;
         }
         match res {
@@ -270,6 +313,14 @@ fn finish(m: &Meeting, window: Vec<TranscriptEvent>, res: anyhow::Result<Vec<Bul
                 if !r.state.paused {
                     let newer = std::mem::replace(&mut r.pending, window);
                     r.pending.extend(newer);
+                    let mut newest = 0;
+                    let over = r.pending.iter().rposition(|ev| {
+                        newest += ev.text.split_whitespace().count();
+                        newest > MAX_PENDING_WORDS
+                    });
+                    // Keeps the newest segment even when it alone is over the cap.
+                    let cut = over.map_or(0, |i| (i + 1).min(r.pending.len() - 1));
+                    r.pending.drain(..cut);
                 }
             }
         }
@@ -346,8 +397,14 @@ pub async fn patch_recap(
         return not_found();
     };
     let snapshot = update(&m, |r| {
+        if r.state.paused == body.paused {
+            return;
+        }
         r.state.paused = body.paused;
         r.pending.clear();
+        if !body.paused {
+            r.resumed_at = Some(tokio::time::Instant::now());
+        }
     });
     Json(snapshot).into_response()
 }
@@ -364,7 +421,7 @@ pub async fn refresh_recap(State(state): State<AppState>, Path(id): Path<Uuid>) 
         )
             .into_response();
     }
-    m.recap_refresh.notify_one();
+    request_update(&m);
     (StatusCode::ACCEPTED, Json(json!({ "status": "queued" }))).into_response()
 }
 
@@ -449,6 +506,15 @@ mod tests {
 
     impl Harness {
         async fn new(replies: &[Result<&'static str, &'static str>], gated: bool) -> Self {
+            Self::build(replies, gated, true).await
+        }
+
+        /// `scripted: false` leaves no provider set, so `resolve` falls back to the mock.
+        async fn build(
+            replies: &[Result<&'static str, &'static str>],
+            gated: bool,
+            scripted: bool,
+        ) -> Self {
             let tmp = tempfile::tempdir().unwrap();
             let storage =
                 Arc::new(crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap());
@@ -468,7 +534,9 @@ mod tests {
                 gate: gated.then(Default::default),
                 ..Default::default()
             });
-            state.llm_override = Some(llm.clone());
+            if scripted {
+                state.llm_override = Some(llm.clone());
+            }
             let m = state.meetings.create().await;
             let h = Self {
                 state,
@@ -592,12 +660,12 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn update_now_skips_the_floor_but_needs_new_words() {
         let h = Harness::new(&[Ok("- [00:03] Hello")], false).await;
-        h.m.recap_refresh.notify_one();
+        request_update(&h.m);
         settle().await;
         assert_eq!(h.calls(), 0, "nothing new to send");
 
         h.say(3, "hello", 5);
-        h.m.recap_refresh.notify_one();
+        request_update(&h.m);
         settle().await;
         assert_eq!(h.calls(), 1);
         assert_eq!(h.recap().bullets.len(), 1);
@@ -649,7 +717,7 @@ mod tests {
         assert_eq!(h.recap().status, Status::Updating);
 
         h.say(200, "bravo", 120);
-        h.m.recap_refresh.notify_one();
+        request_update(&h.m);
         tick().await;
         assert_eq!(h.calls(), 1, "no second call while one runs");
 
@@ -681,6 +749,7 @@ mod tests {
         assert_eq!(h.calls(), 0);
 
         h.set_paused(false).await;
+        tokio::time::sleep(RESUME_GRACE).await;
         h.say(500, "after", 120);
         tick().await;
         h.say(700, "closing", 3);
@@ -711,6 +780,110 @@ mod tests {
         settle().await;
         assert!(h.recap().bullets.is_empty());
         assert_eq!(h.recap().status, Status::Idle);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_final_landing_right_after_resume_is_dropped() {
+        let h = Harness::new(&[], false).await;
+        h.say(5, "before", 120);
+        h.set_paused(false).await;
+        settle().await;
+        assert_eq!(
+            h.m.recap.lock().unwrap().pending.len(),
+            1,
+            "a no-op resume keeps the buffer"
+        );
+
+        h.set_paused(true).await;
+        h.set_paused(false).await;
+        h.say(50, "secret", 120);
+        tokio::time::sleep(RESUME_GRACE).await;
+        h.say(70, "open", 120);
+        tick().await;
+        let prompts = h.llm.prompts();
+        assert_eq!(prompts.len(), 1);
+        assert!(!prompts[0].contains("secret"), "{}", prompts[0]);
+        assert!(prompts[0].contains("them: open"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn update_now_during_a_call_runs_once_it_lands() {
+        let h = Harness::new(&[Ok("- [00:05] First"), Ok("- [03:20] Second")], true).await;
+        h.say(5, "alpha", 120);
+        tick().await;
+        h.say(200, "bravo", 5);
+        request_update(&h.m);
+        settle().await;
+        assert_eq!(h.calls(), 1);
+
+        let gate = h.llm.gate.as_ref().unwrap();
+        gate.notify_one();
+        settle().await;
+        assert_eq!(h.calls(), 2, "the asked-for update follows the tick's");
+        assert!(h.llm.prompts()[1].contains("them: bravo"));
+        gate.notify_one();
+        settle().await;
+        assert_eq!(h.recap().bullets.len(), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn repeated_failures_keep_only_the_newest_words() {
+        let h = Harness::new(&[Err("down"), Err("down"), Err("down"), Err("down")], false).await;
+        for i in 0..4 {
+            h.say(i * 200, &format!("w{i}"), 800);
+            tick().await;
+        }
+        let pending = words(&h.m.recap.lock().unwrap().pending);
+        assert!(pending <= MAX_PENDING_WORDS, "{pending}");
+        let last = h.llm.prompts().pop().unwrap();
+        assert!(!last.contains("them: w0"), "the oldest window was dropped");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn no_provider_is_an_error_rather_than_an_empty_update() {
+        let h = Harness::build(&[], false, false).await;
+        h.say(5, "hello", 5);
+        stop(&h.m);
+        settle().await;
+        let s = h.recap();
+        assert_eq!(s.status, Status::Error);
+        assert!(s.error.unwrap().contains("Settings > Model"));
+        assert_eq!(s.updated_at, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_task_exits_after_the_last_update_and_a_resume_starts_a_new_one() {
+        let h = Harness::new(&[Ok("- [00:05] One"), Ok("- [03:20] Two")], false).await;
+        h.say(5, "alpha", 5);
+        stop(&h.m);
+        settle().await;
+        assert!(!h.m.recap.lock().unwrap().running);
+        h.start();
+        h.say(200, "bravo", 120);
+        tick().await;
+        assert_eq!(h.recap().bullets.len(), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_task_exits_at_stop_with_nothing_to_send() {
+        let h = Harness::new(&[], false).await;
+        stop(&h.m);
+        settle().await;
+        assert!(!h.m.recap.lock().unwrap().running);
+        assert_eq!(h.calls(), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_resume_after_enhance_cannot_revive_the_old_recap() {
+        let h = Harness::new(&[Ok("- [00:05] Stale")], true).await;
+        h.say(5, "alpha", 5);
+        stop(&h.m);
+        settle().await;
+        close(&h.m);
+        h.start();
+        h.llm.gate.as_ref().unwrap().notify_one();
+        settle().await;
+        assert!(h.recap().bullets.is_empty());
     }
 
     #[tokio::test]

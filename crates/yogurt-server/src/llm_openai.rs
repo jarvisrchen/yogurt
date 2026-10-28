@@ -18,19 +18,26 @@ pub use yogurt_llm::OpenAiCompatClient;
 pub async fn resolve(
     state: &crate::state::AppState,
 ) -> anyhow::Result<std::sync::Arc<dyn yogurt_llm::LlmClient>> {
-    if let Some(overridden) = &state.llm_override {
-        return Ok(overridden.clone());
-    }
-    if let Some(c) = from_env() {
-        return Ok(std::sync::Arc::new(c));
-    }
-    match from_active_provider(&state.db, state.keys.clone()).await? {
+    match resolve_configured(state).await? {
         Some(client) => Ok(client),
         None => {
             tracing::warn!("no LLM provider configured; falling back to MockLlm");
             Ok(Arc::new(crate::llm_mock::MockLlm))
         }
     }
+}
+
+/// Steps 1 to 3 of [`resolve`], with `Ok(None)` where it would fall back to the mock.
+pub async fn resolve_configured(
+    state: &crate::state::AppState,
+) -> anyhow::Result<Option<Arc<dyn yogurt_llm::LlmClient>>> {
+    if let Some(overridden) = &state.llm_override {
+        return Ok(Some(overridden.clone()));
+    }
+    if let Some(c) = from_env() {
+        return Ok(Some(Arc::new(c)));
+    }
+    from_active_provider(&state.db, state.keys.clone()).await
 }
 
 /// Developer override. `None` unless all of `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`

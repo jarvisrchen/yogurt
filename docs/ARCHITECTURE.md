@@ -311,8 +311,9 @@ Details that matter and are easy to get wrong:
 - **The live recap (`recap.rs`) is a third transcript subscriber.**
   `start_meeting` subscribes it before `Registry::start`, since the registry has no settings or LLM access, and `AppState::stop_meeting` signals it without waiting.
   Every 3 minutes, with at least 100 new words and `general.live_recap` on, it sends only the final segments since the last update plus the last 20 bullets to the configured provider, so each call stays the same size.
-  Pause drops what is buffered, and speech while paused or with the setting off is never kept.
-  Bullets live only on the in-memory `Meeting`, reach the browser as whole-state `live_recap` frames, and are cleared once Enhance has saved the summary.
+  Pause drops what is buffered, finals landing within 30 seconds of Resume are dropped, and speech with the setting off is never kept.
+  Stop runs one last update with no word floor, then the task exits, and a resume before that update lands keeps the same task.
+  Bullets live only on the in-memory `Meeting`, reach the browser as whole-state `live_recap` frames, one as each meeting socket opens and one on every change, and are cleared once Enhance has saved the summary.
 
 To inspect a live transcript by hand - tail what SQLite has stored, read the raw WS frames, or work out why the dock and the database disagree - see [DEBUGGING-TRANSCRIPTS.md](./DEBUGGING-TRANSCRIPTS.md).
 

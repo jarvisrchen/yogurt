@@ -86,6 +86,8 @@ async fn it_delivers_transcript_to_browser_well_under_2s() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
+    // The socket opens with the live recap's current state.
+    let _ = tokio::time::timeout(Duration::from_secs(2), ws.next()).await;
     let t0 = Instant::now();
     m.transcript_tx
         .send(TranscriptEvent {
