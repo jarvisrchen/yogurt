@@ -91,6 +91,7 @@ function renderLibrary(url = "/") {
           <Route path="/starred" element={<Library starredOnly />} />
           <Route path="/archive" element={<Library archivedOnly />} />
           <Route path="/label/:labelId" element={<Library />} />
+          <Route path="/archive/label/:labelId" element={<Library archivedOnly />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -188,12 +189,15 @@ describe("Library paging", () => {
     expect(screen.queryByTestId("selected")).not.toBeInTheDocument();
   });
 
-  it("leaves a label's page once that label is deleted", () => {
+  it.each([
+    ["/label/l1", "/"],
+    ["/archive/label/l1", "/archive"],
+  ])("leaves %s once that label is deleted", (url, home) => {
     labels = [{ id: "l1" }];
-    const { rerender } = renderLibrary("/label/l1");
+    const { rerender } = renderLibrary(url);
     labels = [];
     rerender();
-    expect(where()).toBe("/");
+    expect(where()).toBe(home);
   });
 
   it("steps back to the last page when the URL points past the end", async () => {
