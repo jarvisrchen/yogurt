@@ -208,6 +208,8 @@ async fn it_accepts_meeting_ws_with_correct_origin_and_token() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
+    // The socket opens with the live recap's current state.
+    let _ = tokio::time::timeout(Duration::from_secs(2), ws.next()).await;
     m.transcript_tx
         .send(yogurt_stt::TranscriptEvent {
             ts_ms: 42,

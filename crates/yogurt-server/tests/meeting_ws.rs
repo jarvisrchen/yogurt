@@ -88,6 +88,18 @@ async fn it_fans_transcript_events_to_ws_clients() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
+    let first = tokio::time::timeout(Duration::from_secs(2), ws.next())
+        .await
+        .expect("recap snapshot within 2s")
+        .unwrap()
+        .unwrap();
+    let first: serde_json::Value = serde_json::from_str(first.to_text().unwrap()).unwrap();
+    assert_eq!(
+        first["type"], "live_recap",
+        "the socket opens with the recap's state"
+    );
+    assert_eq!(first["bullets"], serde_json::json!([]));
+
     m.transcript_tx
         .send(yogurt_stt::TranscriptEvent {
             ts_ms: 11_020,
