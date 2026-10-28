@@ -66,6 +66,17 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
 
+- [ ] **MTG-22** Show periodic live discussion bullets during a live meeting
+  <details>
+  <summary>Details</summary>
+
+  While a meeting records, the live view shows the notes editor and the raw transcript dock, so catching up after a distraction means scrolling raw transcript.
+  Every few minutes, send the transcript since the last update to the configured LLM provider and append a few short bullets of what was just discussed to a panel on the live page (`web/src/routes/Meeting.tsx`).
+  Bullets should build on the previous ones rather than resummarize the whole meeting each time, so cost and latency stay flat as the meeting grows.
+  The transcript already goes to the configured provider for Enhance and chat, so this stays inside the hard constraints, but it does send data mid-meeting where today the LLM sees nothing until the meeting ends, so gate it behind a setting.
+  Open questions: the interval (fixed minutes or transcript length), whether the bullets feed into Enhance at the end, and how the CLI provider's latency affects it.
+  </details>
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
