@@ -931,6 +931,8 @@ sequenceDiagram
 - **Errors.**
   Every failure carries a stable `code` next to its message: `bad_address`, `bad_config`, `bad_credentials`, `not_owner`, `passcode_not_set`, `session_expired`, `device_removed`, `network`, `cloud_error`, `not_connected`, `already_connected`, `bad_request`, `local_error`, `internal`.
   The server records the last success (`cloud.last_push`) and the last failure (`cloud.last_error`) separately, so a failed pass never hides when the cloud was last in step.
+  It also keeps the last 20 outcomes in `cloud.push_history` for the Settings history, newest first, with a run of wakes that found nothing to send collapsed into one `up_to_date` entry so an idle timer never pushes real runs out.
+  Connect and disconnect clear all three.
   The UI shows a `session_expired` failure as "Sign in again" with an inline password field, which posts to `/api/cloud/sign-in` and stays up until a sign-in succeeds.
 - **Disconnect.**
   It removes the `yogurt-cloud` account and clears every `cloud_hash`, after a best-effort sign-out that revokes the refresh token.

@@ -201,7 +201,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByText("Signed in as richard@example.com")).toBeVisible();
     await expect(page.getByText("Laptop 1")).toBeVisible();
     await expect(page.getByText("3", { exact: true })).toBeVisible();
-    await expect(page.getByText("Last push 10/23/26 2:59 PM · 1 uploaded, 0 deleted")).toBeVisible();
+    await expect(page.getByText("Last push 10/23/26 2:59 PM · 1 uploaded")).toBeVisible();
     await expect(page.getByRole("img", { name: /QR code for richard-yogurt.vercel.app/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /^Open/ })).toHaveAttribute("href", "https://richard-yogurt.vercel.app");
     await shot("B");
@@ -225,7 +225,7 @@ for (const theme of ["light", "dark"] as const) {
 
     // Push, then the stats and the last push result update.
     await page.getByRole("button", { name: "Push meetings" }).click();
-    await expect(page.getByText("Last push 10/23/26 2:59 PM · 3 uploaded, 0 deleted")).toBeVisible();
+    await expect(page.getByText("Last push 10/23/26 2:59 PM · 3 uploaded")).toBeVisible();
 
     // A revoked session shows the inline sign-in and pushing waits for it.
     state.pushError = { status: 401, code: "session_expired", error: "Your Cloud session expired. Sign in again." };

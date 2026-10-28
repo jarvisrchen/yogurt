@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { Navigate, useNavigate } from "react-router";
 import { Button, buttonClassName } from "../../Button";
 import { Card } from "../../Card";
@@ -11,6 +12,7 @@ import {
   useCloudStatus,
   type CloudConnected,
   type LastPush,
+  type PushHistoryEntry,
   type PushStatus,
   type PushInterval,
 } from "../../../lib/api/cloud";
@@ -92,9 +94,94 @@ export function formatPushTime(ms: number): string {
   return `${date} ${time}`;
 }
 
+function counts(changed: number, deleted: number): string {
+  const parts = [changed > 0 && `${n(changed)} uploaded`, deleted > 0 && `${n(deleted)} deleted`];
+  return parts.filter(Boolean).join(", ") || "up to date";
+}
+
 export function describeLastPush(p: LastPush | null): string {
   if (!p) return "Not pushed yet";
-  return `Last push ${formatPushTime(p.at)} · ${n(p.changed)} uploaded, ${n(p.deleted)} deleted`;
+  return `Last push ${formatPushTime(p.at)} · ${counts(p.changed, p.deleted)}`;
+}
+
+/** The failures since the last success, newest first. */
+function failuresSince(history: PushHistoryEntry[]) {
+  const i = history.findIndex((e) => e.outcome !== "failed");
+  return history.slice(0, i === -1 ? history.length : i);
+}
+
+const TRIGGER: Record<PushHistoryEntry["trigger"], string> = {
+  manual: "Manual",
+  auto: "Auto",
+  disconnect: "Disconnect",
+};
+
+export function describeEntry(e: PushHistoryEntry): string {
+  if (e.outcome === "failed") return `Failed: ${e.error}`;
+  if (e.outcome === "up_to_date") return "Up to date";
+  return counts(e.changed, e.deleted);
+}
+
+function Marker({ e }: { e: PushHistoryEntry }) {
+  const tone = e.outcome === "pushed" ? "bg-matcha" : e.outcome === "failed" ? "bg-straw" : "bg-mut";
+  return (
+    <span className="flex h-[1lh] w-3 shrink-0 items-center justify-center" aria-hidden>
+      {e.outcome === "failed" && e.needs_you ? (
+        <TriangleAlert size={12} strokeWidth={2} className="text-straw" />
+      ) : (
+        <span className={`size-1.5 rounded-full ${tone}`} />
+      )}
+    </span>
+  );
+}
+
+export function LastPushLine({ last, history }: { last: LastPush | null; history: PushHistoryEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const failed = failuresSince(history);
+  const needsYou = failed[0]?.outcome === "failed" && failed[0].needs_you;
+  return (
+    <div className="text-[11.5px] text-mut">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        {needsYou && <TriangleAlert size={12} strokeWidth={2} className="shrink-0 text-straw" aria-hidden />}
+        <span>
+          {describeLastPush(last)}
+          {failed.length > 0 && (
+            <span className="font-semibold text-straw">
+              {" "}
+              · {n(failed.length)} failed{last ? " since" : ""}
+            </span>
+          )}
+        </span>
+        {history.length > 0 && (
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="ml-auto cursor-pointer rounded font-semibold text-blue hover:underline focus-visible:outline-2 focus-visible:outline-blue"
+          >
+            History {open ? "▴" : "▾"}
+          </button>
+        )}
+      </div>
+      {open && (
+        <ul aria-label="Recent pushes" className="mt-2.5 flex flex-col gap-1.5 border-t border-line pt-2.5">
+          {history.map((e) => (
+            <li key={`${e.at}-${e.outcome}`} className="flex min-w-0 gap-2.5">
+              <Marker e={e} />
+              <span className="w-[108px] shrink-0 tabular-nums">{formatPushTime(e.at)}</span>
+              <span className="w-[62px] shrink-0">{TRIGGER[e.trigger]}</span>
+              <span
+                title={e.outcome === "failed" ? e.error : undefined}
+                className={`min-w-0 truncate ${e.outcome === "failed" ? "text-straw" : "text-ink"}`}
+              >
+                {describeEntry(e)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 /** Stays up until a sign-in succeeds, so a wrong password does not dismiss the prompt. */
@@ -303,7 +390,7 @@ function Connected({ status }: { status: CloudConnected }) {
         </div>
         {livePush && <PushProgress push={livePush} />}
         {!(running && !status.last_push) && (
-          <div className="text-[11.5px] text-mut">{describeLastPush(status.last_push)}</div>
+          <LastPushLine last={status.last_push} history={status.push_history ?? []} />
         )}
         {error && (
           <Note tone="straw" role="alert" className="mt-3">
