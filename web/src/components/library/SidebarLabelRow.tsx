@@ -7,6 +7,8 @@ import {
   type PaletteColor,
   type LabelWithCount,
 } from "../../lib/api/labels";
+import { useArchiveMatching, useArchivePreview } from "../../lib/api/meetings";
+import { formatCount } from "./pagination";
 import { isHexColor, labelTone } from "../labels/LabelChip";
 
 const SWATCH_COLORS: PaletteColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
@@ -20,7 +22,7 @@ interface Props {
 export function SidebarLabelRow({ label }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<"delete" | "archive" | null>(null);
   const [draftName, setDraftName] = useState(label.name);
   const [customColor, setCustomColor] = useState(
     isHexColor(label.color) ? label.color : DEFAULT_CUSTOM_COLOR,
@@ -28,6 +30,9 @@ export function SidebarLabelRow({ label }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const update = useUpdateLabel();
   const del = useDeleteLabel();
+  const archive = useArchiveMatching();
+  const preview = useArchivePreview(confirming === "archive" ? { labelId: label.id } : null);
+  const archivable = preview.data?.count;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -35,7 +40,7 @@ export function SidebarLabelRow({ label }: Props) {
     const onDown = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
-        setConfirming(false);
+        setConfirming(null);
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -46,9 +51,10 @@ export function SidebarLabelRow({ label }: Props) {
     if (isHexColor(hex)) update.mutate({ id: label.id, color: hex });
   }
 
+  // Only Delete times out: the archive confirm waits on a count and may show an error.
   useEffect(() => {
-    if (!confirming) return;
-    const t = setTimeout(() => setConfirming(false), 3000);
+    if (confirming !== "delete") return;
+    const t = setTimeout(() => setConfirming(null), 3000);
     return () => clearTimeout(t);
   }, [confirming]);
 
@@ -178,49 +184,110 @@ export function SidebarLabelRow({ label }: Props) {
               className="w-20 px-1.5 py-0.5 rounded-button border border-line bg-paper text-[11px] text-ink focus:outline-none focus:ring-2 focus:ring-blue/30"
             />
           </div>
-          {confirming ? (
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  role="menuitem"
-                  autoFocus
-                  onClick={async () => {
-                    setMenuOpen(false);
-                    setConfirming(false);
-                    await del.mutateAsync(label.id);
-                  }}
-                  disabled={del.isPending}
-                  className="px-2 py-1 rounded-button bg-strsoft text-ink border border-straw/40 font-semibold hover:opacity-90 disabled:opacity-50"
-                >
-                  Delete?
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => setConfirming(false)}
-                  className="px-2 py-1 rounded-button text-mut hover:text-ink"
-                >
-                  Cancel
-                </button>
-              </div>
-              <p className="text-[11px] text-mut">
-                Removes the label from {label.meeting_count} meeting
-                {label.meeting_count === 1 ? "" : "s"}
-              </p>
-            </div>
+          {confirming === "archive" ? (
+            <InlineConfirm
+              action="Archive?"
+              tone="bg-blsoft text-blue border-blue/30"
+              disabled={!archivable || preview.isFetching || archive.isPending}
+              onConfirm={() =>
+                archive.mutateAsync({ labelId: label.id }).then(() => {
+                  setMenuOpen(false);
+                  setConfirming(null);
+                }, () => {})
+              }
+              onCancel={() => setConfirming(null)}
+              caption={
+                archive.error
+                  ? `Couldn't archive meetings: ${archive.error.message}`
+                  : preview.error
+                    ? `Couldn't count meetings: ${preview.error.message}`
+                    : archivable == null || preview.isFetching
+                      ? "Counting meetings…"
+                      : archivable === 0
+                        ? "No meetings left to archive"
+                        : `Archives ${formatCount(archivable)} meeting${archivable === 1 ? "" : "s"}`
+              }
+            />
+          ) : confirming === "delete" ? (
+            <InlineConfirm
+              action="Delete?"
+              tone="bg-strsoft text-ink border-straw/40"
+              disabled={del.isPending}
+              onConfirm={async () => {
+                setMenuOpen(false);
+                setConfirming(null);
+                await del.mutateAsync(label.id);
+              }}
+              onCancel={() => setConfirming(null)}
+              caption={`Removes the label from ${label.meeting_count} meeting${label.meeting_count === 1 ? "" : "s"}`}
+            />
           ) : (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => setConfirming(true)}
-              className="block w-full text-left py-1 text-straw hover:opacity-80"
-            >
-              Delete
-            </button>
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  archive.reset();
+                  setConfirming("archive");
+                }}
+                className="block w-full text-left py-1 text-ink hover:text-blue"
+              >
+                Archive meetings
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => setConfirming("delete")}
+                className="block w-full text-left py-1 text-straw hover:opacity-80"
+              >
+                Delete
+              </button>
+            </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+interface InlineConfirmProps {
+  action: string;
+  tone: string;
+  disabled: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  caption: string;
+}
+
+function InlineConfirm({ action, tone, disabled, onConfirm, onCancel, caption }: InlineConfirmProps) {
+  const ref = useRef<HTMLButtonElement>(null);
+  // A button that mounts disabled cannot take autoFocus, so focus it once it is enabled.
+  useEffect(() => {
+    if (!disabled) ref.current?.focus();
+  }, [disabled]);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <button
+          ref={ref}
+          type="button"
+          role="menuitem"
+          onClick={onConfirm}
+          disabled={disabled}
+          className={`px-2 py-1 rounded-button border font-semibold hover:opacity-90 disabled:opacity-50 ${tone}`}
+        >
+          {action}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={onCancel}
+          className="px-2 py-1 rounded-button text-mut hover:text-ink"
+        >
+          Cancel
+        </button>
+      </div>
+      <p className="text-[11px] text-mut">{caption}</p>
     </div>
   );
 }

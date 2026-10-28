@@ -139,11 +139,11 @@ export const meetingsApi = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  /** Archives every meeting that started before `before` (unix ms) except the one recording, or with `preview` only counts them. */
-  archiveBefore: (before: number, preview: boolean) =>
+  /** Archives every meeting that started before `before` (unix ms) and has `labelId`, except the one recording, or with `preview` only counts them. Needs at least one of the two. */
+  archive: ({ before, labelId }: ArchiveScope, preview: boolean) =>
     json<{ count: number }>("/api/meetings/archive", {
       method: "POST",
-      body: JSON.stringify({ before, preview }),
+      body: JSON.stringify({ before, label_id: labelId, preview }),
     }),
   delete: (id: string, deleteFile: boolean) =>
     json<void>(`/api/meetings/${id}?delete_file=${deleteFile}`, {
@@ -325,22 +325,24 @@ export function useSetArchived(): UseMutationResult<
   });
 }
 
-/** How many meetings `useArchiveBefore` would archive. Keyed under `meetingsKey` so any meeting change refetches it. */
+export type ArchiveScope = { before: number; labelId?: string } | { before?: number; labelId: string };
+
+/** How many meetings `useArchiveMatching` would archive. Keyed under `meetingsKey` so any meeting change refetches it. */
 export function useArchivePreview(
-  before: number | null,
+  scope: ArchiveScope | null,
 ): UseQueryResult<{ count: number }, Error> {
   return useQuery({
-    queryKey: ["meetings", "archive-preview", before],
-    queryFn: () => meetingsApi.archiveBefore(before!, true),
-    enabled: before != null,
+    queryKey: ["meetings", "archive-preview", scope],
+    queryFn: () => meetingsApi.archive(scope!, true),
+    enabled: scope != null,
     placeholderData: keepPreviousData,
   });
 }
 
-export function useArchiveBefore(): UseMutationResult<{ count: number }, Error, number> {
+export function useArchiveMatching(): UseMutationResult<{ count: number }, Error, ArchiveScope> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (before: number) => meetingsApi.archiveBefore(before, false),
+    mutationFn: (scope: ArchiveScope) => meetingsApi.archive(scope, false),
     onSettled: () => qc.invalidateQueries({ queryKey: meetingsKey }),
   });
 }
