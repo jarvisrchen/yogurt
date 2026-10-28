@@ -123,11 +123,6 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
   const onSelectAll = () => setSelection(selectAll(orderedIds));
   const onClearSelection = () => setSelection(clearSelection());
 
-  // Wait for the labels list so a fresh load doesn't redirect early.
-  if (labelId && !labels.isLoading && labels.data && !labels.data.some((l) => l.id === labelId)) {
-    return <Navigate to={archivedOnly ? "/archive" : "/"} replace />;
-  }
-
   // Some browsers reserve ⌘N for "new window" and never deliver the event.
   useKeyboardShortcut(
     { key: "n", metaOrCtrl: true, ignoreWhenTyping: true },
@@ -147,6 +142,11 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
   useKeyboardShortcut({ key: "Escape", ignoreWhenTyping: true }, () => {
     if (selection.selected.size > 0) onClearSelection();
   });
+
+  // Wait for the labels list so a fresh load doesn't redirect early.
+  if (labelId && !labels.isLoading && labels.data && !labels.data.some((l) => l.id === labelId)) {
+    return <Navigate to={archivedOnly ? "/archive" : "/"} replace />;
+  }
 
   // Wait for the probe to avoid a one-frame flash of PermissionDenied.
   // Screen recording denial wins over mic denial. Both keep the Sidebar so

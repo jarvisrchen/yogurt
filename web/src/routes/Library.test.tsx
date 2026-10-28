@@ -36,8 +36,9 @@ vi.mock("../lib/api/meetings", async () => ({
   useActiveRecording: () => ({ data: null }),
   useCreateMeeting: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+let labels: { id: string }[] = [];
 vi.mock("../lib/api/labels", () => ({
-  useLabels: () => ({ data: [], isLoading: false }),
+  useLabels: () => ({ data: labels, isLoading: false }),
 }));
 vi.mock("../components/library/Sidebar", () => ({ Sidebar: () => null }));
 vi.mock("../components/AskExperience", () => ({ LibraryAskExperience: () => null }));
@@ -81,7 +82,7 @@ function Where() {
 
 function renderLibrary(url = "/") {
   const qc = new QueryClient();
-  return render(
+  const tree = () => (
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[url]}>
         <Where />
@@ -89,10 +90,13 @@ function renderLibrary(url = "/") {
           <Route path="/" element={<Library />} />
           <Route path="/starred" element={<Library starredOnly />} />
           <Route path="/archive" element={<Library archivedOnly />} />
+          <Route path="/label/:labelId" element={<Library />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const r = render(tree());
+  return { rerender: () => r.rerender(tree()) };
 }
 
 const where = () => screen.getByTestId("where").textContent;
@@ -101,6 +105,7 @@ const lastRequest = () => requested.filter((r) => r.size !== 1).at(-1)!;
 
 beforeEach(() => {
   requested.length = 0;
+  labels = [];
   localStorage.clear();
   window.scrollTo = vi.fn();
 });
@@ -181,6 +186,14 @@ describe("Library paging", () => {
     expect(screen.getByTestId("selected")).toHaveTextContent("25");
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.queryByTestId("selected")).not.toBeInTheDocument();
+  });
+
+  it("leaves a label's page once that label is deleted", () => {
+    labels = [{ id: "l1" }];
+    const { rerender } = renderLibrary("/label/l1");
+    labels = [];
+    rerender();
+    expect(where()).toBe("/");
   });
 
   it("steps back to the last page when the URL points past the end", async () => {
