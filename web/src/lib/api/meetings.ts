@@ -312,9 +312,6 @@ export function useSetArchived(): UseMutationResult<
       const results = await Promise.allSettled(
         ids.map((id) => meetingsApi.patch(id, { archived })),
       );
-      for (const r of results) {
-        if (r.status === "fulfilled") qc.setQueryData(meetingKey(r.value.id), r.value);
-      }
       const failed = results.filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         throw new Error(

@@ -36,7 +36,7 @@ function meetings(n: number): Pick<Meeting, "id" | "labels">[] {
 const bulkDeleteMutateAsync = vi.fn();
 const archiveMutateAsync = vi.fn();
 
-function renderBar(count: number, archived = false) {
+function renderBar(count: number, archived = false, activeId: string | null = null) {
   const onSelectAll = vi.fn();
   const onClear = vi.fn();
   render(
@@ -45,6 +45,7 @@ function renderBar(count: number, archived = false) {
       onSelectAll={onSelectAll}
       onClear={onClear}
       archived={archived}
+      activeId={activeId}
     />,
   );
   return { onSelectAll, onClear };
@@ -80,6 +81,12 @@ describe("SelectionActionBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     expect(archiveMutateAsync).toHaveBeenCalledWith({ ids: ["m0", "m1"], archived: true });
     await waitFor(() => expect(onClear).toHaveBeenCalledTimes(1));
+  });
+
+  it("Archive leaves out the meeting being recorded, which the server refuses", () => {
+    renderBar(3, false, "m1");
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    expect(archiveMutateAsync).toHaveBeenCalledWith({ ids: ["m0", "m2"], archived: true });
   });
 
   it("the Archive view offers Unarchive instead", () => {

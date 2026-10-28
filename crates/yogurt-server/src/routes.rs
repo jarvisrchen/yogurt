@@ -331,16 +331,23 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
 ///
 /// `started_at = 0` is the schema's "unstarted" sentinel, but `MeetingRepo::create`
 /// writes "now" instead, so a set `ended_at` is what actually marks a restart.
+///
+/// Either way it unarchives the meeting, which must not hide while it records.
 pub fn start_stamp_patch(existing: Option<&yogurt_db::Meeting>) -> yogurt_db::MeetingPatch {
     let is_restart = existing.is_some_and(|m| m.started_at != 0 && m.ended_at.is_some());
+    let archived = existing
+        .is_some_and(|m| m.archived_at.is_some())
+        .then_some(false);
     if is_restart {
         yogurt_db::MeetingPatch {
             ended_at: Some(None),
+            archived,
             ..Default::default()
         }
     } else {
         yogurt_db::MeetingPatch {
             started_at: Some(now_unix_ms()),
+            archived,
             ..Default::default()
         }
     }

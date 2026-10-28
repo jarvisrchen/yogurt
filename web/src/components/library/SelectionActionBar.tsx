@@ -10,9 +10,17 @@ interface Props {
   onClear: () => void;
   /** The Archive view, where the bar offers Unarchive. */
   archived?: boolean;
+  /** The meeting being recorded, which Archive skips because the server refuses it. */
+  activeId?: string | null;
 }
 
-export function SelectionActionBar({ meetings, onSelectAll, onClear, archived = false }: Props) {
+export function SelectionActionBar({
+  meetings,
+  onSelectAll,
+  onClear,
+  archived = false,
+  activeId = null,
+}: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -48,7 +56,8 @@ export function SelectionActionBar({ meetings, onSelectAll, onClear, archived = 
 
   // No confirmation, since nothing is lost. The hook logs a partial failure.
   const onArchive = async () => {
-    await setArchived.mutateAsync({ ids, archived: !archived }).catch(() => {});
+    const toArchive = ids.filter((id) => id !== activeId);
+    await setArchived.mutateAsync({ ids: toArchive, archived: !archived }).catch(() => {});
     onClear();
   };
 

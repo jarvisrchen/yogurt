@@ -90,7 +90,7 @@ describe("MeetingCard — engine pill", () => {
   });
 });
 
-describe("MeetingCard — archive menu item", () => {
+describe("MeetingCard - archive menu item", () => {
   const menuItems = () => {
     fireEvent.click(screen.getByRole("button", { name: "Meeting actions" }));
     return screen.getAllByRole("menuitem").map((b) => b.textContent);

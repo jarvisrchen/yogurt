@@ -44,12 +44,8 @@ export function ArchiveOlderMeetings() {
 
   const onArchive = async () => {
     if (before == null) return;
-    try {
-      await archive.mutateAsync(before);
-      setOpen(false);
-    } catch (e) {
-      console.error("archive older meetings failed", e);
-    }
+    // A failure shows in the panel, which stays open.
+    await archive.mutateAsync(before).then(() => setOpen(false), () => {});
   };
 
   return (
@@ -78,14 +74,19 @@ export function ArchiveOlderMeetings() {
               type="date"
               value={day}
               max={today}
-              onChange={(e) => setDay(e.target.value)}
+              onChange={(e) => {
+                setDay(e.target.value);
+                archive.reset();
+              }}
               className="rounded-button border border-line bg-paper px-2 py-1.5 text-[13px] text-ink focus:border-blue focus:outline-none"
             />
           </label>
           <p data-testid="archive-older-count">
             {before == null
               ? "Pick a date no later than today."
-              : count == null
+              : archive.error || preview.error
+                ? `Couldn't ${archive.error ? "archive" : "count"} meetings: ${(archive.error ?? preview.error)!.message}`
+                : count == null
                 ? "Counting meetings…"
                 : count === 0
                   ? `No meetings started before ${label}.`

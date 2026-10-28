@@ -12,6 +12,13 @@ import { Button } from "../Button";
 import { LABEL } from "../settings/labelClass";
 import { getLabelSortMode, setLabelSortMode, sortLabels } from "../../lib/labelSort";
 
+const navClass =
+  (layout: string) =>
+  ({ isActive }: { isActive: boolean }) =>
+    `px-3 py-1.5 rounded-button text-[13px] ${layout} ${
+      isActive ? "bg-blsoft text-blue font-semibold" : "text-ink hover:bg-line/40"
+    }`;
+
 export function Sidebar() {
   const navigate = useNavigate();
   const createMeeting = useCreateMeeting();
@@ -92,42 +99,14 @@ export function Sidebar() {
       </div>
 
       <nav className="px-2 flex flex-col gap-0.5">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            `px-3 py-1.5 rounded-button text-[13px] ${
-              isActive
-                ? "bg-blsoft text-blue font-semibold"
-                : "text-ink hover:bg-line/40"
-            }`
-          }
-        >
+        <NavLink to="/" end className={navClass("")}>
           All meetings
         </NavLink>
-        <NavLink
-          to="/starred"
-          className={({ isActive }) =>
-            `px-3 py-1.5 rounded-button text-[13px] flex items-center gap-1.5 ${
-              isActive
-                ? "bg-blsoft text-blue font-semibold"
-                : "text-ink hover:bg-line/40"
-            }`
-          }
-        >
+        <NavLink to="/starred" className={navClass("flex items-center gap-1.5")}>
           <Star size={14} className="shrink-0 fill-current" aria-hidden />
           Starred
         </NavLink>
-        <NavLink
-          to="/archive"
-          className={({ isActive }) =>
-            `px-3 py-1.5 rounded-button text-[13px] flex items-center gap-1.5 ${
-              isActive
-                ? "bg-blsoft text-blue font-semibold"
-                : "text-ink hover:bg-line/40"
-            }`
-          }
-        >
+        <NavLink to="/archive" className={navClass("flex items-center gap-1.5")}>
           <Archive size={14} className="shrink-0" aria-hidden />
           Archive
         </NavLink>

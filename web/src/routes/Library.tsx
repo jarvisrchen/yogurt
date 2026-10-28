@@ -178,14 +178,10 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
       <main className="flex-1 px-12 pt-10 pb-28 max-w-[860px]">
         <div className="flex items-start justify-between mb-8">
           <Greeting count={totalMeetings} archived={archivedOnly} />
-          {archivedOnly ? (
-            <div className="flex items-center gap-2">
-              <ArchiveOlderMeetings />
-              <SearchPill value={query} onChange={onQueryChange} />
-            </div>
-          ) : (
+          <div className="flex items-center gap-2">
+            {archivedOnly && <ArchiveOlderMeetings />}
             <SearchPill value={query} onChange={onQueryChange} />
-          )}
+          </div>
         </div>
 
         {isLoading && <LibrarySkeleton />}
@@ -237,6 +233,7 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
           onSelectAll={onSelectAll}
           onClear={onClearSelection}
           archived={archivedOnly}
+          activeId={activeId}
         />
       ) : (
         <LibraryAskExperience />
