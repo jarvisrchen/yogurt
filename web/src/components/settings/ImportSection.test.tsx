@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   status: vi.fn(),
   setKey: vi.fn(),
   deleteKey: vi.fn(),
+  testKey: vi.fn(),
   preview: vi.fn(),
   start: vi.fn(),
   cancel: vi.fn(),
@@ -71,6 +72,27 @@ describe("ImportSection", () => {
     fireEvent.change(await screen.findByLabelText("Granola API key"), { target: { value: "bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Granola rejected the API key.");
+  });
+
+  it("tests a pasted key without saving it, then tests the stored key", async () => {
+    api.status.mockResolvedValue(idle(null));
+    api.testKey.mockResolvedValueOnce({ ok: false, error: "Granola rejected the API key." });
+    renderSection();
+    const test = await screen.findByRole("button", { name: "Test connection for Granola" });
+    expect(test).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Granola API key"), { target: { value: "bad" } });
+    fireEvent.click(test);
+    expect(await screen.findByRole("status")).toHaveTextContent("✗ Granola rejected the API key.");
+    expect(api.testKey).toHaveBeenLastCalledWith("bad");
+    expect(api.setKey).not.toHaveBeenCalled();
+    cleanup();
+
+    api.status.mockResolvedValue(idle("••••wxyz"));
+    api.testKey.mockResolvedValueOnce({ ok: true });
+    renderSection();
+    fireEvent.click(await screen.findByRole("button", { name: "Test connection for Granola" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("✓ Connection works");
+    expect(api.testKey).toHaveBeenLastCalledWith(undefined);
   });
 
   it("with a key, previews the counts and starts the import", async () => {

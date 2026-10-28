@@ -36,6 +36,7 @@ pub fn router() -> Router<AppState> {
             get(status).post(start).delete(cancel),
         )
         .route("/api/import/granola/key", put(set_key).delete(delete_key))
+        .route("/api/import/granola/key/test", post(test_key))
         .route("/api/import/granola/preview", post(preview))
 }
 
@@ -200,6 +201,37 @@ async fn set_key(
         .map_err(|e| Error::Internal(format!("save key: {e}")))?;
     let masked = s.keys.masked(ACCOUNT).ok().flatten();
     Ok(Json(json!({ "key": masked })))
+}
+
+#[derive(Deserialize)]
+struct TestBody {
+    key: Option<String>,
+}
+
+/// Checks a pasted key, or the stored one when none is sent, with the same one request [`set_key`] makes. Stores nothing.
+/// A failed check is still a 200, since the test itself ran.
+async fn test_key(
+    State(s): State<AppState>,
+    Json(body): Json<TestBody>,
+) -> Result<Json<Value>, Error> {
+    let draft = body
+        .key
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty());
+    let key = match draft {
+        Some(k) => k,
+        None => match saved_key(&s) {
+            Ok(k) => k,
+            Err(Error::BadRequest(m)) => return Ok(Json(json!({ "ok": false, "error": m }))),
+            Err(e) => return Err(e),
+        },
+    };
+    Ok(Json(
+        match Client::new(&key, s.import.cfg.clone()).check().await {
+            Ok(()) => json!({ "ok": true }),
+            Err(e) => json!({ "ok": false, "error": format!("{e}.") }),
+        },
+    ))
 }
 
 async fn delete_key(State(s): State<AppState>) -> Result<StatusCode, Error> {
@@ -674,6 +706,54 @@ mod tests {
             .call(reqwest::Method::POST, "/api/import/granola", None)
             .await;
         assert_eq!(code, 400, "no key, no import");
+    }
+
+    #[tokio::test]
+    async fn test_checks_a_draft_or_the_stored_key_and_stores_nothing() {
+        let h = Harness::new().await;
+        let test = |key: Option<&str>| {
+            let body = key.map_or(json!({}), |k| json!({ "key": k }));
+            h.call(
+                reqwest::Method::POST,
+                "/api/import/granola/key/test",
+                Some(body),
+            )
+        };
+        let (code, r) = test(None).await;
+        assert_eq!(code, 200);
+        assert_eq!(
+            r,
+            json!({ "ok": false, "error": "Save a Granola API key first." })
+        );
+
+        Mock::given(method("GET"))
+            .and(path("/notes"))
+            .respond_with(ResponseTemplate::new(401))
+            .up_to_n_times(1)
+            .mount(&h.mock)
+            .await;
+        let (_, r) = test(Some("nope")).await;
+        assert_eq!(
+            r,
+            json!({ "ok": false, "error": "Granola rejected the API key." })
+        );
+
+        h.mock_list(&[]).await;
+        let (_, r) = test(Some(KEY)).await;
+        assert_eq!(r, json!({ "ok": true }));
+        assert_eq!(
+            h.state.keys.get(ACCOUNT).unwrap(),
+            None,
+            "a test stores nothing"
+        );
+
+        h.save_key().await;
+        let (_, r) = test(None).await;
+        assert_eq!(
+            r,
+            json!({ "ok": true }),
+            "an empty body tests the stored key"
+        );
     }
 
     #[tokio::test]
