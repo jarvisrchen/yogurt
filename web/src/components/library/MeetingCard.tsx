@@ -40,11 +40,14 @@ interface Props {
   selectionActive?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string, shiftKey: boolean) => void;
+  /** Shown in the Archive view. */
+  archived?: boolean;
 }
 
 export function MeetingCard({
   meeting,
   activeId,
+  archived = false,
   selectionActive = false,
   selected = false,
   onToggleSelect,
@@ -127,7 +130,13 @@ export function MeetingCard({
         {/* Pre-column rows render nothing rather than a guessed "Local". */}
         <EnginePill sttEngine={meeting.stt_engine} />
         <LlmPill llmModel={meeting.llm_model} />
-        <MeetingCardActions id={meeting.id} starred={meeting.starred} labels={meeting.labels} />
+        <MeetingCardActions
+          id={meeting.id}
+          starred={meeting.starred}
+          labels={meeting.labels}
+          archived={archived}
+          isLive={isLive}
+        />
       </div>
     </Link>
   );

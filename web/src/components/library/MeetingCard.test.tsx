@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, within, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -23,12 +23,12 @@ function meeting(over: Partial<MeetingSummary> = {}): MeetingSummary {
   };
 }
 
-function renderCard(m: MeetingSummary, activeId?: string | null) {
+function renderCard(m: MeetingSummary, activeId?: string | null, archived = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <MeetingCard meeting={m} activeId={activeId} />
+        <MeetingCard meeting={m} activeId={activeId} archived={archived} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -87,5 +87,27 @@ describe("MeetingCard — engine pill", () => {
     expect(within(screen.getByTestId("engine-pill")).getByRole("tooltip")).toHaveTextContent(
       "Cloud nova-3",
     );
+  });
+});
+
+describe("MeetingCard - archive menu item", () => {
+  const menuItems = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Meeting actions" }));
+    return screen.getAllByRole("menuitem").map((b) => b.textContent);
+  };
+
+  it("sits above Delete", () => {
+    renderCard(meeting());
+    expect(menuItems()).toEqual(["Copy markdown", "Reveal in Finder", "Archive", "Delete"]);
+  });
+
+  it("reads Unarchive in the Archive view", () => {
+    renderCard(meeting(), null, true);
+    expect(menuItems()).toContain("Unarchive");
+  });
+
+  it("is left off the meeting being recorded", () => {
+    renderCard(meeting({ id: "live-1" }), "live-1");
+    expect(menuItems()).toEqual(["Copy markdown", "Reveal in Finder", "Delete"]);
   });
 });

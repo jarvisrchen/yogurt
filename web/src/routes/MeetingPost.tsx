@@ -14,6 +14,7 @@ import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { ImportedFromLine } from "../components/ImportedFromLine";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
+import { ArchiveMeetingButton } from "../components/library/ArchiveMeetingButton";
 import { CopyUrlButton } from "../components/CopyUrlButton";
 import { bearerFetch, ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
@@ -493,6 +494,7 @@ export function MeetingPost() {
             onError={handleError}
           />
         )}
+        {meetingId && <ArchiveMeetingButton id={meetingId} />}
         {meetingId && (
           <DeleteMeetingConfirm
             id={meetingId}

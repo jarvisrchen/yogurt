@@ -8,6 +8,7 @@ import {
 } from "../lib/api/meetings";
 import { useLabels } from "../lib/api/labels";
 import { DateGroup } from "../components/library/DateGroup";
+import { ArchiveOlderMeetings } from "../components/library/ArchiveOlderMeetings";
 import { Greeting } from "../components/library/Greeting";
 import { Pager } from "../components/library/Pager";
 import { SearchPill } from "../components/library/SearchPill";
@@ -26,9 +27,10 @@ import { useScreenRecordingStatus } from "../hooks/useScreenRecordingStatus";
 
 interface LibraryProps {
   starredOnly?: boolean;
+  archivedOnly?: boolean;
 }
 
-export function Library({ starredOnly = false }: LibraryProps) {
+export function Library({ starredOnly = false, archivedOnly = false }: LibraryProps) {
   const navigate = useNavigate();
   const { labelId } = useParams<{ labelId: string }>();
   const labels = useLabels();
@@ -80,13 +82,14 @@ export function Library({ starredOnly = false }: LibraryProps) {
     size,
     labelId: labelId ?? null,
     starred: starredOnly,
+    archived: archivedOnly,
     q: trimmedQuery,
   };
   const list = useMeetings(params);
   const isFiltered = isSearching || starredOnly || !!labelId;
-  // The greeting counts the whole library, so a filtered view asks for it separately.
+  // The greeting counts the whole library, or the whole archive in the Archive view, so a filtered view asks for it separately.
   const everything = useMeetings(
-    { page: 1, size: 1, labelId: null, starred: false, q: "" },
+    { page: 1, size: 1, labelId: null, starred: false, archived: archivedOnly, q: "" },
     isFiltered,
   );
   const totalMeetings = (isFiltered ? everything : list).data?.total ?? 0;
@@ -104,7 +107,7 @@ export function Library({ starredOnly = false }: LibraryProps) {
   }, [list.data, page, lastPage]);
 
   // Selection covers the page on screen only.
-  const viewKey = `${page}/${size}/${labelId ?? ""}/${starredOnly}/${trimmedQuery}`;
+  const viewKey = `${page}/${size}/${labelId ?? ""}/${starredOnly}/${archivedOnly}/${trimmedQuery}`;
   useEffect(() => {
     setSelection(clearSelection());
   }, [viewKey]);
@@ -174,8 +177,11 @@ export function Library({ starredOnly = false }: LibraryProps) {
       <Sidebar />
       <main className="flex-1 px-12 pt-10 pb-28 max-w-[860px]">
         <div className="flex items-start justify-between mb-8">
-          <Greeting count={totalMeetings} />
-          <SearchPill value={query} onChange={onQueryChange} />
+          <Greeting count={totalMeetings} archived={archivedOnly} />
+          <div className="flex items-center gap-2">
+            {archivedOnly && <ArchiveOlderMeetings />}
+            <SearchPill value={query} onChange={onQueryChange} />
+          </div>
         </div>
 
         {isLoading && <LibrarySkeleton />}
@@ -191,6 +197,8 @@ export function Library({ starredOnly = false }: LibraryProps) {
             <NoLabelMeetings />
           ) : starredOnly ? (
             <NoStarred />
+          ) : archivedOnly ? (
+            <NoArchived />
           ) : (
             <EmptyLibrary />
           )
@@ -203,6 +211,7 @@ export function Library({ starredOnly = false }: LibraryProps) {
               selectionActive={hasSelection}
               selectedIds={selection.selected}
               onToggleSelect={onToggleSelect}
+              archived={archivedOnly}
             />
             <Pager
               page={page}
@@ -223,6 +232,8 @@ export function Library({ starredOnly = false }: LibraryProps) {
           meetings={selectedMeetings}
           onSelectAll={onSelectAll}
           onClear={onClearSelection}
+          archived={archivedOnly}
+          activeId={activeId}
         />
       ) : (
         <LibraryAskExperience />
@@ -249,6 +260,17 @@ function NoStarred() {
   return (
     <div className="text-[13px] text-mut">
       No starred meetings yet — hover a meeting and click the star.
+    </div>
+  );
+}
+
+function NoArchived() {
+  return (
+    <div className="text-[13px] text-mut">
+      <p className="text-ink font-semibold">No archived meetings</p>
+      <p className="mt-1">
+        Archive a meeting from its menu, or select several and archive them together.
+      </p>
     </div>
   );
 }

@@ -1,21 +1,32 @@
 import { useEffect, useState } from "react";
 import { ConfirmPanel } from "./DeleteMeetingConfirm";
 import { BulkLabelPicker } from "../labels/BulkLabelPicker";
-import { useBulkDeleteMeetings, type Meeting } from "../../lib/api/meetings";
+import { useBulkDeleteMeetings, useSetArchived, type Meeting } from "../../lib/api/meetings";
 
 interface Props {
   // Label bulk-ops need each meeting's current `labels` to compute its next set.
   meetings: Pick<Meeting, "id" | "labels">[];
   onSelectAll: () => void;
   onClear: () => void;
+  /** The Archive view, where the bar offers Unarchive. */
+  archived?: boolean;
+  /** The meeting being recorded, which Archive skips because the server refuses it. */
+  activeId?: string | null;
 }
 
-export function SelectionActionBar({ meetings, onSelectAll, onClear }: Props) {
+export function SelectionActionBar({
+  meetings,
+  onSelectAll,
+  onClear,
+  archived = false,
+  activeId = null,
+}: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleteFile, setDeleteFile] = useState(true);
   const bulkDelete = useBulkDeleteMeetings();
+  const setArchived = useSetArchived();
 
   useEffect(() => {
     if (!confirming) return;
@@ -40,6 +51,13 @@ export function SelectionActionBar({ meetings, onSelectAll, onClear }: Props) {
       // avoids a stuck "N selected" bar.
       console.error("bulk delete meetings failed", err);
     }
+    onClear();
+  };
+
+  // No confirmation, since nothing is lost. The hook logs a partial failure.
+  const onArchive = async () => {
+    const toArchive = ids.filter((id) => id !== activeId);
+    await setArchived.mutateAsync({ ids: toArchive, archived: !archived }).catch(() => {});
     onClear();
   };
 
@@ -100,6 +118,14 @@ export function SelectionActionBar({ meetings, onSelectAll, onClear }: Props) {
           onClose={() => setRemoveOpen(false)}
         />
       </div>
+      <button
+        type="button"
+        className={`${itemButton} text-ink`}
+        disabled={setArchived.isPending}
+        onClick={onArchive}
+      >
+        {archived ? "Unarchive" : "Archive"}
+      </button>
       <div className="relative">
         <button
           type="button"

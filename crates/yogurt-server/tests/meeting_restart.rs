@@ -97,3 +97,23 @@ async fn genuine_first_start_stamps_started_at() {
 
     handle.abort();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn restarting_an_archived_meeting_unarchives_it() {
+    let (server, handle) = run_with_mock_llm(&[]).await.expect("boot test server");
+    let id = seed_meeting(&server.state).await.to_string();
+    let repo = &server.state.meeting_repo;
+    let archived = repo
+        .patch(
+            &id,
+            yogurt_db::MeetingPatch {
+                ended_at: Some(Some(2_000_000)),
+                archived: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    repo.patch(&id, start_stamp_patch(Some(&archived))).unwrap();
+    assert!(repo.get(&id).unwrap().unwrap().archived_at.is_none());
+    handle.abort();
+}

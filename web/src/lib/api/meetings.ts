@@ -48,6 +48,8 @@ export interface Meeting {
   source?: string;
   source_id?: string;
   source_json?: MeetingSourceJson;
+  /** ISO 8601 UTC string. Absent while the meeting is not archived. */
+  archived_at?: string;
   /** ISO 8601 UTC string. */
   created_at: string;
   /** ISO 8601 UTC string. */
@@ -86,6 +88,8 @@ export interface MeetingsParams {
   size: number;
   labelId: string | null;
   starred: boolean;
+  /** Only archived meetings, which every other view leaves out. */
+  archived?: boolean;
   /** Trimmed. Empty lists chronologically instead of searching. */
   q: string;
 }
@@ -100,6 +104,7 @@ export interface MeetingPatch {
   enriched_md?: string | null;
   ended_at?: number | null;
   starred?: boolean;
+  archived?: boolean;
   /** Plain optional semantics (not tri-state). */
   stt_engine?: string;
   label_ids?: string[];
@@ -111,7 +116,7 @@ export const meetingKey = (id: string) => ["meetings", id] as const;
 export const json = bearerJson;
 
 export const meetingsApi = {
-  list: ({ page, size, labelId, starred, q }: MeetingsParams) => {
+  list: ({ page, size, labelId, starred, archived, q }: MeetingsParams) => {
     const qs = new URLSearchParams({
       limit: String(size),
       offset: String((page - 1) * size),
@@ -119,6 +124,7 @@ export const meetingsApi = {
     if (q) qs.set("q", q);
     if (labelId) qs.set("label_id", labelId);
     if (starred) qs.set("starred", "true");
+    if (archived) qs.set("archived", "true");
     return json<MeetingsPage>(`/api/meetings${q ? "/search" : ""}?${qs}`);
   },
   get: (id: string) => json<Meeting>(`/api/meetings/${id}`),
@@ -131,6 +137,12 @@ export const meetingsApi = {
     json<Meeting>(`/api/meetings/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
+    }),
+  /** Archives every meeting that started before `before` (unix ms) except the one recording, or with `preview` only counts them. */
+  archiveBefore: (before: number, preview: boolean) =>
+    json<{ count: number }>("/api/meetings/archive", {
+      method: "POST",
+      body: JSON.stringify({ before, preview }),
     }),
   delete: (id: string, deleteFile: boolean) =>
     json<void>(`/api/meetings/${id}?delete_file=${deleteFile}`, {
@@ -285,6 +297,50 @@ export function useBulkSetLabel(): UseMutationResult<
       qc.invalidateQueries({ queryKey: ["labels"] });
     },
     onError: (err) => console.error("bulk label update failed", err),
+  });
+}
+
+/** Fans out one PATCH per meeting like the bulk hooks above. The server refuses the meeting being recorded with a 409. */
+export function useSetArchived(): UseMutationResult<
+  void,
+  Error,
+  { ids: string[]; archived: boolean }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, archived }) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => meetingsApi.patch(id, { archived })),
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        throw new Error(
+          `Failed to ${archived ? "archive" : "unarchive"} ${failed.length} of ${ids.length} meetings`,
+        );
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: meetingsKey }),
+    onError: (err) => console.error("archive failed", err),
+  });
+}
+
+/** How many meetings `useArchiveBefore` would archive. Keyed under `meetingsKey` so any meeting change refetches it. */
+export function useArchivePreview(
+  before: number | null,
+): UseQueryResult<{ count: number }, Error> {
+  return useQuery({
+    queryKey: ["meetings", "archive-preview", before],
+    queryFn: () => meetingsApi.archiveBefore(before!, true),
+    enabled: before != null,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useArchiveBefore(): UseMutationResult<{ count: number }, Error, number> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (before: number) => meetingsApi.archiveBefore(before, false),
+    onSettled: () => qc.invalidateQueries({ queryKey: meetingsKey }),
   });
 }
 

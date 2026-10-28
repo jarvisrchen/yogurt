@@ -48,6 +48,9 @@ pub struct Meeting {
     /// Display-only provenance: `{"owner":{"name","email"},"web_url","updated_at","imported_at"}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_json: Option<serde_json::Value>,
+    /// When the meeting was archived. Skipped while `None` so an unarchived meeting's Cloud bundle hashes as it did before the column existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     /// Updated on every `patch` so the Library can re-sort on edit.
     pub updated_at: DateTime<Utc>,
@@ -88,6 +91,8 @@ pub struct MeetingPage {
 pub struct MeetingFilter {
     pub label_id: Option<String>,
     pub starred: bool,
+    /// Only archived meetings when set, only unarchived ones otherwise.
+    pub archived: bool,
 }
 
 /// One [`MeetingRepo::retrieve`] result. `excerpt` is the transcript text around the matched terms, empty when nothing matched there.
@@ -150,6 +155,9 @@ pub struct MeetingPatch {
     pub ended_at: Option<Option<i64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub starred: Option<bool>,
+    /// Archiving an archived meeting keeps its first `archived_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived: Option<bool>,
     /// Plain `Option<String>` semantics like `notes_md` (not tri-state):
     /// `None` leaves the column alone, `Some(s)` overwrites it. There is
     /// no "clear" use case for provenance, so no tri-state is needed.
@@ -370,6 +378,14 @@ impl MeetingRepo {
                 sets.push("starred = ?");
                 args.push((if b { 1i64 } else { 0i64 }).into());
             }
+            match patch.archived {
+                Some(true) => {
+                    sets.push("archived_at = COALESCE(archived_at, ?)");
+                    args.push(now_ms.into());
+                }
+                Some(false) => sets.push("archived_at = NULL"),
+                None => {}
+            }
             if let Some(e) = patch.stt_engine.as_ref() {
                 sets.push("stt_engine = ?");
                 args.push(e.clone().into());
@@ -549,8 +565,8 @@ impl MeetingRepo {
                 let mut stmt = conn.prepare_cached(
                     "SELECT id, title, started_at, ended_at, notes_md, enriched_md, \
                             transcript_json, starred, created_at, updated_at, \
-                            stt_engine, llm_model, template, source, source_id, source_json \
-                     FROM meetings WHERE started_at >= ?1 AND started_at < ?2 \
+                            stt_engine, llm_model, template, source, source_id, source_json, archived_at \
+                     FROM meetings WHERE archived_at IS NULL AND started_at >= ?1 AND started_at < ?2 \
                      ORDER BY started_at DESC LIMIT ?3",
                 )?;
                 for r in stmt.query_map(params![start, end, limit as i64], row_to_meeting)? {
@@ -564,18 +580,19 @@ impl MeetingRepo {
                     "SELECT m.id, m.title, m.started_at, m.ended_at, m.notes_md, \
                             m.enriched_md, m.transcript_json, m.starred, \
                             m.created_at, m.updated_at, m.stt_engine, m.llm_model, m.template, \
-                            m.source, m.source_id, m.source_json, \
+                            m.source, m.source_id, m.source_json, m.archived_at, \
                             snippet(meetings_fts, 3, '', '', ' … ', 64) \
                      FROM meetings m \
                      JOIN meetings_fts f ON f.rowid = m.rowid \
-                     WHERE meetings_fts MATCH ?1 AND m.started_at >= ?2 AND m.started_at < ?3 \
+                     WHERE meetings_fts MATCH ?1 AND m.archived_at IS NULL \
+                       AND m.started_at >= ?2 AND m.started_at < ?3 \
                      ORDER BY bm25(meetings_fts), m.started_at DESC \
                      LIMIT ?4",
                 )?;
                 let rows = stmt.query_map(params![match_expr, start, end, limit as i64], |r| {
                     Ok(RetrievalHit {
                         meeting: row_to_meeting(r)?,
-                        excerpt: r.get(16)?,
+                        excerpt: r.get(17)?,
                     })
                 })?;
                 for r in rows {
@@ -583,6 +600,33 @@ impl MeetingRepo {
                 }
             }
             Ok(out)
+        })
+    }
+
+    /// Archives every unarchived meeting that started before `before` (unix ms) in one statement, or with `preview` only counts them.
+    /// `except` is the meeting being recorded, which must not vanish mid-meeting.
+    /// Bumps `updated_at` so the Cloud panel sees meetings waiting to push. The markdown export does not show archive state, so it is not rewritten.
+    pub fn archive_before(
+        &self,
+        before: i64,
+        except: Option<&str>,
+        preview: bool,
+    ) -> Result<usize> {
+        const MATCH: &str = "archived_at IS NULL AND started_at < ?1 AND id IS NOT ?2";
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        self.db.with_conn(|conn| -> Result<usize> {
+            if preview {
+                let n: i64 = conn.query_row(
+                    &format!("SELECT COUNT(*) FROM meetings WHERE {MATCH}"),
+                    params![before, except],
+                    |r| r.get(0),
+                )?;
+                return Ok(n as usize);
+            }
+            Ok(conn.execute(
+                &format!("UPDATE meetings SET archived_at = ?3, updated_at = ?3 WHERE {MATCH}"),
+                params![before, except, now_ms],
+            )?)
         })
     }
 
@@ -670,7 +714,7 @@ fn strip_nul(v: serde_json::Value) -> serde_json::Value {
 
 const SELECT_ALL_WHERE_ID: &str = "SELECT id, title, started_at, ended_at, \
     notes_md, enriched_md, transcript_json, starred, created_at, updated_at, \
-    stt_engine, llm_model, template, source, source_id, source_json FROM meetings WHERE id = ?1";
+    stt_engine, llm_model, template, source, source_id, source_json, archived_at FROM meetings WHERE id = ?1";
 
 /// Coerces SQL NULL on `notes_md` / `transcript_json` to `""` / `"[]"` because legacy rows may have NULLs there.
 fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
@@ -688,6 +732,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
     let llm_model: Option<String> = r.get(11)?;
     let template: Option<String> = r.get(12)?;
     let source_json: Option<String> = r.get(15)?;
+    let archived_at: Option<i64> = r.get(16)?;
     Ok(Meeting {
         id,
         title: title.unwrap_or_default(),
@@ -703,6 +748,7 @@ fn row_to_meeting(r: &rusqlite::Row<'_>) -> rusqlite::Result<Meeting> {
         source: r.get(13)?,
         source_id: r.get(14)?,
         source_json: source_json.and_then(|j| serde_json::from_str(&j).ok()),
+        archived_at: archived_at.map(ms_to_dt),
         created_at: ms_to_dt(created_at_ms),
         updated_at: ms_to_dt(updated_at_ms),
         labels: Vec::new(),
@@ -753,7 +799,8 @@ fn labels_for(
 }
 
 const FILTER_SQL: &str = "(:label IS NULL OR EXISTS (SELECT 1 FROM meeting_labels ml \
-     WHERE ml.meeting_id = m.id AND ml.label_id = :label)) AND (:starred = 0 OR m.starred = 1)";
+     WHERE ml.meeting_id = m.id AND ml.label_id = :label)) AND (:starred = 0 OR m.starred = 1) \
+     AND ((m.archived_at IS NOT NULL) = :archived)";
 
 /// Counts `from_where` (a `FROM` body whose table alias is `m`), then fetches one page of it.
 /// `extra` binds the named parameters `from_where` and `order_by` use beyond `FILTER_SQL`.
@@ -767,9 +814,11 @@ fn query_page(
     offset: usize,
 ) -> Result<MeetingPage> {
     let starred = i64::from(filter.starred);
+    let archived = i64::from(filter.archived);
     let mut named: Vec<(&str, &dyn rusqlite::ToSql)> = extra.to_vec();
     named.push((":label", &filter.label_id));
     named.push((":starred", &starred));
+    named.push((":archived", &archived));
     let total: i64 = conn
         .query_row(
             &format!("SELECT COUNT(*) FROM {from_where}"),
@@ -1473,6 +1522,7 @@ mod tests {
             source: None,
             source_id: None,
             source_json: None,
+            archived_at: None,
             created_at: at(1000),
             updated_at: at(9999),
             labels: vec![Label {
@@ -1662,6 +1712,7 @@ mod tests {
         let by_label = MeetingFilter {
             label_id: Some(l.id.clone()),
             starred: false,
+            ..Default::default()
         };
         let page = repo.list_page(&by_label, 2, 0).unwrap();
         assert_eq!(page.total, 3);
@@ -1671,6 +1722,7 @@ mod tests {
         let starred = MeetingFilter {
             label_id: None,
             starred: true,
+            ..Default::default()
         };
         let page = repo.list_page(&starred, 1, 1).unwrap();
         assert_eq!(page.total, 2);
@@ -1679,6 +1731,7 @@ mod tests {
         let both = MeetingFilter {
             label_id: Some(l.id),
             starred: true,
+            ..Default::default()
         };
         let page = repo.list_page(&both, 25, 0).unwrap();
         assert_eq!((page.total, page.meetings.len()), (1, 1));
@@ -1736,6 +1789,7 @@ mod tests {
         let starred = MeetingFilter {
             label_id: None,
             starred: true,
+            ..Default::default()
         };
         let p = repo.search_page("budget", &starred, 25, 0).unwrap();
         assert_eq!(p.total, 3);
@@ -1770,5 +1824,182 @@ mod tests {
             .unwrap();
         assert_eq!(p.total, 2);
         assert_eq!(p.meetings.len(), 1);
+    }
+
+    fn archive(repo: &MeetingRepo, id: &str, on: bool) -> Meeting {
+        repo.patch(
+            id,
+            MeetingPatch {
+                archived: Some(on),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn archived_meetings_leave_every_listing_but_their_own() {
+        let repo = fresh_repo();
+        let noon = |d| {
+            Local
+                .with_ymd_and_hms(2026, 10, d, 12, 0, 0)
+                .unwrap()
+                .timestamp_millis()
+        };
+        let mk = |title: &str, ms| {
+            repo.create(NewMeeting {
+                title: title.into(),
+                started_at_unix_ms: Some(ms),
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let old = mk("Budget review old", noon(6));
+        let new = mk("Budget review new", noon(7));
+        let labels = crate::LabelRepo::new(repo.db.clone());
+        let (l, _) = labels.find_or_create("Sales", None).unwrap();
+        for m in [&old, &new] {
+            labels
+                .set_for_meeting(&m.id, std::slice::from_ref(&l.id))
+                .unwrap();
+            repo.patch(
+                &m.id,
+                MeetingPatch {
+                    starred: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let first = archive(&repo, &old.id, true);
+        let at = first.archived_at.expect("archived_at is set");
+        assert!(first.starred, "archiving keeps the star");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert_eq!(
+            archive(&repo, &old.id, true).archived_at,
+            Some(at),
+            "archiving again keeps the first date"
+        );
+
+        let ids = |p: MeetingPage| p.meetings.into_iter().map(|m| m.id).collect::<Vec<_>>();
+        let only_new = vec![new.id.clone()];
+        let only_old = vec![old.id.clone()];
+        let unarchived = [
+            MeetingFilter::default(),
+            MeetingFilter {
+                starred: true,
+                ..Default::default()
+            },
+            MeetingFilter {
+                label_id: Some(l.id.clone()),
+                ..Default::default()
+            },
+        ];
+        for f in &unarchived {
+            assert_eq!(ids(repo.list_page(f, 25, 0).unwrap()), only_new, "{f:?}");
+            assert_eq!(ids(repo.search_page("budget", f, 25, 0).unwrap()), only_new);
+        }
+        let none = MeetingFilter::default();
+        assert_eq!(repo.search_page("10/6/26", &none, 25, 0).unwrap().total, 0);
+
+        let archived = MeetingFilter {
+            archived: true,
+            ..Default::default()
+        };
+        let page = repo.list_page(&archived, 25, 0).unwrap();
+        assert_eq!((page.total, ids(page)), (1, only_old.clone()));
+        assert_eq!(
+            ids(repo.search_page("budget", &archived, 25, 0).unwrap()),
+            only_old
+        );
+        assert_eq!(
+            ids(repo.search_page("10/6/26", &archived, 25, 0).unwrap()),
+            only_old
+        );
+        assert_eq!(
+            ids(repo.search_page("10/7/26", &archived, 25, 0).unwrap()),
+            Vec::<String>::new()
+        );
+
+        assert_eq!(
+            labels.list_with_counts().unwrap()[0].meeting_count,
+            2,
+            "label counts include archived meetings"
+        );
+        assert!(repo.get(&old.id).unwrap().unwrap().archived_at.is_some());
+
+        assert_eq!(archive(&repo, &old.id, false).archived_at, None);
+        assert_eq!(repo.list_page(&none, 25, 0).unwrap().total, 2);
+        assert_eq!(repo.list_page(&archived, 25, 0).unwrap().total, 0);
+    }
+
+    #[test]
+    fn retrieve_skips_archived_meetings() {
+        let repo = fresh_repo();
+        let mk = |title: &str, ms| {
+            repo.create(NewMeeting {
+                title: title.into(),
+                started_at_unix_ms: Some(ms),
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let kept = mk("Pricing kept", 1_000);
+        let gone = mk("Pricing gone", 2_000);
+        archive(&repo, &gone.id, true);
+        let ids =
+            |hits: Vec<RetrievalHit>| hits.into_iter().map(|h| h.meeting.id).collect::<Vec<_>>();
+        assert_eq!(
+            ids(repo.retrieve(&["pricing".into()], None, 8).unwrap()),
+            [kept.id.as_str()]
+        );
+        assert_eq!(
+            ids(repo.retrieve(&[], None, 8).unwrap()),
+            [kept.id.as_str()]
+        );
+    }
+
+    #[test]
+    fn archive_before_previews_then_archives_older_meetings_but_the_recording() {
+        let repo = fresh_repo();
+        let ms = seed(&repo, 5);
+        let earlier = archive(&repo, &ms[0].id, true).archived_at;
+        let recording = ms[1].id.as_str();
+        let before = ms[4].started_at;
+        let fingerprint = repo.cloud_fingerprint().unwrap();
+
+        assert_eq!(
+            repo.archive_before(before, Some(recording), true).unwrap(),
+            2
+        );
+        assert_eq!(
+            repo.cloud_fingerprint().unwrap(),
+            fingerprint,
+            "a preview changes nothing"
+        );
+        assert_eq!(list(&repo).len(), 4);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert_eq!(
+            repo.archive_before(before, Some(recording), false).unwrap(),
+            2
+        );
+        for m in &ms[2..4] {
+            let got = repo.get(&m.id).unwrap().unwrap();
+            assert!(got.archived_at.is_some());
+            assert!(
+                got.updated_at > m.updated_at,
+                "updated_at moves for the Cloud panel"
+            );
+        }
+        assert_eq!(repo.get(&ms[0].id).unwrap().unwrap().archived_at, earlier);
+        assert_eq!(
+            list(&repo).into_iter().map(|m| m.id).collect::<Vec<_>>(),
+            [ms[4].id.as_str(), recording],
+            "the bound is exclusive and the recording stays"
+        );
+        assert_ne!(repo.cloud_fingerprint().unwrap(), fingerprint);
+        assert_eq!(repo.archive_before(i64::MAX, None, true).unwrap(), 2);
     }
 }

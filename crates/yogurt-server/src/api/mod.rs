@@ -17,6 +17,7 @@ use serde_json::json;
 pub(crate) enum ApiError {
     NotFound,
     BadRequest(String),
+    Conflict(String),
     Internal(anyhow::Error),
 }
 
@@ -25,6 +26,7 @@ impl IntoResponse for ApiError {
         let (code, msg) = match self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
             ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
+            ApiError::Conflict(m) => (StatusCode::CONFLICT, m),
             ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")),
         };
         (code, Json(json!({ "error": msg }))).into_response()

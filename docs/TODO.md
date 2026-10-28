@@ -65,7 +65,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
   1. Client-side: throttle/coalesce applied frames by elapsed time or text length instead of applying every WS frame, and/or move to incremental append (diff old vs new markdown, patch the ProseMirror doc) instead of full `setContent` each time.
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
-- [ ] **MTG-21** Archive meetings: an `archived_at` column, hidden from the Library, search, and Ask across meetings, an Archive view with its own search, Archive from a card, the meeting page, and multi-select, and Archive everything before a date ([design](.planning/archive-design.md#the-mac-mtg-21))
 
 ## Audio
 

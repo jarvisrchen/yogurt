@@ -3,6 +3,7 @@ import { MoreHorizontal, Star, Tag } from "lucide-react";
 import {
   copyMeetingMarkdown,
   revealMeetingInFinder,
+  useSetArchived,
   useToggleStarred,
 } from "../../lib/api/meetings";
 import { DeleteMeetingConfirm } from "./DeleteMeetingConfirm";
@@ -13,13 +14,18 @@ interface Props {
   id: string;
   starred: boolean;
   labels: Label[];
+  /** The card sits in the Archive view, so the menu offers Unarchive. */
+  archived?: boolean;
+  /** The meeting being recorded, which the server refuses to archive. */
+  isLive?: boolean;
 }
 
-export function MeetingCardActions({ id, starred, labels }: Props) {
+export function MeetingCardActions({ id, starred, labels, archived = false, isLive = false }: Props) {
   const [open, setOpen] = useState(false);
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const star = useToggleStarred();
+  const setArchived = useSetArchived();
 
   useEffect(() => {
     if (!open) return;
@@ -53,6 +59,12 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
     stop(e);
     setOpen(false);
     await revealMeetingInFinder(id);
+  };
+
+  const onArchive = (e: React.MouseEvent) => {
+    stop(e);
+    setOpen(false);
+    setArchived.mutate({ ids: [id], archived: !archived });
   };
 
   const iconButton =
@@ -135,6 +147,16 @@ export function MeetingCardActions({ id, starred, labels }: Props) {
           >
             Reveal in Finder
           </button>
+          {!isLive && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onArchive}
+              className="block w-full text-left px-3 py-2 text-ink hover:bg-paper"
+            >
+              {archived ? "Unarchive" : "Archive"}
+            </button>
+          )}
           <DeleteMeetingConfirm
             id={id}
             variant="menuitem"

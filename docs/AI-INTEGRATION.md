@@ -31,7 +31,8 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | GET | `/api/meetings/search` | search, ranked, same paging as the list | `ctl meeting search` |
 | GET | `/api/meetings/active` | what's recording | `ctl status` |
 | GET | `/api/meetings/{id}` | full row | `ctl meeting show` |
-| PATCH | `/api/meetings/{id}` | update title/notes | - |
+| PATCH | `/api/meetings/{id}` | update title/notes/star, or `archived: true\|false` (409 for the meeting being recorded) | - |
+| POST | `/api/meetings/archive` | archive every meeting that started before `{before}` (unix ms) except the one recording, or count them with `preview: true`: returns `{count}` | - |
 | DELETE | `/api/meetings/{id}` | delete | `ctl meeting delete` |
 | GET | `/api/meetings/{id}/markdown` | notes export (summary) | `ctl meeting summary` |
 | POST | `/api/meetings/{id}/start` | start recording | `ctl meeting start` |
@@ -74,6 +75,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | `offset` | Rows to skip, default 0. |
 | `label_id` | Only meetings with this label. |
 | `starred` | `true` keeps only starred meetings. |
+| `archived` | `true` lists only archived meetings. Without it, archived meetings are left out. |
 
 `total` counts every match before `limit` and `offset`, and the filters run in SQL, so a filtered `total` is the filtered count.
 The list is ordered `started_at DESC, id DESC`. Search keeps its relevance ranking.

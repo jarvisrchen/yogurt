@@ -46,6 +46,8 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/V014__meetings_cloud_hash.sql")),
         // `meetings.source`, `source_id`, `source_json`: provenance of imported meetings, unique per (source, source_id).
         M::up(include_str!("../migrations/V015__meetings_source.sql")),
+        // `meetings.archived_at`: hides a meeting from the Library, search, and Ask across meetings.
+        M::up(include_str!("../migrations/V016__meetings_archived.sql")),
     ])
 }
 

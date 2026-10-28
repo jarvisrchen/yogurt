@@ -986,4 +986,49 @@ mod tests {
             4
         );
     }
+
+    #[tokio::test]
+    async fn a_re_import_skips_an_archived_meeting_and_leaves_it_archived() {
+        let h = Harness::new().await;
+        h.save_key().await;
+        h.mock_list(&[("not_a", "Alpha", "me@example.com")]).await;
+        h.mock_note(
+            "not_a",
+            note("not_a", "Alpha", "me@example.com", lines()),
+            0,
+        )
+        .await;
+        h.call(reqwest::Method::POST, "/api/import/granola", None)
+            .await;
+        assert_eq!(h.wait_idle().await["last"]["imported"], 1);
+
+        let archived = yogurt_db::MeetingFilter {
+            archived: true,
+            ..Default::default()
+        };
+        let repo = &h.state.meeting_repo;
+        let id = repo.list_page(&Default::default(), 10, 0).unwrap().meetings[0]
+            .id
+            .clone();
+        let (code, _) = h
+            .call(
+                reqwest::Method::PATCH,
+                &format!("/api/meetings/{id}"),
+                Some(json!({ "archived": true })),
+            )
+            .await;
+        assert_eq!(code, 200);
+
+        let (_, pre) = h
+            .call(reqwest::Method::POST, "/api/import/granola/preview", None)
+            .await;
+        assert_eq!(pre["already_imported"], 1);
+        h.call(reqwest::Method::POST, "/api/import/granola", None)
+            .await;
+        let st = h.wait_idle().await;
+        assert_eq!(st["last"]["imported"], 0);
+        assert_eq!(st["last"]["already_imported"], 1);
+        assert_eq!(repo.list_page(&Default::default(), 10, 0).unwrap().total, 0);
+        assert_eq!(repo.list_page(&archived, 10, 0).unwrap().total, 1);
+    }
 }

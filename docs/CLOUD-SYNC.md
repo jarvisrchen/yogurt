@@ -53,6 +53,7 @@ flowchart LR
 
 When you press Push meetings, your laptop signs in to your Supabase project with the Cloud login and sends meetings to its REST API.
 Each pushed meeting is one JSON document with its title, times, labels, notes, enhanced notes, transcript, and chat messages.
+An archived meeting's document also carries `archived_at`, so archiving or unarchiving a meeting sends a new version of it.
 Every push is insert only.
 A push writes one new row (a version) for each meeting that changed since the last push, and a row with an empty body for each meeting you deleted on that laptop.
 Nothing is ever updated or overwritten, so the cloud keeps the whole history.

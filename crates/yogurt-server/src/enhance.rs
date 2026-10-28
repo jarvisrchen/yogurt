@@ -572,6 +572,7 @@ pub async fn enhance(
                     enriched_md: Some(Some(enriched_md_for_repo)),
                     ended_at: ended_at_patch,
                     starred: None,
+                    archived: None,
                     stt_engine: None,
                     llm_model: Some(llm_model),
                     template: Some(template.to_string()),
