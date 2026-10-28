@@ -554,7 +554,8 @@ end $$;
 -- Rows are summaries and carry no note or transcript body (yogurt_meeting returns one). total is the number of meetings the view lists and repeats on every row, so a page past the end returns no rows.
 -- page_limit is clamped to 1..100, which keeps a page far under the 1,000 row response cap. only_device narrows the page and the total to one device.
 -- An archived meeting is listed only with only_archived, and then nothing else is.
--- With only_device, only_starred lists only starred meetings and only_label only meetings with that label id. Label ids belong to one device, so both are ignored without it.
+-- only_starred lists only starred meetings, on every device when only_device is null.
+-- With only_device, only_label lists only meetings with that label id. Label ids belong to one device, so it is ignored without one.
 create or replace function public.yogurt_library(token text, at_push bigint default null, page_limit int default 25, page_offset int default 0, only_device uuid default null, only_archived boolean default false,
   only_starred boolean default false, only_label text default null)
 returns table (device_id uuid, push_id bigint, pushed_at timestamptz, meeting_id text, title text, started_at bigint, ended_at bigint, starred boolean, labels jsonb, total bigint)
@@ -578,7 +579,7 @@ begin
         from latest l
         join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (l.device_id, l.meeting_id, l.push_id)
         where l.live and l.archived = coalesce(only_archived, false)
-          and (only_device is null or ((not coalesce(only_starred, false) or v.starred) and (only_label is null or v.labels @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id', only_label)))))
+          and (not coalesce(only_starred, false) or v.starred) and (only_device is null or only_label is null or v.labels @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id', only_label)))
       ) s
       order by s.started_at desc, s.meeting_id, s.device_id
       limit least(greatest(page_limit, 1), 100) offset greatest(page_offset, 0)
@@ -619,7 +620,7 @@ begin
 end $$;
 
 -- Live meetings matching the query, newest first, optionally on one device, 25 from page_offset. `more` is true on every row when there were more after them.
--- Archived meetings match only with only_archived, and then nothing else does. only_starred and only_label narrow it as in yogurt_library, and only with only_device.
+-- Archived meetings match only with only_archived, and then nothing else does. only_starred and only_label narrow it as in yogurt_library.
 -- Quotes work, a leading minus excludes, and the last word matches as a prefix so a half-typed word finds its meeting.
 -- snippet is null when the title matches, and otherwise a headline with the matched words wrapped in U+E000 and U+E001.
 create or replace function public.yogurt_search(token text, query text, only_device uuid default null, page_offset int default 0, only_archived boolean default false,
@@ -667,7 +668,7 @@ begin
       where i.user_id = auth.uid() and i.tsv @@ tsq and (only_device is null or i.device_id = only_device)
         -- Deleted, archived, starred, and labels are read from the latest version, so a push the index has not caught up to takes effect at once.
         and (select v.body is not null and v.archived = coalesce(only_archived, false)
-                    and (only_device is null or ((not coalesce(only_starred, false) or v.starred) and (only_label is null or v.labels @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id', only_label)))))
+                    and (not coalesce(only_starred, false) or v.starred) and (only_device is null or only_label is null or v.labels @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('id', only_label)))
              from public.yogurt_versions v
              where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
       order by i.started_at desc, i.meeting_id, i.device_id

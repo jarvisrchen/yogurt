@@ -783,14 +783,16 @@ select pg_temp.eq(pg_temp.flib(:'stok', :d5, false, 'lc'), 'f2:2,f1:2', 'only_la
 select pg_temp.eq(pg_temp.flib(:'stok', :d5, true, 'lc'), 'f1:1', 'and combines with only_starred');
 select pg_temp.eq(pg_temp.flib(:'stok', :d5, false, 'lx') || pg_temp.flib(:'stok', :d5, false, 'nope'), '', 'a label id from another device, or an unknown one, matches nothing');
 select pg_temp.eq(pg_temp.flib(:'stok', :d5, null, null), 'f6:4,f3:4,f2:4,f1:4', 'a null only_starred counts as false');
-select pg_temp.eq(pg_temp.flib(:'stok', null, true, 'lc'), pg_temp.flib(:'stok', null, false, null),
-  'without a device, only_starred and only_label are ignored');
+select pg_temp.eq(pg_temp.flib(:'stok', null, true, 'lc'), pg_temp.flib(:'stok', null, true, null),
+  'without a device, only_label is ignored');
+select pg_temp.eq(pg_temp.flib(:'stok', null, false, 'lc'), pg_temp.flib(:'stok', null, false, null), 'and ignored without only_starred too');
+select pg_temp.eq(pg_temp.flib(:'stok', null, true, null), 'g1:3,f3:3,f1:3', 'without a device, only_starred lists every device''s starred meetings');
 select pg_temp.eq((select starred || ':' || labels from yogurt_library(:'stok', null, 1, 0, :d5, false, false, 'lh')), 'true:[{"id": "lc", "name": "Clients", "color": "honey"}, {"id": "lh", "name": "Hiring", "color": "lilac"}]',
   'a filtered row keeps its star and labels');
 select pg_temp.eq(pg_temp.fids(:'stok', :d5, true, null) || ' ' || pg_temp.fids(:'stok', :d5, false, 'lc') || ' ' || pg_temp.fids(:'stok', :d5, true, 'lc'), 'f3,f1 f2,f1 f1',
   'search narrows to starred and labeled meetings on one device');
 select pg_temp.eq(pg_temp.fids(:'stok', :d5, false, 'lx'), '', 'search matches nothing for another device''s label id');
-select pg_temp.eq(pg_temp.fids(:'stok', null, true, 'lx'), 'g1,f6,f3,f2,f1', 'search ignores the filters without a device');
+select pg_temp.eq(pg_temp.fids(:'stok', null, true, 'lx'), 'g1,f3,f1', 'search narrows to starred meetings on every device and ignores the label without a device');
 -- Unstarring and unlabeling take effect before the index catches up, as deletions do.
 select yogurt_start_push(:d5) as push_f3 \gset
 insert into yogurt_versions (meeting_id, push_id, device_id, body) values

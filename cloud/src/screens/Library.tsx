@@ -54,13 +54,11 @@ export const GearIcon = () => (
 
 type Row = Entry & { snippet: string | null };
 
-// Starred and labels belong to one Mac, so they are offered only once a Mac is picked.
+// Labels belong to one Mac, so they and the Archive are offered only once a Mac is picked.
 type Pill = "all" | "starred" | "archive";
 type Filter = Pill | Label;
-const ALL = { value: "all", label: "All" } as const;
-const ARCHIVE = { value: "archive", label: "Archive" } as const;
-const FILTERS: { value: Pill; label: string }[] = [ALL, ARCHIVE];
-const DEVICE_FILTERS: { value: Pill; label: string }[] = [ALL, { value: "starred", label: "Starred" }, ARCHIVE];
+const FILTERS: { value: Pill; label: string }[] = [{ value: "all", label: "All" }, { value: "starred", label: "Starred" }];
+const DEVICE_FILTERS: { value: Pill; label: string }[] = [...FILTERS, { value: "archive", label: "Archive" }];
 
 interface Props {
   api: Api;
@@ -121,11 +119,11 @@ export function Library({
         offset: (page - 1) * size,
         ...scope,
       });
-      // An empty library shows the welcome screen, unless every meeting is archived and the Archive pill is the way to them.
-      const empty =
-        !rows.length && page === 1 && !pushId && !device && !archived &&
-        !(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true, starred: false, label: null })).length;
-      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, device, empty };
+      // An empty library shows the welcome screen, unless every meeting is archived and a Mac's Archive pill is the way to them.
+      const blank = !rows.length && page === 1 && !pushId && !device && filter === "all";
+      const allArchived =
+        blank && !!(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true, starred: false, label: null })).length;
+      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, device, empty: blank && !allArchived, allArchived };
     },
     onRejected,
     [api, token, pushId, size, page, device, archived, starred, scope.label],
@@ -239,10 +237,10 @@ export function Library({
       </main>
     );
 
-  // Another Mac's star and labels mean nothing on this one, so a new Mac starts at All.
+  // Another Mac's labels mean nothing on this one, and All devices has no Archive.
   const chooseDevice = (id: string | null) => {
     setDevice(id);
-    setFilter("all");
+    setFilter((f) => (f === "starred" || (f === "archive" && id) ? f : "all"));
     if (page > 1) go({ ...loc, page: 1 });
   };
   const chooseFilter = (f: Filter) => {
@@ -328,7 +326,9 @@ export function Library({
           />
           {!search.active && shown && !rows.length && (
             <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
-              {!shown.archived
+              {shown.allArchived
+                ? "Every meeting is archived. Pick a Mac to see its Archive."
+                : !shown.archived
                 ? "No meetings here."
                 : pushId
                   ? "No archived meetings at this push."

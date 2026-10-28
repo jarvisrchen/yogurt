@@ -1383,3 +1383,10 @@ New closed items go at the bottom.
   With a Mac picked, the webapp's filter row offers All, Starred, and Archive, and a Labels button opens that Mac's labels from the new `yogurt_labels` RPC.
   `yogurt_library` and `yogurt_search` take `only_starred` and `only_label`, read from stored generated columns, and ignore both without a device.
   Changing the Mac resets the filter to All, and rows under one Mac drop their device tag.
+
+- [x] **SYNC-23** In the webapp, offer All and Starred under All devices, with Starred listing every Mac's starred meetings, and move Archive to the per-Mac row beside Starred and Labels.
+
+  Under All devices the filter row is All and Starred, and Starred lists every Mac's starred meetings.
+  Archive moved to the per-Mac row.
+  Starred stays picked when the Mac changes.
+  `yogurt_library` and `yogurt_search` apply `only_starred` without `only_device`.

@@ -49,7 +49,7 @@ export interface Label {
   color: string;
 }
 
-/** What the library and search show: one device or all (null), and the archive or everything else. `starred` and `label` narrow one device's meetings. */
+/** What the library and search show: one device or all (null), and the archive or everything else. `starred` narrows to starred meetings, and `label` to one device's meetings with that label. */
 export interface Scope {
   device: string | null;
   archived: boolean;

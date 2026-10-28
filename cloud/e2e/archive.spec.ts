@@ -10,7 +10,7 @@ const range = (page: Page) => page.getByTestId("pager-range");
 const filter = (page: Page, name: string) => page.getByRole("group", { name: "Filter" }).getByRole("button", { name });
 const device = (page: Page, name: string) => page.getByRole("group", { name: "Device" }).getByRole("button", { name });
 
-test("the Archive pill lists and searches only archived meetings, under All devices or one", async ({ page }, info) => {
+test("a Mac's Archive pill lists and searches only its archived meetings", async ({ page }, info) => {
   await onboard(page);
   await seed();
   await seedBulk(3, { prefix: "Archived review", kb: 1, archivedAt: new Date().toISOString() });
@@ -21,14 +21,15 @@ test("the Archive pill lists and searches only archived meetings, under All devi
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
   await expect(range(page)).toHaveText("1–2 of 2");
   await expect(page.getByRole("button", { name: /^Archived review/ })).toHaveCount(0);
+  await expect(filter(page, "Archive")).toHaveCount(0);
   await shot(page, info, "a-all");
 
+  await device(page, "Laptop 1").click();
   await filter(page, "Archive").click();
   await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
   await expect(range(page)).toHaveText("1–3 of 3");
   await expect(page.getByRole("button", { name: /^Archived review/ })).toHaveCount(3);
   await expect(page.getByRole("button", { name: /edis update/ })).toHaveCount(0);
-  await expect(device(page, "All devices")).toHaveAttribute("aria-pressed", "true");
   await shot(page, info, "a-archive");
 
   // An archived meeting opens like any other, and on a phone its Back names the Archive list it returns to.
@@ -41,29 +42,31 @@ test("the Archive pill lists and searches only archived meetings, under All devi
     await page.getByRole("link", { name: "Library" }).click();
   }
 
-  // Search in the archive finds only archived meetings, and All searches everything else.
+  // Search in the archive finds only archived meetings, and All devices searches everything else.
   const search = page.getByRole("textbox", { name: "Search notes and transcripts" });
   await search.fill("roadmap");
   await expect(page.getByRole("status")).toHaveText("3 matches");
   await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toHaveCount(0);
   await shot(page, info, "a-archive-search");
-  await filter(page, "All").click();
+  await device(page, "All devices").click();
   await expect(page.getByRole("status")).toHaveText("1 match");
   await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toBeVisible();
   await search.fill("");
 
-  // A device with nothing archived shows the archive's empty state, and picking another device starts over at All.
+  // A device with nothing archived shows the archive's empty state, another Mac keeps Archive, and All devices starts over at All.
   await device(page, "Laptop 2").click();
   await filter(page, "Archive").click();
   await expect(page.getByText("No archived meetings.", { exact: false })).toBeVisible();
   await shot(page, info, "a-archive-empty");
   await device(page, "Laptop 1").click();
-  await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
-  await filter(page, "Archive").click();
+  await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
   await expect(range(page)).toHaveText("1–3 of 3");
+  await device(page, "All devices").click();
+  await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
+  await expect(range(page)).toHaveText("1–2 of 2");
 });
 
-test("with every meeting archived, the library stays reachable through the Archive pill", async ({ page }) => {
+test("with every meeting archived, the library stays reachable through a Mac's Archive pill", async ({ page }) => {
   const owner = createClient(API, KEY);
   await owner.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
   for (const [dev, id, title] of [[DEVICES.a, "m-standup", "edis update (revised)"], [DEVICES.b, "m-planning", "Q4 planning sync"]]) {
@@ -77,8 +80,9 @@ test("with every meeting archived, the library stays reachable through the Archi
   await expectScreen(page, "Unlock your meetings");
   await typePin(page, PIN);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("No meetings here.")).toBeVisible();
+  await expect(page.getByText("Every meeting is archived. Pick a Mac to see its Archive.")).toBeVisible();
   await expect(page.getByRole("heading", { name: /Waiting for the first push/ })).toHaveCount(0);
+  await device(page, "Laptop 1").click();
   await filter(page, "Archive").click();
-  await expect(range(page)).toHaveText("1–5 of 5");
+  await expect(range(page)).toHaveText("1–4 of 4");
 });
