@@ -691,8 +691,8 @@ select pg_temp.eq(pg_temp.rids('{}', 19000, 30000), 'r5,r3,r2,r1', 'a meeting no
 -- Archive: a meeting whose latest version carries meeting.archived_at leaves the library, search, and chat retrieval, and only_archived shows only such meetings.
 select yogurt_start_push(:d3) as push_x \gset
 insert into yogurt_versions (meeting_id, push_id, device_id, body) values
-  ('a1', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved one', 'started_at', 26000, 'archived_at', 1761523200000, 'notes_md', 'shelfword', 'transcript_json', '[]'))),
-  ('a2', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved two', 'started_at', 27000, 'archived_at', 1761523200000, 'notes_md', 'shelfword', 'transcript_json', '[]'))),
+  ('a1', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved one', 'started_at', 26000, 'archived_at', '2026-10-27T08:00:00Z', 'notes_md', 'shelfword', 'transcript_json', '[]'))),
+  ('a2', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved two', 'started_at', 27000, 'archived_at', '2026-10-27T08:00:00Z', 'notes_md', 'shelfword', 'transcript_json', '[]'))),
   ('a3', :push_x, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'On the shelf', 'started_at', 28000, 'archived_at', null, 'notes_md', 'shelfword', 'transcript_json', '[]')));
 select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'archived meetings are indexed');
 reset role;
@@ -712,6 +712,7 @@ select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 100,
 select pg_temp.eq(pg_temp.lib(:'stok', null, null, true), 'a2:2,a1:2', 'only_archived lists only archived meetings, and total counts them');
 select pg_temp.eq(pg_temp.lib(:'stok', null, :d3, true) || ' ' || pg_temp.lib(:'stok', null, :d4, true), 'a2:2,a1:2 ', 'only_archived combines with only_device');
 select pg_temp.eq((select count(*)::text from yogurt_library(:'stok', null, 1, 5, null, true)), '0', 'a page past the end of the archive is empty');
+select pg_temp.eq((select total::text from yogurt_library(:'stok', null, 1, 0, null, null)) || ' ' || pg_temp.aids(:'stok', 'shelfword', null), :'unarchived' || ' a3', 'a null only_archived counts as false');
 select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', false), 'a3', 'search leaves archived meetings out');
 select pg_temp.eq(pg_temp.aids(:'stok', 'shelfword', true), 'a2,a1', 'only_archived searches only the archive');
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'stok', 'shelfword', :d4, 0, true)), null, 'and keeps the device filter');
@@ -722,7 +723,7 @@ select pg_temp.eq(pg_temp.rids('{zzzz}', 24000, 30000), 'a3,r5', 'and its fallba
 select yogurt_start_push(:d3) as push_y \gset
 insert into yogurt_versions (meeting_id, push_id, device_id, body) values
   ('a1', :push_y, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Shelved one', 'started_at', 26000, 'notes_md', 'shelfword', 'transcript_json', '[]'))),
-  ('a3', :push_y, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'On the shelf', 'started_at', 28000, 'archived_at', 1761609600000, 'notes_md', 'shelfword', 'transcript_json', '[]')));
+  ('a3', :push_y, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'On the shelf', 'started_at', 28000, 'archived_at', '2026-10-28T08:00:00Z', 'notes_md', 'shelfword', 'transcript_json', '[]')));
 select pg_temp.eq(pg_temp.lib(:'stok', null, :d3, true) || ' ' || pg_temp.lib(:'stok', null, null, true), 'a3:2,a2:2 a3:2,a2:2', 'the archive follows the latest version');
 select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_library(:'stok', null, 100, 0) where meeting_id like 'a_'), 'a1', 'an unarchived meeting is listed again');
 select pg_temp.eq(pg_temp.lib(:'stok', :push_x, :d3, true), 'a2:2,a1:2', 'the as-of view shows the archive as it was at that push');

@@ -23,6 +23,7 @@ export function useSearch(api: Api, token: string, query: string, { device, arch
   const scope = `${device}\0${archived}`;
   const key = `${q}\0${scope}`;
   const [paged, setPaged] = useState({ key, offset: 0 });
+  if (paged.key !== key) setPaged({ key, offset: 0 });
   const offset = paged.key === key ? paged.offset : 0;
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [attempt, setAttempt] = useState(0);

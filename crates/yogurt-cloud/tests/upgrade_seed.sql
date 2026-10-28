@@ -8,6 +8,6 @@ select m, 1, '00000000-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-00
 from (values
   ('u1', jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Before upgrade', 'started_at', 1000, 'notes_md', 'upgradeword', 'transcript_json', '[]'))),
   ('u2', jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Huge', 'started_at', 2000, 'notes_md', 'hugeword ' || repeat('日本語 é€ ', 400000), 'transcript_json', '[]'))),
-  ('u4', jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Archived', 'started_at', 500, 'archived_at', 900, 'notes_md', 'upgradeword', 'transcript_json', '[]'))),
+  ('u4', jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Archived', 'started_at', 500, 'archived_at', '2026-10-27T08:00:00Z', 'notes_md', 'upgradeword', 'transcript_json', '[]'))),
   ('u3', null)
 ) t(m, b);

@@ -61,6 +61,8 @@ create table if not exists public.yogurt_versions (
   primary key (device_id, meeting_id, push_id)
 );
 create index if not exists yogurt_versions_push_id on public.yogurt_versions (push_id);
+-- Whether the Mac had archived the meeting, kept beside the body so reads filter on it without detoasting every version.
+alter table public.yogurt_versions add column if not exists archived boolean generated always as (body -> 'meeting' ->> 'archived_at' is not null) stored;
 
 -- The helpers used to live in public, and the old insert policies depend on them.
 drop policy if exists add on public.yogurt_devices;
@@ -508,16 +510,21 @@ begin
     where l.body is not null order by l.meeting_id;
 end $$;
 
--- The previous shapes of the two functions below. A changed argument list is a new function, so the old ones go.
-drop function if exists public.yogurt_library(text, bigint);
-drop function if exists public.yogurt_library(text, bigint, int, int, uuid);
-drop function if exists public.yogurt_search(text, text, uuid);
-drop function if exists public.yogurt_search(text, text, uuid, int);
+-- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the two below goes first.
+do $$
+declare
+  f regprocedure;
+begin
+  for f in select p.oid::regprocedure from pg_proc p
+           where p.pronamespace = 'public'::regnamespace and p.proname in ('yogurt_library', 'yogurt_search') loop
+    execute format('drop function %s', f);
+  end loop;
+end $$;
 
 -- One page of the library, newest meeting first: the latest version of each live meeting per device at or before at_push, or now when null.
--- Rows are summaries and carry no note or transcript body (yogurt_meeting returns one). total is the number of live meetings and repeats on every row, so a page past the end returns no rows.
+-- Rows are summaries and carry no note or transcript body (yogurt_meeting returns one). total is the number of meetings the view lists and repeats on every row, so a page past the end returns no rows.
 -- page_limit is clamped to 1..100, which keeps a page far under the 1,000 row response cap. only_device narrows the page and the total to one device.
--- A meeting whose version carries meeting.archived_at is listed only with only_archived, and then nothing else is.
+-- An archived meeting is listed only with only_archived, and then nothing else is.
 create or replace function public.yogurt_library(token text, at_push bigint default null, page_limit int default 25, page_offset int default 0, only_device uuid default null, only_archived boolean default false)
 returns table (device_id uuid, push_id bigint, pushed_at timestamptz, meeting_id text, title text, started_at bigint, ended_at bigint, starred boolean, labels jsonb, total bigint)
 language plpgsql security definer set search_path = '' as $$
@@ -527,7 +534,7 @@ begin
   perform yogurt_private.yogurt_check_token(token);
   return query
     with latest as (
-      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body is not null as live
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body is not null as live, v.archived
       from public.yogurt_versions v
       where v.user_id = auth.uid() and (at_push is null or v.push_id <= at_push) and (only_device is null or v.device_id = only_device)
       order by v.device_id, v.meeting_id, v.push_id desc
@@ -539,7 +546,7 @@ begin
                count(*) over () as total
         from latest l
         join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (l.device_id, l.meeting_id, l.push_id)
-        where l.live and (v.body -> 'meeting' ->> 'archived_at' is not null) = only_archived
+        where l.live and l.archived = coalesce(only_archived, false)
       ) s
       order by s.started_at desc, s.meeting_id, s.device_id
       limit least(greatest(page_limit, 1), 100) offset greatest(page_offset, 0)
@@ -626,7 +633,7 @@ begin
       from yogurt_private.yogurt_search_index i
       where i.user_id = auth.uid() and i.tsv @@ tsq and (only_device is null or i.device_id = only_device)
         -- Deleted and archived are read from the latest version, so a push the index has not caught up to takes effect at once.
-        and (select v.body is not null and (v.body -> 'meeting' ->> 'archived_at' is not null) = only_archived from public.yogurt_versions v
+        and (select v.body is not null and v.archived = coalesce(only_archived, false) from public.yogurt_versions v
              where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
       order by i.started_at desc, i.meeting_id, i.device_id
       limit skip + cap + 1
@@ -667,7 +674,7 @@ begin
         from yogurt_private.yogurt_search_index i
         where i.user_id = auth.uid() and i.tsv @@ tsq
           and (from_ms is null or i.started_at >= from_ms) and (to_ms is null or i.started_at < to_ms)
-          and (select v.body is not null and v.body -> 'meeting' ->> 'archived_at' is null from public.yogurt_versions v
+          and (select v.body is not null and not v.archived from public.yogurt_versions v
                where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
         order by ts_rank(i.tsv, tsq, 1) desc, i.started_at desc, i.meeting_id, i.device_id
         limit n
@@ -680,7 +687,7 @@ begin
   return query
     select l.device_id, l.meeting_id, r.title, r.started_at, r.notes, ''
     from (
-      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.body is not null and v.body -> 'meeting' ->> 'archived_at' is null as shown
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.body is not null and not v.archived as shown
       from public.yogurt_versions v
       where v.user_id = auth.uid()
       order by v.device_id, v.meeting_id, v.push_id desc

@@ -120,7 +120,7 @@ export function Library({
       const empty =
         !rows.length && page === 1 && !pushId && !device && !archived &&
         !(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true })).length;
-      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, empty };
+      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, empty };
     },
     onRejected,
     [api, token, pushId, size, page, device, archived],
@@ -219,7 +219,7 @@ export function Library({
       entry={entry}
       device={nameOf(openDevice)}
       deviceIndex={indexOf(openDevice)}
-      back={devices?.find((d) => d.id === device)?.name ?? "All devices"}
+      back={archived ? "Archive" : (devices?.find((d) => d.id === device)?.name ?? "All devices")}
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
       body={body}
@@ -315,7 +315,11 @@ export function Library({
           />
           {!search.active && shown && !rows.length && (
             <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
-              {archived ? "No archived meetings. A meeting you archive on your Mac shows here after its next push." : "No meetings here."}
+              {!shown.archived
+                ? "No meetings here."
+                : pushId
+                  ? "No archived meetings at this push."
+                  : "No archived meetings. A meeting you archive on your Mac shows here after its next push."}
             </p>
           )}
         </div>
@@ -392,7 +396,7 @@ export function Library({
             onRetry={retry}
           />
         </main>
-      ) : !devices || !shown ? null : shown.empty ? (
+      ) : !devices || !shown ? null : pageLoad.data?.empty ? (
         <main className="flex-1 flex flex-col items-center text-center px-[16px] pt-[80px]">
           <div className="float-3500 mb-[32px]">
             <Logo size={64} ariaLabel="Yogurt" />

@@ -276,7 +276,7 @@ export function Pills<T>({ label, options, value, onChange }: { label: string; o
   return (
     <div role="group" aria-label={label} className="flex gap-[6px] overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible">
       {options.map((o) => (
-        <button key={String(o.value)} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)} className={pill(o.value === value)}>
+        <button key={String(o.value)} type="button" aria-pressed={o.value === value} onClick={() => o.value !== value && onChange(o.value)} className={pill(o.value === value)}>
           {o.label}
         </button>
       ))}

@@ -397,8 +397,9 @@ The chat sees the transcript only, as the chat in Yogurt on your Mac does.
 The conversation stays on the page: leaving the meeting or reloading clears it, and nothing is saved to your Cloud.
 A meeting opened from an earlier push in History has no chat.
 
-Ask across meetings, at the bottom of the library, asks about all of them.
-It skips archived meetings and finds up to 6 by the words in your question, or your newest meetings when no words match, and a phrase such as "last week" or "in December" narrows them to those dates in your time zone.
+Ask across meetings, at the bottom of the library, asks about every meeting you have not archived.
+It finds up to 6 of them by the words in your question, or your newest meetings when no words match.
+A phrase such as "last week" or "in December" narrows them to those dates in your time zone.
 Those meetings' titles, dates, notes, and transcript excerpts go to your LLM provider, and the answer cites each meeting it uses as a chip that opens it.
 The conversation stays while you open meetings from it, and a reload clears it.
 On a computer, the yogurt logo closes the open meeting and brings the library chat back.
