@@ -65,6 +65,8 @@ The note is a file, not a shell argument, because real resolution notes contain 
   1. Client-side: throttle/coalesce applied frames by elapsed time or text length instead of applying every WS frame, and/or move to incremental append (diff old vs new markdown, patch the ProseMirror doc) instead of full `setContent` each time.
   2. Server-side: send deltas instead of full snapshots (the design doc's rejected "Option B"), trading away the reconnect self-healing property unless deltas are paired with a periodic full resync.
   </details>
+- [ ] **MTG-21** Archive meetings: an `archived_at` column, hidden from the Library, search, and Ask across meetings, an Archive view with its own search, Archive from a card, the meeting page, and multi-select, and Archive everything before a date ([design](.planning/archive-design.md#the-mac-mtg-21))
+
 ## Audio
 
 - [ ] **AUD-2** Add NVIDIA Parakeet v3 to the local STT model download
@@ -129,6 +131,9 @@ Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-desi
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
+- [ ] **SYNC-21** Hide archived meetings in the webapp's library, search, and chat, and add an Archive pill, once MTG-21 lands ([design](.planning/archive-design.md#reading-archive-state-sync-21))
+- [ ] **SYNC-22** Starred and Labels filters in the webapp once a Mac is picked, with star and label chips on its rows ([design](.planning/archive-design.md#each-macs-starred-and-labels-sync-22))
+
 ## Import
 
 Design: [.planning/granola-import-design.md](.planning/granola-import-design.md).
