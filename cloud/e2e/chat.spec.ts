@@ -154,6 +154,8 @@ test("ask across meetings and open a cited one", async ({ page }, info) => {
   await chat.getByPlaceholder("Ask across meetings…").press("Enter");
   await expect.poll(() => asked.length).toBe(before + 2);
   expect(asked[before + 1].messages.map((m) => m.role)).toEqual(["system", "system", "user", "assistant", "user"]);
+  // It numbers its own meetings, so the earlier answer goes back without its [1].
+  expect(asked[before + 1].messages[3].content).toBe("Steven owns the migration plan.");
   expect(asked[before + 1].messages[1].content).toMatch(/\[1\] edis update \(revised\).*\[2\] Q4 planning sync/s);
 
   // An earlier push has no library chat.

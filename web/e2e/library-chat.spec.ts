@@ -87,6 +87,7 @@ test("asking across meetings streams an answer with a chip to the cited meeting"
 
   await page.getByRole("button", { name: "Ask across meetings" }).click();
   const chat = page.getByRole("region", { name: "Ask across meetings chat" });
+  const before = chatBodies.length;
   await chat.getByPlaceholder("Ask across meetings…").fill("What did we decide about the budget?");
   await chat.getByPlaceholder("Ask across meetings…").press("Enter");
 
@@ -96,6 +97,18 @@ test("asking across meetings streams an answer with a chip to the cited meeting"
   });
   await page.screenshot({ path: test.info().outputPath("library-chat.png") });
 
-  await chat.getByRole("link", { name: /Quarterly planning/ }).click();
+  // A follow-up numbers its own meetings, so the earlier answer goes back without its [1].
+  await chat.getByPlaceholder("Ask across meetings…").fill("Who signed off?");
+  await chat.getByPlaceholder("Ask across meetings…").press("Enter");
+  await expect.poll(() => chatBodies.length).toBe(before + 2);
+  expect(chatBodies.at(-1)).toEqual({
+    messages: [
+      { role: "user", content: "What did we decide about the budget?" },
+      { role: "assistant", content: "The Q3 budget lands at 1.2 million." },
+      { role: "user", content: "Who signed off?" },
+    ],
+  });
+
+  await chat.getByRole("link", { name: /Quarterly planning/ }).first().click();
   await expect(page).toHaveURL(new RegExp(`/meeting/${MEETING.id}/post$`));
 });

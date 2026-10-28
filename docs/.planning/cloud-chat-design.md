@@ -166,6 +166,8 @@ Two changes from the Rust: a word keeps its combining marks, where local splits 
 A day whose midnight a DST change skips starts when the clocks jump.
 
 **Context.** The same as local `build_messages`: the `library-chat-system.md` prompt with today's date, then a `MEETINGS:` block numbering each hit `[1]` to `[6]` with its title, date, notes with markers stripped, and excerpt, then the conversation.
+Each question numbers its own hits, so the client sends earlier answers back without their `[n]`, and a `[n]` the user typed as the title and date of the meeting it meant, through `web/src/lib/citations.ts`, which the desktop's library chat uses too (LLM-11).
+Replacing an answer's `[n]` with its title instead made MiniMax-M3 drop citations in 3 of 8 follow-ups, and keeping it made it cite the wrong meeting in 5 of 5 follow-ups whose list had shifted.
 
 **UI.** The desktop's Ask across meetings pill and chat window, with its copy, docked at the bottom of the library list on a phone and of the empty meeting pane on a desktop.
 Each cited meeting shows as the desktop's chip, which opens `#/m/<device>/<meeting>`, keyed by the `device_id` and `meeting_id` in `sources`.
