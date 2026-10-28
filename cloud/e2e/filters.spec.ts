@@ -15,6 +15,7 @@ const L = {
   planning: { id: "l-planning", name: "Planning", color: "matcha" },
   product: { id: "l-product", name: "Product", color: "blue" },
   recruiting: { id: "l-recruiting", name: "Recruiting", color: "lilac" },
+  oldClients: { id: "l-old-clients", name: "Old clients", color: "slate" },
 };
 
 const at = (daysAgo: number, hour: number, minute: number) => {
@@ -24,12 +25,12 @@ const at = (daysAgo: number, hour: number, minute: number) => {
   return d.getTime();
 };
 
-/** The mocks' two Macs: MacBook Pro with eight labels and two starred meetings, and a Mac mini with one label of its own. */
+/** The mocks' two Macs: MacBook Pro with eight labels, two starred meetings, and two archived ones, and a Mac mini with one label of its own. */
 async function seedMacs() {
   const sb = createClient(API, KEY);
   expect((await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD })).error).toBeNull();
   expect((await sb.from("yogurt_devices").insert([{ id: MBP, name: "MacBook Pro" }, { id: MINI, name: "Mac mini" }])).error).toBeNull();
-  const push = async (device: string, meetings: [string, number, number, { starred?: boolean; labels?: object[] }?][]) => {
+  const push = async (device: string, meetings: [string, number, number, { starred?: boolean; labels?: object[]; archived_at?: string }?][]) => {
     const { data: pushId } = await sb.rpc("yogurt_start_push", { device_id: device });
     const rows = meetings.map(([title, start, minutes, extra = {}], i) => ({
       meeting_id: `${device.slice(0, 4)}-${i}`,
@@ -49,6 +50,8 @@ async function seedMacs() {
     ["Kickoff - Globex", at(12, 10, 30), 48, { labels: [L.clients] }],
     ["Quarterly review - Initech", at(26, 15, 0), 55, { labels: [L.clients] }],
     ["Customer call - Globex", at(34, 13, 30), 37, { labels: [L.clients] }],
+    ["Kickoff - Hooli", at(400, 10, 0), 50, { labels: [L.clients, L.oldClients], archived_at: new Date().toISOString() }],
+    ["Vendor sync", at(410, 9, 0), 25, { labels: [L.oldClients], archived_at: new Date().toISOString() }],
   ]);
   await push(MINI, [
     ["Standup", at(0, 9, 15), 12, { starred: true, labels: [{ id: "l-ops", name: "Ops", color: "matcha" }] }],
@@ -100,7 +103,7 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   await expect(labelsButton(page)).toHaveAttribute("aria-expanded", "false");
   await labelsButton(page).click();
   await expect(labelsButton(page)).toHaveAttribute("aria-expanded", "true");
-  await expect(list(page).getByRole("option")).toHaveText(["1:1s", "Board", "Clients", "Hiring", "Investors", "Planning", "Product", "Recruiting"]);
+  await expect(list(page).getByRole("option")).toHaveText(["All labels", "1:1s", "Board", "Clients", "Hiring", "Investors", "Planning", "Product", "Recruiting"]);
   const box = (await list(page).boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -111,19 +114,24 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   await page.mouse.click(5, 5);
   await expect(list(page)).toHaveCount(0);
 
-  // Picking a label closes the list, and the button shows it in the selected style.
+  // Picking a label closes the list, shows it on the button in the selected style, and narrows the pill: one starred Clients meeting.
   await labelsButton(page).click();
-  await list(page).getByRole("option", { name: "Clients" }).click();
+  await list(page).getByRole("option", { name: "Clients", exact: true }).click();
   await expect(list(page)).toHaveCount(0);
   await expect(labelsButton(page)).toHaveAccessibleName("Label Clients");
   await expect(labelsButton(page)).toHaveClass(/bg-blue/);
-  await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "false");
-  await expect(filter(page, "Starred")).toHaveAttribute("aria-pressed", "false");
+  await expect(filter(page, "Starred")).toHaveAttribute("aria-pressed", "true");
+  await expect(range(page)).toHaveText("1–1 of 1");
+  await expect(row(page, "Customer call - Acme")).toBeVisible();
+
+  // All shares Starred's labels, so the label stays.
+  await filter(page, "All").click();
+  await expect(labelsButton(page)).toHaveAccessibleName("Label Clients");
   await expect(range(page)).toHaveText("1–5 of 5");
   await page.mouse.move(0, 0);
   await shot(page, info, "f-clients", false);
   await labelsButton(page).click();
-  await expect(list(page).getByRole("option", { name: "Clients" })).toHaveAttribute("aria-selected", "true");
+  await expect(list(page).getByRole("option", { name: "Clients", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(list(page).getByRole("option", { selected: true })).toHaveCount(1);
   await page.mouse.move(0, 0);
   await shot(page, info, "f-list", false);
@@ -147,13 +155,42 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   await expect(row(page, "Design review")).toBeVisible();
   await search.fill("");
 
+  // The Archive has its own labels, so it starts with none, and a label narrows it.
+  await filter(page, "Archive").click();
+  await expect(labelsButton(page)).toHaveAccessibleName("Labels");
+  await expect(range(page)).toHaveText("1–2 of 2");
+  await labelsButton(page).click();
+  await expect(list(page).getByRole("option")).toHaveText(["All labels", "Clients", "Old clients"]);
+  await list(page).getByRole("option", { name: "Clients", exact: true }).click();
+  await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
+  await expect(range(page)).toHaveText("1–1 of 1");
+  await expect(row(page, "Kickoff - Hooli")).toBeVisible();
+  await expect(row(page, "Customer call - Acme")).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await shot(page, info, "f-archive-clients", false);
+  await search.fill("vendor");
+  await expect(page.getByRole("status")).toHaveText("No meetings match vendor.");
+  await search.fill("");
+
+  // All labels clears the label, and leaving the Archive starts the label over.
+  await labelsButton(page).click();
+  await list(page).getByRole("option", { name: "All labels" }).click();
+  await expect(labelsButton(page)).toHaveAccessibleName("Labels");
+  await expect(range(page)).toHaveText("1–2 of 2");
+  await labelsButton(page).click();
+  await list(page).getByRole("option", { name: "Old clients" }).click();
+  await expect(range(page)).toHaveText("1–2 of 2");
+  await filter(page, "All").click();
+  await expect(labelsButton(page)).toHaveAccessibleName("Labels");
+  await expect(range(page)).toHaveText("1–9 of 9");
+
   // Another Mac starts a label over at All with its own labels, and All devices drops Archive and Labels again.
   await device(page, "Mac mini").click();
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
   await expect(labelsButton(page)).toHaveAccessibleName("Labels");
   await expect(range(page)).toHaveText("1–2 of 2");
   await labelsButton(page).click();
-  await expect(list(page).getByRole("option")).toHaveText(["Ops"]);
+  await expect(list(page).getByRole("option")).toHaveText(["All labels", "Ops"]);
   await list(page).getByRole("option", { name: "Ops" }).click();
   await expect(range(page)).toHaveText("1–1 of 1");
   await device(page, "All devices").click();

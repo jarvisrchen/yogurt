@@ -58,7 +58,7 @@ export interface Scope {
 }
 
 // Each filter goes only when set, so All keeps working against a schema from before it, such as a preview build's.
-const filters = (s: Scope) => ({ ...(s.archived && { only_archived: true }), ...(s.starred && { only_starred: true }), ...(s.label && { only_label: s.label }) });
+const filters = (s: Scope) => ({ ...(s.archived && { only_archived: true }), ...(s.starred && { only_starred: true }), ...(s.label != null && { only_label: s.label }) });
 
 /** One row of a library page, without note or transcript text. `total` is every live meeting in the view and repeats on each row. */
 export interface LibraryRow {
@@ -168,6 +168,7 @@ export class Api {
     this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
-  /** One device's labels, sorted by name, live or as of a push. */
-  labels = (token: string, device: string, atPush: number | null) => this.rpc<Label[]>("yogurt_labels", { token, only_device: device, at_push: atPush });
+  /** One device's labels, sorted by name, live or as of a push, from its unarchived meetings or, with `archived`, its archived ones. */
+  labels = (token: string, device: string, atPush: number | null, archived: boolean) =>
+    this.rpc<Label[]>("yogurt_labels", { token, only_device: device, at_push: atPush, ...(archived && { only_archived: true }) });
 }

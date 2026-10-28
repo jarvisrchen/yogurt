@@ -308,8 +308,8 @@ const LucideIcon = ({ d, className }: { d: string; className: string }) => (
   </svg>
 );
 
-/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it. `labels` is null while loading, and opening the list after a failed load tries again. */
-export function LabelMenu({ labels, error, onRetry, value, onChange }: { labels: Label[] | null; error: string | null; onRetry: () => void; value: Label | null; onChange: (l: Label) => void }) {
+/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it, and All labels takes it off. `labels` is null while loading, and opening the list after a failed load tries again. */
+export function LabelMenu({ labels, error, onRetry, value, onChange, archived }: { labels: Label[] | null; error: string | null; onRetry: () => void; value: Label | null; onChange: (l: Label | null) => void; archived: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -334,6 +334,23 @@ export function LabelMenu({ labels, error, onRetry, value, onChange }: { labels:
     };
   }, [open]);
   const note = (text: string) => <p className="px-3 py-2 text-mut m-[0px]">{text}</p>;
+  const option = (l: Label | null) => (
+    <button
+      key={l ? `l:${l.id}` : "all"}
+      type="button"
+      role="option"
+      aria-selected={l?.id === value?.id}
+      onClick={() => {
+        close();
+        if (l?.id !== value?.id) onChange(l);
+      }}
+      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-paper cursor-pointer"
+    >
+      <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={l ? { background: labelColor(l.color) } : undefined} />
+      <span className={`flex-1 truncate ${l ? "text-ink" : "text-mut"}`}>{l ? l.name : "All labels"}</span>
+      {l?.id === value?.id && <LucideIcon d="M20 6 9 17l-5-5" className="w-[14px] h-[14px] text-blue shrink-0" />}
+    </button>
+  );
   return (
     // Tabbing out closes the list. A null relatedTarget is a tap that Safari does not focus, which the pointerdown listener judges instead.
     <div ref={box} onBlur={(e) => e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && setOpen(false)} className="relative ml-auto min-w-0">
@@ -364,25 +381,9 @@ export function LabelMenu({ labels, error, onRetry, value, onChange }: { labels:
             ? note(`Could not load labels. ${error}`)
             : !labels
               ? note("Loading labels…")
-              : !labels.length
-                ? note("No labels on this Mac.")
-                : labels.map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      role="option"
-                      aria-selected={l.id === value?.id}
-                      onClick={() => {
-                        close();
-                        if (l.id !== value?.id) onChange(l);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-paper cursor-pointer"
-                    >
-                      <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: labelColor(l.color) }} />
-                      <span className="flex-1 truncate text-ink">{l.name}</span>
-                      {l.id === value?.id && <LucideIcon d="M20 6 9 17l-5-5" className="w-[14px] h-[14px] text-blue shrink-0" />}
-                    </button>
-                  ))}
+              : !labels.length && !value
+                ? note(archived ? "No labels in this Mac's archive." : "No labels on this Mac.")
+                : [option(null), ...labels.map(option)]}
         </div>
       )}
     </div>

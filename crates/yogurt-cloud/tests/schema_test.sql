@@ -744,17 +744,17 @@ create or replace function pg_temp.fm(id text, started bigint, starred boolean, 
     'archived_at', case when archived then '2026-10-27T08:00:00Z' end, 'notes_md', 'filterword', 'transcript_json', '[]'))
 $$;
 create or replace function pg_temp.lb(id text, name text, color text) returns jsonb language sql as $$ select jsonb_build_object('id', id, 'name', name, 'color', color) $$;
-create or replace function pg_temp.labs(tok text, dev uuid, at_push bigint default null) returns text language sql as $$
-  select coalesce(string_agg(id || ':' || name || ':' || color, ',' order by ord), '') from (select l.*, row_number() over () ord from yogurt_labels(tok, dev, at_push) l) x
+create or replace function pg_temp.labs(tok text, dev uuid, at_push bigint default null, archived boolean default false) returns text language sql as $$
+  select coalesce(string_agg(id || ':' || name || ':' || color, ',' order by ord), '') from (select l.*, row_number() over () ord from yogurt_labels(tok, dev, at_push, archived) l) x
 $$;
 create or replace function pg_temp.flib(tok text, dev uuid, starred boolean, label text, archived boolean default false) returns text language sql as $$
   select coalesce(string_agg(meeting_id || ':' || total, ',' order by ord), '') from (select l.*, row_number() over () ord from yogurt_library(tok, null, 100, 0, dev, archived, starred, label) l) x
 $$;
-create or replace function pg_temp.fids(tok text, dev uuid, starred boolean, label text) returns text language sql as $$
-  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select s.*, row_number() over () ord from yogurt_search(tok, 'filterword', dev, 0, false, starred, label) s) x
+create or replace function pg_temp.fids(tok text, dev uuid, starred boolean, label text, archived boolean default false) returns text language sql as $$
+  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select s.*, row_number() over () ord from yogurt_search(tok, 'filterword', dev, 0, archived, starred, label) s) x
 $$;
-grant execute on function pg_temp.fm(text, bigint, boolean, jsonb, boolean), pg_temp.lb(text, text, text), pg_temp.labs(text, uuid, bigint),
-  pg_temp.flib(text, uuid, boolean, text, boolean), pg_temp.fids(text, uuid, boolean, text) to public;
+grant execute on function pg_temp.fm(text, bigint, boolean, jsonb, boolean), pg_temp.lb(text, text, text), pg_temp.labs(text, uuid, bigint, boolean),
+  pg_temp.flib(text, uuid, boolean, text, boolean), pg_temp.fids(text, uuid, boolean, text, boolean) to public;
 select yogurt_start_push(:d5) as push_f \gset
 insert into yogurt_versions (meeting_id, push_id, device_id, body) values
   ('f1', :push_f, :d5, pg_temp.fm('f1', 40001, true, jsonb_build_array(pg_temp.lb('lc', 'Clients', 'honey'), pg_temp.lb('lh', 'Hiring', 'lilac')))),
@@ -774,6 +774,10 @@ insert into yogurt_versions (meeting_id, push_id, device_id, body) values
 select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the filter meetings are indexed');
 select pg_temp.eq(pg_temp.labs(:'stok', :d5), 'lb:board:slate,lc:Customers:honey,lh:Hiring:lilac',
   'a device''s labels come from its latest live, unarchived versions, sorted by name with case ignored, named as last pushed');
+select pg_temp.eq(pg_temp.labs(:'stok', :d5, null, true), 'lz:Zeta:blue', 'only_archived lists the labels of the device''s archived meetings instead');
+select pg_temp.eq(pg_temp.labs(:'stok', :d5, null, null), pg_temp.labs(:'stok', :d5), 'a null only_archived counts as false');
+select pg_temp.eq(pg_temp.flib(:'stok', :d5, false, 'lz', true) || ' ' || pg_temp.fids(:'stok', :d5, false, 'lz', true) || ' ' || pg_temp.fids(:'stok', :d5, false, 'lc', true), 'f4:1 f4 ',
+  'only_label narrows the archive in the library and in search');
 select pg_temp.eq(pg_temp.labs(:'stok', :d5, :push_f), 'lc:Clients:honey,ld:Deleted:slate,lh:Hiring:lilac,lo:Old:slate', 'the labels as of an earlier push');
 select pg_temp.eq(pg_temp.labs(:'stok', :d6), 'lc:Clients:matcha,lx:Xenon:blue', 'another device has its own labels, even under the same id');
 select pg_temp.eq(pg_temp.labs(:'stok', null) || pg_temp.labs(:'stok', gen_random_uuid()), '', 'no device, or an unknown one, has no labels');

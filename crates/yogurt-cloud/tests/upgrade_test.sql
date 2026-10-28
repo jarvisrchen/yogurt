@@ -36,7 +36,7 @@ select pg_temp.eq((select string_agg(meeting_id || ':' || total, ',') from yogur
   || ' ' || (select string_agg(id || ':' || name, ',') from yogurt_labels(:'tok', '00000000-0000-0000-0000-0000000000d1')),
   'u1:1 u1:1 u1 lu:Upgraded', 'a meeting starred and labeled before the upgrade is found by the filters, and its label is listed');
 select pg_temp.eq((select string_agg(oid::regprocedure::text, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('yogurt_labels', 'yogurt_library', 'yogurt_search')),
-  'yogurt_labels(text,uuid,bigint),yogurt_library(text,bigint,integer,integer,uuid,boolean,boolean,text),yogurt_search(text,text,uuid,integer,boolean,boolean,text)', 'only the current signatures are left');
+  'yogurt_labels(text,uuid,bigint,boolean),yogurt_library(text,bigint,integer,integer,uuid,boolean,boolean,text),yogurt_search(text,text,uuid,integer,boolean,boolean,text)', 'only the current signatures are left');
 reset role;
 \endif
 \o

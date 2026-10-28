@@ -1442,3 +1442,9 @@ New closed items go at the bottom.
   Sidebar labels count their unarchived meetings, and a label with only archived meetings moves to a collapsed Archived labels group.
   In the Archive view a label narrows the archive at `/archive/label/:id` and counts its archived meetings.
   `GET /api/labels` returns `archived_count`.
+
+- [x] **SYNC-27** In the webapp, let a label narrow the picked pill, so Archive with a label lists that label's archived meetings, and list the archive's labels under Archive.
+
+  A label now narrows the picked pill, so All, Starred, or Archive each combine with it, and All labels takes it off.
+  With Archive picked, the Labels list comes from `yogurt_labels(..., only_archived => true)`, the labels of the Mac's archived meetings.
+  Moving into or out of Archive takes the label off, and All and Starred keep it.

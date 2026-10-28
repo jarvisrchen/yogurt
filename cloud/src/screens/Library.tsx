@@ -56,7 +56,6 @@ type Row = Entry & { snippet: string | null };
 
 // Labels belong to one Mac, so they and the Archive are offered only once a Mac is picked.
 type Pill = "all" | "starred" | "archive";
-type Filter = Pill | Label;
 const FILTERS: { value: Pill; label: string }[] = [{ value: "all", label: "All" }, { value: "starred", label: "Starred" }];
 const DEVICE_FILTERS: { value: Pill; label: string }[] = [...FILTERS, { value: "archive", label: "Archive" }];
 
@@ -85,10 +84,11 @@ export function Library({
 }: Props) {
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Pill>("all");
+  // A label narrows the pill. All and Starred share one label list and the Archive has its own.
+  const [label, setLabel] = useState<Label | null>(null);
   const archived = filter === "archive";
   const starred = filter === "starred";
-  const label = typeof filter === "object" ? filter : null;
   const scope = { device, archived, starred, label: label?.id ?? null };
   const [query, setQuery] = useState("");
   const { asOf: pushId, meeting: open, page } = loc;
@@ -123,12 +123,12 @@ export function Library({
       const blank = !rows.length && page === 1 && !pushId && !device && filter === "all";
       const allArchived =
         blank && !!(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true, starred: false, label: null })).length;
-      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, device, empty: blank && !allArchived, allArchived };
+      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, labeled: !!label, device, empty: blank && !allArchived, allArchived };
     },
     onRejected,
     [api, token, pushId, size, page, device, archived, starred, scope.label],
   );
-  const labels = useCloudLoad(async () => (device ? api.labels(token, device, pushId) : null), onRejected, [api, token, device, pushId]);
+  const labels = useCloudLoad(async () => (device ? api.labels(token, device, pushId, archived) : null), onRejected, [api, token, device, pushId, archived]);
   const shown = pageLoad.data ?? pageLoad.previous;
   const turning = pageLoad.loading && !pageLoad.data;
 
@@ -241,10 +241,16 @@ export function Library({
   const chooseDevice = (id: string | null) => {
     setDevice(id);
     setFilter((f) => (f === "starred" || (f === "archive" && id) ? f : "all"));
+    setLabel(null);
     if (page > 1) go({ ...loc, page: 1 });
   };
-  const chooseFilter = (f: Filter) => {
+  const chooseFilter = (f: Pill) => {
     setFilter(f);
+    if ((f === "archive") !== archived) setLabel(null);
+    if (page > 1) go({ ...loc, page: 1 });
+  };
+  const chooseLabel = (l: Label | null) => {
+    setLabel(l);
     if (page > 1) go({ ...loc, page: 1 });
   };
   const failed = base.error ?? pageLoad.error;
@@ -277,8 +283,8 @@ export function Library({
       {!!devices?.length && (
         <DevicePills devices={devices} value={device} onChange={chooseDevice} />
       )}
-      <Pills label="Filter" options={device ? DEVICE_FILTERS : FILTERS} value={typeof filter === "string" ? filter : null} onChange={chooseFilter}>
-        {device && <LabelMenu labels={labels.data} error={labels.error} onRetry={labels.retry} value={label} onChange={chooseFilter} />}
+      <Pills label="Filter" options={device ? DEVICE_FILTERS : FILTERS} value={filter} onChange={chooseFilter}>
+        {device && <LabelMenu labels={labels.data} error={labels.error} onRetry={labels.retry} value={label} onChange={chooseLabel} archived={archived} />}
       </Pills>
       {!pushId && (
         <p
@@ -328,7 +334,7 @@ export function Library({
             <p className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
               {shown.allArchived
                 ? "Every meeting is archived. Pick a Mac to see its Archive."
-                : !shown.archived
+                : !shown.archived || shown.labeled
                 ? "No meetings here."
                 : pushId
                   ? "No archived meetings at this push."

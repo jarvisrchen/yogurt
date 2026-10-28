@@ -276,7 +276,7 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_retrieve(token, terms, from_ms, to_ms, k)` | chat function | up to `k` live, unarchived meetings for a cross-meeting chat question, best match first, with `device_id`, `meeting_id`, `title`, `started_at`, the `notes`, and a transcript `excerpt`. [cloud-chat-design.md](cloud-chat-design.md) has the details. |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
-| `yogurt_labels(token, only_device, at_push)` | webapp | that device's labels, `id`, `name`, and `color`, from the latest version at or before `at_push`, or now, of each of its live, unarchived meetings, sorted by name with case ignored. A label takes its name and color from the newest push that has it. |
+| `yogurt_labels(token, only_device, at_push, only_archived)` | webapp | that device's labels, `id`, `name`, and `color`, from the latest version at or before `at_push`, or now, of each of its live, unarchived meetings, or with `only_archived` its archived ones, sorted by name with case ignored. A label takes its name and color from the newest push that has it. |
 
 The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST. A plain `GET /rest/v1/yogurt_versions` answers 403 with code 42501.
 It keeps column-level `insert` grants on `yogurt_devices` (`id`, `name`) and `yogurt_versions`, and these policies: a row's `user_id` must be the caller, the caller must be the owner, and a version can only join a push of its own device created in the last hour.
