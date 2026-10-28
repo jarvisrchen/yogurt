@@ -23,6 +23,11 @@ test("date phrases resolve against today", () => {
   expect(dateRange("did steven say we may slip?", today)).toBeNull();
   expect(dateRange("what happened in may", today)).toEqual(["2026-05-01", "2026-06-01"]);
   expect(dateRange("may 2025", today)).toEqual(["2025-05-01", "2025-06-01"]);
+  expect(dateRange("should we march ahead?", today)).toBeNull();
+  expect(dateRange("may?", today)).toBeNull();
+  expect(dateRange("did we say we may ship in may?", today)).toEqual(["2026-05-01", "2026-06-01"]);
+  for (const q of ["since may", "last march", "may 12th offsite", "early may"]) expect(dateRange(q, today)).not.toBeNull();
+  expect(dateRange("the march 3 review", today)).toEqual(["2026-03-01", "2026-04-01"]);
 });
 
 test("a week that crosses a month and a year boundary", () => {

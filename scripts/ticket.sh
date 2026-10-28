@@ -81,10 +81,17 @@ find_block_range() {
     /^```/ { infence = !infence; next }
     infence { next }
     /^- \[[ xX]\] \*\*/ || /^#/ {
-      if (start && !end) { end = NR - 1; exit }
-      if (!start && index($0, "**" target "**") > 0) start = NR
+      if (start && !end) {
+        end = NR - 1
+        # The last entry of a section, right under another entry, leaves the blank line before the heading.
+        if (/^#/ && prev == "" && !blank_before) end--
+        exit
+      }
+      if (!start && index($0, "**" target "**") > 0) { start = NR; blank_before = (prev == "") }
+      prev = $0
       next
     }
+    { prev = $0 }
     END {
       if (start && !end) end = NR
       if (start) print start "\t" end

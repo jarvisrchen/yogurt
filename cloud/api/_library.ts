@@ -17,6 +17,8 @@ export interface Hit {
 const STOPWORDS = new Set(
   "a about after all also am an and any anything are as at be been before but by can could did do does for from get got had has have he her him his how i if in is it its me meeting meetings my of on or our say said she should so tell than that the their them then there these they this those to us was we were what when where which who why will with would you your today yesterday week month year last past ago".split(" "),
 );
+const VERB_MONTHS = ["may", "march"];
+const MONTH_CUES = ["in", "during", "since", "from", "until", "last", "this", "early", "mid", "late", "of"];
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 // Marks stay with their word, so a virama or a vowel sign does not split it as it does on the desktop.
@@ -52,13 +54,16 @@ export function dateRange(q: string, today: string): [string, string] | null {
   if (pair("this", "year")) return [ymd(y, 1, 1), ymd(y + 1, 1, 1)];
   if (pair("last", "year") || pair("past", "year")) return [ymd(y - 1, 1, 1), ymd(y, 1, 1)];
   for (const [i, name] of MONTHS.entries()) {
-    const pos = w.indexOf(name);
-    if (pos < 0) continue;
-    const next = w[pos + 1];
-    // "May" is a month only after "in" or before a year, so "we may slip" names no date.
-    if (name === "may" && w[pos - 1] !== "in" && !/^\d{4}$/.test(next ?? "")) continue;
-    const year = next && /^\d{4}$/.test(next) ? Number(next) : i + 1 <= m ? y : y - 1;
-    return [ymd(year, i + 1, 1), ymd(year, i + 2, 1)];
+    for (const [pos, x] of w.entries()) {
+      if (x !== name) continue;
+      const next = w[pos + 1] ?? "";
+      const namedYear = /^\d{4}$/.test(next) ? Number(next) : null;
+      const day = Number(/^(\d+)\p{Alphabetic}*$/u.exec(next)?.[1]);
+      // "May" and "March" are also verbs, so they name a month only next to a date cue: "in May", "last March", "May 12th", "May 2025".
+      if (VERB_MONTHS.includes(name) && namedYear === null && !(day >= 1 && day <= 31) && !MONTH_CUES.includes(w[pos - 1])) continue;
+      const year = namedYear ?? (i + 1 <= m ? y : y - 1);
+      return [ymd(year, i + 1, 1), ymd(year, i + 2, 1)];
+    }
   }
   return null;
 }
