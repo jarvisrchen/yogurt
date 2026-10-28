@@ -138,11 +138,13 @@ So the Starred and label pills appear only once a Mac is picked.
 | Picked | Filter pills |
 | --- | --- |
 | All devices | All · Archive |
-| One Mac | All · Starred · each label · Archive |
+| One Mac | All · Starred · Archive, and a Labels button at the end of the row |
 
 A new RPC, `yogurt_labels(token, only_device)`, returns that Mac's labels from its latest live, unarchived versions, with `id`, `name`, and `color`, sorted by name.
 `yogurt_library` and `yogurt_search` gain `only_starred boolean default false` and `only_label text default null`.
 Both take effect only with `only_device`, and the `only_` names keep clear of `yogurt_library`'s `starred` output column, which Postgres would reject as a repeated name.
+The Labels button opens a list of that Mac's labels with their colors, because a Mac can have too many labels for a row of pills.
+Picking one closes the list, and the button then shows that label's color and name in the selected style.
 Changing the Mac resets the filter to All, because the old Mac's label means nothing on the new one.
 
 ## Cost
