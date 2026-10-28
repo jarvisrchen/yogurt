@@ -1394,3 +1394,8 @@ New closed items go at the bottom.
 - [x] **SYNC-24** An After meetings auto-push setting that pushes a minute after a meeting ends or its notes finish, with a daily push as the backstop
 
   Stop and enhance completion request a push, which the auto-push timer sends after a one-minute settle when the setting is After meetings.
+
+- [x] **SYNC-25** Show when the next auto-push is due in Cloud sync settings and `yogurt ctl cloud status`, and say that the interval counts from the last push
+
+  GET /api/cloud returns next_push from the same next_push() the timer's due() is built on.
+  The Auto-push card names the interval rule and shows the next push time, or that auto-push is paused on an error only the user can fix.

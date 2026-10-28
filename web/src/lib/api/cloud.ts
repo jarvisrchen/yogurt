@@ -49,6 +49,8 @@ export type CloudStatus =
       /** Newest first, at most 20. */
       push_history: PushHistoryEntry[] | null;
       push_interval: PushInterval;
+      /** When the timer may next push, never in the past. Null when auto-push is off or waits on a failure only the user can fix. */
+      next_push: number | null;
       push: PushStatus | null;
     };
 
@@ -114,7 +116,9 @@ export function useCloudStatus() {
     queryFn: cloudApi.status,
     retry: false,
     // A running push changes the counts every second or so, and its end also arrives as a frame.
-    refetchInterval: (q) => (q.state.data?.connected && q.state.data.push ? 1000 : false),
+    // With auto-push on, a minute keeps the last and next push lines current.
+    refetchInterval: ({ state: { data } }) =>
+      !data?.connected ? false : data.push ? 1000 : data.push_interval !== "off" ? 60_000 : false,
   });
 }
 

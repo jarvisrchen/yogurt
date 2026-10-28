@@ -347,6 +347,8 @@ The Auto-push control on the Cloud sync page chooses when Yogurt pushes by itsel
 It starts Off, and a new connection starts Off again, so nothing leaves this Mac until you choose one.
 Yogurt checks once a minute while it is running.
 It pushes when the interval has passed since the last successful push, or when nothing has been pushed yet.
+The interval counts from any successful push, manual or automatic, so Daily has no fixed time of day.
+Under the control, the page shows when the next push is due, such as "Next push around 9:16 AM tomorrow", or "Paused until the problem above is fixed" while an error waits on you.
 After meetings pushes a minute after a meeting ends or its notes finish, so a meeting reaches your phone soon after it happens.
 It also pushes once a day, which picks up notes you edit later.
 Automatic and manual pushes never run at the same time, and the meeting you are recording is skipped as usual.
@@ -358,7 +360,7 @@ Yogurt tries again after 5 minutes.
 If the error is one only you can fix, such as "Your Cloud session expired" or "This machine was removed from the Yogurt Cloud", Yogurt stops trying.
 It resumes after you sign in again, connect again, or push by hand successfully.
 When nothing has changed, a check costs no network call.
-`yogurt ctl cloud status` prints the interval on its `auto-push:` line.
+`yogurt ctl cloud status` prints the interval and the time until the next push on its `auto-push:` line.
 
 ## 6. Read on your phone
 
