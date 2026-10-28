@@ -147,6 +147,34 @@ async fn it_applies_labels_to_a_meeting_via_patch() {
         .await
         .unwrap();
     assert_eq!(counts[0]["meeting_count"].as_i64().unwrap(), 1);
+    assert_eq!(counts[0]["archived_count"].as_i64().unwrap(), 0);
+    for archived in [true, false] {
+        let r = client
+            .patch(format!("http://{addr}/api/meetings/{mid}"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "archived": archived }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 200);
+        let counts: Vec<serde_json::Value> = client
+            .get(format!("http://{addr}/api/labels"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                counts[0]["meeting_count"].as_i64(),
+                counts[0]["archived_count"].as_i64()
+            ),
+            (Some(1), Some(archived as i64)),
+            "an archived meeting keeps its label and counts as archived"
+        );
+    }
 
     let list_resp: serde_json::Value = client
         .get(format!("http://{addr}/api/meetings"))

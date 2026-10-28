@@ -1926,10 +1926,26 @@ mod tests {
             Vec::<String>::new()
         );
 
+        let counted = &labels.list_with_counts().unwrap()[0];
         assert_eq!(
-            labels.list_with_counts().unwrap()[0].meeting_count,
-            2,
-            "label counts include archived meetings"
+            (counted.meeting_count, counted.archived_count),
+            (2, 1),
+            "label counts include archived meetings, and count them apart"
+        );
+        let archived_with_label = MeetingFilter {
+            archived: true,
+            label_id: Some(l.id.clone()),
+            ..Default::default()
+        };
+        assert_eq!(
+            ids(repo.list_page(&archived_with_label, 25, 0).unwrap()),
+            only_old
+        );
+        assert_eq!(
+            ids(repo
+                .search_page("budget", &archived_with_label, 25, 0)
+                .unwrap()),
+            only_old
         );
         assert!(repo.get(&old.id).unwrap().unwrap().archived_at.is_some());
 

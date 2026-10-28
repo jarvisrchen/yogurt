@@ -125,7 +125,7 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
 
   // Wait for the labels list so a fresh load doesn't redirect early.
   if (labelId && !labels.isLoading && labels.data && !labels.data.some((l) => l.id === labelId)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={archivedOnly ? "/archive" : "/"} replace />;
   }
 
   // Some browsers reserve ⌘N for "new window" and never deliver the event.
@@ -179,7 +179,8 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
         <div className="flex items-start justify-between mb-8">
           <Greeting count={totalMeetings} archived={archivedOnly} />
           <div className="flex items-center gap-2">
-            {archivedOnly && <ArchiveOlderMeetings />}
+            {/* It archives across every label, so a view narrowed to one leaves it out. */}
+            {archivedOnly && !labelId && <ArchiveOlderMeetings />}
             <SearchPill value={query} onChange={onQueryChange} />
           </div>
         </div>
@@ -194,7 +195,7 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
           isSearching ? (
             <NoMatches />
           ) : labelId ? (
-            <NoLabelMeetings />
+            <NoLabelMeetings archived={archivedOnly} />
           ) : starredOnly ? (
             <NoStarred />
           ) : archivedOnly ? (
@@ -248,10 +249,10 @@ function NoMatches() {
   );
 }
 
-function NoLabelMeetings() {
+function NoLabelMeetings({ archived }: { archived: boolean }) {
   return (
     <div className="text-[13px] text-mut">
-      No meetings with this label yet.
+      {archived ? "No archived meetings with this label." : "No meetings with this label yet."}
     </div>
   );
 }
