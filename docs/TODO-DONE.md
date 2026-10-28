@@ -1399,3 +1399,7 @@ New closed items go at the bottom.
 
   GET /api/cloud returns next_push from the same next_push() the timer's due() is built on.
   The Auto-push card names the interval rule and shows the next push time, or that auto-push is paused on an error only the user can fix.
+
+- [x] **SYNC-26** Say "24 hours after the last push" in the Daily and After meetings Auto-push copy, so the next push time reads as following from the last push
+
+  The Daily description and the After meetings backstop say "24 hours after the last push" instead of "a day", which ties the next push time to the last push shown above it.

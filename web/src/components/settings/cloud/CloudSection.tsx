@@ -280,12 +280,12 @@ const INTERVAL_OPTIONS: { value: PushInterval; label: string }[] = [
   { value: "1d", label: "Daily" },
 ];
 
-const SPAN: Record<string, string> = { "15m": "15 minutes", "1h": "an hour", "1d": "a day" };
+const SPAN: Record<string, string> = { "15m": "15 minutes", "1h": "an hour", "1d": "24 hours" };
 
 function describeInterval(value: PushInterval): string {
   if (value === "off") return "Push changed meetings in the background while yogurt is running. Off by default.";
   if (value === "meeting")
-    return "Push a minute after each meeting ends or its notes finish, and a day after the last push for later edits, while yogurt is running.";
+    return "Push a minute after each meeting ends or its notes finish, and 24 hours after the last push for later edits, while yogurt is running.";
   return `Push changed meetings ${SPAN[value]} after the last push, manual or automatic, while yogurt is running.`;
 }
 
