@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatSource } from "@web/lib/api";
+import { historyTurns } from "@web/lib/citations";
 import { OFFLINE, TokenRejected, type Api } from "./api";
 
 type Turn = Pick<ChatMessage, "role" | "content">;
@@ -108,7 +109,7 @@ export function useChat(api: Api, token: string, scope: ChatScope | null, onReje
           api,
           token,
           scope,
-          history.map(({ role, content }) => ({ role, content })),
+          historyTurns(history),
           (sources) => patch((m) => ({ ...m, sources })),
           (delta) => patch((m) => ({ ...m, content: m.content + delta })),
           ctl.signal,

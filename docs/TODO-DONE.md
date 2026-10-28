@@ -1357,3 +1357,7 @@ New closed items go at the bottom.
 - [x] **SYNC-19** Chat across meetings in the webapp, with a `yogurt_retrieve` RPC mirroring local retrieval and cited meetings as chips; after SYNC-18 ([design](.planning/cloud-chat-design.md#sync-19-chat-across-meetings))
 
   Ask across meetings on the library, with a yogurt_retrieve RPC ported from the desktop retrieval and cited meetings as chips that open them.
+
+- [x] **LLM-11** Earlier cross-meeting answers keep their `[n]` citations on a follow-up, which numbers its own meetings, so `[1]` can mean two meetings in one prompt
+
+  Earlier answers go back to the model with each [n] replaced by its meeting title, in the desktop library chat and the webapp.

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { type ChatMessage, streamLibraryChat } from "../lib/api";
+import { historyTurns } from "../lib/citations";
 import type { UseChatResult } from "./useChat";
 
 /** Cross-meeting chat. The conversation lives only in this hook; the server persists nothing. */
@@ -34,7 +35,7 @@ export function useLibraryChat(): UseChatResult {
       setMessages((prev) => prev.map((m) => (m.id === answerId ? f(m) : m)));
     try {
       await streamLibraryChat(
-        history.map(({ role, content }) => ({ role, content })),
+        historyTurns(history),
         (sources) => patch((m) => ({ ...m, sources })),
         (delta) => patch((m) => ({ ...m, content: m.content + delta })),
       );
