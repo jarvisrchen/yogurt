@@ -18,9 +18,9 @@ interface Outcome {
  * `previous` is the last answer, even an empty one, while the next one is pending, for showing it dimmed. It is dropped when the field is cleared or the scope changes.
  * Results come a page at a time. `offset` is the first hit of the page shown, and a new query or scope starts again at the first page.
  */
-export function useSearch(api: Api, token: string, query: string, { device, archived }: Scope, onRejected: () => void) {
+export function useSearch(api: Api, token: string, query: string, { device, archived, starred, label }: Scope, onRejected: () => void) {
   const q = query.trim();
-  const scope = `${device}\0${archived}`;
+  const scope = `${device}\0${archived}\0${starred}\0${label}`;
   const key = `${q}\0${scope}`;
   const [paged, setPaged] = useState({ key, offset: 0 });
   if (paged.key !== key) setPaged({ key, offset: 0 });
@@ -35,7 +35,7 @@ export function useSearch(api: Api, token: string, query: string, { device, arch
     setOutcome((o) => (o?.error ? null : o));
     let stale = false;
     const id = setTimeout(() => {
-      api.search(token, q, { device, archived }, offset).then(
+      api.search(token, q, { device, archived, starred, label }, offset).then(
         (hits) => !stale && setOutcome({ q, scope, offset, hits }),
         (e) => !stale && (e instanceof TokenRejected ? onRejected() : setOutcome({ q, scope, offset, error: e.message })),
       );
@@ -44,7 +44,7 @@ export function useSearch(api: Api, token: string, query: string, { device, arch
       stale = true;
       clearTimeout(id);
     };
-  }, [api, token, q, device, archived, scope, offset, onRejected, attempt]);
+  }, [api, token, q, device, archived, starred, label, scope, offset, onRejected, attempt]);
   const current = outcome && outcome.q === q && outcome.scope === scope && outcome.offset === offset ? outcome : null;
   return {
     active: !!q,

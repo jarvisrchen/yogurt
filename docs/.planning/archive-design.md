@@ -128,6 +128,7 @@ SYNC-21 puts two pills in it, All and Archive.
 Archive works under All devices too, because a meeting's archive state does not depend on which Mac is picked.
 Its search searches only the archive.
 On a phone the row scrolls sideways, as the device pills do, and on a desktop it wraps in the 300px aside.
+With a Mac picked it neither scrolls nor wraps, since either would clip the Labels list, and its pills fit a 320px phone.
 The filter sits in component state beside the picked device, and the as-of view shows each meeting's archive state at that push, since the state lives in the version.
 
 ### Each Mac's Starred and Labels (SYNC-22)

@@ -61,9 +61,10 @@ export async function typePin(page: Page, pin: string, label = "PIN") {
   }
 }
 
-export async function shot(page: Page, info: TestInfo, name: string) {
+/** `fullPage: false` keeps the docked Ask bar where a viewer sees it. */
+export async function shot(page: Page, info: TestInfo, name: string, fullPage = true) {
   await page.waitForTimeout(150);
-  await page.screenshot({ path: `e2e/screenshots/${info.project.name}/${name}.png`, fullPage: true });
+  await page.screenshot({ path: `e2e/screenshots/${info.project.name}/${name}.png`, fullPage });
 }
 
 export async function signIn(page: Page) {

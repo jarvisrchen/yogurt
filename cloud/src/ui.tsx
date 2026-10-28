@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import { Button } from "@web/components/Button";
 import { Logo } from "@web/components/Logo";
 import { PAGER_BUTTON } from "@web/components/library/Pager";
+import type { Label } from "./lib/api";
 import { snippetParts } from "./lib/search";
 
 const DESKTOP = "(min-width: 721px)";
@@ -269,17 +270,121 @@ export function DeviceTag({ name, index }: { name: string; index: number }) {
   return <span className={`text-[11px] min-[721px]:text-[9.5px] leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap ${TONES[index % TONES.length]}`}>{name}</span>;
 }
 
-/** A row of toggle pills: it scrolls sideways on a phone and wraps on a desktop. */
-export function Pills<T>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
-  const pill = (on: boolean) =>
-    `flex-none text-[13px] min-[721px]:text-[11px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border cursor-pointer font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
+const pill = (on: boolean) =>
+  `flex-none text-[13px] min-[721px]:text-[11px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border cursor-pointer font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
+
+/** A row of toggle pills: it scrolls sideways on a phone and wraps on a desktop. With `children` at its end it does neither, since scrolling would clip their popover. */
+export function Pills<T>({ label, options, value, onChange, children }: { label: string; options: { value: T; label: string }[]; value: T | null; onChange: (v: T) => void; children?: ReactNode }) {
   return (
-    <div role="group" aria-label={label} className="flex gap-[6px] overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible">
+    <div
+      role="group"
+      aria-label={label}
+      className={`flex gap-[6px] ${children ? "items-center" : "overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible"}`}
+    >
       {options.map((o) => (
         <button key={String(o.value)} type="button" aria-pressed={o.value === value} onClick={() => o.value !== value && onChange(o.value)} className={pill(o.value === value)}>
           {o.label}
         </button>
       ))}
+      {children}
+    </div>
+  );
+}
+
+// A Mac label's color is a palette name or #rrggbb, as in the Mac's LabelChip. The names are spelled out so Tailwind keeps their variables.
+const PALETTE = new Map([
+  ["blue", "var(--color-blue)"],
+  ["matcha", "var(--color-matcha)"],
+  ["straw", "var(--color-straw)"],
+  ["lilac", "var(--color-lilac)"],
+  ["honey", "var(--color-honey)"],
+  ["slate", "var(--color-slate)"],
+]);
+const labelColor = (c: string) => PALETTE.get(c) ?? (/^#[0-9a-f]{6}$/i.test(c) ? c : "var(--color-mut)");
+
+const LucideIcon = ({ d, className }: { d: string; className: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d={d} />
+  </svg>
+);
+
+/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it. `labels` is null while loading, and opening the list after a failed load tries again. */
+export function LabelMenu({ labels, error, onRetry, value, onChange }: { labels: Label[] | null; error: string | null; onRetry: () => void; value: Label | null; onChange: (l: Label) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    // Captured on the document and stopped there, so the Escape that closes the list does not also clear the search or fold the chat.
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      close();
+    };
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointerdown", down);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [open]);
+  const note = (text: string) => <p className="px-3 py-2 text-mut m-[0px]">{text}</p>;
+  return (
+    // Tabbing out closes the list. A null relatedTarget is a tap that Safari does not focus, which the pointerdown listener judges instead.
+    <div ref={box} onBlur={(e) => e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && setOpen(false)} className="relative ml-auto min-w-0">
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={value ? `Label ${value.name}` : "Labels"}
+        onClick={() => {
+          if (!open && error) onRetry();
+          setOpen(!open);
+        }}
+        className={`${pill(!!value)} inline-flex items-center gap-[5px] max-w-full`}
+      >
+        {/* The ring keeps a blue label's swatch visible on the blue pill. */}
+        {value && <span className="w-[8px] h-[8px] min-[721px]:w-[7px] min-[721px]:h-[7px] rounded-[2px] shrink-0 ring-1 ring-white/80" style={{ background: labelColor(value.color) }} />}
+        <span className="truncate">{value ? value.name : "Labels"}</span>
+        <LucideIcon d="m6 9 6 6 6-6" className="w-[14px] h-[14px] min-[721px]:w-[12px] min-[721px]:h-[12px] shrink-0" />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Labels"
+          className="absolute right-0 top-full mt-1 bg-card border border-line rounded-card shadow-pop py-1 w-[220px] max-h-[250px] overflow-y-auto z-40 text-[15px] min-[721px]:text-[12px]"
+        >
+          {error
+            ? note(`Could not load labels. ${error}`)
+            : !labels
+              ? note("Loading labels…")
+              : !labels.length
+                ? note("No labels on this Mac.")
+                : labels.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      role="option"
+                      aria-selected={l.id === value?.id}
+                      onClick={() => {
+                        close();
+                        if (l.id !== value?.id) onChange(l);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-paper cursor-pointer"
+                    >
+                      <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: labelColor(l.color) }} />
+                      <span className="flex-1 truncate text-ink">{l.name}</span>
+                      {l.id === value?.id && <LucideIcon d="M20 6 9 17l-5-5" className="w-[14px] h-[14px] text-blue shrink-0" />}
+                    </button>
+                  ))}
+        </div>
+      )}
     </div>
   );
 }

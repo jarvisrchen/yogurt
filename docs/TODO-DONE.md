@@ -1377,3 +1377,9 @@ New closed items go at the bottom.
 - [x] **SYNC-21** Hide archived meetings in the webapp's library, search, and chat, and add an Archive pill, once MTG-21 lands ([design](.planning/archive-design.md#reading-archive-state-sync-21))
 
   The webapp's library, search, and Ask across meetings leave out meetings whose latest pushed version carries `archived_at`, and an Archive pill under the device pills lists and searches only those.
+
+- [x] **SYNC-22** Starred and Labels filters in the webapp once a Mac is picked, with the device tag dropped from its rows ([design](.planning/archive-design.md#each-macs-starred-and-labels-sync-22))
+
+  With a Mac picked, the webapp's filter row offers All, Starred, and Archive, and a Labels button opens that Mac's labels from the new `yogurt_labels` RPC.
+  `yogurt_library` and `yogurt_search` take `only_starred` and `only_label`, read from stored generated columns, and ignore both without a device.
+  Changing the Mac resets the filter to All, and rows under one Mac drop their device tag.
