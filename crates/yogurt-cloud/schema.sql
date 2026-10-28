@@ -349,6 +349,31 @@ begin
   return left_over;
 end $$;
 
+-- The transcript text of a pushed meeting, read as yogurt_search_doc reads it, for chat excerpts.
+-- yogurt_search_doc keeps its own copy, because a change to its body changes the index signature and rebuilds every index row.
+create or replace function yogurt_private.yogurt_transcript(body jsonb) returns text
+language plpgsql stable set search_path = '' as $$
+declare
+  transcript text;
+begin
+  select string_agg(s ->> 'text', ' ') into transcript
+  from jsonb_array_elements((body #>> '{meeting,transcript_json}')::jsonb) s;
+  return transcript;
+exception when others then
+  return null;
+end $$;
+
+-- A meeting's latest version as cross-meeting chat reads it. The caller has checked the owner and the token.
+create or replace function yogurt_private.yogurt_chat_row(device_id uuid, meeting_id text, out body jsonb, out title text, out started_at bigint, out notes text)
+language plpgsql stable set search_path = '' as $$
+begin
+  select v.body into body from public.yogurt_versions v
+  where v.device_id = $1 and v.meeting_id = $2 order by v.push_id desc limit 1;
+  title := coalesce(body #>> '{meeting,title}', '');
+  started_at := coalesce(yogurt_private.yogurt_ms(body #> '{meeting,started_at}'), 0);
+  notes := case when body #>> '{meeting,enriched_md}' ~ '\S' then body #>> '{meeting,enriched_md}' else coalesce(body #>> '{meeting,notes_md}', '') end;
+end $$;
+
 -- RPCs
 
 create or replace function public.yogurt_status() returns jsonb
@@ -608,6 +633,61 @@ begin
     from m where m.rn > skip and m.rn <= skip + cap order by m.rn;
 end $$;
 
+-- The k live meetings that best match a cross-meeting chat question, approximating the desktop's retrieval, with what the chat sends the LLM.
+-- Terms are ORed as prefixes and ranked by ts_rank normalized by length, newest first on ties.
+-- No terms, or terms that match nothing, means the newest meetings, so a recap such as "what did I decide last week" still has meetings to read.
+-- from_ms and to_ms bound started_at as [from_ms, to_ms), and either may be null. k is clamped to 1..20.
+-- Each row comes from the meeting's latest version, so an edit the index has not caught up to still answers with the edited text.
+-- notes are the enhanced notes when present, else the user's. excerpt is at most 64 words of transcript around the terms, and empty without a match.
+create or replace function public.yogurt_retrieve(token text, terms text[], from_ms bigint default null, to_ms bigint default null, k int default 6)
+returns table (device_id uuid, meeting_id text, title text, started_at bigint, notes text, excerpt text)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  cfg constant regconfig := 'yogurt_private.yogurt_ts';
+  opts constant text := 'StartSel="", StopSel="", MaxWords=64, MinWords=48, MaxFragments=1, ShortWord=0, FragmentDelimiter=" … "';
+  n constant int := least(greatest(coalesce(k, 6), 1), 20);
+  tsq tsquery;
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  -- Quoted, a term is text the parser splits as it splits the index, so no term is read as tsquery syntax. A backslash or a quote would end the quoting.
+  select to_tsquery(cfg, string_agg(format('''%s'':*', w), ' | ')) into tsq
+  from (select translate(t, E'\\''', '') as w from unnest(coalesce(terms, '{}')) t) s
+  where w ~ '[^[:space:][:punct:]]';
+  if numnode(tsq) = 0 then tsq := null; end if;
+  if tsq is not null then
+    return query
+      with hit as (
+        select i.device_id, i.meeting_id
+        from yogurt_private.yogurt_search_index i
+        where i.user_id = auth.uid() and i.tsv @@ tsq
+          and (from_ms is null or i.started_at >= from_ms) and (to_ms is null or i.started_at < to_ms)
+          and (select v.body is not null from public.yogurt_versions v
+               where v.device_id = i.device_id and v.meeting_id = i.meeting_id order by v.push_id desc limit 1)
+        order by ts_rank(i.tsv, tsq, 1) desc, i.started_at desc, i.meeting_id, i.device_id
+        limit n
+      )
+      select h.device_id, h.meeting_id, r.title, r.started_at, r.notes,
+             ts_headline(cfg, yogurt_private.yogurt_plain(yogurt_private.yogurt_transcript(r.body)), tsq, opts)
+      from hit h cross join lateral yogurt_private.yogurt_chat_row(h.device_id, h.meeting_id) r;
+    if found then return; end if;
+  end if;
+  return query
+    select l.device_id, l.meeting_id, r.title, r.started_at, r.notes, ''
+    from (
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.body is not null as live
+      from public.yogurt_versions v
+      where v.user_id = auth.uid()
+      order by v.device_id, v.meeting_id, v.push_id desc
+    ) l
+    cross join lateral yogurt_private.yogurt_chat_row(l.device_id, l.meeting_id) r
+    where l.live
+      and (from_ms is null or r.started_at >= from_ms) and (to_ms is null or r.started_at < to_ms)
+    order by r.started_at desc, l.meeting_id, l.device_id
+    limit n;
+end $$;
+
 create or replace function public.yogurt_history(token text)
 returns table (push_id bigint, device_id uuid, device_name text, pushed_at timestamptz, changed bigint, deleted bigint)
 language plpgsql security definer set search_path = '' as $$
@@ -690,6 +770,7 @@ grant execute on function
   public.yogurt_meeting(text, uuid, text, bigint),
   public.yogurt_search_catch_up(int),
   public.yogurt_search(text, text, uuid, int),
+  public.yogurt_retrieve(text, text[], bigint, bigint, int),
   public.yogurt_history(text),
   public.yogurt_device_list(text)
 to authenticated;

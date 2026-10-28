@@ -3,7 +3,8 @@ import { Star } from "lucide-react";
 import type { MeetingSummary } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
 import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
-import { InlineTitle, shortDate } from "./InlineTitle";
+import { InlineTitle } from "./InlineTitle";
+import { shortDate } from "./titles";
 import { MeetingCardActions } from "./MeetingCardActions";
 
 // The "not enhanced" warn pill marks only an ended meeting with no enrichment

@@ -128,7 +128,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
-- [ ] **SYNC-19** Chat across meetings in the webapp, with a `yogurt_retrieve` RPC mirroring local retrieval and cited meetings as chips; after SYNC-18 ([design](.planning/cloud-chat-design.md#sync-19-chat-across-meetings))
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
 ## Import
 

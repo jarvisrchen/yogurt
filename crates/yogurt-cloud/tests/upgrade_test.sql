@@ -28,6 +28,7 @@ select yogurt_unlock('123456') as tok \gset
 select pg_temp.eq((select string_agg(meeting_id, ',' order by started_at desc) from yogurt_search(:'tok', 'upgradeword')), 'upgrade-big,u1', 'search finds the old and the new meeting');
 select pg_temp.eq((select count(*)::text from yogurt_search(:'tok', 'revertword')), case when :'phase' = 'reupgrade' then '1' else '0' end, 'a meeting pushed during the revert is searchable once re-upgraded');
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'tok', 'hugeword')), 'u2', 'search finds the huge meeting written before the upgrade');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_retrieve(:'tok', '{upgradeword}')), 'u1,upgrade-big', 'chat retrieval finds the old and the new meeting');
 reset role;
 \endif
 \o

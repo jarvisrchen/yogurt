@@ -1,6 +1,6 @@
 @import "../../web/src/index.css";
 /* Tailwind scans the project root only, so name the shared components it must also scan. */
-@source "../../web/src/components/{AskPill,Button,ChatMessage,ChatWindow,Logo,TranscriptLine}.tsx";
+@source "../../web/src/components/{AskPill,Button,ChatMessage,ChatSources,ChatWindow,Logo,TranscriptLine}.tsx";
 @source "../../web/src/components/library/Pager.tsx";
 
 /* The mock's read-only document: small bold section heads and tight lists. AI text and transcript links come from the shared web styles. */
@@ -39,5 +39,8 @@
   }
   .cloud-chat .text-\[13px\] {
     font-size: 15px;
+  }
+  .cloud-chat .text-\[12px\] {
+    font-size: 14px;
   }
 }

@@ -14,7 +14,10 @@ function chatApi(): Plugin {
   const serve = async (req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
-    const out = await POST(new Request("http://localhost/api/chat", { method: req.method, headers: req.headers as Record<string, string>, body: req.method === "POST" ? Buffer.concat(chunks) : undefined }));
+    // A client that leaves before the answer starts aborts the request, as Vercel's supportsCancellation does.
+    const left = new AbortController();
+    res.on("close", () => left.abort());
+    const out = await POST(new Request("http://localhost/api/chat", { method: req.method, headers: req.headers as Record<string, string>, body: req.method === "POST" ? Buffer.concat(chunks) : undefined, signal: left.signal }));
     res.writeHead(out.status, Object.fromEntries(out.headers));
     if (!out.body) return res.end();
     const reader = out.body.getReader();

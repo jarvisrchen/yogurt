@@ -1,6 +1,8 @@
-// POST /api/chat: one turn of chat about one meeting.
-// The meeting is read from Supabase with the caller's own session and browser token, so Postgres decides what the caller may read, and a locked browser never reaches the LLM.
-// The answer streams back as NDJSON `{"delta":"..."}` lines, and a failure after that point arrives as a final delta, as the desktop's chat does.
+// POST /api/chat: one turn of chat about one meeting, or across every meeting when the request names a time zone instead.
+// Meetings are read from Supabase with the caller's own session and browser token, so Postgres decides what the caller may read, and a locked browser never reaches the LLM.
+// The answer streams back as NDJSON `{"delta":"..."}` lines, after a `{"sources":[...]}` line for a cross-meeting answer to cite as [n].
+// A failure after that point arrives as a final delta, as the desktop's chat does.
+import { type Hit, dateIn, dateRange, extractTerms, knownZone, libraryMessages, startOfDay } from "./_library.js";
 import { CHAT_SYSTEM } from "./_prompts.js";
 import { ThinkStripper } from "./_think.js";
 
@@ -15,12 +17,7 @@ export interface Env {
 export type Turn = { role: "user" | "assistant"; content: string };
 type Message = { role: "system" | Turn["role"]; content: string };
 
-export interface ChatRequest {
-  token: string;
-  device_id: string;
-  meeting_id: string;
-  messages: Turn[];
-}
+export type ChatRequest = { token: string; messages: Turn[] } & ({ device_id: string; meeting_id: string } | { tz: string });
 
 const MAX_BODY = 64 * 1024;
 const MAX_QUESTION = 4 * 1024;
@@ -33,13 +30,16 @@ const text = (v: unknown): v is string => typeof v === "string" && v !== "";
 /** The request, or why it is refused. */
 export function parseRequest(raw: string): ChatRequest | string {
   if (bytes(raw) > MAX_BODY) return "The conversation is too long.";
-  let b: Partial<ChatRequest>;
+  let b: { token?: unknown; device_id?: unknown; meeting_id?: unknown; tz?: unknown; messages?: Turn[] };
   try {
     b = JSON.parse(raw);
   } catch {
     return "The request is not JSON.";
   }
-  if (!text(b?.token) || !text(b.device_id) || !text(b.meeting_id)) return "The request names no meeting.";
+  if (!text(b?.token)) return "The request has no browser token.";
+  const meeting = b.device_id !== undefined || b.meeting_id !== undefined;
+  if (meeting && (!text(b.device_id) || !text(b.meeting_id))) return "The request names no meeting.";
+  if (!meeting && !knownZone(b.tz)) return "The request names no time zone.";
   const turns = b.messages;
   if (!Array.isArray(turns) || !turns.every((t) => (t?.role === "user" || t?.role === "assistant") && typeof t.content === "string")) {
     return "Each message needs a user or assistant role and text.";
@@ -47,7 +47,8 @@ export function parseRequest(raw: string): ChatRequest | string {
   const last = turns.at(-1);
   if (last?.role !== "user" || !last.content.trim()) return "The conversation must end with a question.";
   if (bytes(last.content) > MAX_QUESTION) return "The question is too long.";
-  return { token: b.token, device_id: b.device_id, meeting_id: b.meeting_id, messages: turns.map(({ role, content }) => ({ role, content })) };
+  const messages = turns.map(({ role, content }) => ({ role, content }));
+  return meeting ? { token: b.token, device_id: b.device_id as string, meeting_id: b.meeting_id as string, messages } : { token: b.token, tz: b.tz as string, messages };
 }
 
 /** A port of `transcript_lines` in crates/yogurt-server/src/api/chat.rs. */
@@ -93,37 +94,61 @@ async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise
   const body = parseRequest(await req.text());
   if (typeof body === "string") return json(400, { message: body });
   if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return json(500, { message: "This Cloud has no Supabase settings." });
+  // Stop reading and generating, on the owner's key, once nobody is waiting.
+  const gone = new AbortController();
+  if (req.signal?.aborted) gone.abort();
+  req.signal?.addEventListener("abort", () => gone.abort());
 
-  const read = await fetchImpl(`${env.SUPABASE_URL}/rest/v1/rpc/yogurt_meeting`, {
-    method: "POST",
-    headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization: `Bearer ${jwt}`, "content-type": "application/json" },
-    body: JSON.stringify({ token: body.token, device_id: body.device_id, meeting_id: body.meeting_id, at_push: null }),
-  });
-  if (!read.ok) {
-    // PostgREST's own status and code pass through, so the webapp treats a rejected token here as it does on every other read.
+  // PostgREST's own status and code pass through, so the webapp treats a rejected token here as it does on every other read.
+  const rpc = async <T>(fn: string, args: object): Promise<T[] | Response> => {
+    const read = await fetchImpl(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY!, authorization: `Bearer ${jwt}`, "content-type": "application/json" },
+      body: JSON.stringify(args),
+      signal: gone.signal,
+    });
+    if (read.ok) return read.json();
     const e = await read.json().catch(() => ({}));
     return json(read.status, { code: e.code, message: e.message ?? `Your Cloud answered ${read.status}.` });
-  }
-  const rows: { body: { meeting: { transcript_json: string } } | null }[] = await read.json();
-  const meeting = rows[0]?.body?.meeting;
-  if (!meeting) return json(404, { message: "This meeting is no longer in your Cloud." });
+  };
 
-  const messages: Message[] = [
-    { role: "system", content: CHAT_SYSTEM },
-    { role: "system", content: `TRANSCRIPT SO FAR (most recent at bottom):\n\n${transcriptLines(meeting.transcript_json)}` },
-    ...body.messages,
-  ];
-  // Stop generating, on the owner's key, once nobody is reading.
-  const gone = new AbortController();
-  req.signal?.addEventListener("abort", () => gone.abort());
+  let messages: Message[];
+  let sources: Omit<Hit, "notes" | "excerpt">[] | undefined;
+  if ("tz" in body) {
+    const question = body.messages.at(-1)!.content;
+    const today = dateIn(Date.now(), body.tz);
+    const range = dateRange(question, today);
+    const hits = await rpc<Hit>("yogurt_retrieve", {
+      token: body.token,
+      terms: extractTerms(question),
+      from_ms: range && startOfDay(range[0], body.tz),
+      to_ms: range && startOfDay(range[1], body.tz),
+    });
+    if (hits instanceof Response) return hits;
+    sources = hits.map(({ device_id, meeting_id, title, started_at }) => ({ device_id, meeting_id, title, started_at }));
+    messages = libraryMessages(today, body.tz, hits, body.messages);
+  } else {
+    const rows = await rpc<{ body: { meeting: { transcript_json: string } } | null }>("yogurt_meeting", { token: body.token, device_id: body.device_id, meeting_id: body.meeting_id, at_push: null });
+    if (rows instanceof Response) return rows;
+    const meeting = rows[0]?.body?.meeting;
+    if (!meeting) return json(404, { message: "This meeting is no longer in your Cloud." });
+    messages = [
+      { role: "system", content: CHAT_SYSTEM },
+      { role: "system", content: `TRANSCRIPT SO FAR (most recent at bottom):\n\n${transcriptLines(meeting.transcript_json)}` },
+      ...body.messages,
+    ];
+  }
   const deltas = answer(messages, env, fetchImpl, gone.signal)[Symbol.asyncIterator]();
-  const encode = (delta: string) => new TextEncoder().encode(JSON.stringify({ delta }) + "\n");
+  const encode = (line: object) => new TextEncoder().encode(JSON.stringify(line) + "\n");
   return new Response(
     new ReadableStream({
+      start(c) {
+        if (sources) c.enqueue(encode({ sources }));
+      },
       async pull(c) {
         const { value, done } = await deltas.next();
         if (done) c.close();
-        else c.enqueue(encode(value));
+        else c.enqueue(encode({ delta: value }));
       },
       cancel() {
         gone.abort();

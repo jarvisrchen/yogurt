@@ -2,5 +2,10 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "node scripts/build.mjs",
   "outputDirectory": "dist",
-  "ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../web/src ../web/public '../crates/yogurt-cloud/*.sql' 2>/dev/null || exit 1"
+  "ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../web/src ../web/public '../crates/yogurt-cloud/*.sql' 2>/dev/null || exit 1",
+  "functions": {
+    "api/chat.ts": {
+      "supportsCancellation": true
+    }
+  }
 }

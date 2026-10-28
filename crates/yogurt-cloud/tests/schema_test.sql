@@ -102,7 +102,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -645,12 +645,56 @@ select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index
 set role authenticated;
 select pg_temp.eq(pg_temp.ids(:'stok', 'cafe'), '', 'and is not found');
 
+-- Retrieval for cross-meeting chat: ORed prefix terms over the live index, with the notes and a transcript excerpt.
+select yogurt_start_push(:d3) as push_r \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('r1', :push_r, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Fruit sync', 'started_at', 20000, 'notes_md', 'raw notes',
+     'enriched_md', '- <span data-ai-grey="">notesonly plan</span>',
+     'transcript_json', jsonb_build_array(jsonb_build_object('ts_ms', 1, 'channel', 'me', 'text', repeat('filler ', 80) || 'the kiwi order slipped ' || repeat('padding ', 80)))::text))),
+  ('r2', :push_r, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Mango', 'started_at', 21000, 'notes_md', 'kiwi kiwi kiwi', 'enriched_md', '  ', 'transcript_json', '[]'))),
+  ('r3', :push_r, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Berry', 'started_at', 22000, 'notes_md', 'kiwiberry and notesonly', 'transcript_json', 'not json'))),
+  ('r4', :push_r, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Gone', 'started_at', 23000, 'notes_md', 'kiwi', 'transcript_json', '[]'))),
+  ('r6', :push_r, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'साप्ताहिक मिटिंग', 'started_at', 18500, 'notes_md', 'ประชุม ทีม', 'transcript_json', '[]')));
+select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'retrieval rows are indexed');
+select yogurt_start_push(:d3) as push_r2 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('r4', :push_r2, :d3, null);
+
+create or replace function pg_temp.rids(terms text[], from_ms bigint default null, to_ms bigint default null, k int default 6) returns text language sql as $$
+  select coalesce(string_agg(meeting_id, ',' order by ord), '') from (select r.*, row_number() over () ord from yogurt_retrieve(current_setting('t.tok'), terms, from_ms, to_ms, k) r) x
+$$;
+grant execute on function pg_temp.rids(text[], bigint, bigint, int) to public;
+select set_config('t.tok', :'stok', false);
+
+select pg_temp.eq(pg_temp.rids('{kiwi}'), 'r2,r3,r1', 'terms match as prefixes, ranked, and a deletion pushed since the catch-up is hidden');
+select pg_temp.eq(pg_temp.rids('{mango,notesonly}', 15000, 30000), 'r3,r2,r1', 'terms are ORed');
+select pg_temp.eq(pg_temp.rids('{kiwi}', 20500, 22000), 'r2', 'the range is [from, to)');
+select pg_temp.eq(pg_temp.rids('{}', 19000, 30000), 'r3,r2,r1', 'no terms is the newest in the range');
+select pg_temp.eq(pg_temp.rids('{"!!", ""}', 19000, 30000, 2), 'r3,r2', 'terms with no letters count as none, and k limits');
+select pg_temp.eq(pg_temp.rids('{"kiwi'':*!|", "&|:*"}', 19000, 30000), 'r2,r3,r1', 'tsquery syntax in a term is stripped');
+select pg_temp.eq(pg_temp.rids('{kiwi}', null, null, 0), 'r2', 'k is at least 1');
+select pg_temp.eq((select notes from yogurt_retrieve(:'stok', '{kiwi}') where meeting_id = 'r1'), '- <span data-ai-grey="">notesonly plan</span>', 'notes are the enhanced notes');
+select pg_temp.eq((select notes from yogurt_retrieve(:'stok', '{kiwi}') where meeting_id = 'r2'), 'kiwi kiwi kiwi', 'else the user''s notes');
+select pg_temp.eq((select excerpt ~ '^filler .* the kiwi order slipped .* padding$' and excerpt !~ 'notesonly' and array_length(regexp_split_to_array(excerpt, ' '), 1) <= 64 from yogurt_retrieve(:'stok', '{kiwi}') where meeting_id = 'r1')::text, 'true', 'the excerpt is transcript around the term');
+select pg_temp.eq((select string_agg(excerpt, '|') from yogurt_retrieve(:'stok', '{kiwi}') where meeting_id in ('r2', 'r3')), '|', 'no transcript, or a malformed one, is an empty excerpt');
+select pg_temp.eq((select string_agg(excerpt, '|') from yogurt_retrieve(:'stok', '{}', 19000, 21000)), '', 'no terms, no excerpt');
+select pg_temp.expect('28000', array['select * from yogurt_retrieve(''wrong'', ''{kiwi}'')']);
+select pg_temp.eq(pg_temp.rids('{मिटिंग}') || ' ' || pg_temp.rids('{ประชุม}'), 'r6 r6', 'a term keeps its combining marks');
+select pg_temp.eq(pg_temp.rids('{zzzz}', 19000, 30000), 'r3,r2,r1', 'terms that match nothing fall back to the newest in the range');
+-- A push the index has not caught up to: an edit answers with its new text, and a new meeting counts among the newest.
+select yogurt_start_push(:d3) as push_r3 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('r2', :push_r3, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Mango v2', 'started_at', 21000, 'notes_md', 'kiwi changed', 'transcript_json', '[]'))),
+  ('r5', :push_r3, :d3, jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Fresh', 'started_at', 25000, 'notes_md', 'fresh', 'transcript_json', '[]')));
+select pg_temp.eq((select title || ': ' || notes from yogurt_retrieve(:'stok', '{kiwi}') where meeting_id = 'r2'), 'Mango v2: kiwi changed', 'an edit not yet indexed answers with its new text');
+select pg_temp.eq(pg_temp.rids('{}', 19000, 30000), 'r5,r3,r2,r1', 'a meeting not yet indexed counts among the newest');
+
 -- The index is private, and each owner sees only their own rows.
 select pg_temp.expect('42501', array['select * from yogurt_private.yogurt_search_index', 'insert into yogurt_private.yogurt_search_index (device_id, meeting_id, user_id, push_id) values (gen_random_uuid(), ''x'', gen_random_uuid(), 1)']);
 reset role;
 update yogurt_private.yogurt_search_index set user_id = :n;
 set role authenticated;
 select pg_temp.eq(pg_temp.ids(:'stok', 'budget'), '', 'only the caller''s rows');
+select pg_temp.eq((select excerpt from yogurt_retrieve(:'stok', '{kiwi}', 19000, 21000)), '', 'chat retrieval reads only the caller''s index rows, so its terms fall back to the newest');
 reset role;
 
 -- The guide's purge removes a device's text from search along with its versions.

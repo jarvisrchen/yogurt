@@ -1353,3 +1353,7 @@ New closed items go at the bottom.
 
   Chat about one meeting in the webapp, through `cloud/api/chat.ts` on Vercel.
   `just test-cloud-web` 44 passed, with `cloud/e2e/chat.spec.ts` in all four projects, `pnpm --dir cloud test` 88 passed, and `just test-web` 473 unit and 12 Playwright passed.
+
+- [x] **SYNC-19** Chat across meetings in the webapp, with a `yogurt_retrieve` RPC mirroring local retrieval and cited meetings as chips; after SYNC-18 ([design](.planning/cloud-chat-design.md#sync-19-chat-across-meetings))
+
+  Ask across meetings on the library, with a yogurt_retrieve RPC ported from the desktop retrieval and cited meetings as chips that open them.

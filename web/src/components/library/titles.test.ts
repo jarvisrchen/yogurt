@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitTitle } from "./InlineTitle";
+import { splitTitle } from "./titles";
 
 const OCT6 = new Date("2026-10-06T12:00:00").getTime();
 

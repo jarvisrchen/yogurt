@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { groupMeetingsByDay } from "@web/components/library/dayGroups";
 import { Pager } from "@web/components/library/Pager";
 import { rememberPageSize, resolvePageSize } from "@web/components/library/pagination";
 import { Logo } from "@web/components/Logo";
+import { ChatSources } from "@web/components/ChatSources";
+import { LIBRARY_CHAT_COPY } from "@web/components/ChatWindow";
 import {
   Brand,
   DayList,
@@ -28,9 +30,9 @@ import {
 import { SEARCH_PAGE, searchStatus } from "../lib/search";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
-import { HOME, type Loc } from "../lib/hash";
-import { MeetingView, type BodyState } from "./Meeting";
-import { useMeetingChat } from "../lib/useMeetingChat";
+import { format, HOME, type Loc } from "../lib/hash";
+import { Ask, DOCKED, MeetingView, type BodyState } from "./Meeting";
+import { useChat } from "../lib/useChat";
 
 export const GearIcon = () => (
   <svg
@@ -168,8 +170,35 @@ export function Library({
     devices?.find((d) => d.id === id)?.name ?? "Unknown device";
 
   const openDevice = open ? open.slice(0, open.indexOf("/")) : "";
-  // Chat asks about the live library only, never a meeting as of an earlier push.
-  const chat = useMeetingChat(api, token, open && !pushId ? { device: openDevice, meeting: open.slice(open.indexOf("/") + 1) } : null, onRejected);
+  // Chat asks about the live library only, never as of an earlier push.
+  const chat = useChat(api, token, open && !pushId ? { device_id: openDevice, meeting_id: open.slice(open.indexOf("/") + 1) } : null, onRejected);
+  // The browser's zone, so "today" and "in December" mean the asker's days. It is read once, so a zone change mid-chat does not start it over.
+  const [tz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const libraryChat = useChat(api, token, pushId ? null : { tz }, onRejected);
+  // Opening a meeting folds the library chat, so coming back shows the pill rather than a window that grabs focus.
+  const setLibraryChatOpen = libraryChat?.setOpen;
+  useEffect(() => {
+    if (open) setLibraryChatOpen?.(false);
+  }, [open, setLibraryChatOpen]);
+  const cite = (id: string, className: string, children: ReactNode) => {
+    const to = { ...loc, meeting: id };
+    return (
+      <a
+        href={format(to)}
+        className={className}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+          e.preventDefault();
+          go(to);
+        }}
+      >
+        {children}
+      </a>
+    );
+  };
+  const ask = libraryChat && (
+    <Ask chat={libraryChat} copy={LIBRARY_CHAT_COPY} renderExtra={(m) => <ChatSources message={m} link={cite} />} position={`${DOCKED} mt-auto`} />
+  );
   const meeting = open && (
     <MeetingView
       key={open}
@@ -308,7 +337,18 @@ export function Library({
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="flex items-center justify-between gap-[10px] px-[16px] py-[16px] min-[721px]:px-[20px] min-[721px]:py-[12px] min-[721px]:bg-card min-[721px]:border-b min-[721px]:border-line">
-        <Brand />
+        {/* The way back to the library from a meeting on a desktop, which has no Back link. */}
+        <a
+          href={format({ ...loc, meeting: null }) || "#"}
+          aria-label="Library"
+          className="no-underline text-inherit"
+          onClick={(e) => {
+            e.preventDefault();
+            go({ ...loc, meeting: null });
+          }}
+        >
+          <Brand />
+        </a>
         <div className="flex items-center gap-[6px] min-[721px]:gap-[8px]">
           <span className="text-[12px] min-[721px]:text-[11px] font-bold px-[10px] py-[3px] rounded-pill bg-slatesoft text-slate">
             read-only
@@ -354,15 +394,19 @@ export function Library({
           </aside>
           <main className="px-[28px] py-[22px] flex flex-col">
             {meeting ?? (
-              <p className="text-[13px] text-mut m-[0px]">
-                Pick a meeting to read it.
-              </p>
+              <>
+                <p className="text-[13px] text-mut m-[0px]">
+                  Pick a meeting to read it.
+                </p>
+                {ask}
+              </>
             )}
           </main>
         </div>
       ) : (
         <main className="flex-1 flex flex-col gap-[10px] px-[16px] pb-[16px]">
           {list}
+          {ask}
         </main>
       )}
     </div>

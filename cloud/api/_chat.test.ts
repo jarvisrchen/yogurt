@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { handleChat, NOT_SET_UP, parseRequest, transcriptLines, type Env } from "./_chat";
+import { dateIn, startOfDay } from "./_library";
 
 // The cases from crates/yogurt-server/src/api/chat.rs.
 test("renders segments as speaker lines", () => {
@@ -105,6 +106,9 @@ test.each([
   ["a question over 4 KB", { ...ASK, messages: [{ role: "user", content: "a".repeat(4097) }] }],
   ["a body over 64 KB", { ...ASK, messages: [{ role: "assistant", content: "a".repeat(65_536) }, ...ASK.messages] }],
   ["no meeting", { ...ASK, meeting_id: "" }],
+  ["no browser token", { ...ASK, token: "" }],
+  ["neither a meeting nor a time zone", { token: "t", messages: ASK.messages }],
+  ["an unknown time zone", { token: "t", tz: "Mars/Olympus", messages: ASK.messages }],
 ])("refuses %s with a 400 and no calls", async (_, body) => {
   expect(typeof parseRequest(JSON.stringify(body))).toBe("string");
   const { f, calls } = fakeFetch(meetingRead());
@@ -177,4 +181,61 @@ test("cancelling the answer cancels the LLM call", async () => {
   await reader.read();
   await reader.cancel();
   expect(llmSignal?.aborted).toBe(true);
+});
+
+const LIB = { token: "browser-token", tz: "America/Los_Angeles", messages: [{ role: "user", content: "What did Steven decide about pricing?" }] };
+const hits = [
+  { device_id: "d1", meeting_id: "m1", title: "Pricing sync", started_at: 1_761_000_000_000, notes: "Raise to $20", excerpt: "steven: twenty it is" },
+  { device_id: "d2", meeting_id: "m2", title: "Retro", started_at: 1_760_000_000_000, notes: "", excerpt: "" },
+];
+const retrieveRead = () => new Response(JSON.stringify(hits), { status: 200 });
+const frames = async (res: Response) => (await res.text()).trim().split("\n").map((l) => JSON.parse(l));
+
+test("a question across meetings retrieves by its terms, sends the sources first, and numbers the meetings for the model", async () => {
+  const { f, calls } = fakeFetch(retrieveRead(), () => sse(delta("Twenty [1].", "stop")));
+  const res = await handleChat(post(LIB), ENV, f);
+  expect(await frames(res)).toEqual([
+    { sources: [{ device_id: "d1", meeting_id: "m1", title: "Pricing sync", started_at: 1_761_000_000_000 }, { device_id: "d2", meeting_id: "m2", title: "Retro", started_at: 1_760_000_000_000 }] },
+    { delta: "Twenty [1]." },
+  ]);
+  const [read, llm] = calls;
+  expect(read.url).toBe("http://sb.test/rest/v1/rpc/yogurt_retrieve");
+  expect(JSON.parse(read.init.body as string)).toEqual({ token: "browser-token", terms: ["steven", "decide", "pricing"], from_ms: null, to_ms: null });
+  const sent = JSON.parse(llm.init.body as string).messages;
+  expect(sent.map((m: { role: string }) => m.role)).toEqual(["system", "system", "user"]);
+  expect(sent[0].content).toMatch(/^You answer questions about the user's past meetings\..*\n\nToday is \d{4}-\d{2}-\d{2}\.$/s);
+  expect(sent[1].content).toContain("[1] Pricing sync (2025-10-20)\nNotes:\nRaise to $20\nTranscript excerpt:\nsteven: twenty it is\n");
+});
+
+test("a date phrase bounds retrieval to the asker's days", async () => {
+  const { f, calls } = fakeFetch(retrieveRead());
+  await (await handleChat(post({ ...LIB, messages: [{ role: "user", content: "anything today?" }] }), ENV, f)).text();
+  const today = dateIn(Date.now(), LIB.tz);
+  const args = JSON.parse(calls[0].init.body as string);
+  expect(args.terms).toEqual([]);
+  expect(args.from_ms).toBe(startOfDay(today, LIB.tz));
+  expect(args.to_ms - args.from_ms).toBeGreaterThanOrEqual(23 * 3_600_000);
+});
+
+test("a locked browser asking across meetings gets PostgREST's 403 and no LLM call", async () => {
+  const { f, calls } = fakeFetch(new Response(JSON.stringify({ code: "28000", message: "token rejected" }), { status: 403 }));
+  const res = await handleChat(post(LIB), ENV, f);
+  expect(res.status).toBe(403);
+  expect(await res.json()).toEqual({ code: "28000", message: "token rejected" });
+  expect(calls).toHaveLength(1);
+});
+
+test("a client that leaves during retrieval cancels the read, and the LLM is never called", async () => {
+  const left = new AbortController();
+  const calls: string[] = [];
+  const f = (async (url: string, init: RequestInit) => {
+    calls.push(url);
+    left.abort();
+    // As real fetch does with a signal that has fired.
+    if (init.signal?.aborted) throw new DOMException("aborted", "AbortError");
+    return retrieveRead();
+  }) as unknown as typeof fetch;
+  const req = new Request("http://cloud.test/api/chat", { method: "POST", headers: { authorization: "Bearer jwt" }, body: JSON.stringify(LIB), signal: left.signal });
+  await handleChat(req, ENV, f);
+  expect(calls).toEqual(["http://sb.test/rest/v1/rpc/yogurt_retrieve"]);
 });

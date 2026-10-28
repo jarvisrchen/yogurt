@@ -153,12 +153,15 @@ normalized_routes=$(echo "$routes" | sed -E 's/\{\*([A-Za-z0-9_]+)\}/:\1/g; s/\{
 done
 
 # --- Cloud chat prompt -------------------------------------------------------
-# cloud/api/_prompts.ts carries the desktop's chat prompt verbatim, because the Vercel function cannot read crates/.
-prompt=$(cat crates/yogurt-prompts/templates/chat-system.md)
-case "$(cat cloud/api/_prompts.ts)" in
-  *"$prompt"*) ;;
-  *) violate "cloud/api/_prompts.ts:1" "prompt-copy" "differs from crates/yogurt-prompts/templates/chat-system.md" ;;
-esac
+# cloud/api/_prompts.ts carries the desktop's chat prompts verbatim, because the Vercel function cannot read crates/.
+for t in chat-system library-chat-system; do
+  prompt=$(cat "crates/yogurt-prompts/templates/$t.md")
+  case "$(cat cloud/api/_prompts.ts)" in
+    *"\`$prompt
+\`"*) ;;
+    *) violate "cloud/api/_prompts.ts:1" "prompt-copy" "differs from crates/yogurt-prompts/templates/$t.md" ;;
+  esac
+done
 
 # --- Report ------------------------------------------------------------------
 
