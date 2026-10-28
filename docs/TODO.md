@@ -73,8 +73,9 @@ The note is a file, not a shell argument, because real resolution notes contain 
   While a meeting records, the live view shows the notes editor and the raw transcript dock, so catching up after a distraction means scrolling raw transcript.
   Every few minutes, send the transcript since the last update to the configured LLM provider and append a few short bullets of what was just discussed to a panel on the live page (`web/src/routes/Meeting.tsx`).
   Bullets should build on the previous ones rather than resummarize the whole meeting each time, so cost and latency stay flat as the meeting grows.
-  The transcript already goes to the configured provider for Enhance and chat, so this stays inside the hard constraints, but it does send data mid-meeting where today the LLM sees nothing until the meeting ends, so gate it behind a setting.
-  Open questions: the interval (fixed minutes or transcript length), whether the bullets feed into Enhance at the end, and how the CLI provider's latency affects it.
+  The transcript already goes to the configured provider for Enhance and for Ask, which works mid-meeting, so this stays inside the hard constraints.
+  It sends on a timer rather than on a click, so gate it behind a setting.
+  Design and mocks: [.planning/live-recap-design.md](.planning/live-recap-design.md).
   </details>
 
 ## Audio

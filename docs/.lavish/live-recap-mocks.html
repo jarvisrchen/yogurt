@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live recap mocks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+<!-- Tokens copied from web/src/index.css. cloud/src/index.css imports the same file, so the webapp shares them. -->
+<style type="text/tailwindcss">
+@theme {
+  --color-paper:   #FBF7EF;  /* app background, hero surfaces             */
+  --color-card:    #FFFFFF;  /* cards, surfaces over paper                */
+  --color-ink:     #211D18;  /* user notes, headings, primary text        */
+  --color-grey:    #A89F90;  /* secondary captions, transcript "Them"     */
+  --color-ai:      #7A7264;  /* AI-added text (4.5:1 on paper)            */
+  --color-line:    #EBE3D5;  /* borders, dividers                         */
+  --color-blue:    #5B4FC7;  /* primary blueberry: buttons, transcript   */
+  --color-blsoft:  #ECE9FB;  /* soft blueberry: active-nav, pill bg      */
+  --color-straw:   #E07A66;  /* recording indicator, error accent         */
+  --color-strsoft: #FBE6E0;  /* soft strawberry: error/warning bg        */
+  --color-matcha:  #5E9E73;  /* local-only / privacy / success            */
+  --color-mtsoft:  #E7F0E8;  /* soft matcha: local-mode badges           */
+  --color-mut:     #8A8174;  /* muted text on cards                       */
+  /* Label chip palette (LabelChip.tsx): the three non-brand label colors. */
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-honeyink:  #7A5A0F;  /* honey text that reaches 4.5:1 on white and on honeysoft */
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+
+  --font-sans:  "Manrope", "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --radius-chip:   8px;    /* small chip                                    */
+  --radius-button: 12px;   /* buttons, inputs, nav rows                     */
+  --radius-card:   16px;   /* cards                                         */
+  --radius-panel:  24px;   /* floating panels: chat window, dialogs, dock   */
+  --radius-pill:   999px;  /* pills, recording badge                        */
+
+  /* Tailwind copies a shadow's value into its utility class, so dark mode re-points the colors below, not these. */
+  --shadow-card:   0 16px 32px -4px var(--shadow-card-color);
+  --shadow-pop:    0 12px 16px -4px var(--shadow-pop-color);
+  --shadow-window: 0 24px 48px -8px var(--shadow-window-color);
+  --shadow-button-blue: 0 8px 16px -6px rgba(91, 79, 199, 0.35);
+}
+
+/* The label palette is read from inline styles (LabelChip), which the runtime does not scan, so emit every token. */
+:root {
+  color-scheme: light;
+  --shadow-card-color:   rgba(33, 29, 24, 0.06);
+  --shadow-pop-color:    rgba(33, 29, 24, 0.18);
+  --shadow-window-color: rgba(33, 29, 24, 0.22);
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+}
+
+/* The app stamps data-theme="dark" on <html>. A mock forces dark on its own frame with .force-dark. */
+:root[data-theme="dark"], .force-dark {
+  color-scheme: dark;
+  --color-paper:   #1B1815;
+  --color-card:    #26221D;
+  --color-ink:     #EDEAE2;
+  --color-grey:    #8F877B;
+  --color-ai:      #A69D90;
+  --color-line:    #3A342C;
+  --color-blue:    #7D72DE;
+  --color-blsoft:  #2C2846;
+  --color-straw:   #E8886F;
+  --color-strsoft: #3D2622;
+  --color-matcha:  #7FBE8C;
+  --color-mtsoft:  #22342A;
+  --color-mut:     #9B9285;
+  --color-lilac:     #C4A2E8;
+  --color-lilacsoft: #33283F;
+  --color-honey:     #D9B24E;
+  --color-honeysoft: #3A3120;
+  --color-honeyink:  #D9B24E;
+  --color-slate:     #A9B7C4;
+  --color-slatesoft: #2A3138;
+  --shadow-card-color:   rgba(0, 0, 0, 0.35);
+  --shadow-pop-color:    rgba(0, 0, 0, 0.5);
+  --shadow-window-color: rgba(0, 0, 0, 0.6);
+}
+
+@utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
+@utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
+@utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
+@utility heading-state   { @apply font-extrabold tracking-[-0.01em] text-[30px] text-ink; }
+@utility heading-section { @apply font-extrabold tracking-[-0.01em] text-[24px] leading-none text-ink; }
+@utility heading-wordmark{ @apply font-bold tracking-[-0.01em] text-[20px] leading-none text-ink; }
+@utility heading-card    { @apply font-bold tracking-[-0.01em] text-[18px] leading-tight text-ink; }
+@utility heading-sm      { @apply font-sans font-bold tracking-[-0.01em] text-[16px] text-ink; }
+
+html, body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 0.009em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-grey { color: var(--color-ai); }
+
+/* cloud/src/index.css: on a phone the shared chat pill takes the webapp's phone scale. The mock applies it by frame, not viewport. */
+.phone .cloud-chat.text-\[14px\] { font-size: 16px; }
+
+/* Mock page chrome, outside the apps. */
+body { background: #ECE7DE; }
+.page { max-width: 1440px; margin: 0 auto; padding: 40px 32px 80px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+@media (min-width: 1400px) { .pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.shot { min-width: 0; }
+.shot > .tag { font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: #7A7264; margin: 0 0 8px; }
+.frame { position: relative; overflow: hidden; background: var(--color-paper); color: var(--color-ink); border-radius: 10px; box-shadow: 0 0 0 1px rgba(33, 29, 24, .16), 0 10px 30px -12px rgba(33, 29, 24, .35); }
+.frame.phone { border-radius: 36px; overflow-y: auto; scrollbar-width: none; }
+.center { display: flex; justify-content: center; }
+/* A dot on the dock's Recap tab while it holds bullets the user has not seen. */
+.unseen-dot { display: block; width: 8px; height: 8px; border-radius: 999px; background: var(--color-blue); }
+.shimmer-line { background: linear-gradient(90deg, var(--color-line) 0%, var(--color-paper) 50%, var(--color-line) 100%); background-size: 200% 100%; animation: shimmer 1.25s linear infinite; border-radius: 6px; }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mb-10">
+    <h1 class="heading-title">Live recap mocks</h1>
+    <p class="mt-3 text-[14px] text-mut">Mocks for <a class="text-blue underline" href="../.planning/live-recap-design.md">docs/.planning/live-recap-design.md</a> (MTG-22), drawn with the app's own tokens and class strings, light on the left and dark on the right. Meeting content is made up.</p>
+  </header>
+  <div id="sections" class="flex flex-col gap-14"></div>
+</div>
+
+<script>
+// Lucide paths as lucide-react renders them (web/node_modules).
+const PATHS = {
+  link2: '<path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 1 1 0 10h-2"></path><line x1="8" x2="16" y1="12" y2="12"></line>',
+  mic: '<path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect>',
+  chevronDown: '<path d="m6 9 6 6 6-6"></path>',
+  pause: '<rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"></polygon>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path>',
+};
+const icon = (n, size, cls = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide ${cls}" aria-hidden="true">${PATHS[n]}</svg>`;
+
+// web/src/components/Button.tsx
+const BASE = "inline-flex items-center justify-center gap-2 rounded-button font-sans transition-colors transition-shadow duration-150 ease-out select-none disabled:opacity-50 disabled:cursor-not-allowed";
+const SIZE = { md: "px-[18px] py-2.5 text-[14px] font-semibold leading-none", sm: "border px-3.5 py-2 text-[12.5px] font-bold leading-normal" };
+const VARIANT = {
+  primary: "bg-blue border-blue text-white shadow-button-blue hover:opacity-90",
+  secondary: "bg-card text-ink border border-line hover:bg-paper",
+  ghost: "bg-transparent border-transparent text-mut hover:text-ink hover:bg-blsoft/50",
+};
+const btn = (variant = "primary", extra = "", size = "md") => `${BASE} ${SIZE[size]} ${VARIANT[variant]} ${extra}`.trim();
+
+// web/src/components/settings/labelClass.ts
+const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-mut";
+// web/src/components/MeetingMetaPills.tsx
+const PILL = "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none";
+
+const BULLETS = [
+  ["00:42", "Goal: settle the Pro price before the Nov 12 launch review"],
+  ["03:10", "Pro conversion is 4.1%, down from 5.0% since the July price change"],
+  ["05:55", "Dana proposes $18/month, $180/year"],
+  ["08:20", "Finance wants the annual discount capped at 15%"],
+  ["11:02", "Open: whether current Pro users keep the old price for 12 months"],
+  ["13:47", "Marco owns a churn model for the $18 case, due Friday"],
+  ["16:30", "Decided: no free-trial change this quarter"],
+];
+
+const TRANSCRIPT = [
+  ["them", "16:12", "So if we hold the trial where it is, we keep the funnel numbers comparable."],
+  ["me", "16:21", "Right, I'd rather not move two things at once."],
+  ["them", "16:30", "Okay. Trial stays as is this quarter, we revisit in January."],
+  ["me", "16:44", "Marco, can you get the churn model to us by Friday?"],
+  ["them", "16:52", "Friday works. I'll use the $18 and $180 numbers."],
+];
+
+/* ---------------- dock ---------------- */
+
+const bulletRow = ([ts, text], fresh = false) => `
+  <button type="button" class="group w-full text-left flex gap-3 py-2 rounded-chip -mx-2 px-2 hover:bg-paper ${fresh ? "animate-[pop-up_260ms_cubic-bezier(0,0,0.2,1)]" : ""}">
+    <span class="shrink-0 w-[38px] pt-[2px] font-mono text-[12px] text-grey group-hover:text-blue">${ts}</span>
+    <span class="text-[14px] leading-snug text-ink">${text}</span>
+  </button>`;
+
+// The two edge tabs, stacked, replacing today's single "◀ Transcript" tab. Each opens the dock on its own view.
+function edgeTabs({ open, active, unseen, live = true, recap = true }) {
+  const right = open ? "330px" : "0";
+  const tab = (name, top, on, extra = "") => `
+    <button type="button" class="absolute flex flex-col items-center justify-center gap-1.5 w-7 text-[12px] font-semibold bg-card ${open && on ? "text-blue" : "text-ink"}"
+      style="top:${top}px;right:${right};padding:12px 4px;overflow:hidden;border:1px solid var(--color-line);border-right:none;border-radius:11px 0 0 11px;box-shadow:-8px 8px 22px rgba(40,30,15,.08);z-index:31">
+      ${extra}<span style="writing-mode:vertical-rl;white-space:nowrap">${open && on ? "▶" : "◀"} ${name}</span>
+    </button>`;
+  const wave = `<span class="flex items-end gap-[2px] h-3">${[6, 10, 7, 11].map((h) => `<span class="w-[2px] rounded-full bg-matcha" style="height:${h}px"></span>`).join("")}</span>`;
+  return recap ? `
+    ${tab("Recap", 22, active === "recap", unseen ? `<span class="unseen-dot"></span>` : "")}
+    ${tab("Transcript", 112, active === "transcript", live ? wave : "")}` : tab("Transcript", 22, active === "transcript", live ? wave : "");
+}
+
+function dockPanel(active, body, footer = "", { live = true } = {}) {
+  const seg = (name, key) => `<button type="button" class="px-3 py-1 rounded-pill text-[12.5px] font-semibold ${active === key ? "bg-blsoft text-blue" : "text-mut hover:text-ink"}">${name}</button>`;
+  return `
+    <aside class="absolute right-0 top-0 h-full w-[330px] flex flex-col bg-card border-l border-line">
+      <header class="flex items-center justify-between border-b border-line" style="padding:18px 16px 14px 14px">
+        <div class="flex items-center gap-1">${seg("Recap", "recap")}${seg("Transcript", "transcript")}</div>
+        ${live ? `<span class="text-[11px] inline-flex items-center gap-1 text-matcha"><span aria-hidden="true">●</span>connected</span>` : ""}
+      </header>
+      <div class="flex-1 overflow-y-auto" style="padding:10px 20px">${body}</div>
+      ${footer}
+    </aside>`;
+}
+
+const recapFooter = (left, { update = true, pause = true, resume = false } = {}) => `
+  <footer class="flex items-center justify-between gap-2 border-t border-line pl-5 pr-3 py-3">
+    <span class="text-[12px] text-mut whitespace-nowrap">${left}</span>
+    <span class="flex items-center">
+      ${update ? `<button type="button" class="${btn("ghost", "whitespace-nowrap px-2.5!", "sm")}">${icon("refresh", 13)}Update now</button>` : ""}
+      ${pause ? `<button type="button" class="${btn("ghost", "whitespace-nowrap px-2.5!", "sm")}">${icon("pause", 13)}Pause</button>` : ""}
+      ${resume ? `<button type="button" class="${btn("secondary", "whitespace-nowrap", "sm")}">${icon("play", 13)}Resume</button>` : ""}
+    </span>
+  </footer>`;
+
+const recapList = (n = BULLETS.length, freshLast = false) =>
+  BULLETS.slice(0, n).map((b, i) => bulletRow(b, freshLast && i === n - 1)).join("");
+
+const recapBody = () => recapList() + `<div class="h-2"></div>`;
+
+const updatingRow = `
+  <div class="flex gap-3 py-2" aria-live="polite">
+    <span class="shrink-0 w-[38px] pt-[5px]"><span class="block h-[9px] w-[30px] shimmer-line"></span></span>
+    <span class="flex-1 space-y-1.5 pt-[3px]"><span class="block h-[11px] w-[92%] shimmer-line"></span><span class="block h-[11px] w-[60%] shimmer-line"></span></span>
+  </div>
+  <p class="text-[12px] text-mut mt-1">Catching up on the last 3 minutes…</p>`;
+
+const transcriptBody = () => TRANSCRIPT.map(([ch, ts, text]) => `
+  <div class="py-2 text-[14px] leading-snug ${ch === "me" ? "text-ink" : "text-grey"}">
+    <span class="inline-block w-12 font-semibold">${ch === "me" ? "Me" : "Them"}</span>
+    <span class="text-[12px] mr-2 font-mono text-grey">${ts}</span>
+    <span>${text}</span>
+  </div>`).join("");
+
+/* ---------------- live page ---------------- */
+
+// web/src/routes/Meeting.tsx, header through the notes card.
+function liveMain() {
+  return `
+  <main class="max-w-[660px] mx-auto px-10 py-12 space-y-6">
+    <a class="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut"><span aria-hidden>←</span><span>Library</span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-straw)] ml-1 animate-recpulse"></span></a>
+    <header class="space-y-2">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="heading-title">Q4 pricing sync</h1>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" class="${btn("secondary", "px-2.5!")}" aria-label="Copy URL">${icon("link2", 16)}</button>
+          <button type="button" class="${btn("primary")}">Stop recording</button>
+          <button type="button" class="${btn("primary")}">End meeting</button>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="${PILL} bg-card text-mut border border-line">Oct 28 · 2:04 PM</span>
+        <span class="${PILL} bg-mtsoft text-matcha">Local · whisper</span>
+        <span class="${PILL} bg-blsoft text-blue">gpt-4.1-mini</span>
+      </div>
+      <div class="space-y-1.5 pt-2">
+        <label class="flex items-center h-5 ${LABEL}">Microphone</label>
+        <div class="flex items-center justify-between rounded-button border border-line bg-card px-3 py-2 text-[13.5px] text-ink">MacBook Pro Microphone ${icon("chevronDown", 14, "text-mut")}</div>
+        <button type="button" class="${btn("secondary", "w-full py-3.5 text-[15px]")}">${icon("mic", 18)}Mute mic<kbd class="bg-black/10 text-current text-[11px] font-mono px-1.5 py-0.5 rounded ml-1">M</kbd></button>
+      </div>
+    </header>
+    <section class="rounded-card bg-card p-6 border border-line text-[15px] leading-relaxed">
+      <h2 class="text-[20px] font-bold mb-2">Pricing</h2>
+      <ul class="list-disc pl-5 space-y-1"><li>pro tier → $18?</li><li>ask finance re annual cap</li></ul>
+    </section>
+  </main>`;
+}
+
+const askPill = `
+  <div class="absolute bottom-6 left-1/2 -translate-x-1/2 w-[480px] h-12 flex items-center justify-between gap-3 px-4 py-2 bg-card border border-line rounded-full shadow-pop text-[14px] text-mut z-30">
+    <span class="flex-1 truncate">Ask this meeting…</span>
+    <span class="inline-flex items-center justify-center h-6 px-2 rounded-chip text-[11px] font-mono text-mut bg-blsoft">⌘K</span>
+    <span class="inline-flex items-center justify-center h-7 w-7 rounded-full bg-blue text-white"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M6 2.5L2.5 6M6 2.5L9.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+  </div>`;
+
+function livePage({ dock = null, tabs }) {
+  return `
+  <div class="relative h-full overflow-hidden bg-paper pr-7">
+    ${liveMain()}
+    ${dock ?? ""}
+    ${edgeTabs(tabs)}
+    ${askPill}
+  </div>`;
+}
+
+
+/* ---------------- post-meeting page ---------------- */
+
+const iconBtn = (n) => `<button type="button" class="${btn("secondary", "px-2.5!")}">${icon(n, 16)}</button>`;
+
+// web/src/routes/MeetingPost.tsx with EnhancingBanner while Enhance streams.
+function postPage({ enhancing, dock = null, tabs }) {
+  const banner = enhancing ? `
+    <div class="flex items-center gap-[14px] px-[18px] py-[10px] bg-blsoft text-ink text-[13px] font-semibold" style="border-bottom:1px solid color-mix(in srgb, var(--color-blue) 22%, transparent)">
+      <span class="block w-2 h-2 rounded-full bg-blue animate-recpulse"></span>
+      <span>Weaving your notes into the transcript…</span>
+      <span class="block h-1 w-[260px] rounded-full overflow-hidden" style="background:color-mix(in srgb, var(--color-blue) 22%, transparent)"><span class="block h-full w-[30%] rounded-full bg-blue"></span></span>
+      <span class="font-mono text-[12px] font-medium text-mut">1,284 chars</span>
+    </div>` : "";
+  const notes = enhancing ? `
+    <div class="text-[15px] leading-relaxed text-grey">
+      <h2 class="text-[20px] font-bold mb-2">Pricing</h2>
+      <ul class="list-disc pl-5 space-y-1"><li>pro tier → $18/month, $180/year</li><li>Pro conversion 4.1%, down from 5.0% since July</li><li>ask finance re annual cap: finance wants it at 15%<span class="inline-block w-[2px] h-[1em] ml-[2px] align-[-0.15em] bg-blue"></span></li></ul>
+    </div>` : `
+    <div class="text-[15px] leading-relaxed text-ink">
+      <h2 class="text-[20px] font-bold mb-2">Pricing</h2>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>pro tier → $18<span class="ai-grey">/month, $180/year, proposed by Dana</span> <span class="font-mono text-[12px] text-blue">↳ 05:55</span></li>
+        <li class="ai-grey">Pro conversion 4.1%, down from 5.0% since the July change <span class="font-mono text-[12px] text-blue">↳ 03:10</span></li>
+        <li>ask finance re annual cap<span class="ai-grey">: finance wants it capped at 15%</span> <span class="font-mono text-[12px] text-blue">↳ 08:20</span></li>
+      </ul>
+      <h2 class="text-[20px] font-bold mt-5 mb-2">Action items</h2>
+      <ul class="list-disc pl-5 space-y-1"><li class="ai-grey">Marco: churn model for the $18 case, due Friday <span class="font-mono text-[12px] text-blue">↳ 13:47</span></li></ul>
+    </div>`;
+  return `
+  <div class="relative h-full overflow-hidden bg-paper pr-7">
+    ${banner}
+    <div class="flex items-center justify-between gap-4 px-6 py-3 bg-paper border-b border-line">
+      <div class="flex items-center gap-4 min-w-0">
+        <a class="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut"><span aria-hidden>←</span><span>Library</span></a>
+        <div class="min-w-0">
+          <span class="block heading-card truncate">Q4 pricing sync</span>
+          <div class="mt-1 flex items-center gap-1.5"><span class="${PILL} bg-card text-mut border border-line">Oct 28 · 2:04 PM</span><span class="${PILL} bg-card text-mut border border-line">18 min</span><span class="${PILL} bg-blsoft text-blue">gpt-4.1-mini</span></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">${iconBtn("link2")}${iconBtn("refresh")}</div>
+    </div>
+    <main class="relative max-w-[660px] mx-auto" style="padding:42px 24px 130px">
+      <div class="mb-7 inline-flex gap-0.5 rounded-card bg-line/60 p-1">
+        <button type="button" class="rounded-button px-4 py-[7px] text-[13px] font-semibold bg-card text-ink shadow-card">Enhanced</button>
+        <button type="button" class="rounded-button px-4 py-[7px] text-[13px] font-semibold text-mut">My notes</button>
+      </div>
+      ${notes}
+    </main>
+    ${dock ?? ""}
+    ${edgeTabs(tabs)}
+    ${askPill}
+  </div>`;
+}
+
+const finalFooter = `
+  <footer class="border-t border-line px-5 py-3 text-[12px] text-mut">Final recap · the summary replaces it when ready</footer>`;
+
+const recapFinal = () => recapList() + bulletRow(["17:58", "Next sync Tuesday, with the churn model"]) + `<div class="h-2"></div>`;
+
+/* ---------------- dock states, side by side ---------------- */
+
+
+/* ---------------- settings ---------------- */
+
+// web/src/components/settings/GeneralSection.tsx, the meeting checkboxes.
+const settingsRows = `
+  <div class="h-full bg-paper p-8">
+    <section class="rounded-card bg-card border border-line p-6">
+      <h2 class="heading-sm text-[18px]! mb-1">General</h2>
+      <div class="border-t border-line pt-4 mt-4 space-y-3">
+        <label class="flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked class="h-4 w-4 accent-blue"><span>Offer to record when a meeting is detected</span></label>
+        <label class="flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked class="h-4 w-4 accent-blue"><span>Stop recording automatically when the meeting ends</span></label>
+        <label class="flex items-center gap-2 text-[13.5px] text-ink"><input type="checkbox" checked class="h-4 w-4 accent-blue"><span>Show a live recap of the discussion while recording</span></label>
+        <p class="text-[12.5px] text-mut">The recap sends the latest few minutes of transcript to your LLM provider (gpt-4.1-mini) every 3 minutes while you record. Audio never leaves this Mac.</p>
+      </div>
+    </section>
+  </div>`;
+
+/* ---------------- sections ---------------- */
+
+const PAGE = { w: 1440, h: 780 };
+
+const SECTIONS = [
+  {
+    title: "1. The dock opens on Recap",
+    caption: "The transcript dock gains a Recap view beside Transcript, picked with the segmented control in its header. Bullets append at the bottom with the time they happened, and clicking one switches to Transcript at that moment. The footer's Pause stops the recap for this meeting only. The notes column does not reflow, as today.",
+    frames: [{ ...PAGE, html: () => livePage({ tabs: { open: true, active: "recap" }, dock: dockPanel("recap", recapBody(), recapFooter("Updated 1 min ago")) }) }],
+  },
+  {
+    title: "2. Dock closed, new bullets waiting",
+    caption: "Today's single edge tab becomes two stacked tabs, Recap and Transcript, each opening the dock on its view. A blueberry dot on Recap means bullets arrived since the user last looked. The dock never opens on its own, because it would cover the notes on a narrow window.",
+    frames: [{ ...PAGE, html: () => livePage({ tabs: { open: false, active: "recap", unseen: true } }) }],
+  },
+  {
+    title: "3. Clicking a bullet's time",
+    caption: "Clicking 16:30 switches the dock to Transcript and scrolls to that line with the existing highlight, through the same scrollToTranscriptTime path the post-meeting timestamp links use.",
+    frames: [{ ...PAGE, html: () => livePage({ tabs: { open: true, active: "transcript" }, dock: dockPanel("transcript", transcriptBody()) }) }],
+  },
+  {
+    title: "4. After End: the recap stays while the summary generates",
+    caption: "End meeting runs one last update over the final minutes, and the post-meeting page keeps the Recap view while Enhance streams. If the dock was open on Recap at End, it opens there again. The header loses the connected dot and the footer loses Update now, since nothing is recording.",
+    frames: [{ ...PAGE, html: () => postPage({ enhancing: true, tabs: { open: true, active: "recap", live: false }, dock: dockPanel("recap", recapFinal(), finalFooter, { live: false }) }) }],
+  },
+  {
+    title: "5. Summary ready: the recap is gone",
+    caption: "Once Enhance has saved the summary, the server clears the recap and the Recap tab disappears. A dock showing Recap at that moment closes, so the summary it stood in for is in view. Only the Transcript tab remains, as on the post-meeting page today.",
+    frames: [{ ...PAGE, html: () => postPage({ enhancing: false, tabs: { open: false, active: null, live: false, recap: false } }) }],
+  },
+  {
+    title: "6. Dock states",
+    caption: "Waiting before the first update, an update in flight (a CLI provider can sit here for a minute or more), paused for this meeting, and a failed update. Pause shows only when the setting is on, keeps the bullets so far, and drops what is said until Resume. A failure keeps every earlier bullet and retries at the next tick, so it never takes a banner.",
+    frames: [{ w: 1428, h: 560, html: () => `
+      <div class="h-full bg-paper flex gap-6 p-6">
+        ${[
+          ["Waiting", `<p class="text-[13px] mt-2 text-grey">The recap starts after about 3 minutes of conversation.</p>`, recapFooter("First update at 3:00", { update: false })],
+          ["Updating", recapList(4) + updatingRow, recapFooter("Updating…", { update: false })],
+          ["Paused", recapList(4) + `<p class="mt-2 text-[12.5px] leading-snug text-mut">Paused for this meeting. Nothing said from here is sent until you resume.</p>`, recapFooter("Paused at 09:12", { update: false, pause: false, resume: true })],
+          ["Failed", recapList(4) + `<p class="mt-2 text-[12.5px] leading-snug text-ink rounded-button bg-strsoft border border-straw/40 px-3 py-2">gpt-4.1-mini did not respond within 60s. Trying again at the next update.</p>`, recapFooter("Updated 4 min ago")],
+        ].map(([name, body, foot]) => `
+          <div class="flex flex-col gap-2 min-w-0"><span class="${LABEL}">${name}</span>
+            <div class="relative w-[330px] flex-1 rounded-card overflow-hidden border border-line">${dockPanel("recap", body, foot)}</div>
+          </div>`).join("")}
+      </div>` }],
+  },
+  {
+    title: "7. The setting",
+    caption: "One checkbox in General beside the other meeting toggles, with a line that names the provider and the interval. It is on by default.",
+    frames: [{ w: 640, h: 300, html: () => settingsRows }],
+  },
+];
+
+const root = document.getElementById("sections");
+for (const s of SECTIONS) {
+  const sec = document.createElement("section");
+    sec.innerHTML = `
+    <h2 class="heading-sm text-[18px]!">${s.title}</h2>
+    <p class="mt-1 mb-5 text-[14px] text-mut max-w-[860px]">${s.caption}</p>
+    <div class="flex flex-col gap-8">
+      ${s.frames.map((f) => `
+        <div class="pair">
+          ${["light", "dark"].map((mode) => `
+            <div class="shot">
+              <p class="tag">${f.label ? `${f.label} · ` : ""}${mode}</p>
+              <div class="frame ${mode === "dark" ? "force-dark" : ""}" data-w="${f.w}" style="width:${f.w}px;height:${f.h}px">${f.html()}</div>
+            </div>`).join("")}
+        </div>`).join("")}
+    </div>`;
+  root.appendChild(sec);
+}
+
+// Shrink each frame to its column so a pair never overflows the page.
+function fit() {
+  for (const fr of document.querySelectorAll(".frame")) {
+    const room = fr.parentElement.clientWidth;
+    fr.style.zoom = Math.min(1, room / Number(fr.dataset.w));
+  }
+}
+fit();
+addEventListener("resize", fit);
+</script>
+</body>
+</html>
