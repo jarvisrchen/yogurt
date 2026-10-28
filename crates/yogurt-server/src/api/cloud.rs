@@ -30,6 +30,9 @@ const ACCOUNT: &str = "yogurt-cloud";
 /// The last pass that succeeded, kept apart from the last failure so a failed pass never hides when the cloud was last in step.
 const LAST_PUSH_KEY: &str = "cloud.last_push";
 const LAST_ERROR_KEY: &str = "cloud.last_error";
+/// The last [`HISTORY_LEN`] pushes, newest first, for the Settings history.
+const HISTORY_KEY: &str = "cloud.push_history";
+const HISTORY_LEN: usize = 20;
 const INTERVAL_KEY: &str = "cloud.push_interval";
 const INTERVALS: [(&str, i64); 3] = [("15m", 15 * 60_000), ("1h", 3_600_000), ("1d", 86_400_000)];
 /// Failures only the user can fix. The timer stays quiet until a sign-in, a connect, or a manual push clears the error.
@@ -270,11 +273,62 @@ fn reset_interval(state: &AppState) {
     }
 }
 
-fn record_failure(state: &AppState, e: &CloudApiError, now: i64) {
+/// An idle timer finds nothing to send every wake, so a run of `up_to_date` entries collapses into the newest one instead of pushing real runs out.
+fn add_history(state: &AppState, entry: Value) {
+    let mut history = match recorded(state, HISTORY_KEY) {
+        Value::Array(h) => h,
+        _ => Vec::new(),
+    };
+    let idle = |e: &Value| e["outcome"] == "up_to_date";
+    if idle(&entry) && history.first().is_some_and(idle) {
+        history[0] = entry;
+    } else {
+        history.insert(0, entry);
+    }
+    history.truncate(HISTORY_LEN);
+    record(state, HISTORY_KEY, &Value::Array(history));
+}
+
+fn clear_records(state: &AppState) {
+    for key in [LAST_PUSH_KEY, LAST_ERROR_KEY, HISTORY_KEY] {
+        record(state, key, &Value::Null);
+    }
+}
+
+fn record_success(state: &AppState, trigger: &str, now: i64, changed: usize, deleted: usize) {
+    record(
+        state,
+        LAST_PUSH_KEY,
+        &json!({ "at": now, "changed": changed, "deleted": deleted }),
+    );
+    record(state, LAST_ERROR_KEY, &Value::Null);
+    let outcome = if changed + deleted == 0 {
+        "up_to_date"
+    } else {
+        "pushed"
+    };
+    add_history(
+        state,
+        json!({ "at": now, "trigger": trigger, "outcome": outcome, "changed": changed, "deleted": deleted }),
+    );
+}
+
+fn record_failure(state: &AppState, trigger: &str, e: &CloudApiError, now: i64) {
     record(
         state,
         LAST_ERROR_KEY,
         &json!({ "at": now, "error": e.message, "code": e.code }),
+    );
+    add_history(
+        state,
+        json!({
+            "at": now,
+            "trigger": trigger,
+            "outcome": "failed",
+            "error": e.message,
+            "code": e.code,
+            "needs_you": USER_FIXABLE.contains(&e.code),
+        }),
     );
 }
 
@@ -389,6 +443,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
         "not_pushed": pending.not_pushed,
         "last_push": recorded(&state, LAST_PUSH_KEY),
         "last_error": recorded(&state, LAST_ERROR_KEY),
+        "push_history": recorded(&state, HISTORY_KEY),
         "push_interval": push_interval(&state),
     })))
 }
@@ -480,8 +535,7 @@ async fn connect(
         )?;
         let repo = state.meeting_repo.clone();
         blocking(move || repo.clear_cloud_hashes()).await?;
-        record(&state, LAST_PUSH_KEY, &Value::Null);
-        record(&state, LAST_ERROR_KEY, &Value::Null);
+        clear_records(&state);
         reset_interval(&state);
         status(State(state.clone())).await
     })
@@ -601,6 +655,7 @@ async fn push_locked(
     state: &AppState,
     held: &Held<'_>,
     cancel: &mut watch::Receiver<bool>,
+    trigger: &str,
     now: i64,
 ) -> ApiResult<Plan> {
     let pass = async {
@@ -612,15 +667,12 @@ async fn push_locked(
     };
     match pass.await {
         Ok(plan) => {
-            let v =
-                json!({ "at": now, "changed": plan.changed.len(), "deleted": plan.deleted.len() });
-            record(state, LAST_PUSH_KEY, &v);
-            record(state, LAST_ERROR_KEY, &Value::Null);
+            record_success(state, trigger, now, plan.changed.len(), plan.deleted.len());
             Ok(plan)
         }
         Err(e) => {
             if !matches!(e.code, "not_connected" | "cancelled") {
-                record_failure(state, &e, now);
+                record_failure(state, trigger, &e, now);
             }
             Err(e)
         }
@@ -628,11 +680,16 @@ async fn push_locked(
 }
 
 /// Runs to the end of the pass, then tells clients how it went if they were following it.
-async fn push_task(state: AppState, mut cancel: watch::Receiver<bool>, now: i64) {
+async fn push_task(
+    state: AppState,
+    mut cancel: watch::Receiver<bool>,
+    trigger: &'static str,
+    now: i64,
+) {
     let result = match acquire(&state).await {
-        Ok(held) => push_locked(&state, &held, &mut cancel, now).await,
+        Ok(held) => push_locked(&state, &held, &mut cancel, trigger, now).await,
         Err(e) => {
-            record_failure(&state, &e, now);
+            record_failure(&state, trigger, &e, now);
             Err(e)
         }
     };
@@ -662,7 +719,8 @@ async fn push_task(state: AppState, mut cancel: watch::Receiver<bool>, now: i64)
 }
 
 /// Starts the one background push, or says why not. The result of the push itself arrives as frames and in `GET /api/cloud`.
-fn start_push(state: &AppState, now: i64) -> ApiResult<()> {
+/// `trigger` is `manual` or `auto`, shown in the history.
+fn start_push(state: &AppState, trigger: &'static str, now: i64) -> ApiResult<()> {
     if load(state)?.is_none() {
         return Err(CloudApiError::coded("not_connected"));
     }
@@ -670,12 +728,12 @@ fn start_push(state: &AppState, now: i64) -> ApiResult<()> {
         .cloud_push
         .begin()
         .ok_or_else(|| CloudApiError::new("push_running", "A push is already running."))?;
-    tokio::spawn(push_task(state.clone(), cancel, now));
+    tokio::spawn(push_task(state.clone(), cancel, trigger, now));
     Ok(())
 }
 
 async fn push_now(State(state): State<AppState>) -> ApiResult<(StatusCode, Json<Value>)> {
-    start_push(&state, now_ms())?;
+    start_push(&state, "manual", now_ms())?;
     Ok((StatusCode::ACCEPTED, Json(json!({ "started": true }))))
 }
 
@@ -718,15 +776,10 @@ async fn auto_tick(state: &AppState, now: i64) {
             return Ok(());
         }
         if pending(&state).await?.not_pushed == 0 {
-            record(
-                &state,
-                LAST_PUSH_KEY,
-                &json!({ "at": now, "changed": 0, "deleted": 0 }),
-            );
-            record(&state, LAST_ERROR_KEY, &Value::Null);
+            record_success(&state, "auto", now, 0, 0);
             return Ok(());
         }
-        start_push(&state, now)
+        start_push(&state, "auto", now)
     })
     .await;
     if let Err(e) = result {
@@ -771,7 +824,7 @@ async fn disconnect(
             Ok(l) => Some(l),
             Err(e) if body.mark_deleted => {
                 if e.code != "not_connected" {
-                    record_failure(&state, &e, now_ms());
+                    record_failure(&state, "disconnect", &e, now_ms());
                 }
                 return Err(e);
             }
@@ -780,7 +833,7 @@ async fn disconnect(
         if let (true, Some(l)) = (body.mark_deleted, linked.as_mut()) {
             let (_stay, mut never) = watch::channel(false);
             if let Err(e) = run_pass(&state, l, Vec::new(), None, &mut never, false).await {
-                record_failure(&state, &e, now_ms());
+                record_failure(&state, "disconnect", &e, now_ms());
                 return Err(e);
             }
         }
@@ -793,8 +846,7 @@ async fn disconnect(
             .map_err(CloudApiError::internal)?;
         let repo = state.meeting_repo.clone();
         blocking(move || repo.clear_cloud_hashes()).await?;
-        record(&state, LAST_PUSH_KEY, &Value::Null);
-        record(&state, LAST_ERROR_KEY, &Value::Null);
+        clear_records(&state);
         reset_interval(&state);
         Ok(Json(json!({ "connected": false })))
     })
@@ -888,7 +940,7 @@ mod tests {
     }
 
     async fn push_and_settle(state: &AppState) {
-        start_push(state, now_ms()).unwrap();
+        start_push(state, "manual", now_ms()).unwrap();
         settle(state).await;
     }
 
@@ -1047,6 +1099,50 @@ mod tests {
             at - T0
         );
         task.abort();
+    }
+
+    fn history(state: &AppState) -> Vec<Value> {
+        recorded(state, HISTORY_KEY)
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn history_keeps_failures_collapses_idle_wakes_and_caps() {
+        let (state, _tmp) = state();
+        push_and_settle(&state).await;
+        let h = history(&state);
+        assert_eq!(h.len(), 1);
+        assert_eq!(h[0]["outcome"], "failed");
+        assert_eq!(h[0]["trigger"], "manual");
+        assert_eq!(h[0]["code"], "network");
+        assert_eq!(h[0]["needs_you"], false);
+
+        record_success(&state, "auto", T0 + MIN, 0, 0);
+        record_success(&state, "auto", T0 + 2 * MIN, 0, 0);
+        let h = history(&state);
+        assert_eq!(h.len(), 2, "idle wakes collapse into one row");
+        assert_eq!(h[0]["outcome"], "up_to_date");
+        assert_eq!(h[0]["at"], T0 + 2 * MIN);
+        assert_eq!(
+            h[1]["outcome"], "failed",
+            "the failure survives the idle wakes"
+        );
+
+        for i in 0..HISTORY_LEN {
+            record_success(&state, "manual", T0 + i as i64, 3, 1);
+        }
+        let h = history(&state);
+        assert_eq!(h.len(), HISTORY_LEN);
+        assert_eq!(h[0]["outcome"], "pushed");
+        assert_eq!(h[0]["changed"], 3);
+
+        let Json(status) = status(State(state.clone())).await.unwrap();
+        assert_eq!(
+            status["push_history"].as_array().unwrap().len(),
+            HISTORY_LEN
+        );
     }
 
     #[tokio::test]
@@ -1286,7 +1382,7 @@ mod tests {
         let cloud = mock_cloud(&state, 201).await;
         catch_up(200, json!(0)).mount(&cloud).await;
         let mut rx = state.app_events_tx.subscribe();
-        start_push(&state, now_ms()).unwrap();
+        start_push(&state, "manual", now_ms()).unwrap();
         let frames = frames_until_end(&mut rx).await;
         let sent: Vec<_> = frames[..frames.len() - 1]
             .iter()
@@ -1324,7 +1420,7 @@ mod tests {
         insert(201).mount(&cloud).await;
         catch_up(200, json!(0)).mount(&cloud).await;
         let mut rx = state.app_events_tx.subscribe();
-        start_push(&state, now_ms()).unwrap();
+        start_push(&state, "manual", now_ms()).unwrap();
         let frames = frames_until_end(&mut rx).await;
         let waits: Vec<_> = frames
             .iter()
@@ -1344,7 +1440,7 @@ mod tests {
         insert(403).mount(&cloud).await;
         catch_up(200, json!(0)).mount(&cloud).await;
         let mut rx = state.app_events_tx.subscribe();
-        start_push(&state, now_ms()).unwrap();
+        start_push(&state, "manual", now_ms()).unwrap();
         let frames = frames_until_end(&mut rx).await;
         let end = frames.last().unwrap();
         assert_eq!(end["type"], "cloud_push_error");
@@ -1383,7 +1479,7 @@ mod tests {
         let cloud = mock_cloud(&state, 201).await;
         catch_up(200, json!(0)).mount(&cloud).await;
         let mut rx = state.app_events_tx.subscribe();
-        start_push(&state, now_ms()).unwrap();
+        start_push(&state, "manual", now_ms()).unwrap();
         loop {
             let f = rx.recv().await.unwrap();
             if f["sent"] == 2 {

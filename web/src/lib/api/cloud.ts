@@ -16,6 +16,13 @@ export interface LastError {
   code: string;
 }
 
+export type PushTrigger = "manual" | "auto" | "disconnect";
+
+/** One push in the Settings history. `up_to_date` stands for a run of wakes that found nothing to send, stamped with the newest. */
+export type PushHistoryEntry =
+  | { at: number; trigger: PushTrigger; outcome: "pushed" | "up_to_date"; changed: number; deleted: number }
+  | { at: number; trigger: PushTrigger; outcome: "failed"; error: string; code: string; needs_you: boolean };
+
 /** A push in progress. `announced` is true once the pass needs more than one batch, which is when the pill shows. */
 export interface PushStatus {
   sent: number;
@@ -39,6 +46,8 @@ export type CloudStatus =
       not_pushed: number;
       last_push: LastPush | null;
       last_error: LastError | null;
+      /** Newest first, at most 20. */
+      push_history: PushHistoryEntry[] | null;
       push_interval: PushInterval;
       push: PushStatus | null;
     };

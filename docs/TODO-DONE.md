@@ -1364,3 +1364,7 @@ New closed items go at the bottom.
 - [x] **LLM-12** Cross-meeting chat reads the verbs "may" and "march" as months, so "did Steven say we may slip?" searches only May and finds nothing
 
   "may" and "march" name a month only next to a date cue, such as "in May", "last March", "May 12th", or "May 2025", on the Mac and in the webapp.
+
+- [x] **SYNC-20** Show the last 20 pushes under the last-push line in Cloud sync settings, with a status dot per run and a failed-since count, so the user can see whether sync is healthy
+
+  Records each push outcome in cloud.push_history and shows it as an expandable list in the Cloud sync card.
