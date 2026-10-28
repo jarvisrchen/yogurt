@@ -1436,3 +1436,9 @@ New closed items go at the bottom.
   A label's sidebar menu has Archive meetings above Delete.
   It confirms in place with the count of meetings it would archive, and skips the meeting being recorded.
   `POST /api/meetings/archive` takes `label_id` beside `before`, and needs at least one.
+
+- [x] **SYNC-27** In the webapp, let a label narrow the picked pill, so Archive with a label lists that label's archived meetings, and list the archive's labels under Archive.
+
+  A label now narrows the picked pill, so All, Starred, or Archive each combine with it, and All labels takes it off.
+  With Archive picked, the Labels list comes from `yogurt_labels(..., only_archived => true)`, the labels of the Mac's archived meetings.
+  Moving into or out of Archive takes the label off, and All and Starred keep it.

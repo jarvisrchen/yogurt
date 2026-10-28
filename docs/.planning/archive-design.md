@@ -151,7 +151,10 @@ A new RPC, `yogurt_labels(token, only_device)`, returns that Mac's labels from i
 Since SYNC-23, `only_starred` applies without `only_device` and `only_label` still needs one, and the `only_` names keep clear of `yogurt_library`'s `starred` output column, which Postgres would reject as a repeated name.
 The Labels button opens a list of that Mac's labels with their colors, because a Mac can have too many labels for a row of pills.
 Picking one closes the list, and the button then shows that label's color and name in the selected style.
-Changing the Mac resets a label to All, because the old Mac's label means nothing on the new one.
+SYNC-27 made a label narrow the picked pill, so Archive with a label lists that label's archived meetings.
+With Archive picked, `yogurt_labels(..., only_archived => true)` lists the labels of the Mac's archived meetings, and moving into or out of Archive takes the label off, since the two lists differ.
+All labels at the top of the list takes the label off.
+Changing the Mac takes the label off, because the old Mac's label means nothing on the new one.
 Starred stays, and so does Archive unless the new pick is All devices.
 With a Mac picked, rows drop their device tag, since every row would show the same one.
 

@@ -376,9 +376,13 @@ Once you pick one machine, the row also offers Archive and, at its end, a Labels
 Archive lists only the meetings you archived on that Mac.
 Each Mac keeps its own labels, so All devices offers no Labels button.
 Labels opens a list of that Mac's labels with their colors, taken from the meetings it pushed that you have not archived.
-Picking one closes the list and shows only the meetings with that label, and the button then shows the label's color and name.
+With Archive picked, the list holds the labels of that Mac's archived meetings instead.
+Picking one closes the list and narrows the picked pill to the meetings with that label, and the button then shows the label's color and name.
+So Archive with a label lists that label's archived meetings, such as a Granola folder you archived.
+All labels, at the top of the list, takes the label off.
 Escape or a tap outside closes the list without picking.
-Picking another machine starts the row over at All.
+All and Starred share one list, so the label stays when you switch between them, and moving into or out of Archive takes it off.
+Picking another machine takes the label off and keeps Starred, and Archive too unless the pick is All devices.
 The count under the list counts only what the list shows.
 Each row shows the title, the start time, and the length, and under All devices also the machine that pushed it.
 

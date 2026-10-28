@@ -525,8 +525,9 @@ begin
 end $$;
 
 -- One device's labels, from the latest version at or before at_push, or now when null, of each of its live, unarchived meetings, sorted by name with case ignored.
+-- With only_archived they come from its archived meetings instead, as the Archive lists them.
 -- A label takes its name and color from the newest push that has it.
-create or replace function public.yogurt_labels(token text, only_device uuid, at_push bigint default null)
+create or replace function public.yogurt_labels(token text, only_device uuid, at_push bigint default null, only_archived boolean default false)
 returns table (id text, name text, color text)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -537,7 +538,7 @@ begin
     select x.id, x.name, x.color from (
       select distinct on (e ->> 'id') e ->> 'id' as id, coalesce(e ->> 'name', '') as name, coalesce(e ->> 'color', '') as color
       from (
-        select distinct on (v.meeting_id) v.meeting_id, v.push_id, v.body is not null and not v.archived as shown
+        select distinct on (v.meeting_id) v.meeting_id, v.push_id, v.body is not null and v.archived = coalesce(only_archived, false) as shown
         from public.yogurt_versions v
         where v.user_id = auth.uid() and v.device_id = only_device and (at_push is null or v.push_id <= at_push)
         order by v.meeting_id, v.push_id desc
@@ -814,7 +815,7 @@ grant execute on function
   public.yogurt_start_push(uuid),
   public.yogurt_device_meetings(uuid),
   public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
-  public.yogurt_labels(text, uuid, bigint),
+  public.yogurt_labels(text, uuid, bigint, boolean),
   public.yogurt_meeting(text, uuid, text, bigint),
   public.yogurt_search_catch_up(int),
   public.yogurt_search(text, text, uuid, int, boolean, boolean, text),
