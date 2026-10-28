@@ -8,7 +8,7 @@ After a distraction, catching up means scrolling that transcript.
 The live recap adds short bullets of what was just discussed, a few every 3 minutes, so the user can glance and rejoin.
 
 Mocks, light and dark: [.lavish/live-recap-mocks.html](../.lavish/live-recap-mocks.html).
-Three questions are still open, listed at the end.
+Two questions are still open, listed at the end.
 
 ## What the user sees
 
@@ -63,7 +63,7 @@ Bullets live in memory on `Meeting` as `recap: Mutex<RecapState>`, holding the b
 The registry keeps a meeting while it is live, so a page refresh keeps the recap.
 A server restart ends the recording anyway, so nothing is lost that the recording itself does not lose.
 No migration, which also keeps clear of the shared-database hazard a new column brings while the branch is in review.
-Open question 3 decides whether this changes.
+Open question 2 decides whether this changes.
 
 Every state change sends a `live_recap` frame on `events_tx`, a new `WsEvent::LiveRecap` variant in `crates/yogurt-server/src/ws.rs`, carrying the whole state.
 The list stays short, so sending all of it keeps a reconnecting page correct with no delta logic, the choice Enhance streaming made for the same reason.
@@ -76,6 +76,19 @@ The list stays short, so sending all of it keeps a reconnecting page correct wit
 `general.live_recap` is a key in the existing key-value settings (`crates/yogurt-db/src/settings.rs:34`), so it needs no migration.
 General settings (`web/src/components/settings/GeneralSection.tsx`) gains "Show a live recap of the discussion while recording" after the auto-stop checkbox.
 The line under it names the configured model and says the recap sends the latest few minutes of transcript to it every 3 minutes.
+
+## After the meeting
+
+The recap is a live aid, and the enhanced notes replace it once the meeting ends.
+
+End meeting stops the recording, which ends the recap task, and opens the post-meeting page.
+That page renders the dock in static mode from the saved transcript (`web/src/routes/MeetingPost.tsx:585`), with no Recap view.
+When Enhance writes the enriched notes, it clears the meeting's recap and sends an empty `live_recap` frame, so the bullets stop existing at the moment the summary takes their place.
+The registry keeps a meeting in memory until restart (`crates/yogurt-server/src/meetings.rs:279`), so without that clear the bullets would linger, unseen, and `GET /recap` would still return them.
+
+The bullets never reach SQLite, the markdown export, or Yogurt Cloud, so they are never part of the meeting record.
+Stop recording without End keeps them, so resuming the recording continues the same recap.
+Resuming after Enhance starts a fresh recap, which is fine, because the resumed meeting gets enhanced again at its end.
 
 ## Privacy
 
@@ -113,24 +126,20 @@ Playwright screenshots the dock in light and dark for the PR.
 - 3 minutes and 100 words, as constants and not settings, until real meetings say otherwise.
 - Bullets are append-only and earlier ones never change.
 - The prompt sees the transcript but not the user's notes, so the recap covers the conversation and nothing else.
+- The recap lives in the dock as a second view, and a card above the notes was considered and dropped.
 - The dock never opens itself, and a dot signals new bullets instead.
 - The CLI provider is allowed, with the longer effective interval described above.
 
 ## Open questions
 
-These three come down to product taste or a privacy default, which are yours to call.
+These two come down to a privacy default and what a meeting keeps, which are yours to call.
 
-1. **Where the recap lives.**
-   I recommend the dock (mocks 1 to 3), because it keeps the notes column untouched, a layout invariant `Meeting.tsx` states, and the transcript the bullets point into is one click away.
-   The alternative (mock 5) is a card above the notes showing the latest three bullets.
-   It is visible with no click, at the cost of pushing the notes editor down about 150px.
-
-2. **Whether the setting starts on or off.**
+1. **Whether the setting starts on or off.**
    On means the feature is there the first time the user records, which is when it is worth anything.
    Off means upgrading users get no new background flow of their transcript to a provider without choosing it, which fits a local-first product.
    I lean toward on, because the transcript already goes to the same provider through Ask and Enhance and the setting names it, but this is a privacy default and the call is yours.
 
-3. **Whether the bullets outlive the meeting.**
-   This design keeps them in memory only, so they vanish once the meeting ends and Enhance takes over.
-   Keeping them would mean a migration and a column, and then three follow-on choices: show them on the post-meeting page, push them to Yogurt Cloud with the meeting, and feed them into Enhance as extra input.
-   I lean toward in-memory for the first version, because Enhance already reads the full transcript and LLM-10 is reworking how it weaves notes, so feeding it lower-quality bullets could make that harder.
+2. **Whether the bullets outlive the meeting.**
+   This design drops them when Enhance writes the enriched notes, as described in After the meeting.
+   Keeping them would mean a migration and a column, and then three follow-on choices: show them as a Recap view on the post-meeting page, push them to Yogurt Cloud with the meeting, and feed them into Enhance as extra input.
+   I lean toward dropping them, because the enriched notes cover the same facts with timestamp links, and LLM-10 is reworking how Enhance weaves its inputs, so feeding it lower-quality bullets could make that harder.

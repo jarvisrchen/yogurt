@@ -249,7 +249,7 @@ const transcriptBody = () => TRANSCRIPT.map(([ch, ts, text]) => `
 /* ---------------- live page ---------------- */
 
 // web/src/routes/Meeting.tsx, header through the notes card.
-function liveMain({ recapCard = "" } = {}) {
+function liveMain() {
   return `
   <main class="max-w-[660px] mx-auto px-10 py-12 space-y-6">
     <a class="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut"><span aria-hidden>←</span><span>Library</span><span class="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-straw)] ml-1 animate-recpulse"></span></a>
@@ -273,7 +273,6 @@ function liveMain({ recapCard = "" } = {}) {
         <button type="button" class="${btn("secondary", "w-full py-3.5 text-[15px]")}">${icon("mic", 18)}Mute mic<kbd class="bg-black/10 text-current text-[11px] font-mono px-1.5 py-0.5 rounded ml-1">M</kbd></button>
       </div>
     </header>
-    ${recapCard}
     <section class="rounded-card bg-card p-6 border border-line text-[15px] leading-relaxed">
       <h2 class="text-[20px] font-bold mb-2">Pricing</h2>
       <ul class="list-disc pl-5 space-y-1"><li>pro tier → $18?</li><li>ask finance re annual cap</li></ul>
@@ -288,26 +287,15 @@ const askPill = `
     <span class="inline-flex items-center justify-center h-7 w-7 rounded-full bg-blue text-white"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M6 2.5L2.5 6M6 2.5L9.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
   </div>`;
 
-function livePage({ dock = null, tabs, recapCard = "" }) {
+function livePage({ dock = null, tabs }) {
   return `
   <div class="relative h-full overflow-hidden bg-paper pr-7">
-    ${liveMain({ recapCard })}
+    ${liveMain()}
     ${dock ?? ""}
     ${edgeTabs(tabs)}
     ${askPill}
   </div>`;
 }
-
-// Option B for open question 1: a card above the notes, latest three bullets.
-const recapCardAbove = `
-  <section class="rounded-card bg-card border border-line px-6 pt-4 pb-3">
-    <div class="flex items-center justify-between mb-1">
-      <span class="${LABEL}">Recap so far</span>
-      <span class="text-[12px] text-mut">Updated 1 min ago</span>
-    </div>
-    ${BULLETS.slice(-3).map((b) => bulletRow(b)).join("")}
-    <button type="button" class="text-[12.5px] font-semibold text-blue mt-1">Show all 7</button>
-  </section>`;
 
 /* ---------------- dock states, side by side ---------------- */
 
@@ -334,7 +322,7 @@ const PAGE = { w: 1440, h: 780 };
 
 const SECTIONS = [
   {
-    title: "1. Recommended: the dock opens on Recap",
+    title: "1. The dock opens on Recap",
     caption: "The transcript dock gains a Recap view beside Transcript, picked with the segmented control in its header. Bullets append at the bottom with the time they happened, and clicking one switches to Transcript at that moment. The notes column does not reflow, as today.",
     frames: [{ ...PAGE, html: () => livePage({ tabs: { open: true, active: "recap" }, dock: dockPanel("recap", recapBody(), recapFooter("Updated 1 min ago")) }) }],
   },
@@ -364,13 +352,8 @@ const SECTIONS = [
       </div>` }],
   },
   {
-    title: "5. Alternative for open question 1: a card above the notes",
-    caption: "Always visible with no click, showing the latest three bullets. It pushes the notes editor down by about 150px, which is the cost of seeing it without opening anything.",
-    frames: [{ ...PAGE, html: () => livePage({ tabs: { open: false, active: "transcript" }, recapCard: recapCardAbove }) }],
-  },
-  {
-    title: "6. The setting",
-    caption: "One checkbox in General beside the other meeting toggles, with a line that names the provider and the interval. Its default is open question 2.",
+    title: "5. The setting",
+    caption: "One checkbox in General beside the other meeting toggles, with a line that names the provider and the interval. Its default is open question 1.",
     frames: [{ w: 640, h: 300, html: () => settingsRows }],
   },
 ];
