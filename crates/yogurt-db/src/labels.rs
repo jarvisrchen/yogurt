@@ -29,6 +29,8 @@ pub struct LabelWithCount {
     #[serde(flatten)]
     pub label: Label,
     pub meeting_count: i64,
+    /// How many of `meeting_count` are archived.
+    pub archived_count: i64,
 }
 
 #[derive(Clone)]
@@ -41,13 +43,14 @@ impl LabelRepo {
         Self { db }
     }
 
-    /// All labels, name ASC (case-insensitive), with a `meeting_count`. `LEFT JOIN` keeps labels with zero meetings.
+    /// All labels, name ASC (case-insensitive), with a `meeting_count` and an `archived_count`. `LEFT JOIN` keeps labels with zero meetings.
     pub fn list_with_counts(&self) -> Result<Vec<LabelWithCount>> {
         self.db.with_conn(|conn| {
             let mut stmt = conn.prepare_cached(
-                "SELECT l.id, l.name, l.color, l.position, l.updated_at, COUNT(ml.meeting_id) \
+                "SELECT l.id, l.name, l.color, l.position, l.updated_at, COUNT(ml.meeting_id), COUNT(m.archived_at) \
                  FROM labels l \
                  LEFT JOIN meeting_labels ml ON ml.label_id = l.id \
+                 LEFT JOIN meetings m ON m.id = ml.meeting_id \
                  GROUP BY l.id \
                  ORDER BY l.name COLLATE NOCASE",
             )?;
@@ -61,6 +64,7 @@ impl LabelRepo {
                         updated_at: r.get(4)?,
                     },
                     meeting_count: r.get(5)?,
+                    archived_count: r.get(6)?,
                 })
             })?;
             let mut out = Vec::new();

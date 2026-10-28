@@ -15,7 +15,8 @@ import { useArchivePreview, useCreateMeeting } from "../../lib/api/meetings";
 import { settingsApi } from "../../lib/api/settings";
 import { LABEL_SORT_KEY } from "../../lib/labelSort";
 
-vi.mock("../../lib/api/labels", () => ({
+vi.mock("../../lib/api/labels", async (importOriginal) => ({
+  isArchivedLabel: (await importOriginal<typeof import("../../lib/api/labels")>()).isArchivedLabel,
   useLabels: vi.fn(),
   useUpdateLabel: vi.fn(),
   useDeleteLabel: vi.fn(),
@@ -36,11 +37,11 @@ vi.mock("../../lib/api/settings", () => ({
 
 afterEach(() => cleanup());
 
-function renderSidebar() {
+function renderSidebar(path = "/") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
         <Sidebar />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -51,8 +52,8 @@ describe("Sidebar — Labels section", () => {
   it("renders labels with counts and links to /label/:id", () => {
     vi.mocked(useLabels).mockReturnValue({
       data: [
-        { id: "l1", name: "Sales", color: "blue", meeting_count: 3 },
-        { id: "l2", name: "Support", color: "matcha", meeting_count: 0 },
+        { id: "l1", name: "Sales", color: "blue", meeting_count: 3, archived_count: 0 },
+        { id: "l2", name: "Support", color: "matcha", meeting_count: 0, archived_count: 0 },
       ],
     } as unknown as ReturnType<typeof useLabels>);
     vi.mocked(useUpdateLabel).mockReturnValue({
@@ -89,7 +90,7 @@ describe("Sidebar — Labels section", () => {
 
   it("opens the row menu from the kebab without navigating", () => {
     vi.mocked(useLabels).mockReturnValue({
-      data: [{ id: "l1", name: "Sales", color: "blue", meeting_count: 3 }],
+      data: [{ id: "l1", name: "Sales", color: "blue", meeting_count: 3, archived_count: 0 }],
     } as unknown as ReturnType<typeof useLabels>);
     vi.mocked(useUpdateLabel).mockReturnValue({
       mutate: vi.fn(),
@@ -133,7 +134,7 @@ describe("Sidebar — Labels section", () => {
 
   it("commits a valid custom hex on Enter but not an invalid one on blur", () => {
     vi.mocked(useLabels).mockReturnValue({
-      data: [{ id: "l1", name: "Sales", color: "blue", meeting_count: 3 }],
+      data: [{ id: "l1", name: "Sales", color: "blue", meeting_count: 3, archived_count: 0 }],
     } as unknown as ReturnType<typeof useLabels>);
     const mutate = vi.fn();
     vi.mocked(useUpdateLabel).mockReturnValue({
@@ -233,7 +234,7 @@ describe("Sidebar — Labels section", () => {
     fireEvent.change(input, { target: { value: "  Sales  " } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mutate).toHaveBeenCalledWith({ name: "Sales" });
+    expect(mutate).toHaveBeenCalledWith({ name: "Sales" }, expect.anything());
     expect(screen.queryByPlaceholderText("Label name")).not.toBeInTheDocument();
   });
 
@@ -278,9 +279,10 @@ describe("Sidebar — Labels section", () => {
     localStorage.setItem(LABEL_SORT_KEY, "custom");
     vi.mocked(useLabels).mockReturnValue({
       data: [
-        { id: "l1", name: "Sales", color: "blue", meeting_count: 3, position: 0, updated_at: 1 },
-        { id: "l2", name: "Support", color: "matcha", meeting_count: 0, position: 1, updated_at: 2 },
-        { id: "l3", name: "Zeta", color: "straw", meeting_count: 0, position: 2, updated_at: 3 },
+        { id: "l1", name: "Sales", color: "blue", meeting_count: 3, archived_count: 0, position: 0, updated_at: 1 },
+        { id: "l2", name: "Support", color: "matcha", meeting_count: 0, archived_count: 0, position: 1, updated_at: 2 },
+        { id: "l3", name: "Zeta", color: "straw", meeting_count: 0, archived_count: 0, position: 2, updated_at: 3 },
+        { id: "l4", name: "Old", color: "slate", meeting_count: 2, archived_count: 2, position: 3, updated_at: 4 },
       ],
     } as unknown as ReturnType<typeof useLabels>);
     vi.mocked(useUpdateLabel).mockReturnValue({
@@ -314,8 +316,50 @@ describe("Sidebar — Labels section", () => {
     fireEvent.dragOver(wrapperOf("Sales"));
     fireEvent.drop(wrapperOf("Sales"));
 
-    expect(reorder).toHaveBeenCalledWith(["l3", "l1", "l2"]);
+    expect(reorder).toHaveBeenCalledWith(["l3", "l1", "l2", "l4"]);
 
     localStorage.removeItem(LABEL_SORT_KEY);
+  });
+
+  it("files a label with only archived meetings under Archived labels, and counts and links by view", () => {
+    vi.mocked(useLabels).mockReturnValue({
+      data: [
+        { id: "l1", name: "Sales", color: "blue", meeting_count: 3, archived_count: 1 },
+        { id: "l2", name: "Old clients", color: "honey", meeting_count: 2, archived_count: 2 },
+      ],
+    } as unknown as ReturnType<typeof useLabels>);
+    vi.mocked(useUpdateLabel).mockReturnValue({ mutate: vi.fn() } as unknown as ReturnType<typeof useUpdateLabel>);
+    vi.mocked(useDeleteLabel).mockReturnValue({ mutateAsync: vi.fn(), isPending: false } as unknown as ReturnType<typeof useDeleteLabel>);
+    vi.mocked(useCreateMeeting).mockReturnValue({ mutateAsync: vi.fn(), isPending: false } as unknown as ReturnType<typeof useCreateMeeting>);
+    vi.mocked(useCreateLabel).mockReturnValue({ mutate: vi.fn(), isPending: false } as unknown as ReturnType<typeof useCreateLabel>);
+    vi.mocked(useReorderLabels).mockReturnValue({ mutate: vi.fn() } as unknown as ReturnType<typeof useReorderLabels>);
+    vi.mocked(settingsApi.get).mockResolvedValue({ providers: [] } as never);
+
+    renderSidebar();
+    const sales = screen.getByRole("link", { name: /Sales/ });
+    expect(sales).toHaveAttribute("href", "/label/l1");
+    expect(sales).toHaveTextContent("Sales2");
+    expect(screen.queryByText("Old clients")).not.toBeInTheDocument();
+    const group = screen.getByRole("button", { name: /Archived labels/ });
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(group);
+    const old = screen.getByRole("link", { name: /Old clients/ });
+    expect(old).toHaveAttribute("href", "/archive/label/l2");
+    expect(old).toHaveTextContent("Old clients2");
+    fireEvent.click(screen.getByRole("button", { name: "Old clients label options" }));
+    expect(screen.queryByRole("menuitem", { name: "Archive meetings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    cleanup();
+
+    // In the Archive view every label opens and counts its archived meetings, and the group opens on its own label.
+    renderSidebar("/archive/label/l2");
+    expect(screen.getByRole("link", { name: /Sales/ })).toHaveAttribute("href", "/archive/label/l1");
+    expect(screen.getByRole("link", { name: /Sales/ })).toHaveTextContent("Sales1");
+    expect(screen.getByRole("button", { name: /Archived labels/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: /Old clients/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Archive" })).not.toHaveAttribute("aria-current");
+    fireEvent.click(screen.getByRole("button", { name: /Archived labels/ }));
+    expect(screen.getByRole("button", { name: /Archived labels/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Old clients")).not.toBeInTheDocument();
   });
 });

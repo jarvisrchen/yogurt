@@ -11,6 +11,8 @@ export type { Label, LabelColor, PaletteColor };
 
 export interface LabelWithCount extends Label {
   meeting_count: number;
+  /** How many of `meeting_count` are archived. */
+  archived_count: number;
   position: number;
   /** Unix ms, bumped on rename/recolor and on apply/remove. Backs the "Last updated" sort. */
   updated_at: number;
@@ -112,3 +114,6 @@ export function useReorderLabels(): UseMutationResult<void, Error, string[]> {
     onSettled: () => qc.invalidateQueries({ queryKey: labelsKey }),
   });
 }
+
+/** A label whose meetings are all archived, which the sidebar files under Archived labels. */
+export const isArchivedLabel = (l: LabelWithCount) => l.archived_count > 0 && l.archived_count === l.meeting_count;

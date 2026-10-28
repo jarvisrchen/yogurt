@@ -47,6 +47,7 @@ export const routes: RouteObject[] = [
       { path: "/", element: <Library /> },
       { path: "/starred", element: <Library starredOnly /> },
       { path: "/archive", element: <Library archivedOnly /> },
+      { path: "/archive/label/:labelId", element: <Library archivedOnly /> },
       { path: "/label/:labelId", element: <Library /> },
       { path: "/welcome", element: <Welcome /> },
       { path: "/style-guide", element: <StyleGuide /> },

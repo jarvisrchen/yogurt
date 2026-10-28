@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { MoreHorizontal } from "lucide-react";
 import {
   useDeleteLabel,
@@ -17,9 +17,11 @@ const DEFAULT_CUSTOM_COLOR = "#8a8fa3";
 
 interface Props {
   label: LabelWithCount;
+  /** The row opens and counts the label's archived meetings, in the Archive view and under Archived labels. */
+  inArchive: boolean;
 }
 
-export function SidebarLabelRow({ label }: Props) {
+export function SidebarLabelRow({ label, inArchive }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState<"delete" | "archive" | null>(null);
@@ -30,6 +32,9 @@ export function SidebarLabelRow({ label }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const update = useUpdateLabel();
   const del = useDeleteLabel();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const live = label.meeting_count - label.archived_count;
   const archive = useArchiveMatching();
   const preview = useArchivePreview(confirming === "archive" ? { labelId: label.id } : null);
   const archivable = preview.data?.count;
@@ -92,7 +97,7 @@ export function SidebarLabelRow({ label }: Props) {
   return (
     <div ref={wrapperRef} className="relative group/label">
       <NavLink
-        to={`/label/${label.id}`}
+        to={inArchive ? `/archive/label/${label.id}` : `/label/${label.id}`}
         onClick={(e) => {
           if (menuOpen) e.preventDefault();
         }}
@@ -104,7 +109,7 @@ export function SidebarLabelRow({ label }: Props) {
       >
         <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: tone.fg }} aria-hidden />
         <span className="flex-1 truncate">{label.name}</span>
-        <span className="text-[11px] text-mut">{label.meeting_count}</span>
+        <span className="text-[11px] text-mut">{inArchive ? label.archived_count : live}</span>
         <button
           type="button"
           aria-label={`${label.name} label options`}
@@ -193,6 +198,8 @@ export function SidebarLabelRow({ label }: Props) {
                 archive.mutateAsync({ labelId: label.id }).then(() => {
                   setMenuOpen(false);
                   setConfirming(null);
+                  // The label's own page would now be empty, so follow its meetings into the Archive.
+                  if (pathname === `/label/${label.id}`) navigate(`/archive/label/${label.id}`);
                 }, () => {})
               }
               onCancel={() => setConfirming(null)}
@@ -223,17 +230,19 @@ export function SidebarLabelRow({ label }: Props) {
             />
           ) : (
             <>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  archive.reset();
-                  setConfirming("archive");
-                }}
-                className="block w-full text-left py-1 text-ink hover:text-blue"
-              >
-                Archive meetings
-              </button>
+              {live > 0 && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    archive.reset();
+                    setConfirming("archive");
+                  }}
+                  className="block w-full text-left py-1 text-ink hover:text-blue"
+                >
+                  Archive meetings
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
