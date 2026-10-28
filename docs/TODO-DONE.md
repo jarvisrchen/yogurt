@@ -1470,3 +1470,8 @@ New closed items go at the bottom.
   The Archive nav item stays highlighted while the Archive view is narrowed to a label.
   Clicking the selected label again takes it off, back to the whole Archive or the whole Library.
   The Archived labels group opens once per arrival on one of its labels and stays open when the label is taken off.
+
+- [x] **MTG-27** Deleting the label whose page is open crashes the app with React error #300.
+
+  The library's redirect for an unknown label returned before two keyboard-shortcut hooks, so the render after the label disappeared ran fewer hooks than the one before.
+  The redirect now sits after every hook, and a Library test deletes the label under an open label page.
