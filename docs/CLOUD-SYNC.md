@@ -366,11 +366,11 @@ The library lists every meeting you pushed, grouped by day with the newest first
 Under the list, a range such as "26–50 of 1,412" shows where you are, Previous and Next move between pages, and Per page offers 10, 25, 50, or 100.
 The page and the page size are in the address, so a reload or a shared link keeps them, and a size you pick is remembered.
 The pills above the list pick one machine, and All devices shows them together.
-The row under them picks All or Archive.
-All leaves out the meetings you archived on a Mac, and Archive lists only those, under All devices or one machine.
-Once you pick one machine, the row also offers Starred and, at its end, a Labels button.
-Each Mac keeps its own stars and labels, so All devices offers neither.
-Starred lists the meetings you starred on that Mac.
+The row under them picks All or Starred.
+All leaves out the meetings you archived on a Mac, and Starred lists the meetings you starred, on every machine under All devices.
+Once you pick one machine, the row also offers Archive and, at its end, a Labels button.
+Archive lists only the meetings you archived on that Mac.
+Each Mac keeps its own labels, so All devices offers no Labels button.
 Labels opens a list of that Mac's labels with their colors, taken from the meetings it pushed that you have not archived.
 Picking one closes the list and shows only the meetings with that label, and the button then shows the label's color and name.
 Escape or a tap outside closes the list without picking.

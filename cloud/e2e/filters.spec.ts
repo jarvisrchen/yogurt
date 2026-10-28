@@ -66,27 +66,33 @@ const labelsButton = (page: Page) => filters(page).getByRole("button", { name: /
 const list = (page: Page) => page.getByRole("listbox", { name: "Labels" });
 const row = (page: Page, title: string) => page.getByRole("button", { name: new RegExp(`^${title}`) });
 
-test("a picked Mac adds Starred and its labels, and its rows drop the device tag", async ({ page }, info) => {
+test("Starred works on every Mac, and a picked Mac adds Archive and its labels and drops the device tag", async ({ page }, info) => {
   await onboard(page);
   await seedMacs();
   await page.reload();
 
-  // All devices: All and Archive only, and each row names its Mac.
+  // All devices: All and Starred only, and each row names its Mac.
   await expect(row(page, "Weekly 1:1")).toBeVisible();
-  await expect(filters(page).getByRole("button")).toHaveText(["All", "Archive"]);
+  await expect(filters(page).getByRole("button")).toHaveText(["All", "Starred"]);
   await expect(row(page, "Weekly 1:1").getByText("MacBook Pro")).toBeVisible();
   await expect(row(page, "Standup").getByText("Mac mini")).toBeVisible();
   await shot(page, info, "f-all-devices", false);
 
-  // One Mac: Starred joins the pills, the Labels button sits at the end, and the rows lose their tag.
+  // Starred lists the starred meetings of every Mac.
+  await filter(page, "Starred").click();
+  await expect(range(page)).toHaveText("1–3 of 3");
+  await expect(row(page, "Standup").getByText("Mac mini")).toBeVisible();
+  await expect(row(page, "Customer call - Acme").getByText("MacBook Pro")).toBeVisible();
+  await expect(row(page, "Q4 planning sync")).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await shot(page, info, "f-all-starred", false);
+
+  // One Mac: Archive joins the pills, the Labels button sits at the end, the rows lose their tag, and Starred stays picked.
   await device(page, "MacBook Pro").click();
   await expect(filters(page).getByRole("button")).toHaveText(["All", "Starred", "Archive", "Labels"]);
-  await expect(range(page)).toHaveText("1–9 of 9");
-  await expect(row(page, "Weekly 1:1").getByText("MacBook Pro")).toHaveCount(0);
-
-  await filter(page, "Starred").click();
   await expect(filter(page, "Starred")).toHaveAttribute("aria-pressed", "true");
   await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(row(page, "Weekly 1:1").getByText("MacBook Pro")).toHaveCount(0);
   await expect(row(page, "Customer call - Acme")).toBeVisible();
   await expect(row(page, "Q4 planning sync")).toHaveCount(0);
 
@@ -141,7 +147,7 @@ test("a picked Mac adds Starred and its labels, and its rows drop the device tag
   await expect(row(page, "Design review")).toBeVisible();
   await search.fill("");
 
-  // Another Mac starts over at All with its own labels, and All devices drops Starred and Labels again.
+  // Another Mac starts a label over at All with its own labels, and All devices drops Archive and Labels again.
   await device(page, "Mac mini").click();
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
   await expect(labelsButton(page)).toHaveAccessibleName("Labels");
@@ -151,7 +157,7 @@ test("a picked Mac adds Starred and its labels, and its rows drop the device tag
   await list(page).getByRole("option", { name: "Ops" }).click();
   await expect(range(page)).toHaveText("1–1 of 1");
   await device(page, "All devices").click();
-  await expect(filters(page).getByRole("button")).toHaveText(["All", "Archive"]);
+  await expect(filters(page).getByRole("button")).toHaveText(["All", "Starred"]);
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
   await expect(range(page)).toHaveText("1–11 of 11");
 });

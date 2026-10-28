@@ -22,7 +22,7 @@ Mocks, light and dark: [.lavish/archive-mocks.html](../.lavish/archive-mocks.htm
 | Granola re-import | Skips archived meetings, because the import matches on the Granola ID, which archiving keeps. |
 | How to archive many at once | Multi-select in the Library, and Archive everything before a date. |
 | The phone | Gets an Archive view, read-only like the rest of the webapp. Archiving happens only on the Mac. |
-| Starred and labels on the phone | Shown as filters once a Mac is picked, because each Mac has its own star and labels. All devices shows no Starred or Labels filter. |
+| Starred and labels on the phone | Starred is offered under All devices and each Mac. Labels and Archive appear once a Mac is picked, because each Mac has its own labels (changed by SYNC-23). |
 
 ## The Mac (MTG-21)
 
@@ -125,7 +125,7 @@ A new parameter changes the function's signature, so the schema drops the old on
 
 The webapp gains a row of filter pills under the device pills (`cloud/src/ui.tsx:272`), which today has none.
 SYNC-21 puts two pills in it, All and Archive.
-Archive works under All devices too, because a meeting's archive state does not depend on which Mac is picked.
+Archive worked under All devices too until SYNC-23 moved it to the per-Mac row.
 Its search searches only the archive.
 On a phone the row scrolls sideways, as the device pills do, and on a desktop it wraps in the 300px aside.
 With a Mac picked it neither scrolls nor wraps, since either would clip the Labels list, and its pills fit a 320px phone.
@@ -134,19 +134,21 @@ The filter sits in component state beside the picked device, and the as-of view 
 ### Each Mac's Starred and Labels (SYNC-22)
 
 Label ids are local to each Mac, and two Macs can each have a "Clients" label that means different things.
-So the Starred and label pills appear only once a Mac is picked.
+So the label pills appear only once a Mac is picked.
+SYNC-23 later offered Starred under All devices as well, listing every Mac's starred meetings.
 
 | Picked | Filter pills |
 | --- | --- |
-| All devices | All · Archive |
+| All devices | All · Starred |
 | One Mac | All · Starred · Archive, and a Labels button at the end of the row |
 
 A new RPC, `yogurt_labels(token, only_device)`, returns that Mac's labels from its latest live, unarchived versions, with `id`, `name`, and `color`, sorted by name.
 `yogurt_library` and `yogurt_search` gain `only_starred boolean default false` and `only_label text default null`.
-Both take effect only with `only_device`, and the `only_` names keep clear of `yogurt_library`'s `starred` output column, which Postgres would reject as a repeated name.
+Since SYNC-23, `only_starred` applies without `only_device` and `only_label` still needs one, and the `only_` names keep clear of `yogurt_library`'s `starred` output column, which Postgres would reject as a repeated name.
 The Labels button opens a list of that Mac's labels with their colors, because a Mac can have too many labels for a row of pills.
 Picking one closes the list, and the button then shows that label's color and name in the selected style.
-Changing the Mac resets the filter to All, because the old Mac's label means nothing on the new one.
+Changing the Mac resets a label to All, because the old Mac's label means nothing on the new one.
+Starred stays, and so does Archive unless the new pick is All devices.
 With a Mac picked, rows drop their device tag, since every row would show the same one.
 
 ## Cost
