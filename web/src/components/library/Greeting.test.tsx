@@ -12,7 +12,7 @@ vi.mock("../../lib/api/cloud", async () => {
       data: {
         connected: true,
         not_pushed: 1186,
-        push: { sent: 206, total: 1400, retry_in: null, announced: true },
+        push: { sent: 206, total: 1400, retry_in: null, announced: true, left_secs: null },
       },
     }),
   };
@@ -24,7 +24,7 @@ import { PushProgress } from "../settings/cloud/CloudSection";
 import { applyCloudPushEvent, clearCloudPush, useLivePush } from "../../hooks/useCloudPush";
 
 function Progress() {
-  const push = useLivePush({ sent: 206, total: 1400, retry_in: null, announced: true });
+  const push = useLivePush({ sent: 206, total: 1400, retry_in: null, announced: true, left_secs: null });
   return push && <PushProgress push={push} />;
 }
 
@@ -43,7 +43,7 @@ describe("live push counts", () => {
       </MemoryRouter>,
     );
     expect(screen.getAllByText("Pushing 206 of 1,400")).toHaveLength(2);
-    act(() => applyCloudPushEvent({ type: "cloud_push_progress", sent: 340, total: 1400, retry_in: null }));
+    act(() => applyCloudPushEvent({ type: "cloud_push_progress", sent: 340, total: 1400, retry_in: null, left_secs: null }));
     expect(screen.getByTestId("push-pill")).toHaveTextContent("340 of 1,400");
     expect(screen.getAllByText("Pushing 340 of 1,400")).toHaveLength(2);
     expect(screen.queryByText("Pushing 206 of 1,400")).not.toBeInTheDocument();

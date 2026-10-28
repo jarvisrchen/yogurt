@@ -76,6 +76,8 @@ pub enum WsEvent {
         sent: usize,
         total: usize,
         retry_in: Option<u64>,
+        /// Seconds left in the pass at its pace so far, `None` until a batch lands.
+        left_secs: Option<u64>,
     },
     CloudPushComplete {
         pushed: usize,
@@ -544,6 +546,7 @@ mod tests {
             sent: 340,
             total: 1412,
             retry_in: Some(45),
+            left_secs: Some(300),
         });
         assert_eq!(p["type"], "cloud_push_progress");
         assert_eq!(

@@ -30,6 +30,8 @@ export interface PushStatus {
   /** Seconds before a failed request is tried again, `null` when none is waiting. */
   retry_in: number | null;
   announced: boolean;
+  /** Seconds left at the pace so far, `null` until a batch lands. */
+  left_secs: number | null;
 }
 
 export type PushInterval = "off" | "meeting" | "15m" | "1h" | "1d";
@@ -44,6 +46,9 @@ export type CloudStatus =
       machine_name: string;
       meetings: number;
       not_pushed: number;
+      /** Bytes of the meetings not pushed, and a rough time to push them. Zero while a push runs. */
+      not_pushed_bytes: number;
+      push_estimate_secs: number;
       last_push: LastPush | null;
       last_error: LastError | null;
       /** Newest first, at most 20. */

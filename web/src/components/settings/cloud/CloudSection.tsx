@@ -17,6 +17,7 @@ import {
   type PushInterval,
 } from "../../../lib/api/cloud";
 import { useLivePush } from "../../../hooks/useCloudPush";
+import { formatBytes } from "../../../lib/api/stt";
 import { ConnectForm } from "./ConnectForm";
 import { INPUT } from "./Field";
 import { LABEL } from "../labelClass";
@@ -98,6 +99,15 @@ export function formatPushTime(ms: number): string {
 function counts(changed: number, deleted: number): string {
   const parts = [changed > 0 && `${n(changed)} uploaded`, deleted > 0 && `${n(deleted)} deleted`];
   return parts.filter(Boolean).join(", ") || "up to date";
+}
+
+/** A heads-up rather than a promise: "under a minute", "about 11 min", "about 1.5 hours". */
+export function describeTime(secs: number): string {
+  const min = Math.ceil(secs / 60);
+  if (min <= 1) return "under a minute";
+  if (min < 60) return `about ${min} min`;
+  const hours = Math.round(min / 6) / 10;
+  return `about ${hours} ${hours === 1 ? "hour" : "hours"}`;
 }
 
 export function describeLastPush(p: LastPush | null): string {
@@ -248,7 +258,11 @@ export function PushProgress({ push }: { push: PushStatus }) {
     <div className="mb-3" data-testid="push-progress">
       <div className="mb-1 flex items-baseline justify-between gap-2 text-[12.5px]">
         <b>{push.total > 0 ? `Pushing ${n(push.sent)} of ${n(push.total)}` : "Preparing to push…"}</b>
-        {waiting && <span className="text-mut">Retrying in {push.retry_in}s</span>}
+        {waiting ? (
+          <span className="text-mut">Retrying in {push.retry_in}s</span>
+        ) : (
+          push.left_secs != null && <span className="text-mut">{capitalize(describeTime(push.left_secs))} left</span>
+        )}
       </div>
       <div
         role="progressbar"
@@ -264,10 +278,12 @@ export function PushProgress({ push }: { push: PushStatus }) {
   );
 }
 
-function Stat({ value, label, tone }: { value: number; label: string; tone?: string }) {
+const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
+
+function Stat({ value, label, tone }: { value: number | string; label: string; tone?: string }) {
   return (
     <div className="flex flex-col">
-      <b className={`text-[18px] font-extrabold ${tone ?? ""}`}>{n(value)}</b>
+      <b className={`text-[18px] font-extrabold ${tone ?? ""}`}>{typeof value === "number" ? n(value) : value}</b>
       <span className="text-[11px] text-mut">{label}</span>
     </div>
   );
@@ -411,6 +427,12 @@ function Connected({ status }: { status: CloudConnected }) {
         <div className="mb-3.5 mt-2.5 flex flex-wrap gap-6">
           <Stat value={status.meetings} label="meetings on this Mac" />
           <Stat value={notPushed} label="not pushed" tone={notPushed > 0 ? "text-honeyink" : ""} />
+          {!running && notPushed > 0 && status.push_estimate_secs > 0 && (
+            <Stat
+              value={formatBytes(status.not_pushed_bytes)}
+              label={`${describeTime(status.push_estimate_secs)} to push`}
+            />
+          )}
         </div>
         {livePush && <PushProgress push={livePush} />}
         {!(running && !status.last_push) && (

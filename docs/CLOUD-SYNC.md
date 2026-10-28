@@ -331,7 +331,9 @@ A push of more than one batch shows a pill at the top of every page ("Pushing to
 Only one push runs at a time.
 The first push sends every meeting, and later pushes send only the meetings you changed, plus a deletion marker for each meeting you deleted.
 The meeting you are recording right now is skipped until it ends.
-The page shows how many meetings are not pushed and the result of the last push.
+The page shows how many meetings are not pushed, how much data that is, about how long pushing it takes, and the result of the last push.
+The time is a rough guess from the number of batches, each counted as about 3 seconds to send and index, plus the one-second pause between batches.
+While a push runs, the page shows the time left at the pace so far, once the first batch lands.
 
 The Library header shows a "N not pushed" pill beside "N meetings · all on this Mac" while this Mac is connected and behind.
 Select the pill to open the Cloud sync page.

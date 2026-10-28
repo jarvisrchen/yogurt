@@ -47,6 +47,8 @@ const connected = (over: Record<string, unknown> = {}) => ({
   machine_name: "Laptop 1",
   meetings: 46,
   not_pushed: 3,
+  not_pushed_bytes: 184_000,
+  push_estimate_secs: 3,
   last_push: { at: PUSHED_AT, changed: 1, deleted: 0 },
   last_error: null,
   push_interval: "off",
@@ -272,6 +274,8 @@ for (const theme of ["light", "dark"] as const) {
     });
     await pill.click();
     await expect(page).toHaveURL(/\/settings\/cloud$/);
+    await expect(page.getByText("184 KB")).toBeVisible();
+    await expect(page.getByText("under a minute to push")).toBeVisible();
 
     // Nothing behind, nothing shown.
     state.status = connected({ not_pushed: 0 });

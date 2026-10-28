@@ -23,6 +23,7 @@ use yogurt_cloud::{config, Error as CloudError, Project, Session};
 use yogurt_db::keys::ProcessLock;
 use yogurt_db::MeetingRepo;
 
+use crate::cloud_push::Pending;
 use crate::ws::{self, WsEvent};
 use crate::AppState;
 
@@ -382,25 +383,26 @@ async fn set_push_interval(
     status(State(state)).await
 }
 
-struct Pending {
-    meetings: usize,
-    not_pushed: usize,
-}
-
 /// The meeting being recorded does not count, and a local deletion not yet sent does.
 async fn pending(state: &AppState) -> ApiResult<Pending> {
     let recording = recording_id(state).await;
     let repo = state.meeting_repo.clone();
     let (local, tombstones) =
         blocking(move || Ok((local_meetings(&repo)?, repo.cloud_tombstones()?.len()))).await?;
-    let changed = local
+    let sizes: Vec<usize> = local
         .iter()
         .filter(|m| Some(m.id.as_str()) != recording.as_deref())
         .filter(|m| m.cloud_hash.as_deref() != Some(&m.hash))
-        .count();
+        .map(|m| m.size)
+        .chain(std::iter::repeat_n(0, tombstones))
+        .collect();
     Ok(Pending {
         meetings: local.len(),
-        not_pushed: changed + tombstones,
+        not_pushed: sizes.len(),
+        bytes: sizes.iter().sum(),
+        estimate_secs: push::estimate(&sizes, state.cloud_push.pacing())
+            .as_secs_f64()
+            .ceil() as u64,
     })
 }
 
@@ -409,16 +411,11 @@ async fn counted(state: &AppState) -> ApiResult<Pending> {
     let repo = state.meeting_repo.clone();
     let recording = recording_id(state).await.unwrap_or_default();
     let fingerprint = blocking(move || repo.cloud_fingerprint()).await? + &recording;
-    if let Some((meetings, not_pushed)) = state.cloud_push.counted(&fingerprint) {
-        return Ok(Pending {
-            meetings,
-            not_pushed,
-        });
+    if let Some(p) = state.cloud_push.counted(&fingerprint) {
+        return Ok(p);
     }
     let p = pending(state).await?;
-    state
-        .cloud_push
-        .remember(fingerprint, p.meetings, p.not_pushed);
+    state.cloud_push.remember(fingerprint, p);
     Ok(p)
 }
 
@@ -437,6 +434,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
             Pending {
                 meetings,
                 not_pushed: total.saturating_sub(sent) as usize,
+                ..Pending::default()
             }
         }
         None => counted(&state).await?,
@@ -449,6 +447,8 @@ async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
         "machine_name": conn.machine_name,
         "meetings": pending.meetings,
         "not_pushed": pending.not_pushed,
+        "not_pushed_bytes": pending.bytes,
+        "push_estimate_secs": pending.estimate_secs,
         "last_push": recorded(&state, LAST_PUSH_KEY),
         "last_error": recorded(&state, LAST_ERROR_KEY),
         "push_history": recorded(&state, HISTORY_KEY),
@@ -609,13 +609,15 @@ impl push::Hooks for PassHooks<'_> {
     }
 
     fn progress(&mut self, p: &Progress) {
-        if self.job && self.state.cloud_push.update(p, now_ms()) {
+        let now = now_ms();
+        if self.job && self.state.cloud_push.update(p, now) {
             ws::send_event(
                 &self.state.app_events_tx,
                 WsEvent::CloudPushProgress {
                     sent: p.sent,
                     total: p.total,
                     retry_in: p.retry_in.map(|d| d.as_secs_f64().ceil() as u64),
+                    left_secs: self.state.cloud_push.left_secs(now),
                 },
             );
         }
@@ -1492,6 +1494,9 @@ mod tests {
             st["not_pushed"].as_u64().unwrap()
         };
         assert_eq!(count(state.clone()).await, 3);
+        let Json(st) = status(State(state.clone())).await.unwrap();
+        assert!(st["not_pushed_bytes"].as_u64().unwrap() > 0, "{st}");
+        assert!(st["push_estimate_secs"].as_u64().unwrap() > 0, "{st}");
         let id = state.meeting_repo.cloud_hashes().unwrap()[0].0.clone();
         let hash = {
             let b = state.meeting_repo.meeting_bundle(&id).unwrap().unwrap();
@@ -1565,6 +1570,11 @@ mod tests {
             .collect();
         assert_eq!(sent, [(0, 5), (2, 5), (4, 5), (5, 5)]);
         assert!(frames[0]["retry_in"].is_null());
+        assert!(
+            frames[0]["left_secs"].is_null(),
+            "no pace before a batch lands"
+        );
+        assert!(frames[1]["left_secs"].is_u64(), "{}", frames[1]);
         let end = frames.last().unwrap();
         assert_eq!(
             (end["type"].as_str(), end["pushed"].as_u64()),

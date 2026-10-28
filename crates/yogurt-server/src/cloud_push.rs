@@ -14,14 +14,35 @@ struct Running {
     retry_until: Option<i64>,
     /// Whether a client was told about this pass, which only happens when it needs more than one batch.
     announced: bool,
+    /// When the plan was made and what had been sent then, which the pace is measured from.
+    started: Option<(i64, usize)>,
+    /// When the last batch landed and the milliseconds left at the pace so far then.
+    eta: Option<(i64, i64)>,
+}
+
+impl Running {
+    /// Counts down from the last landing, so the time left does not climb between batches.
+    fn left_secs(&self, now: i64) -> Option<u64> {
+        let (at, ms) = self.eta?;
+        Some(((ms - (now - at)).max(0) / 1000) as u64)
+    }
+}
+
+/// What a push would send now.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Pending {
+    pub meetings: usize,
+    pub not_pushed: usize,
+    /// Bytes of the changed meetings' bodies.
+    pub bytes: usize,
+    pub estimate_secs: u64,
 }
 
 /// The last "N not pushed" answer and what the library looked like when it was worked out.
 struct Counted {
     fingerprint: String,
     at: Instant,
-    meetings: usize,
-    not_pushed: usize,
+    pending: Pending,
 }
 
 /// A backstop for a change the fingerprint cannot see.
@@ -44,20 +65,18 @@ impl PushJob {
         }
     }
 
-    /// The remembered `(meetings, not_pushed)`, if the library still looks as it did when it was counted.
-    pub fn counted(&self, fingerprint: &str) -> Option<(usize, usize)> {
+    /// The remembered count, if the library still looks as it did when it was counted.
+    pub fn counted(&self, fingerprint: &str) -> Option<Pending> {
         let g = self.counted.lock().unwrap();
         let c = g.as_ref()?;
-        (c.fingerprint == fingerprint && c.at.elapsed() < COUNT_TTL)
-            .then_some((c.meetings, c.not_pushed))
+        (c.fingerprint == fingerprint && c.at.elapsed() < COUNT_TTL).then_some(c.pending)
     }
 
-    pub fn remember(&self, fingerprint: String, meetings: usize, not_pushed: usize) {
+    pub fn remember(&self, fingerprint: String, pending: Pending) {
         *self.counted.lock().unwrap() = Some(Counted {
             fingerprint,
             at: Instant::now(),
-            meetings,
-            not_pushed,
+            pending,
         });
     }
 
@@ -86,6 +105,8 @@ impl PushJob {
             total: 0,
             retry_until: None,
             announced: false,
+            started: None,
+            eta: None,
         });
         Some(rx)
     }
@@ -107,11 +128,21 @@ impl PushJob {
         let Some(r) = g.as_mut() else {
             return false;
         };
+        let landed = p.sent > r.sent;
         r.sent = p.sent;
         r.total = p.total;
         r.retry_until = p.retry_in.map(|d| now + d.as_millis() as i64);
         r.announced |= p.batches > 1;
+        let (at, from) = *r.started.get_or_insert((now, p.sent));
+        if landed && p.sent > from {
+            let left = p.total.saturating_sub(p.sent) as i64;
+            r.eta = Some((now, (now - at) * left / (p.sent - from) as i64));
+        }
         r.announced
+    }
+
+    pub fn left_secs(&self, now: i64) -> Option<u64> {
+        self.inner.lock().unwrap().as_ref()?.left_secs(now)
     }
 
     /// Ends the push and says whether clients were told about it. A second call is a no-op.
@@ -125,7 +156,7 @@ impl PushJob {
             .is_some_and(|r| r.announced)
     }
 
-    /// `null` when idle. Otherwise the counts so far and the seconds left before a retry.
+    /// `null` when idle. Otherwise the counts so far, the seconds left before a retry, and the seconds left in the pass.
     pub fn status(&self, now: i64) -> Value {
         match self.inner.lock().unwrap().as_ref() {
             None => Value::Null,
@@ -134,6 +165,7 @@ impl PushJob {
                 "total": r.total,
                 "retry_in": r.retry_until.map(|t| ((t - now).max(0) + 999) / 1000),
                 "announced": r.announced,
+                "left_secs": r.left_secs(now),
             }),
         }
     }
@@ -184,9 +216,35 @@ mod tests {
     fn a_count_is_reused_only_while_the_library_looks_the_same() {
         let job = PushJob::default();
         assert_eq!(job.counted("a"), None);
-        job.remember("a".into(), 1400, 12);
-        assert_eq!(job.counted("a"), Some((1400, 12)));
+        let p = Pending {
+            meetings: 1400,
+            not_pushed: 12,
+            ..Pending::default()
+        };
+        job.remember("a".into(), p);
+        assert_eq!(job.counted("a"), Some(p));
         assert_eq!(job.counted("b"), None);
+    }
+
+    #[test]
+    fn time_left_follows_the_pace_since_the_plan() {
+        let job = PushJob::default();
+        let _rx = job.begin().unwrap();
+        job.update(&progress(0, 4, None), 1_000);
+        assert_eq!(job.left_secs(1_000), None, "nothing sent yet");
+        job.update(&progress(25, 4, None), 11_000);
+        assert_eq!(job.left_secs(11_000), Some(30));
+        assert_eq!(
+            job.status(13_000)["left_secs"],
+            28,
+            "counts down between batches"
+        );
+        job.update(&progress(25, 4, Some(45)), 14_000);
+        assert_eq!(
+            job.left_secs(14_000),
+            Some(27),
+            "a retry report is not a landing"
+        );
     }
 
     #[test]

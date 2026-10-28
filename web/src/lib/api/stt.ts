@@ -70,8 +70,9 @@ async function deleteModel(
   );
 }
 
-/** Matches the `ModelPicker` size chip: `size_mb` is decimal MB, whole MB below 1000, else one-decimal GB. */
+/** Matches the `ModelPicker` size chip: `size_mb` is decimal MB, whole MB below 1000, else one-decimal GB. Below 1 MB, whole KB. */
 export function formatBytes(n: number): string {
+  if (n < 1_000_000) return `${Math.ceil(n / 1000)} KB`;
   const mb = n / 1_000_000;
   return mb < 1000 ? `${Math.floor(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`;
 }

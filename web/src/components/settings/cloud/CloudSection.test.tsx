@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { LastPushLine, PushProgress, describeEntry, describeLastPush, describeNextPush, formatPushTime } from "./CloudSection";
+import {
+  LastPushLine,
+  PushProgress,
+  describeEntry,
+  describeLastPush,
+  describeNextPush,
+  describeTime,
+  formatPushTime,
+} from "./CloudSection";
 import type { PushHistoryEntry } from "../../../lib/api/cloud";
 import { QrCode } from "./QrCode";
 
@@ -31,6 +39,15 @@ describe("describeNextPush", () => {
   });
 });
 
+describe("describeTime", () => {
+  it("rounds to minutes, then to tenths of an hour", () => {
+    expect(describeTime(40)).toBe("under a minute");
+    expect(describeTime(610)).toBe("about 11 min");
+    expect(describeTime(3_600)).toBe("about 1 hour");
+    expect(describeTime(5_400)).toBe("about 1.5 hours");
+  });
+});
+
 describe("QrCode", () => {
   it("draws modules for the address and labels the image", () => {
     render(<QrCode text="https://richard-yogurt.vercel.app" label="QR code for the address" />);
@@ -42,16 +59,22 @@ describe("QrCode", () => {
 
 describe("PushProgress", () => {
   it("shows the count and bar, then the retry countdown", () => {
-    const { rerender } = render(<PushProgress push={{ sent: 340, total: 1412, retry_in: null, announced: true }} />);
+    const { rerender } = render(<PushProgress push={{ sent: 340, total: 1412, retry_in: null, announced: true, left_secs: null }} />);
     expect(screen.getByText("Pushing 340 of 1,412")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "340");
     expect(screen.queryByText(/Retrying/)).not.toBeInTheDocument();
-    rerender(<PushProgress push={{ sent: 340, total: 1412, retry_in: 45, announced: true }} />);
+    rerender(<PushProgress push={{ sent: 340, total: 1412, retry_in: 45, announced: true, left_secs: 300 }} />);
     expect(screen.getByText("Retrying in 45s")).toBeInTheDocument();
+    expect(screen.queryByText(/left$/)).not.toBeInTheDocument();
+  });
+
+  it("shows the time left once a batch has landed", () => {
+    render(<PushProgress push={{ sent: 340, total: 1412, retry_in: null, announced: true, left_secs: 300 }} />);
+    expect(screen.getByText("About 5 min left")).toBeInTheDocument();
   });
 
   it("says it is preparing before the plan is known", () => {
-    render(<PushProgress push={{ sent: 0, total: 0, retry_in: null, announced: false }} />);
+    render(<PushProgress push={{ sent: 0, total: 0, retry_in: null, announced: false, left_secs: null }} />);
     expect(screen.getByText("Preparing to push…")).toBeInTheDocument();
   });
 });

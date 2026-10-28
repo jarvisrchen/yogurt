@@ -126,6 +126,17 @@ fn batches(sizes: &[usize], pacing: &Pacing) -> Vec<std::ops::Range<usize>> {
     out
 }
 
+/// One batch's insert and the search catch-up after it, on a free Supabase instance.
+/// ponytail: a fixed guess. Measure it from past pushes if the estimates prove far off.
+const BATCH_REQUEST: Duration = Duration::from_secs(3);
+
+/// About how long a pass sending bodies of these sizes takes, a heads-up for the user rather than a promise.
+/// The pass pauses between batches, not after the last one.
+pub fn estimate(sizes: &[usize], pacing: &Pacing) -> Duration {
+    let n = batches(sizes, pacing).len() as u32;
+    BATCH_REQUEST * n + pacing.pause * n.saturating_sub(1)
+}
+
 /// How long to wait before attempt `attempt + 2`, or `None` when the error is final or the retries are spent.
 /// A 429, a 5xx, a statement timeout (`57014`), and a network failure are worth another try. A 401, an RLS denial, or a bad request is not.
 fn delay(pacing: &Pacing, attempt: usize, e: &Error) -> Option<Duration> {
@@ -450,6 +461,14 @@ mod batch_tests {
         assert_eq!(sizes(&pacing, &[1; 250]), [100, 100, 50]);
         assert_eq!(sizes(&pacing, &[1 << 19; 5]), [2, 2, 1]);
         assert!(batches(&[], &pacing).is_empty());
+    }
+
+    #[test]
+    fn the_estimate_counts_a_request_per_batch_and_a_pause_between() {
+        let p = Pacing::default();
+        assert_eq!(estimate(&[], &p), Duration::ZERO);
+        assert_eq!(estimate(&[100], &p), Duration::from_secs(3));
+        assert_eq!(estimate(&[100; 60], &p), Duration::from_secs(11));
     }
 
     #[test]
