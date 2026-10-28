@@ -1,6 +1,6 @@
 ---
 name: yogurt-ship
-description: Take a yogurt change from a request to a merged PR - allocate a ticket ID, open a worktree off main, implement and verify end to end, review the diff with ponytail-review, open the PR, and land it. Use when asked to "ship", "ticket and implement", "make a PR for", or "/yogurt-ship" a fix or feature in this repo, especially while another session works in the same checkout.
+description: Take a yogurt change from a request to a merged PR - allocate a ticket ID, open a worktree off main, implement and verify end to end, review the diff with code-review and ponytail-review, open the PR, and land it. Use when asked to "ship", "ticket and implement", "make a PR for", or "/yogurt-ship" a fix or feature in this repo, especially while another session works in the same checkout.
 ---
 
 # Ship a yogurt change
@@ -34,7 +34,9 @@ AGENTS.md owns the lifecycle and its rules; this is the order of operations and 
    Add the `- [ ] **ID**` entry under its section in `docs/TODO.md`, then `just ticket done <ID> --note-file <f>`.
 
 7. **Review.**
-   Run the `ponytail:ponytail-review` skill on `git diff origin/main...` plus the uncommitted diff, and apply the cuts worth taking.
+   Run the `code-review` skill at `high` on the worktree's diff and fix every finding it confirms.
+   Then run the `ponytail:ponytail-review` skill on `git diff origin/main...` plus the uncommitted diff, and apply the cuts worth taking.
+   Feed both the diff itself, never a recollection of what you wrote.
    Re-run the tests after.
 
 8. **Commit.**
