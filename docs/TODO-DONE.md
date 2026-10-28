@@ -1390,3 +1390,7 @@ New closed items go at the bottom.
   Archive moved to the per-Mac row.
   Starred stays picked when the Mac changes.
   `yogurt_library` and `yogurt_search` apply `only_starred` without `only_device`.
+
+- [x] **SYNC-24** An After meetings auto-push setting that pushes a minute after a meeting ends or its notes finish, with a daily push as the backstop
+
+  Stop and enhance completion request a push, which the auto-push timer sends after a one-minute settle when the setting is After meetings.

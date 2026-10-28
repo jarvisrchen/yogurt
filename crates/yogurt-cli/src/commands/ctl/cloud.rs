@@ -83,6 +83,7 @@ fn describe_push(v: &Value) -> String {
 
 fn describe_interval(v: &str) -> &'static str {
     match v {
+        "meeting" => "after each meeting",
         "15m" => "every 15 minutes",
         "1h" => "every hour",
         "1d" => "every day",

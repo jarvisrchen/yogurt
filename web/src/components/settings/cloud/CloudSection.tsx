@@ -113,6 +113,7 @@ function failuresSince(history: PushHistoryEntry[]) {
 const TRIGGER: Record<PushHistoryEntry["trigger"], string> = {
   manual: "Manual",
   auto: "Auto",
+  meeting: "Meeting",
   disconnect: "Disconnect",
 };
 
@@ -273,6 +274,7 @@ function Stat({ value, label, tone }: { value: number; label: string; tone?: str
 
 const INTERVAL_OPTIONS: { value: PushInterval; label: string }[] = [
   { value: "off", label: "Off" },
+  { value: "meeting", label: "After meetings" },
   { value: "15m", label: "15 min" },
   { value: "1h", label: "Hourly" },
   { value: "1d", label: "Daily" },
@@ -286,7 +288,9 @@ function AutoPush({ value }: { value: PushInterval }) {
         <div className="min-w-0">
           <div className={K}>Auto-push</div>
           <p className="mt-0.5 text-[11.5px] text-mut">
-            Push changed meetings in the background while yogurt is running. Off by default.
+            {value === "meeting"
+              ? "Push a minute after each meeting ends or its notes finish, and once a day for later edits, while yogurt is running."
+              : "Push changed meetings in the background while yogurt is running. Off by default."}
           </p>
         </div>
         <Segmented

@@ -34,7 +34,15 @@ const LAST_ERROR_KEY: &str = "cloud.last_error";
 const HISTORY_KEY: &str = "cloud.push_history";
 const HISTORY_LEN: usize = 20;
 const INTERVAL_KEY: &str = "cloud.push_interval";
-const INTERVALS: [(&str, i64); 3] = [("15m", 15 * 60_000), ("1h", 3_600_000), ("1d", 86_400_000)];
+/// `meeting` pushes after each meeting and keeps a daily push as the backstop for edits made later.
+const INTERVALS: [(&str, i64); 4] = [
+    ("meeting", 86_400_000),
+    ("15m", 15 * 60_000),
+    ("1h", 3_600_000),
+    ("1d", 86_400_000),
+];
+/// How long the `meeting` setting waits after a request, so a stop and the notes that finish soon after go out in one push.
+const SETTLE_MS: i64 = 60_000;
 /// Failures only the user can fix. The timer stays quiet until a sign-in, a connect, or a manual push clears the error.
 const USER_FIXABLE: [&str; 4] = [
     "session_expired",
@@ -339,7 +347,7 @@ fn interval_ms(name: &str) -> Option<i64> {
         .map(|(_, ms)| *ms)
 }
 
-/// `off`, `15m`, `1h`, or `1d`. Anything else stored reads as `off`.
+/// `off`, `meeting`, `15m`, `1h`, or `1d`. Anything else stored reads as `off`.
 fn push_interval(state: &AppState) -> &'static str {
     let stored = yogurt_db::settings::get(&state.db, INTERVAL_KEY)
         .ok()
@@ -363,7 +371,7 @@ async fn set_push_interval(
     if body.interval != "off" && interval_ms(&body.interval).is_none() {
         return Err(CloudApiError::new(
             "bad_request",
-            "Auto-push interval must be off, 15m, 1h, or 1d.",
+            "Auto-push interval must be off, meeting, 15m, 1h, or 1d.",
         ));
     }
     if load(&state)?.is_none() {
@@ -719,7 +727,7 @@ async fn push_task(
 }
 
 /// Starts the one background push, or says why not. The result of the push itself arrives as frames and in `GET /api/cloud`.
-/// `trigger` is `manual` or `auto`, shown in the history.
+/// `trigger` is `manual`, `auto`, or `meeting`, shown in the history.
 fn start_push(state: &AppState, trigger: &'static str, now: i64) -> ApiResult<()> {
     if load(state)?.is_none() {
         return Err(CloudApiError::coded("not_connected"));
@@ -737,27 +745,37 @@ async fn push_now(State(state): State<AppState>) -> ApiResult<(StatusCode, Json<
     Ok((StatusCode::ACCEPTED, Json(json!({ "started": true }))))
 }
 
-/// Whether the timer should push now.
+/// The trigger the timer should push for now, if any. `requested` is when a meeting last stopped or finished its notes.
 fn due(
     interval_ms: i64,
     last_push: Option<i64>,
     last_error: Option<(i64, &str)>,
+    requested: Option<i64>,
     now: i64,
-) -> bool {
+) -> Option<&'static str> {
     match last_error {
-        Some((_, code)) if USER_FIXABLE.contains(&code) => return false,
-        Some((at, _)) if now - at < RETRY_AFTER_FAILURE_MS => return false,
+        Some((_, code)) if USER_FIXABLE.contains(&code) => return None,
+        Some((at, _)) if now - at < RETRY_AFTER_FAILURE_MS => return None,
         _ => {}
     }
-    last_push.is_none_or(|at| now - at >= interval_ms)
+    if requested.is_some_and(|r| last_push.is_none_or(|p| r > p) && now - r >= SETTLE_MS) {
+        return Some("meeting");
+    }
+    last_push
+        .is_none_or(|at| now - at >= interval_ms)
+        .then_some("auto")
 }
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
 /// With nothing pending it only stamps the last push, so an idle laptop never touches the network or rewrites `keys.json`.
 async fn auto_tick(state: &AppState, now: i64) {
-    let Some(interval_ms) = interval_ms(push_interval(state)) else {
+    let setting = push_interval(state);
+    let Some(interval_ms) = interval_ms(setting) else {
         return;
     };
+    let requested = (setting == "meeting")
+        .then(|| state.cloud_push.requested())
+        .flatten();
     if state.cloud_push.is_running() {
         return;
     }
@@ -772,14 +790,14 @@ async fn auto_tick(state: &AppState, now: i64) {
         let last_error = err["at"]
             .as_i64()
             .map(|at| (at, err["code"].as_str().unwrap_or("")));
-        if !due(interval_ms, last_push, last_error, now) {
+        let Some(trigger) = due(interval_ms, last_push, last_error, requested, now) else {
             return Ok(());
-        }
+        };
         if pending(&state).await?.not_pushed == 0 {
-            record_success(&state, "auto", now, 0, 0);
+            record_success(&state, trigger, now, 0, 0);
             return Ok(());
         }
-        start_push(&state, "auto", now)
+        start_push(&state, trigger, now)
     })
     .await;
     if let Err(e) = result {
@@ -955,31 +973,59 @@ mod tests {
     #[test]
     fn due_rules() {
         let i = 15 * MIN;
-        assert!(due(i, None, None, T0));
-        assert!(!due(i, Some(T0), None, T0 + 14 * MIN));
-        assert!(due(i, Some(T0), None, T0 + 15 * MIN));
-        assert!(!due(
-            i,
-            Some(T0),
-            Some((T0 + 15 * MIN, "network")),
-            T0 + 19 * MIN
-        ));
-        assert!(due(
-            i,
-            Some(T0),
-            Some((T0 + 15 * MIN, "network")),
-            T0 + 20 * MIN
-        ));
+        assert_eq!(due(i, None, None, None, T0), Some("auto"));
+        assert_eq!(due(i, Some(T0), None, None, T0 + 14 * MIN), None);
+        assert_eq!(due(i, Some(T0), None, None, T0 + 15 * MIN), Some("auto"));
+        let net = Some((T0 + 15 * MIN, "network"));
+        assert_eq!(due(i, Some(T0), net, None, T0 + 19 * MIN), None);
+        assert_eq!(due(i, Some(T0), net, None, T0 + 20 * MIN), Some("auto"));
         for code in USER_FIXABLE {
-            assert!(!due(i, Some(T0), Some((T0, code)), T0 + 24 * 60 * MIN));
+            let err = Some((T0, code));
+            assert_eq!(due(i, Some(T0), err, None, T0 + 24 * 60 * MIN), None);
+            assert_eq!(
+                due(i, Some(T0), err, Some(T0 + MIN), T0 + 24 * 60 * MIN),
+                None
+            );
         }
+
+        let day = 24 * 60 * MIN;
+        let asked = Some(T0 + MIN);
+        assert_eq!(
+            due(day, Some(T0), None, asked, T0 + MIN + 59_000),
+            None,
+            "settling"
+        );
+        assert_eq!(
+            due(day, Some(T0), None, asked, T0 + 2 * MIN),
+            Some("meeting")
+        );
+        assert_eq!(
+            due(day, Some(T0 + 2 * MIN), None, asked, T0 + 3 * MIN),
+            None,
+            "already pushed"
+        );
+        assert_eq!(
+            due(day, Some(T0), net, asked, T0 + 19 * MIN),
+            None,
+            "waits out a failure"
+        );
+        assert_eq!(
+            due(day, Some(T0), net, asked, T0 + 20 * MIN),
+            Some("meeting"),
+            "then retries"
+        );
+        assert_eq!(
+            due(day, Some(T0), None, None, T0 + day),
+            Some("auto"),
+            "daily backstop"
+        );
     }
 
     #[tokio::test]
     async fn interval_is_validated_and_defaults_off() {
         let (state, _tmp) = state();
         assert_eq!(push_interval(&state), "off");
-        for ok in ["15m", "1h", "1d", "off"] {
+        for ok in ["meeting", "15m", "1h", "1d", "off"] {
             let Json(status) = set_push_interval(
                 State(state.clone()),
                 Json(IntervalBody {
@@ -1142,6 +1188,38 @@ mod tests {
         assert_eq!(
             status["push_history"].as_array().unwrap().len(),
             HISTORY_LEN
+        );
+    }
+
+    #[tokio::test]
+    async fn the_meeting_setting_pushes_a_minute_after_a_request() {
+        let (state, _tmp) = state();
+        set_interval(&state, "meeting");
+        auto_tick(&state, T0 + 10 * MIN).await;
+        settle(&state).await;
+        assert_eq!(
+            attempt_at(&state),
+            None,
+            "no meeting yet, and the daily backstop is not due"
+        );
+
+        state.cloud_push.request(T0 + 10 * MIN);
+        auto_tick(&state, T0 + 10 * MIN + 30_000).await;
+        settle(&state).await;
+        assert_eq!(attempt_at(&state), None, "still settling");
+        auto_tick(&state, T0 + 11 * MIN).await;
+        settle(&state).await;
+        assert_eq!(attempt_at(&state), Some(T0 + 11 * MIN));
+        assert_eq!(history(&state)[0]["trigger"], "meeting");
+
+        set_interval(&state, "1d");
+        record(&state, LAST_ERROR_KEY, &Value::Null);
+        auto_tick(&state, T0 + 20 * MIN).await;
+        settle(&state).await;
+        assert_eq!(
+            history(&state).len(),
+            1,
+            "other settings ignore the request"
         );
     }
 

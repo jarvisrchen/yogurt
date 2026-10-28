@@ -343,10 +343,12 @@ Your meetings are not affected.
 
 ### Push automatically
 
-The Auto-push control on the Cloud sync page chooses how often Yogurt pushes by itself: Off, 15 min, Hourly, or Daily.
-It starts Off, and a new connection starts Off again, so nothing leaves this Mac until you choose an interval.
+The Auto-push control on the Cloud sync page chooses when Yogurt pushes by itself: Off, After meetings, 15 min, Hourly, or Daily.
+It starts Off, and a new connection starts Off again, so nothing leaves this Mac until you choose one.
 Yogurt checks once a minute while it is running.
 It pushes when the interval has passed since the last successful push, or when nothing has been pushed yet.
+After meetings pushes a minute after a meeting ends or its notes finish, so a meeting reaches your phone soon after it happens.
+It also pushes once a day, which picks up notes you edit later.
 Automatic and manual pushes never run at the same time, and the meeting you are recording is skipped as usual.
 Yogurt must be running, because there is no background service.
 A push missed while Yogurt was closed happens within a minute of the next start.

@@ -583,7 +583,9 @@ pub async fn enhance(
         })
         .await;
         match mirror_result {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => state
+                .cloud_push
+                .request(chrono::Utc::now().timestamp_millis()),
             Ok(Err(e)) => tracing::warn!(
                 event = "enhance_library_mirror_failed",
                 meeting_id = %meeting_id,
