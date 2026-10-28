@@ -94,12 +94,19 @@ export function SidebarLabelRow({ label, inArchive }: Props) {
     );
   }
 
+  const to = inArchive ? `/archive/label/${label.id}` : `/label/${label.id}`;
+
   return (
     <div ref={wrapperRef} className="relative group/label">
       <NavLink
-        to={inArchive ? `/archive/label/${label.id}` : `/label/${label.id}`}
+        to={to}
         onClick={(e) => {
           if (menuOpen) e.preventDefault();
+          // A modified click keeps its browser meaning, such as a new tab.
+          else if (pathname === to && e.button === 0 && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
+            e.preventDefault();
+            navigate(inArchive ? "/archive" : "/");
+          }
         }}
         className={({ isActive }) =>
           `flex items-center gap-2 px-3 py-1.5 rounded-button text-[13px] ${

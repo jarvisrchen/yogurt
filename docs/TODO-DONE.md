@@ -1448,3 +1448,9 @@ New closed items go at the bottom.
   A label now narrows the picked pill, so All, Starred, or Archive each combine with it, and All labels takes it off.
   With Archive picked, the Labels list comes from `yogurt_labels(..., only_archived => true)`, the labels of the Mac's archived meetings.
   Moving into or out of Archive takes the label off, and All and Starred keep it.
+
+- [x] **MTG-26** Keep Archive highlighted in the sidebar while the Archive view is narrowed to a label, and let a second click on the selected label take it off.
+
+  The Archive nav item stays highlighted while the Archive view is narrowed to a label.
+  Clicking the selected label again takes it off, back to the whole Archive or the whole Library.
+  The Archived labels group opens once per arrival on one of its labels and stays open when the label is taken off.

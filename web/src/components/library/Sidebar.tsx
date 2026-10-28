@@ -29,14 +29,18 @@ export function Sidebar() {
   const [newLabelName, setNewLabelName] = useState("");
   const [sortMode, setSortMode] = useState(getLabelSortMode);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [showArchived, setShowArchived] = useState<boolean | null>(null);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [openedFor, setOpenedFor] = useState<string | null>(null);
   const allSorted = sortLabels(labels.data ?? [], sortMode);
   const sortedLabels = allSorted.filter((l) => !isArchivedLabel(l));
   const archivedLabels = allSorted.filter(isArchivedLabel);
   const { pathname } = useLocation();
   const inArchive = pathname.startsWith("/archive");
-  // Until toggled, the group opens on its own when one of its labels is the page on screen.
-  const archivedOpen = showArchived ?? archivedLabels.some((l) => pathname === `/archive/label/${l.id}`);
+  // Set during render, so the selected row never paints hidden: the group opens once per arrival on one of its labels, and can be closed there.
+  if (archivedLabels.some((l) => pathname === `/archive/label/${l.id}`) && openedFor !== pathname) {
+    setOpenedFor(pathname);
+    setArchivedOpen(true);
+  }
 
   function handleDrop(targetIndex: number) {
     if (dragIndex === null || dragIndex === targetIndex) {
@@ -61,7 +65,7 @@ export function Sidebar() {
         { name },
         {
           onSuccess: (l) => {
-            if (archivedLabels.some((a) => a.id === l.id)) setShowArchived(true);
+            if (archivedLabels.some((a) => a.id === l.id)) setArchivedOpen(true);
           },
         },
       );
@@ -124,7 +128,12 @@ export function Sidebar() {
           <Star size={14} className="shrink-0 fill-current" aria-hidden />
           Starred
         </NavLink>
-        <NavLink to="/archive" end className={navClass("flex items-center gap-1.5")}>
+        {/* `end` keeps aria-current on the label row alone, and the highlight still marks a narrowed archive as the Archive. */}
+        <NavLink
+          to="/archive"
+          end
+          className={({ isActive }) => navClass("flex items-center gap-1.5")({ isActive: isActive || inArchive })}
+        >
           <Archive size={14} className="shrink-0" aria-hidden />
           Archive
         </NavLink>
@@ -206,7 +215,7 @@ export function Sidebar() {
             <button
               type="button"
               aria-expanded={archivedOpen}
-              onClick={() => setShowArchived(!archivedOpen)}
+              onClick={() => setArchivedOpen(!archivedOpen)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-button text-[12px] text-mut hover:text-ink"
             >
               <ChevronRight
