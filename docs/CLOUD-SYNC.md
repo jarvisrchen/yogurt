@@ -350,7 +350,7 @@ It pushes when the interval has passed since the last successful push, or when n
 The interval counts from any successful push, manual or automatic, so Daily has no fixed time of day.
 Under the control, the page shows when the next push is due, such as "Next push around 9:16 AM tomorrow", or "Paused until the problem above is fixed" while an error waits on you.
 After meetings pushes a minute after a meeting ends or its notes finish, so a meeting reaches your phone soon after it happens.
-It also pushes once a day, which picks up notes you edit later.
+It also pushes 24 hours after the last push, which picks up notes you edit later.
 Automatic and manual pushes never run at the same time, and the meeting you are recording is skipped as usual.
 Yogurt must be running, because there is no background service.
 A push missed while Yogurt was closed happens within a minute of the next start.
