@@ -17,7 +17,7 @@ use yogurt_db::{Meeting, MeetingFilter, MeetingPage, MeetingPatch, NewMeeting};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/meetings/search", get(search))
-        .route("/api/meetings/archive", post(archive_before))
+        .route("/api/meetings/archive", post(archive_matching))
         .route("/api/meetings", get(list).post(create))
         .route(
             "/api/meetings/{id}",
@@ -336,22 +336,34 @@ async fn patch_one(
 
 #[derive(Debug, Deserialize)]
 struct ArchiveBody {
-    /// Unix ms. Meetings that started before it are archived.
-    before: i64,
+    /// Unix ms. Only meetings that started before it are archived.
+    before: Option<i64>,
+    /// Only meetings with this label are archived.
+    label_id: Option<String>,
     #[serde(default)]
     preview: bool,
 }
 
-/// `POST /api/meetings/archive`: archive every meeting that started before `before`, or with `preview` only count them.
+/// `POST /api/meetings/archive`: archive every meeting that started before `before` and has `label_id`, or with `preview` only count them.
 /// One `UPDATE` rather than a PATCH per meeting, since an import can leave over a thousand to archive.
-async fn archive_before(
+async fn archive_matching(
     State(s): State<AppState>,
     Json(body): Json<ArchiveBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    if body.before.is_none() && body.label_id.is_none() {
+        return Err(ApiError::BadRequest(
+            "archive needs `before`, `label_id`, or both".into(),
+        ));
+    }
     let recording = s.meetings.active_recording().await.map(|id| id.to_string());
     let repo = s.meeting_repo.clone();
     let count = tokio::task::spawn_blocking(move || {
-        repo.archive_before(body.before, recording.as_deref(), body.preview)
+        repo.archive_matching(
+            body.before,
+            body.label_id.as_deref(),
+            recording.as_deref(),
+            body.preview,
+        )
     })
     .await
     .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
@@ -626,5 +638,38 @@ mod tests {
         let (code, m) = h.patch(&old, true).await;
         assert_eq!(code, 200);
         assert!(m["archived_at"].is_string());
+    }
+
+    #[tokio::test]
+    async fn archive_takes_a_label_and_needs_a_date_or_a_label() {
+        let h = Harness::new().await;
+        let rec = h.meeting("Recording", 1_000, true).await;
+        let old = h.meeting("Folder old", 2_000, false).await;
+        let new = h.meeting("Folder new", 9_000, false).await;
+        h.meeting("Other", 3_000, false).await;
+        let (folder, _) = h.state.label_repo.find_or_create("Folder", None).unwrap();
+        for id in [&rec, &old, &new] {
+            h.state
+                .label_repo
+                .set_for_meeting(id, std::slice::from_ref(&folder.id))
+                .unwrap();
+        }
+
+        let archive =
+            |body: Value| h.call(reqwest::Method::POST, "/api/meetings/archive", Some(body));
+        assert_eq!(
+            archive(json!({ "label_id": folder.id, "preview": true })).await,
+            (200, json!({ "count": 2 }))
+        );
+        assert_eq!(
+            archive(json!({ "label_id": folder.id })).await,
+            (200, json!({ "count": 2 }))
+        );
+        assert_eq!(
+            h.titles("?archived=true").await,
+            ["Folder new", "Folder old"]
+        );
+        assert_eq!(h.titles("").await, ["Other", "Recording"]);
+        assert_eq!(archive(json!({ "preview": true })).await.0, 400);
     }
 }

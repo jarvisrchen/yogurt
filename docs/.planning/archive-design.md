@@ -20,7 +20,7 @@ Mocks, light and dark: [.lavish/archive-mocks.html](../.lavish/archive-mocks.htm
 | Archive or delete | Archive is a flag. The meeting keeps its notes, transcript, chat, labels, star, and Granola ID. |
 | Which meetings the date rule touches | All of them, recorded or imported. |
 | Granola re-import | Skips archived meetings, because the import matches on the Granola ID, which archiving keeps. |
-| How to archive many at once | Multi-select in the Library, and Archive everything before a date. |
+| How to archive many at once | Multi-select in the Library, Archive everything before a date, and Archive meetings in a label's menu (MTG-23). |
 | The phone | Gets an Archive view, read-only like the rest of the webapp. Archiving happens only on the Mac. |
 | Starred and labels on the phone | Starred is offered under All devices and each Mac. Labels and Archive appear once a Mac is picked, because each Mac has its own labels (changed by SYNC-23). |
 
@@ -72,6 +72,7 @@ Opening an archived meeting by its link still works, as do its chat, Enhance, Re
   The `UPDATE` sets `updated_at` too, because `cloud_fingerprint` (`meetings.rs:430`) watches it to tell the Cloud panel that meetings wait to push.
   It skips the markdown export, since the file does not show archive state.
   With `"preview": true` it returns `{"count": n}` and changes nothing, so the confirmation can name the number.
+  MTG-23 added `"label_id"`, which limits it to meetings with that label, and either field may be left out but not both.
   The Library fans out one request per meeting for bulk delete and bulk label (`web/src/lib/api/meetings.ts:228-260`), which works for a page of at most 100 but not for 1,300 meetings.
 
 Neither route archives the meeting being recorded.
@@ -96,6 +97,9 @@ It fans out `PATCH` per meeting, as bulk label does, and asks for no confirmatio
 A button in the Archive view's header, left of the search box, "Archive older meetings", opens a panel under it with a date field and the confirmation "Archive 1,212 meetings that started before Jan 1, 2026?"
 The count comes from the preview call.
 The bound is the chosen date's midnight in the local time zone, and the field cannot pick a date after today.
+
+A label's sidebar menu has Archive meetings above Delete (MTG-23), so a Granola folder imported as a label can be archived whole.
+It confirms in the menu like Delete, "Archive?" over "Archives 312 meetings", with the count from the preview call.
 
 The meeting page header (`web/src/routes/MeetingPost.tsx:496`) gains an Archive icon button before Delete.
 On an archived meeting it becomes `ArchiveRestore` on the selected-blue background, and its tooltip reads "Archived Oct 27, 2026", so a meeting opened from a link shows why the Library does not list it.

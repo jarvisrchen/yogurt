@@ -1430,3 +1430,9 @@ New closed items go at the bottom.
   Update now skips the word floor, Pause stops it for one meeting and drops what was buffered, and the bullets stay on the post page until the summary is saved.
   `general.live_recap` gates it, on by default, and `yogurt ctl meeting recap` reads, refreshes, pauses, and resumes it.
   </details>
+
+- [x] **MTG-23** Archive every meeting with a label from the label's sidebar menu, so a Granola folder imported as a label can be archived whole.
+
+  A label's sidebar menu has Archive meetings above Delete.
+  It confirms in place with the count of meetings it would archive, and skips the meeting being recorded.
+  `POST /api/meetings/archive` takes `label_id` beside `before`, and needs at least one.

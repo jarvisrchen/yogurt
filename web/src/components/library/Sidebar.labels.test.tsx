@@ -11,7 +11,7 @@ import {
   useReorderLabels,
   useUpdateLabel,
 } from "../../lib/api/labels";
-import { useCreateMeeting } from "../../lib/api/meetings";
+import { useArchivePreview, useCreateMeeting } from "../../lib/api/meetings";
 import { settingsApi } from "../../lib/api/settings";
 import { LABEL_SORT_KEY } from "../../lib/labelSort";
 
@@ -23,8 +23,11 @@ vi.mock("../../lib/api/labels", () => ({
   useReorderLabels: vi.fn(),
 }));
 
+const archiveMutate = vi.fn(() => Promise.resolve({ count: 2 }));
 vi.mock("../../lib/api/meetings", () => ({
   useCreateMeeting: vi.fn(),
+  useArchivePreview: vi.fn((scope: unknown) => ({ data: scope ? { count: 2 } : undefined })),
+  useArchiveMatching: vi.fn(() => ({ mutateAsync: archiveMutate, reset: vi.fn(), isPending: false, error: null })),
 }));
 
 vi.mock("../../lib/api/settings", () => ({
@@ -117,6 +120,15 @@ describe("Sidebar — Labels section", () => {
     // Parent container must not clip the absolutely-positioned menu.
     const menu = screen.getByRole("menu");
     expect(menu.parentElement?.parentElement?.className).not.toMatch(/overflow/);
+
+    // Archive meetings counts the label's meetings, then archives them on confirm.
+    expect(useArchivePreview).toHaveBeenLastCalledWith(null);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive meetings" }));
+    expect(useArchivePreview).toHaveBeenLastCalledWith({ labelId: "l1" });
+    expect(screen.getByText("Archives 2 meetings")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Archive?" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive?" }));
+    expect(archiveMutate).toHaveBeenCalledWith({ labelId: "l1" });
   });
 
   it("commits a valid custom hex on Enter but not an invalid one on blur", () => {

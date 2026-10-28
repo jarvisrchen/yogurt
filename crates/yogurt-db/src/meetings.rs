@@ -603,29 +603,33 @@ impl MeetingRepo {
         })
     }
 
-    /// Archives every unarchived meeting that started before `before` (unix ms) in one statement, or with `preview` only counts them.
+    /// Archives every unarchived meeting that started before `before` (unix ms) and has `label_id`, in one statement, or with `preview` only counts them.
+    /// A `None` bound or label matches every meeting.
     /// `except` is the meeting being recorded, which must not vanish mid-meeting.
     /// Bumps `updated_at` so the Cloud panel sees meetings waiting to push. The markdown export does not show archive state, so it is not rewritten.
-    pub fn archive_before(
+    pub fn archive_matching(
         &self,
-        before: i64,
+        before: Option<i64>,
+        label_id: Option<&str>,
         except: Option<&str>,
         preview: bool,
     ) -> Result<usize> {
-        const MATCH: &str = "archived_at IS NULL AND started_at < ?1 AND id IS NOT ?2";
+        const MATCH: &str =
+            "archived_at IS NULL AND (?1 IS NULL OR started_at < ?1) AND id IS NOT ?2 \
+             AND (?3 IS NULL OR id IN (SELECT meeting_id FROM meeting_labels WHERE label_id = ?3))";
         let now_ms = chrono::Utc::now().timestamp_millis();
         self.db.with_conn(|conn| -> Result<usize> {
             if preview {
                 let n: i64 = conn.query_row(
                     &format!("SELECT COUNT(*) FROM meetings WHERE {MATCH}"),
-                    params![before, except],
+                    params![before, except, label_id],
                     |r| r.get(0),
                 )?;
                 return Ok(n as usize);
             }
             Ok(conn.execute(
-                &format!("UPDATE meetings SET archived_at = ?3, updated_at = ?3 WHERE {MATCH}"),
-                params![before, except, now_ms],
+                &format!("UPDATE meetings SET archived_at = ?4, updated_at = ?4 WHERE {MATCH}"),
+                params![before, except, label_id, now_ms],
             )?)
         })
     }
@@ -1961,7 +1965,7 @@ mod tests {
     }
 
     #[test]
-    fn archive_before_previews_then_archives_older_meetings_but_the_recording() {
+    fn archive_matching_a_date_previews_then_archives_older_meetings_but_the_recording() {
         let repo = fresh_repo();
         let ms = seed(&repo, 5);
         let earlier = archive(&repo, &ms[0].id, true).archived_at;
@@ -1970,7 +1974,8 @@ mod tests {
         let fingerprint = repo.cloud_fingerprint().unwrap();
 
         assert_eq!(
-            repo.archive_before(before, Some(recording), true).unwrap(),
+            repo.archive_matching(Some(before), None, Some(recording), true)
+                .unwrap(),
             2
         );
         assert_eq!(
@@ -1982,7 +1987,8 @@ mod tests {
 
         std::thread::sleep(std::time::Duration::from_millis(5));
         assert_eq!(
-            repo.archive_before(before, Some(recording), false).unwrap(),
+            repo.archive_matching(Some(before), None, Some(recording), false)
+                .unwrap(),
             2
         );
         for m in &ms[2..4] {
@@ -2000,6 +2006,56 @@ mod tests {
             "the bound is exclusive and the recording stays"
         );
         assert_ne!(repo.cloud_fingerprint().unwrap(), fingerprint);
-        assert_eq!(repo.archive_before(i64::MAX, None, true).unwrap(), 2);
+        assert_eq!(
+            repo.archive_matching(Some(i64::MAX), None, None, true)
+                .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn archive_matching_a_label_archives_only_its_meetings_at_any_date() {
+        let repo = fresh_repo();
+        let ms = seed(&repo, 5);
+        let labels = crate::LabelRepo::new(repo.db.clone());
+        let (folder, _) = labels.find_or_create("Old folder", None).unwrap();
+        let (other, _) = labels.find_or_create("Keep", None).unwrap();
+        for m in [&ms[0], &ms[3], &ms[4]] {
+            labels
+                .set_for_meeting(&m.id, std::slice::from_ref(&folder.id))
+                .unwrap();
+        }
+        labels
+            .set_for_meeting(&ms[1].id, std::slice::from_ref(&other.id))
+            .unwrap();
+        archive(&repo, &ms[0].id, true);
+        let recording = Some(ms[4].id.as_str());
+
+        assert_eq!(
+            repo.archive_matching(None, Some(&folder.id), recording, true)
+                .unwrap(),
+            1,
+            "an archived meeting and the recording are not counted"
+        );
+        assert_eq!(
+            repo.archive_matching(Some(ms[3].started_at), Some(&folder.id), recording, true)
+                .unwrap(),
+            0,
+            "a bound narrows the label"
+        );
+        assert_eq!(
+            repo.archive_matching(None, Some(&folder.id), recording, false)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            list(&repo).into_iter().map(|m| m.id).collect::<Vec<_>>(),
+            [ms[4].id.as_str(), ms[2].id.as_str(), ms[1].id.as_str()]
+        );
+        assert_eq!(
+            repo.archive_matching(None, Some("nope"), None, true)
+                .unwrap(),
+            0
+        );
     }
 }

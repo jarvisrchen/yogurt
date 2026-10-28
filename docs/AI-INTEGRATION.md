@@ -32,7 +32,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | GET | `/api/meetings/active` | what's recording | `ctl status` |
 | GET | `/api/meetings/{id}` | full row | `ctl meeting show` |
 | PATCH | `/api/meetings/{id}` | update title/notes/star, or `archived: true\|false` (409 for the meeting being recorded) | - |
-| POST | `/api/meetings/archive` | archive every meeting that started before `{before}` (unix ms) except the one recording, or count them with `preview: true`: returns `{count}` | - |
+| POST | `/api/meetings/archive` | archive every meeting that started before `{before}` (unix ms) and has `{label_id}`, at least one of the two, except the one recording, or count them with `preview: true`: returns `{count}` | - |
 | DELETE | `/api/meetings/{id}` | delete | `ctl meeting delete` |
 | GET | `/api/meetings/{id}/markdown` | notes export (summary) | `ctl meeting summary` |
 | POST | `/api/meetings/{id}/start` | start recording | `ctl meeting start` |

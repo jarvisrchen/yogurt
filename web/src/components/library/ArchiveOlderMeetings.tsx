@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Archive } from "lucide-react";
 import { Button } from "../Button";
-import { useArchiveBefore, useArchivePreview } from "../../lib/api/meetings";
+import { useArchiveMatching, useArchivePreview } from "../../lib/api/meetings";
 import { formatCount } from "./pagination";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -20,8 +20,8 @@ export function ArchiveOlderMeetings() {
   const today = isoDay(new Date());
   // `max` only limits the picker, so a typed date after today counts as no date.
   const before = open && day <= today ? localMidnight(day) : null;
-  const preview = useArchivePreview(before);
-  const archive = useArchiveBefore();
+  const preview = useArchivePreview(before == null ? null : { before });
+  const archive = useArchiveMatching();
 
   useEffect(() => {
     if (!open) return;
@@ -45,7 +45,7 @@ export function ArchiveOlderMeetings() {
   const onArchive = async () => {
     if (before == null) return;
     // A failure shows in the panel, which stays open.
-    await archive.mutateAsync(before).then(() => setOpen(false), () => {});
+    await archive.mutateAsync({ before }).then(() => setOpen(false), () => {});
   };
 
   return (
