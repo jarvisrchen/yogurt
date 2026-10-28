@@ -453,7 +453,10 @@ async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
         "last_error": recorded(&state, LAST_ERROR_KEY),
         "push_history": recorded(&state, HISTORY_KEY),
         "push_interval": push_interval(&state),
-        "next_push": next_auto_push(&state, now_ms()),
+        // Never in the past, and null when auto-push is off or paused on a failure only the user can fix.
+        "next_push": TimerInputs::read(&state)
+            .and_then(|t| t.next_push())
+            .map(|at| at.max(now_ms())),
     })))
 }
 
@@ -788,32 +791,55 @@ fn due(
     })
 }
 
-/// The setting's interval, the last push, the last failure and its code, and the last meeting request. `None` when auto-push is off.
-fn timer_inputs(
-    state: &AppState,
-) -> Option<(i64, Option<i64>, Option<(i64, String)>, Option<i64>)> {
-    let setting = push_interval(state);
-    let interval_ms = interval_ms(setting)?;
-    let err = recorded(state, LAST_ERROR_KEY);
-    let last_error = err["at"]
-        .as_i64()
-        .map(|at| (at, err["code"].as_str().unwrap_or("").to_owned()));
-    let requested = (setting == "meeting")
-        .then(|| state.cloud_push.requested())
-        .flatten();
-    Some((
-        interval_ms,
-        recorded(state, LAST_PUSH_KEY)["at"].as_i64(),
-        last_error,
-        requested,
-    ))
+/// What the timer decides on. `requested` is when a meeting last stopped or finished its notes, read only for the `meeting` setting.
+struct TimerInputs {
+    interval_ms: i64,
+    last_push: Option<i64>,
+    last_error: Option<(i64, String)>,
+    requested: Option<i64>,
 }
 
-/// When the timer may next push, never earlier than `now`. `None` when auto-push is off or paused on a failure only the user can fix.
-fn next_auto_push(state: &AppState, now: i64) -> Option<i64> {
-    let (interval_ms, last_push, last_error, requested) = timer_inputs(state)?;
-    let last_error = last_error.as_ref().map(|(at, code)| (*at, code.as_str()));
-    next_push(interval_ms, last_push, last_error, requested).map(|at| at.max(now))
+impl TimerInputs {
+    /// `None` when auto-push is off.
+    fn read(state: &AppState) -> Option<Self> {
+        let setting = push_interval(state);
+        let err = recorded(state, LAST_ERROR_KEY);
+        Some(Self {
+            interval_ms: interval_ms(setting)?,
+            last_push: recorded(state, LAST_PUSH_KEY)["at"].as_i64(),
+            last_error: err["at"]
+                .as_i64()
+                .map(|at| (at, err["code"].as_str().unwrap_or("").to_owned())),
+            requested: (setting == "meeting")
+                .then(|| state.cloud_push.requested())
+                .flatten(),
+        })
+    }
+
+    fn next_push(&self) -> Option<i64> {
+        next_push(
+            self.interval_ms,
+            self.last_push,
+            self.error(),
+            self.requested,
+        )
+    }
+
+    fn due(&self, now: i64) -> Option<&'static str> {
+        due(
+            self.interval_ms,
+            self.last_push,
+            self.error(),
+            self.requested,
+            now,
+        )
+    }
+
+    fn error(&self) -> Option<(i64, &str)> {
+        self.last_error
+            .as_ref()
+            .map(|(at, code)| (*at, code.as_str()))
+    }
 }
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
@@ -828,11 +854,7 @@ async fn auto_tick(state: &AppState, now: i64) {
         if load(&state)?.is_none() {
             return Ok(());
         }
-        let Some((interval_ms, last_push, last_error, requested)) = timer_inputs(&state) else {
-            return Ok(());
-        };
-        let last_error = last_error.as_ref().map(|(at, code)| (*at, code.as_str()));
-        let Some(trigger) = due(interval_ms, last_push, last_error, requested, now) else {
+        let Some(trigger) = TimerInputs::read(&state).and_then(|t| t.due(now)) else {
             return Ok(());
         };
         if pending(&state).await?.not_pushed == 0 {
