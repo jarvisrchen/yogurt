@@ -11,7 +11,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
   Notes and transcripts leave only to the LLM provider the user configures and to a Yogurt Cloud the user connects, which is their own Supabase project.
   A question asked in that Cloud's chat sends the meeting's transcript, or the titles, dates, notes, and transcript excerpts of the meetings it finds, from the user's Vercel project to the LLM provider set there.
   Captured audio is deleted after transcription.
-  The Granola import sends Granola only the user's API key and read requests, and only after the user saves a key and starts an import.
+  The Granola import sends Granola only the user's API key and read requests, and only when the user saves or tests a key, previews, or starts an import.
 - API keys and the Yogurt Cloud connection (the `yogurt-cloud` account, with its refresh token) live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, `FileKeyStore`) - never in SQLite, a response, or a log.
   The Cloud password is used once to sign in and dropped.
   The one exception is the Cloud chat's LLM key, which lives in the user's Vercel project's environment, Sensitive and Production only, and is never returned or logged.

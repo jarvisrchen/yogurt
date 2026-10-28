@@ -1409,3 +1409,8 @@ New closed items go at the bottom.
   The Cloud sync and Import eyebrows used a JetBrains Mono label from before UI-11, and now use the shared Manrope LABEL.
   web/src/designRules.test.ts fails an uppercase or tracked mono class string, an inline fontFamily, an arbitrary font-[...] family, and any @fontsource package but Manrope and JetBrains Mono.
   The style guide states the rule: Manrope for every label, heading, and sentence, and mono only for literal values.
+
+- [x] **IMP-6** A Test button for the Granola API key, beside Save key and beside a stored key, that checks the key with Granola without saving it
+
+  POST /api/import/granola/key/test checks a pasted key, or the stored one, with the same one request Save makes, and stores nothing.
+  Settings > Import shows Test beside Save key and beside the stored key, through the shared TestKeyButton.

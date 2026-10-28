@@ -1,3 +1,4 @@
+import type { TestConnectionResult } from "./settings";
 import { bearerFetch } from "../session";
 
 export interface ImportCounts {
@@ -52,6 +53,8 @@ export const importApi = {
   status: () => call<ImportStatus>("GET", "/api/import/granola"),
   setKey: (key: string) => call<{ key: string | null }>("PUT", "/api/import/granola/key", { key }),
   deleteKey: () => call<void>("DELETE", "/api/import/granola/key"),
+  /** No key tests the stored one. Stores nothing. */
+  testKey: (key?: string) => call<TestConnectionResult>("POST", "/api/import/granola/key/test", key ? { key } : {}),
   preview: () => call<ImportPreview>("POST", "/api/import/granola/preview"),
   start: () => call<void>("POST", "/api/import/granola"),
   cancel: () => call<void>("DELETE", "/api/import/granola"),

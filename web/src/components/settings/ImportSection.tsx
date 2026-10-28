@@ -18,6 +18,7 @@ import {
 } from "../../hooks/useGranolaImport";
 import { INPUT_MONO } from "./cloud/Field";
 import { LABEL } from "./labelClass";
+import { TestKeyButton } from "./TestKeyButton";
 import { Note } from "./cloud/Note";
 
 const HELP_URL = "https://docs.granola.ai/help-center/sharing/integrations/granola-api";
@@ -69,6 +70,7 @@ function KeyForm({ onSaved }: { onSaved: () => void }) {
         <Button type="submit" variant="primary" size="sm" disabled={!draft.trim() || save.isPending}>
           {save.isPending ? "Checking…" : "Save key"}
         </Button>
+        <TestKeyButton providerName="Granola" draft={draft} size="sm" testFn={importApi.testKey} />
       </div>
       {save.isError && (
         <Note tone="straw" role="alert">
@@ -131,9 +133,10 @@ function KeySaved({ masked, cancelled }: { masked: string; cancelled?: Extract<I
     <Card padding="compact" className="space-y-4">
       <div className="space-y-1">
         <div className={LABEL}>Granola API key · stored locally</div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[13px] text-ink">{masked}</span>
           <span className="text-[12.5px] font-medium text-matcha">✓ stored</span>
+          <TestKeyButton providerName="Granola" hasStoredKey size="sm" testFn={importApi.testKey} />
           <Button variant="ghost" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>
             Remove
           </Button>

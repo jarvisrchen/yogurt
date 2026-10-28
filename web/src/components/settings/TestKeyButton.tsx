@@ -2,8 +2,8 @@ import { useMutation } from "@tanstack/react-query";
 import { settingsApi, type TestConnectionResult } from "../../lib/api/settings";
 import { Button } from "../Button";
 
-// Renders a fragment: the button plus a `basis-full` verdict line, so a
-// `flex flex-wrap` parent drops the verdict onto its own row.
+// Renders a fragment: the button plus a `basis-full order-last` verdict line, so a
+// `flex flex-wrap` parent drops the verdict onto its own last row, even with siblings after the button.
 export function TestKeyButton({
   providerId = "",
   providerName,
@@ -17,6 +17,8 @@ export function TestKeyButton({
   onResult,
   // `false` beside the API key input keeps `Button`'s default sizing to line up with Save key.
   compact = true,
+  // Matches a `sm` Save key beside it. Overrides `compact`.
+  size,
 }: {
   providerId?: string;
   providerName: string;
@@ -26,6 +28,7 @@ export function TestKeyButton({
   testFn?: (key?: string) => Promise<TestConnectionResult>;
   onResult?: (result: TestConnectionResult) => void;
   compact?: boolean;
+  size?: "sm";
 }) {
   const test = useMutation({
     mutationFn: (key: string) => testFn(key || undefined),
@@ -42,7 +45,8 @@ export function TestKeyButton({
         variant="secondary"
         disabled={!canTest}
         aria-label={`Test connection for ${providerName}`}
-        className={`shrink-0 ${compact ? "px-3 py-1.5 text-[13px]" : ""}`}
+        size={size}
+        className={`shrink-0 ${compact && !size ? "px-3 py-1.5 text-[13px]" : ""}`}
         onClick={() => test.mutate(draft)}
       >
         {test.isPending ? "Testing…" : "Test"}
@@ -51,7 +55,7 @@ export function TestKeyButton({
       {fresh && test.data && (
         <p
           role="status"
-          className={`basis-full text-[12.5px] ${
+          className={`order-last basis-full text-[12.5px] ${
             test.data.ok ? "text-matcha" : "text-straw"
           }`}
         >
@@ -61,7 +65,7 @@ export function TestKeyButton({
         </p>
       )}
       {fresh && test.isError && (
-        <p role="status" className="basis-full text-[12.5px] text-straw">
+        <p role="status" className="order-last basis-full text-[12.5px] text-straw">
           ✗ Could not reach the yogurt server to run the test.
         </p>
       )}
