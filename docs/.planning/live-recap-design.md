@@ -31,6 +31,21 @@ A failed update keeps every earlier bullet, shows the error under them in the st
 
 ## How it runs
 
+```mermaid
+flowchart LR
+  STT["STT engine"] --> TX(["transcript_tx"])
+  TX --> PER["persist_transcript"] --> DB[("SQLite<br/>transcript_json")]
+  TX -- "final segments" --> RT["recap task<br/>3 min tick, 100-word floor,<br/>one call in flight"]
+  SET[("settings<br/>general.live_recap")] -. "read each tick" .-> RT
+  RT <-- "last 20 bullets + new lines,<br/>up to 4 bullets back" --> LLM["LLM provider<br/>the user configured"]
+  RT --> ST["Meeting.recap<br/>in memory"]
+  ST -- "live_recap frame,<br/>whole state" --> EV(["events_tx"])
+  EV --> DOCK["Dock Recap view<br/>live page, then post page<br/>until the summary"]
+  DOCK & CTL["yogurt ctl meeting recap"] -- "GET /recap,<br/>POST /recap/refresh" --> API["recap routes"]
+  API -- "read" --> ST
+  API -. "Update now" .-> RT
+```
+
 ### The recap task
 
 `Registry::start` (`crates/yogurt-server/src/meetings.rs:595`) spawns a recap task beside `persist_transcript`, and `stop` ends it the same way.
@@ -85,6 +100,41 @@ End meeting stops the recording.
 `stop` signals the recap task the way it signals `persist_transcript`, and the task runs one last update over whatever arrived since the previous one, with no word floor, then exits.
 `stop` does not wait for that call, so the post-meeting page opens as fast as it does today.
 The last update runs alongside Enhance against the same provider, which is two requests at once for an HTTP provider and two processes at once for the CLI provider.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant B as Browser
+  participant R as Registry
+  participant T as Recap task
+  participant E as Enhance
+  participant L as LLM provider
+
+  U->>B: End meeting
+  B->>R: POST /stop
+  R->>T: signal stop, not awaited
+  R-->>B: 200 after the transcript flush
+  B->>B: open the post page, Recap view from GET /recap
+  B->>E: POST /enhance
+  par last recap update
+    T->>L: complete(lines since the last update)
+    L-->>T: bullets
+  and the summary
+    E->>L: stream(notes + full transcript)
+    L-->>E: enriched notes
+  end
+  alt recap update lands first
+    T->>B: live_recap with the final bullets
+    E->>E: save enriched notes
+    E->>B: live_recap empty, then enhance_progress done
+  else summary lands first
+    E->>E: save enriched notes, mark the recap closed
+    E->>B: live_recap empty, then enhance_progress done
+    T->>T: closed, discard the late bullets
+  end
+  B->>B: remove the Recap view and its tab
+```
 
 The post-meeting page (`web/src/routes/MeetingPost.tsx:585`) renders the dock in static mode from the saved transcript.
 It gains the Recap view whenever the meeting has bullets, read from `GET /recap` on mount and kept current by `live_recap` frames on the per-meeting WebSocket the page already opens for `enhance_progress`.
