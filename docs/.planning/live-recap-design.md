@@ -8,7 +8,6 @@ After a distraction, catching up means scrolling that transcript.
 The live recap adds short bullets of what was just discussed, a few every 3 minutes, so the user can glance and rejoin.
 
 Mocks, light and dark: [.lavish/live-recap-mocks.html](../.lavish/live-recap-mocks.html).
-One question is still open, listed at the end.
 
 ## What the user sees
 
@@ -102,6 +101,7 @@ The list stays short, so sending all of it keeps a reconnecting page correct wit
 ### The setting
 
 `general.live_recap` is a key in the existing key-value settings (`crates/yogurt-db/src/settings.rs:34`), so it needs no migration.
+It is on by default, read with `.unwrap_or(true)` like `meeting_auto_stop` (`settings.rs:92`), so a missing key means on, and upgrading users get the recap at their next meeting without a migration.
 General settings (`web/src/components/settings/GeneralSection.tsx`) gains "Show a live recap of the discussion while recording" after the auto-stop checkbox.
 The line under it names the configured model and says the recap sends the latest few minutes of transcript to it every 3 minutes.
 
@@ -204,9 +204,10 @@ Playwright screenshots the dock in light and dark for the PR.
 - `docs/AI-INTEGRATION.md`: the two new routes and the `live_recap` frame.
 - `docs/ARCHITECTURE.md`: the recap task beside transcript persistence.
 
-## Decided, push back if wrong
+## Decided
 
 - The name is Recap, in the dock and in the setting.
+- The setting is on by default, for new and upgrading users alike, since the transcript already goes to the same provider through Ask and Enhance and the setting names the model.
 - 3 minutes and 100 words, as constants and not settings, until real meetings say otherwise.
 - Bullets are append-only and earlier ones never change.
 - The prompt sees the transcript but not the user's notes, so the recap covers the conversation and nothing else.
@@ -216,10 +217,3 @@ Playwright screenshots the dock in light and dark for the PR.
 - Speech during a pause, or with the setting off, is dropped and never summarized later.
 - The bullets stay through Enhance and are dropped once the summary is saved, never kept with the meeting.
 - The CLI provider is allowed, with the longer effective interval described above.
-
-## Open questions
-
-1. **Whether the setting starts on or off.**
-   On means the feature is there the first time the user records, which is when it is worth anything.
-   Off means upgrading users get no new background flow of their transcript to a provider without choosing it, which fits a local-first product.
-   I lean toward on, because the transcript already goes to the same provider through Ask and Enhance and the setting names it, but this is a privacy default and the call is yours.
