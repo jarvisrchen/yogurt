@@ -165,7 +165,8 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page).toHaveURL(/\/settings\/cloud\/connect$/);
     await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeDisabled();
     await expect(page.getByText("Cloud address")).toBeVisible();
-    expect(await px(page.getByText("Cloud address"), "font-size")).toBe("9.5px");
+    expect(await px(page.getByText("Cloud address"), "font-size")).toBe("11px");
+    expect(await px(page.getByText("Cloud address"), "font-family")).toMatch(/^Manrope/);
     await page.getByLabel("Cloud address").fill("richard-yogurt.vercel.app");
     expect(await px(page.getByLabel("Cloud address"), "font-size")).toBe("11.5px");
     await page.getByLabel("Cloud address").blur();

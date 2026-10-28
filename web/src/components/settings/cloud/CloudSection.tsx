@@ -18,7 +18,8 @@ import {
 } from "../../../lib/api/cloud";
 import { useLivePush } from "../../../hooks/useCloudPush";
 import { ConnectForm } from "./ConnectForm";
-import { INPUT, K } from "./Field";
+import { INPUT } from "./Field";
+import { LABEL } from "../labelClass";
 import { Note } from "./Note";
 import { QrCode } from "./QrCode";
 
@@ -31,7 +32,7 @@ function Header({ suffix, connected, intro }: { suffix?: string; connected?: boo
     <header>
       <div className="flex flex-wrap items-baseline gap-2.5">
         <h2 className="heading-section">Cloud sync</h2>
-        {suffix && <small className="font-mono text-[10.5px] font-medium text-mut">{suffix}</small>}
+        {suffix && <small className="text-[12px] font-medium text-mut">{suffix}</small>}
         {connected && (
           <Pill tone="matcha" className="px-2.5! py-[3px]! text-[11px]! font-bold!">
             Connected
@@ -304,7 +305,7 @@ function AutoPush({ status, running }: { status: CloudConnected; running: boolea
     <Card padding="compact" className="mt-3">
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div className="min-w-0">
-          <div className={K}>Auto-push</div>
+          <div className={LABEL}>Auto-push</div>
           <p className="mt-0.5 text-[11.5px] text-mut">{describeInterval(value)}</p>
           {value !== "off" && !running && !set.isPending && (
             <p className={`mt-1 text-[11.5px] font-semibold ${status.next_push == null ? "text-straw" : "text-ink"}`}>
@@ -400,7 +401,7 @@ function Connected({ status }: { status: CloudConnected }) {
       <Card active padding="compact" className="border-[1px]! ring-1 ring-blue">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div>
-            <div className={K}>Machine name</div>
+            <div className={LABEL}>Machine name</div>
             <b className="text-[15px]">{status.machine_name}</b>
           </div>
           <Button size="sm" disabled={push.isPending || running || needsSignIn} onClick={() => push.mutate(undefined)}>
@@ -434,7 +435,7 @@ function Connected({ status }: { status: CloudConnected }) {
         <div className="flex items-center gap-3.5">
           <QrCode text={status.address} label={`QR code for ${host}`} />
           <div className="min-w-0">
-            <div className={K}>Cloud address</div>
+            <div className={LABEL}>Cloud address</div>
             <div className="mb-2.5 mt-0.5 truncate font-mono text-[13px]">{host}</div>
             <a href={status.address} target="_blank" rel="noreferrer" className={buttonClassName("secondary", "", "sm")}>
               Open ↗

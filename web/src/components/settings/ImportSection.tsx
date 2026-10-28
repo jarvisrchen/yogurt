@@ -16,7 +16,8 @@ import {
   useGranolaImport,
   type ImportState,
 } from "../../hooks/useGranolaImport";
-import { INPUT_MONO, K } from "./cloud/Field";
+import { INPUT_MONO } from "./cloud/Field";
+import { LABEL } from "./labelClass";
 import { Note } from "./cloud/Note";
 
 const HELP_URL = "https://docs.granola.ai/help-center/sharing/integrations/granola-api";
@@ -54,7 +55,7 @@ function KeyForm({ onSaved }: { onSaved: () => void }) {
         if (draft.trim()) save.mutate(draft);
       }}
     >
-      <div className={K}>Granola API key · stored locally</div>
+      <div className={LABEL}>Granola API key · stored locally</div>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="password"
@@ -129,7 +130,7 @@ function KeySaved({ masked, cancelled }: { masked: string; cancelled?: Extract<I
   return (
     <Card padding="compact" className="space-y-4">
       <div className="space-y-1">
-        <div className={K}>Granola API key · stored locally</div>
+        <div className={LABEL}>Granola API key · stored locally</div>
         <div className="flex items-center gap-3">
           <span className="font-mono text-[13px] text-ink">{masked}</span>
           <span className="text-[12.5px] font-medium text-matcha">✓ stored</span>
@@ -225,7 +226,7 @@ function Done({ result }: { result: Extract<ImportState, { kind: "done" }> }) {
       </div>
       {result.failed > 0 && (
         <div className="space-y-1">
-          <div className={K}>Could not import</div>
+          <div className={LABEL}>Could not import</div>
           <ul className="list-disc pl-4 text-[12.5px] text-ai">
             {result.failedTitles.map((t, i) => (
               <li key={i}>{t}</li>
