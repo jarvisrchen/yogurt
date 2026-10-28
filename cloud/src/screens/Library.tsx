@@ -125,12 +125,12 @@ export function Library({
       const empty =
         !rows.length && page === 1 && !pushId && !device && !archived &&
         !(await api.library(token, { atPush: null, limit: 1, offset: 0, device: null, archived: true, starred: false, label: null })).length;
-      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, empty };
+      return { entries: rows.map(summaryEntry), total: rows[0]?.total ?? 0, archived, device, empty };
     },
     onRejected,
     [api, token, pushId, size, page, device, archived, starred, scope.label],
   );
-  const labels = useCloudLoad(async () => (device ? api.labels(token, device) : null), onRejected, [api, token, device]);
+  const labels = useCloudLoad(async () => (device ? api.labels(token, device, pushId) : null), onRejected, [api, token, device, pushId]);
   const shown = pageLoad.data ?? pageLoad.previous;
   const turning = pageLoad.loading && !pageLoad.data;
 
@@ -280,7 +280,7 @@ export function Library({
         <DevicePills devices={devices} value={device} onChange={chooseDevice} />
       )}
       <Pills label="Filter" options={device ? DEVICE_FILTERS : FILTERS} value={typeof filter === "string" ? filter : null} onChange={chooseFilter}>
-        {device && <LabelMenu labels={labels.data} error={labels.error} value={label} onChange={chooseFilter} />}
+        {device && <LabelMenu labels={labels.data} error={labels.error} onRetry={labels.retry} value={label} onChange={chooseFilter} />}
       </Pills>
       {!pushId && (
         <p
@@ -312,8 +312,8 @@ export function Library({
                 title={r.title}
                 meta={meta(r.started_at, r.endedAt)}
                 tag={
-                  // With one Mac picked every row would show the same tag.
-                  !device && (
+                  // With one Mac picked every row would show the same tag. Rows still up from the last scope keep that scope's tags.
+                  !(hits ? device : shown?.device) && (
                     <DeviceTag
                       name={nameOf(r.device_id)}
                       index={indexOf(r.device_id)}

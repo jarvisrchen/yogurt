@@ -513,9 +513,20 @@ begin
     where l.body is not null order by l.meeting_id;
 end $$;
 
--- One device's labels, from the latest version of each of its live, unarchived meetings, sorted by name.
--- A label carries the name and color of the latest push that has it, so a rename shows as soon as one meeting with it is pushed again.
-create or replace function public.yogurt_labels(token text, only_device uuid)
+-- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the three below goes first.
+do $$
+declare
+  f regprocedure;
+begin
+  for f in select p.oid::regprocedure from pg_proc p
+           where p.pronamespace = 'public'::regnamespace and p.proname in ('yogurt_library', 'yogurt_search', 'yogurt_labels') loop
+    execute format('drop function %s', f);
+  end loop;
+end $$;
+
+-- One device's labels, from the latest version at or before at_push, or now when null, of each of its live, unarchived meetings, sorted by name with case ignored.
+-- A label takes its name and color from the newest push that has it.
+create or replace function public.yogurt_labels(token text, only_device uuid, at_push bigint default null)
 returns table (id text, name text, color text)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -528,7 +539,7 @@ begin
       from (
         select distinct on (v.meeting_id) v.meeting_id, v.push_id, v.body is not null and not v.archived as shown
         from public.yogurt_versions v
-        where v.user_id = auth.uid() and v.device_id = only_device
+        where v.user_id = auth.uid() and v.device_id = only_device and (at_push is null or v.push_id <= at_push)
         order by v.meeting_id, v.push_id desc
       ) l
       join public.yogurt_versions v on (v.device_id, v.meeting_id, v.push_id) = (only_device, l.meeting_id, l.push_id)
@@ -537,17 +548,6 @@ begin
       order by e ->> 'id', l.push_id desc
     ) x
     order by pg_catalog.lower(x.name), x.name, x.id;
-end $$;
-
--- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the two below goes first.
-do $$
-declare
-  f regprocedure;
-begin
-  for f in select p.oid::regprocedure from pg_proc p
-           where p.pronamespace = 'public'::regnamespace and p.proname in ('yogurt_library', 'yogurt_search') loop
-    execute format('drop function %s', f);
-  end loop;
 end $$;
 
 -- One page of the library, newest meeting first: the latest version of each live meeting per device at or before at_push, or now when null.
@@ -813,7 +813,7 @@ grant execute on function
   public.yogurt_start_push(uuid),
   public.yogurt_device_meetings(uuid),
   public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
-  public.yogurt_labels(text, uuid),
+  public.yogurt_labels(text, uuid, bigint),
   public.yogurt_meeting(text, uuid, text, bigint),
   public.yogurt_search_catch_up(int),
   public.yogurt_search(text, text, uuid, int, boolean, boolean, text),

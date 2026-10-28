@@ -424,7 +424,7 @@ In Settings, under Recovery, select History.
 It lists every push with its machine and time.
 A row says how many meetings the push updated and removed.
 Tap a row to see the library as it was right after that push, under a "Viewing" banner.
-All, Starred, Archive, and a label show each meeting as it was at that push, though the Labels list shows the labels of the latest push.
+All, Starred, Archive, the Labels list, and a picked label show each meeting as it was at that push.
 Meetings you open there show the version from that moment.
 Latest returns to the live library.
 

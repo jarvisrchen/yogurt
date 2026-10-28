@@ -308,39 +308,49 @@ const LucideIcon = ({ d, className }: { d: string; className: string }) => (
   </svg>
 );
 
-/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it. `labels` is null while loading. */
-export function LabelMenu({ labels, error, value, onChange }: { labels: Label[] | null; error: string | null; value: Label | null; onChange: (l: Label) => void }) {
+/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it. `labels` is null while loading, and opening the list after a failed load tries again. */
+export function LabelMenu({ labels, error, onRetry, value, onChange }: { labels: Label[] | null; error: string | null; onRetry: () => void; value: Label | null; onChange: (l: Label) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    // Captured on the document and stopped there, so the Escape that closes the list does not also clear the search or fold the chat.
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setOpen(false);
-      button.current?.focus();
+      e.stopPropagation();
+      close();
     };
     document.addEventListener("pointerdown", down);
-    document.addEventListener("keydown", key);
+    document.addEventListener("keydown", key, true);
     return () => {
       document.removeEventListener("pointerdown", down);
-      document.removeEventListener("keydown", key);
+      document.removeEventListener("keydown", key, true);
     };
   }, [open]);
   const note = (text: string) => <p className="px-3 py-2 text-mut m-[0px]">{text}</p>;
   return (
-    <div ref={box} className="relative ml-auto min-w-0">
+    // Tabbing out closes the list. A null relatedTarget is a tap that Safari does not focus, which the pointerdown listener judges instead.
+    <div ref={box} onBlur={(e) => e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && setOpen(false)} className="relative ml-auto min-w-0">
       <button
         ref={button}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={value ? `Label ${value.name}` : "Labels"}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open && error) onRetry();
+          setOpen(!open);
+        }}
         className={`${pill(!!value)} inline-flex items-center gap-[5px] max-w-full`}
       >
-        {value && <span className="w-[8px] h-[8px] min-[721px]:w-[7px] min-[721px]:h-[7px] rounded-[2px] shrink-0" style={{ background: labelColor(value.color) }} />}
+        {/* The ring keeps a blue label's swatch visible on the blue pill. */}
+        {value && <span className="w-[8px] h-[8px] min-[721px]:w-[7px] min-[721px]:h-[7px] rounded-[2px] shrink-0 ring-1 ring-white/80" style={{ background: labelColor(value.color) }} />}
         <span className="truncate">{value ? value.name : "Labels"}</span>
         <LucideIcon d="m6 9 6 6 6-6" className="w-[14px] h-[14px] min-[721px]:w-[12px] min-[721px]:h-[12px] shrink-0" />
       </button>
@@ -348,7 +358,7 @@ export function LabelMenu({ labels, error, value, onChange }: { labels: Label[] 
         <div
           role="listbox"
           aria-label="Labels"
-          className="absolute right-0 top-full mt-1 bg-card border border-line rounded-card shadow-pop py-1 min-w-[220px] max-h-[250px] overflow-y-auto z-20 text-[15px] min-[721px]:text-[12px]"
+          className="absolute right-0 top-full mt-1 bg-card border border-line rounded-card shadow-pop py-1 w-[220px] max-h-[250px] overflow-y-auto z-40 text-[15px] min-[721px]:text-[12px]"
         >
           {error
             ? note(`Could not load labels. ${error}`)
@@ -363,10 +373,10 @@ export function LabelMenu({ labels, error, value, onChange }: { labels: Label[] 
                       role="option"
                       aria-selected={l.id === value?.id}
                       onClick={() => {
-                        setOpen(false);
+                        close();
                         if (l.id !== value?.id) onChange(l);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-paper"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-paper cursor-pointer"
                     >
                       <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: labelColor(l.color) }} />
                       <span className="flex-1 truncate text-ink">{l.name}</span>

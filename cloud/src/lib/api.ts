@@ -168,6 +168,6 @@ export class Api {
     this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
-  /** One device's labels, sorted by name. */
-  labels = (token: string, device: string) => this.rpc<Label[]>("yogurt_labels", { token, only_device: device });
+  /** One device's labels, sorted by name, live or as of a push. */
+  labels = (token: string, device: string, atPush: number | null) => this.rpc<Label[]>("yogurt_labels", { token, only_device: device, at_push: atPush });
 }

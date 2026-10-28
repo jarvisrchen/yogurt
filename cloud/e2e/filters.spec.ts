@@ -2,8 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { API, KEY, OWNER, PASSWORD, onboard, reset, shot } from "./helpers";
 
-// Later tests use the owner and the meetings the first one creates.
-test.describe.configure({ mode: "serial" });
 test.beforeAll(reset);
 
 const MBP = "33333333-3333-4333-8333-333333333333";
@@ -125,10 +123,22 @@ test("a picked Mac adds Starred and its labels, and its rows drop the device tag
   await shot(page, info, "f-list", false);
   await page.keyboard.press("Escape");
 
-  // Search keeps the label.
+  // Search keeps the label: "review" matches three meetings, and one of them is a Clients meeting on this Mac.
   const search = page.getByRole("textbox", { name: "Search notes and transcripts" });
-  await search.fill("acme");
-  await expect(page.getByRole("status")).toHaveText("2 matches");
+  await search.fill("review");
+  await expect(page.getByRole("status")).toHaveText("1 match");
+  await expect(row(page, "Quarterly review - Initech")).toBeVisible();
+
+  // Escape with the list open closes only the list and keeps the query, and a pick returns focus to the button.
+  await labelsButton(page).click();
+  await page.keyboard.press("Escape");
+  await expect(list(page)).toHaveCount(0);
+  await expect(search).toHaveValue("review");
+  await labelsButton(page).click();
+  await list(page).getByRole("option", { name: "Board" }).click();
+  await expect(labelsButton(page)).toBeFocused();
+  await expect(page.getByRole("status")).toHaveText("1 match");
+  await expect(row(page, "Design review")).toBeVisible();
   await search.fill("");
 
   // Another Mac starts over at All with its own labels, and All devices drops Starred and Labels again.
