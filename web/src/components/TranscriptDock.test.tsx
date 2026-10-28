@@ -297,9 +297,24 @@ describe("TranscriptDock — live recap", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let recapBody: Record<string, unknown>;
 
+  // Like the server, every meeting socket opens with a `live_recap` frame of the current state.
+  class SnapshotSocket extends MockWebSocket {
+    constructor(url: string) {
+      super(url);
+      queueMicrotask(() =>
+        this.onmessage?.call(
+          this as unknown as WebSocket,
+          new MessageEvent("message", {
+            data: JSON.stringify({ type: "live_recap", ...recapBody }),
+          }),
+        ),
+      );
+    }
+  }
+
   beforeEach(() => {
     MockWebSocket.instances = [];
-    vi.stubGlobal("WebSocket", MockWebSocket);
+    vi.stubGlobal("WebSocket", SnapshotSocket);
     Object.defineProperty(window, "location", {
       configurable: true,
       writable: true,
@@ -313,7 +328,6 @@ describe("TranscriptDock — live recap", () => {
         const { paused } = JSON.parse(init.body as string) as { paused: boolean };
         return Response.json(state({ paused }));
       }
-      if (url.endsWith("/recap")) return Response.json(recapBody);
       return Response.json({}, { status: 202 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -355,7 +369,6 @@ describe("TranscriptDock — live recap", () => {
 
   it("dots the Recap tab for bullets that arrive while it is not showing", async () => {
     render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/recap$/), expect.anything()));
     await act(async () => {});
     expect(screen.queryByTestId("recap-unseen-dot")).toBeNull();
 
@@ -385,7 +398,9 @@ describe("TranscriptDock — live recap", () => {
   it("pauses and resumes the recap for this meeting", async () => {
     render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
     act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    await screen.findByText("Dana proposes $18/month");
     act(() => screen.getByRole("button", { name: "Pause recap" }).click());
+    // The PATCH response alone flips it, so Pause works even with the socket gone.
     await screen.findByRole("button", { name: "Resume recap" });
     expect(screen.getByText(/Paused for this meeting/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /update recap now/i })).toBeNull();
@@ -417,4 +432,24 @@ describe("TranscriptDock — live recap", () => {
     expect(screen.queryByRole("button", { name: /recap/i })).toBeNull();
     expect(screen.getByTestId("transcript-dock-panel").className).toMatch(/dock-closed/);
   });
+
+  it("takes the state a reconnected socket opens with", async () => {
+    render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
+    act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    await screen.findByText("Dana proposes $18/month");
+
+    recapBody = state({ bullets: [{ ts_ms: 1_000, text: "Missed while offline" }] });
+    act(() => MockWebSocket.instances.at(-1)!.close());
+    expect(await screen.findByText("Missed while offline", {}, { timeout: 2000 })).toBeInTheDocument();
+  });
+
+  it("closes a force-opened dock on the first click of the lone Transcript tab", () => {
+    const onOpenChange = vi.fn();
+    render(
+      <TranscriptDock meetingId={null} token={null} segments={[]} forceOpen onOpenChange={onOpenChange} />,
+    );
+    act(() => screen.getByRole("button", { name: /hide transcript/i }).click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
 });
+

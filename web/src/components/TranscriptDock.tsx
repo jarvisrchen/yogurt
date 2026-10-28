@@ -12,6 +12,8 @@ import {
 import { refreshRecap, setRecapPaused } from "../lib/api/meetings";
 import { TranscriptLine, scrollToTranscriptTime } from "./TranscriptLine";
 import { AudioWaveIcon } from "./AudioWaveIcon";
+// `TranscriptLine` has its own `formatTs` (HH:MM:SS). This one writes `mm:ss` with minutes past 59, as the server and `ctl` do.
+import { formatTs as mmss } from "../editor/html";
 import { Button } from "./Button";
 
 const INK = "var(--color-ink)";
@@ -33,7 +35,7 @@ export type RecapMode = "recording" | "stopped" | "final";
  * Right-edge dock that overlays the notes column without reflowing it (the notes wrapper reserves `pr-7` for the tab gutter).
  * Live mode (no `segments`) subscribes via `useTranscriptWs`. Static mode renders the persisted `segments` with no WS.
  * Auto-scroll sticks to the bottom until the user scrolls more than 24px up, and resumes within 24px.
- * With `recap` set it gains a Recap view and a second edge tab. It never opens itself; a dot marks unseen bullets.
+ * With `recap` set it gains a Recap view and a second edge tab. It never opens itself, and a dot marks unseen bullets instead.
  */
 export interface TranscriptDockProps {
   meetingId: string | null;
@@ -226,47 +228,34 @@ export function TranscriptDock({
     >
       <div className="relative h-full flex pointer-events-auto">
         {/* Collapsed tabs, always rendered. Auto width/height with overflow hidden keeps the vertical-rl label from protruding past the pill. */}
-        {hasRecap ? (
-          <>
-            <EdgeTab
-              top={22}
-              open={open}
-              active={view === "recap"}
-              name="Recap"
-              ariaName="recap"
-              onClick={() => toggleTab("recap")}
-            >
-              {unseen && (
-                <span
-                  data-testid="recap-unseen-dot"
-                  className="block w-2 h-2 rounded-full bg-blue"
-                />
-              )}
-            </EdgeTab>
-            <EdgeTab
-              top={112}
-              open={open}
-              active={view === "transcript"}
-              name="Transcript"
-              ariaName={label.toLowerCase()}
-              onClick={() => toggleTab("transcript")}
-            >
-              {wave}
-            </EdgeTab>
-          </>
-        ) : (
+        {hasRecap && (
           <EdgeTab
             top={22}
             open={open}
-            active
-            plain
-            name="Transcript"
-            ariaName={label.toLowerCase()}
-            onClick={() => setOpen((v) => !v)}
+            active={view === "recap"}
+            name="Recap"
+            ariaName="recap"
+            onClick={() => toggleTab("recap")}
           >
-            {wave}
+            {unseen && (
+              <span
+                data-testid="recap-unseen-dot"
+                className="block w-2 h-2 rounded-full bg-blue"
+              />
+            )}
           </EdgeTab>
         )}
+        <EdgeTab
+          top={hasRecap ? 112 : 22}
+          open={open}
+          active={view === "transcript"}
+          plain={!hasRecap}
+          name="Transcript"
+          ariaName={label.toLowerCase()}
+          onClick={() => toggleTab("transcript")}
+        >
+          {wave}
+        </EdgeTab>
 
         {/* Mounted while phase !== "closed" so the slide-out keyframe plays before unmount. */}
         {mounted && (
@@ -411,16 +400,6 @@ function EdgeTab({ top, open, active, plain, name, ariaName, onClick, children }
   );
 }
 
-/** `mm:ss`, or `h:mm:ss` past the first hour. */
-function formatBulletTs(ms: number): string {
-  const total = Math.floor(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const mmss = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return h > 0 ? `${h}:${mmss}` : mmss;
-}
-
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -479,8 +458,8 @@ function RecapView({ listRef, onScroll, mode, state, onJump, onRefresh, onPause 
               i >= (shownAtMount.current ?? Infinity) ? "animate-pop-up" : ""
             }`}
           >
-            <span className="shrink-0 w-[38px] pt-[2px] font-mono text-[12px] text-grey group-hover:text-blue">
-              {formatBulletTs(b.ts_ms)}
+            <span className="shrink-0 min-w-[38px] pt-[2px] font-mono text-[12px] text-grey group-hover:text-blue">
+              {mmss(b.ts_ms / 1000)}
             </span>
             <span className="text-[14px] leading-snug text-ink">{b.text}</span>
           </button>

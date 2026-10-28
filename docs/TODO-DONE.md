@@ -1449,6 +1449,22 @@ New closed items go at the bottom.
   With Archive picked, the Labels list comes from `yogurt_labels(..., only_archived => true)`, the labels of the Mac's archived meetings.
   Moving into or out of Archive takes the label off, and All and Starred keep it.
 
+- [x] **MTG-25** Fix the live recap bugs a code review found after MTG-22 shipped, and cut its duplicated web code
+  <details>
+  <summary>Details</summary>
+
+  A failed update retried its window with no cap, so a provider that kept failing grew the next prompt to the whole meeting.
+  Pause went by when a final arrived, so a lagging local whisper final for speech said during a pause could land after Resume and be sent.
+  The dock fetched the recap once, so a `live_recap` frame sent while its socket was down was lost.
+  With no provider set, every tick reported an empty success, and a quick Stop and resume ran two tasks against one buffer.
+  An Update now asked for while a call ran was dropped.
+  Separately, `useEnhanceProgress` and `useAudioLevels` each still carried a copy of the socket loop that `subscribeMeetingFrames` replaced.
+
+  A quick Stop and resume keeps the task that is still finishing the last update, and the task exits once that update lands.
+  A retried backlog is capped at 2,000 words, finals landing within 30 seconds of Resume are dropped, a missing provider shows as an error, and an Update now asked for during a call runs once that call lands.
+  The meeting socket opens with the recap's current state, so a reconnect misses nothing, and `useEnhanceProgress` and `useAudioLevels` now go through `subscribeMeetingFrames`.
+  </details>
+
 - [x] **MTG-26** Keep Archive highlighted in the sidebar while the Archive view is narrowed to a label, and let a second click on the selected label take it off.
 
   The Archive nav item stays highlighted while the Archive view is narrowed to a label.

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { bearerJson } from "./session";
 
 /**
  * Channel discriminator on the wire — matches `yogurt-stt::Channel`
@@ -443,97 +442,29 @@ export function useEnhanceProgress(
       return;
     }
 
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
-
-    let attempt = 0;
-    let cancelled = false;
-    let currentWs: WebSocket | null = null;
-    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const cleanupCurrentWs = () => {
-      if (currentWs) {
-        currentWs.onopen = null;
-        currentWs.onclose = null;
-        currentWs.onerror = null;
-        currentWs.onmessage = null;
-        if (
-          currentWs.readyState === WebSocket.CONNECTING ||
-          currentWs.readyState === WebSocket.OPEN
-        ) {
-          currentWs.close();
-        }
-        currentWs = null;
+    return subscribeMeetingFrames(meetingId, token, (raw) => {
+      const frame = raw as unknown as WsMessage;
+      if (frame.type !== "enhance_progress") return;
+      setPhase(frame.phase);
+      if (typeof frame.chars === "number") {
+        setChars(frame.chars);
       }
-    };
-
-    const connect = () => {
-      if (cancelled) return;
-      const ws = new WebSocket(url);
-      currentWs = ws;
-
-      ws.onmessage = (event) => {
-        if (cancelled) return;
-        try {
-          const frame = JSON.parse(event.data as string) as WsMessage;
-          if (frame.type === "enhance_progress") {
-            setPhase(frame.phase);
-            if (typeof frame.chars === "number") {
-              setChars(frame.chars);
-            }
-            // Phase 5: `text` carries the full accumulated raw markdown
-            // snapshot on `streaming` frames - reset it on every other
-            // phase so a stale preview never lingers once streaming ends.
-            if (frame.phase === "streaming" && typeof frame.text === "string") {
-              setText(frame.text);
-            } else {
-              setText(null);
-            }
-            // BL-5: surface the server-supplied error message so the
-            // EnhancingBanner can render a recoverable error pill with
-            // human-readable copy. Clear the message on a successful
-            // re-attempt (any non-error phase).
-            if (frame.phase === "error") {
-              setErrorMessage(frame.message ?? "Enhance failed");
-            } else {
-              setErrorMessage(null);
-            }
-          }
-        } catch {
-          // Ignore non-JSON / malformed frames.
-        }
-      };
-
-      const scheduleReconnect = () => {
-        if (cancelled) return;
-        cleanupCurrentWs();
-        if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
-        const delay = 500 * (1 << attempt);
-        attempt += 1;
-        backoffTimer = setTimeout(() => {
-          backoffTimer = null;
-          connect();
-        }, delay);
-      };
-
-      ws.onopen = () => {
-        if (cancelled) return;
-        attempt = 0;
-      };
-      ws.onclose = scheduleReconnect;
-      ws.onerror = scheduleReconnect;
-    };
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (backoffTimer) {
-        clearTimeout(backoffTimer);
-        backoffTimer = null;
+      // `text` carries the full accumulated raw markdown snapshot on
+      // `streaming` frames. Reset it on every other phase so a stale
+      // preview never lingers once streaming ends.
+      if (frame.phase === "streaming" && typeof frame.text === "string") {
+        setText(frame.text);
+      } else {
+        setText(null);
       }
-      cleanupCurrentWs();
-    };
+      // The server's message feeds EnhancingBanner's recoverable error
+      // pill. Any non-error phase clears it.
+      if (frame.phase === "error") {
+        setErrorMessage(frame.message ?? "Enhance failed");
+      } else {
+        setErrorMessage(null);
+      }
+    });
   }, [meetingId, token]);
 
   const enhancing = phase === "sending" || phase === "streaming";
@@ -698,12 +629,13 @@ export interface RecapState {
 }
 
 export interface UseLiveRecapResult {
-  /** `null` until the first GET or frame lands. */
+  /** `null` until the socket's first frame lands. */
   recap: RecapState | null;
+  /** Applies a PATCH response, so Pause shows even when the socket has given up reconnecting. */
   setRecap: (next: RecapState) => void;
 }
 
-/** The recap from `GET /recap`, then kept current by `live_recap` frames, which always win over a slower GET. */
+/** The meeting socket opens with a `live_recap` frame of the current state and sends one on every change. */
 export function useLiveRecap(
   meetingId: string | null,
   token: string | null,
@@ -713,23 +645,9 @@ export function useLiveRecap(
   useEffect(() => {
     setRecap(null);
     if (!meetingId || !token) return;
-    let gotFrame = false;
-    let cancelled = false;
-    bearerJson<RecapState>(`/api/meetings/${meetingId}/recap`).then(
-      (r) => {
-        if (!cancelled && !gotFrame) setRecap(r);
-      },
-      () => {},
-    );
-    const unsubscribe = subscribeMeetingFrames(meetingId, token, (frame) => {
-      if (frame.type !== "live_recap") return;
-      gotFrame = true;
-      setRecap(frame as unknown as RecapState);
+    return subscribeMeetingFrames(meetingId, token, (frame) => {
+      if (frame.type === "live_recap") setRecap(frame as unknown as RecapState);
     });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
   }, [meetingId, token]);
 
   return { recap, setRecap };
@@ -772,91 +690,24 @@ export function useAudioLevels(
       return;
     }
 
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
-
-    let attempt = 0;
-    let cancelled = false;
-    let currentWs: WebSocket | null = null;
-    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
     const decayTimers: Record<Channel, ReturnType<typeof setTimeout> | null> = {
       mic: null,
       system: null,
     };
-
-    const cleanupCurrentWs = () => {
-      if (currentWs) {
-        currentWs.onopen = null;
-        currentWs.onclose = null;
-        currentWs.onerror = null;
-        currentWs.onmessage = null;
-        if (
-          currentWs.readyState === WebSocket.CONNECTING ||
-          currentWs.readyState === WebSocket.OPEN
-        ) {
-          currentWs.close();
-        }
-        currentWs = null;
-      }
-    };
-
-    const scheduleDecay = (channel: Channel) => {
-      if (decayTimers[channel]) clearTimeout(decayTimers[channel]!);
-      decayTimers[channel] = setTimeout(() => {
-        setLevels((prev) => ({ ...prev, [channel]: 0 }));
+    const unsubscribe = subscribeMeetingFrames(meetingId, token, (frame) => {
+      if (frame.type !== "audio_level") return;
+      const ev = frame as unknown as AudioLevelEvent;
+      setLevels((prev) => ({ ...prev, [ev.channel]: ev.level }));
+      if (decayTimers[ev.channel]) clearTimeout(decayTimers[ev.channel]!);
+      decayTimers[ev.channel] = setTimeout(() => {
+        setLevels((prev) => ({ ...prev, [ev.channel]: 0 }));
       }, AUDIO_LEVEL_DECAY_MS);
-    };
-
-    const connect = () => {
-      if (cancelled) return;
-      const ws = new WebSocket(url);
-      currentWs = ws;
-
-      ws.onmessage = (event) => {
-        if (cancelled) return;
-        try {
-          const frame = JSON.parse(event.data as string) as { type?: string };
-          if (frame.type === "audio_level") {
-            const ev = frame as AudioLevelEvent;
-            setLevels((prev) => ({ ...prev, [ev.channel]: ev.level }));
-            scheduleDecay(ev.channel);
-          }
-        } catch {
-          // Ignore non-JSON / malformed frames.
-        }
-      };
-
-      const scheduleReconnect = () => {
-        if (cancelled) return;
-        cleanupCurrentWs();
-        if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
-        const delay = 500 * (1 << attempt);
-        attempt += 1;
-        backoffTimer = setTimeout(() => {
-          backoffTimer = null;
-          connect();
-        }, delay);
-      };
-
-      ws.onopen = () => {
-        if (cancelled) return;
-        attempt = 0;
-      };
-      ws.onclose = scheduleReconnect;
-      ws.onerror = scheduleReconnect;
-    };
-
-    connect();
+    });
 
     return () => {
-      cancelled = true;
-      if (backoffTimer) {
-        clearTimeout(backoffTimer);
-        backoffTimer = null;
-      }
+      unsubscribe();
       if (decayTimers.mic) clearTimeout(decayTimers.mic);
       if (decayTimers.system) clearTimeout(decayTimers.system);
-      cleanupCurrentWs();
       setLevels({ mic: 0, system: 0 });
     };
   }, [meetingId, token]);

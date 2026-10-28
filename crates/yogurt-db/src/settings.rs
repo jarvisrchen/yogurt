@@ -51,7 +51,7 @@ pub struct General {
     /// stay silent. No seed row; absent means `true`.
     pub meeting_auto_stop: bool,
     /// Send the latest transcript to the LLM provider every few minutes while
-    /// recording and show the bullets it returns. No seed row; absent means `true`.
+    /// recording and show the bullets it returns. It has no seed row, so absent means `true`.
     pub live_recap: bool,
     /// Whether the mic echo feature is exposed at all. Off by default; the
     /// in-meeting echo controls and auto-start only exist when this is on.

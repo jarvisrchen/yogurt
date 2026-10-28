@@ -225,7 +225,6 @@ pub struct Meeting {
     pub recap: std::sync::Mutex<crate::recap::Recap>,
     /// Update now: wakes the recap task, which skips the word floor.
     pub recap_refresh: tokio::sync::Notify,
-    pub recap_stop: std::sync::Mutex<Option<oneshot::Sender<()>>>,
 }
 
 /// Abort a spawned task when the owner is dropped. Used so the STT session
@@ -262,7 +261,6 @@ impl Meeting {
             last_audible_ms: Arc::new(AtomicU64::new(now_ms())),
             recap: Default::default(),
             recap_refresh: Default::default(),
-            recap_stop: Default::default(),
         }
     }
 }
