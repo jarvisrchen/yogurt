@@ -32,6 +32,8 @@ pub struct PushJob {
     pacing: Pacing,
     inner: Mutex<Option<Running>>,
     counted: Mutex<Option<Counted>>,
+    /// When a meeting last stopped or finished its notes, which the `meeting` auto-push setting waits on.
+    requested: Mutex<Option<i64>>,
 }
 
 impl PushJob {
@@ -57,6 +59,14 @@ impl PushJob {
             meetings,
             not_pushed,
         });
+    }
+
+    pub fn request(&self, now: i64) {
+        *self.requested.lock().unwrap() = Some(now);
+    }
+
+    pub fn requested(&self) -> Option<i64> {
+        *self.requested.lock().unwrap()
     }
 
     pub fn pacing(&self) -> &Pacing {

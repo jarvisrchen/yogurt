@@ -16,7 +16,7 @@ export interface LastError {
   code: string;
 }
 
-export type PushTrigger = "manual" | "auto" | "disconnect";
+export type PushTrigger = "manual" | "auto" | "meeting" | "disconnect";
 
 /** One push in the Settings history. `up_to_date` stands for a run of wakes that found nothing to send, stamped with the newest. */
 export type PushHistoryEntry =
@@ -32,7 +32,7 @@ export interface PushStatus {
   announced: boolean;
 }
 
-export type PushInterval = "off" | "15m" | "1h" | "1d";
+export type PushInterval = "off" | "meeting" | "15m" | "1h" | "1d";
 
 export type CloudStatus =
   | { connected: false }
