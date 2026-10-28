@@ -10,6 +10,7 @@ interface Props {
   selectionActive?: boolean;
   selectedIds?: ReadonlySet<string>;
   onToggleSelect?: (id: string, shiftKey: boolean) => void;
+  archived?: boolean;
 }
 
 export function DateGroup({
@@ -19,6 +20,7 @@ export function DateGroup({
   selectionActive,
   selectedIds,
   onToggleSelect,
+  archived,
 }: Props) {
   const groups = groupMeetingsByDay(meetings, now);
   return (
@@ -37,6 +39,7 @@ export function DateGroup({
                   selectionActive={selectionActive}
                   selected={selectedIds?.has(m.id) ?? false}
                   onToggleSelect={onToggleSelect}
+                  archived={archived}
                 />
               </li>
             ))}

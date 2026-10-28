@@ -50,6 +50,7 @@ vi.mock("../lib/api/meetings", () => ({
   // The header's delete button mounts DeleteMeetingConfirm, which
   // calls this hook on render even though these suites never click it.
   useDeleteMeeting: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetArchived: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { MeetingPost } from "./MeetingPost";

@@ -17,6 +17,7 @@ use yogurt_db::{Meeting, MeetingFilter, MeetingPage, MeetingPatch, NewMeeting};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/meetings/search", get(search))
+        .route("/api/meetings/archive", post(archive_before))
         .route("/api/meetings", get(list).post(create))
         .route(
             "/api/meetings/{id}",
@@ -73,6 +74,8 @@ pub struct PatchBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub starred: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stt_engine: Option<String>,
     /// Replaces the label set. `None` leaves labels alone, `Some(vec![])` clears them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,6 +86,7 @@ const DEFAULT_LIMIT: usize = 25;
 const MAX_LIMIT: usize = 100;
 
 /// Paging and filters shared by the list and search routes. `starred=false` is the same as leaving it out.
+/// `archived=true` lists only archived meetings, which every other listing leaves out.
 #[derive(Debug, Deserialize)]
 struct PageQuery {
     limit: Option<usize>,
@@ -91,6 +95,8 @@ struct PageQuery {
     label_id: Option<String>,
     #[serde(default)]
     starred: bool,
+    #[serde(default)]
+    archived: bool,
 }
 
 impl PageQuery {
@@ -104,6 +110,7 @@ impl PageQuery {
         let filter = MeetingFilter {
             label_id: self.label_id,
             starred: self.starred,
+            archived: self.archived,
         };
         Ok((filter, limit, self.offset))
     }
@@ -262,6 +269,16 @@ async fn patch_one(
     body: Option<Json<PatchBody>>,
 ) -> Result<Json<Meeting>, ApiError> {
     let mut body = body.map(|Json(b)| b).unwrap_or_default();
+    if body.archived == Some(true)
+        && s.meetings
+            .active_recording()
+            .await
+            .is_some_and(|a| a.to_string() == id)
+    {
+        return Err(ApiError::Conflict(
+            "the meeting being recorded cannot be archived".into(),
+        ));
+    }
     // Never let a PATCH blank a non-empty enriched document. Only enhance produces it,
     // so an empty overwrite is a client bug (a stale post-view mount flushing `""`).
     if matches!(&body.enriched_md, Some(Some(md)) if md.trim().is_empty()) {
@@ -300,6 +317,7 @@ async fn patch_one(
         enriched_md: body.enriched_md,
         ended_at: body.ended_at,
         starred: body.starred,
+        archived: body.archived,
         stt_engine: body.stt_engine,
         llm_model: None,
         template: None,
@@ -314,6 +332,31 @@ async fn patch_one(
     .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
     .map_err(ApiError::from)?;
     Ok(Json(m))
+}
+
+#[derive(Debug, Deserialize)]
+struct ArchiveBody {
+    /// Unix ms. Meetings that started before it are archived.
+    before: i64,
+    #[serde(default)]
+    preview: bool,
+}
+
+/// `POST /api/meetings/archive`: archive every meeting that started before `before`, or with `preview` only count them.
+/// One `UPDATE` rather than a PATCH per meeting, since an import can leave over a thousand to archive.
+async fn archive_before(
+    State(s): State<AppState>,
+    Json(body): Json<ArchiveBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let recording = s.meetings.active_recording().await.map(|id| id.to_string());
+    let repo = s.meeting_repo.clone();
+    let count = tokio::task::spawn_blocking(move || {
+        repo.archive_before(body.before, recording.as_deref(), body.preview)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({ "count": count })))
 }
 
 /// Mirrors `AppState::patch_and_export`: the enriched body wins over raw notes.
@@ -440,5 +483,148 @@ async fn delete_one(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::AppState;
+    use serde_json::{json, Value};
+    use std::sync::Arc;
+    use yogurt_db::NewMeeting;
+
+    struct Harness {
+        base: String,
+        token: String,
+        state: AppState,
+        http: reqwest::Client,
+        _tmp: tempfile::TempDir,
+    }
+
+    impl Harness {
+        async fn new() -> Self {
+            let tmp = tempfile::tempdir().unwrap();
+            let storage =
+                Arc::new(crate::storage::Storage::init_at(&tmp.path().join("db.sqlite")).unwrap());
+            let session = Arc::new(
+                crate::session::load_or_create(&tmp.path().join("session-token")).unwrap(),
+            );
+            let state = AppState::in_memory(
+                crate::Mode::Release,
+                storage,
+                session,
+                7878,
+                tmp.path().join("notes"),
+            )
+            .unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let app = crate::routes::router(state.clone());
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            Self {
+                base,
+                token: state.session.as_str().to_string(),
+                state,
+                http: reqwest::Client::new(),
+                _tmp: tmp,
+            }
+        }
+
+        async fn call(&self, m: reqwest::Method, p: &str, body: Option<Value>) -> (u16, Value) {
+            let mut req = self
+                .http
+                .request(m, format!("{}{p}", self.base))
+                .bearer_auth(&self.token);
+            if let Some(b) = body {
+                req = req.json(&b);
+            }
+            let resp = req.send().await.unwrap();
+            let code = resp.status().as_u16();
+            (code, resp.json().await.unwrap_or(Value::Null))
+        }
+
+        /// A meeting in the registry and the DB under one id, `recording` giving it a live task.
+        async fn meeting(&self, title: &str, started_at: i64, recording: bool) -> String {
+            let live = self.state.meetings.create().await;
+            let id = live.id.to_string();
+            self.state
+                .meeting_repo
+                .create(NewMeeting {
+                    title: title.into(),
+                    started_at_unix_ms: Some(started_at),
+                    id: Some(id.clone()),
+                })
+                .unwrap();
+            if recording {
+                *live.task.lock().await = Some(tokio::spawn(std::future::pending()));
+            }
+            id
+        }
+
+        async fn patch(&self, id: &str, archived: bool) -> (u16, Value) {
+            let p = format!("/api/meetings/{id}");
+            self.call(
+                reqwest::Method::PATCH,
+                &p,
+                Some(json!({ "archived": archived })),
+            )
+            .await
+        }
+
+        async fn titles(&self, qs: &str) -> Vec<String> {
+            let (_, page) = self
+                .call(reqwest::Method::GET, &format!("/api/meetings{qs}"), None)
+                .await;
+            page["meetings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["title"].as_str().unwrap().to_string())
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_recording_cannot_be_archived_by_patch_or_by_date() {
+        let h = Harness::new().await;
+        let rec = h.meeting("Recording", 1_000, true).await;
+        let old = h.meeting("Old", 2_000, false).await;
+        h.meeting("New", 9_000, false).await;
+
+        let (code, body) = h.patch(&rec, true).await;
+        assert_eq!(code, 409, "{body}");
+        assert!(h
+            .state
+            .meeting_repo
+            .get(&rec)
+            .unwrap()
+            .unwrap()
+            .archived_at
+            .is_none());
+
+        let archive = |preview: bool| {
+            h.call(
+                reqwest::Method::POST,
+                "/api/meetings/archive",
+                Some(json!({ "before": 5_000, "preview": preview })),
+            )
+        };
+        assert_eq!(archive(true).await, (200, json!({ "count": 1 })));
+        assert_eq!(h.titles("?archived=true").await, Vec::<String>::new());
+        assert_eq!(archive(false).await, (200, json!({ "count": 1 })));
+        assert_eq!(h.titles("?archived=true").await, ["Old"]);
+        assert_eq!(h.titles("").await, ["New", "Recording"]);
+        assert_eq!(h.titles("/search?q=old&archived=true").await, ["Old"]);
+        assert_eq!(h.titles("/search?q=old").await, Vec::<String>::new());
+
+        let (code, m) = h.patch(&old, false).await;
+        assert_eq!(code, 200);
+        assert!(
+            m.get("archived_at").is_none(),
+            "unarchived meetings omit the field"
+        );
+        let (code, m) = h.patch(&old, true).await;
+        assert_eq!(code, 200);
+        assert!(m["archived_at"].is_string());
     }
 }

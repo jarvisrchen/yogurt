@@ -88,6 +88,7 @@ function renderLibrary(url = "/") {
         <Routes>
           <Route path="/" element={<Library />} />
           <Route path="/starred" element={<Library starredOnly />} />
+          <Route path="/archive" element={<Library archivedOnly />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -156,6 +157,21 @@ describe("Library paging", () => {
     renderLibrary("/starred");
     expect(lastRequest()).toMatchObject({ starred: true, page: 1 });
     expect(screen.getByText(/60 meetings/)).toBeInTheDocument();
+  });
+
+  it("asks for archived meetings on the Archive route and heads it with their count", () => {
+    renderLibrary("/archive");
+    expect(lastRequest()).toMatchObject({ archived: true, page: 1 });
+    expect(screen.getByRole("heading", { name: "Archive" })).toBeInTheDocument();
+    expect(screen.getByText("60 archived meetings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive older meetings" })).toBeInTheDocument();
+  });
+
+  it("counts the whole archive while searching it", async () => {
+    renderLibrary("/archive");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "budget" } });
+    await waitFor(() => expect(lastRequest()).toMatchObject({ archived: true, q: "budget" }));
+    expect(requested.filter((r) => r.size === 1).at(-1)).toMatchObject({ archived: true, q: "" });
   });
 
   it("selects only the visible page and clears the selection on a page change", () => {

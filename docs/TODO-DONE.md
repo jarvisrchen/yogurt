@@ -1368,3 +1368,8 @@ New closed items go at the bottom.
 - [x] **SYNC-20** Show the last 20 pushes under the last-push line in Cloud sync settings, with a status dot per run and a failed-since count, so the user can see whether sync is healthy
 
   Records each push outcome in cloud.push_history and shows it as an expandable list in the Cloud sync card.
+
+- [x] **MTG-21** Archive meetings: an `archived_at` column, hidden from the Library, search, and Ask across meetings, an Archive view with its own search, Archive from a card, the meeting page, and multi-select, and Archive everything before a date ([design](.planning/archive-design.md#the-mac-mtg-21))
+
+  Archived meetings leave the Library, its search, and Ask across meetings, and an Archive view lists and searches only them.
+  Archive works from a card's menu, the selection bar, and the meeting page, and Archive older meetings archives everything before a date in one request, skipping the meeting being recorded.
