@@ -174,5 +174,14 @@ printf -- '- [ ] **BBB-1** duplicate of an already-closed style ID\n' >> "$DOCS/
 t "--check fails on a duplicate ID" bash -c '! TICKET_DOCS_DIR="$1" "$2" --check >/dev/null 2>&1' _ "$DOCS" "$TICKET"
 cp "$WORK/TODO.bak" "$DOCS/TODO.md"
 
+# --- done on a section's last entry, right under another entry ---
+DOCS2="$WORK/docs2"
+mkdir -p "$DOCS2"
+printf '# TODO\n\n## Alpha\n\n- [ ] **AAA-1** first\n- [ ] **AAA-2** last in the section\n\n## Beta\n\n- [ ] **BBB-1** beta\n' > "$DOCS2/TODO.md"
+printf '# Done\n' > "$DOCS2/TODO-DONE.md"
+TICKET_DOCS_DIR="$DOCS2" "$TICKET" done AAA-2 --note-file "$note1" >/dev/null
+t "done on a section's last entry keeps the blank line before the next heading" \
+  [ "$(cat "$DOCS2/TODO.md")" = "$(printf '# TODO\n\n## Alpha\n\n- [ ] **AAA-1** first\n\n## Beta\n\n- [ ] **BBB-1** beta')" ]
+
 echo "ticket_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

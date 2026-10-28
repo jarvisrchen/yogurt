@@ -162,7 +162,8 @@ The laptop's own saved chat for the meeting, which rides in each pushed version'
 
 **Ported from Rust.** `extract_terms`, `date_range`, and `yogurt_notes::ast::strip_markers` move to TypeScript in `cloud/api/`, with the stopword and month lists unchanged and their Rust test cases copied into Vitest.
 "Today", "this week", "in December", and each hit's date use the time zone the browser sends.
-Two changes from the Rust: a word keeps its combining marks, where local splits Hindi at the virama, and "may" names a month only after "in" or before a year.
+One change from the Rust: a word keeps its combining marks, where local splits Hindi at the virama.
+Both apps read "may" and "march" as months only next to a date cue, such as "in May", "last March", "May 12th", or "May 2025" (LLM-12).
 A day whose midnight a DST change skips starts when the clocks jump.
 
 **Context.** The same as local `build_messages`: the `library-chat-system.md` prompt with today's date, then a `MEETINGS:` block numbering each hit `[1]` to `[6]` with its title, date, notes with markers stripped, and excerpt, then the conversation.

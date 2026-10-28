@@ -291,6 +291,11 @@ const MONTHS: [&str; 12] = [
     "december",
 ];
 
+const VERB_MONTHS: [&str; 2] = ["may", "march"];
+const MONTH_CUES: [&str; 11] = [
+    "in", "during", "since", "from", "until", "last", "this", "early", "mid", "late", "of",
+];
+
 fn words(q: &str) -> Vec<String> {
     q.split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
@@ -315,6 +320,7 @@ fn extract_terms(q: &str) -> Vec<String> {
 
 /// `[start, end)` local dates for the first date phrase the question names, if any.
 /// A bare month name means its most recent occurrence, so "in December" asked in March is last December.
+/// "May" and "March" are also verbs, so they name a month only next to a date cue: "in May", "last March", "May 12th", "May 2025".
 fn date_range(q: &str, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
     let w = words(q);
     let has = |s: &str| w.iter().any(|x| x == s);
@@ -362,21 +368,29 @@ fn date_range(q: &str, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
         ));
     }
     for (i, name) in MONTHS.iter().enumerate() {
-        let Some(pos) = w.iter().position(|x| x == name) else {
-            continue;
-        };
         let m = i as u32 + 1;
-        let year = w
-            .get(pos + 1)
-            .filter(|y| y.len() == 4)
-            .and_then(|y| y.parse().ok())
-            .unwrap_or(if m <= today.month() {
+        for pos in (0..w.len()).filter(|&p| w[p] == *name) {
+            let next = w.get(pos + 1);
+            let named_year = next.filter(|y| y.len() == 4).and_then(|y| y.parse().ok());
+            let day_follows = next.is_some_and(|d| {
+                d.trim_end_matches(char::is_alphabetic)
+                    .parse::<u32>()
+                    .is_ok_and(|n| (1..=31).contains(&n))
+            });
+            let cued = w[..pos]
+                .last()
+                .is_some_and(|p| MONTH_CUES.contains(&p.as_str()));
+            if VERB_MONTHS.contains(name) && named_year.is_none() && !day_follows && !cued {
+                continue;
+            }
+            let year = named_year.unwrap_or(if m <= today.month() {
                 today.year()
             } else {
                 today.year() - 1
             });
-        let start = month_start(year, m)?;
-        return Some((start, next_month(start)?));
+            let start = month_start(year, m)?;
+            return Some((start, next_month(start)?));
+        }
     }
     None
 }
@@ -442,5 +456,27 @@ mod tests {
             Some((d(2025, 12, 1), d(2026, 1, 1)))
         );
         assert_eq!(date_range("what did steven say", today), None);
+        assert_eq!(date_range("did steven say we may slip?", today), None);
+        assert_eq!(date_range("should we march ahead?", today), None);
+        assert_eq!(date_range("may?", today), None);
+        assert_eq!(
+            date_range("did we say we may ship in may?", today),
+            Some((d(2026, 5, 1), d(2026, 6, 1)))
+        );
+        for q in ["since may", "last march", "may 12th offsite", "early may"] {
+            assert!(date_range(q, today).is_some(), "{q}");
+        }
+        assert_eq!(
+            date_range("the march 3 review", today),
+            Some((d(2026, 3, 1), d(2026, 4, 1)))
+        );
+        assert_eq!(
+            date_range("what happened in may", today),
+            Some((d(2026, 5, 1), d(2026, 6, 1)))
+        );
+        assert_eq!(
+            date_range("may 2025", today),
+            Some((d(2025, 5, 1), d(2025, 6, 1)))
+        );
     }
 }

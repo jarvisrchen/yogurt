@@ -1360,4 +1360,7 @@ New closed items go at the bottom.
 
 - [x] **LLM-11** Earlier cross-meeting answers keep their `[n]` citations on a follow-up, which numbers its own meetings, so `[1]` can mean two meetings in one prompt
 
-  Earlier answers go back to the model with each [n] replaced by its meeting title, in the desktop library chat and the webapp.
+  Earlier answers go back to the model without their [n], and a [n] the user typed becomes the title and date of the meeting it meant, in the desktop library chat and the webapp.
+- [x] **LLM-12** Cross-meeting chat reads the verbs "may" and "march" as months, so "did Steven say we may slip?" searches only May and finds nothing
+
+  "may" and "march" name a month only next to a date cue, such as "in May", "last March", "May 12th", or "May 2025", on the Mac and in the webapp.
