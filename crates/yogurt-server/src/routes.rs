@@ -65,6 +65,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/meetings/{id}/mic-muted", post(set_meeting_mic_muted))
         .route("/api/meetings/{id}/echo", post(set_meeting_echo))
         .route("/api/meetings/{id}/enhance", post(crate::enhance::enhance))
+        .route(
+            "/api/meetings/{id}/recap",
+            get(crate::recap::get_recap).patch(crate::recap::patch_recap),
+        )
+        .route(
+            "/api/meetings/{id}/recap/refresh",
+            post(crate::recap::refresh_recap),
+        )
         .route("/api/templates", get(crate::enhance::list_templates))
         // POST inserts a user + placeholder assistant row and spawns the LLM streaming task.
         .route(
@@ -196,6 +204,7 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
             .ok()
             .flatten();
     }
+    let recap_rx = state.meetings.subscribe(&id).await;
     match state
         .meetings
         .start(
@@ -207,6 +216,9 @@ async fn start_meeting(State(state): State<AppState>, Path(id): Path<Uuid>) -> i
         .await
     {
         Ok(_) => {
+            if let (Some(rx), Some(m)) = (recap_rx, state.meetings.get(&id).await) {
+                crate::recap::spawn(state.clone(), m, rx);
+            }
             // Best-effort: registry meetings without a row skip the stamp.
             let repo = state.meeting_repo.clone();
             let id_str = id.to_string();

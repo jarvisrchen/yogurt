@@ -14,9 +14,11 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
 
 interface GeneralSectionProps {
   general: General;
+  /** The active provider's model, named in the live recap's privacy line. */
+  llmModel?: string;
 }
 
-export function GeneralSection({ general }: GeneralSectionProps) {
+export function GeneralSection({ general, llmModel }: GeneralSectionProps) {
   const qc = useQueryClient();
   const patch = useMutation({
     mutationFn: (p: Partial<General>) => settingsApi.patch(p),
@@ -141,6 +143,23 @@ export function GeneralSection({ general }: GeneralSectionProps) {
               the tab is in the background.
             </p>
           )}
+        </div>
+
+        <div className="border-t border-line pt-4 mt-4 space-y-1.5">
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              defaultChecked={general.live_recap}
+              onChange={(e) => patch.mutate({ live_recap: e.target.checked })}
+              className="h-4 w-4 accent-blue"
+            />
+            <span>Show a live recap of the discussion while recording</span>
+          </label>
+          <p className="text-[12.5px] text-mut">
+            The recap sends the latest few minutes of transcript to your LLM
+            provider{llmModel ? ` (${llmModel})` : ""} every 3 minutes while you
+            record. Audio never leaves this Mac.
+          </p>
         </div>
       </div>
     </section>

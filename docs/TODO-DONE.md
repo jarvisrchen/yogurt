@@ -1414,3 +1414,19 @@ New closed items go at the bottom.
 
   POST /api/import/granola/key/test checks a pasted key, or the stored one, with the same one request Save makes, and stores nothing.
   Settings > Import shows Test beside Save key and beside the stored key, through the shared TestKeyButton.
+
+- [x] **MTG-22** Show periodic live discussion bullets during a live meeting
+  <details>
+  <summary>Details</summary>
+
+  While a meeting records, the live view shows the notes editor and the raw transcript dock, so catching up after a distraction means scrolling raw transcript.
+  Every few minutes, send the transcript since the last update to the configured LLM provider and append a few short bullets of what was just discussed to a panel on the live page (`web/src/routes/Meeting.tsx`).
+  Bullets should build on the previous ones rather than resummarize the whole meeting each time, so cost and latency stay flat as the meeting grows.
+  The transcript already goes to the configured provider for Enhance and for Ask, which works mid-meeting, so this stays inside the hard constraints.
+  It sends on a timer rather than on a click, so gate it behind a setting.
+  Design and mocks: [.planning/live-recap-design.md](.planning/live-recap-design.md).
+
+  The live page's transcript dock gains a Recap view: every 3 minutes while recording, with at least 100 new words, the server sends only the transcript since the last update plus the last 20 bullets to the configured LLM and appends up to 4 bullets.
+  Update now skips the word floor, Pause stops it for one meeting and drops what was buffered, and the bullets stay on the post page until the summary is saved.
+  `general.live_recap` gates it, on by default, and `yogurt ctl meeting recap` reads, refreshes, pauses, and resumes it.
+  </details>

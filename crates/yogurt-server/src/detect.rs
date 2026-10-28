@@ -229,8 +229,8 @@ impl DetectState {
     }
 }
 
-/// Absent means `true`: both settings are opt-out.
-fn setting_enabled(db: &yogurt_db::Db, key: &str) -> bool {
+/// Absent means `true`: these settings are opt-out.
+pub(crate) fn setting_enabled(db: &yogurt_db::Db, key: &str) -> bool {
     yogurt_db::settings::get(db, key)
         .ok()
         .flatten()

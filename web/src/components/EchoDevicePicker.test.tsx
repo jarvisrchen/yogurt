@@ -44,6 +44,7 @@ function baseGeneral(overrides: Partial<Record<string, unknown>> = {}) {
     meeting_detection: true,
     meeting_detection_focus: true,
     meeting_auto_stop: true,
+    live_recap: true,
     ...overrides,
   };
 }

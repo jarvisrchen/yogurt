@@ -121,6 +121,23 @@ fn it_loads_meeting_detection_focus_default_and_patches_it() {
 }
 
 #[test]
+fn it_loads_live_recap_default_and_patches_it() {
+    let db = Db::open_in_memory().unwrap();
+    assert!(settings::load_general(&db).unwrap().live_recap);
+
+    let patched = settings::save_general_patch(
+        &db,
+        settings::GeneralPatch {
+            live_recap: Some(false),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(!patched.live_recap);
+    assert!(!settings::load_general(&db).unwrap().live_recap);
+}
+
+#[test]
 fn it_loads_meeting_auto_stop_default_and_patches_it() {
     let db = Db::open_in_memory().unwrap();
     assert!(settings::load_general(&db).unwrap().meeting_auto_stop);

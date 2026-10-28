@@ -50,6 +50,9 @@ pub struct General {
     /// Stop the recording when the meeting window closes or both channels
     /// stay silent. No seed row; absent means `true`.
     pub meeting_auto_stop: bool,
+    /// Send the latest transcript to the LLM provider every few minutes while
+    /// recording and show the bullets it returns. No seed row; absent means `true`.
+    pub live_recap: bool,
     /// Whether the mic echo feature is exposed at all. Off by default; the
     /// in-meeting echo controls and auto-start only exist when this is on.
     pub audio_echo_feature: bool,
@@ -93,6 +96,10 @@ pub fn load_general(db: &Db) -> Result<General> {
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(true),
+        live_recap: get(db, "general.live_recap")?
+            .as_deref()
+            .map(|s| s == "true")
+            .unwrap_or(true),
         audio_echo_feature: get(db, "audio.echo_feature")?
             .as_deref()
             .map(|s| s == "true")
@@ -124,6 +131,7 @@ pub struct GeneralPatch {
     pub meeting_detection: Option<bool>,
     pub meeting_detection_focus: Option<bool>,
     pub meeting_auto_stop: Option<bool>,
+    pub live_recap: Option<bool>,
     pub audio_echo_feature: Option<bool>,
     pub audio_echo_output_device: Option<String>,
     pub audio_echo_enabled: Option<bool>,
@@ -174,6 +182,9 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
             "general.meeting_auto_stop",
             if d { "true" } else { "false" },
         )?;
+    }
+    if let Some(r) = patch.live_recap {
+        set(db, "general.live_recap", if r { "true" } else { "false" })?;
     }
     if let Some(f) = patch.audio_echo_feature {
         set(db, "audio.echo_feature", if f { "true" } else { "false" })?;

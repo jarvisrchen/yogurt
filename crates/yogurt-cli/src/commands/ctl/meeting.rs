@@ -72,6 +72,18 @@ pub enum MeetingCmd {
         #[arg(long)]
         template: Option<String>,
     },
+    /// Print the live recap's bullets. Held in memory while recording and until the summary is saved.
+    Recap {
+        meeting: String,
+        /// Run an update now, skipping the word floor, and wait for it.
+        #[arg(long, conflicts_with_all = ["pause", "resume"])]
+        refresh: bool,
+        /// Stop the recap for this meeting. Speech from here on is never sent.
+        #[arg(long, conflicts_with = "resume")]
+        pause: bool,
+        #[arg(long)]
+        resume: bool,
+    },
     /// Pause or resume the mic on an actively-recording meeting. Idempotent;
     /// defaults to whatever is currently recording.
     Mute {
@@ -137,6 +149,12 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
         MeetingCmd::Enhance { meeting, template } => {
             enhance(port, json_out, &meeting, template.as_deref()).await
         }
+        MeetingCmd::Recap {
+            meeting,
+            refresh,
+            pause,
+            resume,
+        } => recap(port, json_out, &meeting, refresh, pause, resume).await,
         MeetingCmd::Mute { action } => mute(port, json_out, action).await,
         MeetingCmd::Search { query, limit } => search(port, json_out, &query, limit).await,
         MeetingCmd::Delete {
@@ -817,6 +835,77 @@ async fn mute(port_flag: Option<u16>, json_out: bool, action: MuteAction) -> Res
         println!("{}", json!({ "id": id, "muted": muted }));
     } else {
         println!("{state} {id}");
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+struct RecapView {
+    bullets: Vec<RecapBullet>,
+    status: String,
+    error: Option<String>,
+    updated_at: Option<i64>,
+    paused: bool,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+struct RecapBullet {
+    ts_ms: u64,
+    text: String,
+}
+
+async fn recap(
+    port_flag: Option<u16>,
+    json_out: bool,
+    meeting: &str,
+    refresh: bool,
+    pause: bool,
+    resume: bool,
+) -> Result<(), CtlError> {
+    let (c, id) = client_for_ref(port_flag, &MeetingRef::parse(meeting)).await?;
+    let path = format!("/api/meetings/{id}/recap");
+    let mut view: RecapView = if pause || resume {
+        c.patch(&path, &json!({ "paused": pause })).await?
+    } else {
+        c.get(&path).await?
+    };
+    if refresh {
+        let before = view.updated_at;
+        let _: serde_json::Value = c.post_empty(&format!("{path}/refresh")).await?;
+        // With nothing new to send the update never starts, so stop waiting for it after 2s.
+        let asked = std::time::Instant::now();
+        let mut saw_updating = false;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            view = c.get(&path).await?;
+            if view.status == "updating" {
+                saw_updating = true;
+                continue;
+            }
+            if saw_updating
+                || view.updated_at != before
+                || asked.elapsed() > std::time::Duration::from_secs(2)
+            {
+                break;
+            }
+        }
+    }
+    if json_out {
+        println!("{}", json!(view));
+        return Ok(());
+    }
+    for b in &view.bullets {
+        let s = b.ts_ms / 1000;
+        println!("[{:02}:{:02}] {}", s / 60, s % 60, b.text);
+    }
+    if view.bullets.is_empty() {
+        eprintln!("no bullets yet");
+    }
+    if view.paused {
+        eprintln!("paused for this meeting");
+    }
+    if let Some(e) = view.error.filter(|_| view.status == "error") {
+        eprintln!("last update failed: {e}");
     }
     Ok(())
 }

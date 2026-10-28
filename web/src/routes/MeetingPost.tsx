@@ -27,6 +27,7 @@ import {
   type MeetingSourceJson,
 } from "../lib/api/meetings";
 import { postEnhance, type EnhanceResponse } from "../lib/api";
+import { useSettings } from "../lib/api/settings";
 
 const PAPER = "var(--color-paper)";
 const INK = "var(--color-ink)";
@@ -51,6 +52,8 @@ interface MeetingFetchResponse {
 
 interface LocationStateShape {
   autoEnhance?: { notes_md: string; title?: string };
+  /** The live dock was open on Recap at End. */
+  dockRecap?: boolean;
 }
 
 /** Long enough to read, short enough not to feel stuck. */
@@ -92,7 +95,8 @@ export function MeetingPost() {
   const [source, setSource] = useState<{ name: string; json: MeetingSourceJson } | null>(null);
   const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(stateShape.dockRecap ?? false);
+  const liveRecap = useSettings().data?.general?.live_recap ?? false;
 
   const ws = useEnhanceProgress(meetingId, token);
   // The server emits `done` (clearing `ws.text`) before the enhance POST
@@ -588,6 +592,8 @@ export function MeetingPost() {
         forceOpen={transcriptOpen}
         onOpenChange={setTranscriptOpen}
         segments={segments}
+        recap={liveRecap ? "final" : undefined}
+        initialView={stateShape.dockRecap ? "recap" : "transcript"}
       />
 
       <AskExperience meetingId={meetingId} token={token} />

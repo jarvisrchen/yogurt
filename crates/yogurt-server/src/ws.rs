@@ -86,6 +86,8 @@ pub enum WsEvent {
         code: String,
     },
     CloudPushCancelled,
+    /// The whole recap on every change, so a reconnecting page needs no delta logic.
+    LiveRecap(crate::recap::RecapState),
 }
 
 /// Meeting-independent sibling of the per-meeting `events_tx`, surfaced on the global `/ws`.

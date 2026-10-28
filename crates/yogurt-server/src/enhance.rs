@@ -601,6 +601,7 @@ pub async fn enhance(
         }
     }
 
+    crate::recap::close(&meeting);
     let _ = meeting
         .events_tx
         .send(serde_json::json!({"type": "enhance_progress", "phase": "done"}));

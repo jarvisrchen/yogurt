@@ -280,3 +280,141 @@ describe("TranscriptDock — static mode (MeetingPost task 9)", () => {
     expect(highlighted?.textContent).toContain("second point");
   });
 });
+
+describe("TranscriptDock — live recap", () => {
+  const BULLETS = [
+    { ts_ms: 42_000, text: "Goal: settle the Pro price" },
+    { ts_ms: 355_000, text: "Dana proposes $18/month" },
+  ];
+  const state = (over: Record<string, unknown> = {}) => ({
+    bullets: BULLETS,
+    status: "idle",
+    error: null,
+    updated_at: Date.now(),
+    paused: false,
+    ...over,
+  });
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let recapBody: Record<string, unknown>;
+
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { protocol: "http:", host: "localhost:5173" },
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    recapBody = state();
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/session-token")) return Response.json({ token: "t" });
+      if (url.endsWith("/recap") && init?.method === "PATCH") {
+        const { paused } = JSON.parse(init.body as string) as { paused: boolean };
+        return Response.json(state({ paused }));
+      }
+      if (url.endsWith("/recap")) return Response.json(recapBody);
+      return Response.json({}, { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function emitRecap(body: Record<string, unknown>) {
+    act(() => {
+      for (const ws of MockWebSocket.instances) {
+        ws.onmessage?.call(
+          ws as unknown as WebSocket,
+          new MessageEvent("message", {
+            data: JSON.stringify({ type: "live_recap", ...body }),
+          }),
+        );
+      }
+    });
+  }
+
+  it("keeps today's single tab with the recap off", () => {
+    render(<TranscriptDock meetingId="m" token="t" />);
+    expect(screen.queryByRole("button", { name: /show recap/i })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows bullets with their times and the live footer", async () => {
+    render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
+    act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    const list = await screen.findByTestId("recap-list");
+    await waitFor(() => expect(list.textContent).toContain("Dana proposes $18/month"));
+    expect(list.textContent).toContain("05:55");
+    expect(screen.getByText("Updated just now")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /update recap now/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Recap" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("dots the Recap tab for bullets that arrive while it is not showing", async () => {
+    render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/recap$/), expect.anything()));
+    await act(async () => {});
+    expect(screen.queryByTestId("recap-unseen-dot")).toBeNull();
+
+    emitRecap(state({ bullets: [...BULLETS, { ts_ms: 500_000, text: "New" }] }));
+    expect(screen.getByTestId("recap-unseen-dot")).toBeInTheDocument();
+
+    act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    expect(screen.queryByTestId("recap-unseen-dot")).toBeNull();
+  });
+
+  it("jumps to the transcript line a bullet came from", async () => {
+    const history: TranscriptEvent[] = [
+      { ts_ms: 40_000, channel: "system", text: "early line", is_final: true },
+      { ts_ms: 356_000, channel: "system", text: "eighteen a month", is_final: true },
+    ];
+    render(<TranscriptDock meetingId="m" token="t" recap="recording" history={history} />);
+    act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    const bullet = await screen.findByRole("button", { name: /Dana proposes/ });
+    act(() => bullet.click());
+
+    const transcript = await screen.findByTestId("transcript-list");
+    const line = transcript.querySelector('[data-transcript-ts-sec="356"]') as HTMLElement;
+    await waitFor(() => expect(line.scrollIntoView).toHaveBeenCalled());
+    expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("pauses and resumes the recap for this meeting", async () => {
+    render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
+    act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    act(() => screen.getByRole("button", { name: "Pause recap" }).click());
+    await screen.findByRole("button", { name: "Resume recap" });
+    expect(screen.getByText(/Paused for this meeting/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /update recap now/i })).toBeNull();
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(patch?.[1]?.body).toBe(JSON.stringify({ paused: true }));
+
+    act(() => screen.getByRole("button", { name: "Resume recap" }).click());
+    await screen.findByRole("button", { name: "Pause recap" });
+  });
+
+  it("keeps earlier bullets under a failed update", async () => {
+    recapBody = state({ status: "error", error: "gpt-4.1-mini did not respond within 60s" });
+    render(<TranscriptDock meetingId="m" token="t" recap="recording" />);
+    act(() => screen.getByRole("button", { name: /show recap/i }).click());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "gpt-4.1-mini did not respond within 60s. Trying again at the next update.",
+    );
+    expect(screen.getByTestId("recap-list").textContent).toContain("Dana proposes");
+  });
+
+  it("drops the Recap view and closes once the summary clears it", async () => {
+    render(<TranscriptDock meetingId="m" token="t" segments={[]} recap="final" />);
+    const tab = await screen.findByRole("button", { name: /show recap/i });
+    act(() => tab.click());
+    await screen.findByText("Final recap · the summary replaces it when ready");
+    expect(screen.queryByRole("button", { name: /update recap now/i })).toBeNull();
+
+    emitRecap(state({ bullets: [], updated_at: null }));
+    expect(screen.queryByRole("button", { name: /recap/i })).toBeNull();
+    expect(screen.getByTestId("transcript-dock-panel").className).toMatch(/dock-closed/);
+  });
+});

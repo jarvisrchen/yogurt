@@ -1,6 +1,7 @@
 # Live recap
 
-Planned. Written 2026-10-28.
+Shipped in MTG-22. Written 2026-10-28.
+Where the build differs: the route spawns the recap task (the registry has no settings or LLM access), Pause also drops the words buffered before it, and `transcript_lines` stays in `yogurt-server`, where both callers live.
 Ticket: `docs/TODO.md` MTG-22.
 
 During a meeting the live page shows the user's notes and a dock of raw transcript.

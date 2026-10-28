@@ -29,6 +29,9 @@ export interface General {
   /** Stop the recording when the meeting window closes or both channels stay
    *  silent for 5 minutes. */
   meeting_auto_stop: boolean;
+  /** Send the latest transcript to the LLM provider every 3 minutes while recording and show the bullets
+   *  it returns in the transcript dock. */
+  live_recap: boolean;
   /** Whether mic echo is exposed at all. Off by default; the in-meeting echo controls and auto-start
    *  only exist when on. */
   audio_echo_feature: boolean;

@@ -7,6 +7,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { bearerFetch, bearerJson } from "../session";
+import type { RecapState } from "../ws";
 
 export type PaletteColor = "blue" | "matcha" | "straw" | "lilac" | "honey" | "slate";
 
@@ -454,5 +455,18 @@ export function useDismissDetectedMeeting(): UseMutationResult<void, Error, void
       });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: detectedMeetingKey }),
+  });
+}
+
+/** Update now. 202 while recording, 409 otherwise. */
+export async function refreshRecap(meetingId: string): Promise<void> {
+  await bearerJson(`/api/meetings/${meetingId}/recap/refresh`, { method: "POST" });
+}
+
+/** Pause or resume the live recap for one meeting. */
+export function setRecapPaused(meetingId: string, paused: boolean): Promise<RecapState> {
+  return bearerJson<RecapState>(`/api/meetings/${meetingId}/recap`, {
+    method: "PATCH",
+    body: JSON.stringify({ paused }),
   });
 }

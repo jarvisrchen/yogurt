@@ -108,3 +108,29 @@ fn auto_mode_lists_every_format_and_forced_mode_only_one() {
         })
         .is_err());
 }
+
+#[test]
+fn it_renders_live_recap_with_earlier_bullets_and_new_lines() {
+    for mode in [Mode::Release, Mode::Dev] {
+        let p = Prompts::load(mode).expect("load");
+        let out = p
+            .render_live_recap(
+                "- [05:55] Dana proposes $18/month",
+                "[08:20] them: Finance wants the annual discount <= 15%",
+            )
+            .unwrap();
+        assert!(out.contains("- [05:55] Dana proposes $18/month"), "{out}");
+        assert!(
+            out.contains("[08:20] them: Finance wants the annual discount <= 15%"),
+            "{out}"
+        );
+        assert!(out.contains("at most 4 new bullets"), "{out}");
+        assert!(
+            !out.contains("{earlier}") && !out.contains("{lines}"),
+            "{out}"
+        );
+
+        let first = p.render_live_recap("", "[00:42] me: hi").unwrap();
+        assert!(first.contains("(no bullets yet)"), "{first}");
+    }
+}

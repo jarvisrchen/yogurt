@@ -10,6 +10,7 @@ pub(crate) mod llm_mock;
 pub(crate) mod llm_openai;
 pub(crate) mod markdown_exporter;
 pub mod meetings;
+mod recap;
 mod routes;
 pub(crate) mod sanitize;
 pub mod session;
