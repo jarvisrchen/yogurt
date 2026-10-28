@@ -29,6 +29,17 @@ Before the first update the view reads "The recap starts after about 3 minutes o
 While an update runs, a shimmer row sits under the last bullet.
 A failed update keeps every earlier bullet, shows the error under them in the strawberry-soft style the STT error banner uses, and retries at the next tick.
 
+With `general.live_recap` off, the dock is exactly today's dock: one Transcript tab and no Recap view.
+Turning the setting off mid-meeting hides the Recap view on the next settings fetch.
+
+### Pausing one meeting
+
+With the setting on, the footer also holds a Pause button, so the user can stop the recap for one meeting without touching Settings, such as when a sensitive topic comes up.
+While paused, the bullets so far stay in the view, a line under them reads "Paused for this meeting. Nothing said from here is sent until you resume.", and the footer shows Resume in place of Update now and Pause.
+Resume picks up from that moment.
+What was said while paused is never sent, not at the next tick, not at Resume, and not in the last update at End.
+The pause belongs to the meeting, so it survives a page refresh and a Stop and resume of the recording, and the next meeting starts unpaused.
+
 ## How it runs
 
 ```mermaid
@@ -41,8 +52,8 @@ flowchart LR
   RT --> ST["Meeting.recap<br/>in memory"]
   ST -- "live_recap frame,<br/>whole state" --> EV(["events_tx"])
   EV --> DOCK["Dock Recap view<br/>live page, then post page<br/>until the summary"]
-  DOCK & CTL["yogurt ctl meeting recap"] -- "GET /recap,<br/>POST /recap/refresh" --> API["recap routes"]
-  API -- "read" --> ST
+  DOCK & CTL["yogurt ctl meeting recap"] -- "GET and PATCH /recap,<br/>POST /recap/refresh" --> API["recap routes"]
+  API -- "read, set paused" --> ST
   API -. "Update now" .-> RT
 ```
 
@@ -52,13 +63,15 @@ flowchart LR
 It subscribes to `transcript_tx` and buffers final segments since the last update.
 Server-side is the right home because the recap keeps going when the browser tab closes, two open tabs do not double the calls, and `yogurt ctl` can read it.
 
-While recording, every 3 minutes the task checks three things and runs an update only when all hold:
+While recording, every 3 minutes the task checks four things and runs an update only when all hold:
 
 - `general.live_recap` is on, read at each tick so turning it off stops the next call.
+- The meeting's recap is not paused.
 - At least 100 new words arrived since the last update, so silence and small talk cost nothing.
 - No update is already in flight. A CLI provider can take over a minute (`GENERATION_TIMEOUT` is 300s in `crates/yogurt-llm/src/lib.rs:27`), so with one the effective interval stretches to the call time.
 
-Update now skips the word floor but keeps the other two checks.
+Update now skips the word floor but keeps the other three checks.
+While the setting is off or the meeting is paused, the task drops final segments as they arrive instead of buffering them, which is what keeps paused speech from ever reaching the provider.
 It reaches the task through a `tokio::sync::Notify` on `Meeting`.
 
 ### The prompt
@@ -74,7 +87,7 @@ A timestamp outside the window it summarized clamps to the window's first segmen
 
 ### State and the wire
 
-Bullets live in memory on `Meeting` as `recap: Mutex<RecapState>`, holding the bullets, a status (`idle`, `updating`, or `error`), the last error, and the last update time.
+Bullets live in memory on `Meeting` as `recap: Mutex<RecapState>`, holding the bullets, a status (`idle`, `updating`, or `error`), the last error, the last update time, and whether the meeting is paused.
 The registry keeps a meeting while it is live, so a page refresh keeps the recap.
 A server restart ends the recording anyway, so nothing is lost that the recording itself does not lose.
 No migration, which also keeps clear of the shared-database hazard a new column brings while the branch is in review.
@@ -83,7 +96,8 @@ Every state change sends a `live_recap` frame on `events_tx`, a new `WsEvent::Li
 The list stays short, so sending all of it keeps a reconnecting page correct with no delta logic, the choice Enhance streaming made for the same reason.
 `GET /api/meetings/{id}/recap` returns the same JSON, which the dock fetches on mount before the first frame arrives.
 `POST /api/meetings/{id}/recap/refresh` is Update now, answering 202, or 409 when the meeting is not recording.
-`yogurt ctl meeting recap <id>` prints the bullets, and `--refresh` runs an update first.
+`PATCH /api/meetings/{id}/recap` with `{"paused": true}` or `false` is Pause and Resume, answering with the new state and sending it as a `live_recap` frame so every open tab agrees.
+`yogurt ctl meeting recap <id>` prints the bullets, `--refresh` runs an update first, and `--pause` and `--resume` call the `PATCH`.
 
 ### The setting
 
@@ -98,6 +112,7 @@ Enhance can take a minute or more, especially with a CLI provider, and the recap
 
 End meeting stops the recording.
 `stop` signals the recap task the way it signals `persist_transcript`, and the task runs one last update over whatever arrived since the previous one, with no word floor, then exits.
+It skips that update when the meeting is paused or the setting is off.
 `stop` does not wait for that call, so the post-meeting page opens as fast as it does today.
 The last update runs alongside Enhance against the same provider, which is two requests at once for an HTTP provider and two processes at once for the CLI provider.
 
@@ -178,7 +193,8 @@ Quiet stretches below the 100-word floor skip their tick and cost nothing.
 `yogurt-prompts` tests the new template's render and the bullet parser: well-formed lines, `(none)`, reasoning stripped, lines that do not parse, more than 4 bullets, and a timestamp outside the window.
 A server test drives a meeting through the mock client in `llm_mock.rs`.
 It covers the word floor, a refresh, an error that keeps earlier bullets, the setting turned off between ticks, the single in-flight guard, and the `live_recap` frame and `GET` agreeing.
-Vitest covers the dock's two views, the unseen dot, and a bullet click switching to Transcript at the right line.
+For pause it checks that speech during a pause never appears in any prompt the mock receives, at a tick, at Resume, or in the last update at End, and that the pause survives a Stop and resume.
+Vitest covers the dock's two views, the unseen dot, a bullet click switching to Transcript at the right line, Pause and Resume, and the plain Transcript-only dock with the setting off.
 Playwright screenshots the dock in light and dark for the PR.
 `just test-hw` with a real meeting checks the timing end to end, since the 3-minute tick only shows its behavior in a real recording.
 
@@ -196,6 +212,8 @@ Playwright screenshots the dock in light and dark for the PR.
 - The prompt sees the transcript but not the user's notes, so the recap covers the conversation and nothing else.
 - The recap lives in the dock as a second view, and a card above the notes was considered and dropped.
 - The dock never opens itself, and a dot signals new bullets instead.
+- Pause is per meeting and lives in memory, so it needs no setting and no migration.
+- Speech during a pause, or with the setting off, is dropped and never summarized later.
 - The bullets stay through Enhance and are dropped once the summary is saved, never kept with the meeting.
 - The CLI provider is allowed, with the longer effective interval described above.
 

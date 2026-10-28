@@ -148,6 +148,8 @@ const PATHS = {
   link2: '<path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 1 1 0 10h-2"></path><line x1="8" x2="16" y1="12" y2="12"></line>',
   mic: '<path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect>',
   chevronDown: '<path d="m6 9 6 6 6-6"></path>',
+  pause: '<rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"></polygon>',
   refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path>',
 };
 const icon = (n, size, cls = "") =>
@@ -221,10 +223,14 @@ function dockPanel(active, body, footer = "", { live = true } = {}) {
     </aside>`;
 }
 
-const recapFooter = (left, action = true) => `
-  <footer class="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
+const recapFooter = (left, { update = true, pause = true, resume = false } = {}) => `
+  <footer class="flex items-center justify-between gap-2 border-t border-line pl-5 pr-3 py-3">
     <span class="text-[12px] text-mut whitespace-nowrap">${left}</span>
-    ${action ? `<button type="button" class="${btn("ghost", "whitespace-nowrap -mr-2", "sm")}">${icon("refresh", 13)}Update now</button>` : ""}
+    <span class="flex items-center">
+      ${update ? `<button type="button" class="${btn("ghost", "whitespace-nowrap px-2.5!", "sm")}">${icon("refresh", 13)}Update now</button>` : ""}
+      ${pause ? `<button type="button" class="${btn("ghost", "whitespace-nowrap px-2.5!", "sm")}">${icon("pause", 13)}Pause</button>` : ""}
+      ${resume ? `<button type="button" class="${btn("secondary", "whitespace-nowrap", "sm")}">${icon("play", 13)}Resume</button>` : ""}
+    </span>
   </footer>`;
 
 const recapList = (n = BULLETS.length, freshLast = false) =>
@@ -383,7 +389,7 @@ const PAGE = { w: 1440, h: 780 };
 const SECTIONS = [
   {
     title: "1. The dock opens on Recap",
-    caption: "The transcript dock gains a Recap view beside Transcript, picked with the segmented control in its header. Bullets append at the bottom with the time they happened, and clicking one switches to Transcript at that moment. The notes column does not reflow, as today.",
+    caption: "The transcript dock gains a Recap view beside Transcript, picked with the segmented control in its header. Bullets append at the bottom with the time they happened, and clicking one switches to Transcript at that moment. The footer's Pause stops the recap for this meeting only. The notes column does not reflow, as today.",
     frames: [{ ...PAGE, html: () => livePage({ tabs: { open: true, active: "recap" }, dock: dockPanel("recap", recapBody(), recapFooter("Updated 1 min ago")) }) }],
   },
   {
@@ -408,12 +414,13 @@ const SECTIONS = [
   },
   {
     title: "6. Dock states",
-    caption: "Waiting before the first update, an update in flight (a CLI provider can sit here for a minute or more), and a failed update. A failure keeps every earlier bullet and retries at the next tick, so it never takes a banner.",
-    frames: [{ w: 1074, h: 560, html: () => `
+    caption: "Waiting before the first update, an update in flight (a CLI provider can sit here for a minute or more), paused for this meeting, and a failed update. Pause shows only when the setting is on, keeps the bullets so far, and drops what is said until Resume. A failure keeps every earlier bullet and retries at the next tick, so it never takes a banner.",
+    frames: [{ w: 1428, h: 560, html: () => `
       <div class="h-full bg-paper flex gap-6 p-6">
         ${[
-          ["Waiting", `<p class="text-[13px] mt-2 text-grey">The recap starts after about 3 minutes of conversation.</p>`, recapFooter("First update at 3:00", false)],
-          ["Updating", recapList(4) + updatingRow, recapFooter("Updating…", false)],
+          ["Waiting", `<p class="text-[13px] mt-2 text-grey">The recap starts after about 3 minutes of conversation.</p>`, recapFooter("First update at 3:00", { update: false })],
+          ["Updating", recapList(4) + updatingRow, recapFooter("Updating…", { update: false })],
+          ["Paused", recapList(4) + `<p class="mt-2 text-[12.5px] leading-snug text-mut">Paused for this meeting. Nothing said from here is sent until you resume.</p>`, recapFooter("Paused at 09:12", { update: false, pause: false, resume: true })],
           ["Failed", recapList(4) + `<p class="mt-2 text-[12.5px] leading-snug text-ink rounded-button bg-strsoft border border-straw/40 px-3 py-2">gpt-4.1-mini did not respond within 60s. Trying again at the next update.</p>`, recapFooter("Updated 4 min ago")],
         ].map(([name, body, foot]) => `
           <div class="flex flex-col gap-2 min-w-0"><span class="${LABEL}">${name}</span>
