@@ -195,7 +195,7 @@ const bulletRow = ([ts, text], fresh = false) => `
   </button>`;
 
 // The two edge tabs, stacked, replacing today's single "◀ Transcript" tab. Each opens the dock on its own view.
-function edgeTabs({ open, active, unseen }) {
+function edgeTabs({ open, active, unseen, live = true, recap = true }) {
   const right = open ? "330px" : "0";
   const tab = (name, top, on, extra = "") => `
     <button type="button" class="absolute flex flex-col items-center justify-center gap-1.5 w-7 text-[12px] font-semibold bg-card ${open && on ? "text-blue" : "text-ink"}"
@@ -203,18 +203,18 @@ function edgeTabs({ open, active, unseen }) {
       ${extra}<span style="writing-mode:vertical-rl;white-space:nowrap">${open && on ? "▶" : "◀"} ${name}</span>
     </button>`;
   const wave = `<span class="flex items-end gap-[2px] h-3">${[6, 10, 7, 11].map((h) => `<span class="w-[2px] rounded-full bg-matcha" style="height:${h}px"></span>`).join("")}</span>`;
-  return `
+  return recap ? `
     ${tab("Recap", 22, active === "recap", unseen ? `<span class="unseen-dot"></span>` : "")}
-    ${tab("Transcript", 112, active === "transcript", wave)}`;
+    ${tab("Transcript", 112, active === "transcript", live ? wave : "")}` : tab("Transcript", 22, active === "transcript", live ? wave : "");
 }
 
-function dockPanel(active, body, footer = "") {
+function dockPanel(active, body, footer = "", { live = true } = {}) {
   const seg = (name, key) => `<button type="button" class="px-3 py-1 rounded-pill text-[12.5px] font-semibold ${active === key ? "bg-blsoft text-blue" : "text-mut hover:text-ink"}">${name}</button>`;
   return `
     <aside class="absolute right-0 top-0 h-full w-[330px] flex flex-col bg-card border-l border-line">
       <header class="flex items-center justify-between border-b border-line" style="padding:18px 16px 14px 14px">
         <div class="flex items-center gap-1">${seg("Recap", "recap")}${seg("Transcript", "transcript")}</div>
-        <span class="text-[11px] inline-flex items-center gap-1 text-matcha"><span aria-hidden="true">●</span>connected</span>
+        ${live ? `<span class="text-[11px] inline-flex items-center gap-1 text-matcha"><span aria-hidden="true">●</span>connected</span>` : ""}
       </header>
       <div class="flex-1 overflow-y-auto" style="padding:10px 20px">${body}</div>
       ${footer}
@@ -297,6 +297,66 @@ function livePage({ dock = null, tabs }) {
   </div>`;
 }
 
+
+/* ---------------- post-meeting page ---------------- */
+
+const iconBtn = (n) => `<button type="button" class="${btn("secondary", "px-2.5!")}">${icon(n, 16)}</button>`;
+
+// web/src/routes/MeetingPost.tsx with EnhancingBanner while Enhance streams.
+function postPage({ enhancing, dock = null, tabs }) {
+  const banner = enhancing ? `
+    <div class="flex items-center gap-[14px] px-[18px] py-[10px] bg-blsoft text-ink text-[13px] font-semibold" style="border-bottom:1px solid color-mix(in srgb, var(--color-blue) 22%, transparent)">
+      <span class="block w-2 h-2 rounded-full bg-blue animate-recpulse"></span>
+      <span>Weaving your notes into the transcript…</span>
+      <span class="block h-1 w-[260px] rounded-full overflow-hidden" style="background:color-mix(in srgb, var(--color-blue) 22%, transparent)"><span class="block h-full w-[30%] rounded-full bg-blue"></span></span>
+      <span class="font-mono text-[12px] font-medium text-mut">1,284 chars</span>
+    </div>` : "";
+  const notes = enhancing ? `
+    <div class="text-[15px] leading-relaxed text-grey">
+      <h2 class="text-[20px] font-bold mb-2">Pricing</h2>
+      <ul class="list-disc pl-5 space-y-1"><li>pro tier → $18/month, $180/year</li><li>Pro conversion 4.1%, down from 5.0% since July</li><li>ask finance re annual cap: finance wants it at 15%<span class="inline-block w-[2px] h-[1em] ml-[2px] align-[-0.15em] bg-blue"></span></li></ul>
+    </div>` : `
+    <div class="text-[15px] leading-relaxed text-ink">
+      <h2 class="text-[20px] font-bold mb-2">Pricing</h2>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>pro tier → $18<span class="ai-grey">/month, $180/year, proposed by Dana</span> <span class="font-mono text-[12px] text-blue">↳ 05:55</span></li>
+        <li class="ai-grey">Pro conversion 4.1%, down from 5.0% since the July change <span class="font-mono text-[12px] text-blue">↳ 03:10</span></li>
+        <li>ask finance re annual cap<span class="ai-grey">: finance wants it capped at 15%</span> <span class="font-mono text-[12px] text-blue">↳ 08:20</span></li>
+      </ul>
+      <h2 class="text-[20px] font-bold mt-5 mb-2">Action items</h2>
+      <ul class="list-disc pl-5 space-y-1"><li class="ai-grey">Marco: churn model for the $18 case, due Friday <span class="font-mono text-[12px] text-blue">↳ 13:47</span></li></ul>
+    </div>`;
+  return `
+  <div class="relative h-full overflow-hidden bg-paper pr-7">
+    ${banner}
+    <div class="flex items-center justify-between gap-4 px-6 py-3 bg-paper border-b border-line">
+      <div class="flex items-center gap-4 min-w-0">
+        <a class="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut"><span aria-hidden>←</span><span>Library</span></a>
+        <div class="min-w-0">
+          <span class="block heading-card truncate">Q4 pricing sync</span>
+          <div class="mt-1 flex items-center gap-1.5"><span class="${PILL} bg-card text-mut border border-line">Oct 28 · 2:04 PM</span><span class="${PILL} bg-card text-mut border border-line">18 min</span><span class="${PILL} bg-blsoft text-blue">gpt-4.1-mini</span></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">${iconBtn("link2")}${iconBtn("refresh")}</div>
+    </div>
+    <main class="relative max-w-[660px] mx-auto" style="padding:42px 24px 130px">
+      <div class="mb-7 inline-flex gap-0.5 rounded-card bg-line/60 p-1">
+        <button type="button" class="rounded-button px-4 py-[7px] text-[13px] font-semibold bg-card text-ink shadow-card">Enhanced</button>
+        <button type="button" class="rounded-button px-4 py-[7px] text-[13px] font-semibold text-mut">My notes</button>
+      </div>
+      ${notes}
+    </main>
+    ${dock ?? ""}
+    ${edgeTabs(tabs)}
+    ${askPill}
+  </div>`;
+}
+
+const finalFooter = `
+  <footer class="border-t border-line px-5 py-3 text-[12px] text-mut">Final recap · the summary replaces it when ready</footer>`;
+
+const recapFinal = () => recapList() + bulletRow(["17:58", "Next sync Tuesday, with the churn model"]) + `<div class="h-2"></div>`;
+
 /* ---------------- dock states, side by side ---------------- */
 
 
@@ -337,7 +397,17 @@ const SECTIONS = [
     frames: [{ ...PAGE, html: () => livePage({ tabs: { open: true, active: "transcript" }, dock: dockPanel("transcript", transcriptBody()) }) }],
   },
   {
-    title: "4. Dock states",
+    title: "4. After End: the recap stays while the summary generates",
+    caption: "End meeting runs one last update over the final minutes, and the post-meeting page keeps the Recap view while Enhance streams. If the dock was open on Recap at End, it opens there again. The header loses the connected dot and the footer loses Update now, since nothing is recording.",
+    frames: [{ ...PAGE, html: () => postPage({ enhancing: true, tabs: { open: true, active: "recap", live: false }, dock: dockPanel("recap", recapFinal(), finalFooter, { live: false }) }) }],
+  },
+  {
+    title: "5. Summary ready: the recap is gone",
+    caption: "Once Enhance has saved the summary, the server clears the recap and the Recap tab disappears. A dock showing Recap at that moment closes, so the summary it stood in for is in view. Only the Transcript tab remains, as on the post-meeting page today.",
+    frames: [{ ...PAGE, html: () => postPage({ enhancing: false, tabs: { open: false, active: null, live: false, recap: false } }) }],
+  },
+  {
+    title: "6. Dock states",
     caption: "Waiting before the first update, an update in flight (a CLI provider can sit here for a minute or more), and a failed update. A failure keeps every earlier bullet and retries at the next tick, so it never takes a banner.",
     frames: [{ w: 1074, h: 560, html: () => `
       <div class="h-full bg-paper flex gap-6 p-6">
@@ -352,7 +422,7 @@ const SECTIONS = [
       </div>` }],
   },
   {
-    title: "5. The setting",
+    title: "7. The setting",
     caption: "One checkbox in General beside the other meeting toggles, with a line that names the provider and the interval. Its default is open question 1.",
     frames: [{ w: 640, h: 300, html: () => settingsRows }],
   },
