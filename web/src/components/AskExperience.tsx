@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { AskPill } from "./AskPill";
 import { ChatSources } from "./ChatSources";
-import { type ChatCopy, ChatWindow } from "./ChatWindow";
+import { type ChatCopy, ChatWindow, LIBRARY_CHAT_COPY } from "./ChatWindow";
 import { type UseChatResult, useChat } from "../hooks/useChat";
 import { useLibraryChat } from "../hooks/useLibraryChat";
 
@@ -15,15 +16,8 @@ export function AskExperience({ meetingId, token }: Props) {
   return <AskSurface chat={useChat(meetingId, token)} />;
 }
 
-const LIBRARY_COPY: ChatCopy = {
-  title: "Ask across meetings",
-  placeholder: "Ask across meetings…",
-  hint: "Ask about anything from your past meetings.",
-  suggestions: ["What did I decide last week?", "What are my open action items?"],
-};
-
 export function LibraryAskExperience() {
-  return <AskSurface chat={useLibraryChat()} copy={LIBRARY_COPY} sources />;
+  return <AskSurface chat={useLibraryChat()} copy={LIBRARY_CHAT_COPY} sources />;
 }
 
 function AskSurface({ chat, copy, sources = false }: { chat: UseChatResult; copy?: ChatCopy; sources?: boolean }) {
@@ -38,7 +32,20 @@ function AskSurface({ chat, copy, sources = false }: { chat: UseChatResult; copy
         }}
         onCollapse={() => setOpen(false)}
         copy={copy}
-        renderExtra={sources ? (m) => <ChatSources message={m} /> : undefined}
+        renderExtra={
+          sources
+            ? (m) => (
+                <ChatSources
+                  message={m}
+                  link={(id, className, children) => (
+                    <Link to={`/meeting/${id}/post`} className={className}>
+                      {children}
+                    </Link>
+                  )}
+                />
+              )
+            : undefined
+        }
       />
     );
   }

@@ -189,6 +189,19 @@ describe("ChatWindow", () => {
     expect(onSend).toHaveBeenCalledWith("会議");
   });
 
+  it("keeps a question typed while an answer streams until it finishes", () => {
+    const onSend = vi.fn();
+    const { rerender } = render(<ChatWindow messages={sampleMessages} streamingId="a1" onSend={onSend} onCollapse={() => {}} />);
+    const input = screen.getByPlaceholderText(/ask this meeting/i);
+    fireEvent.change(input, { target: { value: "and then?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(input).toHaveValue("and then?");
+    rerender(<ChatWindow messages={sampleMessages} streamingId={null} onSend={onSend} onCollapse={() => {}} />);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("and then?");
+  });
+
   it("renders assistant bullets and bold text for a markdown-ish reply", () => {
     render(
       <ChatWindow

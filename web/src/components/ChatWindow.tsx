@@ -17,6 +17,13 @@ export const MEETING_CHAT_COPY: ChatCopy = {
   suggestions: ["Catch me up", "What did I miss?"],
 };
 
+export const LIBRARY_CHAT_COPY: ChatCopy = {
+  title: "Ask across meetings",
+  placeholder: "Ask across meetings…",
+  hint: "Ask about anything from your past meetings.",
+  suggestions: ["What did I decide last week?", "What are my open action items?"],
+};
+
 interface Props {
   messages: Msg[];
   streamingId: string | null;
@@ -59,7 +66,8 @@ export function ChatWindow({
 
   function trySubmit() {
     const trimmed = draft.trim();
-    if (!trimmed) return;
+    // One question streams at a time, and a follow-up typed meanwhile stays in the field until it can go.
+    if (!trimmed || streamingId) return;
     onSend(trimmed);
     setDraft("");
   }

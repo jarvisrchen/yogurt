@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { formatTs, markdownToHtml } from "@web/editor/html";
 import { TranscriptLine, scrollToTranscriptTime } from "@web/components/TranscriptLine";
 import { storedSegmentToEvent } from "@web/lib/ws";
 import { AskPill } from "@web/components/AskPill";
-import { ChatWindow } from "@web/components/ChatWindow";
+import { type ChatCopy, ChatWindow } from "@web/components/ChatWindow";
+import type { ChatMessage } from "@web/lib/api";
 import { Back, DeviceTag } from "../ui";
-import type { MeetingChat } from "../lib/useMeetingChat";
+import type { CloudChat } from "../lib/useChat";
 import { defaultTab, pushedFrom, started, tabsFor, type Entry, type Tab } from "../lib/library";
 
 /** The sanitized HTML, with each transcript link given the "↳ mm:ss" text the desktop editor draws for it. */
@@ -29,7 +30,7 @@ export type BodyState = { status: "loading" } | { status: "ready" } | { status: 
 const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
 
 /** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
-export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, body, chat }: { entry: Entry | null; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: MeetingChat | null }) {
+export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, body, chat }: { entry: Entry | null; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null }) {
   return (
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
       {!desktop && <Back to={back} onClick={onBack} />}
@@ -122,13 +123,13 @@ function Doc({ md, onLink }: { md: string; onLink?: (sec: number) => void }) {
       }} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-// Sticks to the bottom of the screen while the meeting scrolls under it, within the meeting's own column.
-const DOCKED = "cloud-chat sticky bottom-[16px] self-center w-full max-w-[480px]";
+// Sticks to the bottom of the screen while the column scrolls under it.
+export const DOCKED = "cloud-chat sticky bottom-[16px] self-center w-full max-w-[480px]";
 
-function Ask({ chat }: { chat: MeetingChat }) {
+export function Ask({ chat, copy, renderExtra, position = DOCKED }: { chat: CloudChat; copy?: ChatCopy; renderExtra?: (m: ChatMessage) => ReactNode; position?: string }) {
   return chat.open ? (
-    <ChatWindow messages={chat.messages} streamingId={chat.streamingId} onSend={chat.send} onCollapse={() => chat.setOpen(false)} position={DOCKED} />
+    <ChatWindow messages={chat.messages} streamingId={chat.streamingId} onSend={chat.send} onCollapse={() => chat.setOpen(false)} position={position} copy={copy} renderExtra={renderExtra} />
   ) : (
-    <AskPill onExpand={() => chat.setOpen(true)} position={DOCKED} />
+    <AskPill onExpand={() => chat.setOpen(true)} position={position} label={copy?.placeholder} />
   );
 }

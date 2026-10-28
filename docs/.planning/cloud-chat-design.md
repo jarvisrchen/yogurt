@@ -1,6 +1,6 @@
 # Chat in the Yogurt Cloud webapp
 
-SYNC-18 is built. SYNC-19 is not started. Written 2026-10-27.
+SYNC-18 and SYNC-19 are built. Written 2026-10-27.
 Tickets: `docs/TODO.md` SYNC-18 (chat about one meeting) and SYNC-19 (chat across meetings).
 
 The phone can read and search every meeting but cannot ask about them.
@@ -73,6 +73,7 @@ A request without a valid PIN-unlocked browser token fails at that read, before 
 
 The function takes meeting text from the database and never from the request.
 The request carries the conversation, the meeting's device and meeting ids for SYNC-18, and the browser's time zone for SYNC-19.
+A request with neither, or with a time zone the runtime does not know, is refused.
 It returns 400, before any read, unless:
 
 - the body is at most 64 KB,
@@ -148,21 +149,32 @@ The laptop's own saved chat for the meeting, which rides in each pushed version'
 
 - With terms, it ORs them as prefix matches against `yogurt_search_index` and returns the top `k` (6, local `TOP_K`).
   It ranks with `ts_rank` and length normalization, newest first on ties, where local uses FTS5's `bm25`, so the two can order close matches differently.
-- The excerpt is about 64 words from `ts_headline` over the version's transcript text alone, as local `snippet` reads only the transcript column.
+- The excerpt is at most 64 words from `ts_headline` over the version's transcript text alone, as local `snippet` reads only the transcript column.
   The index's `doc` joins notes and transcript, and the notes are already in the prompt.
-- With no terms, it returns the newest `k` in the date range.
-- Each row carries the title, start time, device and meeting ids, and the notes: the enhanced notes when present, else the user's notes.
+- With no terms, or terms that match nothing, it returns the newest `k` in the date range, so a recap such as "What did I decide last week?" still reads that week.
+  Local returns nothing then, which leaves its own suggestion unanswered.
+- Each term goes in quotes with its backslashes and quotes removed, so the parser splits it as it splits the index and no term is read as `tsquery` syntax.
+  Filtering to `[:alnum:]` would drop the combining marks of Hindi or Thai under an ICU collation.
+- Ranking uses the index, and each row is read from the meeting's latest version, so an edit the index has not caught up to answers with its new text.
+- Each row carries the title, start time, device and meeting ids, and the notes: the enhanced notes when they hold any text, else the user's notes.
 - It reads only the live library and hides a meeting whose latest version is a deletion, as `yogurt_search` does.
 - It checks the owner and the browser token like every other read.
 
 **Ported from Rust.** `extract_terms`, `date_range`, and `yogurt_notes::ast::strip_markers` move to TypeScript in `cloud/api/`, with the stopword and month lists unchanged and their Rust test cases copied into Vitest.
 "Today", "this week", "in December", and each hit's date use the time zone the browser sends.
+Two changes from the Rust: a word keeps its combining marks, where local splits Hindi at the virama, and "may" names a month only after "in" or before a year.
+A day whose midnight a DST change skips starts when the clocks jump.
 
 **Context.** The same as local `build_messages`: the `library-chat-system.md` prompt with today's date, then a `MEETINGS:` block numbering each hit `[1]` to `[6]` with its title, date, notes with markers stripped, and excerpt, then the conversation.
 
-**UI.** An Ask field beside the search field on the library opens the conversation, with each cited meeting shown as a chip.
-A chip opens `#/m/<device>/<meeting>`, keyed by the `device_id` and `meeting_id` in `sources`.
-The client hook follows `web/src/hooks/useLibraryChat.ts`, reading the same NDJSON.
+**UI.** The desktop's Ask across meetings pill and chat window, with its copy, docked at the bottom of the library list on a phone and of the empty meeting pane on a desktop.
+Each cited meeting shows as the desktop's chip, which opens `#/m/<device>/<meeting>`, keyed by the `device_id` and `meeting_id` in `sources`.
+`ChatSources` takes a `link` that renders each chip, so the desktop wraps it in a router `Link` and the webapp in a plain link.
+The conversation lives in the library screen, so opening a cited meeting and coming back keeps it, folded into the pill.
+On a desktop the logo closes the open meeting, which is the way back to the library chat.
+One question streams at a time, and the shared window keeps a follow-up typed meanwhile in its field.
+One hook, `cloud/src/lib/useChat.ts`, serves both chats, and takes a meeting or the browser's time zone as its scope.
+The library chat shows only on the current library, never as of an earlier push.
 
 ## Testing
 

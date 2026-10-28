@@ -5,6 +5,7 @@ import { DEVICES, LATE, expectScreen, isPhone, onboard, reset, revokeBrowsers, s
 // A stand-in for the LLM provider at the address playwright.config.ts gives the webapp. It streams a fixed answer and keeps each request.
 const LLM_PORT = 5192;
 const ANSWER = ["You agreed to sign ", "the vendor contract ", "on **Friday**."];
+let answer = ANSWER;
 let llm: Server;
 const asked: { model: string; messages: { role: string; content: string }[] }[] = [];
 
@@ -16,7 +17,7 @@ test.beforeAll(async () => {
     for await (const c of req) body += c;
     asked.push(JSON.parse(body));
     res.writeHead(200, { "content-type": "text/event-stream" });
-    for (const content of ANSWER) {
+    for (const content of answer) {
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`);
       await new Promise((r) => setTimeout(r, 150));
     }
@@ -28,6 +29,7 @@ test.afterAll(() => new Promise<void>((r) => (llm ? llm.close(() => r()) : r()))
 
 test("ask a meeting about its transcript", async ({ page }, info) => {
   const phone = isPhone(page);
+  answer = ANSWER;
   await onboard(page);
   await seed();
   await page.reload();
@@ -102,6 +104,70 @@ test("ask a meeting about its transcript", async ({ page }, info) => {
   const asks = asked.length;
   await chat.getByPlaceholder("Ask this meeting…").fill("What did we decide?");
   await chat.getByPlaceholder("Ask this meeting…").press("Enter");
+  await expectScreen(page, "Unlock your meetings");
+  expect(asked.length).toBe(asks);
+});
+
+test("ask across meetings and open a cited one", async ({ page }, info) => {
+  const phone = isPhone(page);
+  answer = ["Steven owns ", "the migration plan [1]."];
+  await reset();
+  await onboard(page);
+  await seed();
+  await page.reload();
+
+  const pill = page.getByRole("button", { name: "Ask across meetings" });
+  await expect(pill).toBeInViewport();
+  await shot(page, info, phone ? "v-library-ask" : "v-desktop-library-ask");
+  await pill.click();
+  const chat = page.getByRole("region", { name: "Ask across meetings chat" });
+  await expect(chat.getByText("Ask about anything from your past meetings.")).toBeVisible();
+
+  const before = asked.length;
+  await chat.getByPlaceholder("Ask across meetings…").fill("Who owns the migration plan?");
+  await chat.getByPlaceholder("Ask across meetings…").press("Enter");
+  const chip = chat.getByRole("link", { name: /Q4 planning sync/ });
+  await expect(chip).toHaveText(/^1\s*Q4 planning sync/);
+  await shot(page, info, phone ? "v-library-answer" : "v-desktop-library-answer");
+
+  // The function found the meeting by the question's words and sent its notes without markup, and a transcript excerpt.
+  const sent = asked[before];
+  expect(sent.messages.map((m) => m.role)).toEqual(["system", "system", "user"]);
+  expect(sent.messages[0].content).toMatch(/^You answer questions about the user's past meetings\..*Today is \d{4}-\d{2}-\d{2}\.$/s);
+  const context = sent.messages[1].content;
+  expect(context).toMatch(/^MEETINGS:\n\n\[1\] Q4 planning sync \(\d{4}-\d{2}-\d{2}\)\nNotes:\n## Decisions/);
+  expect(context).toContain("- Steven owns the migration plan, due Nov 3");
+  expect(context).not.toContain("<span");
+  expect(context).toMatch(/Transcript excerpt:\n.*own the migration plan/);
+  expect(context).not.toContain("edis");
+
+  // A chip opens its meeting, and coming back, by Back on a phone or the logo on a desktop, finds the conversation folded where it was.
+  await chip.click();
+  await expect(page.getByRole("heading", { name: "Q4 planning sync" })).toBeVisible();
+  if (phone) await page.getByRole("button", { name: /All devices/ }).click();
+  else await page.getByRole("link", { name: "Library" }).click();
+  await pill.click();
+  await expect(chat.getByText("Who owns the migration plan?")).toBeVisible();
+
+  // A follow-up carries the conversation, and a question with no matching words still answers from the newest meetings.
+  await chat.getByPlaceholder("Ask across meetings…").fill("What did they say?");
+  await chat.getByPlaceholder("Ask across meetings…").press("Enter");
+  await expect.poll(() => asked.length).toBe(before + 2);
+  expect(asked[before + 1].messages.map((m) => m.role)).toEqual(["system", "system", "user", "assistant", "user"]);
+  expect(asked[before + 1].messages[1].content).toMatch(/\[1\] edis update \(revised\).*\[2\] Q4 planning sync/s);
+
+  // An earlier push has no library chat.
+  await page.goto("/#/at/2");
+  await expect(page.getByText("Viewing")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask across meetings" })).toHaveCount(0);
+
+  // A browser locked from elsewhere goes to Unlock, and the LLM never sees the question.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ask across meetings" }).click();
+  await revokeBrowsers();
+  const asks = asked.length;
+  await chat.getByPlaceholder("Ask across meetings…").fill("What did we decide?");
+  await chat.getByPlaceholder("Ask across meetings…").press("Enter");
   await expectScreen(page, "Unlock your meetings");
   expect(asked.length).toBe(asks);
 });

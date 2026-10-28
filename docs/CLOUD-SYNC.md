@@ -15,7 +15,7 @@ Your laptops push to it, and your phone reads from it.
 
 1. **The webapp, on your Vercel project.** This is the Yogurt Cloud you see.
    It lives at your Cloud address, for example `yogurt-cloud.vercel.app`, which you open on your phone and type into each laptop.
-   It is static files plus one function, `/api/chat`, which answers questions about a meeting.
+   It is static files plus one function, `/api/chat`, which answers questions about a meeting or across your meetings.
    Vercel sees a meeting only while that function answers a question about it, and keeps nothing.
 2. **The data, in your Supabase project.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
 3. **Your laptops.** Each Mac running Yogurt pushes its meetings to your Supabase project.
@@ -28,7 +28,7 @@ flowchart LR
   subgraph YC["Your Yogurt Cloud"]
     subgraph VC["Your Vercel project"]
       WEB["Yogurt Cloud webapp<br/>at your Cloud address<br/>static files + config.json"]
-      CHAT["/api/chat<br/>chat about a meeting"]
+      CHAT["/api/chat<br/>chat about your meetings"]
     end
     subgraph SB["Your Supabase project"]
       AUTH["Auth<br/>the Cloud login"]
@@ -45,8 +45,8 @@ flowchart LR
   WEB -- "serves the webapp" --> PH
   PH -- "sign in, PIN, read" --> SB
   PH -- "ask" --> CHAT
-  CHAT -- "read the meeting as you" --> DB
-  CHAT -- "question + transcript" --> LLM
+  CHAT -- "read meetings as you" --> DB
+  CHAT -- "question + meeting text" --> LLM
 ```
 
 ### How data moves
@@ -163,8 +163,8 @@ Anyone else may be able to create a login while sign-ups are on, but every table
 | A browser after unlock | session | a browser token for 12 hours, or 90 days with "Remember this browser" | Yes |
 | Someone with the email and password | yes | no | No |
 | The Supabase dashboard, its owner, or Supabase staff | n/a | n/a | Yes, because the data is stored readable |
-| The chat function on Vercel | your session and browser token, sent with each question | n/a | Only the meeting you ask about, while it answers |
-| Your LLM provider | n/a | n/a | The transcript of a meeting you ask about, with your questions |
+| The chat function on Vercel | your session and browser token, sent with each question | n/a | Only the meetings a question needs, while it answers |
+| Your LLM provider | n/a | n/a | With your questions, the transcript of a meeting you ask about, or the titles, dates, notes, and transcript excerpts of up to 6 meetings a question across meetings finds |
 
 Yogurt Cloud does not encrypt meetings on your Mac.
 The PIN protects against a stolen Cloud login.
@@ -231,7 +231,7 @@ Use a project of its own when another app signs users up on it.
 
 ### Turn on chat
 
-Chat answers questions about a meeting through any OpenAI-compatible chat completions API, the same kind of provider as an HTTP provider in Yogurt's Settings.
+Chat answers questions about your meetings through any OpenAI-compatible chat completions API, the same kind of provider as an HTTP provider in Yogurt's Settings.
 Add three more variables, limited to Production, and redeploy:
 
 | Name | Value |
@@ -391,6 +391,12 @@ Your question and the meeting's transcript go to the LLM provider you set in [Tu
 The chat sees the transcript only, as the chat in Yogurt on your Mac does.
 The conversation stays on the page: leaving the meeting or reloading clears it, and nothing is saved to your Cloud.
 A meeting opened from an earlier push in History has no chat.
+
+Ask across meetings, at the bottom of the library, asks about all of them.
+It finds up to 6 meetings by the words in your question, or your newest meetings when no words match, and a phrase such as "last week" or "in December" narrows them to those dates in your time zone.
+Those meetings' titles, dates, notes, and transcript excerpts go to your LLM provider, and the answer cites each meeting it uses as a chip that opens it.
+The conversation stays while you open meetings from it, and a reload clears it.
+On a computer, the yogurt logo closes the open meeting and brings the library chat back.
 
 The address in the browser tracks where you are, so the back gesture goes from a meeting to the library, and a reload keeps your place.
 A link to a meeting survives signing in and unlocking.
