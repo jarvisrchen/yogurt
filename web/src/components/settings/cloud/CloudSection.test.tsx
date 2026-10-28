@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { LastPushLine, PushProgress, describeEntry, describeLastPush, formatPushTime } from "./CloudSection";
+import { LastPushLine, PushProgress, describeEntry, describeLastPush, describeNextPush, formatPushTime } from "./CloudSection";
 import type { PushHistoryEntry } from "../../../lib/api/cloud";
 import { QrCode } from "./QrCode";
 
@@ -18,6 +18,16 @@ describe("describeLastPush", () => {
       "Last push 10/23/26 2:59 PM · 1 uploaded",
     );
     expect(describeLastPush({ at: AT, changed: 0, deleted: 0 })).toBe("Last push 10/23/26 2:59 PM · up to date");
+  });
+});
+
+describe("describeNextPush", () => {
+  const MIN = 60_000;
+  it("names today or tomorrow, rounds the last minute, and calls out a pause", () => {
+    expect(describeNextPush(AT + 15 * MIN, AT)).toBe("Next push around 3:14 PM");
+    expect(describeNextPush(AT + 24 * 60 * MIN, AT)).toBe("Next push around 2:59 PM tomorrow");
+    expect(describeNextPush(AT + MIN, AT)).toBe("Next push in about a minute");
+    expect(describeNextPush(null, AT)).toBe("Paused until the problem above is fixed");
   });
 });
 

@@ -91,6 +91,20 @@ fn describe_interval(v: &str) -> &'static str {
     }
 }
 
+/// The timer wakes once a minute, so the last minute reads as "about a minute".
+fn describe_next(at: Option<i64>, now: i64) -> String {
+    let Some(at) = at else {
+        return "paused until the last error is fixed".into();
+    };
+    let min = (at - now + 59_999) / 60_000;
+    match (min / 60, min % 60) {
+        _ if min <= 1 => "next push in about a minute".into(),
+        (0, m) => format!("next push in {m} min"),
+        (h, 0) => format!("next push in {h} h"),
+        (h, m) => format!("next push in {h} h {m} min"),
+    }
+}
+
 fn print_status(v: &Value) {
     if v["connected"] != json!(true) {
         println!("cloud: not connected");
@@ -107,7 +121,18 @@ fn print_status(v: &Value) {
         "meetings: {} on this Mac, {} not pushed",
         v["meetings"], v["not_pushed"]
     );
-    println!("auto-push: {}", describe_interval(s("push_interval")));
+    let interval = s("push_interval");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    match interval {
+        "off" | "?" => println!("auto-push: off"),
+        _ => println!(
+            "auto-push: {}, {}",
+            describe_interval(interval),
+            describe_next(v["next_push"].as_i64(), now)
+        ),
+    }
     if let Some(sent) = v["push"]["sent"].as_u64() {
         println!("push: running, {sent} of {} sent", v["push"]["total"]);
     }
@@ -127,6 +152,22 @@ fn print_status(v: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_push_reads_as_a_countdown() {
+        const MIN: i64 = 60_000;
+        assert_eq!(describe_next(Some(MIN), 0), "next push in about a minute");
+        assert_eq!(describe_next(Some(15 * MIN), 0), "next push in 15 min");
+        assert_eq!(describe_next(Some(60 * MIN), 0), "next push in 1 h");
+        assert_eq!(
+            describe_next(Some(23 * 60 * MIN + 30_000), 0),
+            "next push in 23 h 1 min"
+        );
+        assert_eq!(
+            describe_next(None, 0),
+            "paused until the last error is fixed"
+        );
+    }
 
     #[test]
     fn interval_reads_plainly() {

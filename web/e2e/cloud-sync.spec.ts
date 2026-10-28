@@ -50,6 +50,7 @@ const connected = (over: Record<string, unknown> = {}) => ({
   last_push: { at: PUSHED_AT, changed: 1, deleted: 0 },
   last_error: null,
   push_interval: "off",
+  next_push: null,
   push: null,
   ...over,
 });
@@ -125,7 +126,8 @@ async function mockBackend(page: Page, state: State) {
       return r.fulfill({ json: state.status });
     }
     if (path === "/api/cloud/push-interval") {
-      state.status = { ...state.status, push_interval: body.interval };
+      const next_push = body.interval === "off" ? null : Date.now() + 15 * 60_000;
+      state.status = { ...state.status, push_interval: body.interval, next_push };
       return r.fulfill({ json: state.status });
     }
     if (path === "/api/cloud/disconnect") {
@@ -221,6 +223,8 @@ for (const theme of ["light", "dark"] as const) {
     expect(state.posts.at(-1)).toEqual({ path: "/api/cloud/push-interval", body: { interval: "15m" } });
     await page.waitForTimeout(300);
     await expect(auto.getByRole("radio", { name: "15 min" })).toBeChecked();
+    await expect(page.getByText("Push changed meetings 15 minutes after the last push")).toBeVisible();
+    await expect(page.getByText(/^Next push around \d{1,2}:\d{2} [AP]M/)).toBeVisible();
     await shot("B-autopush");
 
     // Push, then the stats and the last push result update.

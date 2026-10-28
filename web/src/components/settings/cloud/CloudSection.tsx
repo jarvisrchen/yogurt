@@ -280,18 +280,37 @@ const INTERVAL_OPTIONS: { value: PushInterval; label: string }[] = [
   { value: "1d", label: "Daily" },
 ];
 
-function AutoPush({ value }: { value: PushInterval }) {
+const SPAN: Record<string, string> = { "15m": "15 minutes", "1h": "an hour", "1d": "a day" };
+
+function describeInterval(value: PushInterval): string {
+  if (value === "off") return "Push changed meetings in the background while yogurt is running. Off by default.";
+  if (value === "meeting")
+    return "Push a minute after each meeting ends or its notes finish, and a day after the last push for later edits, while yogurt is running.";
+  return `Push changed meetings ${SPAN[value]} after the last push, manual or automatic, while yogurt is running.`;
+}
+
+/** The timer wakes once a minute, so a time is only ever "around". */
+export function describeNextPush(at: number | null, now: number): string {
+  if (at == null) return "Paused until the problem above is fixed";
+  if (at - now <= 60_000) return "Next push in about a minute";
+  const time = new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `Next push around ${time}${new Date(at).toDateString() === new Date(now).toDateString() ? "" : " tomorrow"}`;
+}
+
+function AutoPush({ status, running }: { status: CloudConnected; running: boolean }) {
   const set = useCloudMutation(cloudApi.setPushInterval);
+  const value = status.push_interval;
   return (
     <Card padding="compact" className="mt-3">
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div className="min-w-0">
           <div className={K}>Auto-push</div>
-          <p className="mt-0.5 text-[11.5px] text-mut">
-            {value === "meeting"
-              ? "Push a minute after each meeting ends or its notes finish, and once a day for later edits, while yogurt is running."
-              : "Push changed meetings in the background while yogurt is running. Off by default."}
-          </p>
+          <p className="mt-0.5 text-[11.5px] text-mut">{describeInterval(value)}</p>
+          {value !== "off" && !running && !set.isPending && (
+            <p className={`mt-1 text-[11.5px] font-semibold ${status.next_push == null ? "text-straw" : "text-ink"}`}>
+              {describeNextPush(status.next_push, Date.now())}
+            </p>
+          )}
         </div>
         <Segmented
           label="Auto-push"
@@ -410,7 +429,7 @@ function Connected({ status }: { status: CloudConnected }) {
           />
         )}
       </Card>
-      <AutoPush value={status.push_interval} />
+      <AutoPush status={status} running={running} />
       <Card padding="compact" className="mt-3">
         <div className="flex items-center gap-3.5">
           <QrCode text={status.address} label={`QR code for ${host}`} />

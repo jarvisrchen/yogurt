@@ -453,6 +453,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Json<Value>> {
         "last_error": recorded(&state, LAST_ERROR_KEY),
         "push_history": recorded(&state, HISTORY_KEY),
         "push_interval": push_interval(&state),
+        "next_push": next_auto_push(&state, now_ms()),
     })))
 }
 
@@ -745,7 +746,32 @@ async fn push_now(State(state): State<AppState>) -> ApiResult<(StatusCode, Json<
     Ok((StatusCode::ACCEPTED, Json(json!({ "started": true }))))
 }
 
-/// The trigger the timer should push for now, if any. `requested` is when a meeting last stopped or finished its notes.
+/// When the timer may next push, or `None` while a failure only the user can fix stands.
+/// `requested` is when a meeting last stopped or finished its notes. The wake that pushes comes up to [`CHECK_EVERY`] later.
+fn next_push(
+    interval_ms: i64,
+    last_push: Option<i64>,
+    last_error: Option<(i64, &str)>,
+    requested: Option<i64>,
+) -> Option<i64> {
+    let retry = match last_error {
+        Some((_, code)) if USER_FIXABLE.contains(&code) => return None,
+        Some((at, _)) => at + RETRY_AFTER_FAILURE_MS,
+        None => i64::MIN,
+    };
+    let auto = last_push.map_or(i64::MIN, |at| at + interval_ms);
+    let meeting = settled(last_push, requested).unwrap_or(i64::MAX);
+    Some(auto.min(meeting).max(retry))
+}
+
+/// When a meeting request not yet pushed has settled.
+fn settled(last_push: Option<i64>, requested: Option<i64>) -> Option<i64> {
+    requested
+        .filter(|r| last_push.is_none_or(|p| *r > p))
+        .map(|r| r + SETTLE_MS)
+}
+
+/// The trigger the timer should push for now, if any.
 fn due(
     interval_ms: i64,
     last_push: Option<i64>,
@@ -753,30 +779,47 @@ fn due(
     requested: Option<i64>,
     now: i64,
 ) -> Option<&'static str> {
-    match last_error {
-        Some((_, code)) if USER_FIXABLE.contains(&code) => return None,
-        Some((at, _)) if now - at < RETRY_AFTER_FAILURE_MS => return None,
-        _ => {}
-    }
-    if requested.is_some_and(|r| last_push.is_none_or(|p| r > p) && now - r >= SETTLE_MS) {
-        return Some("meeting");
-    }
-    last_push
-        .is_none_or(|at| now - at >= interval_ms)
-        .then_some("auto")
+    (next_push(interval_ms, last_push, last_error, requested)? <= now).then(|| {
+        if settled(last_push, requested).is_some_and(|at| at <= now) {
+            "meeting"
+        } else {
+            "auto"
+        }
+    })
+}
+
+/// The setting's interval, the last push, the last failure and its code, and the last meeting request. `None` when auto-push is off.
+fn timer_inputs(
+    state: &AppState,
+) -> Option<(i64, Option<i64>, Option<(i64, String)>, Option<i64>)> {
+    let setting = push_interval(state);
+    let interval_ms = interval_ms(setting)?;
+    let err = recorded(state, LAST_ERROR_KEY);
+    let last_error = err["at"]
+        .as_i64()
+        .map(|at| (at, err["code"].as_str().unwrap_or("").to_owned()));
+    let requested = (setting == "meeting")
+        .then(|| state.cloud_push.requested())
+        .flatten();
+    Some((
+        interval_ms,
+        recorded(state, LAST_PUSH_KEY)["at"].as_i64(),
+        last_error,
+        requested,
+    ))
+}
+
+/// When the timer may next push, never earlier than `now`. `None` when auto-push is off or paused on a failure only the user can fix.
+fn next_auto_push(state: &AppState, now: i64) -> Option<i64> {
+    let (interval_ms, last_push, last_error, requested) = timer_inputs(state)?;
+    let last_error = last_error.as_ref().map(|(at, code)| (*at, code.as_str()));
+    next_push(interval_ms, last_push, last_error, requested).map(|at| at.max(now))
 }
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
 /// With nothing pending it only stamps the last push, so an idle laptop never touches the network or rewrites `keys.json`.
 async fn auto_tick(state: &AppState, now: i64) {
-    let setting = push_interval(state);
-    let Some(interval_ms) = interval_ms(setting) else {
-        return;
-    };
-    let requested = (setting == "meeting")
-        .then(|| state.cloud_push.requested())
-        .flatten();
-    if state.cloud_push.is_running() {
+    if push_interval(state) == "off" || state.cloud_push.is_running() {
         return;
     }
     let state = state.clone();
@@ -785,11 +828,10 @@ async fn auto_tick(state: &AppState, now: i64) {
         if load(&state)?.is_none() {
             return Ok(());
         }
-        let last_push = recorded(&state, LAST_PUSH_KEY)["at"].as_i64();
-        let err = recorded(&state, LAST_ERROR_KEY);
-        let last_error = err["at"]
-            .as_i64()
-            .map(|at| (at, err["code"].as_str().unwrap_or("")));
+        let Some((interval_ms, last_push, last_error, requested)) = timer_inputs(&state) else {
+            return Ok(());
+        };
+        let last_error = last_error.as_ref().map(|(at, code)| (*at, code.as_str()));
         let Some(trigger) = due(interval_ms, last_push, last_error, requested, now) else {
             return Ok(());
         };
@@ -968,6 +1010,39 @@ mod tests {
 
     fn attempt_at(state: &AppState) -> Option<i64> {
         recorded(state, LAST_ERROR_KEY)["at"].as_i64()
+    }
+
+    #[test]
+    fn next_push_is_when_due_turns_true() {
+        let day = 24 * 60 * MIN;
+        let net = Some((T0 + 15 * MIN, "network"));
+        assert_eq!(next_push(day, Some(T0), None, None), Some(T0 + day));
+        assert_eq!(
+            next_push(15 * MIN, Some(T0), net, None),
+            Some(T0 + 20 * MIN)
+        );
+        assert_eq!(
+            next_push(day, Some(T0), None, Some(T0 + MIN)),
+            Some(T0 + 2 * MIN)
+        );
+        assert_eq!(
+            next_push(day, Some(T0 + 2 * MIN), None, Some(T0 + MIN)),
+            Some(T0 + 2 * MIN + day)
+        );
+        assert_eq!(
+            next_push(day, Some(T0), Some((T0, "session_expired")), None),
+            None
+        );
+        for (last_error, requested) in [
+            (None, None),
+            (net, None),
+            (None, Some(T0 + MIN)),
+            (net, Some(T0 + MIN)),
+        ] {
+            let at = next_push(day, Some(T0), last_error, requested).unwrap();
+            assert_eq!(due(day, Some(T0), last_error, requested, at - 1), None);
+            assert!(due(day, Some(T0), last_error, requested, at).is_some());
+        }
     }
 
     #[test]
