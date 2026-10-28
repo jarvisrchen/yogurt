@@ -66,7 +66,7 @@ describe("describeEntry", () => {
   it("names only the counts that happened", () => {
     expect(describeEntry(pushed(AT, 4, 1))).toBe("4 uploaded, 1 deleted");
     expect(describeEntry(pushed(AT, 0, 2))).toBe("2 deleted");
-    expect(describeEntry({ ...pushed(AT, 0), outcome: "up_to_date" })).toBe("Up to date");
+    expect(describeEntry({ at: AT, trigger: "auto", outcome: "up_to_date", changed: 0, deleted: 0 })).toBe("Up to date");
     expect(describeEntry(failed(AT))).toBe("Failed: The cloud is unreachable.");
   });
 });

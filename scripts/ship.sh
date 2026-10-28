@@ -350,7 +350,12 @@ land_ci_report_failure() {
   failing="$(gh pr checks "$pr_num" --json name,bucket --jq '.[] | select(.bucket=="fail") | .name' 2>/dev/null || true)"
   echo "ci failed:" >&2
   printf '%s\n' "$failing" >&2
-  gh run view --log-failed >&2 2>&1 || true
+  # `gh run view` without an id prompts, which fails non-interactively, so take the run from a failing check's link.
+  local run
+  run="$(gh pr checks "$pr_num" --json bucket,link --jq '[.[] | select(.bucket=="fail") | .link | select(test("/actions/runs/")) | capture("/actions/runs/(?<id>[0-9]+)").id] | first // empty' 2>/dev/null || true)"
+  if [ -n "$run" ]; then
+    gh run view "$run" --log-failed >&2 2>&1 || true
+  fi
 }
 
 land_cleanup() {
