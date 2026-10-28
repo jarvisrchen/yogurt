@@ -23,6 +23,7 @@ const progress = (sent: number, retry_in: number | null = null): CloudPushEvent 
   sent,
   total: 1412,
   retry_in,
+  left_secs: null,
 });
 
 afterEach(() => {
@@ -99,7 +100,7 @@ describe("PushPill", () => {
 
   it("picks up a push already running from the server status, and drops it when it has ended", () => {
     renderPill();
-    act(() => applyCloudPushStatus({ sent: 700, total: 1412, retry_in: null, announced: true }));
+    act(() => applyCloudPushStatus({ sent: 700, total: 1412, retry_in: null, announced: true, left_secs: null }));
     expect(screen.getByTestId("push-pill")).toHaveTextContent("700 of 1,412");
     act(() => applyCloudPushStatus(null));
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
@@ -107,10 +108,10 @@ describe("PushPill", () => {
 
   it("ignores a push the server never announced, and a stale status after the end", () => {
     renderPill();
-    act(() => applyCloudPushStatus({ sent: 1, total: 3, retry_in: null, announced: false }));
+    act(() => applyCloudPushStatus({ sent: 1, total: 3, retry_in: null, announced: false, left_secs: null }));
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
     send({ type: "cloud_push_complete", pushed: 30, deleted: 0 });
-    act(() => applyCloudPushStatus({ sent: 10, total: 30, retry_in: null, announced: true }));
+    act(() => applyCloudPushStatus({ sent: 10, total: 30, retry_in: null, announced: true, left_secs: null }));
     expect(screen.getByTestId("push-pill")).toHaveTextContent("Pushed 30");
   });
 });

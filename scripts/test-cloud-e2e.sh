@@ -163,6 +163,8 @@ echo "== edit one meeting (with a NUL character), delete another, push"
 expect "patch" "$(api a PATCH "/api/meetings/$a1" '{"notes_md":"edited\u0000 notes"}')" 200
 expect "pill" "$(api a GET /api/cloud)" 200
 expect "not pushed after edit" "$(field .not_pushed)" 1
+[ "$(field .not_pushed_bytes)" -gt 0 ] || fail "no size for the edited meeting"
+expect "ctl shows the size and time" "$(ctl a cloud status | grep -o 'KB, under a minute to push')" "KB, under a minute to push"
 ctl a meeting delete "$a2" --yes >/dev/null
 expect "pill" "$(api a GET /api/cloud)" 200
 expect "a local deletion counts as not pushed" "$(field .not_pushed)" 2
@@ -199,7 +201,7 @@ expect "default" "$(ctl a --json cloud status | jq -r .push_interval)" off
 expect "bad interval" "$(api a POST /api/cloud/push-interval '{"interval":"5m"}')" 400
 expect "set" "$(api a POST /api/cloud/push-interval '{"interval":"1h"}')" 200
 expect "returned status" "$(field .push_interval)" 1h
-expect "ctl shows it" "$(ctl a cloud status | grep '^auto-push:')" "auto-push: every hour"
+expect "ctl shows it" "$(ctl a cloud status | grep '^auto-push:' | sed 's/, next push in .*//')" "auto-push: every hour"
 
 echo "== disconnect with mark_deleted"
 expect "disconnect a" "$(api a POST /api/cloud/disconnect '{"mark_deleted":true}')" 200

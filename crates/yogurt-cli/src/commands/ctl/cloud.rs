@@ -105,6 +105,23 @@ fn describe_next(at: Option<i64>, now: i64) -> String {
     }
 }
 
+/// Rounds as the web's `formatBytes` does, so both say the same size.
+fn describe_size(bytes: u64) -> String {
+    match bytes {
+        b if b < 1_000_000 => format!("{} KB", b.div_ceil(1000)),
+        b if b < 1_000_000_000 => format!("{} MB", b / 1_000_000),
+        b => format!("{:.1} GB", b as f64 / 1e6 / 1024.0),
+    }
+}
+
+fn describe_time(secs: u64) -> String {
+    match secs.div_ceil(60) {
+        0 | 1 => "under a minute".into(),
+        m if m < 60 => format!("about {m} min"),
+        m => format!("about {} h", (m as f64 / 6.0).round() / 10.0),
+    }
+}
+
 fn print_status(v: &Value) {
     if v["connected"] != json!(true) {
         println!("cloud: not connected");
@@ -117,8 +134,18 @@ fn print_status(v: &Value) {
         s("address")
     );
     println!("login: {}", s("email"));
+    let secs = v["push_estimate_secs"].as_u64().unwrap_or(0);
+    let estimate = if secs > 0 {
+        format!(
+            " ({}, {} to push)",
+            describe_size(v["not_pushed_bytes"].as_u64().unwrap_or(0)),
+            describe_time(secs)
+        )
+    } else {
+        String::new()
+    };
     println!(
-        "meetings: {} on this Mac, {} not pushed",
+        "meetings: {} on this Mac, {} not pushed{estimate}",
         v["meetings"], v["not_pushed"]
     );
     let interval = s("push_interval");
@@ -134,7 +161,11 @@ fn print_status(v: &Value) {
         ),
     }
     if let Some(sent) = v["push"]["sent"].as_u64() {
-        println!("push: running, {sent} of {} sent", v["push"]["total"]);
+        let left = v["push"]["left_secs"]
+            .as_u64()
+            .map(|s| format!(", {} left", describe_time(s)))
+            .unwrap_or_default();
+        println!("push: running, {sent} of {} sent{left}", v["push"]["total"]);
     }
     let last = &v["last_push"];
     if last.is_null() {
@@ -152,6 +183,16 @@ fn print_status(v: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_estimate_reads_in_round_units() {
+        assert_eq!(describe_size(20_400), "21 KB");
+        assert_eq!(describe_size(62_900_000), "62 MB");
+        assert_eq!(describe_size(1_260_000_000), "1.2 GB");
+        assert_eq!(describe_time(40), "under a minute");
+        assert_eq!(describe_time(610), "about 11 min");
+        assert_eq!(describe_time(5_400), "about 1.5 h");
+    }
 
     #[test]
     fn next_push_reads_as_a_countdown() {

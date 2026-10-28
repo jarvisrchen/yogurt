@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { PushStatus } from "../lib/api/cloud";
 
 export type PushState =
-  | { kind: "running"; sent: number; total: number; retryAt: number | null }
+  | { kind: "running"; sent: number; total: number; retryAt: number | null; leftSecs: number | null }
   | { kind: "done"; pushed: number; deleted: number }
   | { kind: "failed"; error: string };
 
@@ -15,7 +15,7 @@ export interface CloudPush {
 }
 
 export type CloudPushEvent =
-  | { type: "cloud_push_progress"; sent: number; total: number; retry_in: number | null }
+  | { type: "cloud_push_progress"; sent: number; total: number; retry_in: number | null; left_secs: number | null }
   | { type: "cloud_push_complete"; pushed: number; deleted: number }
   | { type: "cloud_push_error"; error: string; code: string }
   | { type: "cloud_push_cancelled" };
@@ -40,17 +40,24 @@ export function useCloudPush(): CloudPush | null {
 }
 
 const show = (state: PushState) => set({ state, pillHidden: false });
-const running = (sent: number, total: number, retryIn: number | null, now: number): PushState => ({
+const running = (
+  sent: number,
+  total: number,
+  retryIn: number | null,
+  leftSecs: number | null,
+  now: number,
+): PushState => ({
   kind: "running",
   sent,
   total,
   retryAt: retryIn == null ? null : now + retryIn * 1000,
+  leftSecs,
 });
 
 export function applyCloudPushEvent(ev: CloudPushEvent, now = Date.now()) {
   switch (ev.type) {
     case "cloud_push_progress":
-      show(running(ev.sent, ev.total, ev.retry_in, now));
+      show(running(ev.sent, ev.total, ev.retry_in, ev.left_secs, now));
       break;
     case "cloud_push_complete":
       show({ kind: "done", pushed: ev.pushed, deleted: ev.deleted });
@@ -71,7 +78,7 @@ export function applyCloudPushEvent(ev: CloudPushEvent, now = Date.now()) {
 export function applyCloudPushStatus(push: PushStatus | null, now = Date.now()) {
   const kind = current?.state.kind;
   if (push?.announced) {
-    if (kind === undefined || kind === "running") show(running(push.sent, push.total, push.retry_in, now));
+    if (kind === undefined || kind === "running") show(running(push.sent, push.total, push.retry_in, push.left_secs, now));
   } else if (kind === "running") {
     set(null);
   }
@@ -90,6 +97,6 @@ export function useLivePush(polled: PushStatus | null): PushStatus | null {
   const live = useCloudPush();
   if (!polled) return null;
   if (live?.state.kind !== "running") return polled;
-  const { sent, total } = live.state;
-  return { ...polled, sent, total };
+  const { sent, total, leftSecs } = live.state;
+  return { ...polled, sent, total, left_secs: leftSecs };
 }

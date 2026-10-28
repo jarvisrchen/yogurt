@@ -1475,3 +1475,8 @@ New closed items go at the bottom.
 
   The library's redirect for an unknown label returned before two keyboard-shortcut hooks, so the render after the label disappeared ran fewer hooks than the one before.
   The redirect now sits after every hook, and a Library test deletes the label under an open label page.
+
+- [x] **SYNC-28** Show the size of the meetings not pushed and a rough time to push them, and the time left while a push runs
+
+  The Cloud sync page and `yogurt ctl cloud status` show the size of the meetings not pushed and a rough time to push them, from the batch count at about 3 seconds a batch plus the pause between batches.
+  While a push runs, both show the time left at the pace so far.
