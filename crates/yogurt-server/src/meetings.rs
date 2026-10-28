@@ -222,6 +222,10 @@ pub struct Meeting {
     /// Wall-clock ms of the last chunk on either channel whose peak cleared
     /// [`SILENCE_PEAK`]. Reset to now on every start and by keep-recording.
     pub last_audible_ms: Arc<AtomicU64>,
+    pub recap: std::sync::Mutex<crate::recap::Recap>,
+    /// Update now: wakes the recap task, which skips the word floor.
+    pub recap_refresh: tokio::sync::Notify,
+    pub recap_stop: std::sync::Mutex<Option<oneshot::Sender<()>>>,
 }
 
 /// Abort a spawned task when the owner is dropped. Used so the STT session
@@ -256,6 +260,9 @@ impl Meeting {
             mic_muted: Mutex::new(false),
             echo_enabled: Mutex::new(false),
             last_audible_ms: Arc::new(AtomicU64::new(now_ms())),
+            recap: Default::default(),
+            recap_refresh: Default::default(),
+            recap_stop: Default::default(),
         }
     }
 }
@@ -1247,7 +1254,7 @@ pub async fn relay_system_status(
 /// Stored-transcript segment shape — matches `yogurt_notes::TranscriptSegment`
 /// and the `meetings.transcript_json` rows the enhance/chat prompts parse.
 /// Mic audio is the user ("me"); system audio is everyone else ("them").
-fn segment_json(ev: &TranscriptEvent) -> serde_json::Value {
+pub(crate) fn segment_json(ev: &TranscriptEvent) -> serde_json::Value {
     serde_json::json!({
         "ts_ms": ev.ts_ms,
         "channel": match ev.channel {

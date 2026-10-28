@@ -292,7 +292,7 @@ async fn send_event(state: &AppState, meeting_id: Uuid, event: WsEvent) {
 
 /// Render `[{ts_ms, channel, text}]` as `[mm:ss] speaker: text` lines.
 /// Falls back to the input verbatim if it doesn't parse.
-fn transcript_lines(transcript_json: &str) -> String {
+pub(crate) fn transcript_lines(transcript_json: &str) -> String {
     #[derive(serde::Deserialize)]
     struct Seg {
         ts_ms: u64,

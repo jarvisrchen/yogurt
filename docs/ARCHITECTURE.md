@@ -165,6 +165,7 @@ graph LR
         SUP["supervisor task<br/>pump_audio_adapter"]
         STTT["STT session task<br/>(AbortOnDrop guard)"]
         PERS["persist_transcript task"]
+        RECAP["live recap task<br/>3 min tick, one LLM call in flight"]
         WSC["one task per WS client"]
         HTTP["axum request handlers"]
     end
@@ -176,6 +177,7 @@ graph LR
     CAP -.->|"owns, RAII drop stops capture"| CB
     SUP -->|"broadcast AudioChunk"| STTT
     STTT -->|"broadcast TranscriptEvent"| PERS
+    STTT -->|"broadcast TranscriptEvent"| RECAP
     STTT -->|"broadcast TranscriptEvent"| WSC
     HTTP -.->|"start / stop"| CAP
 ```
@@ -306,6 +308,11 @@ Details that matter and are easy to get wrong:
 - **Backpressure is visible, not silent.**
   Each cloud channel has a 64-chunk `try_send` buffer. After 50 consecutive drops (about 1 s) the server emits a `[stt overloaded, transcript may be lossy]` status line rather than quietly losing audio.
 - **The frontend reconnects with exponential backoff**, capped at 3 attempts, with `connecting` / `reconnecting` / `offline` surfaced in the UI.
+- **The live recap (`recap.rs`) is a third transcript subscriber.**
+  `start_meeting` subscribes it before `Registry::start`, since the registry has no settings or LLM access, and `AppState::stop_meeting` signals it without waiting.
+  Every 3 minutes, with at least 100 new words and `general.live_recap` on, it sends only the final segments since the last update plus the last 20 bullets to the configured provider, so each call stays the same size.
+  Pause drops what is buffered, and speech while paused or with the setting off is never kept.
+  Bullets live only on the in-memory `Meeting`, reach the browser as whole-state `live_recap` frames, and are cleared once Enhance has saved the summary.
 
 To inspect a live transcript by hand - tail what SQLite has stored, read the raw WS frames, or work out why the dock and the database disagree - see [DEBUGGING-TRANSCRIPTS.md](./DEBUGGING-TRANSCRIPTS.md).
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { bearerJson } from "./session";
 
 /**
  * Channel discriminator on the wire — matches `yogurt-stt::Channel`
@@ -583,91 +584,155 @@ export function useSttError(
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!meetingId || !token) {
-      setMessage(null);
-      return;
-    }
-
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
-
-    let attempt = 0;
-    let cancelled = false;
-    let currentWs: WebSocket | null = null;
-    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const cleanupCurrentWs = () => {
-      if (currentWs) {
-        currentWs.onopen = null;
-        currentWs.onclose = null;
-        currentWs.onerror = null;
-        currentWs.onmessage = null;
-        if (
-          currentWs.readyState === WebSocket.CONNECTING ||
-          currentWs.readyState === WebSocket.OPEN
-        ) {
-          currentWs.close();
-        }
-        currentWs = null;
+    setMessage(null);
+    if (!meetingId || !token) return;
+    return subscribeMeetingFrames(meetingId, token, (frame) => {
+      if (frame.type === "stt_error") {
+        setMessage((frame as unknown as SttErrorEvent).message);
+      } else if (frame.type === "system_audio_status") {
+        // Rides the same banner. Recovery only clears its own notice.
+        const { state } = frame as unknown as SystemAudioStatusEvent;
+        if (state === "stalled") setMessage(SYSTEM_STALLED_MSG);
+        else if (state === "failed") setMessage(SYSTEM_FAILED_MSG);
+        else setMessage((m) => (m === SYSTEM_STALLED_MSG ? null : m));
       }
-    };
-
-    const connect = () => {
-      if (cancelled) return;
-      const ws = new WebSocket(url);
-      currentWs = ws;
-
-      ws.onmessage = (event) => {
-        if (cancelled) return;
-        try {
-          const frame = JSON.parse(event.data as string) as { type?: string };
-          if (frame.type === "stt_error") {
-            setMessage((frame as SttErrorEvent).message);
-          } else if (frame.type === "system_audio_status") {
-            // Rides the same banner. Recovery only clears its own notice.
-            const { state } = frame as SystemAudioStatusEvent;
-            if (state === "stalled") setMessage(SYSTEM_STALLED_MSG);
-            else if (state === "failed") setMessage(SYSTEM_FAILED_MSG);
-            else setMessage((m) => (m === SYSTEM_STALLED_MSG ? null : m));
-          }
-        } catch {
-          // Ignore non-JSON / malformed frames.
-        }
-      };
-
-      const scheduleReconnect = () => {
-        if (cancelled) return;
-        cleanupCurrentWs();
-        if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
-        const delay = 500 * (1 << attempt);
-        attempt += 1;
-        backoffTimer = setTimeout(() => {
-          backoffTimer = null;
-          connect();
-        }, delay);
-      };
-
-      ws.onopen = () => {
-        if (cancelled) return;
-        attempt = 0;
-      };
-      ws.onclose = scheduleReconnect;
-      ws.onerror = scheduleReconnect;
-    };
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (backoffTimer) {
-        clearTimeout(backoffTimer);
-        backoffTimer = null;
-      }
-      cleanupCurrentWs();
-    };
+    });
   }, [meetingId, token]);
 
   return { message, dismiss: () => setMessage(null) };
+}
+
+/**
+ * Opens one per-meeting socket and hands every JSON frame to `onFrame`, reconnecting on the same
+ * 500/1000/2000ms schedule as the other hooks. Returns the cleanup.
+ */
+function subscribeMeetingFrames(
+  meetingId: string,
+  token: string,
+  onFrame: (frame: { type?: string } & Record<string, unknown>) => void,
+): () => void {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${window.location.host}/ws/meetings/${meetingId}?token=${encodeURIComponent(token)}`;
+
+  let attempt = 0;
+  let cancelled = false;
+  let currentWs: WebSocket | null = null;
+  let backoffTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const cleanupCurrentWs = () => {
+    if (currentWs) {
+      currentWs.onopen = null;
+      currentWs.onclose = null;
+      currentWs.onerror = null;
+      currentWs.onmessage = null;
+      if (
+        currentWs.readyState === WebSocket.CONNECTING ||
+        currentWs.readyState === WebSocket.OPEN
+      ) {
+        currentWs.close();
+      }
+      currentWs = null;
+    }
+  };
+
+  const connect = () => {
+    if (cancelled) return;
+    const ws = new WebSocket(url);
+    currentWs = ws;
+
+    ws.onmessage = (event) => {
+      if (cancelled) return;
+      try {
+        onFrame(JSON.parse(event.data as string));
+      } catch {
+        // Ignore non-JSON / malformed frames.
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      cleanupCurrentWs();
+      if (attempt >= MAX_RECONNECT_ATTEMPTS) return;
+      const delay = 500 * (1 << attempt);
+      attempt += 1;
+      backoffTimer = setTimeout(() => {
+        backoffTimer = null;
+        connect();
+      }, delay);
+    };
+
+    ws.onopen = () => {
+      if (cancelled) return;
+      attempt = 0;
+    };
+    ws.onclose = scheduleReconnect;
+    ws.onerror = scheduleReconnect;
+  };
+
+  connect();
+
+  return () => {
+    cancelled = true;
+    if (backoffTimer) {
+      clearTimeout(backoffTimer);
+      backoffTimer = null;
+    }
+    cleanupCurrentWs();
+  };
+}
+
+export interface RecapBullet {
+  /** Meeting time the bullet came from, ms since the start. */
+  ts_ms: number;
+  text: string;
+}
+
+/** `GET /api/meetings/:id/recap` and every `live_recap` frame. See `crates/yogurt-server/src/recap.rs`. */
+export interface RecapState {
+  bullets: RecapBullet[];
+  status: "idle" | "updating" | "error";
+  error: string | null;
+  /** Unix ms of the last update that succeeded. */
+  updated_at: number | null;
+  paused: boolean;
+}
+
+export interface UseLiveRecapResult {
+  /** `null` until the first GET or frame lands. */
+  recap: RecapState | null;
+  setRecap: (next: RecapState) => void;
+}
+
+/** The recap from `GET /recap`, then kept current by `live_recap` frames, which always win over a slower GET. */
+export function useLiveRecap(
+  meetingId: string | null,
+  token: string | null,
+): UseLiveRecapResult {
+  const [recap, setRecap] = useState<RecapState | null>(null);
+
+  useEffect(() => {
+    setRecap(null);
+    if (!meetingId || !token) return;
+    let gotFrame = false;
+    let cancelled = false;
+    bearerJson<RecapState>(`/api/meetings/${meetingId}/recap`).then(
+      (r) => {
+        if (!cancelled && !gotFrame) setRecap(r);
+      },
+      () => {},
+    );
+    const unsubscribe = subscribeMeetingFrames(meetingId, token, (frame) => {
+      if (frame.type !== "live_recap") return;
+      gotFrame = true;
+      setRecap(frame as unknown as RecapState);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [meetingId, token]);
+
+  return { recap, setRecap };
 }
 
 /** `audio_level` WS frame — see `crates/yogurt-server/src/meetings.rs::maybe_emit_audio_level`. */

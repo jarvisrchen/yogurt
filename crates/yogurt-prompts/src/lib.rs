@@ -60,7 +60,12 @@ impl Prompts {
             cached: HashMap::new(),
         };
         if matches!(mode, Mode::Release) {
-            for name in ["enhance.md", "chat-system.md", "library-chat-system.md"] {
+            for name in [
+                "enhance.md",
+                "chat-system.md",
+                "library-chat-system.md",
+                "live-recap.md",
+            ] {
                 p.cached.insert(name.to_string(), read_embedded(name)?);
             }
             for id in TEMPLATE_IDS {
@@ -118,6 +123,25 @@ impl Prompts {
                 transcript: ctx.transcript,
                 format,
             },
+        )
+    }
+
+    /// `earlier` is the recap so far as `- [mm:ss] fact` lines, `lines` the new transcript lines.
+    pub fn render_live_recap(&self, earlier: &str, lines: &str) -> Result<String> {
+        #[derive(Serialize)]
+        struct Ctx<'a> {
+            earlier: &'a str,
+            lines: &'a str,
+        }
+        let earlier = if earlier.trim().is_empty() {
+            "(no bullets yet)"
+        } else {
+            earlier
+        };
+        render(
+            &self.read("live-recap.md")?,
+            "live-recap",
+            &Ctx { earlier, lines },
         )
     }
 

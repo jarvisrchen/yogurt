@@ -39,6 +39,9 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | POST | `/api/meetings/{id}/stop` | stop recording | `ctl meeting stop` |
 | POST | `/api/meetings/{id}/enhance` | generate notes | `ctl meeting enhance` |
 | GET | `/api/templates` | note formats for enhance | - |
+| GET | `/api/meetings/{id}/recap` | live recap bullets, in memory only | `ctl meeting recap` |
+| PATCH | `/api/meetings/{id}/recap` | pause or resume the recap: `{paused}` | `ctl meeting recap --pause/--resume` |
+| POST | `/api/meetings/{id}/recap/refresh` | update the recap now (202, or 409 when not recording) | `ctl meeting recap --refresh` |
 | POST | `/api/meetings/{id}/keep-recording` | dismiss the silence auto-stop warning | - |
 | POST | `/api/meetings/{id}/mic-muted` | mute/unmute mic | `ctl meeting mute` |
 | POST | `/api/meetings/{id}/echo` | echo mic to an output device: `{enabled?, device?}` | - |
@@ -101,7 +104,7 @@ The response and the meeting row both carry the resolved `template`.
 ## WebSocket frames
 
 Both sockets share a `{"type": "<snake_case>", ...}` discriminator.
-`/ws/meetings/{id}`: `transcript` (`ts_ms`, `channel`, `text`, `is_final`), `enhance_progress`, `chat_chunk`, `audio_level`, `stt_error`.
+`/ws/meetings/{id}`: `transcript` (`ts_ms`, `channel`, `text`, `is_final`), `enhance_progress`, `chat_chunk`, `audio_level`, `stt_error`, `live_recap` (the whole recap state on every change).
 `/ws`: `stt_model_download_progress`/`complete`/`error`/`cancelled`.
 `ctl ws` prints one frame per line from either; `--types` filters by `type`.
 

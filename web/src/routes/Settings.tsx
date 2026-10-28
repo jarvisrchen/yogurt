@@ -188,7 +188,12 @@ export function Settings() {
 
         {section === "audio" && <AudioSection general={data.general} />}
 
-        {section === "general" && <GeneralSection general={data.general} />}
+        {section === "general" && (
+          <GeneralSection
+            general={data.general}
+            llmModel={data.providers.find((p) => p.is_active)?.model}
+          />
+        )}
 
         {section === "cloud" && <CloudSection view={params.view} />}
 

@@ -20,6 +20,7 @@ const { baseFixture } = vi.hoisted(() => {
       meeting_detection: true,
       meeting_detection_focus: true,
       meeting_auto_stop: true,
+      live_recap: true,
     },
     providers: [
       {

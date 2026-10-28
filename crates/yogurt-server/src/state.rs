@@ -54,6 +54,9 @@ impl AppState {
     /// The one stop path for manual and auto stops. The first stop stamps `ended_at`.
     pub async fn stop_meeting(&self, id: &uuid::Uuid) -> anyhow::Result<()> {
         self.meetings.stop(id).await?;
+        if let Some(m) = self.meetings.get(id).await {
+            crate::recap::stop(&m);
+        }
         self.cloud_push
             .request(chrono::Utc::now().timestamp_millis());
         let repo = self.meeting_repo.clone();

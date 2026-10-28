@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { YogurtEditor } from "../editor";
-import { TranscriptDock } from "../components/TranscriptDock";
+import { TranscriptDock, type DockView } from "../components/TranscriptDock";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
@@ -140,6 +140,10 @@ export function Meeting() {
   const activeLlmModel = useSettings().data?.providers.find((p) => p.is_active)?.model;
   const echoDevice = useSettings().data?.general?.audio_echo_output_device ?? "";
   const echoFeatureEnabled = useSettings().data?.general?.audio_echo_feature ?? false;
+  const liveRecap = useSettings().data?.general?.live_recap ?? false;
+  // Read at End, so the post page can reopen the dock on Recap.
+  const dockOpenRef = useRef(false);
+  const dockViewRef = useRef<DockView>("transcript");
   const hydrationSettled = meetingRow !== undefined || meetingQuery.isError;
 
   // Live-dock-loses-history-on-remount fix: parse the meeting row's
@@ -457,6 +461,7 @@ export function Meeting() {
       navigate(`/meeting/${meetingId}/post`, {
         state: {
           autoEnhance: { notes_md: notesMd, title: meetingRow?.title },
+          dockRecap: dockOpenRef.current && dockViewRef.current === "recap",
         },
       });
       // Successful navigation unmounts this component — don't touch state
@@ -682,7 +687,18 @@ export function Meeting() {
         </section>
       </main>
 
-      <TranscriptDock meetingId={meetingId} token={token} history={transcriptHistory} />
+      <TranscriptDock
+        meetingId={meetingId}
+        token={token}
+        history={transcriptHistory}
+        recap={liveRecap ? (recording ? "recording" : "stopped") : undefined}
+        onOpenChange={(open) => {
+          dockOpenRef.current = open;
+        }}
+        onViewChange={(view) => {
+          dockViewRef.current = view;
+        }}
+      />
 
       {/* Phase 6 (Plan 06-02): floating Ask-pill / chat window. Mounted at
           the route root (sibling to TranscriptDock) so the fixed-position
