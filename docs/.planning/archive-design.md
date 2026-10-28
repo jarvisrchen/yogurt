@@ -11,6 +11,8 @@ Archive hides a meeting everywhere it is listed or searched, and keeps all of it
 An Archive view lists only archived meetings, and its search box searches only them.
 It behaves like Starred: a sidebar view with its own search, built on the same filter.
 
+Mocks, light and dark: [.lavish/archive-mocks.html](../.lavish/archive-mocks.html).
+
 ## Decisions
 
 | Question | Decision |
@@ -91,12 +93,12 @@ The card of the meeting being recorded has no Archive item.
 The selection bar (`web/src/components/library/SelectionActionBar.tsx`) gains Archive between the label buttons and Delete, or Unarchive in the Archive view.
 It fans out `PATCH` per meeting, as bulk label does, and asks for no confirmation, since nothing is lost.
 
-A button in the Archive view's header, "Archive older meetings", opens a panel with a date field and the confirmation "Archive 1,212 meetings that started before Jan 1, 2026?"
+A button in the Archive view's header, left of the search box, "Archive older meetings", opens a panel under it with a date field and the confirmation "Archive 1,212 meetings that started before Jan 1, 2026?"
 The count comes from the preview call.
 The bound is the chosen date's midnight in the local time zone, and the field cannot pick a date after today.
 
-The meeting page header (`web/src/routes/MeetingPost.tsx:496`) gains an Archive toggle before Delete, drawn like the card's star.
-On an archived meeting the icon is filled and its tooltip reads "Archived Oct 27, 2026", so a meeting opened from a link shows why the Library does not list it.
+The meeting page header (`web/src/routes/MeetingPost.tsx:496`) gains an Archive icon button before Delete.
+On an archived meeting it becomes `ArchiveRestore` on the selected-blue background, and its tooltip reads "Archived Oct 27, 2026", so a meeting opened from a link shows why the Library does not list it.
 
 ## The webapp (SYNC-21 and SYNC-22)
 
