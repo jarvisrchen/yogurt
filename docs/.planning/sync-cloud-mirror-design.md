@@ -257,7 +257,7 @@ If a batch fails, its meetings keep their old `cloud_hash`, so the next pass sen
 | `yogurt_browsers` | `id`, `token_hash`, `label`, `created_at`, `expires_at`, `last_used_at` | nothing directly |
 | `yogurt_devices` | `id` (laptop-generated), `user_id`, `name`, `created_at` | insert `id`, `name` |
 | `yogurt_pushes` | `id`, `device_id`, `user_id`, `pushed_at` | nothing directly. `yogurt_start_push` creates one, because `insert ... returning` needs `select`. |
-| `yogurt_versions` | `meeting_id`, `push_id`, `device_id`, `user_id`, `body jsonb` (null marks a deletion), keyed by `device_id`, `meeting_id`, `push_id` | insert `meeting_id`, `push_id`, `device_id`, `body` |
+| `yogurt_versions` | `meeting_id`, `push_id`, `device_id`, `user_id`, `body jsonb` (null marks a deletion), and `archived`, generated from the body's `meeting.archived_at`, keyed by `device_id`, `meeting_id`, `push_id` | insert `meeting_id`, `push_id`, `device_id`, `body` |
 
 The functions, all `security definer` with a fixed `search_path`, and each checking that the caller is the owner:
 
@@ -270,10 +270,10 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_browsers(token)` | webapp | live browsers with label, times, and whether each is the caller's |
 | `yogurt_start_push(device_id)` | laptop | the new push id. Raises `PT412` until a passcode exists, and `PT404` when the device is not the caller's. |
 | `yogurt_device_meetings(device_id)` | laptop | live meeting ids for that device |
-| `yogurt_library(token, at_push, page_limit, page_offset, only_device)` | webapp | one page of summaries, newest meeting first, for the latest version of each live meeting on each device at or before `at_push`, or now: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, and `total`, the count of live meetings in the view. No note or transcript text. `page_limit` is clamped to 1 through 100. |
+| `yogurt_library(token, at_push, page_limit, page_offset, only_device, only_archived)` | webapp | one page of summaries, newest meeting first, for the latest version of each live meeting on each device at or before `at_push`, or now, leaving out archived meetings, or only those with `only_archived`: `device_id`, `push_id`, `pushed_at`, `meeting_id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, and `total`, the count of live meetings in the view. No note or transcript text. `page_limit` is clamped to 1 through 100. |
 | `yogurt_meeting(token, device_id, meeting_id, at_push)` | webapp | one meeting's `push_id`, `pushed_at`, and full `body`, the latest version at or before `at_push`, or now. No row when it is unknown or deleted by then. |
-| `yogurt_search(token, query, only_device, page_offset)` | webapp | the live meetings matching the query, newest first, 25 from `page_offset`: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches after this page |
-| `yogurt_retrieve(token, terms, from_ms, to_ms, k)` | chat function | up to `k` live meetings for a cross-meeting chat question, best match first, with `device_id`, `meeting_id`, `title`, `started_at`, the `notes`, and a transcript `excerpt`. [cloud-chat-design.md](cloud-chat-design.md) has the details. |
+| `yogurt_search(token, query, only_device, page_offset, only_archived)` | webapp | the live meetings matching the query, newest first, archived ones only with `only_archived` and otherwise none, 25 from `page_offset`: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches after this page |
+| `yogurt_retrieve(token, terms, from_ms, to_ms, k)` | chat function | up to `k` live, unarchived meetings for a cross-meeting chat question, best match first, with `device_id`, `meeting_id`, `title`, `started_at`, the `notes`, and a transcript `excerpt`. [cloud-chat-design.md](cloud-chat-design.md) has the details. |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
 

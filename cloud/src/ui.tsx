@@ -269,22 +269,24 @@ export function DeviceTag({ name, index }: { name: string; index: number }) {
   return <span className={`text-[11px] min-[721px]:text-[9.5px] leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap ${TONES[index % TONES.length]}`}>{name}</span>;
 }
 
-/** "All devices" first, then one pill per device. `value` is a device id, or null for all. */
-export function DevicePills({ devices, value, onChange }: { devices: { id: string; name: string }[]; value: string | null; onChange: (id: string | null) => void }) {
+/** A row of toggle pills: it scrolls sideways on a phone and wraps on a desktop. */
+export function Pills<T>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   const pill = (on: boolean) =>
     `flex-none text-[13px] min-[721px]:text-[11px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border cursor-pointer font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
   return (
-    <div role="group" aria-label="Device" className="flex gap-[6px] overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible">
-      <button type="button" aria-pressed={value === null} onClick={() => onChange(null)} className={pill(value === null)}>
-        All devices
-      </button>
-      {devices.map((d) => (
-        <button key={d.id} type="button" aria-pressed={value === d.id} onClick={() => onChange(d.id)} className={pill(value === d.id)}>
-          {d.name}
+    <div role="group" aria-label={label} className="flex gap-[6px] overflow-x-auto [scrollbar-width:none] min-[721px]:flex-wrap min-[721px]:overflow-visible">
+      {options.map((o) => (
+        <button key={String(o.value)} type="button" aria-pressed={o.value === value} onClick={() => o.value !== value && onChange(o.value)} className={pill(o.value === value)}>
+          {o.label}
         </button>
       ))}
     </div>
   );
+}
+
+/** "All devices" first, then one pill per device. `value` is a device id, or null for all. */
+export function DevicePills({ devices, value, onChange }: { devices: { id: string; name: string }[]; value: string | null; onChange: (id: string | null) => void }) {
+  return <Pills label="Device" options={[{ value: null, label: "All devices" }, ...devices.map((d) => ({ value: d.id, label: d.name }))]} value={value} onChange={onChange} />;
 }
 
 export function SearchField({ value, onChange, inputRef }: { value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement | null> }) {

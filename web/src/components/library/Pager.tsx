@@ -21,7 +21,7 @@ export function Pager({ page, size, total, onPage, onSize }: Props) {
       <span data-testid="pager-range">{rangeLabel(page, size, total)}</span>
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-2">
-          <span>Per page</span>
+          <span className="whitespace-nowrap">Per page</span>
           <select
             aria-label="Meetings per page"
             className="rounded-button border border-line bg-paper px-2 py-1.5 text-[13px] text-ink focus:border-blue focus:outline-none"

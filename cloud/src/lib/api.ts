@@ -49,6 +49,12 @@ export interface Label {
   color: string;
 }
 
+/** What the library and search show: one device or all (null), and the archive or everything else. */
+export interface Scope {
+  device: string | null;
+  archived: boolean;
+}
+
 /** One row of a library page, without note or transcript text. `total` is every live meeting in the view and repeats on each row. */
 export interface LibraryRow {
   device_id: string;
@@ -148,13 +154,14 @@ export class Api {
   browsers = (token: string) => this.rpc<Browser[]>("yogurt_browsers", { token });
   forgetBrowser = (token: string, browserId: number) =>
     this.rpc<boolean>("yogurt_forget_browser", { token, browser_id: browserId });
-  library = (token: string, o: { atPush: number | null; limit: number; offset: number; device: string | null }) =>
-    this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: o.atPush, page_limit: o.limit, page_offset: o.offset, only_device: o.device });
+  // only_archived goes only when true, so All keeps working against a schema from before it, such as a preview build's.
+  library = (token: string, o: { atPush: number | null; limit: number; offset: number } & Scope) =>
+    this.rpc<LibraryRow[]>("yogurt_library", { token, at_push: o.atPush, page_limit: o.limit, page_offset: o.offset, only_device: o.device, ...(o.archived && { only_archived: true }) });
   /** The full body of one meeting, live or as of a push. Null when it is unknown or was deleted by then. */
   meeting = async (token: string, device: string, meeting: string, atPush: number | null) =>
     (await this.rpc<MeetingRow[]>("yogurt_meeting", { token, device_id: device, meeting_id: meeting, at_push: atPush }))[0] ?? null;
-  search = (token: string, query: string, device: string | null, offset: number) =>
-    this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: device, page_offset: offset });
+  search = (token: string, query: string, scope: Scope, offset: number) =>
+    this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...(scope.archived && { only_archived: true }) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
 }

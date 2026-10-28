@@ -25,10 +25,13 @@ select pg_temp.eq((select extnamespace::regnamespace::text from pg_extension whe
 select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index), (select count(*)::text from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l where body is not null), 'the index holds every live meeting');
 set role authenticated;
 select yogurt_unlock('123456') as tok \gset
-select pg_temp.eq((select string_agg(meeting_id, ',' order by started_at desc) from yogurt_search(:'tok', 'upgradeword')), 'upgrade-big,u1', 'search finds the old and the new meeting');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by started_at desc) from yogurt_search(:'tok', 'upgradeword')), 'upgrade-big,u1', 'search finds the old and the new meeting, and leaves out the archived one');
 select pg_temp.eq((select count(*)::text from yogurt_search(:'tok', 'revertword')), case when :'phase' = 'reupgrade' then '1' else '0' end, 'a meeting pushed during the revert is searchable once re-upgraded');
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'tok', 'hugeword')), 'u2', 'search finds the huge meeting written before the upgrade');
-select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_retrieve(:'tok', '{upgradeword}')), 'u1,upgrade-big', 'chat retrieval finds the old and the new meeting');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_retrieve(:'tok', '{upgradeword}')), 'u1,upgrade-big', 'chat retrieval finds the old and the new meeting, and leaves out the archived one');
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_search(:'tok', 'upgradeword', only_archived => true)) || ' ' || (select string_agg(meeting_id || ':' || total, ',') from yogurt_library(:'tok', only_archived => true)), 'u4 u4:1', 'a meeting archived before the upgrade is in the archive');
+select pg_temp.eq((select string_agg(oid::regprocedure::text, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('yogurt_library', 'yogurt_search')),
+  'yogurt_library(text,bigint,integer,integer,uuid,boolean),yogurt_search(text,text,uuid,integer,boolean)', 'only the current signatures are left');
 reset role;
 \endif
 \o
