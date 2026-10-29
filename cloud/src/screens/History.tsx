@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { groupMeetingsByDay } from "@web/components/library/dayGroups";
-import { Back, DayList, DevicePills, DeviceTag, ListRow, LoadError, LockButton, useDesktop } from "../ui";
+import { Back, DayList, DevicePills, DeviceTag, ListRow, LoadError, LockButton, deviceEdits, useDesktop } from "../ui";
 import type { Api, HistoryRow } from "../lib/api";
 import { clock, forDevice, historyLabel } from "../lib/library";
 import { useCloudLoad } from "../lib/useCloudLoad";
@@ -8,11 +8,13 @@ import { useCloudLoad } from "../lib/useCloudLoad";
 export function History({ api, token, onBack, onOpen, onLock, onRejected }: { api: Api; token: string; onBack: () => void; onOpen: (row: HistoryRow) => void; onLock: () => void; onRejected: () => void }) {
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
-  const { data, error, retry } = useCloudLoad(async () => {
-    const [devices, rows] = await Promise.all([api.devices(token), api.history(token)]);
-    return { devices, rows };
-  }, onRejected, [api, token]);
-  const { devices, rows } = data ?? {};
+  // Apart, so a device edit reloads only the devices.
+  const devicesLoad = useCloudLoad(() => api.devices(token), onRejected, [api, token]);
+  const historyLoad = useCloudLoad(() => api.history(token), onRejected, [api, token]);
+  const devices = devicesLoad.data;
+  const rows = historyLoad.data;
+  const error = devicesLoad.error ?? historyLoad.error;
+  const retry = () => (devicesLoad.error ? devicesLoad : historyLoad).retry();
 
   const groups = useMemo(() => groupMeetingsByDay(forDevice(rows?.map((r) => ({ ...r, started_at: Date.parse(r.pushed_at) })) ?? [], device)), [rows, device]);
 
@@ -36,7 +38,7 @@ export function History({ api, token, onBack, onOpen, onLock, onRejected }: { ap
           devices &&
           rows && (
             <>
-              <DevicePills devices={devices} value={device} onChange={setDevice} />
+              <DevicePills devices={devices} value={device} onChange={setDevice} edits={deviceEdits(api, token, devicesLoad.retry, onRejected)} />
               <DayList
                 groups={groups}
                 render={(r) => (
@@ -44,7 +46,7 @@ export function History({ api, token, onBack, onOpen, onLock, onRejected }: { ap
                     key={r.push_id}
                     title={historyLabel(r.changed, r.deleted)}
                     meta={clock(r.started_at)}
-                    tag={<DeviceTag name={r.device_name} index={Math.max(0, devices.findIndex((d) => d.id === r.device_id))} />}
+                    tag={<DeviceTag name={r.device_name} color={devices.find((d) => d.id === r.device_id)?.color ?? "slate"} />}
                     onClick={() => onOpen(r)}
                   />
                 )}

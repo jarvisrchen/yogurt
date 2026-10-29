@@ -15,6 +15,9 @@ export const LABEL_COLORS: Record<PaletteColor, { bg: string; fg: string }> = {
  *  this build doesn't know about yet). */
 const FALLBACK = { bg: "var(--color-line)", fg: "var(--color-mut)" };
 
+/** What a color input shows before a custom color is picked. */
+export const DEFAULT_CUSTOM_COLOR = "#8a8fa3";
+
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 
 export function isHexColor(color: string): boolean {

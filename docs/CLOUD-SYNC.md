@@ -108,7 +108,7 @@ sequenceDiagram
   D-->>P: owner, PIN set, not locked out
   P->>D: yogurt_unlock(PIN, remember this browser)
   D-->>P: browser token, kept in localStorage
-  P->>D: yogurt_device_list(token) and yogurt_library(token, one page)
+  P->>D: yogurt_device_info(token) and yogurt_library(token, one page)
   D-->>P: devices and one page of meeting summaries with the total
   P->>D: yogurt_meeting(token, device, meeting) when you open one
   D-->>P: that meeting's notes and transcript
@@ -377,6 +377,10 @@ The library lists every meeting you pushed, grouped by day with the newest first
 Under the list, a range such as "26–50 of 1,412" shows where you are, Previous and Next move between pages, and Per page offers 10, 25, 50, or 100.
 The page and the page size are in the address, so a reload or a shared link keeps them, and a size you pick is remembered.
 The pills above the list pick one machine, and All devices shows them together.
+Each machine has a color, which its pill, its tag on a meeting, and its pushes in History share.
+A machine you have not colored takes blue, honey, or slate in the order it connected.
+Select the picked machine's pill again to give it one of the six label colors or any other, or to reorder the machines.
+Reorder devices lists them with a handle to drag, and on a computer the arrow keys move a focused handle.
 The row under them picks All or Starred.
 All leaves out the meetings you archived on a Mac, and Starred lists the meetings you starred, on every machine under All devices.
 Once you pick one machine, the row also offers Archive and, at its end, a Labels button.

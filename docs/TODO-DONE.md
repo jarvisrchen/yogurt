@@ -1519,3 +1519,15 @@ New closed items go at the bottom.
   The Cloud config fetch and the Granola client now report the connection's error chain, such as `invalid peer certificate: UnknownIssuer`, in place of "Could not reach" or "error sending request" alone.
   Reading the Keychain makes each client build cost about 100 ms, so the dev proxy now shares one client instead of building one per asset.
   Verified with a local HTTPS server signed by a throwaway CA: the v2.0.0 build answers "Could not reach", this build connects once the CA is trusted.
+
+- [x] **SYNC-31** Device pills in the webapp: a stored color per device from the label colors, the picked pill in that color, and a device order you set
+
+  The webapp's device pills and tags cycled three colors by connect order, so a fifth Mac matched the second, and the picked pill was always blue.
+  `yogurt_devices` gains `color` (a label palette name or `#rrggbb`) and `position`.
+  `yogurt_device_info` returns each device's color, defaulting to blue, honey, or slate by connect order, sorted by position.
+  `yogurt_device_list` keeps its shape for a tab still open on an older webapp, and so an older schema still applies on a revert.
+  `yogurt_recolor_device` and `yogurt_reorder_devices` need a browser token, so only an unlocked webapp sets them.
+  The picked device pill fills with its color, the others show a dot, and tapping the picked pill again opens a dialog with the six label swatches, a custom color, and Reorder devices, a list with drag handles and arrow keys.
+  Saves from the dialog run one at a time, because two quick reorders sent together reached the database out of order, and a failed save puts back the last value that saved.
+  A drag follows the window, because React moves the dragged row's node and a downward drag would lose pointer capture.
+  `archive.spec.ts` and `filters.spec.ts` still read a pager range that UI-25 hides at 10 meetings or fewer, so they count rows instead.

@@ -30,7 +30,7 @@ export type BodyState = { status: "loading" } | { status: "ready" } | { status: 
 const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
 
 /** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
-export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop, body, chat }: { entry: Entry | null; device: string; deviceIndex: number; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null }) {
+export function MeetingView({ entry, device, deviceColor, back, onBack, desktop, body, chat }: { entry: Entry | null; device: string; deviceColor: string; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null }) {
   return (
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
       {!desktop && <Back to={back} onClick={onBack} />}
@@ -38,7 +38,7 @@ export function MeetingView({ entry, device, deviceIndex, back, onBack, desktop,
         <div>
           <h1 className="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">{entry.title}</h1>
           <div className="flex flex-wrap items-center gap-[6px] min-[721px]:gap-[8px] text-[13px] min-[721px]:text-[12px] text-mut mt-[3px] min-[721px]:mt-[4px]">
-            <DeviceTag name={device} index={deviceIndex} />
+            <DeviceTag name={device} color={deviceColor} />
             {started(entry)}
           </div>
         </div>

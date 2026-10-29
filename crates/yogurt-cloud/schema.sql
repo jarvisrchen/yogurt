@@ -43,6 +43,11 @@ create table if not exists public.yogurt_devices (
   created_at timestamptz not null default now()
 );
 
+-- The webapp sets a device's color, a Mac label color: a palette name or #rrggbb. position is its place in the webapp's device pills.
+alter table public.yogurt_devices
+  add column if not exists color text,
+  add column if not exists position int;
+
 -- Ids are global across devices, so "as of push N" covers every device at that moment.
 create table if not exists public.yogurt_pushes (
   id        bigint generated always as identity primary key,
@@ -769,6 +774,7 @@ begin
     order by p.id desc;
 end $$;
 
+-- A tab still open on an older webapp calls this, so it keeps its shape. yogurt_device_info is the one with colors and the set order.
 create or replace function public.yogurt_device_list(token text)
 returns table (id uuid, name text, created_at timestamptz)
 language plpgsql security definer set search_path = '' as $$
@@ -778,6 +784,50 @@ begin
   perform yogurt_private.yogurt_check_token(token);
   return query
     select d.id, d.name, d.created_at from public.yogurt_devices d where d.user_id = auth.uid() order by d.created_at, d.id;
+end $$;
+
+-- The devices in the webapp's order: placed ones first, then the rest by connect order.
+-- A device without a color cycles blue, honey, slate by connect order, so moving it keeps its color.
+create or replace function public.yogurt_device_info(token text)
+returns table (id uuid, name text, created_at timestamptz, color text)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  return query
+    select d.id, d.name, d.created_at,
+           coalesce(d.color, (array['blue', 'honey', 'slate'])[((row_number() over (order by d.created_at, d.id) - 1) % 3 + 1)::int])
+    from public.yogurt_devices d where d.user_id = auth.uid()
+    order by d.position nulls last, d.created_at, d.id;
+end $$;
+
+-- Only an unlocked browser sets these, so a laptop's owner session cannot.
+create or replace function public.yogurt_recolor_device(token text, device_id uuid, new_color text) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  if not yogurt_private.yogurt_owns_device($2) then
+    raise exception 'unknown device' using errcode = 'PT404';
+  end if;
+  if $3 is null or not ($3 = any (array['blue', 'matcha', 'straw', 'lilac', 'honey', 'slate']) or $3 ~ '^#[0-9a-fA-F]{6}$') then
+    raise exception 'color must be a palette name or #rrggbb' using errcode = '22023';
+  end if;
+  update public.yogurt_devices d set color = pg_catalog.lower($3) where d.id = $2;
+  return true;
+end $$;
+
+-- device_ids is the new order. A device left out, such as one that connected since the list loaded, goes after them.
+create or replace function public.yogurt_reorder_devices(token text, device_ids uuid[]) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  update public.yogurt_devices d
+  set position = (select pg_catalog.min(o.n)::int from pg_catalog.unnest($2) with ordinality o(id, n) where o.id = d.id)
+  where d.user_id = auth.uid();
+  return true;
 end $$;
 
 -- Row security backs the grants up.
@@ -837,7 +887,10 @@ grant execute on function
   public.yogurt_search(text, text, uuid, int, boolean, boolean, text),
   public.yogurt_retrieve(text, text[], bigint, bigint, int),
   public.yogurt_history(text),
-  public.yogurt_device_list(text)
+  public.yogurt_device_list(text),
+  public.yogurt_device_info(text),
+  public.yogurt_recolor_device(text, uuid, text),
+  public.yogurt_reorder_devices(text, uuid[])
 to authenticated;
 
 -- The insert policies run as the caller, so the three policy helpers are the only private functions it may execute.

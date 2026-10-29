@@ -275,7 +275,10 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_search(token, query, only_device, page_offset, only_archived, only_starred, only_label)` | webapp | the live meetings matching the query, newest first, archived ones only with `only_archived` and otherwise none, narrowed by `only_starred` and `only_label` as in `yogurt_library`, 25 from `page_offset`: `device_id`, `meeting_id`, `push_id`, `started_at`, `ended_at`, `title`, a `snippet`, and `more`, which is true when there were more matches after this page |
 | `yogurt_retrieve(token, terms, from_ms, to_ms, k)` | chat function | up to `k` live, unarchived meetings for a cross-meeting chat question, best match first, with `device_id`, `meeting_id`, `title`, `started_at`, the `notes`, and a transcript `excerpt`. [cloud-chat-design.md](cloud-chat-design.md) has the details. |
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
-| `yogurt_device_list(token)` | webapp | device ids, names, and creation times |
+| `yogurt_device_list(token)` | an older webapp still open in a tab | device ids, names, and creation times |
+| `yogurt_device_info(token)` | webapp | device ids, names, creation times, and colors, in the order set by `yogurt_reorder_devices` and then by creation. A device without a color gets blue, honey, or slate by creation order. |
+| `yogurt_recolor_device(token, device_id, new_color)` | webapp | sets a device's color, a label palette name or `#rrggbb` |
+| `yogurt_reorder_devices(token, device_ids)` | webapp | sets the device order. A device left out goes after the listed ones. |
 | `yogurt_labels(token, only_device, at_push, only_archived)` | webapp | that device's labels, `id`, `name`, and `color`, from the latest version at or before `at_push`, or now, of each of its live, unarchived meetings, or with `only_archived` its archived ones, sorted by name with case ignored. A label takes its name and color from the newest push that has it. |
 
 The `authenticated` role gets no `select` on any table, so the Cloud login alone cannot read a meeting through PostgREST. A plain `GET /rest/v1/yogurt_versions` answers 403 with code 42501.
