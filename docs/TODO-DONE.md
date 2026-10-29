@@ -1480,3 +1480,9 @@ New closed items go at the bottom.
 
   The Cloud sync page and `yogurt ctl cloud status` show the size of the meetings not pushed and a rough time to push them, from the batch count at about 3 seconds a batch plus the pause between batches.
   While a push runs, both show the time left at the pace so far.
+
+- [x] **DX-21** Add a Features section to the README and retake its screenshots, with two of the Yogurt Cloud webapp on a phone
+
+  The README gains a Features section grouped by Capture, Notes, Library, Your data, and Automation, linking to docs/FEATURES.md for the full list.
+  The Library, live meeting, and notes screenshots were retaken from a fresh data dir of made-up meetings enhanced by MiniMax-M3, and the live one shows the recap from a real `say` recording.
+  Two phone screenshots of the webapp, taken against the local Supabase stack, go under Read on your phone.
