@@ -1496,3 +1496,8 @@ New closed items go at the bottom.
 - [x] **DX-22** Retake the README Library screenshot so starred cards show the single star from UI-25
 
   The README Library screenshot is retaken on the UI-25 build, so its two starred cards show one star each.
+
+- [x] **UI-26** The Granola import and Cloud push pills stay up after they finish, with no way to close them.
+
+  The import and push pills now share `TaskPill`, which adds a close button once a run finishes or fails.
+  A finished pill hides itself after 5 seconds unless a newer run replaced it, and a failure stays until it is closed.

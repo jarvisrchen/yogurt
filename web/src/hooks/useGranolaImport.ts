@@ -11,7 +11,7 @@ export type ImportState =
 
 export interface GranolaImport {
   state: ImportState;
-  /** Set once the user clicks a finished pill, so it goes away while Settings still shows the result. */
+  /** Set once a finished pill is clicked, closed, or times out, so it goes away while Settings still shows the result. */
   pillHidden: boolean;
 }
 
@@ -57,6 +57,7 @@ export function applyImportEvent(ev: ImportEvent) {
         failed: ev.failed,
         failedTitles: ev.failed_titles,
       });
+      hideWhenUnchanged();
       break;
     case "import_error":
       show({ kind: "failed", error: ev.error });
@@ -88,6 +89,17 @@ export function applyImportStatus(s: ImportStatus) {
   } else {
     applyImportEvent({ type: "import_error", error: l.error ?? "The import stopped." });
   }
+}
+
+/** How long a finished import's pill stays up. A failure stays until the user closes it. */
+export const DONE_PILL_MS = 5000;
+
+/** Hides the pill unless a newer state replaced it first. */
+function hideWhenUnchanged() {
+  const shown = current;
+  window.setTimeout(() => {
+    if (current === shown) hideImportPill();
+  }, DONE_PILL_MS);
 }
 
 export function hideImportPill() {

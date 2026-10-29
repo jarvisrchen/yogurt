@@ -14,6 +14,7 @@ import {
   applyCloudPushEvent,
   applyCloudPushStatus,
   clearCloudPush,
+  DONE_PILL_MS,
   type CloudPushEvent,
 } from "../hooks/useCloudPush";
 
@@ -67,11 +68,32 @@ describe("PushPill", () => {
     expect(screen.getByTestId("push-pill")).toHaveTextContent("Pushing to Cloud · 341 of 1,412");
   });
 
-  it("reads Pushed on completion until clicked, then goes away", () => {
+  it("goes away on its own a few seconds after the push finishes", () => {
     vi.useFakeTimers();
     renderPill();
     send({ type: "cloud_push_complete", pushed: 1412, deleted: 0 });
+    act(() => vi.advanceTimersByTime(DONE_PILL_MS - 1));
+    expect(screen.getByTestId("push-pill")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
+  });
+
+  it("closes a finished push from its close button, and keeps a failure up until then", () => {
+    vi.useFakeTimers();
+    renderPill();
+    send({ type: "cloud_push_complete", pushed: 3, deleted: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "Close the Cloud push notice" }));
+    expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
+    send({ type: "cloud_push_error", error: "Cloud unreachable", code: "network" });
     act(() => vi.advanceTimersByTime(60_000));
+    fireEvent.click(screen.getByRole("button", { name: "Close the Cloud push notice" }));
+    expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads Pushed on completion and opens Settings, Cloud when clicked", () => {
+    renderPill();
+    send({ type: "cloud_push_complete", pushed: 1412, deleted: 0 });
     const pill = screen.getByTestId("push-pill");
     expect(pill).toHaveTextContent("Pushed 1,412");
     fireEvent.click(pill);
@@ -85,7 +107,7 @@ describe("PushPill", () => {
     send({ type: "cloud_push_error", error: "Cloud unreachable", code: "network" });
     const pill = screen.getByRole("button", { name: /show cloud push error/i });
     expect(pill).toHaveTextContent("Push failed");
-    expect(pill).toHaveClass("border-straw");
+    expect(pill.parentElement).toHaveClass("border-straw");
     fireEvent.click(pill);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();

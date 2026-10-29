@@ -10,7 +10,7 @@ export type PushState =
 
 export interface CloudPush {
   state: PushState;
-  /** Set once the user clicks a finished pill, so it goes away while Settings still shows the result. */
+  /** Set once a finished pill is clicked, closed, or times out, so it goes away while Settings still shows the result. */
   pillHidden: boolean;
 }
 
@@ -61,6 +61,7 @@ export function applyCloudPushEvent(ev: CloudPushEvent, now = Date.now()) {
       break;
     case "cloud_push_complete":
       show({ kind: "done", pushed: ev.pushed, deleted: ev.deleted });
+      hideWhenUnchanged();
       break;
     case "cloud_push_error":
       show({ kind: "failed", error: ev.error });
@@ -82,6 +83,17 @@ export function applyCloudPushStatus(push: PushStatus | null, now = Date.now()) 
   } else if (kind === "running") {
     set(null);
   }
+}
+
+/** How long a finished push's pill stays up. A failure stays until the user closes it. */
+export const DONE_PILL_MS = 5000;
+
+/** Hides the pill unless a newer state replaced it first. */
+function hideWhenUnchanged() {
+  const shown = current;
+  window.setTimeout(() => {
+    if (current === shown) hideCloudPushPill();
+  }, DONE_PILL_MS);
 }
 
 export function hideCloudPushPill() {

@@ -1,7 +1,6 @@
-import clsx from "clsx";
 import { useNavigate } from "react-router";
 import { hideImportPill, useGranolaImport } from "../hooks/useGranolaImport";
-import { ProgressRing } from "./ProgressRing";
+import { TaskPill } from "./TaskPill";
 
 const n = (v: number) => v.toLocaleString("en-US");
 
@@ -37,37 +36,21 @@ export function ImportPill() {
               navigate("/settings/import");
             },
           ];
-  const failed = state.kind === "failed";
   const pct =
     state.kind === "running" && state.progress.total > 0
       ? Math.min(100, Math.round((state.progress.done / state.progress.total) * 100))
       : null;
 
   return (
-    <button
-      type="button"
+    <TaskPill
+      kind={state.kind}
+      pct={pct}
+      text={text}
+      label={label}
       onClick={onClick}
-      aria-label={label}
-      data-testid="import-pill"
-      className={clsx(
-        "flex items-center gap-2 px-3 py-1.5 bg-card border rounded-full shadow-pop text-[13px] text-ink whitespace-nowrap transition-colors",
-        failed ? "border-straw" : "border-line hover:border-matcha",
-      )}
-    >
-      {state.kind === "running" ? (
-        <ProgressRing pct={pct} />
-      ) : (
-        <span
-          aria-hidden="true"
-          className={clsx(
-            "inline-flex w-3.5 justify-center font-semibold",
-            failed ? "text-straw" : "text-matcha",
-          )}
-        >
-          {failed ? "!" : "✓"}
-        </span>
-      )}
-      <span className={clsx("font-medium", failed && "text-straw")}>{text}</span>
-    </button>
+      closeLabel="Close the Granola import notice"
+      onClose={hideImportPill}
+      testId="import-pill"
+    />
   );
 }
