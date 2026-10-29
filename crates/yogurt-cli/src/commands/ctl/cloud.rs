@@ -1,4 +1,4 @@
-//! Yogurt Cloud: status and push. Connecting takes a password, so it stays in the UI: no `ctl` command sets, reveals, or accepts a Cloud secret.
+//! Yogurt Cloud: status, push, and rename. Connecting takes a password, so it stays in the UI: no `ctl` command sets, reveals, or accepts a Cloud secret.
 
 use clap::Subcommand;
 use serde_json::{json, Value};
@@ -11,6 +11,11 @@ pub enum CloudCmd {
     Status,
     /// Push changed meetings to the connected Yogurt Cloud now.
     Push,
+    /// Rename this Mac in the connected Yogurt Cloud.
+    Rename {
+        /// 1 to 80 characters.
+        name: String,
+    },
 }
 
 pub async fn run(cmd: CloudCmd, port: Option<u16>, json_out: bool) -> Result<(), CtlError> {
@@ -22,6 +27,17 @@ pub async fn run(cmd: CloudCmd, port: Option<u16>, json_out: bool) -> Result<(),
                 println!("{v}");
             } else {
                 print_status(&v);
+            }
+        }
+        CloudCmd::Rename { name } => {
+            let v: Value = c
+                .post("/api/cloud/machine-name", &json!({ "machine_name": name }))
+                .await
+                .map_err(with_help)?;
+            if json_out {
+                println!("{}", json!({ "machine_name": v["machine_name"] }));
+            } else {
+                println!("renamed: {}", v["machine_name"].as_str().unwrap_or("?"));
             }
         }
         CloudCmd::Push => {
@@ -67,6 +83,8 @@ fn with_help(e: CtlError) -> CtlError {
         "session_expired" => "sign in again in Settings > Cloud sync, in the browser",
         "passcode_not_set" => "choose a PIN in the Yogurt Cloud webapp first",
         "device_removed" => "disconnect in Settings > Cloud sync, then connect again",
+        "cloud_outdated" => "redeploy the Yogurt Cloud, then try again",
+        "push_running" => "wait for the push to finish",
         _ => "check `yogurt ctl cloud status`",
     };
     CtlError::local(message, help)

@@ -196,6 +196,14 @@ done
 expect "ctl status" "$(ctl a --json cloud status | jq -r .not_pushed)" 0
 expect "ctl push" "$(ctl a --json cloud push | jq -r .last_push.changed)" 0
 
+echo "== rename this Mac"
+expect "rename" "$(api a POST /api/cloud/machine-name '{"machine_name":"  Work Mac "}')" 200
+expect "renamed" "$(field .machine_name)" "Work Mac"
+expect "device row" "$(psql -c 'select string_agg(name, $$,$$ order by name) from yogurt_devices')" "Laptop 2,Work Mac"
+expect "keys.json" "$(jq -r '."yogurt-cloud" | fromjson | .machine_name' "$keys")" "Work Mac"
+expect "blank name" "$(api a POST /api/cloud/machine-name '{"machine_name":" "}')" 400
+expect "ctl rename" "$(ctl a --json cloud rename 'Laptop 1' | jq -r .machine_name)" "Laptop 1"
+
 echo "== auto-push interval"
 expect "default" "$(ctl a --json cloud status | jq -r .push_interval)" off
 expect "bad interval" "$(api a POST /api/cloud/push-interval '{"interval":"5m"}')" 400

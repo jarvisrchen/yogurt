@@ -1497,7 +1497,15 @@ New closed items go at the bottom.
 
   The README Library screenshot is retaken on the UI-25 build, so its two starred cards show one star each.
 
+- [x] **SYNC-29** Rename this Mac's machine name from Settings > Cloud sync and `yogurt ctl cloud rename`, so the webapp's device picker and history show the new name
+
+  Landed 2026-10-28. Rename beside the machine name in Settings > Cloud sync, `POST /api/cloud/machine-name`, and `yogurt ctl cloud rename <name>` call the new `yogurt_rename_device` RPC, then update keys.json.
+  The RPC checks the owner and that the device is the caller's own, and trims the name to 1 to 80 characters.
+  A Cloud deployed before the RPC answers PGRST202, which maps to `cloud_outdated` with "Your Yogurt Cloud needs an update first".
+  Renaming is refused while a push runs, because the pass holds the cloud lock until it ends.
+
 - [x] **UI-26** The Granola import and Cloud push pills stay up after they finish, with no way to close them.
 
   The import and push pills now share `TaskPill`, which adds a close button once a run finishes or fails.
-  A finished pill hides itself after 5 seconds unless a newer run replaced it, and a failure stays until it is closed.
+  A finished pill hides itself 5 seconds after the tab is visible unless a newer run replaced it.
+  A failure, or an import with failed meetings, stays until it is closed.

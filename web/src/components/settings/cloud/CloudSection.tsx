@@ -395,6 +395,81 @@ function Disconnect() {
   );
 }
 
+function MachineName({ name, disabled, onExpired }: { name: string; disabled: boolean; onExpired: () => void }) {
+  const rename = useCloudMutation(cloudApi.rename);
+  const [draft, setDraft] = useState<string | null>(null);
+  const close = () => {
+    setDraft(null);
+    rename.reset();
+  };
+  if (draft === null) {
+    return (
+      <div>
+        <div className={LABEL}>Machine name</div>
+        <div className="flex items-baseline gap-2">
+          <b className="text-[15px]">{name}</b>
+          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft(name)}>
+            Rename
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  const trimmed = draft.trim();
+  const submit = () => {
+    if (trimmed === name) return close();
+    rename.mutate(trimmed, {
+      onSuccess: close,
+      onError: (e) => {
+        if (e instanceof CloudError && e.code === "session_expired") {
+          close();
+          onExpired();
+        }
+      },
+    });
+  };
+  return (
+    <form
+      className="min-w-0 flex-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (trimmed) submit();
+      }}
+    >
+      <label htmlFor="cloud-rename" className={LABEL}>
+        Machine name
+      </label>
+      <div className="mt-0.5 flex items-center gap-2">
+        <input
+          id="cloud-rename"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (rename.isError) rename.reset();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") close();
+          }}
+          autoFocus
+          autoComplete="off"
+          className={`${INPUT} min-w-0 max-w-[280px] flex-1 border-line`}
+        />
+        <Button type="submit" size="sm" disabled={!trimmed || rename.isPending || disabled}>
+          {rename.isPending ? "Saving…" : "Save"}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={close} disabled={rename.isPending}>
+          Cancel
+        </Button>
+      </div>
+      {rename.isError && (
+        <p role="alert" className="mt-1.5 text-[11.5px] text-straw">
+          {rename.error.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function Connected({ status }: { status: CloudConnected }) {
   const push = useCloudMutation(cloudApi.push);
   const host = status.address.replace(/^https?:\/\//, "");
@@ -416,10 +491,11 @@ function Connected({ status }: { status: CloudConnected }) {
       <Header connected intro={`Signed in as ${status.email}`} />
       <Card active padding="compact" className="border-[1px]! ring-1 ring-blue">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div>
-            <div className={LABEL}>Machine name</div>
-            <b className="text-[15px]">{status.machine_name}</b>
-          </div>
+          <MachineName
+            name={status.machine_name}
+            disabled={running || needsSignIn}
+            onExpired={() => setNeedsSignIn(true)}
+          />
           <Button size="sm" disabled={push.isPending || running || needsSignIn} onClick={() => push.mutate(undefined)}>
             {push.isPending || running ? "Pushing…" : "Push meetings"}
           </Button>
