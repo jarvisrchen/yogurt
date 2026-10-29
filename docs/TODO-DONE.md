@@ -1530,4 +1530,5 @@ New closed items go at the bottom.
   The picked device pill fills with its color, the others show a dot, and tapping the picked pill again opens a dialog with the six label swatches, a custom color, and Reorder devices, a list with drag handles and arrow keys.
   Saves from the dialog run one at a time, because two quick reorders sent together reached the database out of order, and a failed save puts back the last value that saved.
   A drag follows the window, because React moves the dragged row's node and a downward drag would lose pointer capture.
+  The label palette moves to `web/src/lib/labelColors.ts`, which imports nothing, so the webapp's CI typechecks it without the Mac app's dependencies.
   `archive.spec.ts` and `filters.spec.ts` still read a pager range that UI-25 hides at 10 meetings or fewer, so they count rows instead.

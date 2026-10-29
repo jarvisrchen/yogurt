@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Button } from "@web/components/Button";
-import { DEFAULT_CUSTOM_COLOR, LABEL_COLORS, isHexColor, labelTone } from "@web/components/labels/LabelChip";
+import { DEFAULT_CUSTOM_COLOR, LABEL_COLORS, isHexColor, labelTone } from "@web/lib/labelColors";
 import { Logo } from "@web/components/Logo";
 import { PAGER_BUTTON } from "@web/components/library/Pager";
 import { TokenRejected, type Api, type Device, type Label } from "./lib/api";

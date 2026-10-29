@@ -9,7 +9,7 @@ import {
 } from "../../lib/api/labels";
 import { useArchiveMatching, useArchivePreview } from "../../lib/api/meetings";
 import { formatCount } from "./pagination";
-import { DEFAULT_CUSTOM_COLOR, isHexColor, labelTone } from "../labels/LabelChip";
+import { DEFAULT_CUSTOM_COLOR, isHexColor, labelTone } from "../../lib/labelColors";
 
 const SWATCH_COLORS: PaletteColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
 

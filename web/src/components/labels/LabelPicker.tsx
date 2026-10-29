@@ -8,7 +8,7 @@ import {
   type Label,
 } from "../../lib/api/labels";
 import { useSetMeetingLabels } from "../../lib/api/meetings";
-import { labelTone } from "./LabelChip";
+import { labelTone } from "../../lib/labelColors";
 
 interface Props {
   meetingId: string;

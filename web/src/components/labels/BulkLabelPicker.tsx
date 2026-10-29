@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCreateLabel, useLabels } from "../../lib/api/labels";
 import { useBulkSetLabel, type Meeting } from "../../lib/api/meetings";
-import { labelTone } from "./LabelChip";
+import { labelTone } from "../../lib/labelColors";
 
 interface Props {
   meetings: Pick<Meeting, "id" | "labels">[];
