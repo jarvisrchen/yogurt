@@ -22,7 +22,9 @@ export function ImportPill() {
       : state.kind === "done"
         ? [
             `Imported ${n(state.imported)} meetings, open the library`,
-            `Imported ${n(state.imported)}`,
+            state.failed > 0
+              ? `Imported ${n(state.imported)} · ${n(state.failed)} failed`
+              : `Imported ${n(state.imported)}`,
             () => {
               hideImportPill();
               navigate("/");

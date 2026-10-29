@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+import { DONE_PILL_MS } from "../hooks/hideFinishedPill";
 import { MemoryRouter } from "react-router";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
@@ -14,7 +15,6 @@ import {
   applyCloudPushEvent,
   applyCloudPushStatus,
   clearCloudPush,
-  DONE_PILL_MS,
   type CloudPushEvent,
 } from "../hooks/useCloudPush";
 
@@ -51,8 +51,9 @@ describe("PushPill", () => {
     renderPill();
     send(progress(340));
     const pill = screen.getByTestId("push-pill");
+    const open = within(pill).getAllByRole("button")[0];
     expect(pill).toHaveTextContent("Pushing to Cloud · 340 of 1,412");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.getByTestId("push-pill")).toBeInTheDocument();
   });
@@ -95,8 +96,9 @@ describe("PushPill", () => {
     renderPill();
     send({ type: "cloud_push_complete", pushed: 1412, deleted: 0 });
     const pill = screen.getByTestId("push-pill");
+    const open = within(pill).getAllByRole("button")[0];
     expect(pill).toHaveTextContent("Pushed 1,412");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
   });
@@ -105,10 +107,11 @@ describe("PushPill", () => {
     renderPill();
     send(progress(10));
     send({ type: "cloud_push_error", error: "Cloud unreachable", code: "network" });
-    const pill = screen.getByRole("button", { name: /show cloud push error/i });
+    const open = screen.getByRole("button", { name: /show cloud push error/i });
+    const pill = screen.getByTestId("push-pill");
     expect(pill).toHaveTextContent("Push failed");
-    expect(pill.parentElement).toHaveClass("border-straw");
-    fireEvent.click(pill);
+    expect(pill).toHaveClass("border-straw");
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
   });

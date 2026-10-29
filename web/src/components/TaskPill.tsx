@@ -19,16 +19,17 @@ export function TaskPill({ kind, pct, text, label, onClick, closeLabel, onClose,
   const finished = kind !== "running";
   return (
     <div
+      data-testid={testId}
       className={clsx(
         "flex items-center bg-card border rounded-full shadow-pop text-[13px] text-ink whitespace-nowrap transition-colors",
-        failed ? "border-straw" : "border-line hover:border-matcha",
+        failed ? "border-straw" : "border-line has-[[data-open]:hover]:border-matcha",
       )}
     >
       <button
         type="button"
         onClick={onClick}
         aria-label={label}
-        data-testid={testId}
+        data-open
         className={clsx("flex items-center gap-2 py-1.5 pl-3", finished ? "pr-1.5" : "pr-3")}
       >
         {finished ? (

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+import { DONE_PILL_MS } from "../hooks/hideFinishedPill";
 import { MemoryRouter } from "react-router";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
@@ -13,7 +14,6 @@ import { ImportPill } from "./ImportPill";
 import {
   applyImportEvent,
   clearImport,
-  DONE_PILL_MS,
   type ImportEvent,
 } from "../hooks/useGranolaImport";
 
@@ -51,8 +51,9 @@ describe("ImportPill", () => {
     renderPill();
     send(progress(340));
     const pill = screen.getByTestId("import-pill");
+    const open = within(pill).getAllByRole("button")[0];
     expect(pill).toHaveTextContent("Importing from Granola · 340 of 1,365");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/import");
     expect(screen.getByTestId("import-pill")).toBeInTheDocument();
   });
@@ -61,8 +62,9 @@ describe("ImportPill", () => {
     renderPill();
     send({ type: "import_complete", imported: 1365, skipped: 0, failed: 0, failed_titles: [] });
     const pill = screen.getByTestId("import-pill");
+    const open = within(pill).getAllByRole("button")[0];
     expect(pill).toHaveTextContent("Imported 1,365");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/");
     expect(screen.queryByTestId("import-pill")).not.toBeInTheDocument();
   });
@@ -96,6 +98,28 @@ describe("ImportPill", () => {
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
+  it("names failed meetings and stays up when some of the import failed", () => {
+    vi.useFakeTimers();
+    renderPill();
+    send({ type: "import_complete", imported: 1300, skipped: 0, failed: 65, failed_titles: ["A"] });
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByTestId("import-pill")).toHaveTextContent("Imported 1,300 · 65 failed");
+  });
+
+  it("starts the countdown only once a background tab is visible again", () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    renderPill();
+    send({ type: "import_complete", imported: 5, skipped: 0, failed: 0, failed_titles: [] });
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByTestId("import-pill")).toBeInTheDocument();
+    hidden.mockReturnValue(false);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    act(() => vi.advanceTimersByTime(DONE_PILL_MS));
+    expect(screen.queryByTestId("import-pill")).not.toBeInTheDocument();
+    hidden.mockRestore();
+  });
+
   it("keeps a failure up until it is closed", () => {
     vi.useFakeTimers();
     renderPill();
@@ -109,10 +133,11 @@ describe("ImportPill", () => {
     renderPill();
     send(progress(10));
     send({ type: "import_error", error: "Granola is unreachable." });
-    const pill = screen.getByRole("button", { name: /show granola import error/i });
+    const open = screen.getByRole("button", { name: /show granola import error/i });
+    const pill = screen.getByTestId("import-pill");
     expect(pill).toHaveTextContent("Import failed");
-    expect(pill.parentElement).toHaveClass("border-straw");
-    fireEvent.click(pill);
+    expect(pill).toHaveClass("border-straw");
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/import");
     expect(screen.queryByTestId("import-pill")).not.toBeInTheDocument();
   });

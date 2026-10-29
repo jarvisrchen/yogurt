@@ -2,6 +2,7 @@
 // The Shell's one `/ws` subscription feeds it (see `useModelDownloadEvents`), and a reconnect re-reads the server's status.
 import { useSyncExternalStore } from "react";
 import type { PushStatus } from "../lib/api/cloud";
+import { hideFinishedPill } from "./hideFinishedPill";
 
 export type PushState =
   | { kind: "running"; sent: number; total: number; retryAt: number | null; leftSecs: number | null }
@@ -39,7 +40,11 @@ export function useCloudPush(): CloudPush | null {
   return useSyncExternalStore(subscribe, () => current);
 }
 
-const show = (state: PushState) => set({ state, pillHidden: false });
+const show = (state: PushState) => {
+  const next = { state, pillHidden: false };
+  set(next);
+  return next;
+};
 const running = (
   sent: number,
   total: number,
@@ -59,10 +64,11 @@ export function applyCloudPushEvent(ev: CloudPushEvent, now = Date.now()) {
     case "cloud_push_progress":
       show(running(ev.sent, ev.total, ev.retry_in, ev.left_secs, now));
       break;
-    case "cloud_push_complete":
-      show({ kind: "done", pushed: ev.pushed, deleted: ev.deleted });
-      hideWhenUnchanged();
+    case "cloud_push_complete": {
+      const shown = show({ kind: "done", pushed: ev.pushed, deleted: ev.deleted });
+      hideFinishedPill(() => current === shown, hideCloudPushPill);
       break;
+    }
     case "cloud_push_error":
       show({ kind: "failed", error: ev.error });
       break;
@@ -83,17 +89,6 @@ export function applyCloudPushStatus(push: PushStatus | null, now = Date.now()) 
   } else if (kind === "running") {
     set(null);
   }
-}
-
-/** How long a finished push's pill stays up. A failure stays until the user closes it. */
-export const DONE_PILL_MS = 5000;
-
-/** Hides the pill unless a newer state replaced it first. */
-function hideWhenUnchanged() {
-  const shown = current;
-  window.setTimeout(() => {
-    if (current === shown) hideCloudPushPill();
-  }, DONE_PILL_MS);
 }
 
 export function hideCloudPushPill() {
