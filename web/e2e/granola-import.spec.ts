@@ -106,7 +106,14 @@ test("granola import: key, preview, progress on every page, done", async ({ page
 
   frame({ type: "import_complete", imported: 1365, skipped: 0, failed: 0, failed_titles: [] });
   await expect(page.getByTestId("import-pill")).toContainText("Imported 1,365");
-  await page.getByTestId("import-pill").click();
+  await page.getByRole("button", { name: "Imported 1,365 meetings, open the library" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("import-pill")).toHaveCount(0);
+
+  frame({ type: "import_progress", done: 1, total: 2, imported: 1, skipped: 0, failed: 0 });
+  frame({ type: "import_complete", imported: 2, skipped: 0, failed: 0, failed_titles: [] });
+  await expect(page.getByTestId("import-pill")).toContainText("Imported 2");
+  await page.getByRole("button", { name: "Close the Granola import notice" }).click();
+  await expect(page.getByTestId("import-pill")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
 });

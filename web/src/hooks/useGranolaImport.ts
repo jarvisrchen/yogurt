@@ -2,6 +2,7 @@
 // The Shell's one `/ws` subscription feeds it (see `useModelDownloadEvents`), and a reconnect re-reads the server's status.
 import { useSyncExternalStore } from "react";
 import type { ImportCounts, ImportStatus } from "../lib/api/granolaImport";
+import { hideFinishedPill } from "./hideFinishedPill";
 
 export type ImportState =
   | { kind: "running"; progress: ImportCounts }
@@ -11,7 +12,7 @@ export type ImportState =
 
 export interface GranolaImport {
   state: ImportState;
-  /** Set once the user clicks a finished pill, so it goes away while Settings still shows the result. */
+  /** Set once a finished pill is clicked, closed, or times out, so it goes away while Settings still shows the result. */
   pillHidden: boolean;
 }
 
@@ -42,22 +43,29 @@ export function useGranolaImport(): GranolaImport | null {
   return useSyncExternalStore(subscribe, () => current);
 }
 
-const show = (state: ImportState) => set({ state, pillHidden: false });
+const show = (state: ImportState) => {
+  const next = { state, pillHidden: false };
+  set(next);
+  return next;
+};
 
 export function applyImportEvent(ev: ImportEvent) {
   switch (ev.type) {
     case "import_progress":
       show({ kind: "running", progress: ev });
       break;
-    case "import_complete":
-      show({
+    case "import_complete": {
+      const shown = show({
         kind: "done",
         imported: ev.imported,
         skipped: ev.skipped,
         failed: ev.failed,
         failedTitles: ev.failed_titles,
       });
+      // A run with failed meetings stays up, like a failed run, until the user closes it.
+      if (ev.failed === 0) hideFinishedPill(() => current === shown, hideImportPill);
       break;
+    }
     case "import_error":
       show({ kind: "failed", error: ev.error });
       break;

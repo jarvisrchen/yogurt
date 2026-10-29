@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+import { DONE_PILL_MS } from "../hooks/hideFinishedPill";
 import { MemoryRouter } from "react-router";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
@@ -50,8 +51,9 @@ describe("PushPill", () => {
     renderPill();
     send(progress(340));
     const pill = screen.getByTestId("push-pill");
+    const open = within(pill).getAllByRole("button")[0];
     expect(pill).toHaveTextContent("Pushing to Cloud · 340 of 1,412");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.getByTestId("push-pill")).toBeInTheDocument();
   });
@@ -67,14 +69,36 @@ describe("PushPill", () => {
     expect(screen.getByTestId("push-pill")).toHaveTextContent("Pushing to Cloud · 341 of 1,412");
   });
 
-  it("reads Pushed on completion until clicked, then goes away", () => {
+  it("goes away on its own a few seconds after the push finishes", () => {
     vi.useFakeTimers();
     renderPill();
     send({ type: "cloud_push_complete", pushed: 1412, deleted: 0 });
+    act(() => vi.advanceTimersByTime(DONE_PILL_MS - 1));
+    expect(screen.getByTestId("push-pill")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
+  });
+
+  it("closes a finished push from its close button, and keeps a failure up until then", () => {
+    vi.useFakeTimers();
+    renderPill();
+    send({ type: "cloud_push_complete", pushed: 3, deleted: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "Close the Cloud push notice" }));
+    expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
+    send({ type: "cloud_push_error", error: "Cloud unreachable", code: "network" });
     act(() => vi.advanceTimersByTime(60_000));
+    fireEvent.click(screen.getByRole("button", { name: "Close the Cloud push notice" }));
+    expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads Pushed on completion and opens Settings, Cloud when clicked", () => {
+    renderPill();
+    send({ type: "cloud_push_complete", pushed: 1412, deleted: 0 });
     const pill = screen.getByTestId("push-pill");
+    const open = within(pill).getAllByRole("button")[0];
     expect(pill).toHaveTextContent("Pushed 1,412");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
   });
@@ -83,10 +107,11 @@ describe("PushPill", () => {
     renderPill();
     send(progress(10));
     send({ type: "cloud_push_error", error: "Cloud unreachable", code: "network" });
-    const pill = screen.getByRole("button", { name: /show cloud push error/i });
+    const open = screen.getByRole("button", { name: /show cloud push error/i });
+    const pill = screen.getByTestId("push-pill");
     expect(pill).toHaveTextContent("Push failed");
     expect(pill).toHaveClass("border-straw");
-    fireEvent.click(pill);
+    fireEvent.click(open);
     expect(navigateSpy).toHaveBeenCalledWith("/settings/cloud");
     expect(screen.queryByTestId("push-pill")).not.toBeInTheDocument();
   });

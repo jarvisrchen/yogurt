@@ -1,8 +1,7 @@
-import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { hideCloudPushPill, useCloudPush } from "../hooks/useCloudPush";
-import { ProgressRing } from "./ProgressRing";
+import { TaskPill } from "./TaskPill";
 
 const n = (v: number) => v.toLocaleString("en-US");
 
@@ -42,37 +41,21 @@ export function PushPill() {
       : state.kind === "done"
         ? [`Pushed ${n(state.pushed)} meetings, open Cloud sync`, `Pushed ${n(state.pushed)}`, open]
         : ["Show Cloud push error", "Push failed", open];
-  const failed = state.kind === "failed";
   const pct =
     state.kind === "running" && state.total > 0
       ? Math.min(100, Math.round((state.sent / state.total) * 100))
       : null;
 
   return (
-    <button
-      type="button"
+    <TaskPill
+      kind={state.kind}
+      pct={pct}
+      text={text}
+      label={label}
       onClick={onClick}
-      aria-label={label}
-      data-testid="push-pill"
-      className={clsx(
-        "flex items-center gap-2 px-3 py-1.5 bg-card border rounded-full shadow-pop text-[13px] text-ink whitespace-nowrap transition-colors",
-        failed ? "border-straw" : "border-line hover:border-matcha",
-      )}
-    >
-      {state.kind === "running" ? (
-        <ProgressRing pct={pct} />
-      ) : (
-        <span
-          aria-hidden="true"
-          className={clsx(
-            "inline-flex w-3.5 justify-center font-semibold",
-            failed ? "text-straw" : "text-matcha",
-          )}
-        >
-          {failed ? "!" : "✓"}
-        </span>
-      )}
-      <span className={clsx("font-medium", failed && "text-straw")}>{text}</span>
-    </button>
+      closeLabel="Close the Cloud push notice"
+      onClose={hideCloudPushPill}
+      testId="push-pill"
+    />
   );
 }
