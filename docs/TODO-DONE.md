@@ -1492,3 +1492,7 @@ New closed items go at the bottom.
   A starred card keeps only the star button on its right, so it no longer shows a second star after the title.
   The pager is hidden while every meeting fits on a page of 10, where it sat under the Ask bar with nothing to do.
   `GET /api/meetings/active` returns `mic_device`, the input the capture opened or switched to, and the meeting page's mic picker shows it, so a reload no longer falls back to the macOS default.
+
+- [x] **DX-22** Retake the README Library screenshot so starred cards show the single star from UI-25
+
+  The README Library screenshot is retaken on the UI-25 build, so its two starred cards show one star each.
