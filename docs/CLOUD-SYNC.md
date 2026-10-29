@@ -544,6 +544,16 @@ A blocked laptop cannot connect or push, and a blocked phone cannot open the web
 Yogurt cannot get around this.
 Try another network, such as a phone hotspot, or ask your network admin to allow both domains.
 
+### "Could not reach" while the browser opens the address
+
+yogurt makes its own connection, apart from the browser.
+It trusts the public certificate authorities and the certificates trusted in the macOS Keychain.
+For a proxy it reads `HTTPS_PROXY` and `NO_PROXY` from the environment it starts in, and it ignores the proxy set in System Settings.
+The message ends with the cause the connection reported.
+`invalid peer certificate: UnknownIssuer` means something on the network re-signs HTTPS with a certificate the Keychain does not trust, such as a security tool whose certificate was added only to one browser.
+Ask whoever manages the laptop to trust that certificate in the System keychain.
+`Connection refused` or a timeout points at a firewall that blocks the yogurt app, such as Little Snitch or LuLu.
+
 ### A paused Supabase project
 
 When a free project has been quiet for 7 days, Supabase pauses it.

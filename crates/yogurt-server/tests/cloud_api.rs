@@ -111,6 +111,11 @@ async fn not_connected_states_and_input_errors_are_typed() {
     )
     .await;
     assert_eq!((code, body["code"].as_str()), (502, Some("bad_config")));
+    let msg = body["error"].as_str().unwrap();
+    assert!(
+        msg.starts_with("Could not reach http://127.0.0.1:9: ") && msg.contains("refused"),
+        "{msg}"
+    );
 
     let connect = |address: &str, name: &str| serde_json::json!({ "address": address, "email": "a@b.c", "password": "pw", "machine_name": name });
     let (code, body) = call(

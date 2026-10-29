@@ -1,5 +1,6 @@
 //! The Cloud address a user types, and the `config.json` the webapp serves at that address.
 
+use crate::rest::describe;
 use crate::{Error, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -98,17 +99,19 @@ pub async fn fetch(origin: &str) -> Result<CloudConfig> {
         .get(format!("{origin}/config.json"))
         .send()
         .await
-        .map_err(|_| Error::BadConfig(format!("Could not reach {origin}.")))?;
+        .map_err(|e| Error::BadConfig(format!("Could not reach {origin}: {}.", describe(e))))?;
     if !resp.status().is_success() {
         return Err(Error::BadConfig(format!(
             "{origin} answered {} for config.json. Check the address.",
             resp.status().as_u16()
         )));
     }
-    let body = resp
-        .text()
-        .await
-        .map_err(|_| Error::BadConfig(format!("Could not read config.json from {origin}.")))?;
+    let body = resp.text().await.map_err(|e| {
+        Error::BadConfig(format!(
+            "Could not read config.json from {origin}: {}.",
+            describe(e)
+        ))
+    })?;
     parse_config(&body)
 }
 

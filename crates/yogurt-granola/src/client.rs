@@ -169,7 +169,15 @@ impl Client {
                         code => return Err(Error::Http(code)),
                     }
                 }
-                Err(e) => last = e.without_url().to_string(),
+                Err(e) => {
+                    // The whole source chain, so an untrusted certificate or a refused connection shows.
+                    let e = e.without_url();
+                    last =
+                        std::iter::successors(Some(&e as &dyn std::error::Error), |s| s.source())
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(": ");
+                }
             }
             if attempt < RETRIES {
                 tokio::time::sleep(wait.min(MAX_BACKOFF)).await;
