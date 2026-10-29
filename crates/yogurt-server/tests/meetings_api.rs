@@ -773,10 +773,10 @@ async fn active_recording_route_does_not_capture_real_meeting_ids() {
     handle.abort();
 }
 
-/// `GET /api/meetings/active` must serialize the truthful `stt` engine once `Registry::start` has stamped it, since the live header badge trusts it over Settings.
+/// `GET /api/meetings/active` must serialize the truthful `stt` engine and mic device once `Registry::start` has stamped them, since the live header and mic picker trust them over Settings.
 /// `Registry::start` needs real audio hardware, so the test seeds a registry meeting in-process and sets `stt_engine` directly.
 #[tokio::test]
-async fn active_recording_serializes_stt_engine_once_set() {
+async fn active_recording_serializes_stt_engine_and_mic_device_once_set() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.keep();
     let storage = std::sync::Arc::new(
@@ -802,6 +802,7 @@ async fn active_recording_serializes_stt_engine_once_set() {
     let never_finishes = tokio::spawn(async { std::future::pending::<()>().await });
     *m.task.lock().await = Some(never_finishes);
     *m.stt_engine.lock().await = Some("cloud");
+    *m.mic_device.lock().await = "BlackHole 2ch".into();
 
     let app = yogurt_server::__test_router(state.clone());
     tokio::spawn(async move {
@@ -819,6 +820,7 @@ async fn active_recording_serializes_stt_engine_once_set() {
         .unwrap();
     assert_eq!(body["id"], m.id.to_string());
     assert_eq!(body["stt"], "cloud");
+    assert_eq!(body["mic_device"], "BlackHole 2ch");
 }
 
 async fn get_json(

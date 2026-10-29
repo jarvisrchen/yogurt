@@ -21,6 +21,14 @@ describe("Pager", () => {
     expect(onPage.mock.calls).toEqual([[3], [1]]);
   });
 
+  it("stays hidden while every meeting fits on the smallest page", () => {
+    setup(1, 25, 10);
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).not.toBeInTheDocument();
+    cleanup();
+    setup(1, 25, 11);
+    expect(screen.getByRole("navigation", { name: "Pagination" })).toBeInTheDocument();
+  });
+
   it("disables Previous on the first page and Next on the last", () => {
     setup(1, 25, 40);
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();

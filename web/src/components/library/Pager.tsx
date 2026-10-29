@@ -11,7 +11,9 @@ interface Props {
 export const PAGER_BUTTON =
   "px-3 py-1.5 rounded-button border border-line text-[13px] font-medium text-ink hover:bg-paper disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/40";
 
+/** Hidden while every meeting fits on the smallest page, where no page or size choice changes anything. */
 export function Pager({ page, size, total, onPage, onSize }: Props) {
+  if (total <= PAGE_SIZES[0]) return null;
   const last = pageCount(size, total);
   return (
     <nav

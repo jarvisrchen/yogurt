@@ -4,6 +4,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MicDevicePicker } from "./MicDevicePicker";
 import { audioApi, settingsApi } from "../lib/api/settings";
 
+const active = vi.hoisted(() => ({ get: vi.fn() }));
+
+// The real cache, so a switch's write to it reaches the picker as it does in the app.
+vi.mock("../lib/api/meetings", async () => {
+  const { useQuery } = await import("@tanstack/react-query");
+  const activeRecordingKey = ["meetings", "active"] as const;
+  return {
+    activeRecordingKey,
+    useActiveRecording: () => useQuery({ queryKey: activeRecordingKey, queryFn: async () => active.get() }),
+  };
+});
+
 vi.mock("../lib/api/settings", async () => {
   const actual =
     await vi.importActual<typeof import("../lib/api/settings")>(
@@ -43,6 +55,7 @@ describe("MicDevicePicker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(audioApi.devices).mockResolvedValue(DEVICES);
+    active.get.mockReturnValue({ id: "meeting-1", mic_device: "" });
     vi.mocked(audioApi.switchMeetingDevice).mockResolvedValue({
       status: "switched",
       device: "AirPods Pro",
@@ -119,6 +132,13 @@ describe("MicDevicePicker", () => {
     });
   });
 
+  it("shows the device the recording opened, not the OS default, on a fresh load", async () => {
+    active.get.mockReturnValue({ id: "meeting-1", mic_device: "AirPods Pro" });
+    renderPicker();
+    const select = await screen.findByRole("combobox", { name: /microphone/i });
+    await waitFor(() => expect(select).toHaveValue("AirPods Pro"));
+  });
+
   it("reflects the resolved active device after a successful switch", async () => {
     renderPicker();
     const select = await screen.findByRole("combobox", {
@@ -180,6 +200,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(audioApi.devices).mockResolvedValue(DEVICES);
+    active.get.mockReturnValue({ id: "meeting-1", mic_device: "" });
     vi.mocked(settingsApi.get).mockResolvedValue({
       general: {
         port: 7878,

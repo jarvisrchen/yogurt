@@ -219,6 +219,8 @@ pub struct Meeting {
     pub mic_muted: Mutex<bool>,
     /// Same lifecycle as `mic_muted`: read by `GET /api/meetings/active`.
     pub echo_enabled: Mutex<bool>,
+    /// The input device the mic capture opened, updated by a hot-swap. Read by `GET /api/meetings/active`, so the picker shows it after a reload.
+    pub mic_device: Mutex<String>,
     /// Wall-clock ms of the last chunk on either channel whose peak cleared
     /// [`SILENCE_PEAK`]. Reset to now on every start and by keep-recording.
     pub last_audible_ms: Arc<AtomicU64>,
@@ -258,6 +260,7 @@ impl Meeting {
             stt_engine: Mutex::new(None),
             mic_muted: Mutex::new(false),
             echo_enabled: Mutex::new(false),
+            mic_device: Mutex::new(String::new()),
             last_audible_ms: Arc::new(AtomicU64::new(now_ms())),
             recap: Default::default(),
             recap_refresh: Default::default(),
@@ -438,6 +441,7 @@ impl Registry {
                 broadcast::Receiver<yogurt_audio::Frame>,
                 broadcast::Receiver<yogurt_audio::Frame>,
                 broadcast::Receiver<yogurt_audio::SystemStatus>,
+                String,
             )>,
         >();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -484,7 +488,11 @@ impl Registry {
                 let Some(tx) = ready_tx_slot.take() else {
                     return;
                 };
-                if tx.send(Ok((mic_rx, sys_rx, sys_status_rx))).is_err() {
+                let mic_name = stream.mic_device().to_string();
+                if tx
+                    .send(Ok((mic_rx, sys_rx, sys_status_rx, mic_name)))
+                    .is_err()
+                {
                     // Supervisor task vanished before we reported ready —
                     // just drop the stream (RAII stops capture) and exit.
                     return;
@@ -565,10 +573,11 @@ impl Registry {
         });
 
         // Await capture readiness — propagates audio open failure as Result.
-        let (mic_rx, sys_rx, sys_status_rx) = ready_rx
+        let (mic_rx, sys_rx, sys_status_rx, mic_name) = ready_rx
             .await
             .context("audio capture thread exited before reporting readiness")?
             .context("audio capture failed to open")?;
+        *m.mic_device.lock().await = mic_name;
 
         let audio_tx = m.audio_tx.clone();
         let transcript_tx = m.transcript_tx.clone();
@@ -835,6 +844,9 @@ impl Registry {
         match tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await {
             Ok(Ok(Ok((name, echo_live)))) => {
                 *m.echo_enabled.lock().await = echo_live;
+                *m.mic_device.lock().await = name.clone();
+                // The swapped-in capture starts unmuted.
+                *m.mic_muted.lock().await = false;
                 Ok(name)
             }
             Ok(Ok(Err(msg))) => Err(SwitchDeviceError::Device(msg)),

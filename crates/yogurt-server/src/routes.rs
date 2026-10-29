@@ -303,15 +303,17 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
         None => ("Recording".to_string(), now_unix_ms()),
     };
     // Read the engine off the `Meeting`, not Settings, which may have changed mid-recording.
-    let (stt, mic_muted, echo_enabled, last_audible) = match state.meetings.get(&id).await {
-        Some(m) => (
-            *m.stt_engine.lock().await,
-            *m.mic_muted.lock().await,
-            *m.echo_enabled.lock().await,
-            Some(m.last_audible_ms.load(std::sync::atomic::Ordering::Relaxed)),
-        ),
-        None => (None, false, false, None),
-    };
+    let (stt, mic_muted, echo_enabled, mic_device, last_audible) =
+        match state.meetings.get(&id).await {
+            Some(m) => (
+                *m.stt_engine.lock().await,
+                *m.mic_muted.lock().await,
+                *m.echo_enabled.lock().await,
+                m.mic_device.lock().await.clone(),
+                Some(m.last_audible_ms.load(std::sync::atomic::Ordering::Relaxed)),
+            ),
+            None => (None, false, false, String::new(), None),
+        };
     let auto_stop_at = last_audible
         .filter(|_| crate::detect::auto_stop_enabled(&state.db))
         .and_then(|last| {
@@ -326,6 +328,7 @@ async fn active_recording(State(state): State<AppState>) -> impl IntoResponse {
         "started_at": started_at,
         "mic_muted": mic_muted,
         "echo_enabled": echo_enabled,
+        "mic_device": mic_device,
         "auto_stop_at": auto_stop_at,
     });
     if let Some(engine) = stt {

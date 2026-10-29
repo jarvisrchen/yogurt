@@ -399,6 +399,8 @@ export interface ActiveRecording {
   /** `Channel::System` keeps recording while the mic is paused. */
   mic_muted: boolean;
   echo_enabled: boolean;
+  /** The input device the mic capture opened, or switched to since. */
+  mic_device: string;
   /** Unix ms at which the server stops this recording for silence. Non-null
    *  only during the warning window. */
   auto_stop_at: number | null;
