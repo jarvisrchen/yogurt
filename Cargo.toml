@@ -37,7 +37,10 @@ rust-embed = { version = "8.5", features = ["mime-guess"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# Native roots trust the certificates in the macOS Keychain, such as a TLS-inspecting proxy's, beside the
+# bundled webpki ones. Leave macos-system-configuration off: it ignores the System Settings bypass list,
+# so it would send localhost calls (yogurt ctl, Ollama) to a corporate proxy. HTTPS_PROXY still works.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "rustls-tls-native-roots", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 rusqlite_migration = "1"
 ulid = { version = "1", features = ["serde"] }
@@ -49,9 +52,9 @@ base64 = "0.22"
 subtle = "2"
 assert_cmd = "2"
 tempfile = "3"
-# rustls-tls-webpki-roots avoids an OpenSSL link (single-binary distribution
-# needs no system OpenSSL). Do NOT enable the default native-tls feature.
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+# rustls avoids an OpenSSL link (single-binary distribution needs no system
+# OpenSSL). Do NOT enable the default native-tls feature.
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots", "rustls-tls-native-roots"] }
 # `sink` for SinkExt (write half of split WS), `std` for tokio compatibility.
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 async-trait = "0.1"

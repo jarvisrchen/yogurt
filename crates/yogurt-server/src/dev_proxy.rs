@@ -3,6 +3,7 @@ use axum::{
     http::{header, HeaderMap, HeaderName, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
 };
+use std::sync::OnceLock;
 
 const VITE_BASE_DEFAULT: &str = "http://127.0.0.1:5173";
 
@@ -54,7 +55,9 @@ pub async fn proxy_to_vite(method: Method, uri: Uri, headers: HeaderMap, body: B
         }
     };
 
-    let client = reqwest::Client::new();
+    // One client for every asset, because each build reads the Keychain roots, which takes about 100 ms.
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    let client = CLIENT.get_or_init(reqwest::Client::new);
     let mut req = client.request(method, &target).body(body_bytes.to_vec());
 
     for (name, value) in headers.iter() {

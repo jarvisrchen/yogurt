@@ -170,6 +170,12 @@ async fn json_rows(resp: reqwest::Response) -> Result<Vec<Value>> {
 }
 
 fn network(e: reqwest::Error) -> Error {
+    Error::Network(describe(e))
+}
+
+/// The whole source chain, because the top-level reqwest message alone ("error sending request") hides
+/// the cause, such as an untrusted certificate or a refused connection.
+pub(crate) fn describe(e: reqwest::Error) -> String {
     let e = e.without_url();
     let mut msg = e.to_string();
     let mut source = e.source();
@@ -178,7 +184,7 @@ fn network(e: reqwest::Error) -> Error {
         msg.push_str(&s.to_string());
         source = s.source();
     }
-    Error::Network(msg)
+    msg
 }
 
 /// A 401 on a data call means the access token is dead, which the caller treats like an expired session.

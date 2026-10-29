@@ -1509,3 +1509,13 @@ New closed items go at the bottom.
   The import and push pills now share `TaskPill`, which adds a close button once a run finishes or fails.
   A finished pill hides itself 5 seconds after the tab is visible unless a newer run replaced it.
   A failure, or an import with failed meetings, stays until it is closed.
+
+- [x] **SYNC-30** Connecting to a Yogurt Cloud fails with "Could not reach" on a network where the browser opens the address
+
+  yogurt's HTTP client trusted only its bundled certificate authorities, so a network that re-signs HTTPS with a Keychain-trusted certificate failed in yogurt while the browser worked.
+  `reqwest` and the Deepgram websocket now also trust the Keychain (`rustls-tls-native-roots`, beside the bundled roots).
+  The System Settings proxy stays off: reqwest's `macos-system-configuration` ignores the bypass list and would send localhost calls such as `yogurt ctl` and Ollama to the proxy.
+  `HTTPS_PROXY` still works.
+  The Cloud config fetch and the Granola client now report the connection's error chain, such as `invalid peer certificate: UnknownIssuer`, in place of "Could not reach" or "error sending request" alone.
+  Reading the Keychain makes each client build cost about 100 ms, so the dev proxy now shares one client instead of building one per asset.
+  Verified with a local HTTPS server signed by a throwaway CA: the v2.0.0 build answers "Could not reach", this build connects once the CA is trusted.
