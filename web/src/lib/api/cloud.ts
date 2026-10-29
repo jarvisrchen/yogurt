@@ -109,6 +109,7 @@ export const cloudApi = {
   signIn: (password: string) => post<CloudStatus>("/api/cloud/sign-in", { password }),
   /** Starts the background push and returns at once. Progress arrives as frames and in the status. */
   push: () => post<{ started: true }>("/api/cloud/push", {}),
+  rename: (machineName: string) => post<CloudStatus>("/api/cloud/machine-name", { machine_name: machineName }),
   setPushInterval: (interval: PushInterval) => post<CloudStatus>("/api/cloud/push-interval", { interval }),
   disconnect: (markDeleted: boolean) => post<CloudStatus>("/api/cloud/disconnect", { mark_deleted: markDeleted }),
 };

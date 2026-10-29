@@ -79,6 +79,7 @@ select pg_temp.expect('42501', array[
   'select * from yogurt_browsers(''x'')',
   'select yogurt_start_push(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
+  'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', ''evil'')',
   'select * from yogurt_library(''x'')',
   'select * from yogurt_meeting(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'')',
   'select * from yogurt_search(''x'', ''x'')',
@@ -103,7 +104,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_rename_device,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -258,6 +259,16 @@ select pg_temp.eq((select pushed_at is not null from yogurt_library(:'tok', 1) l
 select pg_temp.eq((select string_agg(h.push_id || ':' || h.device_name || ':' || h.changed || '/' || h.deleted, ',') from yogurt_history(:'tok') h),
   '3:Laptop 1:2/1,2:Laptop 2:2/0,1:Laptop 1:3/0', 'history skips empty pushes, newest first');
 select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_list(:'tok') d), 'Laptop 1,Laptop 2', 'device list');
+select pg_temp.eq(yogurt_rename_device(:d2, '  Work Mac  ')::text, 'true', 'rename');
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_list(:'tok') d), 'Laptop 1,Work Mac', 'renamed and trimmed');
+select pg_temp.eq((select string_agg(distinct h.device_name, ',') from yogurt_history(:'tok') h where h.device_id = :d2), 'Work Mac', 'history shows the new name');
+select pg_temp.expect('22023', array[
+  'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', ''   '')',
+  'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', null)',
+  'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', repeat(''x'', 81))'
+]);
+select pg_temp.expect('PT404', array['select yogurt_rename_device(gen_random_uuid(), ''x'')']);
+select yogurt_rename_device(:d2, 'Laptop 2');
 
 -- Remember lasts 90 days, a plain unlock 12 hours, and only a hash is stored.
 select yogurt_unlock('123456', true, 'Chrome on Mac') as tok2 \gset
