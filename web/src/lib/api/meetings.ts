@@ -9,10 +9,8 @@ import {
 import { bearerFetch, bearerJson } from "../session";
 import type { RecapState } from "../ws";
 
-export type PaletteColor = "blue" | "matcha" | "straw" | "lilac" | "honey" | "slate";
-
-/** A palette key or a custom `#rrggbb` hex string. `string & {}` keeps palette autocomplete. */
-export type LabelColor = PaletteColor | (string & {});
+import type { LabelColor, PaletteColor } from "../labelColors";
+export type { LabelColor, PaletteColor };
 
 export interface Label {
   id: string;

@@ -6,7 +6,8 @@ import { API, DEVICES, KEY, OWNER, PASSWORD, PIN, expectScreen, isPhone, onboard
 test.describe.configure({ mode: "serial" });
 test.beforeAll(reset);
 
-const range = (page: Page) => page.getByTestId("pager-range");
+// The pager shows only past 10 meetings, so a shorter list is counted by its rows.
+const rows = (page: Page) => page.getByTestId("list-row");
 const filter = (page: Page, name: string) => page.getByRole("group", { name: "Filter" }).getByRole("button", { name });
 const device = (page: Page, name: string) => page.getByRole("group", { name: "Device" }).getByRole("button", { name });
 
@@ -19,7 +20,7 @@ test("a Mac's Archive pill lists and searches only its archived meetings", async
   // All hides the archive, and the total counts only what it lists.
   await expect(page.getByRole("button", { name: /edis update/ })).toBeVisible();
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
   await expect(page.getByRole("button", { name: /^Archived review/ })).toHaveCount(0);
   await expect(filter(page, "Archive")).toHaveCount(0);
   await shot(page, info, "a-all");
@@ -27,7 +28,7 @@ test("a Mac's Archive pill lists and searches only its archived meetings", async
   await device(page, "Laptop 1").click();
   await filter(page, "Archive").click();
   await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–3 of 3");
+  await expect(rows(page)).toHaveCount(3);
   await expect(page.getByRole("button", { name: /^Archived review/ })).toHaveCount(3);
   await expect(page.getByRole("button", { name: /edis update/ })).toHaveCount(0);
   await shot(page, info, "a-archive");
@@ -60,10 +61,10 @@ test("a Mac's Archive pill lists and searches only its archived meetings", async
   await shot(page, info, "a-archive-empty");
   await device(page, "Laptop 1").click();
   await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–3 of 3");
+  await expect(rows(page)).toHaveCount(3);
   await device(page, "All devices").click();
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
 });
 
 test("with every meeting archived, the library stays reachable through a Mac's Archive pill", async ({ page }) => {
@@ -84,5 +85,5 @@ test("with every meeting archived, the library stays reachable through a Mac's A
   await expect(page.getByRole("heading", { name: /Waiting for the first push/ })).toHaveCount(0);
   await device(page, "Laptop 1").click();
   await filter(page, "Archive").click();
-  await expect(range(page)).toHaveText("1–4 of 4");
+  await expect(rows(page)).toHaveCount(4);
 });

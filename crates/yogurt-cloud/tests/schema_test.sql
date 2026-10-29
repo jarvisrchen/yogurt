@@ -86,6 +86,9 @@ select pg_temp.expect('42501', array[
   'select yogurt_search_catch_up()',
   'select * from yogurt_history(''x'')',
   'select * from yogurt_device_list(''x'')',
+  'select * from yogurt_device_info(''x'')',
+  'select yogurt_recolor_device(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''blue'')',
+  'select yogurt_reorder_devices(''x'', array[''00000000-0000-0000-0000-0000000000d1'']::uuid[])',
   'select * from yogurt_labels(''x'', ''00000000-0000-0000-0000-0000000000d1'')',
   'insert into yogurt_devices (id, name) values (gen_random_uuid(), ''evil'')',
   'insert into yogurt_versions (meeting_id, push_id, device_id, body) values (''m1'', 1, ''00000000-0000-0000-0000-0000000000d1'', ''{}'')'
@@ -104,7 +107,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_rename_device,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_browsers,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -219,6 +222,9 @@ select pg_temp.expect('28000', array[
   'select * from yogurt_search(null, ''x'')',
   'select * from yogurt_history(''no such token'')',
   'select * from yogurt_device_list(''no such token'')',
+  'select * from yogurt_device_info(''no such token'')',
+  'select yogurt_recolor_device(''no such token'', ''00000000-0000-0000-0000-0000000000d1'', ''blue'')',
+  'select yogurt_reorder_devices(null, array[]::uuid[])',
   'select * from yogurt_labels(''no such token'', ''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_labels(null, ''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_browsers(''no such token'')',
@@ -258,9 +264,9 @@ select pg_temp.eq((select string_agg(l.meeting_id || ':' || l.total, ',') from y
 select pg_temp.eq((select pushed_at is not null from yogurt_library(:'tok', 1) limit 1)::text, 'true', 'pushed_at present');
 select pg_temp.eq((select string_agg(h.push_id || ':' || h.device_name || ':' || h.changed || '/' || h.deleted, ',') from yogurt_history(:'tok') h),
   '3:Laptop 1:2/1,2:Laptop 2:2/0,1:Laptop 1:3/0', 'history skips empty pushes, newest first');
-select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_list(:'tok') d), 'Laptop 1,Laptop 2', 'device list');
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_info(:'tok') d), 'Laptop 1,Laptop 2', 'device list');
 select pg_temp.eq(yogurt_rename_device(:d2, '  Work Mac  ')::text, 'true', 'rename');
-select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_list(:'tok') d), 'Laptop 1,Work Mac', 'renamed and trimmed');
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_info(:'tok') d), 'Laptop 1,Work Mac', 'renamed and trimmed');
 select pg_temp.eq((select string_agg(distinct h.device_name, ',') from yogurt_history(:'tok') h where h.device_id = :d2), 'Work Mac', 'history shows the new name');
 select pg_temp.expect('22023', array[
   'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', ''   '')',
@@ -269,6 +275,28 @@ select pg_temp.expect('22023', array[
 ]);
 select pg_temp.expect('PT404', array['select yogurt_rename_device(gen_random_uuid(), ''x'')']);
 select yogurt_rename_device(:d2, 'Laptop 2');
+
+-- Device colors and order, set from the webapp.
+select pg_temp.eq((select string_agg(d.name || ':' || d.color, ',') from yogurt_device_info(:'tok') d), 'Laptop 1:blue,Laptop 2:honey', 'default colors by connect order');
+select pg_temp.eq(yogurt_recolor_device(:'tok', :d1, '#AB12CD')::text, 'true', 'recolor');
+select yogurt_recolor_device(:'tok', :d2, 'matcha');
+select pg_temp.eq((select string_agg(d.name || ':' || d.color, ',') from yogurt_device_info(:'tok') d), 'Laptop 1:#ab12cd,Laptop 2:matcha', 'stored colors, hex lowercased');
+select pg_temp.expect('22023', array[
+  format('select yogurt_recolor_device(%L, %L, ''red'')', :'tok', :d1),
+  format('select yogurt_recolor_device(%L, %L, ''#abc'')', :'tok', :d1),
+  format('select yogurt_recolor_device(%L, %L, null)', :'tok', :d1)
+]);
+select pg_temp.expect('PT404', array[format('select yogurt_recolor_device(%L, gen_random_uuid(), ''blue'')', :'tok')]);
+select pg_temp.eq(yogurt_reorder_devices(:'tok', array[:d2, :d1]::uuid[])::text, 'true', 'reorder');
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_info(:'tok') d), 'Laptop 2,Laptop 1', 'the new order');
+select yogurt_reorder_devices(:'tok', array[:d1]::uuid[]);
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_info(:'tok') d), 'Laptop 1,Laptop 2', 'a device left out goes last');
+select yogurt_reorder_devices(:'tok', array[:d2, gen_random_uuid(), :d2]::uuid[]);
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_info(:'tok') d), 'Laptop 2,Laptop 1', 'unknown and repeated ids are harmless');
+select pg_temp.eq((select string_agg(d.name, ',') from yogurt_device_list(:'tok') d), 'Laptop 1,Laptop 2', 'the old device list keeps its shape and order');
+reset role;
+update yogurt_devices set color = null, position = null where true;
+set role authenticated;
 
 -- Remember lasts 90 days, a plain unlock 12 hours, and only a hash is stored.
 select yogurt_unlock('123456', true, 'Chrome on Mac') as tok2 \gset

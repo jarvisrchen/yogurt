@@ -10,6 +10,7 @@ import {
   DayList,
   DevicePills,
   DeviceTag,
+  deviceEdits,
   LabelMenu,
   ListRow,
   LoadError,
@@ -182,8 +183,7 @@ export function Library({
     const min = duration({ started_at: startedAt, endedAt });
     return `${clock(startedAt)}${min ? ` · ${min}` : ""}`;
   };
-  const indexOf = (id: string) =>
-    Math.max(0, devices?.findIndex((d) => d.id === id) ?? 0);
+  const colorOf = (id: string) => devices?.find((d) => d.id === id)?.color ?? "slate";
   const nameOf = (id: string) =>
     devices?.find((d) => d.id === id)?.name ?? "Unknown device";
 
@@ -222,7 +222,7 @@ export function Library({
       key={open}
       entry={entry}
       device={nameOf(openDevice)}
-      deviceIndex={indexOf(openDevice)}
+      deviceColor={colorOf(openDevice)}
       back={archived ? "Archive" : starred ? "Starred" : (label?.name ?? devices?.find((d) => d.id === device)?.name ?? "All devices")}
       onBack={() => back({ ...loc, meeting: null })}
       desktop={desktop}
@@ -281,7 +281,7 @@ export function Library({
         <SearchField value={query} onChange={setQuery} inputRef={field} />
       )}
       {!!devices?.length && (
-        <DevicePills devices={devices} value={device} onChange={chooseDevice} />
+        <DevicePills devices={devices} value={device} onChange={chooseDevice} edits={deviceEdits(api, token, base.retry, onRejected)} />
       )}
       <Pills label="Filter" options={device ? DEVICE_FILTERS : FILTERS} value={filter} onChange={chooseFilter}>
         {device && <LabelMenu labels={labels.data} error={labels.error} onRetry={labels.retry} value={label} onChange={chooseLabel} archived={archived} />}
@@ -320,7 +320,7 @@ export function Library({
                   !(hits ? device : shown?.device) && (
                     <DeviceTag
                       name={nameOf(r.device_id)}
-                      index={indexOf(r.device_id)}
+                      color={colorOf(r.device_id)}
                     />
                   )
                 }

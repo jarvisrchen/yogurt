@@ -62,6 +62,8 @@ async function seedMacs() {
 }
 
 const range = (page: Page) => page.getByTestId("pager-range");
+// The pager shows only past 10 meetings, so a shorter list is counted by its rows.
+const rows = (page: Page) => page.getByTestId("list-row");
 const filters = (page: Page) => page.getByRole("group", { name: "Filter" });
 const filter = (page: Page, name: string) => filters(page).getByRole("button", { name, exact: true });
 const device = (page: Page, name: string) => page.getByRole("group", { name: "Device" }).getByRole("button", { name });
@@ -83,7 +85,7 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
 
   // Starred lists the starred meetings of every Mac.
   await filter(page, "Starred").click();
-  await expect(range(page)).toHaveText("1–3 of 3");
+  await expect(rows(page)).toHaveCount(3);
   await expect(row(page, "Standup").getByText("Mac mini")).toBeVisible();
   await expect(row(page, "Customer call - Acme").getByText("MacBook Pro")).toBeVisible();
   await expect(row(page, "Q4 planning sync")).toHaveCount(0);
@@ -94,7 +96,7 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   await device(page, "MacBook Pro").click();
   await expect(filters(page).getByRole("button")).toHaveText(["All", "Starred", "Archive", "Labels"]);
   await expect(filter(page, "Starred")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
   await expect(row(page, "Weekly 1:1").getByText("MacBook Pro")).toHaveCount(0);
   await expect(row(page, "Customer call - Acme")).toBeVisible();
   await expect(row(page, "Q4 planning sync")).toHaveCount(0);
@@ -121,13 +123,13 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   await expect(labelsButton(page)).toHaveAccessibleName("Label Clients");
   await expect(labelsButton(page)).toHaveClass(/bg-blue/);
   await expect(filter(page, "Starred")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–1 of 1");
+  await expect(rows(page)).toHaveCount(1);
   await expect(row(page, "Customer call - Acme")).toBeVisible();
 
   // All shares Starred's labels, so the label stays.
   await filter(page, "All").click();
   await expect(labelsButton(page)).toHaveAccessibleName("Label Clients");
-  await expect(range(page)).toHaveText("1–5 of 5");
+  await expect(rows(page)).toHaveCount(5);
   await page.mouse.move(0, 0);
   await shot(page, info, "f-clients", false);
   await labelsButton(page).click();
@@ -158,12 +160,12 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   // The Archive has its own labels, so it starts with none, and a label narrows it.
   await filter(page, "Archive").click();
   await expect(labelsButton(page)).toHaveAccessibleName("Labels");
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
   await labelsButton(page).click();
   await expect(list(page).getByRole("option")).toHaveText(["All labels", "Clients", "Old clients"]);
   await list(page).getByRole("option", { name: "Clients", exact: true }).click();
   await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
-  await expect(range(page)).toHaveText("1–1 of 1");
+  await expect(rows(page)).toHaveCount(1);
   await expect(row(page, "Kickoff - Hooli")).toBeVisible();
   await expect(row(page, "Customer call - Acme")).toHaveCount(0);
   await page.mouse.move(0, 0);
@@ -176,23 +178,23 @@ test("Starred works on every Mac, and a picked Mac adds Archive and its labels a
   await labelsButton(page).click();
   await list(page).getByRole("option", { name: "All labels" }).click();
   await expect(labelsButton(page)).toHaveAccessibleName("Labels");
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
   await labelsButton(page).click();
   await list(page).getByRole("option", { name: "Old clients" }).click();
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
   await filter(page, "All").click();
   await expect(labelsButton(page)).toHaveAccessibleName("Labels");
-  await expect(range(page)).toHaveText("1–9 of 9");
+  await expect(rows(page)).toHaveCount(9);
 
   // Another Mac starts a label over at All with its own labels, and All devices drops Archive and Labels again.
   await device(page, "Mac mini").click();
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");
   await expect(labelsButton(page)).toHaveAccessibleName("Labels");
-  await expect(range(page)).toHaveText("1–2 of 2");
+  await expect(rows(page)).toHaveCount(2);
   await labelsButton(page).click();
   await expect(list(page).getByRole("option")).toHaveText(["All labels", "Ops"]);
   await list(page).getByRole("option", { name: "Ops" }).click();
-  await expect(range(page)).toHaveText("1–1 of 1");
+  await expect(rows(page)).toHaveCount(1);
   await device(page, "All devices").click();
   await expect(filters(page).getByRole("button")).toHaveText(["All", "Starred"]);
   await expect(filter(page, "All")).toHaveAttribute("aria-pressed", "true");

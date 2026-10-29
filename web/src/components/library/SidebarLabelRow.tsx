@@ -9,11 +9,10 @@ import {
 } from "../../lib/api/labels";
 import { useArchiveMatching, useArchivePreview } from "../../lib/api/meetings";
 import { formatCount } from "./pagination";
-import { isHexColor, labelTone } from "../labels/LabelChip";
+import { DEFAULT_CUSTOM_COLOR, isHexColor, labelTone } from "../../lib/labelColors";
 
 const SWATCH_COLORS: PaletteColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
 
-const DEFAULT_CUSTOM_COLOR = "#8a8fa3";
 
 interface Props {
   label: LabelWithCount;

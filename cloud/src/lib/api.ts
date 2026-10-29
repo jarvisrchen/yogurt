@@ -20,6 +20,8 @@ export interface Device {
   id: string;
   name: string;
   created_at: string;
+  /** A Mac label color: a palette name or #rrggbb. */
+  color: string;
 }
 
 /** One pushed meeting, `crates/yogurt-db` `bundle_value`. `transcript_json` is the desktop's stored text, a JSON array of segments. */
@@ -167,7 +169,10 @@ export class Api {
   search = (token: string, query: string, scope: Scope, offset: number) =>
     this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
-  devices = (token: string) => this.rpc<Device[]>("yogurt_device_list", { token });
+  devices = (token: string) => this.rpc<Device[]>("yogurt_device_info", { token });
+  recolorDevice = (token: string, device: string, color: string) =>
+    this.rpc<boolean>("yogurt_recolor_device", { token, device_id: device, new_color: color });
+  reorderDevices = (token: string, devices: string[]) => this.rpc<boolean>("yogurt_reorder_devices", { token, device_ids: devices });
   /** One device's labels, sorted by name, live or as of a push, from its unarchived meetings or, with `archived`, its archived ones. */
   labels = (token: string, device: string, atPush: number | null, archived: boolean) =>
     this.rpc<Label[]>("yogurt_labels", { token, only_device: device, at_push: atPush, ...(archived && { only_archived: true }) });
