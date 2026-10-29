@@ -132,6 +132,19 @@ async function mockBackend(page: Page, state: State) {
       state.status = { ...state.status, push_interval: body.interval, next_push };
       return r.fulfill({ json: state.status });
     }
+    if (path === "/api/cloud/machine-name") {
+      if (body.machine_name === "Expired") {
+        return r.fulfill({ status: 401, json: { code: "session_expired", error: "Your Cloud session expired. Sign in again." } });
+      }
+      if (body.machine_name === "Old cloud") {
+        return r.fulfill({
+          status: 409,
+          json: { code: "cloud_outdated", error: "Your Yogurt Cloud needs an update first. Redeploy it, then try again." },
+        });
+      }
+      state.status = { ...state.status, machine_name: body.machine_name };
+      return r.fulfill({ json: state.status });
+    }
     if (path === "/api/cloud/disconnect") {
       state.status = { connected: false };
       return r.fulfill({ json: state.status });
@@ -282,6 +295,47 @@ for (const theme of ["light", "dark"] as const) {
     await page.goto("/");
     await expect(page.getByText("46 meetings · all on this Mac")).toBeVisible();
     await expect(page.getByText("not pushed")).toBeHidden();
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`renames this Mac in place (${theme})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript((t) => localStorage.setItem("yogurt-theme", t), theme);
+    const state: State = { status: connected(), posts: [], pushError: null };
+    await mockBackend(page, state);
+    await page.goto("/settings/cloud");
+    await page.getByRole("button", { name: "Rename" }).click();
+    const input = page.getByLabel("Machine name");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("Laptop 1");
+
+    await input.fill("Old cloud");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("alert")).toContainText("Your Yogurt Cloud needs an update first");
+    await expect(input).toHaveValue("Old cloud");
+
+    await input.fill("  Work Mac ");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.screenshot({ path: `e2e/screenshots/cloud-rename-edit-${theme}.png` });
+    await input.press("Enter");
+    await expect(page.getByText("Work Mac", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Machine name")).toHaveCount(0);
+    expect(state.posts.at(-1)).toEqual({ path: "/api/cloud/machine-name", body: { machine_name: "Work Mac" } });
+    await page.screenshot({ path: `e2e/screenshots/cloud-rename-done-${theme}.png` });
+
+    const sent = state.posts.length;
+    await page.getByRole("button", { name: "Rename" }).click();
+    await page.getByLabel("Machine name").press("Escape");
+    await expect(page.getByRole("button", { name: "Rename" })).toBeVisible();
+    expect(state.posts.length).toBe(sent);
+
+    // A dead session closes the form and asks for the password, as a failed push does.
+    await page.getByRole("button", { name: "Rename" }).click();
+    await page.getByLabel("Machine name").fill("Expired");
+    await page.getByLabel("Machine name").press("Enter");
+    await expect(page.getByLabel("Cloud login password")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rename" })).toBeDisabled();
   });
 }
 

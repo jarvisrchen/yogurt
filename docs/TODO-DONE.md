@@ -1496,3 +1496,10 @@ New closed items go at the bottom.
 - [x] **DX-22** Retake the README Library screenshot so starred cards show the single star from UI-25
 
   The README Library screenshot is retaken on the UI-25 build, so its two starred cards show one star each.
+
+- [x] **SYNC-29** Rename this Mac's machine name from Settings > Cloud sync and `yogurt ctl cloud rename`, so the webapp's device picker and history show the new name
+
+  Landed 2026-10-28. Rename beside the machine name in Settings > Cloud sync, `POST /api/cloud/machine-name`, and `yogurt ctl cloud rename <name>` call the new `yogurt_rename_device` RPC, then update keys.json.
+  The RPC checks the owner and that the device is the caller's own, and trims the name to 1 to 80 characters.
+  A Cloud deployed before the RPC answers PGRST202, which maps to `cloud_outdated` with "Your Yogurt Cloud needs an update first".
+  Renaming is refused while a push runs, because the pass holds the cloud lock until it ends.

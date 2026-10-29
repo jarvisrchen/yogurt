@@ -42,6 +42,8 @@ impl Error {
             Error::Http { status, code, .. } => match (status, code.as_str()) {
                 (412, _) | (_, "PT412") => "passcode_not_set",
                 (404, "PT404") => "device_removed",
+                // PostgREST's "no such function": the Cloud was deployed before this RPC existed.
+                (404, "PGRST202") => "cloud_outdated",
                 // 42501 also comes from the one-hour push window, so only connect maps it to `not_owner`.
                 _ => "cloud_error",
             },
@@ -71,6 +73,7 @@ mod tests {
         assert_eq!(Error::Network("x".into()).code(), "network");
         assert_eq!(http(412, "PT412").code(), "passcode_not_set");
         assert_eq!(http(404, "PT404").code(), "device_removed");
+        assert_eq!(http(404, "PGRST202").code(), "cloud_outdated");
         assert_eq!(http(403, "42501").code(), "cloud_error");
         assert_eq!(http(404, "").code(), "cloud_error");
         assert_eq!(http(500, "XX000").code(), "cloud_error");

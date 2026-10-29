@@ -495,6 +495,21 @@ begin
   return new_id;
 end $$;
 
+-- The laptop renames only its own device. The webapp reads the name live, so the history and device list follow.
+create or replace function public.yogurt_rename_device(device_id uuid, new_name text) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  if not yogurt_private.yogurt_owns_device($1) then
+    raise exception 'unknown device' using errcode = 'PT404';
+  end if;
+  if $2 is null or char_length(btrim($2)) not between 1 and 80 then
+    raise exception 'machine name must be 1 to 80 characters' using errcode = '22023';
+  end if;
+  update public.yogurt_devices d set name = btrim($2) where d.id = $1;
+  return true;
+end $$;
+
 create or replace function public.yogurt_device_meetings(device_id uuid) returns setof text
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -813,6 +828,7 @@ grant execute on function
   public.yogurt_forget_browser(text, bigint),
   public.yogurt_browsers(text),
   public.yogurt_start_push(uuid),
+  public.yogurt_rename_device(uuid, text),
   public.yogurt_device_meetings(uuid),
   public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
   public.yogurt_labels(text, uuid, bigint, boolean),

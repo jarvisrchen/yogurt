@@ -61,6 +61,7 @@ curl -s http://localhost:7878/api/meetings/active -H "Authorization: Bearer $TOK
 | DELETE | `/api/stt/models/{name}` | delete model | `ctl models delete` |
 | GET | `/api/cloud` | Yogurt Cloud connection, not-pushed count, last push | `ctl cloud status` |
 | POST | `/api/cloud/push` | start the background push, 202 at once or 409 if one runs | `ctl cloud push` |
+| POST | `/api/cloud/machine-name` | rename this Mac in the Cloud: `{machine_name}`, 409 while a push runs | `ctl cloud rename` |
 | POST | `/api/cloud/check` | check a Cloud address: `{address}` | - |
 | POST | `/api/cloud/connect` | connect: `{address, email, password, machine_name}`, UI only | - |
 | POST | `/api/cloud/sign-in` | sign in again after a dead session: `{password}`, UI only | - |

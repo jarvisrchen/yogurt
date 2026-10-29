@@ -64,6 +64,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/cloud/sign-in", post(sign_in))
         .route("/api/cloud/push", post(push_now))
         .route("/api/cloud/push-interval", post(set_push_interval))
+        .route("/api/cloud/machine-name", post(rename))
         .route("/api/cloud/disconnect", post(disconnect))
 }
 
@@ -110,9 +111,8 @@ fn status_for(code: &str) -> StatusCode {
         "bad_credentials" | "session_expired" => StatusCode::UNAUTHORIZED,
         "not_owner" => StatusCode::FORBIDDEN,
         "passcode_not_set" => StatusCode::PRECONDITION_FAILED,
-        "not_connected" | "already_connected" | "device_removed" | "push_running" => {
-            StatusCode::CONFLICT
-        }
+        "not_connected" | "already_connected" | "device_removed" | "push_running"
+        | "cloud_outdated" => StatusCode::CONFLICT,
         "bad_config" | "network" | "cloud_error" => StatusCode::BAD_GATEWAY,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -128,9 +128,11 @@ fn message_for(code: &str, fallback: &str) -> String {
         "not_connected" => "This Mac is not connected to a Yogurt Cloud.",
         "already_connected" => "This Mac is already connected. Disconnect first.",
         "cancelled" => "The push was stopped.",
+        "push_running" => "A push is already running. Try again when it finishes.",
         "device_removed" => {
             "This machine was removed from the Yogurt Cloud. Disconnect, then connect again."
         }
+        "cloud_outdated" => "Your Yogurt Cloud needs an update first. Redeploy it, then try again.",
         _ => fallback,
     }
     .to_string()
@@ -499,14 +501,8 @@ async fn connect(
     State(state): State<AppState>,
     Json(body): Json<ConnectBody>,
 ) -> ApiResult<Json<Value>> {
-    let machine_name = body.machine_name.trim().to_string();
+    let machine_name = machine_name(&body.machine_name)?;
     let email = body.email.trim().to_string();
-    if machine_name.is_empty() || machine_name.chars().count() > 80 {
-        return Err(CloudApiError::new(
-            "bad_request",
-            "Machine name must be 1 to 80 characters.",
-        ));
-    }
     if email.is_empty() || body.password.is_empty() {
         return Err(CloudApiError::new(
             "bad_request",
@@ -549,6 +545,53 @@ async fn connect(
         blocking(move || repo.clear_cloud_hashes()).await?;
         clear_records(&state);
         reset_interval(&state);
+        status(State(state.clone())).await
+    })
+    .await
+}
+
+fn machine_name(raw: &str) -> ApiResult<String> {
+    let name = raw.trim();
+    if name.is_empty() || name.chars().count() > 80 {
+        return Err(CloudApiError::new(
+            "bad_request",
+            "Machine name must be 1 to 80 characters.",
+        ));
+    }
+    Ok(name.to_string())
+}
+
+#[derive(Deserialize)]
+struct RenameBody {
+    machine_name: String,
+}
+
+/// Renames this Mac's device row first, so keys.json never shows a name the Cloud does not have.
+async fn rename(
+    State(state): State<AppState>,
+    Json(body): Json<RenameBody>,
+) -> ApiResult<Json<Value>> {
+    let name = machine_name(&body.machine_name)?;
+    // A running pass holds the lock until it ends, which can take minutes.
+    if state.cloud_push.is_running() {
+        return Err(CloudApiError::coded("push_running"));
+    }
+    detached(async move {
+        let held = acquire(&state).await?;
+        let Link {
+            mut conn,
+            project,
+            session,
+        } = link(&state, &held).await?;
+        project
+            .rpc(
+                &session,
+                "yogurt_rename_device",
+                &json!({ "device_id": conn.device_id, "new_name": name }),
+            )
+            .await?;
+        conn.machine_name = name;
+        save(&state, &conn)?;
         status(State(state.clone())).await
     })
     .await
@@ -741,7 +784,7 @@ fn start_push(state: &AppState, trigger: &'static str, now: i64) -> ApiResult<()
     let cancel = state
         .cloud_push
         .begin()
-        .ok_or_else(|| CloudApiError::new("push_running", "A push is already running."))?;
+        .ok_or_else(|| CloudApiError::coded("push_running"))?;
     tokio::spawn(push_task(state.clone(), cancel, trigger, now));
     Ok(())
 }
@@ -1652,6 +1695,82 @@ mod tests {
             1,
             "only the two uncommitted meetings go out"
         );
+    }
+
+    async fn rename_cloud(state: &AppState, status: u16, body: Value) -> wiremock::MockServer {
+        let cloud = bare_cloud(state).await;
+        wiremock::Mock::given(wiremock::matchers::path(
+            "/rest/v1/rpc/yogurt_rename_device",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(status).set_body_json(body))
+        .mount(&cloud)
+        .await;
+        cloud
+    }
+
+    fn rename_body(name: &str) -> Json<RenameBody> {
+        Json(RenameBody {
+            machine_name: name.into(),
+        })
+    }
+
+    #[tokio::test]
+    async fn rename_updates_the_cloud_then_keys_json() {
+        let (state, _tmp) = idle_state();
+        let cloud = rename_cloud(&state, 200, json!(true)).await;
+        let Json(v) = rename(State(state.clone()), rename_body("  Work Mac "))
+            .await
+            .unwrap();
+        assert_eq!(v["machine_name"], "Work Mac");
+        assert_eq!(load(&state).unwrap().unwrap().machine_name, "Work Mac");
+        let sent: Vec<Value> = cloud
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == "/rest/v1/rpc/yogurt_rename_device")
+            .map(|r| serde_json::from_slice(&r.body).unwrap())
+            .collect();
+        assert_eq!(sent, [json!({ "device_id": "d", "new_name": "Work Mac" })]);
+    }
+
+    #[tokio::test]
+    async fn rename_on_an_old_cloud_keeps_the_name() {
+        let (state, _tmp) = idle_state();
+        let _cloud = rename_cloud(
+            &state,
+            404,
+            json!({ "code": "PGRST202", "message": "Could not find the function" }),
+        )
+        .await;
+        let e = rename(State(state.clone()), rename_body("Work Mac"))
+            .await
+            .unwrap_err();
+        assert_eq!((e.code, e.status), ("cloud_outdated", StatusCode::CONFLICT));
+        assert_eq!(load(&state).unwrap().unwrap().machine_name, "m");
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_a_bad_name_and_a_running_push() {
+        let (state, _tmp) = idle_state();
+        for bad in ["   ", &"x".repeat(81)] {
+            let e = rename(State(state.clone()), rename_body(bad))
+                .await
+                .unwrap_err();
+            assert_eq!(e.code, "bad_request");
+        }
+        let (mut state, _tmp) = with_meetings(6);
+        let _cloud = mock_cloud(&state, 201).await;
+        state.cloud_push = std::sync::Arc::new(crate::cloud_push::PushJob::new(push::Pacing {
+            pause: Duration::from_secs(60),
+            ..fast(2)
+        }));
+        start_push(&state, "manual", now_ms()).unwrap();
+        let e = rename(State(state.clone()), rename_body("Work Mac"))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, "push_running");
+        state.cloud_push.cancel();
     }
 
     #[tokio::test]

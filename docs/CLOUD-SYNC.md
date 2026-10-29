@@ -337,7 +337,12 @@ While a push runs, the page shows the time left at the pace so far, once the fir
 
 The Library header shows a "N not pushed" pill beside "N meetings · all on this Mac" while this Mac is connected and behind.
 Select the pill to open the Cloud sync page.
-You can also run `yogurt ctl cloud status` and `yogurt ctl cloud push` from a terminal.
+To change this Mac's machine name, select Rename beside it on the Cloud sync page, type the new name, and select Save.
+The webapp's device picker and push history show the new name at once, including for pushes made under the old one.
+Rename is unavailable while a push runs.
+If the page says "Your Yogurt Cloud needs an update first", redeploy the Cloud so it has the latest schema, then rename again.
+
+You can also run `yogurt ctl cloud status`, `yogurt ctl cloud push`, and `yogurt ctl cloud rename <name>` from a terminal.
 `ctl cloud push` waits until the push ends and prints its result.
 
 If the page says "Your Cloud session expired", type the Cloud login password into the field under the message and select Sign in.

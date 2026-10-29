@@ -60,7 +60,7 @@ pub enum CtlCmd {
         #[command(subcommand)]
         cmd: models::ModelsCmd,
     },
-    /// Yogurt Cloud sync: status and push. Connecting stays in the UI.
+    /// Yogurt Cloud sync: status, push, and rename. Connecting stays in the UI.
     Cloud {
         #[command(subcommand)]
         cmd: cloud::CloudCmd,
