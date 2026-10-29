@@ -1,7 +1,7 @@
 # yogurt
 
 <p align="center">
-  <img src="docs/screenshots/notes.png" alt="A finished meeting in yogurt: augmented notes on the left, each AI-added line linking back to its moment in the transcript on the right" width="900">
+  <img src="docs/screenshots/notes.png" alt="A finished meeting in yogurt: your notes in white, the lines the LLM added in grey with a timestamp link each, and the transcript on the right" width="900">
 </p>
 
 > Local-first, open-source meeting copilot for macOS. Granola's UX, your machine.
@@ -17,22 +17,57 @@ Bring your own OpenAI-compatible LLM (Minimax, OpenAI, OpenRouter, local
 Ollama, whatever you already pay for).
 Optionally, Yogurt Cloud lets you read your meetings on your phone, from a webapp on your own Vercel and Supabase accounts.
 
-**Status:** 1.0, stable.
+**Status:** stable.
 Released as a Homebrew tap and as GitHub Releases tarballs; see [docs/RELEASE-LOG.md](docs/RELEASE-LOG.md) for the release log.
 Building from source still works and is documented below.
 
+## Features
+
+**Capture**
+
+- Records your microphone and the Mac's system audio without a bot joining the call, and transcribes live with local whisper.cpp or Deepgram.
+- A live recap in the transcript dock adds a few bullets about the discussion every 3 minutes, with Pause and Update now.
+- Mute the mic with one key, switch mic devices mid-meeting, or echo the mic to another output.
+- Offers to record when a meeting window opens, and stops on its own when the call ends or goes quiet.
+
+**Notes**
+
+- After the meeting, your bullets stay as written and the LLM fuses in what was said, each line linked to its moment in the transcript.
+- Picks a note format for the kind of meeting, or uses the one you choose, and re-enhances on demand.
+- Chat with one meeting, or ask a question across all of them from the Library and see which meetings the answer came from.
+- Every meeting is also a Markdown file on disk.
+
+**Library**
+
+- Search across notes and transcripts, star meetings, sort them under labels, and archive what you want out of the way but kept.
+
+**Your data**
+
+- Bring your own OpenAI-compatible LLM, or a local CLI agent: Claude Code, Cursor Agent, or OpenCode.
+- Import your Granola notes, with their summaries, transcripts, and folders as labels.
+- [Read every Mac's meetings on your phone](#read-on-your-phone) from Yogurt Cloud, a webapp on your own Vercel and Supabase accounts.
+
+**Automation**
+
+- [`yogurt ctl`](#yogurt-ctl) reads and controls a running instance from the shell.
+- [Paste a meeting URL at a coding agent](#ask-an-agent-about-a-meeting) and it can answer questions about that meeting.
+
+The full list, with where each feature lives in the app, is [docs/FEATURES.md](docs/FEATURES.md).
+
 ## What it looks like
 
-The Library groups every meeting by day, with search over notes and transcripts, stars, and labels in the sidebar.
+The Library groups every meeting by day, with search over notes and transcripts, stars, labels, and the Archive in the sidebar.
+From the Library you can also ask one question across all of your meetings.
 
 <p align="center">
-  <img src="docs/screenshots/library.png" alt="The yogurt Library: meetings grouped by day, each card showing its transcription engine and LLM" width="900">
+  <img src="docs/screenshots/library.png" alt="The yogurt Library: meetings grouped by day under Today and Yesterday, each card showing its labels, transcription model, and LLM" width="900">
 </p>
 
-During a meeting you type sparse bullets on the left while the transcript streams in on the right, with mic mute and device switching one keystroke away.
+During a meeting you type sparse bullets on the left.
+On the right, the live recap sums up the discussion every few minutes, and the Transcript tab streams every line as it is said.
 
 <p align="center">
-  <img src="docs/screenshots/live.png" alt="A live meeting in yogurt: notes editor with the live transcript dock open, mic and echo controls above" width="900">
+  <img src="docs/screenshots/live.png" alt="A live meeting in yogurt: the notes editor and mic controls on the left, and the live recap's timestamped bullets on the right" width="900">
 </p>
 
 After the meeting (top of this page), your bullets stay as you wrote them.
@@ -159,6 +194,11 @@ It is optional and off until you connect it.
 - Deploy it once by following the guide, then create your Cloud login and choose a PIN.
 - Connect each Mac in Settings, then Cloud sync, and push by hand or on an interval.
 - On the phone, read every Mac's meetings with their notes, enhanced notes, and transcript, and look back at the library as of any earlier push.
+
+<p align="center">
+  <img src="docs/screenshots/phone-library.png" alt="The Yogurt Cloud webapp on a phone: meetings grouped by day, each tagged with the Mac that pushed it" width="300">
+  <img src="docs/screenshots/phone-meeting.png" alt="A meeting's enhanced notes in the Yogurt Cloud webapp on a phone, with Notes, Enhanced, and Transcript tabs" width="300">
+</p>
 
 The setup guide, including how it works and who can read what, is [docs/CLOUD-SYNC.md](docs/CLOUD-SYNC.md).
 
