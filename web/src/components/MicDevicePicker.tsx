@@ -7,6 +7,7 @@ import { useState } from "react";
 import { DeviceOptions } from "./DeviceOptions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { audioApi, settingsApi, settingsKey } from "../lib/api/settings";
+import { activeRecordingKey, useActiveRecording, type ActiveRecording } from "../lib/api/meetings";
 
 interface MicDevicePickerProps {
   meetingId: string;
@@ -28,8 +29,12 @@ export function MicDevicePicker({ meetingId, recording }: MicDevicePickerProps) 
     enabled: !recording,
   });
 
-  // Set only on a successful write, so the picker keeps the chosen device instead of reverting to the OS default.
-  const [activeDevice, setActiveDevice] = useState<string | null>(null);
+  // While recording, the server's answer for what the capture opened, so a reload or another tab's switch shows the live device.
+  const active = useActiveRecording();
+  const liveDevice = active.data?.id === meetingId ? active.data.mic_device : undefined;
+
+  // Set only on a successful settings write, so the stopped picker keeps the chosen device instead of reverting to the OS default.
+  const [savedDevice, setSavedDevice] = useState<string | null>(null);
 
   const setDevice = useMutation({
     mutationFn: async (deviceId: string) => {
@@ -41,7 +46,13 @@ export function MicDevicePicker({ meetingId, recording }: MicDevicePickerProps) 
       void qc.invalidateQueries({ queryKey: settingsKey });
       return res.audio_input_device;
     },
-    onSuccess: (device) => setActiveDevice(device),
+    onSuccess: (device) => {
+      if (recording) {
+        qc.setQueryData<ActiveRecording | null>(activeRecordingKey, (a) => a && { ...a, mic_device: device });
+      } else {
+        setSavedDevice(device);
+      }
+    },
   });
 
   if (devices.isLoading) {
@@ -60,12 +71,9 @@ export function MicDevicePicker({ meetingId, recording }: MicDevicePickerProps) 
     );
   }
 
-  const persistedDevice = !recording
-    ? settings.data?.general.audio_input_device
-    : undefined;
+  const chosen = recording ? liveDevice : (savedDevice ?? settings.data?.general.audio_input_device);
   const effectiveValue =
-    activeDevice ??
-    (persistedDevice || undefined) ??
+    (chosen || undefined) ??
     devices.data?.find((d) => d.is_default)?.name ??
     devices.data?.[0]?.name ??
     "";

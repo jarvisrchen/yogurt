@@ -192,6 +192,11 @@ impl AudioStream {
         self.echo = None;
     }
 
+    /// The input device the mic is capturing from.
+    pub fn mic_device(&self) -> &str {
+        &self._mic.device_name
+    }
+
     /// The device currently receiving the echo, if any.
     pub fn echo_device(&self) -> Option<String> {
         self.echo.as_ref().map(|e| e.device_name().to_string())

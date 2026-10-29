@@ -1,5 +1,4 @@
 import { Link } from "react-router";
-import { Star } from "lucide-react";
 import type { MeetingSummary } from "../../lib/api/meetings";
 import { LabelChip } from "../labels/LabelChip";
 import { EnginePill, LlmPill, MetaPill } from "../MeetingMetaPills";
@@ -97,14 +96,6 @@ export function MeetingCard({
             startedAt={meeting.started_at}
             className="block min-w-0 text-[15px] font-semibold text-ink truncate"
           />
-          {meeting.starred && (
-            <Star
-              size={12}
-              className="shrink-0 text-straw fill-straw"
-              role="img"
-              aria-label="Starred"
-            />
-          )}
         </div>
         {isLive ? (
           <div className="mt-1">

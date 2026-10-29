@@ -1486,3 +1486,9 @@ New closed items go at the bottom.
   The README gains a Features section grouped by Capture, Notes, Library, Your data, and Automation, linking to docs/FEATURES.md for the full list.
   The Library, live meeting, and notes screenshots were retaken from a fresh data dir of made-up meetings enhanced by MiniMax-M3, and the live one shows the recap from a real `say` recording.
   Two phone screenshots of the webapp, taken against the local Supabase stack, go under Read on your phone.
+
+- [x] **UI-25** Show one star on a starred card, hide the pager when every meeting fits on the smallest page, and show the live mic device after a reload
+
+  A starred card keeps only the star button on its right, so it no longer shows a second star after the title.
+  The pager is hidden while every meeting fits on a page of 10, where it sat under the Ask bar with nothing to do.
+  `GET /api/meetings/active` returns `mic_device`, the input the capture opened or switched to, and the meeting page's mic picker shows it, so a reload no longer falls back to the macOS default.

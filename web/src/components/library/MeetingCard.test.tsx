@@ -63,6 +63,12 @@ describe("MeetingCard — live-recording routing", () => {
 });
 
 describe("MeetingCard — engine pill", () => {
+  it("marks a starred card with its Unstar button alone", () => {
+    const { container } = renderCard(meeting({ starred: true }));
+    expect(screen.getByRole("button", { name: "Unstar meeting" })).toBeInTheDocument();
+    expect(container.querySelectorAll("svg.lucide-star")).toHaveLength(1);
+  });
+
   it("shows the LLM pill once the meeting has been enhanced", () => {
     renderCard(meeting({ id: "llm-1", llm_model: "gpt-5-mini" }));
     expect(screen.getByTestId("llm-pill")).toHaveTextContent(/^gpt-5-mini/);
