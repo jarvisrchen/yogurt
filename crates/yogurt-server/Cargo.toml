@@ -49,6 +49,7 @@ test-support = ["dep:tempfile"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio-tungstenite = { workspace = true }

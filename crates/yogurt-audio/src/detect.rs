@@ -173,14 +173,18 @@ pub fn detect_meeting() -> Option<DetectedMeeting> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Wedged {
     TimedOut,
-    /// A previous query is still hanging.
+    /// [`MAX_STUCK`] earlier queries are still hanging.
     Busy,
 }
 
-static QUERY_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Queries still running. The caller waits out each query or its timeout before the next, so every one counted here is stuck.
+static QUERIES_IN_FLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// ponytail: each stuck query parks a thread until its reply comes, which may be never, so detection pauses at this many. Raise it if long sessions hit it.
+const MAX_STUCK: usize = 4;
 
 /// The window server occasionally never completes the `SCShareableContent::get()` call (seen mid-call on macOS 26).
-/// The hung thread cannot be cancelled, so further calls refuse rather than stack up.
+/// A lost reply strands only that call, so the next query starts fresh beside it, up to [`MAX_STUCK`] stuck threads.
 pub fn detect_meeting_bounded(
     timeout: std::time::Duration,
 ) -> Result<Option<DetectedMeeting>, Wedged> {
@@ -192,16 +196,21 @@ fn bounded<T: Send + 'static>(
     timeout: std::time::Duration,
 ) -> Result<T, Wedged> {
     use std::sync::atomic::Ordering;
-    if QUERY_IN_FLIGHT.swap(true, Ordering::AcqRel) {
+    if QUERIES_IN_FLIGHT
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+            (n < MAX_STUCK).then_some(n + 1)
+        })
+        .is_err()
+    {
         return Err(Wedged::Busy);
     }
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        // Cleared on drop so a panic in `f` cannot wedge every later query.
+        // Released on drop so a panic in `f` cannot count as stuck forever.
         struct Clear;
         impl Drop for Clear {
             fn drop(&mut self) {
-                QUERY_IN_FLIGHT.store(false, Ordering::Release);
+                QUERIES_IN_FLIGHT.fetch_sub(1, Ordering::AcqRel);
             }
         }
         let clear = Clear;
@@ -260,7 +269,7 @@ pub fn scan_windows() -> Vec<WindowVerdict> {
 
 #[cfg(test)]
 mod tests {
-    use super::{bounded, match_window, Wedged};
+    use super::{bounded, match_window, Wedged, MAX_STUCK};
 
     /// Google Meet installed as a Chrome app, captured from a live call.
     const MEET_PWA: &str = "com.google.Chrome.app.kjgfgldnnfoeklkmfkjfagphfepbbdan";
@@ -336,14 +345,30 @@ mod tests {
     }
 
     #[test]
-    fn a_hung_query_times_out_and_blocks_new_ones_until_it_returns() {
+    fn a_hung_query_times_out_and_the_next_one_runs_until_too_many_are_stuck() {
         use std::time::Duration;
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
-        let hung = bounded(move || release_rx.recv().ok(), Duration::from_millis(20));
-        assert_eq!(hung, Err(Wedged::TimedOut));
+        let release_rx = std::sync::Arc::new(std::sync::Mutex::new(release_rx));
+        for i in 1..=MAX_STUCK {
+            let rx = release_rx.clone();
+            let hung = bounded(
+                move || rx.lock().unwrap().recv().ok(),
+                Duration::from_millis(20),
+            );
+            assert_eq!(hung, Err(Wedged::TimedOut));
+            if i < MAX_STUCK {
+                assert_eq!(
+                    bounded(|| 1, Duration::from_secs(1)),
+                    Ok(1),
+                    "a stuck query must not block the next"
+                );
+            }
+        }
         assert_eq!(bounded(|| 1, Duration::from_secs(1)), Err(Wedged::Busy));
 
-        release_tx.send(()).unwrap();
+        for _ in 0..MAX_STUCK {
+            release_tx.send(()).unwrap();
+        }
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         loop {
             match bounded(|| 1, Duration::from_secs(1)) {

@@ -252,14 +252,16 @@ fn begin(state: &AppState, m: &Meeting, floor: usize) -> Option<Update> {
     };
     update(m, |r| r.state.status = Status::Updating);
     let state = state.clone();
+    let meeting_id = m.id.to_string();
     Some(Box::pin(async move {
-        let res = summarize(&state, &earlier, &window).await;
+        let res = summarize(&state, meeting_id, &earlier, &window).await;
         (epoch, window, res)
     }))
 }
 
 async fn summarize(
     state: &AppState,
+    meeting_id: String,
     earlier: &str,
     window: &[TranscriptEvent],
 ) -> anyhow::Result<Vec<Bullet>> {
@@ -267,7 +269,7 @@ async fn summarize(
     let lines = crate::api::chat::transcript_lines(&serde_json::Value::Array(segments).to_string());
     let prompt = state.prompts.render_live_recap(earlier, &lines)?;
     // Unlike Enhance, no mock fallback: an empty recap would look like nothing worth noting was said.
-    let llm = crate::llm_openai::resolve_configured(state)
+    let llm = crate::llm_openai::resolve_configured(state, "recap", Some(meeting_id))
         .await?
         .ok_or_else(|| anyhow::anyhow!("No LLM provider is set up. Add one in Settings > Model"))?;
     let model = llm.model_name();
@@ -278,7 +280,7 @@ async fn summarize(
     };
     let reply = match tokio::time::timeout(timeout, llm.complete(req)).await {
         Ok(Ok(r)) => r.content,
-        Ok(Err(e)) => anyhow::bail!("{model} failed: {e}"),
+        Ok(Err(e)) => anyhow::bail!("{model} failed: {e:#}"),
         Err(_) => anyhow::bail!("{model} did not respond within {}s", timeout.as_secs()),
     };
     let lo = window.iter().map(|ev| ev.ts_ms / 1000).min().unwrap_or(0);
@@ -294,7 +296,7 @@ async fn summarize(
 /// dropped past [`MAX_PENDING_WORDS`].
 fn finish(m: &Meeting, epoch: u64, window: Vec<TranscriptEvent>, res: anyhow::Result<Vec<Bullet>>) {
     if let Err(e) = &res {
-        tracing::warn!(event = "live_recap_failed", meeting_id = %m.id, error = %e, "live recap update failed");
+        tracing::warn!(event = "live_recap_failed", meeting_id = %m.id, error = %format_args!("{e:#}"), "live recap update failed");
     }
     update(m, |r| {
         if r.epoch != epoch {

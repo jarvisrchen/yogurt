@@ -27,8 +27,10 @@
 //! /api/meetings/active` reports `auto_stop_at` from the 4 minute mark so the UI can warn. It
 //! only reads streams already open for a recording, so it never captures while idle.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use yogurt_audio::detect::Wedged;
 
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -277,14 +279,30 @@ pub async fn tick(state: &AppState) {
     }
 
     // A blind poll must not advance state, or it could start the stop countdown for a live call.
+    static STUCK: AtomicBool = AtomicBool::new(false);
+    static BUSY_LOGGED: AtomicBool = AtomicBool::new(false);
     let found = match tokio::task::spawn_blocking(|| {
         yogurt_audio::detect::detect_meeting_bounded(QUERY_TIMEOUT)
     })
     .await
     {
-        Ok(Ok(found)) => found,
-        Ok(Err(why)) => {
-            tracing::warn!(?why, "meeting detection skipped: window query wedged");
+        Ok(Ok(found)) => {
+            if STUCK.swap(false, Ordering::Relaxed) {
+                BUSY_LOGGED.store(false, Ordering::Relaxed);
+                tracing::info!("meeting detection recovered from a stuck window query");
+            }
+            found
+        }
+        Ok(Err(why @ Wedged::TimedOut)) => {
+            STUCK.store(true, Ordering::Relaxed);
+            tracing::warn!(?why, "meeting detection skipped: window query stuck");
+            return;
+        }
+        // Every poll lands here until a stuck query returns, so say it once.
+        Ok(Err(Wedged::Busy)) => {
+            if !BUSY_LOGGED.swap(true, Ordering::Relaxed) {
+                tracing::warn!("meeting detection paused: too many stuck window queries");
+            }
             return;
         }
         Err(e) => {

@@ -17,8 +17,10 @@ pub use yogurt_llm::OpenAiCompatClient;
 ///   4. `MockLlm` when nothing is configured, so first-run users still see the hero flow.
 pub async fn resolve(
     state: &crate::state::AppState,
+    purpose: &'static str,
+    meeting_id: Option<String>,
 ) -> anyhow::Result<std::sync::Arc<dyn yogurt_llm::LlmClient>> {
-    match resolve_configured(state).await? {
+    match resolve_configured(state, purpose, meeting_id).await? {
         Some(client) => Ok(client),
         None => {
             tracing::warn!("no LLM provider configured; falling back to MockLlm");
@@ -28,16 +30,125 @@ pub async fn resolve(
 }
 
 /// Steps 1 to 3 of [`resolve`], with `Ok(None)` where it would fall back to the mock.
+/// `purpose` and `meeting_id` label the client's `llm_call` log lines.
 pub async fn resolve_configured(
     state: &crate::state::AppState,
+    purpose: &'static str,
+    meeting_id: Option<String>,
 ) -> anyhow::Result<Option<Arc<dyn yogurt_llm::LlmClient>>> {
-    if let Some(overridden) = &state.llm_override {
-        return Ok(Some(overridden.clone()));
+    let inner = if let Some(overridden) = &state.llm_override {
+        overridden.clone()
+    } else if let Some(c) = from_env() {
+        Arc::new(c)
+    } else {
+        match from_active_provider(&state.db, state.keys.clone()).await? {
+            Some(c) => c,
+            None => return Ok(None),
+        }
+    };
+    Ok(Some(Arc::new(Logged {
+        inner,
+        purpose,
+        meeting_id,
+    })))
+}
+
+/// Writes one `llm_call` line per request, so a log shows how often each model was called for a meeting and how each call ended.
+struct Logged {
+    inner: Arc<dyn yogurt_llm::LlmClient>,
+    purpose: &'static str,
+    meeting_id: Option<String>,
+}
+
+impl Logged {
+    fn call(&self) -> Call {
+        Call {
+            purpose: self.purpose,
+            meeting_id: self.meeting_id.clone(),
+            model: self.inner.model_name(),
+            started: std::time::Instant::now(),
+            logged: false,
+        }
     }
-    if let Some(c) = from_env() {
-        return Ok(Some(Arc::new(c)));
+}
+
+struct Call {
+    purpose: &'static str,
+    meeting_id: Option<String>,
+    model: String,
+    started: std::time::Instant,
+    logged: bool,
+}
+
+impl Call {
+    fn finish(&mut self, outcome: &str, error: Option<&anyhow::Error>) {
+        if std::mem::replace(&mut self.logged, true) {
+            return;
+        }
+        tracing::info!(
+            event = "llm_call",
+            purpose = self.purpose,
+            meeting_id = self.meeting_id.as_deref(),
+            model = %self.model,
+            elapsed_ms = self.started.elapsed().as_millis() as u64,
+            outcome,
+            error = error.map(|e| format!("{e:#}")).as_deref(),
+            "llm call"
+        );
     }
-    from_active_provider(&state.db, state.keys.clone()).await
+}
+
+/// A caller that times out, a client that disconnects, or a stream with no `done` chunk drops the call before it finished.
+impl Drop for Call {
+    fn drop(&mut self) {
+        self.finish("unfinished", None);
+    }
+}
+
+#[async_trait::async_trait]
+impl yogurt_llm::LlmClient for Logged {
+    async fn complete(
+        &self,
+        req: yogurt_llm::ChatRequest,
+    ) -> anyhow::Result<yogurt_llm::ChatResponse> {
+        let mut call = self.call();
+        let res = self.inner.complete(req).await;
+        match &res {
+            Ok(_) => call.finish("ok", None),
+            Err(e) => call.finish("error", Some(e)),
+        }
+        res
+    }
+
+    async fn stream(
+        &self,
+        req: yogurt_llm::ChatRequest,
+    ) -> anyhow::Result<
+        futures_util::stream::BoxStream<'static, anyhow::Result<yogurt_llm::ChatChunk>>,
+    > {
+        use futures_util::StreamExt;
+        let mut call = self.call();
+        let stream = self
+            .inner
+            .stream(req)
+            .await
+            .inspect_err(|e| call.finish("error", Some(e)))?;
+        Ok(stream
+            .inspect(move |chunk| match chunk {
+                Ok(c) if c.done => call.finish("ok", None),
+                Err(e) => call.finish("error", Some(e)),
+                Ok(_) => {}
+            })
+            .boxed())
+    }
+
+    fn model_name(&self) -> String {
+        self.inner.model_name()
+    }
+
+    fn response_timeout(&self) -> std::time::Duration {
+        self.inner.response_timeout()
+    }
 }
 
 /// Developer override. `None` unless all of `YOGURT_LLM_BASE_URL`, `YOGURT_LLM_API_KEY`
@@ -214,5 +325,91 @@ mod tests {
                 );
             }
         }
+    }
+
+    struct Fails;
+
+    #[async_trait::async_trait]
+    impl yogurt_llm::LlmClient for Fails {
+        async fn complete(
+            &self,
+            _: yogurt_llm::ChatRequest,
+        ) -> anyhow::Result<yogurt_llm::ChatResponse> {
+            Err(anyhow::anyhow!("deadline has elapsed").context("error sending request"))
+        }
+        async fn stream(
+            &self,
+            _: yogurt_llm::ChatRequest,
+        ) -> anyhow::Result<
+            futures_util::stream::BoxStream<'static, anyhow::Result<yogurt_llm::ChatChunk>>,
+        > {
+            anyhow::bail!("unused")
+        }
+        fn model_name(&self) -> String {
+            "fails".into()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Lines(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Lines {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn every_call_logs_one_llm_call_line_with_how_it_ended() {
+        use futures_util::StreamExt;
+        use yogurt_llm::{ChatMessage, ChatRequest, LlmClient};
+        let out = Lines::default();
+        let writer = out.clone();
+        let _guard = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || writer.clone())
+                .with_ansi(false)
+                .finish(),
+        );
+        let req = || ChatRequest {
+            messages: vec![ChatMessage::user("hi")],
+            stream: false,
+        };
+        let logged = |inner: Arc<dyn LlmClient>| Logged {
+            inner,
+            purpose: "recap",
+            meeting_id: Some("m1".into()),
+        };
+
+        let mock = logged(Arc::new(crate::llm_mock::MockLlm));
+        mock.complete(req()).await.unwrap();
+        let mut s = mock.stream(req()).await.unwrap();
+        while s.next().await.is_some() {}
+        drop(s);
+        drop(mock.stream(req()).await.unwrap());
+        assert!(logged(Arc::new(Fails)).complete(req()).await.is_err());
+
+        let text = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
+        let lines: Vec<_> = text.lines().filter(|l| l.contains("llm_call")).collect();
+        assert_eq!(lines.len(), 4, "{text}");
+        assert!(
+            lines
+                .iter()
+                .all(|l| l.contains("purpose=\"recap\"") && l.contains("meeting_id=\"m1\"")),
+            "{text}"
+        );
+        assert!(lines[0].contains("outcome=\"ok\""), "{}", lines[0]);
+        assert!(lines[1].contains("outcome=\"ok\""), "{}", lines[1]);
+        assert!(lines[2].contains("outcome=\"unfinished\""), "{}", lines[2]);
+        assert!(
+            lines[3].contains("outcome=\"error\"")
+                && lines[3].contains("error sending request: deadline has elapsed"),
+            "{}",
+            lines[3]
+        );
     }
 }
