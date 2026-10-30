@@ -40,7 +40,26 @@ export async function bearerFetch(
   if (init?.body != null && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(input, { ...init, headers });
+  const res = await fetch(input, { ...init, headers });
+  if (res.status === 403 && (await res.clone().text()) === "forbidden: bad token") {
+    await reloadIfTokenChanged(token);
+  }
+  return res;
+}
+
+let healing: Promise<void> | null = null;
+
+/**
+ * A different yogurt on this port (another data dir) rejects every call this tab makes, sockets included,
+ * and the tab's meetings belong to the other one, so start the page over once.
+ */
+function reloadIfTokenChanged(stale: string): Promise<void> {
+  healing ??= (async () => {
+    cached = null;
+    if ((await ensureSessionToken().catch(() => stale)) !== stale) window.location.reload();
+    else healing = null;
+  })();
+  return healing;
 }
 
 export async function bearerJson<T>(

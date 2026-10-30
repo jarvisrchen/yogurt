@@ -224,23 +224,24 @@ pub async fn enhance(
     // for a CLI provider, so no single constant fits both.
     //
     // No system message: `enhance.md` is rendered as the whole user payload.
-    let llm = match crate::llm_openai::resolve(&state).await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(
-                event = "enhance_llm_resolution_failed",
-                meeting_id = %meeting_id,
-                error = %e,
-                "enhance failed to resolve LLM provider"
-            );
-            let _ = meeting.events_tx.send(serde_json::json!({
-                "type": "enhance_progress",
-                "phase": "error",
-                "message": format!("Enhance failed: {e}")
-            }));
-            return Err((StatusCode::BAD_GATEWAY, e.to_string()));
-        }
-    };
+    let llm =
+        match crate::llm_openai::resolve(&state, "enhance", Some(meeting_id.to_string())).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(
+                    event = "enhance_llm_resolution_failed",
+                    meeting_id = %meeting_id,
+                    error = %e,
+                    "enhance failed to resolve LLM provider"
+                );
+                let _ = meeting.events_tx.send(serde_json::json!({
+                    "type": "enhance_progress",
+                    "phase": "error",
+                    "message": format!("Enhance failed: {e}")
+                }));
+                return Err((StatusCode::BAD_GATEWAY, e.to_string()));
+            }
+        };
     let chat_req = ChatRequest {
         messages: vec![ChatMessage::user(user_prompt.clone())],
         stream: true,
@@ -250,13 +251,13 @@ pub async fn enhance(
     let llm_started = Instant::now();
 
     let llm_failed = |error: &anyhow::Error| -> (StatusCode, String) {
-        let msg = format!("llm stream failed: {error}");
+        let msg = format!("llm stream failed: {error:#}");
         tracing::error!(
             event = "enhance_llm_request_failed",
             meeting_id = %meeting_id,
             model = %llm_model,
             elapsed_ms = llm_started.elapsed().as_millis(),
-            error = ?error,
+            error = %format_args!("{error:#}"),
             "enhance LLM request failed"
         );
         let _ = meeting.events_tx.send(serde_json::json!({

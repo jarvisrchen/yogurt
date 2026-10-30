@@ -16,16 +16,17 @@ pub(crate) async fn stream(
         thinking: client.thinking(),
     };
 
-    let resp = client
-        .http_for_streaming()
-        .post(format!(
-            "{}/chat/completions",
-            client.base_url_for_streaming()
-        ))
-        .bearer_auth(client.api_key_for_streaming())
-        .json(&body)
-        .send()
-        .await?;
+    let resp = crate::send(
+        client
+            .http_for_streaming()
+            .post(format!(
+                "{}/chat/completions",
+                client.base_url_for_streaming()
+            ))
+            .bearer_auth(client.api_key_for_streaming())
+            .json(&body),
+    )
+    .await?;
 
     let status = resp.status();
     if !status.is_success() {

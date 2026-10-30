@@ -373,3 +373,38 @@ async fn errors_never_contain_the_raw_key() {
         "expected redaction marker in: {list_msg}"
     );
 }
+
+#[tokio::test]
+async fn a_failed_connect_is_retried_once() {
+    // A freed port refuses the first connect. macOS holds a connect to a bound socket until it listens, so the port cannot stay reserved.
+    let addr = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let up = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let server = MockServer::builder()
+            .listener(std::net::TcpListener::bind(addr).unwrap())
+            .start()
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "model": "m",
+                "choices": [{ "message": { "role": "assistant", "content": "back" } }]
+            })))
+            .mount(&server)
+            .await;
+        server
+    });
+
+    let client = OpenAiCompatClient::new(format!("http://{addr}"), "k".into(), "m".into());
+    let resp = client
+        .complete(ChatRequest {
+            messages: vec![ChatMessage::user("hi")],
+            stream: false,
+        })
+        .await
+        .expect("the retry reaches the server once it is up");
+    assert_eq!(resp.content, "back");
+    drop(up.await);
+}

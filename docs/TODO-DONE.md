@@ -1532,3 +1532,11 @@ New closed items go at the bottom.
   A drag follows the window, because React moves the dragged row's node and a downward drag would lose pointer capture.
   The label palette moves to `web/src/lib/labelColors.ts`, which imports nothing, so the webapp's CI typechecks it without the Mac app's dependencies.
   `archive.spec.ts` and `filters.spec.ts` still read a pager range that UI-25 hides at 10 meetings or fewer, so they count rows instead.
+
+- [x] **DX-23** Make the server log useful for debugging a meeting: one `llm_call` line per LLM request, full error causes, a retried connect, meeting detection that survives a stuck window query, and a tab that recovers from a changed session token
+
+  Every LLM request now logs one `event="llm_call"` line with its purpose, meeting id, model, elapsed time, and outcome, so one meeting's calls can be counted from the log.
+  Errors carry their full cause, so a recap that cannot reach the provider logs `tcp connect error: deadline has elapsed` instead of only `error sending request`.
+  A request that fails to connect is retried once after 1 s.
+  A stuck window query no longer turns meeting detection off until a restart: the next poll starts a fresh query beside it, up to four stuck queries per run.
+  A tab whose session token the server no longer accepts reloads once, which stops the `session token mismatch` flood.

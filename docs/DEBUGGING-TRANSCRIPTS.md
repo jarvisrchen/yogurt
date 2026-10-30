@@ -93,6 +93,18 @@ tar czf yogurt-logs.tgz -C ~/.yogurt logs
 
 System audio health shows up as `system audio summary (last 30s)` lines (SCK buffers, ring drops, restarts), plus `system audio stalled` and `system audio recovered` when the watchdog restarts capture.
 
+Every Enhance, live recap, and chat request to the configured provider writes one `event="llm_call"` line with its `purpose` (`enhance`, `recap`, `chat`, `library_chat`), `meeting_id`, `model`, `elapsed_ms`, and `outcome`.
+`outcome` is `ok`, `error` (with the full cause in `error`), or `unfinished` when the caller gave up first, such as a timeout or a closed chat.
+A request that fails to connect is retried once after 1 s, so a connect failure costs about 21 s before it is logged.
+To count one meeting's calls by outcome:
+
+```sh
+grep -h 'llm_call' ~/.yogurt/logs/yogurt.log.* | grep '<meeting id>' | grep -o 'purpose="[a-z_]*".*outcome="[a-z]*"' | sed 's/ meeting_id.*outcome/ outcome/' | sort | uniq -c
+```
+
+A window query that never returns logs `meeting detection skipped: window query stuck`, and the next poll starts a fresh query beside it.
+With four queries stuck at once, detection logs `meeting detection paused` once and resumes when one of them returns, logging `meeting detection recovered`.
+
 ---
 
 ## Known reasons the dock and the DB disagree

@@ -29,6 +29,23 @@ const GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 /// Connect (DNS + TCP + TLS) bound, so a typo'd base_url fails fast instead of stalling for `HTTP_TIMEOUT`.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+const CONNECT_RETRY_DELAY: Duration = Duration::from_secs(1);
+
+/// A request that failed to connect never reached the provider, so one retry is safe and rides out a network blip.
+async fn send(rb: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Response> {
+    let retry = rb.try_clone();
+    match rb.send().await {
+        Err(e) if e.is_connect() => match retry {
+            Some(rb) => {
+                tokio::time::sleep(CONNECT_RETRY_DELAY).await;
+                rb.send().await
+            }
+            None => Err(e),
+        },
+        res => res,
+    }
+}
+
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     /// Must set `stream=false` on the wire regardless of `req.stream`.
@@ -169,13 +186,13 @@ impl LlmClient for OpenAiCompatClient {
             reasoning_split: self.split_reasoning(),
             thinking: self.thinking(),
         };
-        let resp = self
-            .http
-            .post(self.endpoint())
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await?;
+        let resp = send(
+            self.http
+                .post(self.endpoint())
+                .bearer_auth(&self.api_key)
+                .json(&body),
+        )
+        .await?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();

@@ -164,7 +164,7 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
     }
 
     // Same resolution chain as enhance, so chat never answers from a different model than Settings.
-    let llm = match crate::llm_openai::resolve(&state).await {
+    let llm = match crate::llm_openai::resolve(&state, "chat", Some(meeting_id.to_string())).await {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!(error = %e, "chat: LLM resolution failed");
@@ -182,12 +182,12 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
     let mut stream = match stream_res {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!(error = %e, "chat: stream open failed");
+            tracing::warn!(error = %format_args!("{e:#}"), "chat: stream open failed");
             broadcast_error(
                 &state,
                 meeting_id,
                 &message_id,
-                &format!("[stream error: {e}]"),
+                &format!("[stream error: {e:#}]"),
             )
             .await;
             return;
@@ -217,8 +217,8 @@ async fn run_stream(state: AppState, meeting_id: Uuid, message_id: String) {
                 }
             }
             Err(e) => {
-                tracing::warn!(error = %e, "chat: stream chunk error");
-                let err_text = format!("\n\n[stream error: {e}]");
+                tracing::warn!(error = %format_args!("{e:#}"), "chat: stream chunk error");
+                let err_text = format!("\n\n[stream error: {e:#}]");
                 accumulated.push_str(&err_text);
                 send_event(
                     &state,

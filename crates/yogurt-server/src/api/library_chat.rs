@@ -78,7 +78,7 @@ pub async fn post_library_chat(
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(32);
     let _ = tx.send(ndjson(&json!({ "sources": sources }))).await;
     tokio::spawn(async move {
-        let llm = match crate::llm_openai::resolve(&state).await {
+        let llm = match crate::llm_openai::resolve(&state, "library_chat", None).await {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!(error = %e, "library chat: LLM resolution failed");
@@ -95,9 +95,11 @@ pub async fn post_library_chat(
         {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!(error = %e, "library chat: stream open failed");
+                tracing::warn!(error = %format_args!("{e:#}"), "library chat: stream open failed");
                 let _ = tx
-                    .send(ndjson(&json!({ "delta": format!("[stream error: {e}]") })))
+                    .send(ndjson(
+                        &json!({ "delta": format!("[stream error: {e:#}]") }),
+                    ))
                     .await;
                 return;
             }
@@ -105,7 +107,7 @@ pub async fn post_library_chat(
         while let Some(chunk) = stream.next().await {
             let (delta, done) = match chunk {
                 Ok(c) => (c.delta, c.done),
-                Err(e) => (format!("\n\n[stream error: {e}]"), true),
+                Err(e) => (format!("\n\n[stream error: {e:#}]"), true),
             };
             // A send error means the client went away, so stop generating.
             if !delta.is_empty() && tx.send(ndjson(&json!({ "delta": delta }))).await.is_err() {

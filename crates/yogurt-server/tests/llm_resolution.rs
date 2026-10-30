@@ -61,7 +61,7 @@ async fn no_provider_configured_resolves_to_mock() {
     clear_llm_env();
     let (state, _tmp) = test_state();
 
-    let llm = test_support::resolve(&state)
+    let llm = test_support::resolve(&state, "test", None)
         .await
         .expect("resolve must succeed with nothing configured");
     let resp = llm
@@ -85,7 +85,7 @@ async fn active_provider_with_key_resolves_ok() {
     insert_active_provider(&state, true);
 
     // `Arc<dyn LlmClient>` isn't `Debug`, so match explicitly.
-    if let Err(e) = test_support::resolve(&state).await {
+    if let Err(e) = test_support::resolve(&state, "test", None).await {
         panic!("provider + key must resolve Ok, got error: {e}");
     }
 }
@@ -99,7 +99,7 @@ async fn active_provider_without_key_errors_naming_provider() {
     insert_active_provider(&state, false);
 
     // `Result::expect_err` requires `T: Debug`, so match explicitly.
-    let err = match test_support::resolve(&state).await {
+    let err = match test_support::resolve(&state, "test", None).await {
         Ok(_) => panic!("missing key must be a hard Err, not a silent mock fallback"),
         Err(e) => e,
     };
@@ -123,7 +123,7 @@ async fn llm_override_wins_over_env_and_provider() {
     insert_active_provider(&state, true);
     state.llm_override = Some(Arc::new(MockChunksLlm::new(&["OVERRIDE-MARKER"])));
 
-    let llm = test_support::resolve(&state)
+    let llm = test_support::resolve(&state, "test", None)
         .await
         .expect("resolve must succeed");
     let resp = llm
