@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { TranscriptEvent } from "../lib/ws";
 
 /** Formats ms since meeting start as `HH:MM:SS`. */
@@ -32,8 +33,9 @@ export function scrollToTranscriptTime(root: ParentNode, sec: number): boolean {
   return true;
 }
 
-/** Partial (non-final) events render at opacity 0.7 to signal "still listening". */
-export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
+/** Partial (non-final) events render at opacity 0.7 to signal "still listening". Sizes are in em, so the list's font size scales the row. */
+// Memoized because a dock drag re-renders the dock on every pointer move, and a long meeting holds thousands of lines.
+export const TranscriptLine = memo(function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
   const isMic = ev.channel === "mic";
   const labelColor = isMic ? INK : GREY;
   const textColor = isMic ? INK : GREY;
@@ -41,20 +43,20 @@ export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
 
   return (
     <div
-      className="py-2 text-[14px] leading-snug"
+      className="py-2 leading-snug"
       data-channel={ev.channel}
       data-final={ev.is_final}
       // scrollToTranscriptTime finds the closest line via `[data-transcript-ts-sec]`.
       data-transcript-ts-sec={Math.floor(ev.ts_ms / 1000)}
     >
       <span
-        className="inline-block w-12 font-semibold"
+        className="inline-block w-[3.43em] font-semibold"
         style={{ color: labelColor }}
       >
         {isMic ? "Me" : "Them"}
       </span>
       <span
-        className="font-mono text-[12px] mr-2"
+        className="font-mono text-[0.857em] mr-2"
         style={{ color: GREY }}
       >
         {formatTs(ev.ts_ms)}
@@ -62,4 +64,4 @@ export function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
       <span style={{ color: textColor, opacity }}>{ev.text}</span>
     </div>
   );
-}
+});

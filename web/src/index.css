@@ -161,6 +161,80 @@ html, body {
   animation: slideOutRight 340ms cubic-bezier(.2, .7, .2, 1) both;
 }
 
+/* The meeting pages' wrapper. `TranscriptDock` sets `--dock-pad` while open so the notes clear it. */
+.dock-gutter {
+  padding-right: var(--dock-pad, 28px);
+}
+
+/* An 8px hit strip straddling the dock's left border, with a 2px line on hover, focus, and drag. */
+.dock-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 1;
+  touch-action: none;
+}
+.dock-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: var(--color-blue);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.dock-handle:hover::after,
+.dock-handle:focus-visible::after,
+.dock-handle.is-dragging::after {
+  opacity: 1;
+}
+.dock-handle:focus-visible {
+  outline: none;
+}
+:root.dock-dragging,
+:root.dock-dragging * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+/* Live controls that stay out from under an overlapping dock, down to 200px, below which the dock covers them like the notes.
+ * The dock only overlaps once the notes column is pinned to the window's left edge, so the column's 40px padding is the only offset. */
+.dock-visible {
+  max-width: max(200px, calc(var(--dock-vw, 100vw) - var(--dock-clear, 0px) - 40px));
+}
+
+/* The Ask bar and chat window: centered under the notes, narrowed and nudged left so an open dock never covers them. */
+.ask-floating {
+  --ask-w: max(240px, min(480px, calc(var(--dock-vw, 100vw) - var(--dock-clear, 0px) - 32px)));
+  width: var(--ask-w);
+  left: max(
+    calc(16px + var(--ask-w) / 2),
+    min(
+      calc((var(--dock-vw, 100vw) - var(--dock-pad, 0px)) / 2),
+      calc(var(--dock-vw, 100vw) - var(--dock-clear, 0px) - 16px - var(--ask-w) / 2)
+    )
+  );
+}
+
+/* A full-width row inside `.dock-gutter`, such as the post page's sticky header, that must end at the dock's edge, not the notes'. */
+.dock-clear {
+  margin-right: calc(var(--dock-clear, 28px) - var(--dock-pad, 28px));
+}
+/* `TranscriptDock` sets `.dock-animating` for the 340ms its panel slides, so a drag or a window resize does not ease. */
+:root.dock-animating .dock-gutter {
+  transition: padding-right 340ms cubic-bezier(.2, .7, .2, 1);
+}
+:root.dock-animating .dock-clear {
+  transition: margin-right 340ms cubic-bezier(.2, .7, .2, 1);
+}
+:root.dock-animating .ask-floating {
+  transition: left 340ms cubic-bezier(.2, .7, .2, 1), width 340ms cubic-bezier(.2, .7, .2, 1);
+}
+
 /* `.ai-grey` uses `--color-ai`, not `--color-grey`, so AI prose sits higher-contrast than a caption
  * while staying lighter than `--color-ink` user notes. */
 

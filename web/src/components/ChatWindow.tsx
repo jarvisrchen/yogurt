@@ -36,7 +36,8 @@ interface Props {
   position?: string;
 }
 
-export const FLOATING = "fixed bottom-6 left-1/2 -translate-x-1/2 w-[480px]";
+/** `.ask-floating` in index.css keeps it under the notes and clear of an open transcript dock. */
+export const FLOATING = "fixed bottom-6 -translate-x-1/2 ask-floating";
 
 /** Sticky: outside-click does not collapse the window (no document mousedown listener). Only the header caret and Escape do. */
 export function ChatWindow({

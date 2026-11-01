@@ -47,22 +47,6 @@ The note is a file, not a shell argument, because real resolution notes contain 
 
 ## UI
 
-- [ ] **UI-27** Resize the live meeting's right panel and change its text size
-  <details>
-  <summary>Details</summary>
-
-  During a live meeting the right panel (`TranscriptDock`, `web/src/components/TranscriptDock.tsx`) is a fixed `w-[330px]` with hardcoded text sizes (`text-[14px]` transcript lines, `text-[12px]` timestamps).
-  On a wide screen it wastes space, and on a long call the 14px text is hard to read at a glance.
-
-  Two controls, similar to what Granola offers:
-  1. A drag handle on the panel's left edge that resizes it, clamped to a sensible min and max, with the chosen width remembered across meetings.
-  2. A text size button in the panel header that steps through a few sizes (for example small, default, large) and applies to both the transcript and the recap views, also remembered.
-
-  Check that the notes column still reflows correctly at the max width, and that the collapsed tabs and open/close animation still line up with a non-default width.
-
-  Design and mocks: [.planning/ui27-dock-resize-design.md](.planning/ui27-dock-resize-design.md), [.lavish/ui27-dock-resize-design.html](.lavish/ui27-dock-resize-design.html).
-  </details>
-
 ## Meetings
 
 - [ ] **MTG-10** Enhanced summary visibly flashes while streaming on longer meetings
