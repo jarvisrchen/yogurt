@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
 import { TranscriptDock } from "./TranscriptDock";
 import type { StoredTranscriptSegment, TranscriptEvent } from "../lib/ws";
 
@@ -453,3 +453,98 @@ describe("TranscriptDock — live recap", () => {
   });
 });
 
+
+describe("TranscriptDock — width and text size", () => {
+  const segments: StoredTranscriptSegment[] = [{ ts_ms: 1000, channel: "me", text: "hi there" }];
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal("innerWidth", 1440);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.documentElement.style.removeProperty("--dock-pad");
+  });
+
+  it("resizes from the keyboard, remembers the width, and moves the notes clear of it", () => {
+    const { unmount } = render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    const handle = screen.getByRole("separator", { name: /resize transcript panel/i });
+    expect(handle).toHaveAttribute("aria-valuenow", "330");
+    expect(document.documentElement.style.getPropertyValue("--dock-pad")).toBe("28px");
+
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(handle).toHaveAttribute("aria-valuenow", "600");
+    expect(screen.getByTestId("transcript-dock-panel").style.width).toBe("600px");
+    expect(document.documentElement.style.getPropertyValue("--dock-pad")).toBe("476px");
+    expect(localStorage.getItem("yogurt-dock-width")).toBe("600");
+
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(handle).toHaveAttribute("aria-valuenow", "580");
+
+    unmount();
+    expect(document.documentElement.style.getPropertyValue("--dock-pad")).toBe("");
+    render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "580");
+  });
+
+  it("drags the left edge and resets on double-click", () => {
+    // jsdom has no PointerEvent, and the Event fallback drops clientX.
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    const handle = screen.getByTestId("dock-resize-handle");
+    fireEvent.pointerDown(handle, { button: 0, clientX: 1110 });
+    expect(document.documentElement.classList.contains("dock-dragging")).toBe(true);
+    fireEvent.pointerMove(window, { clientX: 1000, buttons: 1 });
+    fireEvent.pointerUp(window, { clientX: 1000 });
+    expect(handle).toHaveAttribute("aria-valuenow", "440");
+    expect(localStorage.getItem("yogurt-dock-width")).toBe("440");
+    expect(document.documentElement.classList.contains("dock-dragging")).toBe(false);
+
+    fireEvent.doubleClick(handle);
+    expect(handle).toHaveAttribute("aria-valuenow", "330");
+  });
+
+  it("ends a drag whose release landed outside the page", () => {
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    const handle = screen.getByTestId("dock-resize-handle");
+    fireEvent.pointerDown(handle, { button: 0, clientX: 1110 });
+    fireEvent.pointerMove(window, { clientX: 1000, buttons: 1 });
+    fireEvent.pointerMove(window, { clientX: 900, buttons: 0 });
+    expect(handle).toHaveAttribute("aria-valuenow", "440");
+    expect(document.documentElement.classList.contains("dock-dragging")).toBe(false);
+    expect(localStorage.getItem("yogurt-dock-width")).toBe("440");
+  });
+
+  it("keeps a saved width a small window is clamping when the handle is only clicked", () => {
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    vi.stubGlobal("innerWidth", 600);
+    localStorage.setItem("yogurt-dock-width", "600");
+    render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    const handle = screen.getByTestId("dock-resize-handle");
+    expect(handle).toHaveAttribute("aria-valuenow", "520");
+    fireEvent.pointerDown(handle, { button: 0, clientX: 80 });
+    fireEvent.pointerUp(window, { clientX: 80 });
+    expect(localStorage.getItem("yogurt-dock-width")).toBe("600");
+  });
+
+  it("scales the list text from the Aa popover and remembers it", () => {
+    const { unmount } = render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    expect(screen.getByTestId("transcript-list").style.fontSize).toBe("14px");
+    fireEvent.click(screen.getByRole("button", { name: "Text size" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Large" }));
+    expect(screen.getByTestId("transcript-list").style.fontSize).toBe("16px");
+    expect(screen.getByRole("dialog", { name: "Text size" })).toBeInTheDocument();
+    const onWindowEscape = vi.fn();
+    window.addEventListener("keydown", onWindowEscape);
+    fireEvent.keyDown(screen.getByRole("radio", { name: "Large" }), { key: "Escape" });
+    window.removeEventListener("keydown", onWindowEscape);
+    expect(screen.queryByRole("dialog", { name: "Text size" })).toBeNull();
+    expect(onWindowEscape).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Text size" })).toHaveFocus();
+
+    unmount();
+    render(<TranscriptDock meetingId={null} token={null} segments={segments} forceOpen />);
+    expect(screen.getByTestId("transcript-list").style.fontSize).toBe("16px");
+  });
+});

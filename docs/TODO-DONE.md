@@ -1553,3 +1553,21 @@ New closed items go at the bottom.
   Above my notes shows the recap as a card between the meeting header and the notes, with its list fixed at four rows from the start of recording so the notes never move as bullets arrive.
   The card folds to its header with a count of new bullets, a bullet click opens the transcript dock at that moment, and on the post page it sits above the document tabs and folds away when the summary is saved.
   </details>
+
+- [x] **UI-27** Resize the live meeting's right panel and change its text size
+  <details>
+  <summary>Details</summary>
+
+  During a live meeting the right panel (`TranscriptDock`, `web/src/components/TranscriptDock.tsx`) is a fixed `w-[330px]` with hardcoded text sizes (`text-[14px]` transcript lines, `text-[12px]` timestamps).
+  On a wide screen it wastes space, and on a long call the 14px text is hard to read at a glance.
+
+  Two controls, similar to what Granola offers:
+  1. A drag handle on the panel's left edge that resizes it, clamped to a sensible min and max, with the chosen width remembered across meetings.
+  2. A text size button in the panel header that steps through a few sizes (for example small, default, large) and applies to both the transcript and the recap views, also remembered.
+
+  Check that the notes column still reflows correctly at the max width, and that the collapsed tabs and open/close animation still line up with a non-default width.
+
+  Design and mocks: [.planning/ui27-dock-resize-design.md](.planning/ui27-dock-resize-design.md), [.lavish/ui27-dock-resize-design.html](.lavish/ui27-dock-resize-design.html).
+
+  Landed in the UI-27 PR (2026-11-01). The dock resizes from its left edge between 320 and 600 px, keeping 80 px of window beside it, and an Aa popover picks 13, 14, 16, or 18 px list text. Both persist in localStorage. The notes column shifts and narrows to clear the dock, holds at 480 px, and lets the dock overlap past that with a shadow. Design: `docs/.planning/ui27-dock-resize-design.md`.
+  </details>

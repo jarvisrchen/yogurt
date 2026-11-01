@@ -67,9 +67,9 @@ interface ServerError {
  *                        that was created but never finished).
  *
  * Layout invariants (unchanged from earlier phases):
- *   - Wrapper has `pr-7` to reserve the 28px gutter the dock's closed-tab
- *     occupies. When the dock opens the 330px panel overlays via
- *     `position: fixed`; the notes column does NOT reflow.
+ *   - Wrapper is `.dock-gutter`: 28px for the closed dock's tabs, and while
+ *     the dock is open the padding `dockLayout` computes, so the notes shift
+ *     and narrow to clear it, down to 480px, past which the dock overlaps.
  *   - Main column maxes at 660px (Design Board line 307 / NOTES-01).
  *   - Notes editor is the shared `<YogurtEditor>` (same markdown
  *     serializer + placeholder support as the post-meeting hero editor) —
@@ -480,7 +480,7 @@ export function Meeting() {
 
   return (
     <div
-      className="min-h-screen pr-7"
+      className="min-h-screen dock-gutter"
       style={{ backgroundColor: "var(--color-paper)" }}
     >
       <main className="max-w-[660px] mx-auto px-10 py-12 space-y-6">
@@ -504,7 +504,7 @@ export function Meeting() {
             />
           )}
         </Link>
-        <header className="space-y-2">
+        <header className="space-y-2 dock-visible">
           {/* Row 1: title (left) and the recording controls (right).
               flex-wrap lets the button group drop below the title group at
               narrow widths instead of clipping. The STT engine chip lives
@@ -525,7 +525,7 @@ export function Meeting() {
                 </h1>
               )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2">
               {meetingId && <CopyUrlButton />}
               {meetingId && !recording && (
                 <button

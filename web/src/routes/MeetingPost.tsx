@@ -423,7 +423,7 @@ export function MeetingPost() {
 
   return (
     <div
-      className="min-h-screen pr-7"
+      className="min-h-screen dock-gutter"
       style={{ backgroundColor: PAPER }}
       data-testid="meeting-post-route"
     >
@@ -435,6 +435,7 @@ export function MeetingPost() {
       />
 
       <div
+        className="dock-clear"
         style={{
           position: "sticky",
           top: bannerVisible ? 44 : 0,

@@ -79,7 +79,7 @@ interface RecapBulletsProps {
   style?: React.CSSProperties;
 }
 
-/** The bullet list with its shimmer, waiting, paused, and error lines. The container sets the size. */
+/** The bullet list with its shimmer, waiting, paused, and error lines. The container sets the size, and a `fontSize` style scales the bullets. */
 export function RecapBullets({ listRef, onScroll, mode, state, onJump, id, className, style }: RecapBulletsProps) {
   const bullets = state?.bullets ?? [];
   // Only bullets that arrive while the list is mounted pop in, not the whole list on every switch.
@@ -93,7 +93,7 @@ export function RecapBullets({ listRef, onScroll, mode, state, onJump, id, class
       id={id}
       onScroll={onScroll}
       data-testid="recap-list"
-      className={`overflow-y-auto ${className ?? ""}`}
+      className={`overflow-y-auto text-[14px] ${className ?? ""}`}
       style={style}
     >
       {bullets.map((b, i) => (
@@ -105,15 +105,15 @@ export function RecapBullets({ listRef, onScroll, mode, state, onJump, id, class
             i >= (shownAtMount.current ?? Infinity) ? "animate-pop-up" : ""
           }`}
         >
-          <span className="shrink-0 min-w-[38px] pt-[2px] font-mono text-[12px] text-grey group-hover:text-blue">
+          <span className="shrink-0 min-w-[2.7em] pt-[2px] font-mono text-[0.857em] text-grey group-hover:text-blue">
             {mmss(b.ts_ms / 1000)}
           </span>
-          <span className="text-[14px] leading-snug text-ink">{b.text}</span>
+          <span className="leading-snug text-ink">{b.text}</span>
         </button>
       ))}
       {updating && (
         <div className="flex gap-3 py-2" aria-live="polite" aria-label="Updating the recap">
-          <span className="shrink-0 w-[38px] pt-[5px]">
+          <span className="shrink-0 w-[2.7em] pt-[5px]">
             <span className="block h-[9px] w-[30px] rounded-[6px] shimmer" />
           </span>
           <span className="flex-1 space-y-1.5 pt-[3px]">

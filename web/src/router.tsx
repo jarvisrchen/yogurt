@@ -27,7 +27,7 @@ function Shell() {
   useModelDownloadEvents();
   return (
     <>
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-30">
+      <div className="fixed top-4 left-[calc((var(--dock-vw,100vw)-var(--dock-clear,0px))/2)] -translate-x-1/2 flex items-center gap-2 z-30">
         <RecordingPill />
         <MeetingDetectedBanner />
         <DownloadPill />

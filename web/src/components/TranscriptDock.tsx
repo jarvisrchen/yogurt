@@ -10,6 +10,18 @@ import {
 import { TranscriptLine, scrollToTranscriptTime } from "./TranscriptLine";
 import { AudioWaveIcon } from "./AudioWaveIcon";
 import { RecapBullets, RecapFooter, recapActions, useStickyBottom, type RecapMode } from "./Recap";
+import { DockTextSize } from "./DockTextSize";
+import {
+  DOCK_DEFAULT,
+  DOCK_MAX,
+  DOCK_MIN,
+  clampDockWidth,
+  dockLayout,
+  loadDockText,
+  loadDockWidth,
+  saveDockText,
+  saveDockWidth,
+} from "../lib/dockLayout";
 
 const INK = "var(--color-ink)";
 const GREY = "var(--color-grey)";
@@ -21,7 +33,10 @@ const BLUE = "var(--color-blue)";
 export type DockView = "recap" | "transcript";
 
 /**
- * Right-edge dock that overlays the notes column without reflowing it (the notes wrapper reserves `pr-7` for the tab gutter).
+ * Right-edge dock. While open it sets `--dock-pad`, which the page's `.dock-gutter` wrapper uses to keep the notes clear of it (see `dockLayout`),
+ * `--dock-clear`, its width plus the tabs, which `.dock-clear` full-width rows use to end at its edge, and `--dock-vw`, the window width
+ * without a classic scrollbar, which the CSS uses in place of 100vw.
+ * Its width (left-edge drag) and list text size persist in localStorage.
  * Live mode (no `segments`) subscribes via `useTranscriptWs`. Static mode renders the persisted `segments` with no WS.
  * Auto-scroll sticks to the bottom until the user scrolls more than 24px up, and resumes within 24px.
  * With `recap` set it gains a Recap view and a second edge tab. New bullets never open it, and a dot marks them instead.
@@ -44,6 +59,19 @@ export interface TranscriptDockProps {
 }
 
 type DockPhase = "closed" | "open" | "closing";
+
+// Excludes a classic scrollbar, as the fixed dock and the page's content box do. jsdom reports 0, hence the fallback.
+const viewportWidth = () => document.documentElement.clientWidth || window.innerWidth;
+
+function useWindowWidth(): number {
+  const [w, setW] = useState(viewportWidth);
+  useEffect(() => {
+    const onResize = () => setW(viewportWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return w;
+}
 
 export function TranscriptDock({
   meetingId,
@@ -104,6 +132,92 @@ export function TranscriptDock({
     }
   }, [open]);
   const mounted = phase !== "closed";
+
+  const windowWidth = useWindowWidth();
+  const [savedWidth, setSavedWidth] = useState(loadDockWidth);
+  const [textSize, setTextSize] = useState(loadDockText);
+  const [dragging, setDragging] = useState(false);
+  const width = clampDockWidth(savedWidth, windowWidth);
+  const { pad, clear, overlaps } = dockLayout(width, windowWidth);
+
+  useEffect(() => {
+    if (!open) return;
+    const root = document.documentElement.style;
+    const vars = { "--dock-pad": pad, "--dock-clear": clear, "--dock-vw": windowWidth };
+    for (const [k, v] of Object.entries(vars)) root.setProperty(k, `${v}px`);
+    return () => {
+      for (const k of Object.keys(vars)) root.removeProperty(k);
+    };
+  }, [open, pad, clear, windowWidth]);
+
+  // The page eases along only while the dock opens or closes, so a drag or a window resize tracks it exactly.
+  useEffect(() => {
+    const root = document.documentElement.classList;
+    root.add("dock-animating");
+    const id = setTimeout(() => root.remove("dock-animating"), 400);
+    return () => {
+      clearTimeout(id);
+      root.remove("dock-animating");
+    };
+  }, [open]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dock-dragging", dragging);
+    return () => document.documentElement.classList.remove("dock-dragging");
+  }, [dragging]);
+
+  // Detaches a drag's window listeners if the dock unmounts mid-drag.
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
+
+  function setWidth(px: number) {
+    setSavedWidth(px);
+    saveDockWidth(px);
+  }
+
+  function onHandlePointerDown(e: React.PointerEvent) {
+    if (e.button > 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = width;
+    let last: number | null = null;
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      // The release can land outside the page (another app, Cmd-Tab), so a move with no button held ends the drag.
+      if (ev.buttons === 0) {
+        end();
+        return;
+      }
+      last = clampDockWidth(startWidth + startX - ev.clientX, viewportWidth());
+      setSavedWidth(last);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      endDragRef.current = null;
+      setDragging(false);
+      // A click without a move must not overwrite a saved width that a small window is clamping.
+      if (last !== null) saveDockWidth(last);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    endDragRef.current = end;
+  }
+
+  function onHandleKeyDown(e: React.KeyboardEvent) {
+    const steps: Record<string, number> = {
+      ArrowLeft: width + 20,
+      ArrowRight: width - 20,
+      Home: DOCK_MIN,
+      End: DOCK_MAX,
+    };
+    const next = steps[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    setWidth(clampDockWidth(next, windowWidth));
+  }
 
   // The summary replaced the recap: close a dock showing it, so the summary is in view.
   const hadRecapRef = useRef(hasRecap);
@@ -205,6 +319,8 @@ export function TranscriptDock({
           <EdgeTab
             top={22}
             open={open}
+            right={width}
+            dragging={dragging}
             active={view === "recap"}
             name="Recap"
             ariaName="recap"
@@ -221,6 +337,8 @@ export function TranscriptDock({
         <EdgeTab
           top={hasRecap ? 112 : 22}
           open={open}
+          right={width}
+          dragging={dragging}
           active={view === "transcript"}
           plain={!hasRecap}
           name="Transcript"
@@ -233,20 +351,38 @@ export function TranscriptDock({
         {/* Mounted while phase !== "closed" so the slide-out keyframe plays before unmount. */}
         {mounted && (
           <aside
-            className={`${phase === "closing" ? "dock-closed" : "dock-open"} w-[330px] h-full flex flex-col`}
+            className={`${phase === "closing" ? "dock-closed" : "dock-open"} relative h-full flex flex-col`}
             data-testid="transcript-dock-panel"
             style={{
+              width,
               backgroundColor: PAPER,
               borderLeft: `1px solid ${LINE}`,
+              // A layer over the notes rather than notes cut off.
+              boxShadow: overlaps ? "-24px 0 48px -8px var(--shadow-window-color)" : undefined,
             }}
             onAnimationEnd={() => {
               if (phase === "closing") setPhase("closed");
             }}
           >
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize transcript panel"
+              aria-valuemin={DOCK_MIN}
+              aria-valuemax={clampDockWidth(DOCK_MAX, windowWidth)}
+              aria-valuenow={width}
+              tabIndex={0}
+              title="Drag to resize, double-click to reset"
+              data-testid="dock-resize-handle"
+              className={`dock-handle ${dragging ? "is-dragging" : ""}`}
+              onPointerDown={onHandlePointerDown}
+              onDoubleClick={() => setWidth(DOCK_DEFAULT)}
+              onKeyDown={onHandleKeyDown}
+            />
             <header
-              className="flex items-center justify-between"
+              className="flex items-center justify-between gap-2"
               style={{
-                padding: hasRecap ? "18px 16px 14px 14px" : "22px 20px 16px",
+                padding: hasRecap ? "18px 12px 14px 14px" : "18px 12px 12px 20px",
                 borderBottom: `1px solid ${LINE}`,
               }}
             >
@@ -275,15 +411,24 @@ export function TranscriptDock({
                   {label}
                 </span>
               )}
-              {!isStatic && (
-                <span
-                  className="text-[11px] inline-flex items-center gap-1"
-                  style={{ color: connected ? MATCHA : GREY }}
-                >
-                  <span aria-hidden="true">{connected ? "●" : "○"}</span>
-                  {connected ? "connected" : "offline"}
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {!isStatic && (
+                  <span
+                    className="text-[11px] inline-flex items-center gap-1 whitespace-nowrap"
+                    style={{ color: connected ? MATCHA : GREY }}
+                  >
+                    <span aria-hidden="true">{connected ? "●" : "○"}</span>
+                    {connected ? "connected" : "offline"}
+                  </span>
+                )}
+                <DockTextSize
+                  value={textSize}
+                  onChange={(px) => {
+                    setTextSize(px);
+                    saveDockText(px);
+                  }}
+                />
+              </div>
             </header>
 
             {view === "recap" ? (
@@ -295,7 +440,7 @@ export function TranscriptDock({
                   state={recapState}
                   onJump={(ms) => scrollToSec(Math.floor(ms / 1000))}
                   className="flex-1"
-                  style={{ padding: "10px 20px" }}
+                  style={{ padding: "10px 20px", fontSize: textSize }}
                 />
                 <RecapFooter mode={recap!} state={recapState} {...recapActions(meetingId, setRecap)} />
               </>
@@ -305,7 +450,7 @@ export function TranscriptDock({
                 onScroll={transcriptList.onScroll}
                 data-testid="transcript-list"
                 className="flex-1 overflow-y-auto"
-                style={{ padding: "12px 20px" }}
+                style={{ padding: "12px 20px", fontSize: textSize }}
               >
                 {events.length === 0 ? (
                   <p
@@ -333,6 +478,9 @@ export function TranscriptDock({
 interface EdgeTabProps {
   top: number;
   open: boolean;
+  /** The open dock's width, which the tab sits just left of. */
+  right: number;
+  dragging: boolean;
   active: boolean;
   /** The lone Transcript tab keeps today's ink label rather than turning blue when open. */
   plain?: boolean;
@@ -342,7 +490,7 @@ interface EdgeTabProps {
   children?: React.ReactNode;
 }
 
-function EdgeTab({ top, open, active, plain, name, ariaName, onClick, children }: EdgeTabProps) {
+function EdgeTab({ top, open, right, dragging, active, plain, name, ariaName, onClick, children }: EdgeTabProps) {
   const showing = open && active;
   return (
     <button
@@ -352,7 +500,7 @@ function EdgeTab({ top, open, active, plain, name, ariaName, onClick, children }
       className="absolute flex flex-col items-center justify-center gap-1.5 w-7 text-[12px] font-semibold bg-card"
       style={{
         top: `${top}px`,
-        right: open ? "330px" : "0",
+        right: open ? `${right}px` : "0",
         padding: "12px 4px",
         overflow: "hidden",
         color: showing && !plain ? BLUE : INK,
@@ -360,7 +508,8 @@ function EdgeTab({ top, open, active, plain, name, ariaName, onClick, children }
         borderRight: "none",
         borderRadius: "11px 0 0 11px",
         boxShadow: "-8px 8px 22px rgba(40,30,15,.08)",
-        transition: "right 340ms cubic-bezier(.2, .7, .2, 1)",
+        // The tab tracks the pointer while dragging instead of easing behind it.
+        transition: dragging ? "none" : "right 340ms cubic-bezier(.2, .7, .2, 1)",
         zIndex: 31,
       }}
     >

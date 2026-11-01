@@ -1,6 +1,6 @@
 # UI-27: resize the meeting dock and change its text size
 
-Design, not yet implemented.
+Implemented in the UI-27 PR.
 Ticket: `docs/TODO.md` UI-27.
 Mocks: [../.lavish/ui27-dock-resize-design.html](../.lavish/ui27-dock-resize-design.html), with an interactive prototype at the top.
 
@@ -41,19 +41,15 @@ So when the dock is open, the notes column clears it in three stages:
 2. Otherwise the column shifts left just far enough to clear the panel and the 28 px edge tabs that sit left of it, then narrows once it cannot shift further.
 3. At 480 px the column stops narrowing and pins to the window's left edge, and the dock overlaps its right side.
 
-All three come from the page wrapper's right padding:
+All three come from the page wrapper's right padding P, which `dockLayout` in `web/src/lib/dockLayout.ts` computes:
 
-```css
---dock-clear: calc(var(--dock-w) + 28px);
-padding-right: min(
-  clamp(28px, calc(2 * var(--dock-clear) + 660px - 100vw), var(--dock-clear)),
-  max(28px, calc(100vw - 480px))
-);
+```
+P = min(C, max(28, 2C + 660 - V), max(28, V - 480))
 ```
 
 With C the dock width plus 28 px and V the window width, the centered 660 px column ends at (V - P + 660) / 2, which must not pass V - C.
 That gives P = 2C + 660 - V, floored at today's 28 px gutter and capped at C, past which the column narrows instead of shifting.
-The outer `min` caps P at V - 480, which holds the column at 480 px and lets the dock overlap it.
+The last term caps P at V - 480, which holds the column at 480 px and lets the dock overlap it.
 
 480 px leaves 400 px for text inside the column's padding, about 50 characters of 15 px notes per line.
 Narrower than that, bullets wrap every few words, which is worse than losing the ends of a few lines.
@@ -69,15 +65,27 @@ At 1440 px with a 600 px dock, the column shifts left and keeps 660 px.
 At 1180 px with a 600 px dock, it narrows to 552 px.
 
 While the dock overlaps the notes, it takes a left-edge shadow, `-24px 0 48px -8px` in `--shadow-window-color`, so it reads as a layer over the notes instead of as notes cut off.
-`TranscriptDock` knows when it overlaps: the overlap is positive when V - C is less than 480.
+`dockLayout` also reports whether the dock overlaps, which `TranscriptDock` uses for the shadow.
 Without an overlap it stays flat, as today.
 
 The dock does not shrink itself to make room.
 The user picked its width, and a panel that changes size on its own surprises more than a small overlap does.
 The padding animates with the dock's existing 340 ms slide easing on open and close, and follows the pointer without a transition during a drag.
 
-`TranscriptDock` sets `--dock-w` on `document.documentElement` while open and removes it on close, which keeps the wrappers in `Meeting.tsx` and `MeetingPost.tsx` free of new props.
-Both wrappers swap `pr-7` for the padding rule above, and the `Meeting.tsx` layout comment is updated.
+`TranscriptDock` sets two variables on `document.documentElement` while open and removes them on close, which keeps the pages free of new props:
+`--dock-pad` is P, `--dock-clear` is C, and `--dock-vw` is the window width without a classic scrollbar, which the CSS uses in place of `100vw`.
+The page eases along with the dock only while it opens or closes, so a drag or a window resize tracks it without lag.
+The wrappers in `Meeting.tsx` and `MeetingPost.tsx` swap `pr-7` for `.dock-gutter`, which pads by `--dock-pad`.
+
+Four other surfaces follow the dock:
+
+1. The post page's sticky header spans the page, so `.dock-clear` gives it a right margin of C - P and it ends at the dock's edge.
+   Before this change its Re-enhance, archive, and delete buttons sat under the open dock on a window narrower than about 1,350 px.
+2. The live page's header, with the recording buttons and the microphone picker, takes `.dock-visible`, a max width that keeps it out from under an overlapping dock, and its button row wraps.
+   The notes card below it can still be overlapped, but End meeting cannot while at least 200 px of header fits beside the dock.
+3. The Ask bar and chat window (`.ask-floating`) center under the notes, narrow to the space left of the dock, and shift left so the dock does not cover them, down to a 240 px bar.
+   Past both floors, on a small window with a wide dock, the dock covers them like the notes, and the user can drag it narrower.
+4. The recording and import pills at the top of the window center in the space left of the dock.
 
 ## Text size
 
@@ -98,7 +106,8 @@ Only the list text scales: transcript lines and recap bullets.
 The header, footer, edge tabs, and empty and error messages keep their size.
 The list container sets `font-size` to the step's pixel value, and the rows switch from fixed pixels to `em`: text at 1em, timestamps at 0.857em, the speaker column at 3.43em.
 That keeps every row aligned at every step.
-`TranscriptLine` is also used outside the dock, so it takes its sizes from the parent instead of hardcoding `text-[14px]`, and its other callers set 14 px on their container.
+`RecapBullets` is shared with the recap card above the notes (MTG-28), so it sets 14 px on its own root and the dock overrides that with a `fontSize` style.
+The card keeps 14 px.
 
 ## Persistence
 
@@ -109,9 +118,8 @@ The width writes once on drag end, not on every pointer move.
 
 ## Tests
 
-Unit tests for the clamp (minimum, maximum, small-window cap, reset) and the padding formula at the three widths above.
-A component test that dragging the handle and pressing arrow keys change `aria-valuenow`, and that a size pick changes the list's `font-size` and survives a remount.
-Playwright screenshots of mocks 1, 3, and 5 in light and dark for the PR.
+`web/src/lib/dockLayout.test.ts` covers the clamp, the padding at each stage, and the stored preferences.
+`TranscriptDock.test.tsx` covers keyboard and pointer resizing, double-click reset, the padding the dock sets, and a text size that survives a remount.
 
 ## Out of scope
 
