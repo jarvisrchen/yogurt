@@ -177,7 +177,9 @@ const PILL = "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12
 
 /* ---------------- the proposal's numbers ---------------- */
 
-const W_DEFAULT = 330, W_MIN = 320, W_MAX = 600, NOTES_ROOM = 400, GUTTER = 28, MAIN_MAX = 660, NOTES_MIN = 480;
+const W_DEFAULT = 330, W_MIN = 320, W_MAX = 600, GUTTER = 28, MAIN_MAX = 660, NOTES_MIN = 480;
+// Window kept beside the dock, so its handle, its tabs, and the start of the notes stay reachable. The prototype's slider changes it.
+let NOTES_ROOM = 200;
 const SIZES = [
   { label: "Small", px: 13 },
   { label: "Default", px: 14 },
@@ -383,7 +385,7 @@ const SECTIONS = [
   },
   {
     title: "2. Dragging the left edge",
-    caption: "The panel's left border is the handle. An 8 px strip straddles it with a col-resize cursor, and a 2 px blueberry line shows on hover, focus, and drag. The edge tabs ride along with the edge and drop their slide transition while dragging. Double-click resets to 330 px. Width clamps to 320 to 600 px, and never leaves the notes less than 400 px of window.",
+    caption: "The panel's left border is the handle. An 8 px strip straddles it with a col-resize cursor, and a 2 px blueberry line shows on hover, focus, and drag. The edge tabs ride along with the edge and drop their slide transition while dragging. Double-click resets to 330 px. Width clamps to 320 to 600 px, and always leaves 200 px of window beside the dock, so the handle, the tabs, and the start of each note line stay reachable.",
     frames: [{ ...PAGE, html: () => livePage({ vw: 1440, w: 460, handle: "on", drag: true }) }],
   },
   {
@@ -428,9 +430,9 @@ const SECTIONS = [
   },
   {
     title: "9. A wide dock on a shrinking window",
-    caption: "A dock saved at 600 px. The notes reach their 480 px minimum below a 1,108 px window, and the dock overlaps from there. On a window too small for the dock, it clamps to the window width minus 400 px, which caps the overlap at 108 px, and the saved 600 px comes back when the window grows.",
+    caption: "A dock saved at 600 px. The notes reach their 480 px minimum below a 1,108 px window, and the dock overlaps from there. The dock keeps its full width as long as 200 px of window stays beside it, so at 900 px it covers 208 px of the notes. On a smaller window it clamps to the window width minus 200 px, which caps the overlap at 308 px, and the saved 600 px comes back when the window grows.",
     stack: true, modes: ["light"], scaleTo: 1440,
-    frames: [1440, 1100, 900].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · dock ${clampWidth(600, vw)} px · ${layoutFacts(vw, 600).what}`, html: () => livePage({ vw, view: "recap", w: 600 }) })),
+    frames: [1440, 1100, 900, 700].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · dock ${clampWidth(600, vw)} px · ${layoutFacts(vw, 600).what}`, html: () => livePage({ vw, view: "recap", w: 600 }) })),
   },
 ];
 
@@ -453,6 +455,8 @@ function renderProto() {
   document.getElementById("verdict").textContent = f.what;
   document.getElementById("vw").value = proto.vw;
   document.getElementById("floor").value = proto.floor;
+  document.getElementById("room").value = NOTES_ROOM;
+  document.getElementById("roomval").textContent = `${NOTES_ROOM} px`;
   document.getElementById("floorval").textContent = `${proto.floor} px`;
   document.getElementById("floorrow").style.opacity = proto.rule === "hybrid" ? 1 : 0.4;
   for (const b of document.querySelectorAll("[data-ctl]")) {
@@ -516,6 +520,10 @@ function wireProto() {
       renderProto();
     });
   }
+  document.getElementById("room").addEventListener("input", (e) => {
+    NOTES_ROOM = Number(e.target.value);
+    renderProto();
+  });
   document.getElementById("floor").addEventListener("input", (e) => {
     proto.floor = Number(e.target.value);
     renderProto();
@@ -532,7 +540,7 @@ const root = document.getElementById("sections");
 const protoSec = document.createElement("section");
 protoSec.innerHTML = `
   <h2 class="heading-sm text-[18px]!">Try it</h2>
-  <p class="mt-1 mb-4 text-[14px] text-mut max-w-[860px]">Drag the panel's left edge, double-click it to reset, or focus it with Tab and use the arrow keys. Click Aa to change the text size. Drag the window slider to resize the whole window. Switch the notes rule to compare clearing with an overlap at a minimum (proposed), clearing all the way down, and today's overlay, and drag the notes minimum to judge where the overlap should start. The dashed outline is a ${VW_MAX} px screen.</p>
+  <p class="mt-1 mb-4 text-[14px] text-mut max-w-[860px]">Drag the panel's left edge, double-click it to reset, or focus it with Tab and use the arrow keys. Click Aa to change the text size. Drag the window slider to resize the whole window. Switch the notes rule to compare clearing with an overlap at a minimum (proposed), clearing all the way down, and today's overlay, drag the notes minimum to judge where the overlap should start, and drag the kept-visible amount to judge how far the dock may cover the notes. The dashed outline is a ${VW_MAX} px screen.</p>
   <div class="flex flex-wrap items-center gap-2 mb-2">
     <label class="flex items-center gap-2 font-mono text-[12px] text-[#7A7264]">Window
       <input id="vw" type="range" min="${VW_MIN}" max="${VW_MAX}" step="10" class="w-[260px] accent-[#5B4FC7]"></label>
@@ -553,6 +561,11 @@ protoSec.innerHTML = `
     <label class="flex items-center gap-2 font-mono text-[12px] text-[#7A7264]">Notes minimum
       <input id="floor" type="range" min="360" max="660" step="20" class="w-[200px] accent-[#5B4FC7]"></label>
     <span id="floorval" class="font-mono text-[12px] text-[#211D18]"></span>
+  </div>
+  <div class="flex items-center gap-2 mb-3">
+    <label class="flex items-center gap-2 font-mono text-[12px] text-[#7A7264]">Kept visible beside the dock
+      <input id="room" type="range" min="80" max="400" step="20" class="w-[200px] accent-[#5B4FC7]"></label>
+    <span id="roomval" class="font-mono text-[12px] text-[#211D18]"></span>
   </div>
   <p class="mb-3 font-mono text-[12px] text-[#7A7264]"><span id="readout"></span> · <b id="verdict" class="text-[#211D18]"></b></p>
   <div id="screen" data-w="${VW_MAX}" style="width:${VW_MAX}px;height:780px;outline:2px dashed #CFC6B6;outline-offset:-2px;border-radius:10px">

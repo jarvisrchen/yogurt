@@ -16,7 +16,8 @@ An 8 px strip straddles the border with a `col-resize` cursor.
 A 2 px blueberry line shows on hover, focus, and drag.
 Double-click resets the width to 330 px.
 
-Width clamps to 320 px minimum, 600 px maximum, and never more than the window width minus 400 px, so the notes always keep some room.
+Width clamps to 320 px minimum, 600 px maximum, and never more than the window width minus 200 px.
+Those 200 px keep the handle, the edge tabs, and the start of each note line reachable, so the user can always click back into the notes or drag the dock narrower.
 320 px is the narrowest width where the recap footer still fits "Updated 1 min ago", Update now, and Pause on one row, and the header fits the Recap / Transcript toggle, the connection status, and the Aa button.
 If the window shrinks below what a saved width allows, the panel clamps at render time and the saved value stays, so a wide width comes back on a wide window.
 
@@ -57,7 +58,9 @@ The outer `min` caps P at V - 480, which holds the column at 480 px and lets the
 480 px leaves 400 px for text inside the column's padding, about 50 characters of 15 px notes per line.
 Narrower than that, bullets wrap every few words, which is worse than losing the ends of a few lines.
 The overlap starts below an 838 px window with the default dock, and below 1,108 px with a 600 px dock.
-The dock's width clamp keeps at least 400 px of window beside it, so the overlap never hides more than 108 px of the notes.
+The dock's width clamp keeps 200 px of window beside it, 172 px of it notes once the edge tabs take their 28 px, so the overlap can reach 308 px.
+That is deliberate: the user chose the dock's width, and the notes stay reachable.
+A 600 px dock on a 900 px window keeps its full width and covers 208 px of the notes.
 
 This applies at every dock width, including the default.
 With the default 330 px dock, the notes stay put on windows 1,348 px and wider, and shift on anything narrower, where today the dock covers part of them.
