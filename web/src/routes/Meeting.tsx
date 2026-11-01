@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { YogurtEditor } from "../editor";
 import { TranscriptDock, type DockView } from "../components/TranscriptDock";
+import { RecapCard } from "../components/Recap";
 import { AskExperience } from "../components/AskExperience";
 import { MicDevicePicker } from "../components/MicDevicePicker";
 import { MicMuteToggle } from "../components/MicMuteToggle";
@@ -40,7 +41,7 @@ const STRAW_SOFT = "var(--color-strsoft)";
 const STRAW = "var(--color-straw)";
 
 const NOTES_PLACEHOLDER =
-  "Take sparse notes during the meeting — AI enhances on End.";
+  "Take sparse notes during the meeting. AI enhances them on End.";
 
 interface MeetingCreatedResponse {
   id: string;
@@ -141,6 +142,7 @@ export function Meeting() {
   const echoDevice = useSettings().data?.general?.audio_echo_output_device ?? "";
   const echoFeatureEnabled = useSettings().data?.general?.audio_echo_feature ?? false;
   const liveRecap = useSettings().data?.general?.live_recap ?? false;
+  const recapInMain = useSettings().data?.general?.live_recap_placement === "main";
   // Read at End, so the post page can reopen the dock on Recap.
   const dockOpenRef = useRef(false);
   const dockViewRef = useRef<DockView>("transcript");
@@ -461,7 +463,7 @@ export function Meeting() {
       navigate(`/meeting/${meetingId}/post`, {
         state: {
           autoEnhance: { notes_md: notesMd, title: meetingRow?.title },
-          dockRecap: dockOpenRef.current && dockViewRef.current === "recap",
+          dockRecap: !recapInMain && dockOpenRef.current && dockViewRef.current === "recap",
         },
       });
       // Successful navigation unmounts this component — don't touch state
@@ -674,6 +676,14 @@ export function Meeting() {
           </div>
         )}
 
+        {liveRecap && recapInMain && (
+          <RecapCard
+            meetingId={meetingId}
+            token={token}
+            mode={recording ? "recording" : "stopped"}
+          />
+        )}
+
         <section
           className="rounded-card bg-card p-6"
           style={{ border: `1px solid ${LINE}` }}
@@ -691,7 +701,7 @@ export function Meeting() {
         meetingId={meetingId}
         token={token}
         history={transcriptHistory}
-        recap={liveRecap ? (recording ? "recording" : "stopped") : undefined}
+        recap={liveRecap && !recapInMain ? (recording ? "recording" : "stopped") : undefined}
         onOpenChange={(open) => {
           dockOpenRef.current = open;
         }}

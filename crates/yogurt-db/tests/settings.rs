@@ -138,6 +138,32 @@ fn it_loads_live_recap_default_and_patches_it() {
 }
 
 #[test]
+fn it_loads_recap_placement_default_and_patches_it() {
+    use settings::RecapPlacement;
+    let db = Db::open_in_memory().unwrap();
+    assert_eq!(
+        settings::load_general(&db).unwrap().live_recap_placement,
+        RecapPlacement::Dock
+    );
+
+    let patched = settings::save_general_patch(
+        &db,
+        settings::GeneralPatch {
+            live_recap_placement: Some(RecapPlacement::Main),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(patched.live_recap_placement, RecapPlacement::Main);
+
+    settings::set(&db, "general.live_recap_placement", "sidebar").unwrap();
+    assert_eq!(
+        settings::load_general(&db).unwrap().live_recap_placement,
+        RecapPlacement::Dock
+    );
+}
+
+#[test]
 fn it_loads_meeting_auto_stop_default_and_patches_it() {
     let db = Db::open_in_memory().unwrap();
     assert!(settings::load_general(&db).unwrap().meeting_auto_stop);

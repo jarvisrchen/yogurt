@@ -76,6 +76,7 @@ describe("MicDevicePicker", () => {
         meeting_detection_focus: true,
         meeting_auto_stop: true,
         live_recap: true,
+        live_recap_placement: "dock",
       },
       providers: [],
       presets: [],
@@ -101,6 +102,7 @@ describe("MicDevicePicker", () => {
       meeting_detection_focus: true,
       meeting_auto_stop: true,
       live_recap: true,
+      live_recap_placement: "dock",
     });
   });
 
@@ -217,6 +219,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
         meeting_detection_focus: true,
         meeting_auto_stop: true,
         live_recap: true,
+        live_recap_placement: "dock",
       },
       providers: [],
       presets: [],
@@ -242,6 +245,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
       meeting_detection_focus: true,
       meeting_auto_stop: true,
       live_recap: true,
+      live_recap_placement: "dock",
     });
   });
 
@@ -284,6 +288,7 @@ describe("MicDevicePicker — stopped (meeting open, not recording)", () => {
         meeting_detection_focus: true,
         meeting_auto_stop: true,
         live_recap: true,
+        live_recap_placement: "dock",
       },
       providers: [],
       presets: [],

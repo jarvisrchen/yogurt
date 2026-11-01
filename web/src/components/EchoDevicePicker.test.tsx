@@ -45,6 +45,7 @@ function baseGeneral(overrides: Partial<Record<string, unknown>> = {}) {
     meeting_detection_focus: true,
     meeting_auto_stop: true,
     live_recap: true,
+    live_recap_placement: "dock" as const,
     ...overrides,
   };
 }

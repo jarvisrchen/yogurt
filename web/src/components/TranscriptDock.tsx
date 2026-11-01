@@ -1,20 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, RefreshCw } from "lucide-react";
 import {
   useTranscriptWs,
   useAudioLevels,
   useLiveRecap,
   storedSegmentToEvent,
-  type RecapState,
   type StoredTranscriptSegment,
   type TranscriptEvent,
 } from "../lib/ws";
-import { refreshRecap, setRecapPaused } from "../lib/api/meetings";
 import { TranscriptLine, scrollToTranscriptTime } from "./TranscriptLine";
 import { AudioWaveIcon } from "./AudioWaveIcon";
-// `TranscriptLine` has its own `formatTs` (HH:MM:SS). This one writes `mm:ss` with minutes past 59, as the server and `ctl` do.
-import { formatTs as mmss } from "../editor/html";
-import { Button } from "./Button";
+import { RecapBullets, RecapFooter, recapActions, useStickyBottom, type RecapMode } from "./Recap";
 
 const INK = "var(--color-ink)";
 const GREY = "var(--color-grey)";
@@ -26,16 +21,11 @@ const BLUE = "var(--color-blue)";
 export type DockView = "recap" | "transcript";
 
 /**
- * `recording` offers Update now and Pause, `stopped` only Pause, and `final` (the post-meeting page
- * while the summary generates) neither, showing the view only while bullets exist.
- */
-export type RecapMode = "recording" | "stopped" | "final";
-
-/**
  * Right-edge dock that overlays the notes column without reflowing it (the notes wrapper reserves `pr-7` for the tab gutter).
  * Live mode (no `segments`) subscribes via `useTranscriptWs`. Static mode renders the persisted `segments` with no WS.
  * Auto-scroll sticks to the bottom until the user scrolls more than 24px up, and resumes within 24px.
- * With `recap` set it gains a Recap view and a second edge tab. It never opens itself, and a dot marks unseen bullets instead.
+ * With `recap` set it gains a Recap view and a second edge tab. New bullets never open it, and a dot marks them instead.
+ * A `yogurt:transcript:scrollTo` event opens it on Transcript at that moment.
  */
 export interface TranscriptDockProps {
   meetingId: string | null;
@@ -55,21 +45,6 @@ export interface TranscriptDockProps {
 
 type DockPhase = "closed" | "open" | "closing";
 
-/** Sticks a scroll container to the bottom as `deps` change, until the user scrolls more than 24px up. */
-function useStickyBottom(deps: unknown[]) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const sticky = useRef(true);
-  useEffect(() => {
-    if (sticky.current && ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    sticky.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-  };
-  return { ref, sticky, onScroll };
-}
-
 export function TranscriptDock({
   meetingId,
   token,
@@ -83,12 +58,9 @@ export function TranscriptDock({
 }: TranscriptDockProps) {
   const [openLocal, setOpenLocal] = useState(false);
   const open = forceOpen ?? openLocal;
-  const setOpen = (next: boolean | ((prev: boolean) => boolean)) => {
-    setOpenLocal((prev) => {
-      const value = typeof next === "function" ? next(prev) : next;
-      onOpenChange?.(value);
-      return value;
-    });
+  const setOpen = (next: boolean) => {
+    setOpenLocal(next);
+    onOpenChange?.(next);
   };
 
   const isStatic = segments !== undefined;
@@ -163,10 +135,11 @@ export function TranscriptDock({
     return scrollToTranscriptTime(root, ts);
   }
 
-  // A request arriving while the dock is closed (MeetingPost force-opens and dispatches in the same tick) finds no DOM nodes. Stash it and retry on mount.
+  // A request arriving while the dock is closed finds no DOM nodes, since the open lands on the next render. Stash it and retry on mount.
   const pendingScrollRef = useRef<number | null>(null);
 
   function scrollToSec(ts: number) {
+    setOpen(true);
     // Disable sticky so the new programmatic scroll position survives the next render.
     transcriptList.sticky.current = false;
     if (view !== "transcript") {
@@ -314,19 +287,18 @@ export function TranscriptDock({
             </header>
 
             {view === "recap" ? (
-              <RecapView
-                listRef={recapList.ref}
-                onScroll={recapList.onScroll}
-                mode={recap!}
-                state={recapState}
-                onJump={(ms) => scrollToSec(Math.floor(ms / 1000))}
-                onRefresh={() => {
-                  if (meetingId) refreshRecap(meetingId).catch(() => {});
-                }}
-                onPause={(paused) => {
-                  if (meetingId) setRecapPaused(meetingId, paused).then(setRecap, () => {});
-                }}
-              />
+              <>
+                <RecapBullets
+                  listRef={recapList.ref}
+                  onScroll={recapList.onScroll}
+                  mode={recap!}
+                  state={recapState}
+                  onJump={(ms) => scrollToSec(Math.floor(ms / 1000))}
+                  className="flex-1"
+                  style={{ padding: "10px 20px" }}
+                />
+                <RecapFooter mode={recap!} state={recapState} {...recapActions(meetingId, setRecap)} />
+              </>
             ) : (
               <div
                 ref={transcriptList.ref}
@@ -397,136 +369,5 @@ function EdgeTab({ top, open, active, plain, name, ariaName, onClick, children }
         {showing ? "▶" : "◀"} {name}
       </span>
     </button>
-  );
-}
-
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
-
-function updatedAgo(updatedAt: number, now: number): string {
-  const min = Math.floor((now - updatedAt) / 60_000);
-  return min < 1 ? "Updated just now" : `Updated ${min} min ago`;
-}
-
-interface RecapViewProps {
-  listRef: React.RefObject<HTMLDivElement | null>;
-  onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
-  mode: RecapMode;
-  state: RecapState | null;
-  onJump: (ts_ms: number) => void;
-  onRefresh: () => void;
-  onPause: (paused: boolean) => void;
-}
-
-function RecapView({ listRef, onScroll, mode, state, onJump, onRefresh, onPause }: RecapViewProps) {
-  const now = useNow(30_000);
-  const bullets = state?.bullets ?? [];
-  // Only bullets that arrive while the view is open pop in, not the whole list on every switch.
-  const shownAtMount = useRef<number | null>(null);
-  if (shownAtMount.current === null && state !== null) shownAtMount.current = bullets.length;
-  const updating = state?.status === "updating";
-  const paused = state?.paused ?? false;
-  const failed = state?.status === "error" && !paused;
-  const recording = mode === "recording";
-
-  let left = "";
-  if (paused) left = "Paused";
-  else if (updating) left = "Updating…";
-  else if (state?.updated_at != null) left = updatedAgo(state.updated_at, now);
-
-  return (
-    <>
-      <div
-        ref={listRef}
-        onScroll={onScroll}
-        data-testid="recap-list"
-        className="flex-1 overflow-y-auto"
-        style={{ padding: "10px 20px" }}
-      >
-        {bullets.map((b, i) => (
-          <button
-            key={`${b.ts_ms}-${i}`}
-            type="button"
-            onClick={() => onJump(b.ts_ms)}
-            className={`group w-full text-left flex gap-3 py-2 rounded-chip -mx-2 px-2 hover:bg-paper ${
-              i >= (shownAtMount.current ?? Infinity) ? "animate-pop-up" : ""
-            }`}
-          >
-            <span className="shrink-0 min-w-[38px] pt-[2px] font-mono text-[12px] text-grey group-hover:text-blue">
-              {mmss(b.ts_ms / 1000)}
-            </span>
-            <span className="text-[14px] leading-snug text-ink">{b.text}</span>
-          </button>
-        ))}
-        {updating && (
-          <div className="flex gap-3 py-2" aria-live="polite" aria-label="Updating the recap">
-            <span className="shrink-0 w-[38px] pt-[5px]">
-              <span className="block h-[9px] w-[30px] rounded-[6px] shimmer" />
-            </span>
-            <span className="flex-1 space-y-1.5 pt-[3px]">
-              <span className="block h-[11px] w-[92%] rounded-[6px] shimmer" />
-              <span className="block h-[11px] w-[60%] rounded-[6px] shimmer" />
-            </span>
-          </div>
-        )}
-        {bullets.length === 0 && !updating && !paused && (
-          <p className="text-[13px] mt-2 text-grey">
-            {state?.updated_at == null
-              ? "The recap starts after about 3 minutes of conversation."
-              : "Nothing worth a bullet yet."}
-          </p>
-        )}
-        {paused && (
-          <p className="mt-2 text-[12.5px] leading-snug text-mut">
-            Paused for this meeting. Nothing said from here is sent until you resume.
-          </p>
-        )}
-        {failed && state?.error && (
-          <p
-            role="alert"
-            className="mt-2 text-[12.5px] leading-snug text-ink rounded-button bg-strsoft border border-straw/40 px-3 py-2"
-          >
-            {state.error.replace(/\.?$/, ".")}
-            {recording && " Trying again at the next update."}
-          </p>
-        )}
-      </div>
-      {mode === "final" ? (
-        <footer className="border-t border-line px-5 py-3 text-[12px] text-mut">
-          Final recap · the summary replaces it when ready
-        </footer>
-      ) : (
-        <footer className="flex items-center justify-between gap-2 border-t border-line pl-5 pr-3 py-3">
-          <span className="text-[12px] text-mut whitespace-nowrap">{left}</span>
-          <span className="flex items-center">
-            {paused ? (
-              <Button variant="secondary" size="sm" className="whitespace-nowrap" aria-label="Resume recap" onClick={() => onPause(false)}>
-                <Play size={13} aria-hidden="true" />
-                Resume
-              </Button>
-            ) : (
-              <>
-                {recording && !updating && (state?.updated_at != null || failed) && (
-                  <Button variant="ghost" size="sm" className="whitespace-nowrap px-2.5!" aria-label="Update recap now" onClick={onRefresh}>
-                    <RefreshCw size={13} aria-hidden="true" />
-                    Update now
-                  </Button>
-                )}
-                <Button variant="ghost" size="sm" className="whitespace-nowrap px-2.5!" aria-label="Pause recap" onClick={() => onPause(true)}>
-                  <Pause size={13} aria-hidden="true" />
-                  Pause
-                </Button>
-              </>
-            )}
-          </span>
-        </footer>
-      )}
-    </>
   );
 }

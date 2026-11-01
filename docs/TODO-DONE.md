@@ -1540,3 +1540,16 @@ New closed items go at the bottom.
   A request that fails to connect is retried once after 1 s.
   A stuck window query no longer turns meeting detection off until a restart: the next poll starts a fresh query beside it, up to four stuck queries per run.
   A tab whose session token the server no longer accepts reloads once, which stops the `session token mismatch` flood.
+
+- [x] **MTG-28** Let the user show the live recap above the notes instead of in the transcript dock
+  <details>
+  <summary>Details</summary>
+
+  A General setting picks where the recap shows: the transcript dock, as today and the default, or a card above the notes on the live and post-meeting pages.
+  The card's list holds a fixed four rows from the start of recording, so the notes never move while the user types.
+  Design and mocks: `docs/.planning/recap-placement-design.md`, `docs/.lavish/recap-placement-mocks.html`.
+
+  General settings gains a "Show the recap" picker with two picture tiles, In the transcript panel (the default) and Above my notes, stored as `general.live_recap_placement`.
+  Above my notes shows the recap as a card between the meeting header and the notes, with its list fixed at four rows from the start of recording so the notes never move as bullets arrive.
+  The card folds to its header with a count of new bullets, a bullet click opens the transcript dock at that moment, and on the post page it sits above the document tabs and folds away when the summary is saved.
+  </details>

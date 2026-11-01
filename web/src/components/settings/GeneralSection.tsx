@@ -5,6 +5,7 @@ import { settingsApi, type General } from "../../lib/api/settings";
 import { getThemePref, setThemePref, type ThemePref } from "../../lib/theme";
 import { Segmented } from "../Segmented";
 import { LABEL } from "./labelClass";
+import { RecapPlacementPicker } from "./RecapPlacementPicker";
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: "system", label: "System" },
@@ -26,6 +27,8 @@ export function GeneralSection({ general, llmModel }: GeneralSectionProps) {
   });
 
   const [theme, setTheme] = useState<ThemePref>(getThemePref);
+  const [recapOn, setRecapOn] = useState(general.live_recap);
+  const [placement, setPlacement] = useState(general.live_recap_placement);
 
   return (
     <section className="space-y-4">
@@ -149,8 +152,12 @@ export function GeneralSection({ general, llmModel }: GeneralSectionProps) {
           <label className="flex items-center gap-2 text-[13.5px] text-ink">
             <input
               type="checkbox"
-              defaultChecked={general.live_recap}
-              onChange={(e) => patch.mutate({ live_recap: e.target.checked })}
+              checked={recapOn}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setRecapOn(next);
+                patch.mutate({ live_recap: next }, { onError: () => setRecapOn(!next) });
+              }}
               className="h-4 w-4 accent-blue"
             />
             <span>Show a live recap of the discussion while recording</span>
@@ -160,6 +167,18 @@ export function GeneralSection({ general, llmModel }: GeneralSectionProps) {
             provider{llmModel ? ` (${llmModel})` : ""} every 3 minutes while you
             record. Audio never leaves this Mac.
           </p>
+          <div className="space-y-3 pt-3">
+            <span className={`block ${LABEL}`}>Show the recap</span>
+            <RecapPlacementPicker
+              value={placement}
+              disabled={!recapOn}
+              onChange={(v) => {
+                const prev = placement;
+                setPlacement(v);
+                patch.mutate({ live_recap_placement: v }, { onError: () => setPlacement(prev) });
+              }}
+            />
+          </div>
         </div>
       </div>
     </section>

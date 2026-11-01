@@ -46,6 +46,7 @@ fn print_general(json_out: bool, g: &yogurt_db::settings::General) {
         println!("meeting_detection_focus: {}", g.meeting_detection_focus);
         println!("meeting_auto_stop: {}", g.meeting_auto_stop);
         println!("live_recap: {}", g.live_recap);
+        println!("live_recap_placement: {}", g.live_recap_placement.as_str());
     }
 }
 

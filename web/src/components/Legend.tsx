@@ -4,32 +4,14 @@ const INK = "var(--color-ink)";
 const AI = "var(--color-ai)";
 const MUT = "var(--color-mut)";
 
-export interface LegendProps {
-  inline?: boolean;
-}
-
-export function Legend({ inline = false }: LegendProps) {
-  const wrapperStyle: React.CSSProperties = inline
-    ? {
-        display: "inline-flex",
-        gap: 14,
-        fontSize: 11,
-        color: MUT,
-      }
-    : {
-        position: "absolute",
-        top: 18,
-        right: 24,
-        display: "flex",
-        gap: 14,
-        fontSize: 11,
-        color: MUT,
-        // Stay clickable-through so the legend never blocks the editor's
-        // top-right region; the swatches are decorative.
-        pointerEvents: "none",
-        // Above the editor's max-width column but below the EnhancingBanner.
-        zIndex: 10,
-      };
+/** Sits at the right end of the post page's document tab row. */
+export function Legend() {
+  const wrapperStyle: React.CSSProperties = {
+    display: "inline-flex",
+    gap: 14,
+    fontSize: 11,
+    color: MUT,
+  };
 
   return (
     <div
