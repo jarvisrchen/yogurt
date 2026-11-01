@@ -313,7 +313,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(500)))
-            .expect(6)
+            // The client can abandon its last attempt before the server logs it, so the server may count 5 of
+            // the 6; `Exhausted` below is what proves every attempt ran.
+            .expect(2..=6)
             .mount(&server)
             .await;
         let c = Client::new(

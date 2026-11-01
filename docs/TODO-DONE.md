@@ -1570,4 +1570,13 @@ New closed items go at the bottom.
   Design and mocks: [.planning/ui27-dock-resize-design.md](.planning/ui27-dock-resize-design.md), [.lavish/ui27-dock-resize-design.html](.lavish/ui27-dock-resize-design.html).
 
   Landed in the UI-27 PR (2026-11-01). The dock resizes from its left edge between 320 and 600 px, keeping 80 px of window beside it, and an Aa popover picks 13, 14, 16, or 18 px list text. Both persist in localStorage. The notes column shifts and narrows to clear the dock, holds at 480 px, and lets the dock overlap past that with a shadow. Design: `docs/.planning/ui27-dock-resize-design.md`.
+
+- [x] **DX-24** `a_hung_request_times_out_and_is_retried` flakes on CI
+  <details>
+  <summary>Details</summary>
+
+  The Granola client test expects the mock server to log exactly 6 requests.
+  With a 30 ms request timeout, a slow runner can abandon the sixth request before wiremock logs it, so CI saw 5 and failed (PR #224's first run).
+
+  Landed in the DX-24 PR (2026-11-01). The test now expects 2 to 6 logged requests, and the `Exhausted` result still proves the client made all six attempts.
   </details>
