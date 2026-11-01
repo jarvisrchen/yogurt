@@ -328,14 +328,31 @@ const askPill = `
   </div>`;
 
 // vw is the frame's width standing in for the window. reflow=false draws today's overlay for comparison.
-function livePage({ vw, view = "transcript", w = W_DEFAULT, fs = 14, popover = false, handle = "", reflow = true, drag = false }) {
-  const pad = reflow ? reflowPad(w, vw) : GUTTER;
+function livePage({ vw, view = "transcript", w = W_DEFAULT, fs = 14, popover = false, handle = "", reflow = true, drag = false, open = true }) {
+  w = clampWidth(w, vw);
+  const pad = open && reflow ? reflowPad(w, vw) : GUTTER;
   return `
   <div class="relative h-full overflow-hidden bg-paper" style="padding-right:${pad}px;${drag ? "" : "transition:padding-right 340ms cubic-bezier(.2,.7,.2,1)"}">
     ${liveMain()}
-    ${dockPanel(view, { w, fs, popover, handle })}
-    ${edgeTabs({ open: true, active: view, w, drag })}
+    ${open ? dockPanel(view, { w, fs, popover, handle }) : ""}
+    ${edgeTabs({ open, active: view, w, drag })}
   </div>`;
+}
+
+// What the notes column does for a window width and a saved dock width, in words for labels and the readout.
+function layoutFacts(vw, saved, { open = true, reflow = true } = {}) {
+  const w = clampWidth(saved, vw);
+  const pad = open && reflow ? reflowPad(w, vw) : GUTTER;
+  const notes = Math.min(MAIN_MAX, vw - pad);
+  const right = (vw - pad + notes) / 2;
+  const covered = open ? Math.max(0, Math.round(right - (vw - w - GUTTER))) : 0;
+  let what;
+  if (!open) what = "dock closed, notes centered";
+  else if (!reflow) what = covered ? `dock covers ${covered} px of the notes` : "dock fits beside the notes";
+  else if (pad === GUTTER) what = "notes stay put";
+  else if (notes === MAIN_MAX) what = `notes shift left ${Math.round((pad - GUTTER) / 2)} px`;
+  else what = `notes narrow to ${notes} px`;
+  return { w, pad, notes, what, clamped: w !== saved };
 }
 
 const bare = (panels) => `
@@ -395,21 +412,38 @@ const SECTIONS = [
       ["Default", 330, dockPanel("recap", { w: 330, fs: 14 })],
     ]) }],
   },
+  {
+    title: "8. Shrinking the window",
+    caption: "The same meeting with the default 330 px dock, drawn at one scale so the window widths compare. Wide windows leave the notes alone. Below 1,348 px they shift left to clear the dock, and once there is no room left to shift they narrow. The dock never covers them.",
+    stack: true, modes: ["light"], scaleTo: 1440,
+    frames: [1440, 1280, 1024, 800].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · ${layoutFacts(vw, W_DEFAULT).what}`, html: () => livePage({ vw }) })),
+  },
+  {
+    title: "9. A wide dock on a shrinking window",
+    caption: "A dock saved at 600 px. On a window too small for it, the dock clamps to the window width minus 400 px for as long as the window stays small, and the saved 600 px comes back when the window grows.",
+    stack: true, modes: ["light"], scaleTo: 1440,
+    frames: [1440, 1100, 900].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · dock ${clampWidth(600, vw)} px · ${layoutFacts(vw, 600).what}`, html: () => livePage({ vw, view: "recap", w: 600 }) })),
+  },
 ];
 
 /* ---------------- interactive prototype ---------------- */
 
-const proto = { w: W_DEFAULT, fs: 14, popover: false, reflow: true, view: "transcript", dark: false, drag: false };
-const PROTO_VW = 1440;
+const proto = { w: W_DEFAULT, fs: 14, popover: false, reflow: true, view: "transcript", dark: false, drag: false, open: true, vw: 1440 };
+const VW_MIN = 720, VW_MAX = 1680;
 
 function renderProto() {
   const frame = document.getElementById("proto");
   const hadFocus = document.activeElement?.hasAttribute?.("data-handle");
   frame.classList.toggle("force-dark", proto.dark);
-  frame.innerHTML = livePage({ vw: PROTO_VW, ...proto, handle: proto.drag ? "on" : "" });
-  if (hadFocus) frame.querySelector("[data-handle]").focus();
+  frame.style.width = `${proto.vw}px`;
+  frame.innerHTML = livePage({ ...proto, handle: proto.drag ? "on" : "" });
+  if (hadFocus) frame.querySelector("[data-handle]")?.focus();
   const size = SIZES.find((s) => s.px === proto.fs);
-  document.getElementById("readout").textContent = `Width ${proto.w} px · Text ${size.label} · Notes padding ${proto.reflow ? reflowPad(proto.w, PROTO_VW) : GUTTER} px`;
+  const f = layoutFacts(proto.vw, proto.w, proto);
+  const dock = !proto.open ? "closed" : f.clamped ? `${f.w} px (saved ${proto.w}, clamped)` : `${f.w} px`;
+  document.getElementById("readout").textContent = `Window ${proto.vw} px · Dock ${dock} · Text ${size.label} · Notes ${f.notes} px`;
+  document.getElementById("verdict").textContent = f.what;
+  document.getElementById("vw").value = proto.vw;
   for (const b of document.querySelectorAll("[data-ctl]")) {
     const [k, v] = b.dataset.ctl.split(":");
     b.classList.toggle("on", String(proto[k]) === v);
@@ -421,12 +455,12 @@ function wireProto() {
   frame.addEventListener("pointerdown", (e) => {
     if (!e.target.closest("[data-handle]")) return;
     e.preventDefault();
-    const zoom = Number(frame.style.zoom) || 1;
-    const startX = e.clientX, startW = proto.w;
+    const zoom = Number(document.getElementById("screen").style.zoom) || 1;
+    const startX = e.clientX, startW = clampWidth(proto.w, proto.vw);
     proto.drag = true;
     document.body.classList.add("dragging");
     const move = (ev) => {
-      proto.w = clampWidth(startW + (startX - ev.clientX) / zoom, PROTO_VW);
+      proto.w = clampWidth(startW + (startX - ev.clientX) / zoom, proto.vw);
       renderProto();
     };
     const up = () => {
@@ -445,9 +479,9 @@ function wireProto() {
   frame.addEventListener("keydown", (e) => {
     if (e.target.closest("[data-handle]")) {
       const step = { ArrowLeft: 20, ArrowRight: -20 }[e.key];
-      if (step) proto.w = clampWidth(proto.w + step, PROTO_VW);
+      if (step) proto.w = clampWidth(clampWidth(proto.w, proto.vw) + step, proto.vw);
       else if (e.key === "Home") proto.w = W_MIN;
-      else if (e.key === "End") proto.w = clampWidth(W_MAX, PROTO_VW);
+      else if (e.key === "End") proto.w = clampWidth(W_MAX, proto.vw);
       else return;
       e.preventDefault();
       renderProto();
@@ -467,10 +501,14 @@ function wireProto() {
   for (const b of document.querySelectorAll("[data-ctl]")) {
     b.addEventListener("click", () => {
       const [k, v] = b.dataset.ctl.split(":");
-      proto[k] = v === "true";
+      proto[k] = v === "true" ? true : v === "false" ? false : Number(v);
       renderProto();
     });
   }
+  document.getElementById("vw").addEventListener("input", (e) => {
+    proto.vw = Number(e.target.value);
+    renderProto();
+  });
 }
 
 /* ---------------- render ---------------- */
@@ -479,16 +517,26 @@ const root = document.getElementById("sections");
 const protoSec = document.createElement("section");
 protoSec.innerHTML = `
   <h2 class="heading-sm text-[18px]!">Try it</h2>
-  <p class="mt-1 mb-4 text-[14px] text-mut max-w-[860px]">Drag the panel's left edge, double-click it to reset, or focus it with Tab and use the arrow keys. Click Aa to change the text size. Switch the notes rule to see why the overlay goes.</p>
+  <p class="mt-1 mb-4 text-[14px] text-mut max-w-[860px]">Drag the panel's left edge, double-click it to reset, or focus it with Tab and use the arrow keys. Click Aa to change the text size. Drag the window slider to resize the whole window, and switch the notes rule to see why the overlay goes. The dashed outline is a ${VW_MAX} px screen.</p>
+  <div class="flex flex-wrap items-center gap-2 mb-2">
+    <label class="flex items-center gap-2 font-mono text-[12px] text-[#7A7264]">Window
+      <input id="vw" type="range" min="${VW_MIN}" max="${VW_MAX}" step="10" class="w-[260px] accent-[#5B4FC7]"></label>
+    ${[1680, 1440, 1280, 1024, 800].map((v) => `<button type="button" class="ctl" data-ctl="vw:${v}">${v}</button>`).join("")}
+  </div>
   <div class="flex flex-wrap items-center gap-2 mb-3">
+    <button type="button" class="ctl" data-ctl="open:true">Dock open</button>
+    <button type="button" class="ctl" data-ctl="open:false">Dock closed</button>
+    <span class="w-4"></span>
     <button type="button" class="ctl" data-ctl="reflow:true">Notes clear the panel</button>
     <button type="button" class="ctl" data-ctl="reflow:false">Panel overlays notes (today)</button>
     <span class="w-4"></span>
     <button type="button" class="ctl" data-ctl="dark:false">Light</button>
     <button type="button" class="ctl" data-ctl="dark:true">Dark</button>
-    <span id="readout" class="ml-2 font-mono text-[12px] text-[#7A7264]"></span>
   </div>
-  <div class="frame" id="proto" data-w="${PROTO_VW}" style="width:${PROTO_VW}px;height:780px"></div>`;
+  <p class="mb-3 font-mono text-[12px] text-[#7A7264]"><span id="readout"></span> · <b id="verdict" class="text-[#211D18]"></b></p>
+  <div id="screen" data-w="${VW_MAX}" style="width:${VW_MAX}px;height:780px;outline:2px dashed #CFC6B6;outline-offset:-2px;border-radius:10px">
+    <div class="frame" id="proto" style="height:780px"></div>
+  </div>`;
 root.appendChild(protoSec);
 
 for (const s of SECTIONS) {
@@ -499,10 +547,10 @@ for (const s of SECTIONS) {
     <div class="flex flex-col gap-8">
       ${s.frames.map((f) => `
         <div class="pair" style="${s.stack ? "grid-template-columns:minmax(0,1fr)" : ""}">
-          ${["light", "dark"].map((mode) => `
+          ${(s.modes ?? ["light", "dark"]).map((mode) => `
             <div class="shot">
               <p class="tag">${f.label ? `${f.label} · ` : ""}${mode}</p>
-              <div class="frame ${mode === "dark" ? "force-dark" : ""}" data-w="${f.w}" style="width:${f.w}px;height:${f.h}px">${f.html()}</div>
+              <div class="frame ${mode === "dark" ? "force-dark" : ""}" data-w="${s.scaleTo ?? f.w}" style="width:${f.w}px;height:${f.h}px">${f.html()}</div>
             </div>`).join("")}
         </div>`).join("")}
     </div>`;
@@ -514,7 +562,7 @@ wireProto();
 
 // Shrink each frame to its column so a pair never overflows the page.
 function fit() {
-  for (const fr of document.querySelectorAll(".frame")) {
+  for (const fr of document.querySelectorAll("[data-w]")) {
     const room = fr.parentElement.clientWidth;
     fr.style.zoom = Math.min(1, room / Number(fr.dataset.w));
   }
