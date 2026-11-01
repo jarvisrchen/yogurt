@@ -59,6 +59,8 @@ The note is a file, not a shell argument, because real resolution notes contain 
   2. A text size button in the panel header that steps through a few sizes (for example small, default, large) and applies to both the transcript and the recap views, also remembered.
 
   Check that the notes column still reflows correctly at the max width, and that the collapsed tabs and open/close animation still line up with a non-default width.
+
+  Design and mocks: [.planning/ui27-dock-resize-design.md](.planning/ui27-dock-resize-design.md), [.lavish/ui27-dock-resize-design.html](.lavish/ui27-dock-resize-design.html).
   </details>
 
 ## Meetings
