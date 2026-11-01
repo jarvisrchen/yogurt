@@ -178,8 +178,8 @@ const PILL = "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12
 /* ---------------- the proposal's numbers ---------------- */
 
 const W_DEFAULT = 330, W_MIN = 320, W_MAX = 600, GUTTER = 28, MAIN_MAX = 660, NOTES_MIN = 480;
-// Window kept beside the dock, so its handle, its tabs, and the start of the notes stay reachable. The prototype's slider changes it.
-let NOTES_ROOM = 200;
+// Window kept beside the dock, so its handle and tabs stay reachable. The prototype's slider changes it.
+let NOTES_ROOM = 80;
 const SIZES = [
   { label: "Small", px: 13 },
   { label: "Default", px: 14 },
@@ -385,7 +385,7 @@ const SECTIONS = [
   },
   {
     title: "2. Dragging the left edge",
-    caption: "The panel's left border is the handle. An 8 px strip straddles it with a col-resize cursor, and a 2 px blueberry line shows on hover, focus, and drag. The edge tabs ride along with the edge and drop their slide transition while dragging. Double-click resets to 330 px. Width clamps to 320 to 600 px, and always leaves 200 px of window beside the dock, so the handle, the tabs, and the start of each note line stay reachable.",
+    caption: "The panel's left border is the handle. An 8 px strip straddles it with a col-resize cursor, and a 2 px blueberry line shows on hover, focus, and drag. The edge tabs ride along with the edge and drop their slide transition while dragging. Double-click resets to 330 px. Width clamps to 320 to 600 px, and always leaves 80 px of window beside the dock, so the handle and the tabs stay reachable.",
     frames: [{ ...PAGE, html: () => livePage({ vw: 1440, w: 460, handle: "on", drag: true }) }],
   },
   {
@@ -430,7 +430,7 @@ const SECTIONS = [
   },
   {
     title: "9. A wide dock on a shrinking window",
-    caption: "A dock saved at 600 px. The notes reach their 480 px minimum below a 1,108 px window, and the dock overlaps from there. The dock keeps its full width as long as 200 px of window stays beside it, so at 900 px it covers 208 px of the notes. On a smaller window it clamps to the window width minus 200 px, which caps the overlap at 308 px, and the saved 600 px comes back when the window grows.",
+    caption: "A dock saved at 600 px. The notes reach their 480 px minimum below a 1,108 px window, and the dock overlaps from there. The dock keeps its full width as long as 80 px of window stays beside it, so at 900 px it covers 208 px of the notes and at 700 px it covers 408 px. On a smaller window it clamps to the window width minus 80 px, which caps the overlap at 428 px, and the saved 600 px comes back when the window grows.",
     stack: true, modes: ["light"], scaleTo: 1440,
     frames: [1440, 1100, 900, 700].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · dock ${clampWidth(600, vw)} px · ${layoutFacts(vw, 600).what}`, html: () => livePage({ vw, view: "recap", w: 600 }) })),
   },
