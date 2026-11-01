@@ -34,20 +34,42 @@ That rule works because 330 px fits in the margin beside a 660 px column on a wi
 At 600 px the panel would cover about 200 px of the notes, including the end of every line the user is typing.
 Mock 4 shows it.
 
-So when the dock is open, the page wrapper's right padding grows just enough to clear the panel and the 28 px edge tabs that sit left of it:
+So when the dock is open, the notes column clears it in three stages:
+
+1. While there is room beside the column, nothing moves.
+2. Otherwise the column shifts left just far enough to clear the panel and the 28 px edge tabs that sit left of it, then narrows once it cannot shift further.
+3. At 480 px the column stops narrowing and pins to the window's left edge, and the dock overlaps its right side.
+
+All three come from the page wrapper's right padding:
 
 ```css
 --dock-clear: calc(var(--dock-w) + 28px);
-padding-right: clamp(28px, calc(2 * var(--dock-clear) + 660px - 100vw), var(--dock-clear));
+padding-right: min(
+  clamp(28px, calc(2 * var(--dock-clear) + 660px - 100vw), var(--dock-clear)),
+  max(28px, calc(100vw - 480px))
+);
 ```
 
 With C the dock width plus 28 px and V the window width, the centered 660 px column ends at (V - P + 660) / 2, which must not pass V - C.
 That gives P = 2C + 660 - V, floored at today's 28 px gutter and capped at C, past which the column narrows instead of shifting.
-The dock never overlays the notes, and the width clamp leaves the column at least 372 px wide.
+The outer `min` caps P at V - 480, which holds the column at 480 px and lets the dock overlap it.
+
+480 px leaves 400 px for text inside the column's padding, about 50 characters of 15 px notes per line.
+Narrower than that, bullets wrap every few words, which is worse than losing the ends of a few lines.
+The overlap starts below an 838 px window with the default dock, and below 1,108 px with a 600 px dock.
+The dock's width clamp keeps at least 400 px of window beside it, so the overlap never hides more than 108 px of the notes.
+
 This applies at every dock width, including the default.
 With the default 330 px dock, the notes stay put on windows 1,348 px and wider, and shift on anything narrower, where today the dock covers part of them.
 At 1440 px with a 600 px dock, the column shifts left and keeps 660 px.
 At 1180 px with a 600 px dock, it narrows to 552 px.
+
+While the dock overlaps the notes, it takes a left-edge shadow, `-24px 0 48px -8px` in `--shadow-window-color`, so it reads as a layer over the notes instead of as notes cut off.
+`TranscriptDock` knows when it overlaps: the overlap is positive when V - C is less than 480.
+Without an overlap it stays flat, as today.
+
+The dock does not shrink itself to make room.
+The user picked its width, and a panel that changes size on its own surprises more than a small overlap does.
 The padding animates with the dock's existing 340 ms slide easing on open and close, and follows the pointer without a transition during a drag.
 
 `TranscriptDock` sets `--dock-w` on `document.documentElement` while open and removes it on close, which keeps the wrappers in `Meeting.tsx` and `MeetingPost.tsx` free of new props.

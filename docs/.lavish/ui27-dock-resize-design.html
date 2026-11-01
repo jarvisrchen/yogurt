@@ -177,7 +177,7 @@ const PILL = "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12
 
 /* ---------------- the proposal's numbers ---------------- */
 
-const W_DEFAULT = 330, W_MIN = 320, W_MAX = 600, NOTES_ROOM = 400, GUTTER = 28, MAIN_MAX = 660;
+const W_DEFAULT = 330, W_MIN = 320, W_MAX = 600, NOTES_ROOM = 400, GUTTER = 28, MAIN_MAX = 660, NOTES_MIN = 480;
 const SIZES = [
   { label: "Small", px: 13 },
   { label: "Default", px: 14 },
@@ -185,8 +185,14 @@ const SIZES = [
   { label: "Extra large", px: 18 },
 ];
 const clampWidth = (w, viewport) => Math.round(Math.max(W_MIN, Math.min(w, W_MAX, viewport - NOTES_ROOM)));
-// The wrapper's right padding when the dock is open: just enough to clear the panel plus the edge tabs left of it.
-const reflowPad = (w, viewport) => { const d = w + GUTTER; return Math.min(d, Math.max(GUTTER, 2 * d + MAIN_MAX - viewport)); };
+// The wrapper's right padding when the dock is open. "hybrid" clears the panel and its edge tabs until the notes reach
+// their minimum, then holds them there and lets the panel overlap. "narrow" never overlaps. "overlay" is today.
+const reflowPad = (w, viewport, rule = "hybrid", floor = NOTES_MIN) => {
+  if (rule === "overlay") return GUTTER;
+  const d = w + GUTTER;
+  const clear = Math.min(d, Math.max(GUTTER, 2 * d + MAIN_MAX - viewport));
+  return rule === "narrow" ? clear : Math.min(clear, Math.max(GUTTER, viewport - floor));
+};
 
 /* ---------------- content ---------------- */
 
@@ -252,11 +258,11 @@ function sizePopover(fs) {
     </div>`;
 }
 
-function dockPanel(view, { w = W_DEFAULT, fs = 14, live = true, popover = false, handle = "", footer = null } = {}) {
+function dockPanel(view, { w = W_DEFAULT, fs = 14, live = true, popover = false, handle = "", footer = null, floating = false } = {}) {
   const seg = (name, key) => `<button type="button" class="px-3 py-1 rounded-pill text-[12.5px] font-semibold ${view === key ? "bg-blsoft text-blue" : "text-mut hover:text-ink"}">${name}</button>`;
   const foot = footer ?? (view === "recap" ? recapFooter : "");
   return `
-    <aside class="absolute right-0 top-0 h-full flex flex-col bg-paper border-l border-line" style="width:${w}px">
+    <aside class="absolute right-0 top-0 h-full flex flex-col bg-paper border-l border-line" style="width:${w}px;${floating ? "box-shadow:-24px 0 48px -8px var(--shadow-window-color)" : ""}">
       <div class="handle ${handle === "on" ? "on" : ""}" data-handle tabindex="0" role="separator" aria-orientation="vertical" aria-label="Resize panel"
         aria-valuemin="${W_MIN}" aria-valuemax="${W_MAX}" aria-valuenow="${w}" title="Drag to resize, double-click to reset"></div>
       <header class="flex items-center justify-between border-b border-line" style="padding:18px 12px 14px 14px">
@@ -328,31 +334,33 @@ const askPill = `
   </div>`;
 
 // vw is the frame's width standing in for the window. reflow=false draws today's overlay for comparison.
-function livePage({ vw, view = "transcript", w = W_DEFAULT, fs = 14, popover = false, handle = "", reflow = true, drag = false, open = true }) {
-  w = clampWidth(w, vw);
-  const pad = open && reflow ? reflowPad(w, vw) : GUTTER;
+function livePage({ vw, view = "transcript", w = W_DEFAULT, fs = 14, popover = false, handle = "", rule = "hybrid", floor = NOTES_MIN, drag = false, open = true }) {
+  const f = layoutFacts(vw, w, { open, rule, floor });
+  w = f.w;
+  const pad = f.pad;
   return `
   <div class="relative h-full overflow-hidden bg-paper" style="padding-right:${pad}px;${drag ? "" : "transition:padding-right 340ms cubic-bezier(.2,.7,.2,1)"}">
     ${liveMain()}
-    ${open ? dockPanel(view, { w, fs, popover, handle }) : ""}
+    ${open ? dockPanel(view, { w, fs, popover, handle, floating: f.covered > 0 }) : ""}
     ${edgeTabs({ open, active: view, w, drag })}
   </div>`;
 }
 
 // What the notes column does for a window width and a saved dock width, in words for labels and the readout.
-function layoutFacts(vw, saved, { open = true, reflow = true } = {}) {
+function layoutFacts(vw, saved, { open = true, rule = "hybrid", floor = NOTES_MIN } = {}) {
   const w = clampWidth(saved, vw);
-  const pad = open && reflow ? reflowPad(w, vw) : GUTTER;
+  const pad = open ? reflowPad(w, vw, rule, floor) : GUTTER;
   const notes = Math.min(MAIN_MAX, vw - pad);
   const right = (vw - pad + notes) / 2;
   const covered = open ? Math.max(0, Math.round(right - (vw - w - GUTTER))) : 0;
   let what;
   if (!open) what = "dock closed, notes centered";
-  else if (!reflow) what = covered ? `dock covers ${covered} px of the notes` : "dock fits beside the notes";
+  else if (covered) what = rule === "overlay" ? `dock covers ${covered} px of the notes` : `notes held at ${notes} px, dock overlaps ${covered} px`;
+  else if (rule === "overlay") what = "dock fits beside the notes";
   else if (pad === GUTTER) what = "notes stay put";
   else if (notes === MAIN_MAX) what = `notes shift left ${Math.round((pad - GUTTER) / 2)} px`;
   else what = `notes narrow to ${notes} px`;
-  return { w, pad, notes, what, clamped: w !== saved };
+  return { w, pad, notes, covered, what, clamped: w !== saved };
 }
 
 const bare = (panels) => `
@@ -380,7 +388,7 @@ const SECTIONS = [
   },
   {
     title: "3. A wide panel: the notes step aside",
-    caption: "Today the dock overlays the notes, which only works because 330 px fits in the margin of a wide window. At 600 px it would cover the notes, so the column now moves left just far enough to clear the panel and its edge tabs, and narrows once it runs out of room. At 1440 px it shifts and keeps its full 660 px. At 1180 px it narrows to 552 px. Closing the dock slides it back.",
+    caption: "Today the dock overlays the notes, which only works because 330 px fits in the margin of a wide window. At 600 px it would cover the notes, so the column now moves left just far enough to clear the panel and its edge tabs, and narrows once it runs out of room, down to 480 px. At 1440 px it shifts and keeps its full 660 px. At 1180 px it narrows to 552 px. Closing the dock slides it back.",
     frames: [
       { ...PAGE, label: "1440 px window", html: () => livePage({ vw: 1440, view: "recap", w: 600 }) },
       { w: 1180, h: 780, label: "1180 px window", html: () => livePage({ vw: 1180, view: "recap", w: 600 }) },
@@ -389,7 +397,7 @@ const SECTIONS = [
   {
     title: "4. Rejected: keep overlaying",
     caption: "The same 600 px panel with today's overlay rule. It hides about 200 px of the notes column, including the end of every note line. A resize control that covers what the user is typing defeats the point.",
-    frames: [{ ...PAGE, html: () => livePage({ vw: 1440, view: "recap", w: 600, reflow: false }) }],
+    frames: [{ ...PAGE, html: () => livePage({ vw: 1440, view: "recap", w: 600, rule: "overlay" }) }],
   },
   {
     title: "5. Picking a text size",
@@ -414,13 +422,13 @@ const SECTIONS = [
   },
   {
     title: "8. Shrinking the window",
-    caption: "The same meeting with the default 330 px dock, drawn at one scale so the window widths compare. Wide windows leave the notes alone. Below 1,348 px they shift left to clear the dock, and once there is no room left to shift they narrow. The dock never covers them.",
+    caption: "The same meeting with the default 330 px dock, drawn at one scale so the window widths compare. Wide windows leave the notes alone. Below 1,348 px they shift left to clear the dock, and once there is no room left to shift they narrow. At 480 px they stop narrowing and pin to the left edge, and the dock overlaps their right side with a shadow so it reads as a layer. With the default dock that starts below 838 px.",
     stack: true, modes: ["light"], scaleTo: 1440,
-    frames: [1440, 1280, 1024, 800].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · ${layoutFacts(vw, W_DEFAULT).what}`, html: () => livePage({ vw }) })),
+    frames: [1440, 1280, 1024, 900, 800].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · ${layoutFacts(vw, W_DEFAULT).what}`, html: () => livePage({ vw }) })),
   },
   {
     title: "9. A wide dock on a shrinking window",
-    caption: "A dock saved at 600 px. On a window too small for it, the dock clamps to the window width minus 400 px for as long as the window stays small, and the saved 600 px comes back when the window grows.",
+    caption: "A dock saved at 600 px. The notes reach their 480 px minimum below a 1,108 px window, and the dock overlaps from there. On a window too small for the dock, it clamps to the window width minus 400 px, which caps the overlap at 108 px, and the saved 600 px comes back when the window grows.",
     stack: true, modes: ["light"], scaleTo: 1440,
     frames: [1440, 1100, 900].map((vw) => ({ w: vw, h: 600, label: `${vw} px window · dock ${clampWidth(600, vw)} px · ${layoutFacts(vw, 600).what}`, html: () => livePage({ vw, view: "recap", w: 600 }) })),
   },
@@ -428,7 +436,7 @@ const SECTIONS = [
 
 /* ---------------- interactive prototype ---------------- */
 
-const proto = { w: W_DEFAULT, fs: 14, popover: false, reflow: true, view: "transcript", dark: false, drag: false, open: true, vw: 1440 };
+const proto = { w: W_DEFAULT, fs: 14, popover: false, rule: "hybrid", floor: NOTES_MIN, view: "transcript", dark: false, drag: false, open: true, vw: 1440 };
 const VW_MIN = 720, VW_MAX = 1680;
 
 function renderProto() {
@@ -444,6 +452,9 @@ function renderProto() {
   document.getElementById("readout").textContent = `Window ${proto.vw} px · Dock ${dock} · Text ${size.label} · Notes ${f.notes} px`;
   document.getElementById("verdict").textContent = f.what;
   document.getElementById("vw").value = proto.vw;
+  document.getElementById("floor").value = proto.floor;
+  document.getElementById("floorval").textContent = `${proto.floor} px`;
+  document.getElementById("floorrow").style.opacity = proto.rule === "hybrid" ? 1 : 0.4;
   for (const b of document.querySelectorAll("[data-ctl]")) {
     const [k, v] = b.dataset.ctl.split(":");
     b.classList.toggle("on", String(proto[k]) === v);
@@ -501,10 +512,14 @@ function wireProto() {
   for (const b of document.querySelectorAll("[data-ctl]")) {
     b.addEventListener("click", () => {
       const [k, v] = b.dataset.ctl.split(":");
-      proto[k] = v === "true" ? true : v === "false" ? false : Number(v);
+      proto[k] = v === "true" ? true : v === "false" ? false : /^\d+$/.test(v) ? Number(v) : v;
       renderProto();
     });
   }
+  document.getElementById("floor").addEventListener("input", (e) => {
+    proto.floor = Number(e.target.value);
+    renderProto();
+  });
   document.getElementById("vw").addEventListener("input", (e) => {
     proto.vw = Number(e.target.value);
     renderProto();
@@ -517,7 +532,7 @@ const root = document.getElementById("sections");
 const protoSec = document.createElement("section");
 protoSec.innerHTML = `
   <h2 class="heading-sm text-[18px]!">Try it</h2>
-  <p class="mt-1 mb-4 text-[14px] text-mut max-w-[860px]">Drag the panel's left edge, double-click it to reset, or focus it with Tab and use the arrow keys. Click Aa to change the text size. Drag the window slider to resize the whole window, and switch the notes rule to see why the overlay goes. The dashed outline is a ${VW_MAX} px screen.</p>
+  <p class="mt-1 mb-4 text-[14px] text-mut max-w-[860px]">Drag the panel's left edge, double-click it to reset, or focus it with Tab and use the arrow keys. Click Aa to change the text size. Drag the window slider to resize the whole window. Switch the notes rule to compare clearing with an overlap at a minimum (proposed), clearing all the way down, and today's overlay, and drag the notes minimum to judge where the overlap should start. The dashed outline is a ${VW_MAX} px screen.</p>
   <div class="flex flex-wrap items-center gap-2 mb-2">
     <label class="flex items-center gap-2 font-mono text-[12px] text-[#7A7264]">Window
       <input id="vw" type="range" min="${VW_MIN}" max="${VW_MAX}" step="10" class="w-[260px] accent-[#5B4FC7]"></label>
@@ -527,11 +542,17 @@ protoSec.innerHTML = `
     <button type="button" class="ctl" data-ctl="open:true">Dock open</button>
     <button type="button" class="ctl" data-ctl="open:false">Dock closed</button>
     <span class="w-4"></span>
-    <button type="button" class="ctl" data-ctl="reflow:true">Notes clear the panel</button>
-    <button type="button" class="ctl" data-ctl="reflow:false">Panel overlays notes (today)</button>
+    <button type="button" class="ctl" data-ctl="rule:hybrid">Clear, then overlap at a minimum</button>
+    <button type="button" class="ctl" data-ctl="rule:narrow">Clear, keep narrowing</button>
+    <button type="button" class="ctl" data-ctl="rule:overlay">Always overlay (today)</button>
     <span class="w-4"></span>
     <button type="button" class="ctl" data-ctl="dark:false">Light</button>
     <button type="button" class="ctl" data-ctl="dark:true">Dark</button>
+  </div>
+  <div id="floorrow" class="flex items-center gap-2 mb-3">
+    <label class="flex items-center gap-2 font-mono text-[12px] text-[#7A7264]">Notes minimum
+      <input id="floor" type="range" min="360" max="660" step="20" class="w-[200px] accent-[#5B4FC7]"></label>
+    <span id="floorval" class="font-mono text-[12px] text-[#211D18]"></span>
   </div>
   <p class="mb-3 font-mono text-[12px] text-[#7A7264]"><span id="readout"></span> · <b id="verdict" class="text-[#211D18]"></b></p>
   <div id="screen" data-w="${VW_MAX}" style="width:${VW_MAX}px;height:780px;outline:2px dashed #CFC6B6;outline-offset:-2px;border-radius:10px">
