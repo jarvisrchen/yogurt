@@ -43,7 +43,9 @@ padding-right: clamp(28px, calc(2 * var(--dock-clear) + 660px - 100vw), var(--do
 
 With C the dock width plus 28 px and V the window width, the centered 660 px column ends at (V - P + 660) / 2, which must not pass V - C.
 That gives P = 2C + 660 - V, floored at today's 28 px gutter and capped at C, past which the column narrows instead of shifting.
-At 1440 px with the default 330 px dock, P stays 28 px, so nothing moves for anyone who never resizes.
+The dock never overlays the notes, and the width clamp leaves the column at least 372 px wide.
+This applies at every dock width, including the default.
+With the default 330 px dock, the notes stay put on windows 1,348 px and wider, and shift on anything narrower, where today the dock covers part of them.
 At 1440 px with a 600 px dock, the column shifts left and keeps 660 px.
 At 1180 px with a 600 px dock, it narrows to 552 px.
 The padding animates with the dock's existing 340 ms slide easing on open and close, and follows the pointer without a transition during a drag.
