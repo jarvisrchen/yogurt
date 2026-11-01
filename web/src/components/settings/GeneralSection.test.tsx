@@ -43,6 +43,7 @@ function renderSection() {
           meeting_detection_focus: true,
           meeting_auto_stop: true,
           live_recap: true,
+          live_recap_placement: "dock",
         }} />
     </QueryClientProvider>,
   );
@@ -154,5 +155,47 @@ describe("GeneralSection auto-stop", () => {
       }),
     ).toBeChecked();
     expect(screen.getByText(/neither your mic nor the meeting audio/)).toBeInTheDocument();
+  });
+});
+
+describe("GeneralSection recap placement", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("patches the placement from its tile and dims the tiles with the recap off", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.endsWith("/api/session-token") ? Response.json({ token: "t" }) : Response.json({}),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderSection();
+
+    const group = screen.getByRole("radiogroup", { name: "Show the recap" });
+    expect(screen.getByRole("radio", { name: "In the transcript panel" })).toBeChecked();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Above my notes" }));
+    expect(screen.getByRole("radio", { name: "Above my notes" })).toBeChecked();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ body: JSON.stringify({ live_recap_placement: "main" }) }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show a live recap of the discussion while recording" }));
+    expect(screen.getByRole("radio", { name: "Above my notes" })).toBeDisabled();
+    expect(group).toHaveClass("opacity-50");
+  });
+
+  it("puts the tile back when saving the placement fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/api/session-token")
+          ? Response.json({ token: "t" })
+          : Response.json({ error: "disk full" }, { status: 500 }),
+      ),
+    );
+    renderSection();
+    fireEvent.click(screen.getByRole("radio", { name: "Above my notes" }));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "In the transcript panel" })).toBeChecked());
   });
 });

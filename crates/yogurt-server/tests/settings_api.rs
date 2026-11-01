@@ -225,6 +225,42 @@ async fn patch_to_local_with_undownloaded_model_is_rejected_and_settings_unchang
 }
 
 #[tokio::test]
+async fn patch_recap_placement_accepts_main_and_rejects_unknown_values() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+    let patch = |body: Value| {
+        client
+            .patch(format!("{base}/api/settings"))
+            .bearer_auth(&token)
+            .json(&body)
+            .send()
+    };
+
+    let res = patch(json!({ "live_recap_placement": "main" }))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["live_recap_placement"], "main");
+
+    let res = patch(json!({ "live_recap_placement": "sidebar" }))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 422);
+
+    let after: Value = client
+        .get(format!("{base}/api/settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after["general"]["live_recap_placement"], "main");
+}
+
+#[tokio::test]
 async fn patch_provider_alone_to_local_is_rejected_when_stored_model_is_undownloaded() {
     // Provider flip alone: the effective model comes from the current row.
     // Seed a name guaranteed not on disk rather than rely on the `small.en` default, which a dev machine may have downloaded.

@@ -53,6 +53,8 @@ pub struct General {
     /// Send the latest transcript to the LLM provider every few minutes while
     /// recording and show the bullets it returns. It has no seed row, so absent means `true`.
     pub live_recap: bool,
+    /// Where the recap shows. Key `general.live_recap_placement`; absent or unrecognized means `Dock`.
+    pub live_recap_placement: RecapPlacement,
     /// Whether the mic echo feature is exposed at all. Off by default; the
     /// in-meeting echo controls and auto-start only exist when this is on.
     pub audio_echo_feature: bool,
@@ -62,6 +64,27 @@ pub struct General {
     pub audio_echo_enabled: bool,
     /// Echo output buffer size in frames, one of 128/256/512/1024/2048.
     pub audio_echo_buffer: u32,
+}
+
+/// Presentation only: the recap task never reads it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RecapPlacement {
+    /// A view in the transcript dock.
+    #[default]
+    Dock,
+    /// A card above the notes.
+    Main,
+}
+
+impl RecapPlacement {
+    /// The stored and wire value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RecapPlacement::Dock => "dock",
+            RecapPlacement::Main => "main",
+        }
+    }
 }
 
 /// Load the `General` struct from the KV table, falling back to defaults
@@ -100,6 +123,10 @@ pub fn load_general(db: &Db) -> Result<General> {
             .as_deref()
             .map(|s| s == "true")
             .unwrap_or(true),
+        live_recap_placement: match get(db, "general.live_recap_placement")?.as_deref() {
+            Some("main") => RecapPlacement::Main,
+            _ => RecapPlacement::Dock,
+        },
         audio_echo_feature: get(db, "audio.echo_feature")?
             .as_deref()
             .map(|s| s == "true")
@@ -132,6 +159,7 @@ pub struct GeneralPatch {
     pub meeting_detection_focus: Option<bool>,
     pub meeting_auto_stop: Option<bool>,
     pub live_recap: Option<bool>,
+    pub live_recap_placement: Option<RecapPlacement>,
     pub audio_echo_feature: Option<bool>,
     pub audio_echo_output_device: Option<String>,
     pub audio_echo_enabled: Option<bool>,
@@ -185,6 +213,9 @@ pub fn save_general_patch(db: &Db, patch: GeneralPatch) -> Result<General> {
     }
     if let Some(r) = patch.live_recap {
         set(db, "general.live_recap", if r { "true" } else { "false" })?;
+    }
+    if let Some(p) = patch.live_recap_placement {
+        set(db, "general.live_recap_placement", p.as_str())?;
     }
     if let Some(f) = patch.audio_echo_feature {
         set(db, "audio.echo_feature", if f { "true" } else { "false" })?;

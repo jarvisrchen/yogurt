@@ -8,6 +8,7 @@ import { ReEnhanceButton } from "../components/ReEnhanceButton";
 import { TemplatePicker } from "../components/TemplatePicker";
 import { AUTO_TEMPLATE } from "../lib/api/templates";
 import { TranscriptDock } from "../components/TranscriptDock";
+import { RecapCard } from "../components/Recap";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
@@ -97,6 +98,7 @@ export function MeetingPost() {
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(stateShape.dockRecap ?? false);
   const liveRecap = useSettings().data?.general?.live_recap ?? false;
+  const recapInMain = useSettings().data?.general?.live_recap_placement === "main";
 
   const ws = useEnhanceProgress(meetingId, token);
   // The server emits `done` (clearing `ws.text`) before the enhance POST
@@ -203,7 +205,6 @@ export function MeetingPost() {
   }, [loadMeeting]);
 
   const handleTranscriptLinkClick = useCallback((ts: number) => {
-    setTranscriptOpen(true);
     window.dispatchEvent(
       new CustomEvent("yogurt:transcript:scrollTo", { detail: { ts } }),
     );
@@ -518,33 +519,38 @@ export function MeetingPost() {
           color: INK,
         }}
       >
-        <div
-          role="tablist"
-          aria-label="Meeting document"
-          className="mb-7 inline-flex gap-0.5 rounded-card bg-line/60 p-1"
-        >
-          {(["enhanced", "notes"] as const).map((document) => {
-            const selected = activeDocument === document;
-            return (
-              <button
-                key={document}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => setActiveDocument(document)}
-                className={`rounded-button px-4 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
-                  selected
-                    ? "bg-card text-ink shadow-card"
-                    : "text-mut hover:text-ink"
-                }`}
-              >
-                {document === "enhanced" ? "Enhanced" : "My notes"}
-              </button>
-            );
-          })}
-        </div>
+        {liveRecap && recapInMain && (
+          <RecapCard meetingId={meetingId} token={token} mode="final" gapClassName="h-7" />
+        )}
 
-        {activeDocument === "enhanced" && <Legend />}
+        <div className="mb-7 flex items-center justify-between gap-4">
+          <div
+            role="tablist"
+            aria-label="Meeting document"
+            className="inline-flex gap-0.5 rounded-card bg-line/60 p-1"
+          >
+            {(["enhanced", "notes"] as const).map((document) => {
+              const selected = activeDocument === document;
+              return (
+                <button
+                  key={document}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setActiveDocument(document)}
+                  className={`rounded-button px-4 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
+                    selected
+                      ? "bg-card text-ink shadow-card"
+                      : "text-mut hover:text-ink"
+                  }`}
+                >
+                  {document === "enhanced" ? "Enhanced" : "My notes"}
+                </button>
+              );
+            })}
+          </div>
+          {activeDocument === "enhanced" && <Legend />}
+        </div>
 
         {error && (
           <div
@@ -592,8 +598,8 @@ export function MeetingPost() {
         forceOpen={transcriptOpen}
         onOpenChange={setTranscriptOpen}
         segments={segments}
-        recap={liveRecap ? "final" : undefined}
-        initialView={stateShape.dockRecap ? "recap" : "transcript"}
+        recap={liveRecap && !recapInMain ? "final" : undefined}
+        initialView={stateShape.dockRecap && !recapInMain ? "recap" : "transcript"}
       />
 
       <AskExperience meetingId={meetingId} token={token} />

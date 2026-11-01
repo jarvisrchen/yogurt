@@ -32,6 +32,8 @@ export interface General {
   /** Send the latest transcript to the LLM provider every 3 minutes while recording and show the bullets
    *  it returns in the transcript dock. */
   live_recap: boolean;
+  /** Where the recap shows: a view in the transcript dock, or a card above the notes. */
+  live_recap_placement: RecapPlacement;
   /** Whether mic echo is exposed at all. Off by default; the in-meeting echo controls and auto-start
    *  only exist when on. */
   audio_echo_feature: boolean;
@@ -46,6 +48,8 @@ export interface General {
  * `"cli"` is a local agent CLI (`yogurt_llm::CliClient`) with no base URL or key. `model` then holds
  * the CLI program id ("claude" | "cursor-agent" | "opencode").
  */
+export type RecapPlacement = "dock" | "main";
+
 export type ProviderAdapter = "http" | "cli";
 
 export interface ProviderView {
