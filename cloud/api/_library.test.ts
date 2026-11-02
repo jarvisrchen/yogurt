@@ -48,12 +48,23 @@ test("days start at the asker's midnight, across a DST change", () => {
 // The cases from crates/yogurt-notes/src/ast.rs.
 test("strip markers keeps non-ASCII text", () => {
   const input = "- Today is the user’s last day <span data-ai-grey data-ts=\"4\">café … 会議 <span data-transcript-link data-ts=\"4\">↳ 00:04</span></span> done";
-  expect(stripMarkers(input)).toBe("- Today is the user’s last day café … 会議  done");
+  expect(stripMarkers(input)).toBe("- Today is the user’s last day café … 会議 done");
 });
 
 test("strip markers handles nested wire-format spans", () => {
-  expect(stripMarkers('<span data-ai-grey data-ts="120">pricing <span data-transcript-link data-ts="120">↳ 02:00</span></span>')).toBe("pricing ");
+  expect(stripMarkers('<span data-ai-grey data-ts="120">pricing <span data-transcript-link data-ts="120">↳ 02:00</span></span>')).toBe("pricing");
   expect(stripMarkers('<span class="x">kept</span> plain')).toBe('<span class="x">kept plain');
+});
+
+test("strip markers settles the spaces around a removed link", () => {
+  const link = '<span data-transcript-link data-ts="3">↳ 00:03</span>';
+  expect(stripMarkers(`$180 a year ${link}.`)).toBe("$180 a year.");
+  expect(stripMarkers(`<span data-ai-grey data-ts="3">$180 a year ${link}</span>.`)).toBe("$180 a year.");
+  expect(stripMarkers(`year ${link} and`)).toBe("year and");
+  expect(stripMarkers(`15% ${link}for`)).toBe("15% for");
+  expect(stripMarkers(`${link} Pro tier`)).toBe("Pro tier");
+  expect(stripMarkers(`- ${link} Pro tier`)).toBe("- Pro tier");
+  expect(stripMarkers(`a\n  ${link} b`)).toBe("a\n  b");
 });
 
 test("messages number each meeting with its notes and excerpt, then the recent conversation", () => {
