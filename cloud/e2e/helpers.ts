@@ -3,7 +3,7 @@ import { expect, type Page, type TestInfo } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 
-const DB = process.env.YOGURT_CLOUD_E2E_DB ?? "postgresql://postgres:postgres@127.0.0.1:56432/postgres";
+export const DB = process.env.YOGURT_CLOUD_E2E_DB ?? "postgresql://postgres:postgres@127.0.0.1:56432/postgres";
 export const API = process.env.YOGURT_CLOUD_E2E_API ?? "http://127.0.0.1:56431";
 export const KEY = process.env.YOGURT_CLOUD_E2E_KEY ?? "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
 const MAIL = process.env.YOGURT_CLOUD_E2E_MAIL ?? "http://127.0.0.1:56434";

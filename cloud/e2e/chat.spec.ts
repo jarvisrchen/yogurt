@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { DEVICES, LATE, expectScreen, isPhone, onboard, reset, revokeBrowsers, seed, shot } from "./helpers";
 
 // A stand-in for the LLM provider at the address playwright.config.ts gives the webapp. It streams a fixed answer and keeps each request.
-const LLM_PORT = 5192;
+const LLM_PORT = Number(process.env.YOGURT_CLOUD_E2E_LLM_PORT ?? 5192);
 const ANSWER = ["You agreed to sign ", "the vendor contract ", "on **Friday**."];
 let answer = ANSWER;
 let llm: Server;
