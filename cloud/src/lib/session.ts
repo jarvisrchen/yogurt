@@ -65,19 +65,18 @@ export class RecordingSession {
     for (const fn of this.subs) fn();
   }
 
-  /** Registers this browser as a phone device the first time, then records a new meeting. */
+  /** Makes sure the Cloud has this browser as a phone device, then records a new meeting. */
   async start(title: string, name: string) {
     const device = readDevice();
-    if (!device.registered) {
-      const named = name.trim() || "Phone";
-      try {
-        await this.api.registerPhone(device.id, named);
-      } catch (e) {
-        this.set({ error: `Could not add this phone to your Cloud. ${message(e)}` });
-        return;
-      }
-      saveDevice({ id: device.id, name: named, registered: true });
+    const named = device.registered ? device.name : name.trim() || "Phone";
+    // Every time, since an insert that finds the device is a no-op, and a device purged from the Cloud comes back.
+    try {
+      await this.api.registerPhone(device.id, named);
+    } catch (e) {
+      this.set({ error: `Could not add this phone to your Cloud. ${message(e)}` });
+      return;
     }
+    saveDevice({ id: device.id, name: named, registered: true });
     const now = Date.now();
     await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString() }, true);
   }
