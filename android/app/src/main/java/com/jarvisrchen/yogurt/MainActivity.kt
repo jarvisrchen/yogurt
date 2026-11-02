@@ -140,6 +140,8 @@ class MainActivity : Activity() {
                 return BuildConfig.DEBUG
             }
         }
+        // onPageStarted reaches the main thread after the page's first scripts may already call the bridge.
+        b.pageUrl = origin
         view.loadUrl(origin)
         checkForUpdate()
     }

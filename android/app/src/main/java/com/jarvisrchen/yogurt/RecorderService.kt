@@ -103,7 +103,10 @@ class RecorderService : Service() {
             return START_NOT_STICKY
         }
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.recording), NotificationManager.IMPORTANCE_LOW))
+        // Default importance, silenced, so the notification sits with alerting ones and on the lock screen, as a live recording should.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL, getString(R.string.recording), NotificationManager.IMPORTANCE_DEFAULT).apply { setSound(null, null) },
+        )
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
@@ -117,6 +120,8 @@ class RecorderService : Service() {
             .setShowWhen(true)
             .setUsesChronometer(true)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setColor(getColor(R.color.blue))
             .setContentIntent(open)
