@@ -30,6 +30,7 @@ let release: () => void = () => undefined;
 let held = new Promise<void>((r) => (release = r));
 let chatHeld = Promise.resolve();
 let chats = 0;
+let enhances = 0;
 let llm: Server;
 
 test.describe.configure({ mode: "serial" });
@@ -50,6 +51,7 @@ test.beforeAll(async () => {
       sent(transcript.content.trim().split("\n").at(-1)!.replace(/^\[\d\d:\d\d\] them: /, ""));
       return res.end("data: [DONE]\n\n");
     }
+    enhances++;
     const pieces = REPLY.match(/[\s\S]{1,24}/g)!;
     for (const [i, content] of pieces.entries()) {
       if (i === Math.floor(pieces.length / 2)) await held;
@@ -223,8 +225,15 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   expect(whileEnhancing.length).toBeGreaterThan(0);
   expect(whileEnhancing.every((m) => m.ended_at === null && m.enriched_md === null)).toBe(true);
   expect(JSON.parse(whileEnhancing.at(-1)!.transcript_json).length).toBeGreaterThan(kept);
+  // The ended push fails once. Retry pushes the enhance already done, without asking the model again.
+  const enhancesBefore = enhances;
+  await page.route(refuse, (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Push refused." }) }));
   release();
+  await expect(page.getByText("Not saved to your Cloud yet. Push refused.")).toBeVisible();
+  await page.unroute(refuse);
+  await page.getByTestId("enhancing-banner-retry").click();
   await expect(page.getByText("Weaving your notes into the transcript…")).toHaveCount(0);
+  expect(enhances).toBe(enhancesBefore);
   await expect(page.getByRole("tabpanel").getByText("Dana sends the annual price to finance")).toBeVisible();
   await expect(page.getByRole("button", { name: "Re-enhance" })).toBeVisible();
   await shot(page, info, "r9-enhanced");

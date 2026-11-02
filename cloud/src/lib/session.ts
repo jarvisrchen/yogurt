@@ -288,20 +288,25 @@ export class RecordingSession {
     run({ status: "running", text: "" });
     let fields: Enhanced | null = null;
     let failed: Finish | null = null;
+    let text = "";
     try {
-      fields = await enhanceMeeting(this.api, this.browserToken() ?? "", bundle(m).meeting, { onText: (text) => run({ status: "running", text }) });
+      fields = await enhanceMeeting(this.api, this.browserToken() ?? "", bundle(m).meeting, { onText: (t) => run({ status: "running", text: (text = t) }) });
       if (!fields) failed = { status: "short" };
     } catch (e) {
       if (e instanceof TokenRejected) this.onRejected();
       failed = { status: "error", message: `Enhance failed. ${message(e)}` };
     }
-    try {
-      await this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields);
-      await this.forget(m.id);
-    } catch (e) {
-      return run({ status: "error", message: `Not saved to your Cloud yet. ${message(e)}`, retry: () => void this.finish(key, deviceId, m, endedAt) });
-    }
-    run(failed ?? { status: "done", enriched_md: fields!.enriched_md });
+    // A failed push keeps the enhance, so Retry only pushes again.
+    const save = async () => {
+      try {
+        await this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields);
+        await this.forget(m.id);
+      } catch (e) {
+        return run({ status: "error", message: `Not saved to your Cloud yet. ${message(e)}`, retry: () => (run({ status: "running", text }), void save()) });
+      }
+      run(failed ?? { status: "done", enriched_md: fields!.enriched_md });
+    };
+    await save();
   }
 
   /** Drops the IndexedDB copy, unless a newer recording has replaced it. */
