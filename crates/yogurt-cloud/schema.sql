@@ -536,6 +536,51 @@ begin
     where l.body is not null order by l.meeting_id;
 end $$;
 
+-- The latest version of each ended, live meeting on the owner's phones, which a Mac adopts before its push.
+create or replace function public.yogurt_phone_meetings()
+returns table (device_id uuid, device_name text, meeting_id text, push_id bigint, body jsonb)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  return query
+    select l.device_id, d.name, l.meeting_id, l.push_id, l.body from (
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body
+      from public.yogurt_versions v join public.yogurt_devices d on d.id = v.device_id
+      where d.kind = 'phone' and d.user_id = auth.uid() and v.user_id = auth.uid()
+      order by v.device_id, v.meeting_id, v.push_id desc
+    ) l join public.yogurt_devices d on d.id = l.device_id
+    where l.body -> 'meeting' ->> 'ended_at' is not null
+    order by l.device_id, l.meeting_id;
+end $$;
+
+-- Marks a phone's meeting deleted on the phone once a Mac holds a copy, and says whether this call did.
+-- It does only while push_id is still the meeting's latest version and that version has ended, so a Mac that copied an older version, or lost the race to another Mac, gets false.
+-- The lock on the phone's device row makes concurrent callers take turns, so only the first finds the version still live.
+create or replace function public.yogurt_adopt(device_id uuid, meeting_id text, push_id bigint) returns boolean
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  new_push bigint;
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform from public.yogurt_devices d where d.id = $1 and d.user_id = auth.uid() and d.kind = 'phone' for update;
+  if not found then
+    raise exception 'unknown phone' using errcode = 'PT404';
+  end if;
+  if not exists (
+    select from (
+      select v.push_id, v.body from public.yogurt_versions v
+      where v.device_id = $1 and v.meeting_id = $2 order by v.push_id desc limit 1
+    ) l where l.push_id = $3 and l.body -> 'meeting' ->> 'ended_at' is not null
+  ) then
+    return false;
+  end if;
+  insert into public.yogurt_pushes (device_id) values ($1) returning id into new_push;
+  insert into public.yogurt_versions (meeting_id, push_id, device_id, body) values ($2, new_push, $1, null);
+  return true;
+end $$;
+
 -- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the three below goes first.
 do $$
 declare
@@ -883,6 +928,8 @@ grant execute on function
   public.yogurt_start_push(uuid),
   public.yogurt_rename_device(uuid, text),
   public.yogurt_device_meetings(uuid),
+  public.yogurt_phone_meetings(),
+  public.yogurt_adopt(uuid, text, bigint),
   public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
   public.yogurt_labels(text, uuid, bigint, boolean),
   public.yogurt_meeting(text, uuid, text, bigint),

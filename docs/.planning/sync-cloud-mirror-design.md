@@ -16,7 +16,7 @@ No central yogurt server or database exists.
 - Yogurt Cloud is the user's own Vercel project and Supabase project. Yogurt ships the webapp, a SQL file, and a setup guide, and hosts nothing.
 - Meetings are stored readable in the user's Supabase. There is no client-side encryption.
 - Reading requires the Cloud login and a passcode, and Postgres enforces both.
-- Sync is one-way. A laptop pushes and never reads meeting content back. The webapp is read-only.
+- Sync is one-way, with one exception. A laptop pushes, and reads meeting content back only to adopt an ended meeting recorded on a phone (SYNC-32, see [mobile-recording-design.md](mobile-recording-design.md)). The webapp is read-only.
 - Every push is kept. The cloud is an append-only history, so any earlier push can be viewed again, and a client cannot change what a push older than one hour shows.
 - Every meeting is pushed. There is no per-meeting exclusion.
 - One owner per Yogurt Cloud. The schema keys every row by `user_id`, so a hosted multi-user cloud stays possible later.

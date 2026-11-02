@@ -472,7 +472,9 @@ export function MeetingPost() {
                 llmModel={llmModel}
               />
               {meetingId && <MeetingLabels meetingId={meetingId} />}
-              {source?.name === "granola" && <ImportedFromLine source={source.json} />}
+              {(source?.name === "granola" || source?.name === "phone") && (
+                <ImportedFromLine name={source.name} source={source.json} />
+              )}
             </div>
           </div>
         </div>

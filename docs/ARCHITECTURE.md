@@ -897,8 +897,9 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 
 ## 12. Yogurt Cloud sync
 
-Optional, one-way, and off until the user connects it in Settings > Cloud sync.
+Optional, and off until the user connects it in Settings > Cloud sync.
 A laptop pushes its meetings to a Yogurt Cloud the user deployed: a webapp on their Vercel account, backed by their own Supabase project.
+The one thing a laptop reads back is an ended meeting recorded on a phone, which it adopts as its own.
 The webapp is static apart from three functions: chat, the Deepgram token, and enhance for meetings recorded on a phone.
 Yogurt hosts nothing.
 A phone can also record into the Cloud from the webapp, as a device of its own ([Recording on a phone](#recording-on-a-phone) below).
@@ -922,6 +923,12 @@ sequenceDiagram
   UI->>S: POST /api/cloud/push
   S-->>UI: 202, the push runs in the background
   S->>K: refresh the session, store the rotated refresh token
+  S->>P: rpc yogurt_phone_meetings
+  loop each ended phone meeting
+    S->>S: insert it into SQLite with source 'phone' (a no-op if it is here)
+    S->>P: rpc yogurt_adopt, which marks the phone's copy deleted
+    S->>S: delete the insert if another Mac adopted it first
+  end
   S->>P: rpc yogurt_device_meetings, then yogurt_start_push
   loop small batches, paused between them
     S->>S: build this batch's bundles
@@ -942,6 +949,15 @@ sequenceDiagram
   Its SHA-256 is the meeting's `cloud_hash`, so a pass sends only meetings whose content changed, plus a null body for each meeting the cloud lists that is gone locally.
   A trigger leaves a tombstone in `cloud_deleted` when a pushed meeting is deleted, so the "not pushed" count includes deletions until a pass sends the markers.
   The meeting being recorded is skipped.
+- **Phone meetings.**
+  Before it plans, a pass lists the latest version of each ended, live meeting on a `kind = 'phone'` device (`yogurt_phone_meetings`).
+  It inserts each one into SQLite with its chat, under a new UUID because the meeting routes take one, with `source = 'phone'`, the phone's ULID as `source_id`, and the phone's name, then calls `yogurt_adopt(device_id, meeting_id, push_id)`.
+  The unique `(source, source_id)` index makes the insert a no-op when the meeting is already here.
+  `yogurt_adopt` locks the phone's device row and writes a null version for the meeting only while `push_id` is still its latest, ended version, so of two Macs only the first wins, and a Mac that copied an older version gets false.
+  A Mac that gets false deletes its insert, unless the row was there before the pass or the call was retried, since a lost answer may have been a win.
+  The rest of the pass then pushes the meeting as this Mac's, so it shows once, under the Mac, and the meeting page says "Recorded on <phone name>".
+  A crash between the insert and the claim leaves the meeting in both places for the next pass to repair, never in neither.
+  A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then the pass skips this step.
 - **Secrets.**
   The `yogurt-cloud` account in `keys.json` holds the address, login email, Supabase URL, publishable key, refresh token, device id, and machine name.
   The password is a request field that is used once.
@@ -969,7 +985,7 @@ sequenceDiagram
   With `mark_deleted` it first runs one pass that marks every meeting from this device deleted, and a failure there leaves the connection in place.
 - **Verification.**
   `just test-cloud` runs the client against a local Supabase.
-  `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a revoked session, and disconnect.
+  `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a phone meeting adopted once, a revoked session, and disconnect.
 
 ### Recording on a phone
 

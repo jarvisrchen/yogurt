@@ -196,10 +196,59 @@ done
 expect "ctl status" "$(ctl a --json cloud status | jq -r .not_pushed)" 0
 expect "ctl push" "$(ctl a --json cloud push | jq -r .last_push.changed)" 0
 
+echo "== a Mac adopts an ended meeting recorded on a phone, and the Cloud shows it once"
+# owner_rest <path> <json>: what the phone's webapp sends, with the owner's session.
+owner_rest() {
+    curl -fsS -X POST "$API_URL/rest/v1/$1" -H "apikey: $PUBLISHABLE_KEY" -H "Authorization: Bearer $owner_token" \
+        -H 'Content-Type: application/json' -H 'Prefer: return=minimal' -d "$2"
+}
+phone_bundle() { # id ended_at
+    jq -nc --arg id "$1" --argjson ended "$2" '{v: 1,
+        meeting: {id: $id, title: "Walk and talk", started_at: 1767225600000, ended_at: $ended, notes_md: "phone notes",
+            enriched_md: null, transcript_json: "[{\"channel\":\"them\",\"text\":\"phone words\",\"ts_ms\":0}]", starred: false,
+            stt_engine: "cloud · nova-3 · phone", llm_model: null, template: null, created_at: "2026-01-01T00:00:00Z", labels: []},
+        chat: [{id: "01KCHATPHONE0000000000000A", role: "user", content: "what did we decide?", created_at: 1767225700000}]}'
+}
+phone=$(python3 -c 'import uuid; print(uuid.uuid4())')
+ended=01KPHONEENDED0000000000000
+open=01KPHONEOPEN00000000000000
+owner_rest yogurt_devices "{\"id\":\"$phone\",\"name\":\"Pixel\",\"kind\":\"phone\"}"
+phone_push=$(owner_rest rpc/yogurt_start_push "{\"device_id\":\"$phone\"}")
+owner_rest yogurt_versions "$(jq -nc --arg d "$phone" --argjson p "$phone_push" --arg e "$ended" --arg o "$open" \
+    --argjson be "$(phone_bundle "$ended" 1767226800000)" --argjson bo "$(phone_bundle "$open" null)" \
+    '[{meeting_id: $e, push_id: $p, device_id: $d, body: $be}, {meeting_id: $o, push_id: $p, device_id: $d, body: $bo}]')"
+# copies <phone meeting id>: device:meeting for each live latest version of it, on the phone or adopted under a Mac's own id.
+copies() {
+    psql -c "select coalesce(string_agg(d.name || ':' || l.meeting_id, ',' order by d.name), '') from (select distinct on (device_id, meeting_id) device_id, meeting_id, body from yogurt_versions order by device_id, meeting_id, push_id desc) l join yogurt_devices d on d.id = l.device_id where l.body is not null and (l.meeting_id = '$1' or l.body->'meeting'->>'source_id' = '$1')"
+}
+local_id() { sqlite3 "$tmp/$1/data/db.sqlite" "select id from meetings where source = 'phone' and source_id = '$2'"; }
+expect "before adoption the phone holds it" "$(copies "$ended")" "Pixel:$ended"
+expect "push a" "$(push_wait a)" 202
+expect "a pushes the adopted meeting" "$(field .last_push.changed)" 1
+expect "a pass error" "$(field .last_error)" null
+adopted=$(local_id a "$ended")
+[ -n "$adopted" ] || fail "a has no copy of the phone meeting"
+ctl a --json meeting show "$adopted" > "$tmp/adopted.json"
+expect "adopted with its fields" "$(jq -c '.meeting | [.title, .ended_at, .notes_md, .stt_engine, .source, .source_id, .source_json.device]' "$tmp/adopted.json")" \
+    "[\"Walk and talk\",1767226800000,\"phone notes\",\"cloud · nova-3 · phone\",\"phone\",\"$ended\",\"Pixel\"]"
+expect "with its transcript" "$(jq -r '.meeting.transcript_json | fromjson | .[0].text' "$tmp/adopted.json")" "phone words"
+expect "and its chat" "$(api a GET "/api/meetings/$adopted/chat")" 200
+expect "chat message" "$(jq -r '[.messages[] | select(.content == "what did we decide?")] | length' "$tmp/body.json")" 1
+expect "the Library lists it once" "$(api a GET '/api/meetings?limit=100')" 200
+expect "Library rows" "$(jq -r '[.. | objects | select(.source? == "phone")] | length' "$tmp/body.json")" 1
+expect "the unfinished meeting stays on the phone" "$(local_id a "$open")" ""
+expect "the Cloud shows it once, under the Mac" "$(copies "$ended")" "Laptop 1:$adopted"
+expect "the unfinished one is still the phone's" "$(copies "$open")" "Pixel:$open"
+expect "rerun" "$(push_wait a)" 202
+expect "a rerun adopts nothing" "$(field .last_push.changed)" 0
+expect "b" "$(push_wait b)" 202
+expect "b finds nothing to adopt" "$(local_id b "$ended")" ""
+expect "still once" "$(copies "$ended")" "Laptop 1:$adopted"
+
 echo "== rename this Mac"
 expect "rename" "$(api a POST /api/cloud/machine-name '{"machine_name":"  Work Mac "}')" 200
 expect "renamed" "$(field .machine_name)" "Work Mac"
-expect "device row" "$(psql -c 'select string_agg(name, $$,$$ order by name) from yogurt_devices')" "Laptop 2,Work Mac"
+expect "device row" "$(psql -c 'select string_agg(name, $$,$$ order by name) from yogurt_devices')" "Laptop 2,Pixel,Work Mac"
 expect "keys.json" "$(jq -r '."yogurt-cloud" | fromjson | .machine_name' "$keys")" "Work Mac"
 expect "blank name" "$(api a POST /api/cloud/machine-name '{"machine_name":" "}')" 400
 expect "ctl rename" "$(ctl a --json cloud rename 'Laptop 1' | jq -r .machine_name)" "Laptop 1"
@@ -227,10 +276,10 @@ echo "== a revoked session asks to sign in again, and sign-in restores it"
 psql -c "delete from auth.sessions" >/dev/null
 expect "push revoked" "$(push_wait b)" 202
 expect "recorded" "$(field .last_error.code)" session_expired
-expect "the earlier success is kept" "$(field '.last_push.changed')" 1
+expect "the earlier success is kept" "$(field '.last_push.changed')" 0
 expect "sign-in wrong" "$(api b POST /api/cloud/sign-in '{"password":"nope"}')" 401
 expect "sign-in" "$(api b POST /api/cloud/sign-in "{\"password\":\"$PASSWORD\"}")" 200
-expect "sign-in clears the error and keeps the success" "$(field '[.last_error, .last_push.changed] | @json')" "[null,1]"
+expect "sign-in clears the error and keeps the success" "$(field '[.last_error, .last_push.changed] | @json')" "[null,0]"
 expect "push after sign-in" "$(push_wait b)" 202
 expect "pushed" "$(field .last_error)" null
 

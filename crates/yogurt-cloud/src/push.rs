@@ -197,6 +197,92 @@ pub trait Hooks {
     fn stored(&mut self, hashes: &[(String, String)]) -> std::result::Result<(), String>;
     /// Runs when the plan is made, after each batch, and when a failed request starts waiting to be retried.
     fn progress(&mut self, progress: &Progress);
+    /// Writes a phone meeting here. `Ok(false)` when it is already here, and that copy is left alone.
+    fn adopt(&mut self, phone: &PhoneMeeting) -> std::result::Result<bool, String>;
+    /// Deletes the copy [`Hooks::adopt`] wrote in this pass of the phone meeting `phone_id`, after another Mac adopted it first.
+    fn unadopt(&mut self, phone_id: &str) -> std::result::Result<(), String>;
+}
+
+/// One request on the pass's retry schedule. Also returns how many attempts failed first, because a write whose answer was lost may have committed.
+async fn retried<T, F>(
+    project: &Project,
+    pacing: &Pacing,
+    session: &mut Session,
+    cancel: &mut watch::Receiver<bool>,
+    hooks: &mut impl Hooks,
+    mut request: impl FnMut(Session) -> F,
+) -> Result<(T, usize)>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    let mut attempt = 0;
+    loop {
+        fresh(project, session, hooks).await?;
+        match request(session.clone()).await {
+            Ok(v) => return Ok((v, attempt)),
+            Err(e) => {
+                let Some(d) = delay(pacing, attempt, &e) else {
+                    return Err(e);
+                };
+                wait(d, cancel).await?;
+                attempt += 1;
+            }
+        }
+    }
+}
+
+/// An ended meeting recorded on a phone, as `yogurt_phone_meetings` lists it.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct PhoneMeeting {
+    pub device_id: String,
+    pub device_name: String,
+    pub meeting_id: String,
+    pub push_id: i64,
+    /// The phone's bundle, in the shape [`Hooks::bundle`] builds.
+    pub body: Value,
+}
+
+/// Runs before a pass plans, so the pass then pushes each adopted meeting as one of this Mac's. Returns the ids this call adopted.
+/// A meeting is written here before the phone's copy is marked deleted, so a failure between the two leaves it in both places, never in neither.
+/// A local copy is removed only when this pass wrote it and the Cloud's first answer said another Mac won. After a retry the lost answer may have been ours, so the copy stays.
+/// A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then there is nothing to adopt.
+pub async fn adopt(
+    project: &Project,
+    pacing: &Pacing,
+    session: &mut Session,
+    cancel: &mut watch::Receiver<bool>,
+    hooks: &mut impl Hooks,
+) -> Result<Vec<String>> {
+    let none = &json!({});
+    let listed = retried(project, pacing, session, cancel, hooks, |s| async move {
+        project.rpc_all(&s, "yogurt_phone_meetings", none, "").await
+    })
+    .await;
+    let rows = match listed {
+        Err(e) if e.code() == "cloud_outdated" => return Ok(Vec::new()),
+        other => other?.0,
+    };
+    let mut adopted = Vec::new();
+    for row in rows {
+        if *cancel.borrow() {
+            return Err(Error::Cancelled);
+        }
+        let phone: PhoneMeeting = serde_json::from_value(row)
+            .map_err(|e| Error::Network(format!("unreadable phone meeting: {e}")))?;
+        let wrote = hooks.adopt(&phone).map_err(Error::Local)?;
+        let args = json!({ "device_id": phone.device_id, "meeting_id": phone.meeting_id, "push_id": phone.push_id });
+        let args = &args;
+        let (won, retries) = retried(project, pacing, session, cancel, hooks, |s| async move {
+            project.rpc(&s, "yogurt_adopt", args).await
+        })
+        .await?;
+        if won == Value::Bool(true) {
+            adopted.push(phone.meeting_id);
+        } else if wrote && retries == 0 {
+            hooks.unadopt(&phone.meeting_id).map_err(Error::Local)?;
+        }
+    }
+    Ok(adopted)
 }
 
 /// One pass over `local`. `skip` is the meeting being recorded.
@@ -228,23 +314,14 @@ impl Pass<'_> {
             pacing,
         } = *self;
         let args = json!({ "device_id": device_id });
-        let mut attempt = 0;
-        let cloud: Vec<String> = loop {
-            fresh(project, session, hooks).await?;
-            match project
-                .rpc_all(session, "yogurt_device_meetings", &args, "")
+        let args = &args;
+        let cloud: Vec<String> = retried(project, pacing, session, cancel, hooks, |s| async move {
+            project
+                .rpc_all(&s, "yogurt_device_meetings", args, "")
                 .await
-            {
-                Ok(v) => break v,
-                Err(e) => {
-                    let Some(d) = delay(pacing, attempt, &e) else {
-                        return Err(e);
-                    };
-                    wait(d, cancel).await?;
-                    attempt += 1;
-                }
-            }
-        }
+        })
+        .await?
+        .0
         .into_iter()
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect();
@@ -254,7 +331,7 @@ impl Pass<'_> {
         }
         fresh(project, session, hooks).await?;
         let push_id = project
-            .rpc(session, "yogurt_start_push", &args)
+            .rpc(session, "yogurt_start_push", args)
             .await?
             .as_i64()
             .ok_or_else(|| Error::Network("start_push returned no push id".into()))?;
@@ -525,6 +602,9 @@ mod run_tests {
         stored: Vec<Vec<(String, String)>>,
         progress: Vec<Progress>,
         gone: Vec<String>,
+        /// Meeting ids this Mac holds. `adopt` adds to it, `unadopt` removes.
+        here: Vec<String>,
+        unadopted: Vec<String>,
     }
 
     impl Hooks for Rec {
@@ -541,6 +621,18 @@ mod run_tests {
         }
         fn progress(&mut self, p: &Progress) {
             self.progress.push(p.clone());
+        }
+        fn adopt(&mut self, phone: &PhoneMeeting) -> std::result::Result<bool, String> {
+            if self.here.contains(&phone.meeting_id) {
+                return Ok(false);
+            }
+            self.here.push(phone.meeting_id.clone());
+            Ok(true)
+        }
+        fn unadopt(&mut self, id: &str) -> std::result::Result<(), String> {
+            self.here.retain(|h| h != id);
+            self.unadopted.push(id.into());
+            Ok(())
         }
     }
 
@@ -902,5 +994,143 @@ mod run_tests {
         assert_eq!(ids, ["m0", "old"]);
         assert_eq!(body[1]["body"], Value::Null);
         assert_eq!(rec.stored[0].len(), 1);
+    }
+
+    const ADOPT: &str = "/rest/v1/rpc/yogurt_adopt";
+
+    /// A cloud listing phone meetings `ids`, where `yogurt_adopt` answers `answers[id]` in turn, the last one for every later call.
+    async fn phones(
+        ids: &[&str],
+        answers: &[(&str, &[ResponseTemplate])],
+    ) -> (MockServer, Project, Session) {
+        let (server, project, session) = cloud(&[]).await;
+        let rows: Vec<Value> = ids
+            .iter()
+            .map(|id| json!({ "device_id": "p", "device_name": "Pixel", "meeting_id": id, "push_id": 7, "body": { "v": 1 } }))
+            .collect();
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rows))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+            .mount(&server)
+            .await;
+        for (id, replies) in answers {
+            let matches =
+                || wiremock::matchers::body_partial_json(json!({ "meeting_id": id, "push_id": 7 }));
+            let (last, first) = replies.split_last().unwrap();
+            for r in first {
+                Mock::given(method("POST"))
+                    .and(path(ADOPT))
+                    .and(matches())
+                    .respond_with(r.clone())
+                    .up_to_n_times(1)
+                    .mount(&server)
+                    .await;
+            }
+            Mock::given(method("POST"))
+                .and(path(ADOPT))
+                .and(matches())
+                .respond_with(last.clone())
+                .mount(&server)
+                .await;
+        }
+        (server, project, session)
+    }
+
+    fn answer(won: bool) -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!(won))
+    }
+
+    async fn run_adopt(
+        project: &Project,
+        session: &mut Session,
+        rec: &mut Rec,
+    ) -> Result<Vec<String>> {
+        let (_tx, mut rx) = watch::channel(false);
+        adopt(project, &fast(10), session, &mut rx, rec).await
+    }
+
+    #[tokio::test]
+    async fn adopts_phone_meetings_and_drops_a_copy_another_mac_won() {
+        let (_server, project, mut session) = phones(
+            &["a", "b"],
+            &[("a", &[answer(true)]), ("b", &[answer(false)])],
+        )
+        .await;
+        let mut rec = Rec::default();
+        let adopted = run_adopt(&project, &mut session, &mut rec).await.unwrap();
+        assert_eq!(adopted, ["a"]);
+        assert_eq!(rec.here, ["a"]);
+        assert_eq!(rec.unadopted, ["b"]);
+    }
+
+    #[tokio::test]
+    async fn a_copy_here_before_the_pass_is_kept_when_another_mac_won() {
+        let (_server, project, mut session) = phones(&["b"], &[("b", &[answer(false)])]).await;
+        let mut rec = Rec {
+            here: vec!["b".into()],
+            ..Rec::default()
+        };
+        assert!(run_adopt(&project, &mut session, &mut rec)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(rec.here, ["b"]);
+        assert!(rec.unadopted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_claim_that_says_false_after_a_retry_keeps_the_copy() {
+        let (server, project, mut session) = phones(
+            &["a"],
+            &[("a", &[ResponseTemplate::new(502), answer(false)])],
+        )
+        .await;
+        let mut rec = Rec::default();
+        assert!(run_adopt(&project, &mut session, &mut rec)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(hits(&server, ADOPT).await, 2);
+        assert_eq!(rec.here, ["a"], "the first attempt may have won");
+        assert!(rec.unadopted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_claim_ends_the_pass_and_keeps_the_copy() {
+        let (_server, project, mut session) = phones(
+            &["a", "b"],
+            &[("a", &[ResponseTemplate::new(403)]), ("b", &[answer(true)])],
+        )
+        .await;
+        let mut rec = Rec::default();
+        let err = run_adopt(&project, &mut session, &mut rec)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::Http { status: 403, .. }), "{err}");
+        assert_eq!(rec.here, ["a"]);
+        assert!(rec.unadopted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_cloud_without_phone_meetings_adopts_nothing() {
+        let (server, project, mut session) = cloud(&[]).await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "code": "PGRST202" })))
+            .mount(&server)
+            .await;
+        let mut rec = Rec::default();
+        assert!(run_adopt(&project, &mut session, &mut rec)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(rec.here.is_empty());
+        assert_eq!(hits(&server, ADOPT).await, 0);
     }
 }

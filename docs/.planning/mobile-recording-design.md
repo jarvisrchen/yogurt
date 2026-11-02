@@ -149,10 +149,12 @@ The chat function is unchanged.
 
 SYNC-32 adds a step to the Mac's push pass, before it plans what to send.
 
-1. An RPC, `yogurt_phone_meetings()`, lists the latest version of each ended, undeleted meeting on a `kind = 'phone'` device.
-2. For each one, the Mac inserts it into SQLite under the same ULID, with `source = 'phone'` for provenance, so a rerun is a no-op.
-3. The Mac then calls `yogurt_adopt(device_id, meeting_id)`, which writes a null version for the phone's copy only if its latest version is still non-null, and returns whether this call did it.
-4. If another Mac adopted it first, this Mac deletes its local insert.
+1. An RPC, `yogurt_phone_meetings()`, lists the latest version of each ended, undeleted meeting on a `kind = 'phone'` device, with the phone's name and the version's push id.
+2. For each one, the Mac inserts it into SQLite with `source = 'phone'`, the phone's ULID as `source_id`, and the phone's name for provenance, so a rerun is a no-op.
+   The row gets a new UUID, because the Mac's meeting routes (chat, Enhance) take a UUID and a phone mints ULIDs.
+3. The Mac then calls `yogurt_adopt(device_id, meeting_id, push_id)`, which writes a null version for the phone's copy only if `push_id` is still its latest version and that version has ended, and returns whether this call did it.
+   The push id keeps a Mac from adopting a copy the phone has since replaced, such as one pushed again after Enhance.
+4. If another Mac adopted it first, this Mac deletes its local insert, unless the row was there before the pass or the claim was retried after a lost answer.
 5. The rest of the pass pushes the meeting as one of this Mac's, so it shows once in the Library, under the Mac.
 
 Importing before claiming means a crash between the steps leaves the meeting on both sides, which the next pass repairs, rather than on neither.

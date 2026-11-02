@@ -6,6 +6,7 @@ describe("ImportedFromLine", () => {
   it("omits Captured by when the owner is the user", () => {
     render(
       <ImportedFromLine
+        name="granola"
         source={{ owner: { name: "Sam Example", email: "s@example.com", is_user: true } }}
       />,
     );
@@ -15,6 +16,7 @@ describe("ImportedFromLine", () => {
   it("names the owner when someone else captured it", () => {
     render(
       <ImportedFromLine
+        name="granola"
         source={{ owner: { name: "Alex Example", email: "a@example.com", is_user: false } }}
       />,
     );
@@ -26,6 +28,7 @@ describe("ImportedFromLine", () => {
   it("falls back to the owner email", () => {
     render(
       <ImportedFromLine
+        name="granola"
         source={{ owner: { name: null, email: "a@example.com", is_user: false } }}
       />,
     );
@@ -33,7 +36,12 @@ describe("ImportedFromLine", () => {
   });
 
   it("shows no link back to Granola", () => {
-    render(<ImportedFromLine source={{ web_url: "https://notes.granola.ai/d/example" }} />);
+    render(<ImportedFromLine name="granola" source={{ web_url: "https://notes.granola.ai/d/example" }} />);
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("names the phone a meeting was recorded on", () => {
+    render(<ImportedFromLine name="phone" source={{ device: "Pixel 9" }} />);
+    expect(screen.getByTestId("imported-from")).toHaveTextContent(/^Recorded on Pixel 9$/);
   });
 });
