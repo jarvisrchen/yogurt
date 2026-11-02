@@ -71,7 +71,7 @@ just android && node android/tools/e2e.mjs
 The Stop check sends the intent the notification's Stop button carries, as the app's own user, because `uiautomator` cannot read the shade while the notification's clock ticks.
 To try the app by hand against the fake, run `node android/tools/fake-cloud.mjs 8787`, `adb reverse tcp:8787 tcp:8787`, enter `http://localhost:8787` as the Cloud, and queue commands for the test page with `curl -d '{"cmd":"start","meetingId":"m-1"}' localhost:8787/cmd` (or `stop`, `reload`).
 
-Debug builds also open `http://localhost` and `http://10.0.2.2` Clouds, and take two launch extras that release builds do not contain:
+Debug builds also open `http://localhost` and `http://10.0.2.2` Clouds, and take three launch extras that release builds do not contain:
 
 ```bash
 adb shell am start -n com.jarvisrchen.yogurt/.MainActivity --es wav test.wav --es releasesUrl http://localhost:8787/releases/latest
@@ -79,6 +79,7 @@ adb shell am start -n com.jarvisrchen.yogurt/.MainActivity --es wav test.wav --e
 
 `wav` names a 16 kHz mono wav in the app's files directory to record instead of the mic, and `releasesUrl` replaces the GitHub releases address.
 An empty value turns either back off.
+`--es cloud <address>` sets the Cloud the app opens, as the setup screen does, which `just android-emu` uses to open `just cloud-dev`.
 
 ## The bridge
 

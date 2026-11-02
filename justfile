@@ -150,7 +150,7 @@ android-release:
         YOGURT_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -a yogurt -s yogurt-android-keystore -w)" \
         ./gradlew assembleRelease
 
-# Boot the `yogurt` emulator with a window and the Mac's mic as its mic, install the debug app, and `adb reverse` the `just cloud-dev` ports, so the app opens http://localhost:56448.
+# Boot the `yogurt` emulator with a window and the Mac's mic as its mic, install the debug app, `adb reverse` the `just cloud-dev` ports, and open the app on http://localhost:56448.
 android-emu:
     ./scripts/android-emu.sh
 

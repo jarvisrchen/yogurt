@@ -71,7 +71,7 @@ First run:
   1. Open http://localhost:$WEB_PORT and create a login with $OWNER (any password of 6 or more characters).
   2. Open the confirmation email in $MAIL and click its link.
   3. Sign in and choose a PIN.
-In the emulator: \`just android-emu\`, then enter http://localhost:$WEB_PORT as the Cloud address.
+In the emulator: \`just android-emu\`, which opens this Cloud in the app.
 Stop with Ctrl-C. The data stays until \`supabase stop --workdir $ROOT/$WD --no-backup\`.
 
 EOF

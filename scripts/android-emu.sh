@@ -22,5 +22,5 @@ APK=android/app/build/outputs/apk/debug/app-debug.apk
 "$ADB" install -r "$APK" >/dev/null
 # The webapp, Supabase, and the Deepgram relay from `just cloud-dev`, at the same localhost ports on the emulator.
 for port in 56448 56441 56449; do "$ADB" reverse "tcp:$port" "tcp:$port" >/dev/null; done
-"$ADB" shell am start -n com.jarvisrchen.yogurt/.MainActivity >/dev/null
-echo "android-emu: Yogurt is open. Enter http://localhost:56448 as the Cloud address (just cloud-dev must be running)."
+"$ADB" shell am start -n com.jarvisrchen.yogurt/.MainActivity --es cloud http://localhost:56448 >/dev/null
+echo "android-emu: Yogurt is open on http://localhost:56448, which \`just cloud-dev\` serves."

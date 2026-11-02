@@ -8,7 +8,8 @@ import java.io.RandomAccessFile
 /**
  * Test hooks that exist only in debug builds. Launch extras, kept until changed:
  * `--es wav <file in the app's files dir>` records from that 16 kHz mono wav instead of the mic ("" for the mic again),
- * and `--es releasesUrl <url>` checks a fake GitHub release ("" for the real one).
+ * `--es releasesUrl <url>` checks a fake GitHub release ("" for the real one),
+ * and `--es cloud <address>` sets the Cloud the app opens, as typing it on the setup screen does.
  */
 object DebugSeam {
     private fun prefs(c: Context) = c.getSharedPreferences("debug", Context.MODE_PRIVATE)
@@ -17,6 +18,9 @@ object DebugSeam {
         val e = prefs(c).edit()
         for (key in listOf("wav", "releasesUrl")) intent?.getStringExtra(key)?.let { e.putString(key, it) }
         e.apply()
+        intent?.getStringExtra("cloud")?.let { Cloud.parse(it, true) }?.let {
+            c.getSharedPreferences("yogurt", Context.MODE_PRIVATE).edit().putString("cloud", it).apply()
+        }
     }
 
     fun pcmSource(c: Context): PcmSource? =

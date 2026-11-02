@@ -134,7 +134,7 @@ It takes the LLM for Enhance and chat from the first LLM key in `.env.local`, in
 For transcription it uses `YOGURT_DEEPGRAM_GRANT_KEY` when set, and otherwise runs `cloud/scripts/dev-deepgram-relay.mjs`, which hands out a dummy token and forwards the audio to Deepgram with `YOGURT_DEEPGRAM_API_KEY`.
 The relay exists because that key cannot mint tokens, and it is a dev tool that nothing deployed uses.
 On first run, create a login with `me@yogurt.local` (or `YOGURT_CLOUD_DEV_OWNER`), click the link in the mail catcher at http://localhost:56444, and choose a PIN.
-Record in desktop Chrome with the Mac's mic, or run `just android-emu` to boot the `yogurt` emulator with the Mac's mic as its own, install the debug app, and enter http://localhost:56448 as the Cloud address.
+Record in desktop Chrome with the Mac's mic, or run `just android-emu` to boot the `yogurt` emulator with the Mac's mic as its own and open the debug app on this Cloud.
 Reset it with `supabase stop --workdir cloud/dev --no-backup`.
 
 ## Adding a new STT or LLM provider
