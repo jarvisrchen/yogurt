@@ -220,14 +220,24 @@ struct Link {
     session: Session,
 }
 
-/// Refreshes the session and persists the rotated refresh token before anything else uses it.
+/// Refreshes the session and persists the rotated refresh token before anything else uses it, unless the session kept from the last pass is still current.
 /// The guard parameter makes holding both locks a compile-time requirement.
 async fn link(state: &AppState, _held: &Held<'_>) -> ApiResult<Link> {
     let mut conn = load(state)?.ok_or_else(|| CloudApiError::coded("not_connected"))?;
     let project = Project::new(&conn.supabase_url, &conn.publishable_key);
-    let session = project.refresh(&conn.refresh_token).await?;
-    conn.refresh_token = session.refresh_token.clone();
-    save(state, &conn)?;
+    let kept = state
+        .cloud_push
+        .session(&conn.refresh_token, now_ms() / 1000);
+    let session = match kept {
+        Some(s) => s,
+        None => {
+            let s = project.refresh(&conn.refresh_token).await?;
+            conn.refresh_token = s.refresh_token.clone();
+            save(state, &conn)?;
+            state.cloud_push.keep_session(&s);
+            s
+        }
+    };
     Ok(Link {
         conn,
         project,
@@ -644,7 +654,9 @@ impl push::Hooks for PassHooks<'_> {
 
     fn refreshed(&mut self, renewed: &Session) -> Result<(), String> {
         self.conn.refresh_token = renewed.refresh_token.clone();
-        save(self.state, self.conn).map_err(|e| e.message)
+        save(self.state, self.conn).map_err(|e| e.message)?;
+        self.state.cloud_push.keep_session(renewed);
+        Ok(())
     }
 
     fn stored(&mut self, hashes: &[(String, String)]) -> Result<(), String> {
@@ -776,6 +788,8 @@ async fn adopt(
 
 /// The pass behind the Push button and the timer. `now` stamps the success or failure record.
 /// A timer's pass that adopted nothing and has nothing local to send stops after the adopt check, so an idle Mac makes one listing call.
+/// That idle check failing on the network is no failure of the Mac's, which is up to date, so it records the wake as up to date.
+/// A failed adoption still lets the pass push this Mac's meetings, and is recorded after it.
 async fn push_locked(
     state: &AppState,
     held: &Held<'_>,
@@ -783,21 +797,36 @@ async fn push_locked(
     trigger: &str,
     now: i64,
 ) -> ApiResult<Plan> {
+    let idle = trigger != "manual" && matches!(pending(state).await, Ok(p) if p.not_pushed == 0);
     let pass = async {
         let recording = recording_id(state).await;
         let mut link = link(state, held).await?;
-        let adopted = adopt(state, &mut link, cancel).await?;
-        if trigger != "manual" && adopted == 0 && pending(state).await?.not_pushed == 0 {
-            return Ok(Plan::default());
-        }
+        let adopt_failed = match adopt(state, &mut link, cancel).await {
+            Ok(0) if idle => return Ok((Plan::default(), None)),
+            Ok(_) => None,
+            Err(e) if e.code == "cancelled" || (idle && e.code == "network") => return Err(e),
+            Err(e) => Some(CloudApiError::new(
+                e.code,
+                format!("Couldn't take a meeting from a phone. {}", e.message),
+            )),
+        };
         let repo = state.meeting_repo.clone();
         let local = blocking(move || local_meetings(&repo)).await?;
-        run_pass(state, &mut link, local, recording, cancel, true).await
+        let plan = run_pass(state, &mut link, local, recording, cancel, true).await?;
+        Ok((plan, adopt_failed))
     };
     match pass.await {
-        Ok(plan) => {
+        Ok((plan, adopt_failed)) => {
             record_success(state, trigger, now, plan.changed.len(), plan.deleted.len());
+            if let Some(e) = &adopt_failed {
+                tracing::warn!(code = e.code, "adopting a phone meeting failed");
+                record_failure(state, trigger, e, now);
+            }
             Ok(plan)
+        }
+        Err(e) if idle && e.code == "network" => {
+            record_success(state, trigger, now, 0, 0);
+            Ok(Plan::default())
         }
         Err(e) => {
             if !matches!(e.code, "not_connected" | "cancelled") {
@@ -1660,18 +1689,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_failed_adoption_keeps_the_copy_and_records_the_failure() {
-        let (state, _tmp) = idle_state();
+    async fn a_failed_adoption_still_pushes_this_macs_meetings_and_records_the_failure() {
+        let (state, _tmp) = with_meetings(1);
+        let own = state.meeting_repo.cloud_hashes().unwrap()[0].0.clone();
         let cloud = phone_cloud(
             &state,
             wiremock::ResponseTemplate::new(403).set_body_json(json!({ "code": "42501" })),
         )
         .await;
         push_and_settle(&state).await;
-        assert!(adopted(&state).is_some());
-        assert!(pushed_ids(&cloud).await.is_empty());
+        assert!(
+            adopted(&state).is_some(),
+            "the copy stays for the next claim"
+        );
+        assert!(pushed_ids(&cloud).await.contains(&own));
+        assert_eq!(pending(&state).await.unwrap().not_pushed, 0);
         assert_eq!(recorded(&state, LAST_ERROR_KEY)["code"], "cloud_error");
-        assert_eq!(history(&state)[0]["outcome"], "failed");
+        let h = history(&state);
+        assert_eq!(h[0]["outcome"], "failed");
+        assert_eq!(h[1]["outcome"], "pushed");
+    }
+
+    #[tokio::test]
+    async fn a_phone_removed_before_the_claim_keeps_the_copy_and_is_no_error() {
+        let (state, _tmp) = idle_state();
+        let cloud = phone_cloud(
+            &state,
+            wiremock::ResponseTemplate::new(404).set_body_json(json!({ "code": "PT404" })),
+        )
+        .await;
+        push_and_settle(&state).await;
+        let m = adopted(&state).unwrap();
+        assert_eq!(pushed_ids(&cloud).await, [m.id]);
+        assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
+    }
+
+    #[tokio::test]
+    async fn an_idle_laptop_offline_records_no_failure_and_leaves_keys_json_alone() {
+        let (state, _tmp) = idle_state();
+        set_interval(&state, "15m");
+        auto_tick(&state, T0 + 15 * MIN).await;
+        settle(&state).await;
+        assert_eq!(attempt_at(&state), None);
+        assert_eq!(history(&state)[0]["outcome"], "up_to_date");
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["at"], T0 + 15 * MIN);
+        assert_eq!(load(&state).unwrap().unwrap().refresh_token, "r");
+    }
+
+    #[tokio::test]
+    async fn idle_wakes_reuse_the_session_until_it_is_near_expiry() {
+        let (state, _tmp) = idle_state();
+        let cloud = bare_cloud(&state).await;
+        set_interval(&state, "15m");
+        auto_tick(&state, T0 + 15 * MIN).await;
+        settle(&state).await;
+        auto_tick(&state, T0 + 30 * MIN).await;
+        settle(&state).await;
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings").await, 2);
+        assert_eq!(hits(&cloud, "/auth/v1/token").await, 1, "one refresh");
+        assert_eq!(attempt_at(&state), None);
     }
 
     #[tokio::test]

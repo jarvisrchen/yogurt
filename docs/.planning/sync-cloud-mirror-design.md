@@ -211,7 +211,8 @@ The Push meetings button in Settings runs one pass.
 An Auto-push setting (off, 15m, 1h, 1d) runs the same pass from a timer that wakes every minute while Yogurt is running.
 It starts Off on every new connection.
 It pushes when the interval has passed since the last successful push.
-A due wake with nothing pending still refreshes the session and makes one `yogurt_phone_meetings` call, since only the Cloud knows of a phone meeting to adopt, and it runs the rest of the pass only when it adopted one.
+A due wake with nothing pending still makes one `yogurt_phone_meetings` call, since only the Cloud knows of a phone meeting to adopt, and it runs the rest of the pass only when it adopted one.
+It reuses the last session while that has five minutes left, so it refreshes the token and rewrites `keys.json` about once an hour, and a failure to reach the Cloud on such a wake records the Mac as up to date rather than as a failed push.
 It retries a failure after 5 minutes.
 It stops after `session_expired`, `device_removed`, `not_owner`, or `passcode_not_set` until a sign-in, a connect, or a manual push clears the error.
 Every pass holds a lock file beside `keys.json`, so two yogurt processes on one data dir never rotate the same refresh token at once.

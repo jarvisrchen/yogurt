@@ -957,8 +957,11 @@ sequenceDiagram
   A Mac that gets false deletes its insert, unless the row was there before the pass or the call was retried, since a lost answer may have been a win.
   The rest of the pass then pushes the meeting as this Mac's, so it shows once, under the Mac, and the meeting page says "Recorded on <phone name>".
   A crash between the insert and the claim leaves the meeting in both places for the next pass to repair, never in neither.
+  A phone removed from the Cloud before the claim leaves its meeting here only, so the copy stays and is pushed as this Mac's.
+  A meeting that fails to adopt does not stop the others, nor the rest of the pass, and the pass records the failure after its own push.
   A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then the pass skips this step.
   Only the Cloud knows a phone meeting is waiting, so every due timer wake starts a pass, which on an idle Mac stops after this listing call when it adopted nothing.
+  An idle wake that cannot reach the Cloud records the Mac as up to date, and wakes reuse the session in memory while it has five minutes left, so they rewrite `keys.json` only when the token rotates.
   The phone pushes a meeting with `ended_at` set only after its enhance, so a Mac never adopts a meeting before its enhanced version exists.
 - **Secrets.**
   The `yogurt-cloud` account in `keys.json` holds the address, login email, Supabase URL, publishable key, refresh token, device id, and machine name.

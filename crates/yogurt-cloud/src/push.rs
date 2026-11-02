@@ -245,6 +245,8 @@ pub struct PhoneMeeting {
 /// Runs before a pass plans, so the pass then pushes each adopted meeting as one of this Mac's. Returns the ids this call adopted.
 /// A meeting is written here before the phone's copy is marked deleted, so a failure between the two leaves it in both places, never in neither.
 /// A local copy is removed only when this pass wrote it and the Cloud's first answer said another Mac won. After a retry the lost answer may have been ours, so the copy stays.
+/// A phone removed from the Cloud between the listing and the claim leaves its meeting here only, so the copy stays and counts as adopted.
+/// One meeting that fails does not stop the rest: the first failure is returned once every meeting was tried.
 /// A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then there is nothing to adopt.
 pub async fn adopt(
     project: &Project,
@@ -263,26 +265,53 @@ pub async fn adopt(
         other => other?.0,
     };
     let mut adopted = Vec::new();
+    let mut failed = None;
     for row in rows {
         if *cancel.borrow() {
             return Err(Error::Cancelled);
         }
-        let phone: PhoneMeeting = serde_json::from_value(row)
-            .map_err(|e| Error::Network(format!("unreadable phone meeting: {e}")))?;
-        let wrote = hooks.adopt(&phone).map_err(Error::Local)?;
-        let args = json!({ "device_id": phone.device_id, "meeting_id": phone.meeting_id, "push_id": phone.push_id });
-        let args = &args;
-        let (won, retries) = retried(project, pacing, session, cancel, hooks, |s| async move {
-            project.rpc(&s, "yogurt_adopt", args).await
-        })
-        .await?;
-        if won == Value::Bool(true) {
-            adopted.push(phone.meeting_id);
-        } else if wrote && retries == 0 {
-            hooks.unadopt(&phone.meeting_id).map_err(Error::Local)?;
+        match adopt_one(project, pacing, session, cancel, hooks, row).await {
+            Ok(Some(id)) => adopted.push(id),
+            Ok(None) => {}
+            Err(Error::Cancelled) => return Err(Error::Cancelled),
+            Err(e) => {
+                failed.get_or_insert(e);
+            }
         }
     }
-    Ok(adopted)
+    failed.map_or(Ok(adopted), Err)
+}
+
+/// Adopts one listed meeting, returning its id when this Mac now holds it as its own.
+async fn adopt_one(
+    project: &Project,
+    pacing: &Pacing,
+    session: &mut Session,
+    cancel: &mut watch::Receiver<bool>,
+    hooks: &mut impl Hooks,
+    row: Value,
+) -> Result<Option<String>> {
+    let phone: PhoneMeeting = serde_json::from_value(row)
+        .map_err(|e| Error::Local(format!("unreadable phone meeting: {e}")))?;
+    let wrote = hooks.adopt(&phone).map_err(Error::Local)?;
+    let args = json!({ "device_id": phone.device_id, "meeting_id": phone.meeting_id, "push_id": phone.push_id });
+    let args = &args;
+    let claimed = retried(project, pacing, session, cancel, hooks, |s| async move {
+        project.rpc(&s, "yogurt_adopt", args).await
+    })
+    .await;
+    let (won, retries) = match claimed {
+        // The phone is gone, so this Mac's copy is the only one.
+        Err(e) if e.code() == "device_removed" => return Ok(Some(phone.meeting_id)),
+        other => other?,
+    };
+    if won == Value::Bool(true) {
+        return Ok(Some(phone.meeting_id));
+    }
+    if wrote && retries == 0 {
+        hooks.unadopt(&phone.meeting_id).map_err(Error::Local)?;
+    }
+    Ok(None)
 }
 
 /// One pass over `local`. `skip` is the meeting being recorded.
@@ -1056,6 +1085,31 @@ mod run_tests {
     }
 
     #[tokio::test]
+    async fn a_failed_claim_does_not_stop_the_next_and_a_removed_phone_keeps_its_copy() {
+        let refused = ResponseTemplate::new(500).set_body_json(json!({ "message": "boom" }));
+        let gone = ResponseTemplate::new(404).set_body_json(json!({ "code": "PT404" }));
+        let (server, project, mut session) = phones(
+            &["a", "b", "c"],
+            &[("a", &[refused]), ("b", &[gone]), ("c", &[answer(true)])],
+        )
+        .await;
+        let mut rec = Rec::default();
+        let err = run_adopt(&project, &mut session, &mut rec)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "cloud_error");
+        assert_eq!(rec.here, ["a", "b", "c"]);
+        assert!(rec.unadopted.is_empty());
+        let claimed_c = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.url.path() == ADOPT && r.body.windows(3).any(|w| w == b"\"c\""));
+        assert!(claimed_c, "the claim after a failed one still runs");
+    }
+
+    #[tokio::test]
     async fn adopts_phone_meetings_and_drops_a_copy_another_mac_won() {
         let (_server, project, mut session) = phones(
             &["a", "b"],
@@ -1102,7 +1156,7 @@ mod run_tests {
     }
 
     #[tokio::test]
-    async fn a_failed_claim_ends_the_pass_and_keeps_the_copy() {
+    async fn a_failed_claim_keeps_the_copy_and_tries_the_rest() {
         let (_server, project, mut session) = phones(
             &["a", "b"],
             &[("a", &[ResponseTemplate::new(403)]), ("b", &[answer(true)])],
@@ -1113,7 +1167,7 @@ mod run_tests {
             .await
             .unwrap_err();
         assert!(matches!(err, Error::Http { status: 403, .. }), "{err}");
-        assert_eq!(rec.here, ["a"]);
+        assert_eq!(rec.here, ["a", "b"]);
         assert!(rec.unadopted.is_empty());
     }
 
