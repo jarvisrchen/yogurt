@@ -739,12 +739,12 @@ async fn run_pass(
     Ok(plan)
 }
 
-/// Takes this Mac's copy of each ended phone meeting first, so the pass that follows pushes it as one of this Mac's.
+/// Takes this Mac's copy of each ended phone meeting first, so the pass that follows pushes it as one of this Mac's. Returns how many it adopted.
 async fn adopt(
     state: &AppState,
     link: &mut Link,
     cancel: &mut watch::Receiver<bool>,
-) -> ApiResult<()> {
+) -> ApiResult<usize> {
     let Link {
         conn,
         project,
@@ -771,10 +771,11 @@ async fn adopt(
             "adopted meetings recorded on a phone"
         );
     }
-    Ok(())
+    Ok(adopted.len())
 }
 
 /// The pass behind the Push button and the timer. `now` stamps the success or failure record.
+/// A timer's pass that adopted nothing and has nothing local to send stops after the adopt check, so an idle Mac makes one listing call.
 async fn push_locked(
     state: &AppState,
     held: &Held<'_>,
@@ -785,7 +786,10 @@ async fn push_locked(
     let pass = async {
         let recording = recording_id(state).await;
         let mut link = link(state, held).await?;
-        adopt(state, &mut link, cancel).await?;
+        let adopted = adopt(state, &mut link, cancel).await?;
+        if trigger != "manual" && adopted == 0 && pending(state).await?.not_pushed == 0 {
+            return Ok(Plan::default());
+        }
         let repo = state.meeting_repo.clone();
         let local = blocking(move || local_meetings(&repo)).await?;
         run_pass(state, &mut link, local, recording, cancel, true).await
@@ -956,7 +960,7 @@ impl TimerInputs {
 }
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
-/// With nothing pending it only stamps the last push, so an idle laptop never touches the network or rewrites `keys.json`.
+/// A due wake always starts a pass, since a phone meeting to adopt is known only to the Cloud, and on an idle Mac that pass ends after one `yogurt_phone_meetings` call.
 async fn auto_tick(state: &AppState, now: i64) {
     if push_interval(state) == "off" || state.cloud_push.is_running() {
         return;
@@ -970,10 +974,6 @@ async fn auto_tick(state: &AppState, now: i64) {
         let Some(trigger) = TimerInputs::read(&state).and_then(|t| t.due(now)) else {
             return Ok(());
         };
-        if pending(&state).await?.not_pushed == 0 {
-            record_success(&state, trigger, now, 0, 0);
-            return Ok(());
-        }
         start_push(&state, trigger, now)
     })
     .await;
@@ -1434,14 +1434,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_idle_laptop_stamps_the_push_without_touching_the_network() {
+    async fn an_idle_laptop_only_checks_for_phone_meetings() {
         let (state, _tmp) = idle_state();
+        let cloud = bare_cloud(&state).await;
         set_interval(&state, "15m");
         auto_tick(&state, T0 + 15 * MIN).await;
         settle(&state).await;
-        assert_eq!(attempt_at(&state), None, "no pass, so nothing could fail");
+        assert_eq!(attempt_at(&state), None);
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["at"], T0 + 15 * MIN);
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings").await, 1);
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_device_meetings").await, 0);
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_start_push").await, 0);
+        auto_tick(&state, T0 + 30 * MIN).await;
+        settle(&state).await;
+        let history = recorded(&state, HISTORY_KEY);
+        assert_eq!(history.as_array().unwrap().len(), 1, "idle wakes collapse");
+        assert_eq!(history[0]["outcome"], "up_to_date");
+    }
+
+    #[tokio::test]
+    async fn an_idle_laptop_adopts_a_phone_meeting_on_its_timer() {
+        let (state, _tmp) = idle_state();
+        let cloud = phone_cloud(
+            &state,
+            wiremock::ResponseTemplate::new(200).set_body_json(json!(true)),
+        )
+        .await;
+        set_interval(&state, "15m");
+        auto_tick(&state, T0 + 15 * MIN).await;
+        settle(&state).await;
+        let m = adopted(&state).unwrap();
+        assert_eq!(pushed_ids(&cloud).await, [m.id]);
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 1);
+        assert_eq!(recorded(&state, HISTORY_KEY)[0]["trigger"], "auto");
     }
 
     /// A mock Supabase with everything a push needs except the insert and the search catch-up, which each test mounts, and `state` connected to it.

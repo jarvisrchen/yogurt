@@ -210,7 +210,8 @@ It first offers one last push that marks every meeting from this device deleted,
 The Push meetings button in Settings runs one pass.
 An Auto-push setting (off, 15m, 1h, 1d) runs the same pass from a timer that wakes every minute while Yogurt is running.
 It starts Off on every new connection.
-It pushes when the interval has passed since the last successful push, and a wake with nothing pending only stamps the time without touching the network.
+It pushes when the interval has passed since the last successful push.
+A due wake with nothing pending still refreshes the session and makes one `yogurt_phone_meetings` call, since only the Cloud knows of a phone meeting to adopt, and it runs the rest of the pass only when it adopted one.
 It retries a failure after 5 minutes.
 It stops after `session_expired`, `device_removed`, `not_owner`, or `passcode_not_set` until a sign-in, a connect, or a manual push clears the error.
 Every pass holds a lock file beside `keys.json`, so two yogurt processes on one data dir never rotate the same refresh token at once.
@@ -311,7 +312,7 @@ A row that fails is counted and passed over, so every call makes progress and a 
 
 After every pass, including one that failed after some of its batches committed, the laptop calls `yogurt_search_catch_up` while it returns more than 0, at most 10 times.
 A pass with nothing to push still calls it once, which costs one scan of the latest versions, so a push heals an index a deploy left behind.
-The timer's idle wake makes no network call, so it does not call it.
+The timer's idle wake stops after the adopt check, so it does not call it.
 A failure there is logged as a warning and never changes the push result or its error state.
 A new push becomes searchable once the laptop finishes that catch-up, usually seconds later.
 The build applies the schema in one transaction, then calls the private function as `postgres` in 2 second calls, each its own transaction, until it returns 0 or 100 calls have passed, and laptops finish whatever is left.

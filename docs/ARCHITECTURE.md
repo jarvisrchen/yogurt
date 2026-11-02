@@ -958,6 +958,8 @@ sequenceDiagram
   The rest of the pass then pushes the meeting as this Mac's, so it shows once, under the Mac, and the meeting page says "Recorded on <phone name>".
   A crash between the insert and the claim leaves the meeting in both places for the next pass to repair, never in neither.
   A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then the pass skips this step.
+  Only the Cloud knows a phone meeting is waiting, so every due timer wake starts a pass, which on an idle Mac stops after this listing call when it adopted nothing.
+  The phone pushes a meeting with `ended_at` set only after its enhance, so a Mac never adopts a meeting before its enhanced version exists.
 - **Secrets.**
   The `yogurt-cloud` account in `keys.json` holds the address, login email, Supabase URL, publishable key, refresh token, device id, and machine name.
   The password is a request field that is used once.
@@ -977,7 +979,7 @@ sequenceDiagram
 - **Errors.**
   Every failure carries a stable `code` next to its message: `bad_address`, `bad_config`, `bad_credentials`, `not_owner`, `passcode_not_set`, `session_expired`, `device_removed`, `network`, `cloud_error`, `not_connected`, `already_connected`, `bad_request`, `local_error`, `internal`.
   The server records the last success (`cloud.last_push`) and the last failure (`cloud.last_error`) separately, so a failed pass never hides when the cloud was last in step.
-  It also keeps the last 20 outcomes in `cloud.push_history` for the Settings history, newest first, with a run of wakes that found nothing to send collapsed into one `up_to_date` entry so an idle timer never pushes real runs out.
+  It also keeps the last 20 outcomes in `cloud.push_history` for the Settings history, newest first, with a run of wakes that found nothing to adopt or send collapsed into one `up_to_date` entry so an idle timer never pushes real runs out.
   Connect and disconnect clear all three.
   The UI shows a `session_expired` failure as "Sign in again" with an inline password field, which posts to `/api/cloud/sign-in` and stays up until a sign-in succeeds.
 - **Disconnect.**
