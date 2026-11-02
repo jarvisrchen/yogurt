@@ -36,6 +36,9 @@ import { useCloudLoad } from "../lib/useCloudLoad";
 import { format, HOME, type Loc } from "../lib/hash";
 import { Ask, DOCKED, MeetingView, type BodyState } from "./Meeting";
 import { useChat } from "../lib/useChat";
+import { useSession, type RecordingSession } from "../lib/session";
+import { MicIcon, ResumeCard } from "./Resume";
+import { Button } from "@web/components/Button";
 
 export const GearIcon = () => (
   <svg
@@ -68,6 +71,8 @@ interface Props {
   replace: (to: Loc) => void;
   back: (to: Loc) => void;
   onSettings: () => void;
+  onRecord: () => void;
+  session: RecordingSession;
   onLock: () => void;
   onRejected: () => void;
 }
@@ -80,9 +85,12 @@ export function Library({
   replace,
   back,
   onSettings,
+  onRecord,
+  session,
   onLock,
   onRejected,
 }: Props) {
+  const { unfinished } = useSession(session);
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
   const [filter, setFilter] = useState<Pill>("all");
@@ -257,8 +265,20 @@ export function Library({
   const retry = () => (base.error ? base : pageLoad).retry();
 
   const dim = search.active ? search.pending : turning;
+  const resume = unfinished && (
+    <ResumeCard
+      session={session}
+      unfinished={unfinished}
+      onResume={onRecord}
+      onEnded={() => {
+        base.retry();
+        pageLoad.retry();
+      }}
+    />
+  );
   const list = (
     <>
+      {resume}
       {pushId && (
         <div className="flex items-center gap-[7px] pl-[10px] pr-[4px] py-[4px] bg-card border border-line rounded-pill shadow-[0_8px_18px_-6px_var(--shadow-card-color)] text-[13px] min-[721px]:text-[11px] min-w-0">
           <span className="w-[6px] h-[6px] rounded-full bg-blue flex-none" />
@@ -394,9 +414,10 @@ export function Library({
           <Brand />
         </a>
         <div className="flex items-center gap-[6px] min-[721px]:gap-[8px]">
-          <span className="text-[12px] min-[721px]:text-[11px] font-bold px-[10px] py-[3px] rounded-pill bg-slatesoft text-slate">
-            read-only
-          </span>
+          <Button onClick={onRecord} className="!px-[12px] !py-[5px] !text-[15px] min-[721px]:!text-[12.5px] !font-bold !leading-normal">
+            <MicIcon size={15} />
+            Record
+          </Button>
           <button
             type="button"
             aria-label="Settings"
@@ -417,6 +438,7 @@ export function Library({
         </main>
       ) : !devices || !shown ? null : pageLoad.data?.empty ? (
         <main className="flex-1 flex flex-col items-center text-center px-[16px] pt-[80px]">
+          {resume && <div className="w-full max-w-[480px] text-left -mt-[64px] mb-[40px]">{resume}</div>}
           <div className="float-3500 mb-[32px]">
             <Logo size={64} ariaLabel="Yogurt" />
           </div>

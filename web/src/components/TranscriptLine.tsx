@@ -35,8 +35,9 @@ export function scrollToTranscriptTime(root: ParentNode, sec: number): boolean {
 
 /** Partial (non-final) events render at opacity 0.7 to signal "still listening". Sizes are in em, so the list's font size scales the row. */
 // Memoized because a dock drag re-renders the dock on every pointer move, and a long meeting holds thousands of lines.
-export const TranscriptLine = memo(function TranscriptLine({ ev }: { ev: TranscriptEvent }) {
-  const isMic = ev.channel === "mic";
+/** `single` is for a recording with one mic, as on a phone: no speaker to name, so no label, and every line in ink. */
+export const TranscriptLine = memo(function TranscriptLine({ ev, single }: { ev: TranscriptEvent; single?: boolean }) {
+  const isMic = single || ev.channel === "mic";
   const labelColor = isMic ? INK : GREY;
   const textColor = isMic ? INK : GREY;
   const opacity = ev.is_final ? 1 : 0.7;
@@ -49,12 +50,14 @@ export const TranscriptLine = memo(function TranscriptLine({ ev }: { ev: Transcr
       // scrollToTranscriptTime finds the closest line via `[data-transcript-ts-sec]`.
       data-transcript-ts-sec={Math.floor(ev.ts_ms / 1000)}
     >
-      <span
-        className="inline-block w-[3.43em] font-semibold"
-        style={{ color: labelColor }}
-      >
-        {isMic ? "Me" : "Them"}
-      </span>
+      {!single && (
+        <span
+          className="inline-block w-[3.43em] font-semibold"
+          style={{ color: labelColor }}
+        >
+          {isMic ? "Me" : "Them"}
+        </span>
+      )}
       <span
         className="font-mono text-[0.857em] mr-2"
         style={{ color: GREY }}

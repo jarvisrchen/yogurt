@@ -23,6 +23,7 @@ export function parse(hash: string): Loc {
   const [a, b] = parts;
   if (a === "settings") return { ...HOME, view: b === "pin" ? "change-pin" : "settings" };
   if (a === "history") return { ...HOME, view: "history" };
+  if (a === "record") return { ...HOME, view: "record" };
   let asOf: number | null = null;
   let rest = parts;
   if (a === "at") {
@@ -45,6 +46,7 @@ export function format(l: Loc): string {
   if (l.view === "settings") return "#/settings";
   if (l.view === "change-pin") return "#/settings/pin";
   if (l.view === "history") return "#/history";
+  if (l.view === "record") return "#/record";
   const at = l.asOf ? `/at/${l.asOf}` : "";
   const paging = `${l.page > 1 ? `/p/${l.page}` : ""}${l.size ? `/n/${l.size}` : ""}`;
   // A meeting id may hold a slash, so only the first one separates the device.

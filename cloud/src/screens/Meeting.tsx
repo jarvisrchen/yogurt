@@ -99,7 +99,7 @@ function MeetingBody({ entry, device, onLink }: { entry: Entry; device: string; 
       )}
       <div className="cloud-doc text-[16px] min-[721px]:text-[13px] leading-[1.55]">
         {tab === "transcript" ? (
-          <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} />)}</div>
+          <div role="tabpanel" ref={transcript}>{entry.segments.map((s, i) => <TranscriptLine key={i} ev={storedSegmentToEvent(s)} single={entry.phone} />)}</div>
         ) : (
           <Doc md={tab === "enhanced" ? entry.enhanced ?? "" : entry.notes} onLink={tabs.includes("transcript") ? (sec) => { pendingSec.current = sec; setPicked("transcript"); onLink(); } : undefined} />
         )}

@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Api, loadConfig, TokenRejected } from "./lib/api";
 import { HOME, useLoc } from "./lib/hash";
 import { browserLabel, formatWait, lockoutMinutes, screenFor, type Status } from "./lib/route";
 import { clearToken, readToken, saveToken, type StoredToken } from "./lib/token";
 import { AuthFlow, NotOwner } from "./screens/Auth";
 import { History } from "./screens/History";
+import { RecordingSession } from "./lib/session";
 import { Library } from "./screens/Library";
 import { ChoosePin, Unlock } from "./screens/Pin";
 import { Settings } from "./screens/Settings";
 import { AuthShell, Note, h3, sub } from "./ui";
+
+// The notes editor and the recorder load only when a recording starts, so reading the library stays light.
+const Record = lazy(() => import("./screens/Record").then((m) => ({ default: m.Record })));
 
 export function App() {
   const [api, setApi] = useState<Api | null>(null);
@@ -67,6 +71,13 @@ function Signed({ api }: { api: Api }) {
     drop();
     reset();
   }, [drop, reset]);
+  // The recording outlives every screen, so it lives here. It reads the token and the lock action as they are when it needs them.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+  const dropRef = useRef(drop);
+  dropRef.current = drop;
+  const [session] = useState(() => new RecordingSession(api, () => tokenRef.current, () => dropRef.current()));
+
   const keep = (t: StoredToken) => {
     saveToken(t);
     setStored(t);
@@ -173,6 +184,8 @@ function Signed({ api }: { api: Api }) {
           replace={replace}
           back={back}
           onSettings={() => go({ ...HOME, view: "settings" })}
+          onRecord={() => go({ ...HOME, view: "record" })}
+          session={session}
           onLock={lock}
           onRejected={drop}
         />
@@ -187,6 +200,12 @@ function Signed({ api }: { api: Api }) {
           onLock={lock}
           onRejected={drop}
         />
+      );
+    case "record":
+      return (
+        <Suspense fallback={null}>
+          <Record api={api} token={token!} session={session} onBack={() => back(HOME)} onEnded={(key) => replace({ ...HOME, meeting: key })} />
+        </Suspense>
       );
     case "settings":
     case "change-pin":
