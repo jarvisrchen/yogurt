@@ -1615,3 +1615,27 @@ New closed items go at the bottom.
 - [x] **MOB-3** Chat about the meeting while recording on the phone ([design](.planning/mobile-recording-design.md#live-chat))
 
   The record screen's Ask pill pushes the open meeting before each question, so the chat answers from the transcript up to that moment.
+
+- [x] **LLM-13** Enhanced notes put a space before a period when the model writes its transcript link ahead of it, and a shorthand note such as `pro tier $18?` is dumped at the end instead of attributed to the bullet that expands it
+
+  <details>
+  <summary>Details</summary>
+
+  Reported 2026-11-02 with real MiniMax output: a Pricing bullet rendered "$180 a year . ↳ 00:03", and the note `pro tier $18?` was appended after Action items.
+  Both reproduced headlessly with fixture `crates/yogurt-notes/tests/fixtures/07_shorthand_note_and_link_before_period` and through the real server with `ctl meeting enhance` against a stub LLM.
+
+  **1. A space before the period.**
+  The model wrote its link span ahead of the period, `year <span data-transcript-link …>↳ 00:03</span>.`, and `strip_markers` dropped the span but kept the space before it.
+  A removed link now takes the spaces on one side with it (`close_link_gaps`): the spaces before it after a word and before punctuation, a space, or the end, so "year." reads right.
+  At the start of a line it takes the spaces after it, and between two words it keeps one space.
+  The `cloud/api/_library.ts` port does the same.
+  `render::wrap_ai` now strips the item text after splitting off the `- ` marker, so it strips exactly the text `diff` stripped and `user_runs` offsets line up.
+
+  **2. A shorthand note dumped at the end.**
+  Case, `$`, and `?` were fine: `weave::words` lowercases and keeps `$18`.
+  The cause was the match window of twice the line plus one, 7 words for a 3-word note, while "Pro tier: Dana proposed moving it to $18" puts `$18` eighth, so only 2 of 3 words matched and the line was appended.
+  The window now allows at least 6 interleaved model words (`MIN_GAP_WORDS`), so the note paints into the Pro tier bullet.
+  A note now paints only the first AI bullet that carries it, so the wider window cannot also paint a summary bullet that repeats its words.
+
+  Landed in the LLM-13 PR (2026-11-02).
+  </details>

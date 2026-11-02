@@ -73,7 +73,11 @@ pub fn merge(
         };
         let text = strip_markers(md);
         let mut runs = Vec::new();
+        // A line paints into the first bullet that carries it, so a summary bullet repeating its words stays grey.
         for (key, line) in &user_lines {
+            if absorbed.contains(key) {
+                continue;
+            }
             if let Some(r) = weave::find_user_line(&text, line) {
                 runs.push(r);
                 absorbed.insert(key.clone());
@@ -163,6 +167,27 @@ mod tests {
         assert_eq!(out.len(), 2, "no orphan append: {out:?}");
         assert_eq!(out[0].user_runs, vec![(13, 17)]);
         assert_eq!(out[1].user_runs, vec![(0, 8)]);
+    }
+
+    #[test]
+    fn a_note_paints_only_the_first_bullet_that_carries_it() {
+        let user = vec![Block::Paragraph {
+            md: "pro tier annual".into(),
+        }];
+        let enriched = vec![
+            Block::ListItem {
+                md: "Pro tier: annual plan at $180".into(),
+                depth: 0,
+            },
+            Block::ListItem {
+                md: "Price change for the pro tier and limits on the annual discount".into(),
+                depth: 0,
+            },
+        ];
+        let out = merge(&user, &enriched, &[]);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert_eq!(out[0].user_runs, vec![(0, 16)]);
+        assert!(out[1].user_runs.is_empty(), "{out:?}");
     }
 
     #[test]

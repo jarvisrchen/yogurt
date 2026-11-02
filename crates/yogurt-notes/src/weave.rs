@@ -6,8 +6,12 @@
 const MIN_WORDS: usize = 1;
 /// Fraction of the line's words that must appear in order.
 const MIN_RATIO: f32 = 0.75;
+/// Model words allowed between the line's words, however short the line.
+/// Notes are shorthand: `pro tier $18?` comes back as "Pro tier: Dana proposed moving it to $18".
+const MIN_GAP_WORDS: usize = 6;
 
-/// Byte range of marker-stripped `text` carrying `line`, within a window of at most twice the line.
+/// Byte range of marker-stripped `text` carrying `line`, within a window of the line's words plus
+/// as many interleaved model words, and at least `MIN_GAP_WORDS` of them.
 /// The range spans first to last matched word, so interleaved model words are painted ink too.
 pub fn find_user_line(text: &str, line: &str) -> Option<(usize, usize)> {
     let want: Vec<String> = words(line).into_iter().map(|(_, _, w)| w).collect();
@@ -15,7 +19,7 @@ pub fn find_user_line(text: &str, line: &str) -> Option<(usize, usize)> {
         return None;
     }
     let have = words(text);
-    let max_span = want.len() * 2 + 1;
+    let max_span = want.len() + (want.len() + 1).max(MIN_GAP_WORDS);
     // (matched, start_idx, end_idx)
     let mut best: Option<(usize, usize, usize)> = None;
     for (i, tok) in have.iter().enumerate() {
@@ -108,6 +112,24 @@ mod tests {
             "Dan: ask Jordan today for updated cost numbers (Finance wants a per-user estimate)";
         let r = find_user_line(t, "ask jordan for cost numbers").unwrap();
         assert_eq!(&t[r.0..r.1], "ask Jordan today for updated cost numbers");
+    }
+
+    #[test]
+    fn shorthand_note_matches_across_a_model_clause() {
+        let t = "Pro tier: Dana proposed moving it to $18 a month and $180 a year.";
+        let r = find_user_line(t, "pro tier $18?").unwrap();
+        assert_eq!(&t[r.0..r.1], "Pro tier: Dana proposed moving it to $18");
+    }
+
+    #[test]
+    fn a_short_note_does_not_reach_across_a_whole_sentence() {
+        assert_eq!(
+            find_user_line(
+                "We will ship the new pricing page once legal signs it",
+                "ship it"
+            ),
+            None
+        );
     }
 
     #[test]
