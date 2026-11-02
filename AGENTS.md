@@ -17,7 +17,8 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
   The one exception is the Cloud chat's LLM key, which lives in the user's Vercel project's environment, Sensitive and Production only, and is never returned or logged.
 - One process: no subprocesses, no IPC, no sidecars - except the locked-down `yogurt-llm::CliClient`, an LLM provider only when the user opts in via Settings (see [docs/ARCHITECTURE.md §7.6](docs/ARCHITECTURE.md#76-the-cli-provider-exception-llm-4) for the lockdown and the no-fallback rule), and `/usr/bin/open` via the `open` crate, used only to open the browser on start and raise the installed yogurt app on meeting detection and nothing else; do not generalize either into a pattern for other subprocesses without revisiting this constraint.
 - Zero telemetry of any kind.
-- macOS 13+ only (ScreenCaptureKit).
+- macOS 13+ only (ScreenCaptureKit), plus the Android companion app in `android/`, which records for the Cloud and runs no part of the Mac app.
+  It wraps the Cloud webapp, streams the phone's mic to Deepgram with a token the Cloud grants, holds audio only in memory while it waits for a socket, and checks GitHub releases for an update on launch.
 - MIT licensed; keep dependencies MIT-compatible.
 
 ## The task lifecycle
