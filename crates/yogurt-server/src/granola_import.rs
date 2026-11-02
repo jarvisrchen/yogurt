@@ -19,9 +19,9 @@ use tokio::sync::watch;
 use yogurt_granola::{map_note, Client, Config, Error as GranolaError, SOURCE};
 
 use crate::markdown_exporter::Meeting as ExpMeeting;
-use crate::sanitize::sanitize_enriched_md;
 use crate::ws::{self, WsEvent};
 use crate::AppState;
+use yogurt_notes::sanitize_enriched_md;
 
 use crate::bootstrap::GRANOLA_ACCOUNT as ACCOUNT;
 const PROGRESS_EVERY: Duration = Duration::from_secs(1);

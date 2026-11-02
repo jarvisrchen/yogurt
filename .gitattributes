@@ -1,0 +1,2 @@
+# Built by `just wasm`, and checked by CI against its source.
+cloud/src/wasm/** linguist-generated=true -diff

@@ -13,5 +13,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 # Escapes user-controlled text before interpolation into wire-format spans in
-# render::wrap_ai. Pairs with ammonia sanitization in yogurt-server.
+# render::wrap_ai. Pairs with the ammonia pass in sanitize.
 html-escape = { workspace = true }
+ammonia = { workspace = true }
+thiserror = { workspace = true }
+# The template line, template ids, and <think> stripper the enhance output is read with.
+yogurt-prompts = { path = "../yogurt-prompts" }

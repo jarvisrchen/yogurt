@@ -18,13 +18,8 @@ use uuid::Uuid;
 use crate::markdown_exporter::Meeting as ExpMeeting;
 use crate::AppState;
 use yogurt_llm::{ChatMessage, ChatRequest};
-use yogurt_notes::{merge_notes, TranscriptSegment};
-use yogurt_prompts::{split_template_line, EnhanceCtx, Template, TEMPLATE_IDS};
-
-/// A meeting with no typed notes and fewer transcript words than this is an
-/// accidental start/stop. Deliberately low: a real single sentence
-/// ("today is my last day, thanks everyone") must still enhance.
-const TOO_SHORT_TRANSCRIPT_WORDS: usize = 6;
+use yogurt_notes::enhance::EnhanceError;
+use yogurt_prompts::{split_template_line, EnhanceCtx, Template};
 
 #[derive(Debug, Deserialize)]
 pub struct EnhanceRequest {
@@ -110,21 +105,8 @@ pub async fn enhance(
     let user_notes = req.notes_md.clone();
 
     // `None` means "let the model choose". An unknown name is a 400, not a silent fallback.
-    let forced_template: Option<&'static str> = match req.template.as_deref().map(str::trim) {
-        None | Some("") | Some("auto") => None,
-        Some(id) => match TEMPLATE_IDS.iter().copied().find(|t| *t == id) {
-            Some(known) => Some(known),
-            None => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "unknown template {id:?}; expected one of: {}",
-                        TEMPLATE_IDS.join(", ")
-                    ),
-                ))
-            }
-        },
-    };
+    let forced_template = yogurt_prompts::template_choice(req.template.as_deref())
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     // The server-side STT persistence task (meetings.rs) is the source of truth.
     // Use the stored row whenever the request's copy is empty.
@@ -146,13 +128,7 @@ pub async fn enhance(
         }
     };
 
-    let transcript_word_count: usize =
-        serde_json::from_str::<Vec<TranscriptSegment>>(&transcript_json)
-            .unwrap_or_default()
-            .iter()
-            .map(|seg| seg.text.split_whitespace().count())
-            .sum();
-    if user_notes.trim().is_empty() && transcript_word_count < TOO_SHORT_TRANSCRIPT_WORDS {
+    if yogurt_notes::enhance::too_short(&user_notes, &transcript_json) {
         // Drop the stub row from an accidental start/stop, but never a meeting
         // that already has an enriched body.
         let repo = state.meeting_repo.clone();
@@ -354,57 +330,33 @@ pub async fn enhance(
         }));
     }
 
-    // Some models (MiniMax-Text-01) emit CP1252-mangled punctuation and echo the
-    // prompt's section scaffolding, so scrub both before storing.
-    // A forced format wins over the model's `template:` line. In auto mode an
-    // unknown or missing id falls back to `general` since the document is still good.
-    let llm_output = strip_model_reasoning(&fix_model_mojibake(&llm_output));
-    let (picked, body) = split_template_line(&llm_output);
-    let template: &str = match forced_template {
-        Some(id) => id,
-        None => match picked.map(|p| p.to_ascii_lowercase()) {
-            Some(p) if TEMPLATE_IDS.contains(&p.as_str()) => {
-                TEMPLATE_IDS.iter().copied().find(|t| *t == p).unwrap()
-            }
-            other => {
-                tracing::warn!(
-                    event = "enhance_template_unrecognized",
-                    meeting_id = %meeting_id,
-                    model = %llm_model,
-                    picked = ?other,
-                    "model named no known template; using general"
-                );
-                TEMPLATE_IDS[0]
-            }
-        },
-    };
-    let llm_output = strip_prompt_scaffolding(body);
-
-    // `merge_notes(notes, "")` returns the notes untouched, which would be
-    // persisted as the "enhanced" document with no error, so fail loudly.
-    if llm_output.trim().is_empty() {
-        tracing::error!(
-            event = "enhance_llm_empty_reply",
-            meeting_id = %meeting_id,
-            model = %llm_model,
-            "enhance LLM returned no text"
-        );
-        let _ = meeting.events_tx.send(serde_json::json!({
-            "type": "enhance_progress",
-            "phase": "error",
-            "message": format!(
-                "{llm_model} returned no text - try Re-enhance or a different model in Settings"
-            )
-        }));
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            format!("llm {llm_model} returned an empty reply"),
-        ));
-    }
-
-    let merged = match merge_notes(&user_notes, &llm_output, &transcript_json) {
-        Ok(m) => m,
-        Err(e) => {
+    let enhanced = match yogurt_notes::enhance::finish(
+        &user_notes,
+        &transcript_json,
+        &llm_output,
+        forced_template,
+    ) {
+        Ok(e) => e,
+        Err(EnhanceError::EmptyReply) => {
+            tracing::error!(
+                event = "enhance_llm_empty_reply",
+                meeting_id = %meeting_id,
+                model = %llm_model,
+                "enhance LLM returned no text"
+            );
+            let _ = meeting.events_tx.send(serde_json::json!({
+                "type": "enhance_progress",
+                "phase": "error",
+                "message": format!(
+                    "{llm_model} returned no text - try Re-enhance or a different model in Settings"
+                )
+            }));
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                format!("llm {llm_model} returned an empty reply"),
+            ));
+        }
+        Err(EnhanceError::Merge(e)) => {
             tracing::error!(
                 event = "enhance_merge_failed",
                 meeting_id = %meeting_id,
@@ -423,10 +375,18 @@ pub async fn enhance(
             ));
         }
     };
-    let rendered_md = yogurt_notes::render::to_markdown(&merged);
-    // Strip LLM-hallucinated script/img/iframe/on* handlers/javascript: URLs before
-    // persisting. The wire-format spans survive.
-    let enriched_md = crate::sanitize::sanitize_enriched_md(&rendered_md);
+    if let Some(picked) = &enhanced.unrecognized_pick {
+        tracing::warn!(
+            event = "enhance_template_unrecognized",
+            meeting_id = %meeting_id,
+            model = %llm_model,
+            picked = ?picked,
+            "model named no known template; using general"
+        );
+    }
+    let template = enhanced.template;
+    let merged = enhanced.doc;
+    let enriched_md = enhanced.enriched_md;
     let enriched_doc_json = serde_json::to_string(&merged).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -626,192 +586,18 @@ pub async fn enhance(
     }))
 }
 
-/// Drop lines where the model echoed the enhance prompt's scaffolding (section
-/// wrappers, instruction parentheticals, `---` separators). Lines are judged with
-/// `<...>` tags removed, so a header wrapped in marker spans is still caught.
-fn strip_prompt_scaffolding(s: &str) -> String {
-    fn without_tags(line: &str) -> String {
-        let mut out = String::new();
-        let mut depth = 0u32;
-        for c in line.chars() {
-            match c {
-                '<' => depth += 1,
-                '>' => depth = depth.saturating_sub(1),
-                _ if depth == 0 => out.push(c),
-                _ => {}
-            }
-        }
-        out
-    }
-    s.lines()
-        .filter(|line| {
-            // Checked before tag-stripping, which would reduce these to kept blank lines.
-            let raw = line.trim().to_lowercase();
-            if matches!(
-                raw.as_str(),
-                "<user_notes>" | "</user_notes>" | "<transcript>" | "</transcript>"
-            ) {
-                return false;
-            }
-            let flat = without_tags(line);
-            let flat = flat.trim();
-            if flat.is_empty() {
-                // Pure markup (e.g. an empty marker span) is dropped; real blanks are kept.
-                return line.trim().is_empty();
-            }
-            let lower = flat.to_lowercase();
-            // `---` separators: alone, as a bullet/heading, or followed only by a
-            // `\u{21b3} mm:ss` transcript-link stub.
-            let residue: String = flat
-                .chars()
-                .filter(|c| {
-                    !matches!(c, '#' | '-' | '*' | ' ' | '\u{21b3}' | ':') && !c.is_ascii_digit()
-                })
-                .collect();
-            let has_dashes = flat.contains("---");
-            let is_separator =
-                residue.is_empty() && (has_dashes || flat.trim_matches(['#', '*', ' ']).is_empty());
-            let is_scaffold = lower.contains("user notes")
-                && (lower.starts_with('#') || lower.contains("preserve verbatim"))
-                || lower.starts_with("## transcript")
-                || lower.contains("source for your additions");
-            !(is_separator || is_scaffold)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 pub(crate) fn strip_model_reasoning(s: &str) -> String {
     yogurt_llm::strip_thinking(s)
 }
 
-/// Repair mojibake the model emits as literal tokens (observed from MiniMax in both
-/// the CP1252 form "\u{e2}\u{20ac}\u{a6}" and the Latin-1 form with raw C1 controls).
-/// Maps each char back to its source byte and decodes runs that form valid UTF-8.
-/// ASCII and legitimate accented text pass through, since a lone "\u{e2}" followed
-/// by ASCII never forms a valid sequence.
-fn fix_model_mojibake(s: &str) -> String {
-    fn mangled_byte(c: char) -> Option<u8> {
-        let u = c as u32;
-        if (0x80..=0xFF).contains(&u) {
-            return Some(u as u8); // Latin-1 range, incl. raw C1 controls
-        }
-        // CP1252's 0x80-0x9F remappings.
-        Some(match c {
-            '\u{20AC}' => 0x80,
-            '\u{201A}' => 0x82,
-            '\u{0192}' => 0x83,
-            '\u{201E}' => 0x84,
-            '\u{2026}' => 0x85,
-            '\u{2020}' => 0x86,
-            '\u{2021}' => 0x87,
-            '\u{02C6}' => 0x88,
-            '\u{2030}' => 0x89,
-            '\u{0160}' => 0x8A,
-            '\u{2039}' => 0x8B,
-            '\u{0152}' => 0x8C,
-            '\u{017D}' => 0x8E,
-            '\u{2018}' => 0x91,
-            '\u{2019}' => 0x92,
-            '\u{201C}' => 0x93,
-            '\u{201D}' => 0x94,
-            '\u{2022}' => 0x95,
-            '\u{2013}' => 0x96,
-            '\u{2014}' => 0x97,
-            '\u{02DC}' => 0x98,
-            '\u{2122}' => 0x99,
-            '\u{0161}' => 0x9A,
-            '\u{203A}' => 0x9B,
-            '\u{0153}' => 0x9C,
-            '\u{017E}' => 0x9E,
-            '\u{0178}' => 0x9F,
-            _ => return None,
-        })
-    }
-
-    let chars: Vec<char> = s.chars().collect();
-    let mut out = String::with_capacity(s.len());
-    let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        let lead = mangled_byte(c).filter(|b| (0xC2..=0xF4).contains(b));
-        if let Some(lead_byte) = lead {
-            let need = match lead_byte {
-                0xC2..=0xDF => 1,
-                0xE0..=0xEF => 2,
-                _ => 3,
-            };
-            let mut bytes = vec![lead_byte];
-            for j in 1..=need {
-                match chars.get(i + j).copied().and_then(mangled_byte) {
-                    Some(b) if (0x80..=0xBF).contains(&b) => bytes.push(b),
-                    _ => break,
-                }
-            }
-            if bytes.len() == need + 1 {
-                if let Ok(decoded) = std::str::from_utf8(&bytes) {
-                    out.push_str(decoded);
-                    i += need + 1;
-                    continue;
-                }
-            }
-        }
-        out.push(c);
-        i += 1;
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{fix_model_mojibake, strip_model_reasoning};
+    use super::strip_model_reasoning;
 
     #[test]
     fn strips_model_reasoning_from_content() {
         let output =
             "<think>\nI should analyze the transcript.\n</think>\n\n## Decisions\n- Ship Monday";
         assert_eq!(strip_model_reasoning(output), "## Decisions\n- Ship Monday");
-    }
-
-    #[test]
-    fn scrubs_cp1252_variant() {
-        let got = fix_model_mojibake(
-            "October.\u{e2}\u{20ac}\u{a6} then \u{e2}\u{20ac}\u{153}ship\u{e2}\u{20ac}\u{9d}",
-        );
-        assert_eq!(got, "October.\u{2026} then \u{201c}ship\u{201d}");
-    }
-
-    #[test]
-    fn scrubs_latin1_control_variant() {
-        let got = fix_model_mojibake("let\u{e2}\u{80}\u{99}s see and\u{e2}\u{80}\u{a6} done");
-        assert_eq!(got, "let\u{2019}s see and\u{2026} done");
-    }
-
-    #[test]
-    fn strips_echoed_prompt_scaffolding() {
-        let raw = "## USER NOTES (preserve verbatim, do not wrap)\n\n                   <span data-ai-grey data-ts=\"3\">--- <span data-transcript-link data-ts=\"3\">\u{21b3} 00:03</span></span>\n\n                   ## TRANSCRIPT (source for your additions; ts_ms is millis since meeting start)\n\n                   - <span data-ai-grey data-ts=\"30\">12:00: Staff meeting <span data-transcript-link data-ts=\"30\">\u{21b3} 00:30</span></span>\n                   <user_notes>\n</user_notes>";
-        let got = super::strip_prompt_scaffolding(raw);
-        assert!(!got.contains("USER NOTES"), "got: {got}");
-        assert!(!got.contains("TRANSCRIPT ("), "got: {got}");
-        assert!(!got.contains("---"), "got: {got}");
-        assert!(!got.contains("<user_notes>"), "got: {got}");
-        assert!(
-            got.contains("12:00: Staff meeting"),
-            "real bullet kept: {got}"
-        );
-    }
-
-    #[test]
-    fn keeps_normal_headings_and_bullets() {
-        let doc = "## Decisions\n- <span data-ai-grey data-ts=\"16\">Pro tier: $20/month</span>\n\n## Action items\n- follow up";
-        assert_eq!(super::strip_prompt_scaffolding(doc), doc);
-    }
-
-    #[test]
-    fn clean_text_passes_through_untouched() {
-        let s = "normal text with real \u{2026} and \u{201c}quotes\u{201d} and \u{21b3} 00:16";
-        assert_eq!(fix_model_mojibake(s), s);
-        let fr = "c\u{e2}ble and caf\u{e9} \u{e0} Paris";
-        assert_eq!(fix_model_mojibake(fr), fr);
     }
 }

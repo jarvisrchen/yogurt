@@ -126,6 +126,15 @@ setup-quick:
 build:
     cargo build --release
 
+# Rebuild cloud/src/wasm, the Cloud webapp's build of yogurt-wasm. It is committed so Vercel needs no Rust, and CI rebuilds it and fails on any difference. Needs `rustup target add wasm32-unknown-unknown` and `cargo install wasm-bindgen-cli --version 0.2.126`.
+wasm:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Remapped paths keep the build byte-identical across machines.
+    RUSTFLAGS="--remap-path-prefix=$PWD=/yogurt --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo" \
+        cargo build -p yogurt-wasm --target wasm32-unknown-unknown --release
+    wasm-bindgen --target web --out-dir cloud/src/wasm target/wasm32-unknown-unknown/release/yogurt_wasm.wasm
+
 # Build the web bundle without running it.
 build-web:
     pnpm --dir web build

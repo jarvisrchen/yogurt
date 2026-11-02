@@ -1,0 +1,29 @@
+[
+  {
+    "name": "auto pick, think block, scaffolding, mojibake, unsafe HTML",
+    "notes_md": "## Pricing\n- pro tier → $18\n- ask finance re annual cap\n",
+    "transcript_json": "[{\"ts_ms\":4000,\"channel\":\"them\",\"text\":\"Morning everyone, let's go round the table.\"},{\"ts_ms\":61000,\"channel\":\"them\",\"text\":\"Pro conversion is 4.1 percent, down from 5.0 since the July change.\"},{\"ts_ms\":619000,\"channel\":\"them\",\"text\":\"I propose eighteen dollars a month and one eighty a year for the pro tier.\"},{\"ts_ms\":668000,\"channel\":\"them\",\"text\":\"Finance caps the annual discount at fifteen percent.\"},{\"ts_ms\":722000,\"channel\":\"them\",\"text\":\"Marco will build the churn model for the eighteen dollar case by Friday.\"}]",
+    "template": null,
+    "llm_output": "<think>\nThe notes mention pricing. I should pick team-meeting.\n</think>\n\ntemplate: team-meeting\n\n## USER NOTES (preserve verbatim, do not wrap)\n## Pricing\n- pro tier → $18<span data-ai-grey data-ts=\"619\">/month, $180/year proposed by Dana</span>\n- <span data-ai-grey data-ts=\"61\">Pro conversion 4.1%, down from 5.0% since the July change</span>\n- ask finance re annual cap<span data-ai-grey data-ts=\"668\">: finance caps the discount at 15%</span>\n\n## Action items\n- <span data-ai-grey data-ts=\"722\">Marco: churn model for the $18 case, due Friday <img src=x onerror=alert(1)></span>\n- Danaâs follow-up <script>alert(1)</script>\n",
+    "enriched_md": "## Pricing\n\n- <span data-ai-grey=\"\" data-ts=\"619\">pro tier → $18/month, $180/year proposed by Dana <span data-transcript-link=\"\" data-ts=\"619\">↳ 10:19</span></span>\n- <span data-ai-grey=\"\" data-ts=\"61\">Pro conversion 4.1%, down from 5.0% since the July change <span data-transcript-link=\"\" data-ts=\"61\">↳ 01:01</span></span>\n- ask finance re annual cap<span data-ai-grey=\"\" data-ts=\"668\">: finance caps the discount at 15%</span> <span data-transcript-link=\"\" data-ts=\"668\">↳ 11:08</span>\n\n## <span data-ai-grey=\"\" data-ts=\"4\">Action items</span>\n\n- <span data-ai-grey=\"\" data-ts=\"722\">Marco: churn model for the $18 case, due Friday &lt;img src=x onerror=alert(1)&gt; <span data-transcript-link=\"\" data-ts=\"722\">↳ 12:02</span></span>\n- <span data-ai-grey=\"\" data-ts=\"4\">Dana’s follow-up &lt;script&gt;alert(1)&lt;/script&gt; <span data-transcript-link=\"\" data-ts=\"4\">↳ 00:04</span></span>\n- pro tier → $18\n",
+    "expected_template": "team-meeting"
+  },
+  {
+    "name": "forced format wins over the model's pick",
+    "notes_md": "## Pricing\n- pro tier → $18\n- ask finance re annual cap\n",
+    "transcript_json": "[{\"ts_ms\":4000,\"channel\":\"them\",\"text\":\"Morning everyone, let's go round the table.\"},{\"ts_ms\":61000,\"channel\":\"them\",\"text\":\"Pro conversion is 4.1 percent, down from 5.0 since the July change.\"},{\"ts_ms\":619000,\"channel\":\"them\",\"text\":\"I propose eighteen dollars a month and one eighty a year for the pro tier.\"},{\"ts_ms\":668000,\"channel\":\"them\",\"text\":\"Finance caps the annual discount at fifteen percent.\"},{\"ts_ms\":722000,\"channel\":\"them\",\"text\":\"Marco will build the churn model for the eighteen dollar case by Friday.\"}]",
+    "template": "one-on-one",
+    "llm_output": "template: general\n\n## Decisions\n- Price the pro tier at $18 a month\n\n## Next steps\n- Marco builds the churn model by Friday\n",
+    "enriched_md": "## <span data-ai-grey=\"\" data-ts=\"4\">Decisions</span>\n\n- <span data-ai-grey=\"\" data-ts=\"619\">Price the </span>pro tier at $18<span data-ai-grey=\"\" data-ts=\"619\"> a month</span> <span data-transcript-link=\"\" data-ts=\"619\">↳ 10:19</span>\n\n## <span data-ai-grey=\"\" data-ts=\"4\">Next steps</span>\n\n- <span data-ai-grey=\"\" data-ts=\"722\">Marco builds the churn model by Friday <span data-transcript-link=\"\" data-ts=\"722\">↳ 12:02</span></span>\n\n## Pricing\n\n- ask finance re annual cap\n",
+    "expected_template": "one-on-one"
+  },
+  {
+    "name": "no notes",
+    "notes_md": "",
+    "transcript_json": "[{\"ts_ms\":4000,\"channel\":\"them\",\"text\":\"Morning everyone, let's go round the table.\"},{\"ts_ms\":61000,\"channel\":\"them\",\"text\":\"Pro conversion is 4.1 percent, down from 5.0 since the July change.\"},{\"ts_ms\":619000,\"channel\":\"them\",\"text\":\"I propose eighteen dollars a month and one eighty a year for the pro tier.\"},{\"ts_ms\":668000,\"channel\":\"them\",\"text\":\"Finance caps the annual discount at fifteen percent.\"},{\"ts_ms\":722000,\"channel\":\"them\",\"text\":\"Marco will build the churn model for the eighteen dollar case by Friday.\"}]",
+    "template": null,
+    "llm_output": "## Summary\n- Pricing moves to $18\n",
+    "enriched_md": "## <span data-ai-grey=\"\" data-ts=\"4\">Summary</span>\n\n- <span data-ai-grey=\"\" data-ts=\"4\">Pricing moves to $18 <span data-transcript-link=\"\" data-ts=\"4\">↳ 00:04</span></span>\n",
+    "expected_template": "general"
+  }
+]

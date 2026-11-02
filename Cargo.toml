@@ -11,6 +11,7 @@ members = [
     "crates/yogurt-db",
     "crates/yogurt-cloud",
     "crates/yogurt-granola",
+    "crates/yogurt-wasm",
 ]
 
 [workspace.package]

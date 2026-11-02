@@ -12,7 +12,6 @@ pub(crate) mod markdown_exporter;
 pub mod meetings;
 mod recap;
 mod routes;
-pub(crate) mod sanitize;
 pub mod session;
 pub mod state;
 pub mod storage;
@@ -22,7 +21,7 @@ pub mod bootstrap;
 
 #[doc(hidden)]
 pub mod __test_only_sanitize {
-    pub use crate::sanitize::sanitize_enriched_md;
+    pub use yogurt_notes::sanitize_enriched_md;
 }
 
 /// `POST /api/meetings/:id/start` opens real ScreenCaptureKit capture, which cannot succeed

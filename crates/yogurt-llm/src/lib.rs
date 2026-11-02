@@ -3,12 +3,11 @@
 
 mod cli;
 mod streaming;
-mod thinking;
 mod types;
 
 pub use cli::{list_models as list_cli_models, CliClient, CliProgram};
-pub use thinking::strip_thinking;
 pub use types::{ChatChunk, ChatMessage, ChatRequest, ChatResponse};
+pub use yogurt_prompts::thinking::strip_thinking;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -207,7 +206,7 @@ impl LlmClient for OpenAiCompatClient {
             .ok_or_else(|| anyhow!("no choices in response"))?
             .message
             .content;
-        let content = crate::thinking::strip_thinking(&content);
+        let content = strip_thinking(&content);
         Ok(ChatResponse { content, model })
     }
 

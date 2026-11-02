@@ -1,8 +1,8 @@
-use crate::thinking::ThinkStripper;
 use crate::{types, ChatChunk, ChatRequest, OpenAiCompatClient};
 use anyhow::{anyhow, Result};
 use eventsource_stream::Eventsource;
 use futures_util::stream::{BoxStream, StreamExt};
+use yogurt_prompts::thinking::ThinkStripper;
 
 pub(crate) async fn stream(
     client: &OpenAiCompatClient,

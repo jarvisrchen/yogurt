@@ -22,6 +22,8 @@ eventsource-stream = { workspace = true }
 # Dyn-compatible async trait for `LlmClient`. Keep it object-safe.
 async-trait = { workspace = true }
 anyhow = { workspace = true }
+# The <think> stripper, shared with the WASM enhance in yogurt-notes.
+yogurt-prompts = { path = "../yogurt-prompts" }
 
 [dev-dependencies]
 # Stand-in OpenAI-compatible HTTP server for adapter tests
