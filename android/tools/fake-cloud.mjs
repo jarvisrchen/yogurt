@@ -5,7 +5,7 @@
 // POST /cmd                    queues a command by hand, as in curl -d '{"cmd":"start","meetingId":"m-1"}' localhost:8787/cmd
 // POST /api/stt-token          checks the session like cloud/api/stt-token.ts and returns {token, url}
 // WS   /v1/listen              checks the granted token, then turns each 2 s of audio into one final line
-// GET  /releases/latest        a release with yogurt-android-0.2.0.apk, served from the APK given to fakeCloud
+// GET  /releases/latest        a release with yogurt-android-99.0.0.apk, served from the APK given to fakeCloud
 //
 // The test wav stamps every sample with its second (see e2e.mjs), so a line's text says which audio it came from:
 // a lost or doubled line after a reconnect shows up as a missing or repeated "second N".
@@ -65,10 +65,10 @@ export function fakeCloud({ port = 8787, apk = null, log = () => {} } = {}) {
       });
     }
     if (url.pathname === "/releases/latest") {
-      const name = "yogurt-android-0.2.0.apk";
+      const name = "yogurt-android-99.0.0.apk";
       return json(200, { tag_name: "v9.9.9", assets: [{ name, browser_download_url: `http://localhost:${port}/${name}` }] });
     }
-    if (url.pathname === "/yogurt-android-0.2.0.apk" && apk) {
+    if (url.pathname === "/yogurt-android-99.0.0.apk" && apk) {
       res.writeHead(200, { "content-type": "application/vnd.android.package-archive" });
       return fs.createReadStream(apk).pipe(res);
     }
@@ -198,6 +198,7 @@ const B = window.YogurtAndroid;
 let lines = JSON.parse(localStorage.getItem("lines") || "[]");
 const events = [];
 const pageId = Math.random();
+let stopping = false;
 const save = () => localStorage.setItem("lines", JSON.stringify(lines));
 function catchUp(why) {
   const from = lines.length;
@@ -218,6 +219,12 @@ addEventListener("yogurt-native", (e) => {
   if (d.type !== "interim") {
     events.push(d.type === "line" ? { type: "line", index: d.index } : d);
     console.log("yogurt-native " + JSON.stringify(d));
+  }
+  if (d.type === "state" && d.state === "stopped" && stopping) {
+    // As the record screen does: the lines it missed, once the app says the last ones went out.
+    stopping = false;
+    catchUp("stop");
+    events.push({ type: "stopped-call", status: JSON.parse(B.status()) });
   }
   if (d.type === "line") {
     if (d.index === lines.length) {
@@ -245,9 +252,10 @@ async function poll() {
     }
     if (c.cmd === "start-raw") events.push({ type: "start", result: JSON.parse(B.start(c.json)) });
     if (c.cmd === "stop") {
+      const t = Date.now();
+      stopping = true;
       B.stop();
-      catchUp("stop");
-      events.push({ type: "stopped-call", status: JSON.parse(B.status()) });
+      events.push({ type: "stop-returned", ms: Date.now() - t });
     }
     if (c.cmd === "keep") {
       lines = lines.slice(0, c.n);

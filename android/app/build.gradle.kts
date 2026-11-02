@@ -2,8 +2,11 @@ plugins {
     id("com.android.application")
 }
 
-// Bump this to ship an app update: the release pipeline names the APK after it, and the in-app update check compares it.
-val appVersion = "0.1.0"
+// The release version: the tag's, which the release pipeline passes as -PyogurtVersion, else the workspace's in Cargo.toml.
+// The in-app update check compares it with the APK names on the GitHub releases.
+val appVersion: String = providers.gradleProperty("yogurtVersion").orNull
+    ?: Regex("""(?ms)^\[workspace\.package\].*?^version\s*=\s*"([^"]+)"""")
+        .find(rootDir.resolve("../Cargo.toml").readText())!!.groupValues[1]
 
 val keystore: String? = System.getenv("YOGURT_ANDROID_KEYSTORE")
 val keystorePassword: String? = System.getenv("YOGURT_ANDROID_KEYSTORE_PASSWORD")
@@ -17,7 +20,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionName = appVersion
-        // 0.1.0 -> 100, 2.3.4 -> 20304, so every version bump is also an upgrade Android accepts.
+        // 0.1.0 -> 100, 2.3.4 -> 20304, so every release is also an upgrade Android accepts.
         versionCode = appVersion.split(".").fold(0) { acc, part -> acc * 100 + part.toInt() }
     }
 

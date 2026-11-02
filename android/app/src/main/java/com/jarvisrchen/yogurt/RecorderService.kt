@@ -70,8 +70,10 @@ object Recording {
         current?.auth = a
     }
 
+    /** Ends with a stopped state event even when nothing records, since the page waits for one. */
     fun stop() {
-        current?.stop()
+        val r = current
+        if (r == null || r.stopped) NativeEvents.post(JSONObject().put("type", "state").put("state", "stopped")) else r.stop()
     }
 
     fun status(): JSONObject {

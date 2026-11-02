@@ -26,8 +26,13 @@ declare global {
  * The page side of the bridge: the app owns the mic and the socket and keeps every final line, numbered from 0, until its next start.
  * Lines arrive as events while the page is in front. A page that comes back asks for the ones it missed, so it never misses or repeats one.
  */
+// The app's stop waits up to 5 seconds for Deepgram's last lines. This bounds an app that never reports stopped.
+const STOP_WAIT_MS = 10_000;
+
 export class NativeRecorder extends Emitter implements Recorder {
   private seen = 0;
+  private listening = false;
+  private onStopped: (() => void) | null = null;
 
   constructor(
     private readonly bridge: Bridge,
@@ -42,6 +47,8 @@ export class NativeRecorder extends Emitter implements Recorder {
     const status = JSON.parse(this.bridge.status());
     if (status.recording && status.meetingId === meetingId) {
       this.seen = have;
+      // The state events went out before this page listened.
+      this.emit({ type: "state", state: status.state });
     } else {
       const r = JSON.parse(this.bridge.start(JSON.stringify({ meetingId, startedAtMs, tokenUrl: this.tokenUrl, auth: await this.auth() })));
       if (!r.ok) throw new Error(r.error || "The recorder did not start.");
@@ -49,11 +56,22 @@ export class NativeRecorder extends Emitter implements Recorder {
     }
     this.win.addEventListener("yogurt-native", this.onEvent);
     this.win.document.addEventListener("visibilitychange", this.onVisible);
+    this.listening = true;
     this.catchUp();
   }
 
+  /** The app's stop returns at once and reports `stopped` after the last lines, which this waits for before taking any it missed. */
   async stop() {
-    this.bridge.stop();
+    if (!this.listening) return this.bridge.stop();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await new Promise<void>((resolve) => {
+      this.onStopped = resolve;
+      timer = setTimeout(resolve, STOP_WAIT_MS);
+      this.bridge.stop();
+    });
+    clearTimeout(timer);
+    this.onStopped = null;
+    this.listening = false;
     this.catchUp();
     this.win.removeEventListener("yogurt-native", this.onEvent);
     this.win.document.removeEventListener("visibilitychange", this.onVisible);
@@ -67,6 +85,7 @@ export class NativeRecorder extends Emitter implements Recorder {
   private onEvent = (e: Event) => {
     const raw = (e as CustomEvent).detail;
     const d: RecorderEvent = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (d.type === "state" && d.state === "stopped") this.onStopped?.();
     if (d.type !== "line") return this.emit(d);
     if (d.index === this.seen) this.line(d.line);
     else if (d.index > this.seen) this.catchUp();

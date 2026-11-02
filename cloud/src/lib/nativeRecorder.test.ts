@@ -4,7 +4,7 @@ import type { RecorderEvent } from "./recorder";
 const line = (i: number) => ({ channel: "them" as const, text: `line ${i}`, ts_ms: i * 1000 });
 
 /** A stand-in for the app: it holds `kept` final lines and records every call. */
-function fakeApp(status = { recording: false, meetingId: null as string | null }) {
+function fakeApp(status: object = { recording: false, meetingId: null }) {
   const kept = [line(0), line(1), line(2)];
   const calls: string[] = [];
   const bridge: Bridge = {
@@ -70,11 +70,12 @@ test("coming back to the page asks for the lines missed while hidden", async () 
   expect(app.calls.at(-1)).toBe("lines 3");
 });
 
-test("a recorder already running for this meeting is joined, not restarted", async () => {
-  const app = fakeApp({ recording: true, meetingId: "M1" });
-  const { texts } = await started(app, 2);
+test("a recorder already running for this meeting is joined, not restarted, and shows its state", async () => {
+  const app = fakeApp({ recording: true, meetingId: "M1", state: "live" });
+  const { texts, events } = await started(app, 2);
   expect(app.calls.some((c) => c.startsWith("start"))).toBe(false);
   expect(texts()).toEqual(["2:line 2"]);
+  expect(events[0]).toEqual({ type: "state", state: "live" });
 });
 
 test("a refused start throws the app's error", async () => {
@@ -83,13 +84,25 @@ test("a refused start throws the app's error", async () => {
   await expect(started(app)).rejects.toThrow("no mic permission");
 });
 
-test("stop stops the app, takes any last lines, and stops listening", async () => {
+test("stop waits for the app's stopped, takes any last lines, and stops listening", async () => {
   const app = fakeApp();
   const { rec, events, texts } = await started(app);
-  app.kept.push(line(3));
-  await rec.stop();
+  app.bridge.stop = () => {
+    app.calls.push("stop");
+    // The app answers at once and reports the last lines and stopped later, as its stop flushes Deepgram.
+    setTimeout(() => {
+      app.kept.push(line(3), line(4));
+      app.post({ type: "line", index: 3, line: line(3) });
+      app.post({ type: "state", state: "stopped" });
+    }, 10);
+  };
+  let done = false;
+  const stopping = rec.stop().then(() => (done = true));
+  await new Promise((r) => setTimeout(r, 5));
+  expect(done).toBe(false);
+  await stopping;
   expect(app.calls).toContain("stop");
-  expect(texts().at(-1)).toBe("3:line 3");
+  expect(texts().slice(-2)).toEqual(["3:line 3", "4:line 4"]);
   expect(events.at(-1)).toEqual({ type: "state", state: "stopped" });
   const before = events.length;
   app.post({ type: "interim", text: "late" });

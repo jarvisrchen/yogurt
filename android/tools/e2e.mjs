@@ -13,6 +13,8 @@ const ADB = path.join(SDK, "platform-tools/adb");
 const PKG = "com.jarvisrchen.yogurt";
 const APK = new URL("../app/build/outputs/apk/debug/app-debug.apk", import.meta.url).pathname;
 const PORT = 8787;
+// The debug build's versionName, which Gradle takes from the workspace.
+const VERSION = /\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"/m.exec(fs.readFileSync(new URL("../../Cargo.toml", import.meta.url), "utf8"))[1];
 
 const adb = (...a) => execFileSync(ADB, a, { encoding: "utf8", maxBuffer: 64 << 20 });
 const sh = (cmd) => adb("shell", cmd);
@@ -112,8 +114,8 @@ async function main() {
   sh(`input text ${cloud.url}`);
   tap("Continue");
   await until("the test page", () => page());
-  check("the bridge reports the app version", page().version === "0.1.0", page().version);
-  await until("the update banner", () => screen().includes("Yogurt for Android 0.2.0 is ready."));
+  check("the bridge reports the app version", page().version === VERSION, page().version);
+  await until("the update banner", () => screen().includes("Yogurt for Android 99.0.0 is ready."));
   check("the update banner shows against a newer fake release", true);
 
   log("bridge guards");
@@ -193,19 +195,21 @@ async function main() {
   cloud.command({ cmd: "start", meetingId: "m-2" });
   await until("two lines", () => page().status?.recording && page().lines.length >= 2);
   cloud.command({ cmd: "stop" });
-  const stopped = await until("stop()", () => page().events.find((e) => e.type === "stopped-call"), 15_000);
-  check("stop() returns once the recording has ended", stopped.status.recording === false);
-  check("the lines read right after stop() are all of them", sameLines(page().lines, store()) && page().lines.length === stopped.status.lines, `${page().lines.length} lines`);
+  const returned = await until("stop() to return", () => page().events.find((e) => e.type === "stop-returned"), 15_000);
+  check("stop() returns at once", returned.ms < 200, `${returned.ms} ms`);
+  const stopped = await until("the stopped event", () => page().events.find((e) => e.type === "stopped-call"), 15_000);
+  check("the stopped event comes once the recording has ended", stopped.status.recording === false);
+  check("the lines read right after the stopped event are all of them", sameLines(page().lines, store()) && page().lines.length === stopped.status.lines, `${page().lines.length} lines`);
   check("a new start numbers from 0 again", page().lines[0]?.text === "second 0" && !contiguous(store()));
 
   log("update");
   sh(`am start -n ${PKG}/.MainActivity`);
-  await until("the update banner", () => screen().includes("Yogurt for Android 0.2.0 is ready."));
+  await until("the update banner", () => screen().includes("Yogurt for Android 99.0.0 is ready."));
   adb("logcat", "-c");
   tap("Update");
   const start = await until("the install intent", () => adb("logcat", "-d", "-s", "ActivityTaskManager:I").split("\n").find((l) => l.includes("application/vnd.android.package-archive")), 30_000);
   check("Update hands the APK to the installer", /act=android\.intent\.action\.VIEW/.test(start) && start.includes(`dat=content://${PKG}.files/`), start.trim().slice(0, 200));
-  const got = adb("exec-out", "run-as", PKG, "stat", "-c", "%s", "cache/updates/yogurt-android-0.2.0.apk").trim();
+  const got = adb("exec-out", "run-as", PKG, "stat", "-c", "%s", "cache/updates/yogurt-android-99.0.0.apk").trim();
   check("the downloaded APK is whole", Number(got) === fs.statSync(APK).size, `${got} bytes`);
   await sleep(2_000);
   const top = sh("dumpsys activity activities").match(/topResumedActivity=.*/)?.[0] ?? "";

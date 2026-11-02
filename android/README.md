@@ -20,7 +20,7 @@ On the phone, open the latest [release](https://github.com/jarvisrchen/yogurt/re
 From a Mac with the phone or an emulator connected over adb:
 
 ```bash
-adb install -r yogurt-android-0.1.0.apk
+adb install -r yogurt-android-<version>.apk
 ```
 
 ## First launch
@@ -46,7 +46,7 @@ just android-release    # signed release APK: android/app/build/outputs/apk/rele
 Gradle reads the keystore from `YOGURT_ANDROID_KEYSTORE` and `YOGURT_ANDROID_KEYSTORE_PASSWORD`, and without them it builds an unsigned release APK.
 Every release must use that same key, since Android refuses an update signed with another.
 The release pipeline builds the APK from repo secrets and attaches it to each GitHub release, as [docs/RELEASING.md](../docs/RELEASING.md) describes.
-To ship an app update, bump `appVersion` in `app/build.gradle.kts`.
+Every yogurt release ships the APK under its own version, which Gradle takes from the tag, or locally from `[workspace.package]` in `Cargo.toml`.
 
 ## Test
 
@@ -86,7 +86,7 @@ The page talks to the recorder through `window.YogurtAndroid`, as the design's [
 Calls work only while the WebView shows the Cloud origin you entered, and the app opens any other address in the browser.
 `start()` refuses a `tokenUrl` off that origin, since the recorder sends the session to it: a POST with the JWT as a Bearer header and `{"token": browserToken}` as the body, which is what `cloud/api/stt-token.ts` reads, expecting `{"token","url"}` back.
 The recorder opens `url` with the granted token as `Authorization: Bearer`, which Deepgram's token guide documents.
-`stop()` returns once Deepgram has sent its last lines, waiting up to 5 seconds, so `lines(n)` called right after it holds every line.
+`stop()` returns at once, and the recorder then sends Deepgram's last lines as events, waiting up to 5 seconds for them, followed by a `stopped` state event, after which `lines(n)` holds every line.
 `start()` returns `{"ok":true}` while Android asks for the microphone, and the recording then starts, or ends with an `error` and a `stopped` state event.
 Events wait in the app while no Cloud page is loaded and go out once one is, except interim text.
 

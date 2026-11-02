@@ -3,6 +3,7 @@ package com.jarvisrchen.yogurt
 import android.webkit.JavascriptInterface
 import org.json.JSONObject
 import java.net.URI
+import kotlin.concurrent.thread
 
 /**
  * Events for the page, in order. While no Cloud page is loaded they wait here and go out when one is.
@@ -75,9 +76,10 @@ class YogurtAndroid(private val activity: MainActivity, private val origin: Stri
         auth(runCatching { JSONObject(json) }.getOrNull())?.let(Recording::setAuth)
     }
 
+    /** Returns at once, since stopping waits up to 5 seconds for Deepgram. The last lines and then the stopped state arrive as events. */
     @JavascriptInterface
     fun stop() {
-        if (allowed()) Recording.stop()
+        if (allowed()) thread { Recording.stop() }
     }
 
     @JavascriptInterface
