@@ -1580,3 +1580,13 @@ New closed items go at the bottom.
 
   Landed in the DX-24 PR (2026-11-01). The test now expects 2 to 6 logged requests, and the `Exhausted` result still proves the client made all six attempts.
   </details>
+
+- [x] **MOB-1** Record a meeting on the phone in the Cloud webapp with a live Deepgram transcript, saved as a phone device ([design](.planning/mobile-recording-design.md#tickets))
+
+  Landed in the MOB-1 PR (2026-11-02). The Library's Record button opens `#/record`, which records the room through `getUserMedia`, downsamples to 16 kHz linear16 in an AudioWorklet, and streams to Deepgram `nova-3` with the Mac's query parameters on a token from `cloud/api/stt-token.ts`.
+  The granted token goes in the `bearer` subprotocol, as Deepgram's own JS SDK (v4.11.3) sends it, since Deepgram's docs show only the `token` form for an API key.
+  A dropped socket reconnects with a fresh token and replays up to 5 minutes of held audio in order, and past that the oldest audio drops and the transcript shows a gap marker.
+  The phone registers as a `kind = 'phone'` device under a name typed on its first recording, writes the meeting to IndexedDB on every change, and pushes the whole Mac-shaped bundle at the start, every 30 seconds, and at End.
+  A page closed mid-meeting shows a Resume or End card at the top of the Library.
+  `NativeRecorder` is the page side of the Android bridge for MOB-5, and the meeting view drops the speaker label on a phone's transcript.
+  Covered by `cloud/e2e/record.spec.ts` against a fake Deepgram with Chrome's fake mic, at 412 px and desktop, light and dark.
