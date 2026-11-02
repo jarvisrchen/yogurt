@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- The WebView reports prefers-color-scheme from this theme, so the webapp follows the phone's dark mode. -->
+    <style name="Theme.Yogurt" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@color/paper</item>
+        <item name="android:navigationBarColor">@color/paper</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+        <item name="android:colorAccent">@color/blue</item>
+        <item name="android:colorControlActivated">@color/blue</item>
+        <item name="android:textColorHighlight">@color/blsoft</item>
+    </style>
+</resources>

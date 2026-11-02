@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- web/src/components/Logo.tsx -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="44"
+    android:viewportHeight="44">
+    <path android:fillColor="#5B4FC7" android:pathData="M0,22 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0" />
+    <path android:pathData="M13,31 C13,22 31,25 31,17 C31,11 19,12.5 19,19" android:strokeColor="#FFFFFF" android:strokeWidth="3.4" android:strokeLineCap="round" />
+    <path android:fillColor="#E07A66" android:pathData="M17.3,19 a1.7,1.7 0 1,0 3.4,0 a1.7,1.7 0 1,0 -3.4,0" />
+</vector>

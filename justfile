@@ -139,6 +139,17 @@ wasm:
 build-web:
     pnpm --dir web build
 
+# Build the Android app's debug APK and run its unit tests (android/app/build/outputs/apk/debug/app-debug.apk). See android/README.md.
+android:
+    cd android && JAVA_HOME="$(/usr/libexec/java_home -v 17)" ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew assembleDebug testDebugUnitTest
+
+# Build the signed release APK with the key in ~/.yogurt/android-release.jks and its password from Keychain.
+android-release:
+    cd android && JAVA_HOME="$(/usr/libexec/java_home -v 17)" ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" \
+        YOGURT_ANDROID_KEYSTORE="$HOME/.yogurt/android-release.jks" \
+        YOGURT_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -a yogurt -s yogurt-android-keystore -w)" \
+        ./gradlew assembleRelease
+
 # ── Quality gates ────────────────────────────────────────────────────
 
 # Full test suite, split across CI's rust job (test-rust) and web job (test-web). The Docker-based test-cloud-schema is CI's separate cloud-schema job and stays out of this.
