@@ -1590,3 +1590,11 @@ New closed items go at the bottom.
   A page closed mid-meeting shows a Resume or End card at the top of the Library.
   `NativeRecorder` is the page side of the Android bridge for MOB-5, and the meeting view drops the speaker label on a phone's transcript.
   Covered by `cloud/e2e/record.spec.ts` against a fake Deepgram with Chrome's fake mic, at 412 px and desktop, light and dark.
+
+- [x] **MOB-2** Take notes during a phone recording and enhance them at End with the Mac's prompt and merge compiled to WASM ([design](.planning/mobile-recording-design.md#notes-and-enhance))
+
+  Landed in the mobile-build integration (2026-11-02). `crates/yogurt-wasm` builds the Mac's enhance prompt and merge for the webapp into the committed `cloud/src/wasm`, which `just wasm` rebuilds and CI checks for drift, and `cloud/api/enhance.ts` streams the reply from `YOGURT_LLM_*`.
+  End stops the recorder, pushes the last of the transcript with `ended_at` still null, opens the meeting view under EnhancingBanner while the enhance streams, and then pushes once with `ended_at`, `enriched_md`, `llm_model`, and `template`.
+  A failed or too short enhance is pushed ended without them, and the meeting view offers Enhance, and a tab that dies mid-enhance keeps the meeting in IndexedDB for the Resume card's End.
+  `isPhoneMeeting` lives once in `cloud/src/lib/phone.ts` and every push goes through `Api.pushMeeting`, which never maps a 403 to a rejected browser token.
+  Covered by `cloud/e2e/enhance.spec.ts` and `cloud/e2e/record.spec.ts`, and by hand in desktop Chrome and the emulator against `just cloud-dev` with real Deepgram and MiniMax.
