@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Button } from "@web/components/Button";
 import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
@@ -9,6 +9,8 @@ import { clock } from "../lib/library";
 import { readDevice, UNTITLED, type Line, type PhoneMeeting } from "../lib/phone";
 import { QUEUE_MS } from "../lib/audioQueue";
 import { useSession, type RecordingSession, type Snapshot } from "../lib/session";
+import { useChat } from "../lib/useChat";
+import { Ask } from "./Meeting";
 import { MicIcon, ResumeCard } from "./Resume";
 
 const dateTime = (ms: number) => `${new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${clock(ms)}`;
@@ -65,14 +67,15 @@ interface Props {
   session: RecordingSession;
   onBack: () => void;
   onEnded: (key: string) => void;
+  onRejected: () => void;
 }
 
 /** Ready to record, then recording, until End. While it records it is the whole page, with no way back but End. */
-export function Record({ api, token, session, onBack, onEnded }: Props) {
+export function Record({ api, token, session, onBack, onEnded, onRejected }: Props) {
   const snap = useSession(session);
   const device = useMemo(readDevice, [snap.meeting]);
   const color = useDeviceColor(api, token, device.id);
-  if (snap.meeting) return <Recording snap={snap} meeting={snap.meeting} session={session} device={device.name} color={color} onEnded={onEnded} />;
+  if (snap.meeting) return <Recording api={api} token={token} snap={snap} meeting={snap.meeting} session={session} device={device.name} color={color} onEnded={onEnded} onRejected={onRejected} />;
   return <Ready snap={snap} session={session} device={device} color={color} onBack={onBack} />;
 }
 
@@ -121,10 +124,20 @@ function Ready({ snap, session, device, color, onBack }: { snap: Snapshot; sessi
 
 const NOTES_PLACEHOLDER = "Take sparse notes while the transcript runs below.";
 const PEEK = 152;
+// 12px above the peeking sheet, whose z-40 covers it when the sheet is up.
+const ASK = "cloud-chat absolute inset-x-[16px] mx-auto max-w-[480px] bottom-[164px]";
 
-function Recording({ snap, meeting, session, device, color, onEnded }: { snap: Snapshot; meeting: PhoneMeeting; session: RecordingSession; device: string; color: string; onEnded: (key: string) => void }) {
+function Recording({ api, token, snap, meeting, session, device, color, onEnded, onRejected }: { api: Api; token: string; snap: Snapshot; meeting: PhoneMeeting; session: RecordingSession; device: string; color: string; onEnded: (key: string) => void; onRejected: () => void }) {
   const now = useNow(true);
   const [full, setFull] = useState(false);
+  const pushFirst = useCallback(
+    () =>
+      session.pushNow().catch((e) => {
+        throw new Error(`Could not save the meeting before asking. ${e instanceof Error ? e.message : String(e)}`);
+      }),
+    [session],
+  );
+  const chat = useChat(api, token, { device_id: session.device, meeting_id: meeting.id }, onRejected, pushFirst);
   const end = async () => {
     const key = await session.end();
     if (key) onEnded(key);
@@ -147,7 +160,7 @@ function Recording({ snap, meeting, session, device, color, onEnded }: { snap: S
         </Button>
       </div>
       <div className="relative flex-1 min-h-0">
-        <main className="absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px]" style={{ paddingBottom: PEEK + 16 }}>
+        <main className="absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px]" style={{ paddingBottom: PEEK + 76 }}>
           {reconnecting ? (
             <p role="status" className={NOTICE}>
               Reconnecting… Holding {minSec(Math.min(now - snap.downSince!, QUEUE_MS))} of audio, up to 5 minutes. It is transcribed once the connection is back.
@@ -162,6 +175,7 @@ function Recording({ snap, meeting, session, device, color, onEnded }: { snap: S
             <YogurtEditor initialMarkdown={meeting.notes_md} onChange={(md) => session.setNotes(md)} placeholder={NOTES_PLACEHOLDER} />
           </section>
         </main>
+        {chat && <Ask chat={chat} position={ASK} />}
         <Sheet full={full} setFull={setFull} state={snap.state} lines={meeting.lines} interim={snap.interim} interimAt={interimAt.current ?? 0} gaps={snap.gaps} />
       </div>
     </div>

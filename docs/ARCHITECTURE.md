@@ -1008,7 +1008,7 @@ sequenceDiagram
   F-->>R: {token, url}
   R->>D: WebSocket url, subprotocol bearer + token, 16 kHz linear16
   D-->>R: interim and final results
-  loop every 30 seconds, and at End
+  loop every 30 seconds, before each chat question, and at End
     R->>P: rpc yogurt_start_push, insert yogurt_versions {full bundle}
   end
 ```
@@ -1028,6 +1028,10 @@ sequenceDiagram
   `cloud/src/lib/session.ts` writes the meeting to IndexedDB on every change and pushes the whole bundle at the start and every 30 seconds while `ended_at` is null, skipping a push whose bundle has not changed.
   At End it pushes the last of it still open, enhances it under EnhancingBanner in the meeting view, and only then pushes it ended, with the enhanced notes when the enhance worked.
   A page that reopens with an unfinished meeting there shows it at the top of the Library with Resume and End.
+- **Live chat.**
+  The record screen docks the meeting view's Ask pill and ChatWindow above the transcript sheet.
+  Before each question it pushes the meeting still open, and only then calls `cloud/api/chat.ts`, which reads that version through `yogurt_meeting` as it does any meeting, so the answer covers everything said up to the question.
+  A failed push puts its error in the chat and the question is not sent.
 - **Verification.**
-  `cloud/e2e/record.spec.ts` records through Chrome's fake mic into a fake Deepgram, drops the socket, reloads the tab, resumes, and ends through a fake LLM's enhance.
+  `cloud/e2e/record.spec.ts` records through Chrome's fake mic into a fake Deepgram, asks the meeting mid-recording, drops the socket, reloads the tab, resumes, ends while a chat answer streams, and enhances through a fake LLM.
   `just cloud-dev` serves the webapp against a local Supabase for trying it by hand, in Chrome or in the Android emulator through `just android-emu`.

@@ -201,6 +201,19 @@ export class RecordingSession {
     return p;
   }
 
+  /** The device the meeting is recorded under, which a resumed meeting keeps from when it started. */
+  get device() {
+    return this.deviceId;
+  }
+
+  /** Pushes the meeting as it is now, still open, so a chat question reads everything said up to it. Throws when the push fails. */
+  async pushNow() {
+    const m = this.snap.meeting;
+    if (!m) throw new Error("Nothing is recording.");
+    // Open even after a failed End, so a Mac never adopts it before its enhanced version exists.
+    await this.push(this.deviceId, () => ({ ...(this.snap.meeting ?? m), ended_at: null }));
+  }
+
   private async pushQuietly() {
     const m = this.snap.meeting;
     if (!m) return;

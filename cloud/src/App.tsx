@@ -209,7 +209,7 @@ function Signed({ api }: { api: Api }) {
     case "record":
       return (
         <Suspense fallback={null}>
-          <Record api={api} token={token!} session={session} onBack={() => back(HOME)} onEnded={(key) => replace({ ...HOME, meeting: key })} />
+          <Record api={api} token={token!} session={session} onBack={() => back(HOME)} onEnded={(key) => replace({ ...HOME, meeting: key })} onRejected={drop} />
         </Suspense>
       );
     case "settings":

@@ -22,11 +22,14 @@ test.use({
 
 const dg = new FakeDeepgram(5193, "fake-dg-key");
 
-// A stand-in for the LLM provider at the address playwright.config.ts gives the enhance function. It holds the second half of its reply until the spec lets it go.
+// A stand-in for the LLM provider at the address playwright.config.ts gives the enhance and chat functions. It holds the second half of an enhance until the spec lets it go.
+// A chat question gets the last transcript line it was sent, quoted after a first piece, and `chatHeld` holds that quote.
 const LLM_PORT = Number(process.env.YOGURT_CLOUD_E2E_LLM_PORT ?? 5192);
 const REPLY = "template: general\n\n## Pricing\n- pro tier at $18?\n- ask finance re annual cap\n\n## Action items\n- Dana sends the annual price to finance\n";
 let release: () => void = () => undefined;
 let held = new Promise<void>((r) => (release = r));
+let chatHeld = Promise.resolve();
+let chats = 0;
 let llm: Server;
 
 test.describe.configure({ mode: "serial" });
@@ -34,12 +37,23 @@ test.beforeAll(async () => {
   await reset();
   await dg.start();
   llm = createServer(async (req, res) => {
-    for await (const _ of req);
+    let body = "";
+    for await (const c of req) body += c;
+    res.on("error", () => undefined);
     res.writeHead(200, { "content-type": "text/event-stream" });
+    const sent = (content: string) => res.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`);
+    const transcript = (JSON.parse(body).messages as { content: string }[]).find((m) => m.content.startsWith("TRANSCRIPT SO FAR"));
+    if (transcript) {
+      chats++;
+      sent("The last line was: ");
+      await chatHeld;
+      sent(transcript.content.trim().split("\n").at(-1)!.replace(/^\[\d\d:\d\d\] them: /, ""));
+      return res.end("data: [DONE]\n\n");
+    }
     const pieces = REPLY.match(/[\s\S]{1,24}/g)!;
     for (const [i, content] of pieces.entries()) {
       if (i === Math.floor(pieces.length / 2)) await held;
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`);
+      sent(content);
     }
     res.end(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
   });
@@ -107,6 +121,34 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await expect(sheet(page).getByText(/Heard line 2/)).toBeVisible({ timeout: 15_000 });
   await shot(page, info, "r3-recording", false);
 
+  // A question mid-recording pushes the meeting first, still open, so the answer quotes the line just heard. The transcript keeps arriving under the chat.
+  const ask = page.getByRole("button", { name: "Ask this meeting" });
+  const chat = page.getByRole("region", { name: "Ask the meeting chat" });
+  const input = chat.getByPlaceholder("Ask this meeting…");
+  await ask.click();
+  const heard = await newest(page);
+  await input.fill("What was just said?");
+  await input.press("Enter");
+  const answer = chat.getByText(/^The last line was: Heard line \d+ in full\.$/);
+  await expect(answer).toBeVisible();
+  expect(Number(/Heard line (\d+)/.exec((await answer.textContent())!)![1])).toBeGreaterThanOrEqual(heard);
+  const atAsk = (await latest(device.id))!;
+  expect(atAsk.ended_at).toBeNull();
+  await expect.poll(() => newest(page), { timeout: 15_000 }).toBeGreaterThan(heard);
+  await shot(page, info, "r3b-chat", false);
+
+  // A push that fails shows its error in the chat, and the question never reaches the model.
+  const chatsBefore = chats;
+  const refuse = "**/rest/v1/rpc/yogurt_start_push";
+  await page.route(refuse, (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Push refused." }) }));
+  await input.fill("And now?");
+  await input.press("Enter");
+  await expect(chat.getByText("[Could not save the meeting before asking. Push refused.]")).toBeVisible();
+  expect(chats).toBe(chatsBefore);
+  await page.unroute(refuse);
+  await chat.getByRole("button", { name: "Collapse chat" }).click();
+  await expect(ask).toBeVisible();
+
   await sheet(page).getByRole("button", { name: "Raise transcript" }).click();
   await expect(sheet(page).getByRole("button", { name: "Lower transcript" })).toBeVisible();
   await expect(finals(page).first()).toBeInViewport();
@@ -128,8 +170,8 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   expect(replay.burst / 32_000).toBeGreaterThan(3);
   await expect.poll(() => newest(page), { timeout: 15_000 }).toBeGreaterThan(lineBefore + 1);
 
-  // The 30 second push carries the transcript so far, with ended_at still null.
-  await expect.poll(async () => JSON.parse((await latest(device.id))?.transcript_json ?? "[]").length, { timeout: 40_000 }).toBeGreaterThan(0);
+  // The 30 second push carries the transcript so far, past what the question's push had, with ended_at still null.
+  await expect.poll(async () => JSON.parse((await latest(device.id))?.transcript_json ?? "[]").length, { timeout: 40_000 }).toBeGreaterThan(JSON.parse(atAsk.transcript_json).length);
   const pushed = (await latest(device.id))!;
   expect(pushed).toMatchObject({ title: "Q4 pricing sync", ended_at: null, stt_engine: "cloud · nova-3 · phone" });
 
@@ -155,10 +197,20 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await sheet(page).getByRole("button", { name: "Lower transcript" }).click();
   if (!phone) await shot(page, info, "r7-resumed", false);
 
+  // End works while a chat answer is still streaming, which the closing record screen drops.
+  // The question's push counts with End's, since End skips a push when no line came in after it.
+  const versionsBefore = (await all(device.id)).length;
+  let releaseChat: () => void = () => undefined;
+  chatHeld = new Promise<void>((r) => (releaseChat = r));
+  await ask.click();
+  await input.fill("What was just said?");
+  await input.press("Enter");
+  await expect(chat.getByText("The last line was:")).toBeVisible();
+
   // End saves the last of the transcript still open, then opens the meeting under the enhance banner while the model streams.
   held = new Promise<void>((r) => (release = r));
-  const versionsBefore = (await all(device.id)).length;
   await page.getByRole("button", { name: "End meeting" }).click();
+  releaseChat();
   await expect(page.getByRole("heading", { name: "Q4 pricing sync" })).toBeVisible();
   await expect(page.getByText("Weaving your notes into the transcript…")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Enhanced", selected: true })).toBeVisible();
