@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 import { FakeDeepgram } from "./fakeDeepgram";
@@ -20,21 +21,45 @@ test.use({
 });
 
 const dg = new FakeDeepgram(5193, "fake-dg-key");
+
+// A stand-in for the LLM provider at the address playwright.config.ts gives the enhance function. It holds the second half of its reply until the spec lets it go.
+const LLM_PORT = Number(process.env.YOGURT_CLOUD_E2E_LLM_PORT ?? 5192);
+const REPLY = "template: general\n\n## Pricing\n- pro tier at $18?\n- ask finance re annual cap\n\n## Action items\n- Dana sends the annual price to finance\n";
+let release: () => void = () => undefined;
+let held = new Promise<void>((r) => (release = r));
+let llm: Server;
+
 test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   await reset();
   await dg.start();
+  llm = createServer(async (req, res) => {
+    for await (const _ of req);
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    const pieces = REPLY.match(/[\s\S]{1,24}/g)!;
+    for (const [i, content] of pieces.entries()) {
+      if (i === Math.floor(pieces.length / 2)) await held;
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`);
+    }
+    res.end(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
+  });
+  await new Promise<void>((r) => llm.listen(LLM_PORT, "127.0.0.1", r));
 });
-test.afterAll(() => dg.stop());
+test.afterAll(async () => {
+  await dg.stop();
+  await new Promise<void>((r) => llm.close(() => r()));
+});
 
 const sheet = (page: Page) => page.getByRole("region", { name: "Live transcript" });
 const finals = (page: Page) => sheet(page).locator('[data-final="true"]');
 /** The number of the newest final line the fake sent that the sheet shows. The peek shows only two rows. */
 const newest = async (page: Page) => Number(/Heard line (\d+)/.exec((await finals(page).last().textContent()) ?? "")?.[1] ?? 0);
 
-type Version = { body: { meeting: { id: string; title: string; ended_at: number | null; notes_md: string; transcript_json: string; stt_engine: string } } };
+type Meeting = { id: string; title: string; ended_at: number | null; notes_md: string; transcript_json: string; stt_engine: string; enriched_md: string | null; llm_model: string | null; template: string | null };
+type Version = { body: { meeting: Meeting } };
 const latest = async (deviceId: string) =>
   (await query<Version>("select body from yogurt_versions where device_id = $1 order by push_id desc limit 1", [deviceId]))[0]?.body.meeting;
+const all = async (deviceId: string) => (await query<Version>("select body from yogurt_versions where device_id = $1 order by push_id", [deviceId])).map((v) => v.body.meeting);
 
 test("record on a phone: live lines, notes, a dropped socket, a killed tab, and End", async ({ page }, info) => {
   test.setTimeout(240_000);
@@ -130,11 +155,30 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await sheet(page).getByRole("button", { name: "Lower transcript" }).click();
   if (!phone) await shot(page, info, "r7-resumed", false);
 
+  // End saves the last of the transcript still open, then opens the meeting under the enhance banner while the model streams.
+  held = new Promise<void>((r) => (release = r));
+  const versionsBefore = (await all(device.id)).length;
   await page.getByRole("button", { name: "End meeting" }).click();
   await expect(page.getByRole("heading", { name: "Q4 pricing sync" })).toBeVisible();
+  await expect(page.getByText("Weaving your notes into the transcript…")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Enhanced", selected: true })).toBeVisible();
+  await expect(page.getByRole("tabpanel").getByText("Pricing", { exact: true })).toBeVisible();
+  await shot(page, info, "r8-enhancing");
+  const whileEnhancing = (await all(device.id)).slice(versionsBefore);
+  expect(whileEnhancing.length).toBeGreaterThan(0);
+  expect(whileEnhancing.every((m) => m.ended_at === null && m.enriched_md === null)).toBe(true);
+  expect(JSON.parse(whileEnhancing.at(-1)!.transcript_json).length).toBeGreaterThan(kept);
+  release();
+  await expect(page.getByText("Weaving your notes into the transcript…")).toHaveCount(0);
+  await expect(page.getByRole("tabpanel").getByText("Dana sends the annual price to finance")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-enhance" })).toBeVisible();
+  await shot(page, info, "r9-enhanced");
   const ended = (await latest(device.id))!;
   expect(ended.id).toBe(id);
   expect(ended.ended_at).toBeGreaterThan(0);
+  expect(ended).toMatchObject({ llm_model: "fake-model", template: "general" });
+  expect(ended.enriched_md).toContain("Dana sends the annual price to finance");
+  expect((await all(device.id)).filter((m) => m.ended_at !== null)).toHaveLength(1);
   expect(ended.notes_md).toContain("ask finance re annual cap");
   const lines: { channel: string; text: string; ts_ms: number }[] = JSON.parse(ended.transcript_json);
   expect(lines.length).toBeGreaterThan(kept);
@@ -146,7 +190,7 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await page.getByRole("tab", { name: "Transcript" }).click();
   await expect(page.getByRole("tabpanel").getByText(lines[0].text)).toBeVisible();
   await expect(page.getByRole("tabpanel").getByText("Them")).toHaveCount(0);
-  await shot(page, info, "r8-ended-transcript");
+  await shot(page, info, "r10-ended-transcript");
   await page.getByRole("tab", { name: "Notes" }).click();
   await expect(page.getByRole("tabpanel").getByText("ask finance re annual cap")).toBeVisible();
 
@@ -156,5 +200,5 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await expect(page.getByTestId("list-row")).toHaveCount(1);
   await expect(page.getByTestId("list-row")).toContainText("Q4 pricing sync");
   await expect(page.getByText(/stopped recording/)).toHaveCount(0);
-  await shot(page, info, "r9-library-phone", false);
+  await shot(page, info, "r11-library-phone", false);
 });
