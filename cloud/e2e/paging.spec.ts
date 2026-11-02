@@ -113,7 +113,8 @@ test("search pages with Previous and Next, and a hit from a later page loads its
 
   // The hit opens through yogurt_meeting, though the library page never held it.
   await page.getByRole("button", { name: /^Synthetic meeting 45\b/ }).click();
-  await expect(page.getByText(/Notes for meeting 45\./)).toBeVisible();
+  // The hit's snippet can quote the same notes in the list, so this reads the body.
+  await expect(page.getByRole("tabpanel").getByText(/Notes for meeting 45\./)).toBeVisible();
   await expect.poll(() => meetingCalls.length).toBeGreaterThan(0);
   expect(meetingCalls.at(-1)!.status).toBe(200);
 
