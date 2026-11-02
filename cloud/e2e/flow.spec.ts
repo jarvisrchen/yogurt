@@ -100,7 +100,7 @@ test("create the login, choose a PIN, lock, unlock, forget, change the PIN, lock
   await expect(page.getByRole("status")).toContainText("PIN changed");
   await page.getByRole("button", { name: "Change PIN" }).click();
   await expect(page.locator('div:has(> input[aria-label="Current PIN"]) i[data-filled]')).toHaveCount(4);
-  await page.getByRole("button", { name: "← Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Forget/ })).toHaveCount(1);
 
   // Five wrong tries lock unlocking.

@@ -258,8 +258,12 @@ export const LockButton = ({ onClick }: { onClick: () => void }) => (
 
 export function Back({ to, onClick }: { to: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="text-[14px] min-[721px]:text-[13px] text-mut bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] self-start min-[721px]:self-auto">
-      ← {to}
+    <button type="button" onClick={onClick} className="inline-flex items-center gap-[4px] text-[14px] min-[721px]:text-[13px] text-mut bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] self-start min-[721px]:self-auto">
+      {/* Drawn, because the "←" glyph falls back to a smaller, lower font in Android's WebView. */}
+      <svg aria-hidden width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      {to}
     </button>
   );
 }

@@ -37,7 +37,7 @@ test("a Mac's Archive pill lists and searches only its archived meetings", async
   await page.getByRole("button", { name: /^Archived review 02/ }).click();
   await expect(page.getByRole("heading", { name: "Archived review 02" })).toBeVisible();
   if (isPhone(page)) {
-    await page.getByRole("button", { name: "← Archive" }).click();
+    await page.getByRole("button", { name: "Archive", exact: true }).click();
     await expect(filter(page, "Archive")).toHaveAttribute("aria-pressed", "true");
   } else {
     await page.getByRole("link", { name: "Library" }).click();

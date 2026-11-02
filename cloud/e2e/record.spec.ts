@@ -247,7 +247,7 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await expect(page.getByRole("tabpanel").getByText("ask finance re annual cap")).toBeVisible();
 
   // Back in the library, the meeting lists under the phone's own device pill, and nothing is left to resume.
-  if (phone) await page.getByRole("button", { name: /^← / }).click();
+  if (phone) await page.getByRole("button", { name: "All devices" }).click();
   await page.getByRole("button", { name: name, exact: true }).click();
   await expect(page.getByTestId("list-row")).toHaveCount(1);
   await expect(page.getByTestId("list-row")).toContainText("Q4 pricing sync");
