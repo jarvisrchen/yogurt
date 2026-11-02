@@ -77,6 +77,30 @@ It has three parts:
   The page still does every push, so the device, bundle, and push code exist once.
   The bridge accepts calls only from the Cloud origin the user entered.
 
+### Bridge contract
+
+Every value crossing the bridge is a JSON string, because `@JavascriptInterface` passes only strings and numbers.
+
+| Call, page to app | Argument | Returns |
+| --- | --- | --- |
+| `YogurtAndroid.start(json)` | `{"meetingId","startedAtMs","tokenUrl","auth":{"jwt","browserToken"}}` | `{"ok":true}` or `{"ok":false,"error"}` |
+| `YogurtAndroid.setAuth(json)` | `{"jwt","browserToken"}`, sent whenever the page refreshes its session | nothing |
+| `YogurtAndroid.stop()` | none | nothing |
+| `YogurtAndroid.status()` | none | `{"recording","meetingId","startedAtMs","state","lines"}` |
+| `YogurtAndroid.lines(from)` | index of the first line wanted | JSON array of final lines from that index |
+| `YogurtAndroid.appVersion()` | none | the app's version name, such as `"0.1.0"` |
+
+The app posts events to the page with `window.dispatchEvent(new CustomEvent("yogurt-native", {detail}))`, where `detail` is one of:
+
+- `{"type":"line","index","line":{"channel":"them","text","ts_ms"}}` for each final line.
+- `{"type":"interim","text"}` for the words Deepgram has not finalized.
+- `{"type":"state","state":"connecting"|"live"|"reconnecting"|"stopped"}`.
+- `{"type":"gap","from_ms","to_ms"}` when the buffer overflowed and audio was dropped.
+- `{"type":"error","message"}`.
+
+The service mints its own Deepgram token by calling `tokenUrl` with the latest `auth`, so a reconnect works while the page is in the background.
+Final lines are numbered from 0 and kept in a file until the next `start`, so a page that comes back calls `lines(n)` with the count it already has and never misses or repeats one.
+
 On launch, the app compares its version with the latest GitHub release and, when a newer one has an APK, shows an Update available banner.
 Tapping it downloads the APK and hands it to Android's installer, so an update is one tap and keeps the sign-in.
 Every APK is signed with the same release key, kept in Keychain and as a GitHub secret, because Android refuses an update signed with a different key.
