@@ -3,6 +3,9 @@ import { isPhoneMeeting, type Enhanced } from "./phone";
 
 type Meeting = Bundle["meeting"] & { template?: string | null };
 
+// About 12 updates a second, as the Mac's preview, so a long reply does not re-render on every chunk.
+const PREVIEW_MS = 80;
+
 // The 1.3 MB module loads on the first enhance, not with the page.
 let wasm: Promise<typeof import("../wasm/yogurt_wasm.js")> | null = null;
 const loadWasm = () =>
@@ -49,24 +52,36 @@ export async function enhanceMeeting(
   }
   let reply = "";
   let model: string | null = null;
+  // At most every PREVIEW_MS, and always the latest text, so a pause in the stream never leaves the preview behind.
+  let shown = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const show = () => {
+    timer = undefined;
+    shown = Date.now();
+    onText?.(w.preview(reply));
+  };
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += value;
-    const lines = buf.split("\n");
-    buf = lines.pop()!;
-    for (const line of lines) {
-      if (!line) continue;
-      const frame = JSON.parse(line) as { delta?: string; done?: boolean; model?: string; error?: string };
-      if (frame.error) throw new Error(frame.error);
-      if (frame.delta) {
-        reply += frame.delta;
-        onText?.(w.preview(reply));
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      const lines = buf.split("\n");
+      buf = lines.pop()!;
+      for (const line of lines) {
+        if (!line) continue;
+        const frame = JSON.parse(line) as { delta?: string; done?: boolean; model?: string; error?: string };
+        if (frame.error) throw new Error(frame.error);
+        if (frame.delta) {
+          reply += frame.delta;
+          timer ??= setTimeout(show, Math.max(0, shown + PREVIEW_MS - Date.now()));
+        }
+        if (frame.done) model = frame.model ?? "";
       }
-      if (frame.done) model = frame.model ?? "";
     }
+  } finally {
+    clearTimeout(timer);
   }
   // No done frame means the function was cut off, and a partial reply must never be stored as the notes.
   if (model === null) throw new Error("Enhance stopped before the model finished. Try again.");

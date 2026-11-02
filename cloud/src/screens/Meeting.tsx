@@ -35,9 +35,6 @@ export type Enhance = (onText: (text: string) => void) => Promise<string | null>
 
 type Run = { status: "idle" } | Exclude<Finish, { status: "done" }>;
 
-// About 12 updates a second, as the Mac's preview, so a long reply does not re-render on every chunk.
-const PREVIEW_MS = 80;
-
 const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
 
 /** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
@@ -55,13 +52,8 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
     if (!enhance || own.status === "running") return;
     setTook(true);
     setRun({ status: "running", text: "" });
-    let shown = 0;
     try {
-      const md = await enhance((text) => {
-        if (Date.now() - shown < PREVIEW_MS) return;
-        shown = Date.now();
-        setRun({ status: "running", text });
-      });
+      const md = await enhance((text) => setRun({ status: "running", text }));
       if (md === null) return setRun({ status: "short" });
       setEnhanced(md);
       setRun({ status: "idle" });

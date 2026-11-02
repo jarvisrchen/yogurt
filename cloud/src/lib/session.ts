@@ -17,9 +17,6 @@ export type Finish =
   | { status: "short" }
   | { status: "done"; enriched_md: string };
 
-// About 12 updates a second, as the Mac's preview, so a long reply does not re-render on every chunk.
-const PREVIEW_MS = 80;
-
 export interface Snapshot {
   /** The meeting this page is recording, or ending. */
   meeting: PhoneMeeting | null;
@@ -265,15 +262,8 @@ export class RecordingSession {
     run({ status: "running", text: "" });
     let fields: Enhanced | null = null;
     let failed: Finish | null = null;
-    let shown = 0;
     try {
-      fields = await enhanceMeeting(this.api, this.browserToken() ?? "", bundle(m).meeting, {
-        onText: (text) => {
-          if (Date.now() - shown < PREVIEW_MS) return;
-          shown = Date.now();
-          run({ status: "running", text });
-        },
-      });
+      fields = await enhanceMeeting(this.api, this.browserToken() ?? "", bundle(m).meeting, { onText: (text) => run({ status: "running", text }) });
       if (!fields) failed = { status: "short" };
     } catch (e) {
       if (e instanceof TokenRejected) this.onRejected();
