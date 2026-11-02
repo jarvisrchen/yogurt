@@ -26,8 +26,16 @@ export default defineConfig({
   webServer: {
     command: `pnpm build && pnpm exec vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: `http://127.0.0.1:${PORT}`,
-    // The LLM is e2e/chat.spec.ts's fake provider.
-    env: { SUPABASE_URL: API, SUPABASE_PUBLISHABLE_KEY: KEY, YOGURT_LLM_BASE_URL: "http://127.0.0.1:5192/v1", YOGURT_LLM_MODEL: "fake-model", YOGURT_LLM_API_KEY: "fake-key" },
+    // The LLM is e2e/chat.spec.ts's fake provider, and Deepgram is e2e/record.spec.ts's.
+    env: {
+      SUPABASE_URL: API,
+      SUPABASE_PUBLISHABLE_KEY: KEY,
+      YOGURT_LLM_BASE_URL: "http://127.0.0.1:5192/v1",
+      YOGURT_LLM_MODEL: "fake-model",
+      YOGURT_LLM_API_KEY: "fake-key",
+      YOGURT_DEEPGRAM_API_KEY: "fake-dg-key",
+      YOGURT_DEEPGRAM_URL: "http://127.0.0.1:5193",
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

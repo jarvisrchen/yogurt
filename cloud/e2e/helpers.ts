@@ -25,6 +25,17 @@ export async function reset() {
   await fetch(`${MAIL}/api/v1/messages`, { method: "DELETE" });
 }
 
+/** Rows from the local database, read as its superuser. */
+export async function query<T>(text: string, params: unknown[] = []): Promise<T[]> {
+  const c = new pg.Client({ connectionString: DB });
+  await c.connect();
+  try {
+    return (await c.query(text, params)).rows;
+  } finally {
+    await c.end();
+  }
+}
+
 /** Revokes every browser token, so the next read from any browser is rejected. */
 export async function revokeBrowsers() {
   const c = new pg.Client({ connectionString: DB });
