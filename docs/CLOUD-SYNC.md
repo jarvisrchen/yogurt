@@ -15,8 +15,9 @@ Your laptops push to it, and your phone reads from it.
 
 1. **The webapp, on your Vercel project.** This is the Yogurt Cloud you see.
    It lives at your Cloud address, for example `yogurt-cloud.vercel.app`, which you open on your phone and type into each laptop.
-   It is static files plus one function, `/api/chat`, which answers questions about a meeting or across your meetings.
-   Vercel sees a meeting only while that function answers a question about it, and keeps nothing.
+   It is static files plus two functions.
+   `/api/chat` answers questions about a meeting or across your meetings, and `cloud/api/enhance.ts` enhances a meeting recorded on your phone.
+   Vercel sees a meeting only while one of them works on it, and keeps nothing.
 2. **The data, in your Supabase project.** It holds a Postgres database with your meetings and a login service (Supabase Auth) with your Cloud login.
 3. **Your laptops.** Each Mac running Yogurt pushes its meetings to your Supabase project.
 4. **Your phone, or any browser.** It opens your Cloud address, signs in, and reads your meetings.
@@ -29,6 +30,7 @@ flowchart LR
     subgraph VC["Your Vercel project"]
       WEB["Yogurt Cloud webapp<br/>at your Cloud address<br/>static files + config.json"]
       CHAT["/api/chat<br/>chat about your meetings"]
+      ENH["enhance<br/>a phone meeting's notes"]
     end
     subgraph SB["Your Supabase project"]
       AUTH["Auth<br/>the Cloud login"]
@@ -47,6 +49,9 @@ flowchart LR
   PH -- "ask" --> CHAT
   CHAT -- "read meetings as you" --> DB
   CHAT -- "question + meeting text" --> LLM
+  PH -- "enhance prompt" --> ENH
+  ENH -- "check the owner as you" --> DB
+  ENH -- "notes + transcript" --> LLM
 ```
 
 ### How data moves
@@ -230,9 +235,9 @@ The login settings apply to the whole Supabase project, so another app on the sa
 Its confirmation links would go to your Cloud address, and turning off sign-ups would block its new users.
 Use a project of its own when another app signs users up on it.
 
-### Turn on chat
+### Turn on chat and enhance
 
-Chat answers questions about your meetings through any OpenAI-compatible chat completions API, the same kind of provider as an HTTP provider in Yogurt's Settings.
+Chat answers questions about your meetings, and Enhance writes the notes of a meeting recorded on your phone, through any OpenAI-compatible chat completions API, the same kind of provider as an HTTP provider in Yogurt's Settings.
 Add three more variables, limited to Production, and redeploy:
 
 | Name | Value |
@@ -241,8 +246,9 @@ Add three more variables, limited to Production, and redeploy:
 | `YOGURT_LLM_MODEL` | the model name, for example `MiniMax-M3` |
 | `YOGURT_LLM_API_KEY` | the API key, marked Sensitive |
 
-Until all three are set, chat answers "Chat isn't set up on this Cloud."
+Until all three are set, chat answers "Chat isn't set up on this Cloud." and Enhance answers "Enhance isn't set up on this Cloud."
 The local command-line providers, such as Claude Code, cannot run on Vercel.
+The enhance function may run for 300 seconds, the most Vercel's Hobby plan allows with Fluid compute (Vercel's function duration page, checked 2026-11-02), which covers a reply to well over an hour of transcript.
 
 ### Free tiers
 

@@ -135,8 +135,9 @@ Crate responsibilities, one line each:
 | `yogurt-server` | axum router, auth, meeting registry, enhance/chat orchestration, WS fan-out, embedded assets. |
 | `yogurt-audio` | Mic (cpal) + system loopback (ScreenCaptureKit), resample to the frame contract, broadcast frames. |
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
-| `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. |
-| `yogurt-prompts` | Embedded prompt templates and their render context, including the seven enhance note formats (LLM-9). |
+| `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. `enhance::finish` turns a whole enhance reply into the sanitized `enriched_md`, for the Mac and the Cloud alike. |
+| `yogurt-prompts` | Embedded prompt templates and their render context, including the seven enhance note formats (LLM-9), and the readers of model output: the `template:` line and the `<think>` stripper. |
+| `yogurt-wasm` | `yogurt-prompts` and `yogurt-notes` behind `wasm-bindgen`, so the Cloud webapp enhances a phone meeting with the Mac's prompt and merge. Built into `cloud/src/wasm` by `just wasm`. |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming, and the local agent-CLI provider adapter (§7.6). |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
 | `yogurt-granola` | Granola public REST API client (paging, rate limit, retries, the 413 transcript fallback) and the pure mapping from a Granola note to a meeting. |
@@ -736,6 +737,16 @@ graph TB
 | 3 | `api/chat.rs` `llm.stream` | Same provider | Once per **chat message sent** | Input + output tokens |
 | 3b | `api/library_chat.rs` `llm.stream` | Same provider | Once per **Library chat question**, with at most 6 retrieved meetings in the prompt | Input + output tokens |
 
+The Cloud webapp adds two more, billed to the provider set in the user's Vercel project (`YOGURT_LLM_*`), never to the Mac's:
+
+| # | Where in code | Which AI | Fires when | Billing unit |
+|---|---|---|---|---|
+| 4 | `cloud/api/chat.ts` | The Cloud's provider | Once per question asked in the webapp | Input + output tokens |
+| 5 | `cloud/api/enhance.ts` | The Cloud's provider | Once per **Enhance** or **Re-enhance** of a meeting recorded on a phone | Input + output tokens, the same prompt as #2 |
+
+Call site 5 sends the prompt the page rendered with `yogurt-wasm` and streams the raw reply back.
+The page then cleans and merges it in `yogurt-wasm` with `yogurt_notes::enhance::finish`, the function the Mac's handler calls, so a phone meeting stores the `enriched_md` the Mac would.
+
 Fallbacks that cost nothing: if no provider is configured at all, `MockLlm` answers deterministically (`$0`).
 A provider that *is* configured but whose stored key cannot be read is a hard 502, never a silent free fallback, so you can never be silently downgraded to fake output.
 
@@ -870,7 +881,11 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 - **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
 - **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
 - **`cloud/` webapp**: a separate Vite app for the Yogurt Cloud, deployed to the user's own Vercel project and never embedded in the binary. `cloud/vite.config.ts` aliases `web/src` as `@web` to reuse the logo, buttons, and `@theme` tokens, serves `web/public` as its public folder, and dedupes `react`. `cloud/scripts/build.mjs` applies `crates/yogurt-cloud/schema.sql` on production builds and writes `config.json`. CI builds it in the web job because a change under `web/src` can break it.
-  `cloud/api/chat.ts` is its one Vercel function, chat about one meeting or across meetings ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)), which `vite.config.ts` also mounts for `vite preview` so the e2e specs reach it.
+  Its Vercel functions are `cloud/api/chat.ts`, chat about one meeting or across meetings ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)), and `cloud/api/enhance.ts`, which streams the reply to a phone meeting's enhance prompt ([.planning/mobile-recording-design.md](.planning/mobile-recording-design.md)).
+  `vite.config.ts` also mounts both for `vite preview` so the e2e specs reach them.
+- **`yogurt-wasm` in `cloud/src/wasm`**: the enhance prompt and merge compiled to WASM for the webapp.
+  The build is committed so Vercel needs no Rust, `just wasm` regenerates it, and CI rebuilds it and fails on any difference.
+  It stays byte-identical across machines only because `yogurt-prompts` embeds its templates with `include_str!` and the build remaps source paths.
 
 ---
 
@@ -878,7 +893,7 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 
 Optional, one-way, and off until the user connects it in Settings > Cloud sync.
 A laptop pushes its meetings to a Yogurt Cloud the user deployed: a webapp on their Vercel account, backed by their own Supabase project.
-The webapp is static apart from one chat function.
+The webapp is static apart from two functions: chat, and enhance for meetings recorded on a phone.
 Yogurt hosts nothing.
 The design, schema, and who can read what are in [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md), and `crates/yogurt-cloud/schema.sql` is the schema.
 
