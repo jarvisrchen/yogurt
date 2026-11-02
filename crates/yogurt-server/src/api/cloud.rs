@@ -15,6 +15,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::{watch, MutexGuard};
@@ -632,6 +633,8 @@ struct PassHooks<'a> {
     repo: std::sync::Arc<MeetingRepo>,
     /// Whether this pass belongs to the background job, whose progress clients hear about.
     job: bool,
+    /// The local id of each phone meeting this pass wrote, by the phone's id.
+    adopted: HashMap<String, String>,
 }
 
 impl push::Hooks for PassHooks<'_> {
@@ -648,6 +651,34 @@ impl push::Hooks for PassHooks<'_> {
         hashes
             .iter()
             .try_for_each(|(id, hash)| self.repo.set_cloud_hash(id, hash))
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    /// The row gets a UUID like every meeting made here, because the meeting routes take one, and keeps the phone's ULID as its `source_id`.
+    fn adopt(&mut self, phone: &push::PhoneMeeting) -> Result<bool, String> {
+        let id = uuid::Uuid::now_v7().to_string();
+        let imported = self
+            .repo
+            .import(yogurt_db::ImportedMeeting::from_phone(
+                &id,
+                &phone.meeting_id,
+                &phone.device_name,
+                &phone.body,
+            ))
+            .map_err(|e| format!("{e:#}"))?;
+        if imported.is_some() {
+            self.adopted.insert(phone.meeting_id.clone(), id);
+        }
+        Ok(imported.is_some())
+    }
+
+    fn unadopt(&mut self, phone_id: &str) -> Result<(), String> {
+        let Some(id) = self.adopted.remove(phone_id) else {
+            return Ok(());
+        };
+        self.repo
+            .delete(&id)
+            .map(drop)
             .map_err(|e| format!("{e:#}"))
     }
 
@@ -694,6 +725,7 @@ async fn run_pass(
         conn,
         repo: state.meeting_repo.clone(),
         job,
+        adopted: HashMap::new(),
     };
     let plan = pass.run(session, cancel, &mut hooks).await;
     // A failed pass may have committed its earlier batches, and a pass with nothing to send may follow one that left the index behind, so the index catches up either way.
@@ -707,6 +739,41 @@ async fn run_pass(
     Ok(plan)
 }
 
+/// Takes this Mac's copy of each ended phone meeting first, so the pass that follows pushes it as one of this Mac's.
+async fn adopt(
+    state: &AppState,
+    link: &mut Link,
+    cancel: &mut watch::Receiver<bool>,
+) -> ApiResult<()> {
+    let Link {
+        conn,
+        project,
+        session,
+    } = link;
+    let mut hooks = PassHooks {
+        state,
+        conn,
+        repo: state.meeting_repo.clone(),
+        job: true,
+        adopted: HashMap::new(),
+    };
+    let adopted = push::adopt(
+        project,
+        state.cloud_push.pacing(),
+        session,
+        cancel,
+        &mut hooks,
+    )
+    .await?;
+    if !adopted.is_empty() {
+        tracing::info!(
+            adopted = adopted.len(),
+            "adopted meetings recorded on a phone"
+        );
+    }
+    Ok(())
+}
+
 /// The pass behind the Push button and the timer. `now` stamps the success or failure record.
 async fn push_locked(
     state: &AppState,
@@ -717,9 +784,10 @@ async fn push_locked(
 ) -> ApiResult<Plan> {
     let pass = async {
         let recording = recording_id(state).await;
+        let mut link = link(state, held).await?;
+        adopt(state, &mut link, cancel).await?;
         let repo = state.meeting_repo.clone();
         let local = blocking(move || local_meetings(&repo)).await?;
-        let mut link = link(state, held).await?;
         run_pass(state, &mut link, local, recording, cancel, true).await
     };
     match pass.await {
@@ -1405,6 +1473,9 @@ mod tests {
         answer("/rest/v1/rpc/yogurt_start_push", json!(7))
             .mount(&cloud)
             .await;
+        answer("/rest/v1/rpc/yogurt_phone_meetings", json!([]))
+            .mount(&cloud)
+            .await;
         let mut conn = load(state).unwrap().unwrap();
         conn.supabase_url = cloud.uri();
         save(state, &conn).unwrap();
@@ -1454,6 +1525,146 @@ mod tests {
                 return out;
             }
         }
+    }
+
+    const PHONE_MEETING: &str = "01KPHONE000000000000000000";
+
+    /// [`mock_cloud`] that also lists one ended phone meeting, where `yogurt_adopt` answers `adopt`.
+    async fn phone_cloud(
+        state: &AppState,
+        adopt: wiremock::ResponseTemplate,
+    ) -> wiremock::MockServer {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+        let cloud = mock_cloud(state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let body = json!({ "v": 1, "meeting": { "id": PHONE_MEETING, "title": "On the go", "started_at": 1_000, "ended_at": 2_000,
+            "notes_md": "phone notes", "transcript_json": "[]", "stt_engine": "cloud · nova-3 · phone" },
+            "chat": [{ "id": "01KCHAT0000000000000000000", "role": "user", "content": "and then?", "created_at": 1_500 }] });
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                { "device_id": "p", "device_name": "Pixel", "meeting_id": PHONE_MEETING, "push_id": 3, "body": body }
+            ])))
+            .with_priority(1)
+            .mount(&cloud)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_adopt"))
+            .respond_with(adopt)
+            .mount(&cloud)
+            .await;
+        cloud
+    }
+
+    fn adopted(state: &AppState) -> Option<yogurt_db::Meeting> {
+        let repo = &state.meeting_repo;
+        repo.cloud_hashes()
+            .unwrap()
+            .into_iter()
+            .filter_map(|(id, _)| repo.get(&id).unwrap())
+            .find(|m| m.source_id.as_deref() == Some(PHONE_MEETING))
+    }
+
+    async fn pushed_ids(cloud: &wiremock::MockServer) -> Vec<String> {
+        cloud
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == "/rest/v1/yogurt_versions")
+            .flat_map(|r| serde_json::from_slice::<Vec<Value>>(&r.body).unwrap())
+            .map(|row| row["meeting_id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_pass_adopts_an_ended_phone_meeting_and_pushes_it_as_this_macs() {
+        let (state, _tmp) = idle_state();
+        let cloud = phone_cloud(
+            &state,
+            wiremock::ResponseTemplate::new(200).set_body_json(json!(true)),
+        )
+        .await;
+        push_and_settle(&state).await;
+        let m = adopted(&state).unwrap();
+        assert!(uuid::Uuid::parse_str(&m.id).is_ok(), "{}", m.id);
+        assert_eq!(
+            (m.title.as_str(), m.source.as_deref()),
+            ("On the go", Some("phone"))
+        );
+        assert_eq!(m.source_json.as_ref().unwrap()["device"], "Pixel");
+        assert_eq!(
+            state.db.list_chat_messages(&m.id).unwrap()[0].content,
+            "and then?"
+        );
+        assert_eq!(pushed_ids(&cloud).await, [m.id]);
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 1);
+        let claim: Value = serde_json::from_slice(
+            &cloud
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .find(|r| r.url.path() == "/rest/v1/rpc/yogurt_adopt")
+                .unwrap()
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            claim,
+            json!({ "device_id": "p", "meeting_id": PHONE_MEETING, "push_id": 3 })
+        );
+    }
+
+    #[tokio::test]
+    async fn losing_a_phone_meeting_to_another_mac_removes_the_copy() {
+        let (state, _tmp) = idle_state();
+        let cloud = phone_cloud(
+            &state,
+            wiremock::ResponseTemplate::new(200).set_body_json(json!(false)),
+        )
+        .await;
+        push_and_settle(&state).await;
+        assert!(adopted(&state).is_none());
+        assert!(state.meeting_repo.cloud_hashes().unwrap().is_empty());
+        assert!(pushed_ids(&cloud).await.is_empty());
+        assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
+    }
+
+    #[tokio::test]
+    async fn a_failed_adoption_keeps_the_copy_and_records_the_failure() {
+        let (state, _tmp) = idle_state();
+        let cloud = phone_cloud(
+            &state,
+            wiremock::ResponseTemplate::new(403).set_body_json(json!({ "code": "42501" })),
+        )
+        .await;
+        push_and_settle(&state).await;
+        assert!(adopted(&state).is_some());
+        assert!(pushed_ids(&cloud).await.is_empty());
+        assert_eq!(recorded(&state, LAST_ERROR_KEY)["code"], "cloud_error");
+        assert_eq!(history(&state)[0]["outcome"], "failed");
+    }
+
+    #[tokio::test]
+    async fn a_cloud_from_before_phones_still_pushes() {
+        let (state, _tmp) = with_meetings(1);
+        let cloud = mock_cloud(&state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        wiremock::Mock::given(wiremock::matchers::path(
+            "/rest/v1/rpc/yogurt_phone_meetings",
+        ))
+        .respond_with(
+            wiremock::ResponseTemplate::new(404).set_body_json(json!({ "code": "PGRST202" })),
+        )
+        .with_priority(1)
+        .mount(&cloud)
+        .await;
+        push_and_settle(&state).await;
+        assert_eq!(recorded(&state, LAST_ERROR_KEY), Value::Null);
+        assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 1);
     }
 
     #[tokio::test]
