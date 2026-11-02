@@ -35,9 +35,6 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 yogurt-prompts = { path = "../yogurt-prompts" }
 yogurt-notes = { path = "../yogurt-notes" }
-# Sanitizes enriched_md before it is persisted and sent to the browser. The
-# allowlist keeps only the wire-format spans (data-ai-grey, data-transcript-link).
-ammonia = { workspace = true }
 html-escape = { workspace = true }
 # Tempdir for the test_support module. Release builds never link it.
 tempfile = { workspace = true, optional = true }
@@ -56,3 +53,5 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 wiremock = { workspace = true }
 yogurt-server = { path = ".", features = ["test-support"] }
+# tests/wasm_parity.rs checks the Cloud webapp's enhance against this crate's.
+yogurt-wasm = { path = "../yogurt-wasm" }

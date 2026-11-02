@@ -13,6 +13,8 @@ export interface EnhancingBannerProps {
   /** If non-null, shows a static error state with a Retry button (when `onRetry` is set). */
   errorMessage?: string | null;
   onRetry?: () => void;
+  /** Puts the bar on its own row, for a phone-width screen the one row does not fit. */
+  stacked?: boolean;
 }
 
 const DEFAULT_COPY = "Weaving your notes into the transcript…";
@@ -23,6 +25,7 @@ export function EnhancingBanner({
   copy = DEFAULT_COPY,
   errorMessage,
   onRetry,
+  stacked = false,
 }: EnhancingBannerProps) {
   // The error state wins over `visible`, so the parent can leave `visible` true until retry.
   if (errorMessage) {
@@ -76,6 +79,35 @@ export function EnhancingBanner({
   }
 
   const hasChars = typeof chars === "number" && chars >= 0;
+  const dot = <span className="enhancing-dot" aria-hidden="true" />;
+  const bar = (
+    <div
+      aria-hidden="true"
+      style={{
+        ...(stacked ? {} : { flex: "1 1 220px", minWidth: 120, maxWidth: 320 }),
+        height: 4,
+        backgroundColor: TRACK,
+        borderRadius: 999,
+        overflow: "hidden",
+      }}
+    >
+      <div className="enhancing-bar-fill" />
+    </div>
+  );
+  const count = hasChars && (
+    <span
+      data-testid="enhancing-char-count"
+      className="font-mono"
+      style={{
+        fontSize: 12,
+        fontWeight: 500,
+        color: MUT,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {chars!.toLocaleString("en-US")} chars
+    </span>
+  );
 
   return (
     <div
@@ -87,9 +119,7 @@ export function EnhancingBanner({
         top: 0,
         zIndex: 20,
         display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "10px 18px",
+        ...(stacked ? { flexDirection: "column", gap: 8, padding: "10px 16px" } : { alignItems: "center", gap: 14, padding: "10px 18px" }),
         backgroundColor: LILAC,
         borderBottom: `1px solid ${TRACK}`,
         color: INK,
@@ -97,38 +127,22 @@ export function EnhancingBanner({
         fontWeight: 600,
       }}
     >
-      <span className="enhancing-dot" aria-hidden="true" />
-
-      <span style={{ flex: "0 1 auto" }}>{copy}</span>
-
-      <div
-        aria-hidden="true"
-        style={{
-          flex: "1 1 220px",
-          height: 4,
-          minWidth: 120,
-          maxWidth: 320,
-          backgroundColor: TRACK,
-          borderRadius: 999,
-          overflow: "hidden",
-        }}
-      >
-        <div className="enhancing-bar-fill" />
-      </div>
-
-      {hasChars && (
-        <span
-          data-testid="enhancing-char-count"
-          className="font-mono"
-          style={{
-            fontSize: 12,
-            fontWeight: 500,
-            color: MUT,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {chars!.toLocaleString("en-US")} chars
-        </span>
+      {stacked ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {dot}
+            <span style={{ flex: "1 1 auto" }}>{copy}</span>
+            {count}
+          </div>
+          {bar}
+        </>
+      ) : (
+        <>
+          {dot}
+          <span style={{ flex: "0 1 auto" }}>{copy}</span>
+          {bar}
+          {count}
+        </>
       )}
     </div>
   );

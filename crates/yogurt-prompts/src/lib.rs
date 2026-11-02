@@ -1,20 +1,58 @@
 //! Bundled LLM prompt templates.
-//! `Mode::Release` serves the copy `rust-embed` bakes in at build time.
+//! `Mode::Release` serves the copy `include_str!` bakes in at build time.
 //! `Mode::Dev` re-reads `templates/` on every call so edits show up without rebuilding.
 
 mod ctx;
+pub mod thinking;
 pub use ctx::EnhanceCtx;
 
 use anyhow::{bail, Context, Result};
-use rust_embed::RustEmbed;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tinytemplate::TinyTemplate;
 
-#[derive(RustEmbed)]
-#[folder = "templates/"]
-struct Embedded;
+/// `include_str!` rather than rust-embed, which also bakes in the folder path and file times, so the WASM build is the same on every machine.
+const EMBEDDED: [(&str, &str); 11] = [
+    ("enhance.md", include_str!("../templates/enhance.md")),
+    (
+        "chat-system.md",
+        include_str!("../templates/chat-system.md"),
+    ),
+    (
+        "library-chat-system.md",
+        include_str!("../templates/library-chat-system.md"),
+    ),
+    ("live-recap.md", include_str!("../templates/live-recap.md")),
+    (
+        "enhance/general.md",
+        include_str!("../templates/enhance/general.md"),
+    ),
+    (
+        "enhance/standup.md",
+        include_str!("../templates/enhance/standup.md"),
+    ),
+    (
+        "enhance/one-on-one.md",
+        include_str!("../templates/enhance/one-on-one.md"),
+    ),
+    (
+        "enhance/team-meeting.md",
+        include_str!("../templates/enhance/team-meeting.md"),
+    ),
+    (
+        "enhance/design-review.md",
+        include_str!("../templates/enhance/design-review.md"),
+    ),
+    (
+        "enhance/customer-call.md",
+        include_str!("../templates/enhance/customer-call.md"),
+    ),
+    (
+        "enhance/interview.md",
+        include_str!("../templates/enhance/interview.md"),
+    ),
+];
 
 /// In UI order. The first entry is the fallback when auto-detection names nothing recognizable.
 /// Each id is the stem of `templates/enhance/<id>.md`.
@@ -39,6 +77,10 @@ pub struct Template {
 }
 
 fn dev_template_dir() -> PathBuf {
+    // WASM has no file system, and the absolute path would make its build differ per machine.
+    if cfg!(target_family = "wasm") {
+        return PathBuf::new();
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates")
 }
 
@@ -226,6 +268,24 @@ fn parse_template(id: &'static str, raw: &str) -> Result<Template> {
     })
 }
 
+/// The note format an enhance request names. Absent, empty, or `auto` lets the model pick, and an unknown id is an error.
+pub fn template_choice(choice: Option<&str>) -> Result<Option<&'static str>> {
+    match choice.map(str::trim) {
+        None | Some("") | Some("auto") => Ok(None),
+        Some(id) => TEMPLATE_IDS
+            .iter()
+            .copied()
+            .find(|t| *t == id)
+            .map(Some)
+            .with_context(|| {
+                format!(
+                    "unknown template {id:?}; expected one of: {}",
+                    TEMPLATE_IDS.join(", ")
+                )
+            }),
+    }
+}
+
 /// Splits the `template: <id>` marker off the model's output, without validating the id.
 /// A reply without the marker returns `(None, text)`.
 /// A streaming prefix of the marker (`"templ"`) is treated as the marker so a live preview never flashes it.
@@ -253,8 +313,11 @@ pub fn split_template_line(text: &str) -> (Option<&str>, &str) {
 }
 
 fn read_embedded(name: &str) -> Result<String> {
-    let f = Embedded::get(name).with_context(|| format!("embedded asset missing: {name}"))?;
-    Ok(std::str::from_utf8(&f.data)?.to_string())
+    EMBEDDED
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, body)| body.to_string())
+        .with_context(|| format!("embedded asset missing: {name}"))
 }
 
 fn render<S: Serialize>(template: &str, name: &str, ctx: &S) -> Result<String> {

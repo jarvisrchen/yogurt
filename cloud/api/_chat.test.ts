@@ -125,6 +125,7 @@ test("each function reads only its own environment variables", () => {
   );
   expect(reads).toEqual({
     "chat.ts": ["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_URL", "YOGURT_LLM_API_KEY", "YOGURT_LLM_BASE_URL", "YOGURT_LLM_MODEL"],
+    "enhance.ts": ["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_URL", "YOGURT_LLM_API_KEY", "YOGURT_LLM_BASE_URL", "YOGURT_LLM_MODEL"],
     "stt-token.ts": ["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_URL", "YOGURT_DEEPGRAM_API_KEY", "YOGURT_DEEPGRAM_URL"],
   });
 });

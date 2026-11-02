@@ -10,6 +10,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural chang
 - Audio never leaves the machine unless the user opted into cloud STT (then only audio).
   Notes and transcripts leave only to the LLM provider the user configures and to a Yogurt Cloud the user connects, which is their own Supabase project.
   A question asked in that Cloud's chat sends the meeting's transcript, or the titles, dates, notes, and transcript excerpts of the meetings it finds, from the user's Vercel project to the LLM provider set there.
+  Enhancing a phone meeting in that Cloud sends its notes and transcript the same way.
   Captured audio is deleted after transcription.
   A meeting recorded on a phone in the Cloud webapp streams its audio to Deepgram, since a phone has no local STT yet.
   The phone holds that audio in memory only while it waits for a socket and never stores it.

@@ -100,6 +100,7 @@ Eight crates under `crates/`:
 | `yogurt-db` | SQLite (providers, settings, meetings) + `~/.yogurt/keys.json` key store |
 | `yogurt-notes` | Augmented-notes diffing/merge logic |
 | `yogurt-prompts` | Bundled enhance/chat prompt templates |
+| `yogurt-wasm` | The enhance prompt and merge for the Cloud webapp, built by `just wasm` |
 
 `web/` is the React + Vite + TipTap frontend, embedded into the binary via
 `rust-embed` at release-build time.

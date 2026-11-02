@@ -58,9 +58,10 @@ route_prefixes=$(
 )
 
 for f in $DOC_FILES; do
-  grep -noE '/api/[A-Za-z0-9_/${}:*-]+' "$f" 2>/dev/null | while IFS=: read -r line token; do
+  grep -noE '(cloud)?/api/[A-Za-z0-9_/${}:*-]+' "$f" 2>/dev/null | while IFS=: read -r line token; do
     case "$token" in
       *'*'*) continue ;; # wildcard mention ("/api/*", "/api/settings*")
+      cloud/*) continue ;; # a Cloud webapp function's file, such as cloud/api/enhance.ts
     esac
     prefix=$(echo "$token" | sed -E 's/[$:{].*$//' | sed -E 's#/$##')
     echo "$route_prefixes" | grep -qxF "$prefix" ||

@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { POST as chat } from "./api/chat";
 import { POST as sttToken } from "./api/stt-token";
+import { POST as enhance } from "./api/enhance";
 
 const web = fileURLToPath(new URL("../web", import.meta.url));
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
@@ -29,7 +30,7 @@ function functionsApi(): Plugin {
   // A hook that returns a function has it run later as a post hook, so this returns nothing.
   const mount = (server: { middlewares: { use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void } }) => {
     // An unhandled rejection here would exit the whole server, which the e2e specs run against.
-    for (const [path, POST] of [["/api/chat", chat], ["/api/stt-token", sttToken]] as const) {
+    for (const [path, POST] of [["/api/chat", chat], ["/api/enhance", enhance], ["/api/stt-token", sttToken]] as const) {
       server.middlewares.use(path, (req, res) =>
         void serve(POST, path, req, res).catch(() => {
           if (!res.headersSent) res.statusCode = 500;

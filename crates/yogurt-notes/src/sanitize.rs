@@ -1,7 +1,7 @@
 //! HTML sanitization for the enrich pipeline.
 //!
 //! The browser renders `enriched_md` through `markdown-it` with `html: true`, so any HTML an
-//! LLM, transcript or user note injects would execute. `wrap_ai` in `yogurt-notes` escapes AI
+//! LLM, transcript or user note injects would execute. `render::wrap_ai` escapes AI
 //! bullet text first, and this module re-runs `ammonia` over the final markdown as the second layer.
 //!
 //! The allowlist is only the wire-format spans and their `data-*` attributes. Markdown syntax

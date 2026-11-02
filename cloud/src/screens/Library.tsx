@@ -20,7 +20,8 @@ import {
   SearchPager,
   useDesktop,
 } from "../ui";
-import type { Api, Label } from "../lib/api";
+import { type Api, type Label, TokenRejected } from "../lib/api";
+import { enhanceMeeting, isPhoneMeeting, pushEnhanced } from "../lib/enhance";
 import {
   asOfLabel,
   clock,
@@ -34,7 +35,7 @@ import { SEARCH_PAGE, searchStatus } from "../lib/search";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { format, HOME, type Loc } from "../lib/hash";
-import { Ask, DOCKED, MeetingView, type BodyState } from "./Meeting";
+import { Ask, DOCKED, MeetingView, type BodyState, type Enhance } from "./Meeting";
 import { useChat } from "../lib/useChat";
 import { useSession, type RecordingSession } from "../lib/session";
 import { MicIcon, ResumeCard } from "./Resume";
@@ -173,7 +174,7 @@ export function Library({
       const deviceId = open.slice(0, i);
       const id = open.slice(i + 1);
       const row = await api.meeting(token, deviceId, id, pushId);
-      return { entry: row ? toEntry(deviceId, id, row) : null };
+      return { entry: row ? toEntry(deviceId, id, row) : null, row };
     },
     onRejected,
     [api, token, open, pushId],
@@ -225,6 +226,22 @@ export function Library({
   const ask = libraryChat && (
     <Ask chat={libraryChat} copy={LIBRARY_CHAT_COPY} renderExtra={(m) => <ChatSources message={m} link={cite} />} position={`${DOCKED} mt-auto`} />
   );
+  const row = bodyLoad.data?.row;
+  const enhance: Enhance | null =
+    row && !pushId && isPhoneMeeting(row.body.meeting)
+      ? async (onText) => {
+          try {
+            const fields = await enhanceMeeting(api, token, row.body.meeting, { onText });
+            if (!fields) return null;
+            await pushEnhanced(api, openDevice, row.body, fields);
+            bodyLoad.retry();
+            return fields.enriched_md;
+          } catch (e) {
+            if (e instanceof TokenRejected) onRejected();
+            throw e;
+          }
+        }
+      : null;
   const meeting = open && (
     <MeetingView
       key={open}
@@ -236,6 +253,7 @@ export function Library({
       desktop={desktop}
       body={body}
       chat={chat}
+      enhance={enhance}
     />
   );
   if (!desktop && meeting)

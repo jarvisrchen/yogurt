@@ -15,7 +15,7 @@ export interface Env {
 }
 
 export type Turn = { role: "user" | "assistant"; content: string };
-type Message = { role: "system" | Turn["role"]; content: string };
+export type Message = { role: "system" | Turn["role"]; content: string };
 
 export type ChatRequest = { token: string; messages: Turn[] } & ({ device_id: string; meeting_id: string } | { tz: string });
 
@@ -24,7 +24,7 @@ const MAX_QUESTION = 4 * 1024;
 export const NOT_SET_UP = "Chat isn't set up on this Cloud.";
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
-const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+export const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const text = (v: unknown): v is string => typeof v === "string" && v !== "";
 
 /** The request, or why it is refused. */
@@ -158,8 +158,24 @@ async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise
   );
 }
 
+/** Providers quote the key back in error bodies, and a fetch error can quote a base URL that carries credentials. */
+export const scrubber = (key: string) => (s: string) =>
+  (key.length < 4 ? s : s.replaceAll(key, "[key redacted]")).replace(/\/\/[^/\s@]+@/g, "//[credentials redacted]@");
+
+/** The streamed completion request yogurt-llm sends. */
+export function openCompletion(messages: Message[], llm: { base: string; model: string; key: string }, fetchImpl: typeof fetch, signal: AbortSignal): Promise<Response> {
+  // MiniMax spends minutes on hidden reasoning unless thinking is disabled, and splits any it does into another field.
+  const minimax = llm.model.toLowerCase().startsWith("minimax-");
+  return fetchImpl(`${llm.base.replace(/\/+$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${llm.key}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: llm.model, messages, stream: true, ...(minimax && { reasoning_split: true, thinking: { type: "disabled" } }) }),
+    signal,
+  });
+}
+
 /** The visible text of a streamed delta. Some providers send content as a list of parts, of which only the text ones show. */
-function deltaText(content: unknown): string {
+export function deltaText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((p) => (p?.type === "text" && typeof p.text === "string" ? p.text : "")).join("");
@@ -172,18 +188,10 @@ async function* answer(messages: Message[], env: Env, fetchImpl: typeof fetch, g
     yield NOT_SET_UP;
     return;
   }
-  // As in yogurt-llm: MiniMax spends minutes on hidden reasoning unless thinking is disabled, and splits any it does into another field.
-  const minimax = model.toLowerCase().startsWith("minimax-");
-  // Providers quote the key back in error bodies, and a fetch error can quote a base URL that carries credentials.
-  const scrub = (s: string) => (key.length < 4 ? s : s.replaceAll(key, "[key redacted]")).replace(/\/\/[^/\s@]+@/g, "//[credentials redacted]@");
+  const scrub = scrubber(key);
   const timeout = AbortSignal.timeout(LLM_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(`${base.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: true, ...(minimax && { reasoning_split: true, thinking: { type: "disabled" } }) }),
-      signal: AbortSignal.any([gone, timeout]),
-    });
+    const res = await openCompletion(messages, { base, model, key }, fetchImpl, AbortSignal.any([gone, timeout]));
     if (!res.ok || !res.body) {
       yield `[stream error: LLM stream open failed: ${res.status} - ${scrub(await res.text()).slice(0, 500)}]`;
       return;
