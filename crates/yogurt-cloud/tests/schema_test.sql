@@ -144,6 +144,13 @@ select pg_temp.eq((yogurt_status()->>'passcode_length'), '6', 'passcode length r
 
 insert into yogurt_devices (id, name) values (:d1, 'Laptop 1'), (:d2, 'Laptop 2');
 select pg_temp.expect('23502', array['insert into yogurt_devices (name) values (''x'')']);
+-- A phone registers as one, and nothing else is a kind.
+insert into yogurt_devices (id, name, kind) values ('00000000-0000-0000-0000-0000000000f1', 'Phone', 'phone');
+select pg_temp.expect('23514', array['insert into yogurt_devices (id, name, kind) values (gen_random_uuid(), ''x'', ''tablet'')']);
+reset role;
+select pg_temp.eq((select string_agg(name || ':' || kind, ',' order by name) from yogurt_devices), 'Laptop 1:mac,Laptop 2:mac,Phone:phone', 'a laptop is a mac by default');
+delete from yogurt_devices where kind = 'phone';
+set role authenticated;
 
 select yogurt_start_push(:d1) as p1 \gset
 select pg_temp.eq(:p1::text, '1', 'first push id');

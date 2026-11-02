@@ -48,6 +48,9 @@ alter table public.yogurt_devices
   add column if not exists color text,
   add column if not exists position int;
 
+-- What pushes as the device: a Mac, or a phone recording in the webapp.
+alter table public.yogurt_devices add column if not exists kind text not null default 'mac' check (kind in ('mac', 'phone'));
+
 -- Ids are global across devices, so "as of push N" covers every device at that moment.
 create table if not exists public.yogurt_pushes (
   id        bigint generated always as identity primary key,
@@ -854,7 +857,7 @@ revoke all on public.yogurt_owner, public.yogurt_browsers, public.yogurt_devices
   from public, anon, authenticated;
 revoke all on yogurt_private.yogurt_search_index from public, anon, authenticated;
 revoke all on sequence public.yogurt_browsers_id_seq, public.yogurt_pushes_id_seq from public, anon, authenticated;
-grant insert (id, name) on public.yogurt_devices to authenticated;
+grant insert (id, name, kind) on public.yogurt_devices to authenticated;
 grant insert (meeting_id, push_id, device_id, body) on public.yogurt_versions to authenticated;
 
 -- Execute is revoked everywhere first, so a new or dropped function is never granted by default.

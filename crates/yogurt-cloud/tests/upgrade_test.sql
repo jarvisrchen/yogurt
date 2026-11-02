@@ -21,6 +21,7 @@ select pg_temp.eq(yogurt_search_catch_up()::text, '0', 'the laptop catches searc
 reset role;
 select pg_temp.eq((select count(*)::text from yogurt_versions where meeting_id = :'phase' || '-big'), '1', 'the laptop insert landed');
 \if :search
+select pg_temp.eq((select kind from yogurt_devices where id = '00000000-0000-0000-0000-0000000000d1'), 'mac', 'a device from before the upgrade is a mac');
 select pg_temp.eq((select extnamespace::regnamespace::text from pg_extension where extname = 'unaccent'), 'extensions', 'unaccent installed in public moves to extensions');
 select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index), (select count(*)::text from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l where body is not null), 'the index holds every live meeting');
 set role authenticated;
