@@ -2,7 +2,8 @@
 // The caller's session and browser token must pass a Supabase read first, so only the owner's unlocked browser reaches the LLM.
 // The reply streams back unchanged as NDJSON `{"delta":"..."}` lines, because the page cleans and merges the whole reply in WASM as the Mac does.
 // It ends with `{"done":true,"model":"..."}`, or `{"error":"..."}` when the model fails partway, so a reply cut short is never taken for a whole one.
-import { type Env, type Message, deltaText, json, openCompletion, scrubber, sseData } from "./_chat.js";
+import { bearer, caller, json, trimmed } from "./_auth.js";
+import { type Env, type Message, deltaText, openCompletion, scrubber, sseData } from "./_chat.js";
 
 // Under Vercel's 4.5 MB request cap. An hour of transcript is a few hundred KB.
 const MAX_BODY = 4 * 1024 * 1024;
@@ -31,8 +32,7 @@ export function parseRequest(raw: string): { token: string; messages: Message[] 
 }
 
 export async function handleEnhance(req: Request, rawEnv: Env, fetchImpl: typeof fetch = fetch, timeoutMs = LLM_TIMEOUT_MS): Promise<Response> {
-  // A value pasted with a stray space or newline would otherwise break a URL, or slip past the key scrub.
-  const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, v?.trim()])) as Env;
+  const env = trimmed(rawEnv);
   try {
     return await respond(req, env, fetchImpl, timeoutMs);
   } catch {
@@ -42,27 +42,18 @@ export async function handleEnhance(req: Request, rawEnv: Env, fetchImpl: typeof
 
 async function respond(req: Request, env: Env, fetchImpl: typeof fetch, timeoutMs: number): Promise<Response> {
   if (req.method !== "POST") return json(405, { message: "Use POST." });
-  const jwt = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
+  const jwt = bearer(req);
   if (!jwt) return json(401, { message: "Sign in again." });
   const body = parseRequest(await req.text());
   if (typeof body === "string") return json(400, { message: body });
-  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return json(500, { message: "This Cloud has no Supabase settings." });
   // Stop reading and generating, on the owner's key, once nobody is waiting.
   const gone = new AbortController();
   if (req.signal?.aborted) gone.abort();
   req.signal?.addEventListener("abort", () => gone.abort());
-
-  // Any read that needs the owner and the browser token does. PostgREST's status and code pass through, so the page treats a rejected token as it does on every read.
-  const check = await fetchImpl(`${env.SUPABASE_URL}/rest/v1/rpc/yogurt_device_info`, {
-    method: "POST",
-    headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization: `Bearer ${jwt}`, "content-type": "application/json" },
-    body: JSON.stringify({ token: body.token }),
-    signal: gone.signal,
-  });
-  if (!check.ok) {
-    const e = await check.json().catch(() => ({}));
-    return json(check.status, { code: e.code, message: e.message ?? `Your Cloud answered ${check.status}.` });
-  }
+  const who = caller(env, jwt, fetchImpl, { signal: gone.signal });
+  if (who instanceof Response) return who;
+  const refused = await who.authorize(body.token);
+  if (refused) return refused;
 
   const { YOGURT_LLM_BASE_URL: base, YOGURT_LLM_MODEL: model, YOGURT_LLM_API_KEY: key } = env;
   if (!base || !model || !key) return json(503, { message: NOT_SET_UP });

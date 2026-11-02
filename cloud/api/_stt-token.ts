@@ -1,10 +1,9 @@
 // POST /api/stt-token: a short-lived Deepgram token for the recorder, and the listen URL to open with it.
 // The caller must be the signed-in owner with an unlocked browser token, which Postgres checks, so a locked browser never gets one.
 // The Deepgram key stays here: only the granted token, valid for 30 seconds, reaches the browser.
+import { type SupabaseEnv, bearer, caller, json as reply, trimmed } from "./_auth.js";
 
-export interface Env {
-  SUPABASE_URL?: string;
-  SUPABASE_PUBLISHABLE_KEY?: string;
+export interface Env extends SupabaseEnv {
   YOGURT_DEEPGRAM_API_KEY?: string;
   /** Deepgram's address, `https://api.deepgram.com` unless set. The e2e specs point it at a fake. */
   YOGURT_DEEPGRAM_URL?: string;
@@ -16,10 +15,11 @@ const UNREACHABLE = "Couldn't reach your Cloud. Try again.";
 // The Mac's stream settings (crates/yogurt-stt/src/deepgram.rs): 16 kHz mono linear16, interim results, and a line per second of silence.
 const LISTEN = "model=nova-3&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&punctuate=true&smart_format=true&endpointing=1000";
 
-const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const NO_STORE = { "cache-control": "no-store" };
+const json = (status: number, body: object) => reply(status, body, NO_STORE);
 
 export async function handleSttToken(req: Request, rawEnv: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
-  const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, v?.trim()])) as Env;
+  const env = trimmed(rawEnv);
   try {
     return await respond(req, env, fetchImpl);
   } catch {
@@ -29,7 +29,7 @@ export async function handleSttToken(req: Request, rawEnv: Env, fetchImpl: typeo
 
 async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise<Response> {
   if (req.method !== "POST") return json(405, { message: "Use POST." });
-  const jwt = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
+  const jwt = bearer(req);
   if (!jwt) return json(401, { message: "Sign in again." });
   let token: unknown;
   try {
@@ -38,18 +38,10 @@ async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise
     return json(400, { message: "The request is not JSON." });
   }
   if (typeof token !== "string" || !token) return json(400, { message: "The request has no browser token." });
-  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return json(500, { message: "This Cloud has no Supabase settings." });
-
-  // Any read that needs the owner and an unlocked browser does. PostgREST's status and code pass through, so the webapp treats a rejected token as on every read.
-  const check = await fetchImpl(`${env.SUPABASE_URL}/rest/v1/rpc/yogurt_device_info`, {
-    method: "POST",
-    headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization: `Bearer ${jwt}`, "content-type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
-  if (!check.ok) {
-    const e = await check.json().catch(() => ({}));
-    return json(check.status, { code: e.code, message: e.message ?? `Your Cloud answered ${check.status}.` });
-  }
+  const who = caller(env, jwt, fetchImpl, { headers: NO_STORE });
+  if (who instanceof Response) return who;
+  const refused = await who.authorize(token);
+  if (refused) return refused;
 
   const key = env.YOGURT_DEEPGRAM_API_KEY;
   if (!key) return json(503, { message: NOT_SET_UP });
