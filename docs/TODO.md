@@ -141,7 +141,8 @@ Design: [.planning/granola-import-design.md](.planning/granola-import-design.md)
 
 Design: [.planning/mobile-recording-design.md](.planning/mobile-recording-design.md).
 
-- [ ] **MOB-1** Record a meeting on the phone in the Cloud webapp with a live Deepgram transcript, saved as a phone device; starts with a real-device check of screen lock, a phone call, and the token handshake on Android ([design](.planning/mobile-recording-design.md#tickets))
+- [ ] **MOB-1** Record a meeting on the phone in the Cloud webapp with a live Deepgram transcript, saved as a phone device ([design](.planning/mobile-recording-design.md#tickets))
 - [ ] **MOB-2** Take notes during a phone recording and enhance them at End with the Mac's prompt and merge compiled to WASM ([design](.planning/mobile-recording-design.md#notes-and-enhance))
 - [ ] **MOB-3** Chat about the meeting while recording on the phone ([design](.planning/mobile-recording-design.md#live-chat))
+- [ ] **MOB-5** Android app that wraps the Cloud webapp and records in a background foreground service, with a one-tap in-app update from GitHub releases ([design](.planning/mobile-recording-design.md#the-android-app))
 - [ ] **MOB-4** Spike on-device transcription on the phone, such as Moonshine through Transformers.js, measured over an hour on a real Android phone ([design](.planning/mobile-recording-design.md#transcription))

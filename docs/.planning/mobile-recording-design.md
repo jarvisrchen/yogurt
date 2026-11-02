@@ -1,15 +1,16 @@
 # Recording on the phone
 
 Planned. Written 2026-11-02.
-Tickets: `docs/TODO.md` MOB-1, MOB-2, MOB-3, and SYNC-32.
+Tickets: `docs/TODO.md` MOB-1, MOB-2, MOB-3, MOB-5, and SYNC-32.
+Mocks, light and dark at Pixel 10 Pro XL size: [.lavish/mobile-recording-mocks.html](../.lavish/mobile-recording-mocks.html).
 
 The Yogurt Cloud webapp gains a Record button so a phone can capture a meeting the way the Mac does.
 The phone records the room through its own mic, shows a live transcript, takes the user's sparse notes, and enhances them at End.
 The meeting lands in the Cloud as a meeting from a phone device.
 The next time a Mac pushes, it adopts the meeting into its own SQLite, where the user can edit and re-enhance it like any other.
 
-Android in Chrome is the target.
-iOS works as best effort in a Safari tab, with the limits below.
+Android is the target, through a small Android app that wraps the webapp and records in the background.
+Any browser, including iOS Safari, gets the same record screen while it stays in front, with the limits below.
 The live recap and Mic echo stay Mac-only for now.
 
 ## What the phone cannot do
@@ -24,10 +25,11 @@ The phone has one mic, so there is no Me and Them split.
 Every line is stored on the `them` channel, which the enhance prompt never reads, so enhance is unaffected.
 Speaker labels from Deepgram diarization are a possible follow-up.
 
-The screen must stay awake.
+In a browser, the page must stay in front.
 On iOS, a home-screen web app loses the mic when it backgrounds or the screen locks (WebKit bugs 239602 and 226620), while a Safari tab reportedly keeps it.
-On Android Chrome, no document says whether capture survives a screen lock, so MOB-1 starts by testing it on a real phone.
-The record screen holds a Screen Wake Lock either way, and says plainly that locking the phone or switching apps can stop the recording.
+On Android Chrome, no document says whether capture survives switching apps.
+The browser record screen holds a Screen Wake Lock and says plainly that locking the phone or switching apps can stop the recording.
+The Android app removes this limit, because its recorder runs in a foreground service.
 
 ## Transcription
 
@@ -56,6 +58,33 @@ Audio is never written to storage, so nothing is left to delete after transcript
 A final Deepgram result becomes one transcript line, `{"channel":"them","text":...,"ts_ms":...}`, with `ts_ms` measured from the recording start like the Mac's.
 Interim results show greyed in the live view and are never stored.
 The meeting's `stt_engine` is `cloud · nova-3 · phone`.
+
+## The Android app
+
+Switching apps mid-meeting is normal, and only a native recorder can keep the mic there.
+The app is a plain Kotlin project in `android/`, with no Capacitor, id `com.jarvisrchen.yogurt`, built with Gradle and the Android SDK.
+It targets the current SDK and is tested on a Pixel 10 Pro XL.
+
+It has three parts:
+
+- **Shell.** One activity with a full-screen WebView that loads the Cloud address the user enters on first launch.
+  Every screen is the webapp, so each Vercel deploy updates the app with no reinstall.
+- **Recorder.** A foreground service of type `microphone`, started from Record while the app is on screen as Android 14 and later require, with a persistent Recording notification and a Stop action.
+  It owns the mic, the Deepgram socket, and the 5 minute buffer, so the recording survives switching apps and a locked screen.
+  It asks the page for a fresh Deepgram token through the bridge, keeps every final line in memory and in a file, and hands the lines to the page whenever the page is visible.
+- **Bridge.** A `@JavascriptInterface` object, `YogurtAndroid`, that the webapp feature-detects.
+  The record screen talks to one `Recorder` interface with two implementations: the browser one from MOB-1, and the bridge one when `window.YogurtAndroid` exists.
+  The page still does every push, so the device, bundle, and push code exist once.
+  The bridge accepts calls only from the Cloud origin the user entered.
+
+On launch, the app compares its version with the latest GitHub release and, when a newer one has an APK, shows an Update available banner.
+Tapping it downloads the APK and hands it to Android's installer, so an update is one tap and keeps the sign-in.
+Every APK is signed with the same release key, kept in Keychain and as a GitHub secret, because Android refuses an update signed with a different key.
+The release pipeline builds the APK and attaches it to the GitHub release next to the Mac binary.
+
+Install is a download: open the release on the phone, allow Chrome to install unknown apps once, and tap Install.
+Google's developer verification for sideloaded apps started on 2026-09-30 in four countries, with a global rollout planned for 2027.
+`adb install` stays exempt, and a free hobbyist account covers personal use when it arrives.
 
 ## The phone as a device
 
@@ -108,19 +137,20 @@ A meeting still recording is never adopted, because its `ended_at` is null.
 
 ## Constraint changes
 
-AGENTS.md and ARCHITECTURE.md §9 and §12 change in MOB-1:
+AGENTS.md and ARCHITECTURE.md §9 and §12 change in MOB-1, and MOB-5 adds the Android app:
 
 - Audio leaves the phone for Deepgram when the user records there, since a phone has no local STT yet.
 - The Cloud's Vercel environment holds the Deepgram key next to the LLM key, Sensitive and Production only, never returned or logged.
 - Phone audio is held in memory only while it waits for a socket, and never stored.
+- "macOS 13+ only" gains an Android companion app, which records for the Cloud and runs no part of the Mac app.
 
 ## Tickets
 
-- **MOB-1** Record on the phone: Record button, mic with Wake Lock, `stt-token.ts`, Deepgram streaming with reconnect, the `kind` column, pushes every 30 seconds, and Resume after a killed tab.
-  It starts with a real-device check on Android: screen lock, a phone call, and the token in `Sec-WebSocket-Protocol`.
+- **MOB-1** Record on the phone in the webapp: Record button, mic with Wake Lock, `stt-token.ts`, Deepgram streaming with reconnect, the `kind` column, pushes every 30 seconds, and Resume after a killed tab.
+- **MOB-5** The Android app: shell, background recorder service, bridge, update check, and the APK in each release.
 - **MOB-2** Notes and Enhance on the phone: the editor, `yogurt-wasm`, and `enhance.ts`.
 - **MOB-3** Live chat during a phone recording.
 - **SYNC-32** The Mac adopts ended phone meetings.
 - **MOB-4** On-device transcription spike.
 
-Each lands on its own, and MOB-1 is useful alone: a recorded, transcribed meeting the Library and Cloud chat can already read.
+Each lands on its own, in the order MOB-1, MOB-5, MOB-2, MOB-3, SYNC-32, and MOB-1 is useful alone: a recorded, transcribed meeting the Library and Cloud chat can already read.
