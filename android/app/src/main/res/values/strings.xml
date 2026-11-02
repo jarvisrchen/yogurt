@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Yogurt</string>
+    <string name="wordmark">yogurt</string>
+    <string name="connect_title">Connect your Cloud</string>
+    <string name="connect_body">Type the address of your Yogurt Cloud. The app opens it and records meetings into it.</string>
+    <string name="cloud_address">Cloud address</string>
+    <string name="cloud_hint">https://yogurt-example.vercel.app</string>
+    <string name="continue_">Continue</string>
+    <string name="bad_address">Type an https address, such as https://yogurt-example.vercel.app.</string>
+    <string name="unreachable">Couldn\'t open %1$s. Check the address and your connection.</string>
+    <string name="change_cloud">Change Cloud address</string>
+    <string name="recording">Recording</string>
+    <string name="stop">Stop</string>
+    <string name="update_ready">Yogurt for Android %1$s is ready.</string>
+    <string name="update">Update</string>
+    <string name="downloading">Downloading…</string>
+    <string name="download_failed">The update did not download.</string>
+    <string name="retry">Retry</string>
+    <string name="mic_denied">Yogurt needs the microphone to record. Allow it in Settings, then start again.</string>
+</resources>

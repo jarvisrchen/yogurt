@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- web/src/index.css, which the Cloud webapp shares. values-night holds the dark set. -->
+<resources>
+    <color name="paper">#FBF7EF</color>
+    <color name="card">#FFFFFF</color>
+    <color name="ink">#211D18</color>
+    <color name="grey">#A89F90</color>
+    <color name="line">#EBE3D5</color>
+    <color name="blue">#5B4FC7</color>
+    <color name="blsoft">#ECE9FB</color>
+    <color name="straw">#E07A66</color>
+    <color name="mut">#8A8174</color>
+    <color name="launcher_blue">#5B4FC7</color>
+</resources>
