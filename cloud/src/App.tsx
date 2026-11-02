@@ -5,7 +5,7 @@ import { browserLabel, formatWait, lockoutMinutes, screenFor, type Status } from
 import { clearToken, readToken, saveToken, type StoredToken } from "./lib/token";
 import { AuthFlow, NotOwner } from "./screens/Auth";
 import { History } from "./screens/History";
-import { RecordingSession } from "./lib/session";
+import { RecordingSession, useSession } from "./lib/session";
 import { Library } from "./screens/Library";
 import { ChoosePin, Unlock } from "./screens/Pin";
 import { Settings } from "./screens/Settings";
@@ -78,6 +78,11 @@ function Signed({ api }: { api: Api }) {
   dropRef.current = drop;
   const [session] = useState(() => new RecordingSession(api, () => tokenRef.current, () => dropRef.current()));
 
+  // While it records, the record screen is the whole app, so a reload or a Back that lands on the library returns to it.
+  const recording = useSession(session).meeting !== null;
+  useEffect(() => {
+    if (recording && loc.view === "library") replace({ ...HOME, view: "record" });
+  }, [recording, loc.view, replace]);
   const keep = (t: StoredToken) => {
     saveToken(t);
     setStored(t);

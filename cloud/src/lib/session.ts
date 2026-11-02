@@ -36,6 +36,11 @@ export interface Snapshot {
   finish: { key: string; run: Finish } | null;
 }
 
+const nativeRecording = (id: string) => {
+  const s = window.YogurtAndroid && JSON.parse(window.YogurtAndroid.status());
+  return !!s?.recording && s.meetingId === id;
+};
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
@@ -59,7 +64,12 @@ export class RecordingSession {
     private readonly onRejected: () => void,
   ) {
     loadUnfinished().then(
-      (u) => u && !this.snap.meeting && this.set({ unfinished: u }),
+      (u) => {
+        if (!u || this.snap.meeting) return;
+        this.set({ unfinished: u });
+        // The Android app records on while the page reloads, as on a theme change, so the page takes the recording back up.
+        if (nativeRecording(u.meeting.id)) void this.resume();
+      },
       () => undefined,
     );
   }
