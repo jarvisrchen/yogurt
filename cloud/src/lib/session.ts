@@ -87,6 +87,9 @@ export class RecordingSession {
 
   /** Makes sure the Cloud has this browser as a phone device, then records a new meeting. */
   async start(title: string, name: string) {
+    // Starting replaces the IndexedDB copy, so a meeting a closed page left must be resumed or ended first.
+    const left = this.snap.unfinished ?? (await loadUnfinished().catch(() => null));
+    if (left || this.snap.meeting) return void (left && this.set({ unfinished: left }));
     const device = readDevice();
     const named = device.registered ? device.name : name.trim() || "Phone";
     // Every time, since an insert that finds the device is a no-op, and a device purged from the Cloud comes back.

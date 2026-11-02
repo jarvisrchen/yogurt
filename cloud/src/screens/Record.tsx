@@ -112,11 +112,13 @@ function Ready({ snap, session, device, color, onBack }: { snap: Snapshot; sessi
       )}
       {snap.error && <Note>{snap.error}</Note>}
       <div className="mt-auto flex flex-col gap-[8px] pt-[12px]">
-        <Button onClick={start} disabled={busy} className="w-full !py-[14px] !text-[16px] min-[721px]:!py-[11px] min-[721px]:!text-[13px]">
+        <Button onClick={start} disabled={busy || !!snap.unfinished} className="w-full !py-[14px] !text-[16px] min-[721px]:!py-[11px] min-[721px]:!text-[13px]">
           <MicIcon size={18} />
           {busy ? "Starting…" : "Start recording"}
         </Button>
-        <p className="text-[13px] min-[721px]:text-[11.5px] text-mut text-center m-[0px]">Your phone asks for the microphone first.</p>
+        <p className="text-[13px] min-[721px]:text-[11.5px] text-mut text-center m-[0px]">
+          {snap.unfinished ? `Resume or end ${snap.unfinished.meeting.title.trim() || UNTITLED} first.` : "Your phone asks for the microphone first."}
+        </p>
       </div>
     </main>
   );

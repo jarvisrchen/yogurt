@@ -182,7 +182,10 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await page.reload();
   // The tab comes back on the record screen, which offers the meeting too. Reopening Yogurt itself lands on the library.
   await expect(page.getByText("Q4 pricing sync stopped recording")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start recording" })).toBeVisible();
+  // A new recording would replace the unfinished one, so it waits until that one is resumed or ended.
+  await expect(page.getByRole("button", { name: "Start recording" })).toBeDisabled();
+  await expect(page.getByText("Resume or end Q4 pricing sync first.")).toBeVisible();
+  await shot(page, info, "r6a-ready-unfinished", false);
   await page.goto("/");
   await expect(page.getByText("Q4 pricing sync stopped recording")).toBeVisible();
   await expect(page.getByRole("button", { name: /Q4 pricing sync/ })).toBeVisible();

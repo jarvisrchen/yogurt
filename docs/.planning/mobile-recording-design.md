@@ -130,6 +130,7 @@ The old device's meetings stay readable, and the Mac adopts them as usual.
 While recording, the phone pushes the meeting every 30 seconds with `ended_at` null, so a killed tab loses at most 30 seconds of transcript.
 It also keeps the current meeting in IndexedDB.
 Reopening the page with an unfinished meeting there offers Resume or End.
+Start recording waits until that meeting is resumed or ended, because a new one would replace it in IndexedDB.
 Every push sends the full bundle, so a lost push is repaired by the next one.
 
 ## Notes and Enhance
