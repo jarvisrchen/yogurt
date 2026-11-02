@@ -1023,8 +1023,11 @@ sequenceDiagram
   The page holds a Screen Wake Lock and tells the user that locking the phone or switching apps can stop the recording.
 - **Android.**
   When `window.YogurtAndroid` exists, `nativeRecorder.ts` drives the app's recorder through the bridge in the design instead, and the page still does every push.
+  A page that reloads while the app records, as on a dark mode change, takes the recording back up on the record screen.
 - **Pushes and resume.**
-  `cloud/src/lib/session.ts` writes the meeting to IndexedDB on every change and pushes the whole bundle at the start, every 30 seconds while `ended_at` is null, and at End, skipping a push whose bundle has not changed.
+  `cloud/src/lib/session.ts` writes the meeting to IndexedDB on every change and pushes the whole bundle at the start and every 30 seconds while `ended_at` is null, skipping a push whose bundle has not changed.
+  At End it pushes the last of it still open, enhances it under EnhancingBanner in the meeting view, and only then pushes it ended, with the enhanced notes when the enhance worked.
   A page that reopens with an unfinished meeting there shows it at the top of the Library with Resume and End.
 - **Verification.**
-  `cloud/e2e/record.spec.ts` records through Chrome's fake mic into a fake Deepgram, drops the socket, reloads the tab, resumes, and ends.
+  `cloud/e2e/record.spec.ts` records through Chrome's fake mic into a fake Deepgram, drops the socket, reloads the tab, resumes, and ends through a fake LLM's enhance.
+  `just cloud-dev` serves the webapp against a local Supabase for trying it by hand, in Chrome or in the Android emulator through `just android-emu`.
