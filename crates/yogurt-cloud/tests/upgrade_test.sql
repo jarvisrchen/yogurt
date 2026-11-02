@@ -24,7 +24,13 @@ select pg_temp.eq((select count(*)::text from yogurt_versions where meeting_id =
 select pg_temp.eq((select kind from yogurt_devices where id = '00000000-0000-0000-0000-0000000000d1'), 'mac', 'a device from before the upgrade is a mac');
 select pg_temp.eq((select extnamespace::regnamespace::text from pg_extension where extname = 'unaccent'), 'extensions', 'unaccent installed in public moves to extensions');
 select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index), (select count(*)::text from (select distinct on (device_id, meeting_id) body from yogurt_versions order by device_id, meeting_id, push_id desc) l where body is not null), 'the index holds every live meeting');
+insert into yogurt_devices (id, user_id, name, kind) values ('00000000-0000-0000-0000-0000000000f1', 'aaaaaaaa-0000-0000-0000-000000000001', 'Phone', 'phone') on conflict (id) do nothing;
 set role authenticated;
+select yogurt_start_push('00000000-0000-0000-0000-0000000000f1') as phone_push \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values (:'phase' || '-phone', :phone_push, '00000000-0000-0000-0000-0000000000f1',
+  jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', 'Phone', 'started_at', 1000, 'ended_at', 2000, 'notes_md', '', 'transcript_json', '[]')));
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_phone_meetings()), :'phase' || '-phone', 'a Mac lists the phone meeting');
+select pg_temp.eq(yogurt_adopt('00000000-0000-0000-0000-0000000000f1', :'phase' || '-phone', :phone_push)::text, 'true', 'and adopts it');
 select yogurt_unlock('123456') as tok \gset
 select pg_temp.eq((select string_agg(meeting_id, ',' order by started_at desc) from yogurt_search(:'tok', 'upgradeword')), 'upgrade-big,u1', 'search finds the old and the new meeting, and leaves out the archived one');
 select pg_temp.eq((select count(*)::text from yogurt_search(:'tok', 'revertword')), case when :'phase' = 'reupgrade' then '1' else '0' end, 'a meeting pushed during the revert is searchable once re-upgraded');
