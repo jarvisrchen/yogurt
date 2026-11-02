@@ -21,7 +21,7 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await expect(page.getByRole("button", { name: /1:1 with Steven/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toBeVisible();
   await expect(page.getByText("2:59 PM · 11 min")).toBeVisible();
-  await expect(page.getByText("read-only", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record" })).toBeVisible();
   await shot(page, info, phone ? "m-library" : "o-desktop-library-empty-pane");
 
   // The device filter.

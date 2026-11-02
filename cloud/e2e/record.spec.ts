@@ -5,12 +5,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { FakeDeepgram } from "./fakeDeepgram";
 import { isPhone, onboard, query, reset, seed, shot } from "./helpers";
 
-// Chrome's fake mic plays this file on a loop. It is spoken, so a run against real Deepgram transcribes it too.
+// Chrome's fake mic plays this file on a loop. It is spoken, with a pause that ends each line, so real Deepgram transcribes it too.
 const dir = fileURLToPath(new URL("./.audio/", import.meta.url));
 const WAV = `${dir}room.wav`;
 if (!existsSync(WAV)) {
   mkdirSync(dir, { recursive: true });
-  execFileSync("say", ["-o", `${dir}room.aiff`, "Okay, next one. Pro pricing. Dana's proposal is eighteen dollars a month and one hundred eighty a year."]);
+  execFileSync("say", ["-o", `${dir}room.aiff`, "Okay, next one. Pro pricing. Dana's proposal is eighteen dollars a month and one hundred eighty a year. [[slnc 2000]]"]);
   execFileSync("afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", `${dir}room.aiff`, WAV]);
 }
 

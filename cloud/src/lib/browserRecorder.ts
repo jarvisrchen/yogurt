@@ -39,6 +39,8 @@ export class BrowserRecorder extends Emitter implements Recorder {
   async start({ startedAtMs }: StartOptions) {
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     this.ctx = new AudioContext();
+    // Autoplay rules can start a context made after an await suspended, even inside the tap that asked for it.
+    await this.ctx.resume().catch(() => undefined);
     await this.ctx.audioWorklet.addModule(workletUrl);
     // With no outputs the node is a sink, which the graph always runs.
     const node = new AudioWorkletNode(this.ctx, "yogurt-pcm", { numberOfInputs: 1, numberOfOutputs: 0 });

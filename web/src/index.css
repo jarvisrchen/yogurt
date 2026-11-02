@@ -246,6 +246,8 @@ html, body {
   color: var(--color-blue);
   border-bottom: 1.5px dotted color-mix(in srgb, var(--color-blue) 45%, transparent);
   margin-left: 0.35em;
+  /* "↳ 10:00" holds a space, so a narrow column could otherwise break the arrow from its time. */
+  white-space: nowrap;
   cursor: pointer;
   user-select: none;
 }
