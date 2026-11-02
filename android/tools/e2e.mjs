@@ -191,6 +191,25 @@ async function main() {
   check("the notification is gone", !sh("dumpsys notification --noredact").includes(`pkg=${PKG}`));
   check("after Stop the page holds every line", sameLines(page().lines, store()) && !contiguous(store()), `${store().length} lines`);
 
+  log("resuming the stopped meeting");
+  const held = page().lines.length;
+  cloud.command({ cmd: "start", meetingId: "m-1" });
+  await until("lines after the resume", () => page().status?.recording && page().lines.length >= held + 2);
+  const resume = page().events.findIndex((e) => e.type === "start" && e.meetingId === "m-1");
+  const resumedAt = page().events.slice(resume).find((e) => e.type === "line");
+  check("a resume asks to carry on from the lines the page holds", page().events[resume]?.have === held, `have ${page().events[resume]?.have}`);
+  check("a resumed meeting's lines carry on its numbering", resumedAt?.index === held, `first index ${resumedAt?.index}, page held ${held}`);
+  const beforeReload = page().pageId;
+  cloud.command({ cmd: "reload" });
+  await until("the reloaded page", () => page().pageId !== beforeReload);
+  await until("lines after the reload", () => page().lines.length >= store().length - 1 && page().lines.length > held + 2);
+  check("after a resume and a reload the page holds every line, in order", sameLines(page().lines, store().slice(0, page().lines.length)), `${page().lines.length} of ${store().length} lines`);
+  cloud.command({ cmd: "stop" });
+  await until("the resumed meeting to stop", () => page().events.some((e) => e.type === "stopped-call"), 15_000);
+  const resumedPage = page().pageId;
+  cloud.command({ cmd: "reload" });
+  await until("a fresh page", () => page().pageId !== resumedPage);
+
   log("stop() from the page");
   cloud.command({ cmd: "start", meetingId: "m-2" });
   await until("two lines", () => page().status?.recording && page().lines.length >= 2);
@@ -201,6 +220,22 @@ async function main() {
   check("the stopped event comes once the recording has ended", stopped.status.recording === false);
   check("the lines read right after the stopped event are all of them", sameLines(page().lines, store()) && page().lines.length === stopped.status.lines, `${page().lines.length} lines`);
   check("a new start numbers from 0 again", page().lines[0]?.text === "second 0" && !contiguous(store()));
+
+  // Revoking the mic kills the app, and the store still holds m-2 when m-3 starts, since the permission dialog comes first.
+  log("a start that asks for the mic");
+  const killed = page().pageId;
+  sh(`pm revoke ${PKG} android.permission.RECORD_AUDIO`);
+  sh(`am start -n ${PKG}/.MainActivity`);
+  await until("the page after the restart", () => page().pageId !== killed && page().meetingId === "m-2" && !page().status?.recording, 30_000);
+  cloud.command({ cmd: "start", meetingId: "m-3" });
+  await until("the permission dialog", () => /While using the app/.test(screen()), 15_000);
+  const asked = page().events.findLast((e) => e.type === "catchup" && e.why === "start");
+  check("while the dialog is up the page reads none of the previous meeting's lines", asked?.got === 0 && page().lines.length === 0, `got ${asked?.got}`);
+  tap("While using the app");
+  await until("m-3's lines", () => page().status?.recording && page().status.meetingId === "m-3" && page().lines.length >= 2);
+  check("the new meeting's lines start at its first", page().lines[0]?.text === "second 0" && sameLines(page().lines, store().slice(0, page().lines.length)), `${page().lines.length} lines`);
+  cloud.command({ cmd: "stop" });
+  await until("m-3 to stop", () => page().events.some((e) => e.type === "stopped-call"), 15_000);
 
   log("update");
   sh(`am start -n ${PKG}/.MainActivity`);

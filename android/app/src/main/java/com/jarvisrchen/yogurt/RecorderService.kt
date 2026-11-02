@@ -17,7 +17,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-class StartRequest(val meetingId: String, val startedAtMs: Long, val tokenUrl: String, val auth: Auth)
+class StartRequest(val meetingId: String, val startedAtMs: Long, val have: Int, val tokenUrl: String, val auth: Auth)
 
 /**
  * The process's one recording, which outlives the activity. The service only keeps the process in the foreground while it runs.
@@ -50,9 +50,9 @@ object Recording {
         } catch (e: Exception) {
             return e.message ?: "The microphone is not available."
         }
-        store.reset(r.meetingId, r.startedAtMs)
+        store.begin(r.meetingId, r.startedAtMs, r.have)
         lateinit var rec: Recorder
-        rec = Recorder(store, source, http, r.tokenUrl, r.auth, r.startedAtMs, NativeEvents::post) {
+        rec = Recorder(store, r.meetingId, source, http, r.tokenUrl, r.auth, r.startedAtMs, NativeEvents::post) {
             synchronized(this) { if (current === rec) app.stopService(Intent(app, RecorderService::class.java)) }
         }
         try {

@@ -83,16 +83,16 @@ Every value crossing the bridge is a JSON string, because `@JavascriptInterface`
 
 | Call, page to app | Argument | Returns |
 | --- | --- | --- |
-| `YogurtAndroid.start(json)` | `{"meetingId","startedAtMs","tokenUrl","auth":{"jwt","browserToken"}}` | `{"ok":true}` or `{"ok":false,"error"}` |
+| `YogurtAndroid.start(json)` | `{"meetingId","startedAtMs","have","tokenUrl","auth":{"jwt","browserToken"}}`, where `have` is how many of the meeting's lines the page holds | `{"ok":true}` or `{"ok":false,"error"}` |
 | `YogurtAndroid.setAuth(json)` | `{"jwt","browserToken"}`, sent whenever the page refreshes its session | nothing |
 | `YogurtAndroid.stop()` | none | nothing, at once; the last lines and then a `stopped` state follow as events |
-| `YogurtAndroid.status()` | none | `{"recording","meetingId","startedAtMs","state","lines"}` |
-| `YogurtAndroid.lines(from)` | index of the first line wanted | JSON array of final lines from that index |
+| `YogurtAndroid.status()` | none | `{"recording","meetingId","startedAtMs","state","lines"}`, where `lines` is the index the next line gets |
+| `YogurtAndroid.lines(meetingId, from)` | the meeting, and the index of the first line wanted | JSON array of that meeting's final lines from that index, empty for any other meeting |
 | `YogurtAndroid.appVersion()` | none | the app's version name, such as `"0.1.0"` |
 
 The app posts events to the page with `window.dispatchEvent(new CustomEvent("yogurt-native", {detail}))`, where `detail` is one of:
 
-- `{"type":"line","index","line":{"channel":"them","text","ts_ms"}}` for each final line.
+- `{"type":"line","meetingId","index","line":{"channel":"them","text","ts_ms"}}` for each final line.
 - `{"type":"interim","text"}` for the words Deepgram has not finalized.
 - `{"type":"state","state":"connecting"|"live"|"reconnecting"|"stopped"}`.
 - `{"type":"gap","from_ms","to_ms"}` when the buffer overflowed and audio was dropped.
@@ -101,7 +101,10 @@ The app posts events to the page with `window.dispatchEvent(new CustomEvent("yog
 The service mints its own Deepgram token by calling `tokenUrl` with the latest `auth`, so a reconnect works while the page is in the background.
 The call is a POST with the JWT as `Authorization: Bearer` and `{"token": browserToken}` as the body, the same request the browser makes, and the answer is `{"token","url"}`.
 The app opens `url` with the granted token in an `Authorization: Bearer` header, where the browser, which cannot set headers on a WebSocket, offers the `bearer` subprotocol with the token.
-Final lines are numbered from 0 and kept in a file until the next `start`, so a page that comes back calls `lines(n)` with the count it already has and never misses or repeats one.
+Final lines are numbered once for the whole meeting and kept in a file until another meeting starts.
+A new meeting numbers from `have`, and a `start` of the meeting the file already holds carries on its numbering, so a resume after the app was killed keeps one numbering with the lines the page already has.
+A page that comes back calls `lines(meetingId, n)` with the count it already has and never misses or repeats one.
+Lines and line events carry the meeting, so the page takes none of another meeting's, such as the previous meeting's lines while Android's mic dialog holds up a new `start`.
 Events sent before the record screen listens, such as while the page reloads, are not replayed: the page recovers the state from `status()` and the lines from `lines(n)` when it attaches.
 
 `stop()` returns at once, because a `@JavascriptInterface` call blocks the page's JavaScript thread until it returns, and stopping waits up to 5 seconds for Deepgram's last results.

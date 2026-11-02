@@ -58,13 +58,14 @@ class YogurtAndroid(private val activity: MainActivity, private val origin: Stri
         val a = runCatching { JSONObject(json) }.getOrNull() ?: return result("The start request is not JSON.")
         val meetingId = a.optString("meetingId")
         val startedAtMs = a.optLong("startedAtMs")
+        val have = a.optInt("have", -1)
         val auth = auth(a.optJSONObject("auth"))
         // The service sends the user's session to tokenUrl, so it must be the Cloud's own.
         val tokenUrl = runCatching { URI("$origin/").resolve(a.optString("tokenUrl")).toString() }.getOrNull()
-        if (meetingId.isEmpty() || startedAtMs <= 0 || auth == null || !Cloud.sameOrigin(tokenUrl, origin)) {
-            return result("The start request needs meetingId, startedAtMs, a tokenUrl on this Cloud, and auth.")
+        if (meetingId.isEmpty() || startedAtMs <= 0 || have < 0 || auth == null || !Cloud.sameOrigin(tokenUrl, origin)) {
+            return result("The start request needs meetingId, startedAtMs, have, a tokenUrl on this Cloud, and auth.")
         }
-        val r = StartRequest(meetingId, startedAtMs, tokenUrl!!, auth)
+        val r = StartRequest(meetingId, startedAtMs, have, tokenUrl!!, auth)
         // Asking for the mic is a dialog. The recording then starts or fails through events.
         if (!activity.hasMic()) return result(null).also { activity.askMic(r) }
         return result(Recording.start(r))
@@ -86,7 +87,7 @@ class YogurtAndroid(private val activity: MainActivity, private val origin: Stri
     fun status(): String = if (allowed()) Recording.status().toString() else "null"
 
     @JavascriptInterface
-    fun lines(from: Int): String = if (allowed()) Recording.store.from(from).toString() else "[]"
+    fun lines(meetingId: String, from: Int): String = if (allowed()) Recording.store.from(meetingId, from).toString() else "[]"
 
     @JavascriptInterface
     fun appVersion(): String = BuildConfig.VERSION_NAME

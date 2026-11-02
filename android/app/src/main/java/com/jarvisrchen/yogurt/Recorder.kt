@@ -30,6 +30,7 @@ private const val CLOSE_WAIT_MS = 5_000L
  */
 class Recorder(
     private val store: LineStore,
+    private val meetingId: String,
     private val source: PcmSource,
     private val http: OkHttpClient,
     private val tokenUrl: String,
@@ -211,8 +212,8 @@ class Recorder(
         if (h == null) return
         if (!h.final) return event("interim", "text", h.text)
         val line = JSONObject().put("channel", "them").put("text", h.text).put("ts_ms", (socketStart ?: 0) + h.tsMs)
-        val index = store.append(line)
-        emit(JSONObject().put("type", "line").put("index", index).put("line", line))
+        val index = store.append(meetingId, line) ?: return
+        emit(JSONObject().put("type", "line").put("meetingId", meetingId).put("index", index).put("line", line))
         event("interim", "text", "")
     }
 

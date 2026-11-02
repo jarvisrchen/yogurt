@@ -7,7 +7,7 @@ export interface Bridge {
   setAuth(json: string): void;
   stop(): void;
   status(): string;
-  lines(from: number): string;
+  lines(meetingId: string, from: number): string;
   appVersion(): string;
 }
 
@@ -23,7 +23,7 @@ declare global {
 }
 
 /**
- * The page side of the bridge: the app owns the mic and the socket and keeps every final line, numbered from 0, until its next start.
+ * The page side of the bridge: the app owns the mic and the socket and keeps the meeting's final lines, numbered for the whole meeting from the count the page held at its first start.
  * Lines arrive as events while the page is in front. A page that comes back asks for the ones it missed, so it never misses or repeats one.
  */
 // The app's stop waits up to 5 seconds for Deepgram's last lines. This bounds an app that never reports stopped.
@@ -31,6 +31,7 @@ const STOP_WAIT_MS = 10_000;
 
 export class NativeRecorder extends Emitter implements Recorder {
   private seen = 0;
+  private meetingId = "";
   private listening = false;
   private onStopped: (() => void) | null = null;
 
@@ -44,15 +45,15 @@ export class NativeRecorder extends Emitter implements Recorder {
   }
 
   async start({ meetingId, startedAtMs, have }: StartOptions) {
+    this.meetingId = meetingId;
+    this.seen = have;
     const status = JSON.parse(this.bridge.status());
     if (status.recording && status.meetingId === meetingId) {
-      this.seen = have;
       // The state events went out before this page listened.
       this.emit({ type: "state", state: status.state });
     } else {
-      const r = JSON.parse(this.bridge.start(JSON.stringify({ meetingId, startedAtMs, tokenUrl: this.tokenUrl, auth: await this.auth() })));
+      const r = JSON.parse(this.bridge.start(JSON.stringify({ meetingId, startedAtMs, have, tokenUrl: this.tokenUrl, auth: await this.auth() })));
       if (!r.ok) throw new Error(r.error || "The recorder did not start.");
-      this.seen = 0;
     }
     this.win.addEventListener("yogurt-native", this.onEvent);
     this.win.document.addEventListener("visibilitychange", this.onVisible);
@@ -84,9 +85,10 @@ export class NativeRecorder extends Emitter implements Recorder {
 
   private onEvent = (e: Event) => {
     const raw = (e as CustomEvent).detail;
-    const d: RecorderEvent = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const d: RecorderEvent & { meetingId?: string } = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (d.type === "state" && d.state === "stopped") this.onStopped?.();
     if (d.type !== "line") return this.emit(d);
+    if (d.meetingId !== this.meetingId) return;
     if (d.index === this.seen) this.line(d.line);
     else if (d.index > this.seen) this.catchUp();
   };
@@ -96,7 +98,7 @@ export class NativeRecorder extends Emitter implements Recorder {
   };
 
   private catchUp() {
-    const lines: Line[] = JSON.parse(this.bridge.lines(this.seen));
+    const lines: Line[] = JSON.parse(this.bridge.lines(this.meetingId, this.seen));
     for (const l of lines) this.line(l);
   }
 

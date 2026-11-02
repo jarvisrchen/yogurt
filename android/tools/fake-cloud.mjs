@@ -194,15 +194,19 @@ body { font: 15px sans-serif; margin: 16px; background: #FBF7EF; color: #211D18;
 <ol id="lines" start="0"></ol>
 <script>
 const B = window.YogurtAndroid;
-// The page's own copy of the lines, as the webapp keeps its meeting in IndexedDB.
+// The page's own copy of the meeting and its lines, as the webapp keeps its meeting in IndexedDB.
+let meetingId = localStorage.getItem("meetingId") || "";
 let lines = JSON.parse(localStorage.getItem("lines") || "[]");
 const events = [];
 const pageId = Math.random();
 let stopping = false;
-const save = () => localStorage.setItem("lines", JSON.stringify(lines));
+const save = () => {
+  localStorage.setItem("meetingId", meetingId);
+  localStorage.setItem("lines", JSON.stringify(lines));
+};
 function catchUp(why) {
   const from = lines.length;
-  const got = JSON.parse(B.lines(from));
+  const got = JSON.parse(B.lines(meetingId, from));
   lines.push(...got);
   save();
   events.push({ type: "catchup", why, from, got: got.length });
@@ -212,12 +216,12 @@ function report() {
   document.getElementById("status").textContent = JSON.stringify(status);
   document.getElementById("lines").start = Math.max(0, lines.length - 8);
   document.getElementById("lines").innerHTML = lines.slice(-8).map((l) => "<li>" + l.text + "</li>").join("");
-  fetch("/report", { method: "POST", body: JSON.stringify({ pageId, status, lines, events: events.slice(-200), version: B.appVersion() }) }).catch(() => {});
+  fetch("/report", { method: "POST", body: JSON.stringify({ pageId, meetingId, status, lines, events: events.slice(-200), version: B.appVersion() }) }).catch(() => {});
 }
 addEventListener("yogurt-native", (e) => {
   const d = e.detail;
   if (d.type !== "interim") {
-    events.push(d.type === "line" ? { type: "line", index: d.index } : d);
+    events.push(d.type === "line" ? { type: "line", meetingId: d.meetingId, index: d.index } : d);
     console.log("yogurt-native " + JSON.stringify(d));
   }
   if (d.type === "state" && d.state === "stopped" && stopping) {
@@ -226,7 +230,7 @@ addEventListener("yogurt-native", (e) => {
     catchUp("stop");
     events.push({ type: "stopped-call", status: JSON.parse(B.status()) });
   }
-  if (d.type === "line") {
+  if (d.type === "line" && d.meetingId === meetingId) {
     if (d.index === lines.length) {
       lines.push(d.line);
       save();
@@ -244,11 +248,14 @@ async function poll() {
   try {
     const c = await (await fetch("/cmd")).json();
     if (c.cmd === "start") {
-      lines = [];
+      // Starting the meeting the page holds resumes it, with the lines it already has.
+      if (c.meetingId !== meetingId) lines = [];
+      meetingId = c.meetingId;
       save();
       const auth = { jwt: "jwt-test", browserToken: "browser-test" };
-      const r = B.start(JSON.stringify({ meetingId: c.meetingId, startedAtMs: Date.now(), tokenUrl: "/api/stt-token", auth }));
-      events.push({ type: "start", result: JSON.parse(r) });
+      const r = B.start(JSON.stringify({ meetingId, startedAtMs: Date.now(), have: lines.length, tokenUrl: "/api/stt-token", auth }));
+      events.push({ type: "start", meetingId, have: lines.length, result: JSON.parse(r) });
+      catchUp("start");
     }
     if (c.cmd === "start-raw") events.push({ type: "start", result: JSON.parse(B.start(c.json)) });
     if (c.cmd === "stop") {
