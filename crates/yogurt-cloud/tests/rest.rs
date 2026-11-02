@@ -530,8 +530,16 @@ async fn phone_meetings_are_adopted_by_one_mac() {
 
     let mut a = Mac::default();
     let (adopted, plan) = mac_pass(p, &mut s, &mac_a, &mut a).await.unwrap();
-    assert_eq!(adopted, [ended.clone()], "only the ended meeting");
-    assert_eq!(plan.changed, [ended.clone()], "and the pass pushes it");
+    assert_eq!(
+        adopted,
+        std::slice::from_ref(&ended),
+        "only the ended meeting"
+    );
+    assert_eq!(
+        plan.changed,
+        std::slice::from_ref(&ended),
+        "and the pass pushes it"
+    );
     assert_eq!(a.here[&ended], phone_bundle(&ended, Some(9_000)));
     assert_eq!(
         live(p, &s, &phone).await,
@@ -582,7 +590,7 @@ async fn phone_meetings_are_adopted_by_one_mac() {
         !loser.here.contains_key(&race),
         "the loser removes its copy"
     );
-    assert_eq!(loser.unadopted, [race.clone()]);
+    assert_eq!(loser.unadopted, std::slice::from_ref(&race));
     let mut copies = 0;
     for d in [&mac_a, &mac_b, &mac_c, &phone] {
         copies += live(p, &s, d).await.contains(&json!(race)) as usize;
