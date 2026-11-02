@@ -177,8 +177,8 @@ async function main() {
   cloud.command({ cmd: "reload" });
   await until("the reloaded page", () => page().pageId !== oldPage);
   const load = page().events.find((e) => e.why === "load");
-  check("lines(n) after a reload starts at the count the page had", load.from === keep, `from ${load.from}`);
-  check("lines(n) returns exactly the missing lines", sameLines(page().lines, store().slice(0, page().lines.length)) && load.got >= 5, `got ${load.got}`);
+  check("lines(meetingId, n) after a reload starts at the count the page had", load.from === keep, `from ${load.from}`);
+  check("lines(meetingId, n) returns exactly the missing lines", sameLines(page().lines, store().slice(0, page().lines.length)) && load.got >= 5, `got ${load.got}`);
 
   // uiautomator cannot dump the shade while the notification's chronometer ticks, since the screen is never idle.
   // So this sends the intent the Stop button's PendingIntent carries, as the app's own uid, which is what a tap does.

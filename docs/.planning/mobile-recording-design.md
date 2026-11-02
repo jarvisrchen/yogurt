@@ -105,11 +105,11 @@ Final lines are numbered once for the whole meeting and kept in a file until ano
 A new meeting numbers from `have`, and a `start` of the meeting the file already holds carries on its numbering, so a resume after the app was killed keeps one numbering with the lines the page already has.
 A page that comes back calls `lines(meetingId, n)` with the count it already has and never misses or repeats one.
 Lines and line events carry the meeting, so the page takes none of another meeting's, such as the previous meeting's lines while Android's mic dialog holds up a new `start`.
-Events sent before the record screen listens, such as while the page reloads, are not replayed: the page recovers the state from `status()` and the lines from `lines(n)` when it attaches.
+Events sent before the record screen listens, such as while the page reloads, are not replayed: the page recovers the state from `status()` and the lines from `lines(meetingId, n)` when it attaches.
 
 `stop()` returns at once, because a `@JavascriptInterface` call blocks the page's JavaScript thread until it returns, and stopping waits up to 5 seconds for Deepgram's last results.
 The recorder then sends those lines as events, followed by `{"type":"state","state":"stopped"}`, also when nothing was recording.
-The page's `NativeRecorder.stop()` waits for that state, at most 10 seconds, and then calls `lines(n)` once to take any line it missed.
+The page's `NativeRecorder.stop()` waits for that state, at most 10 seconds, and then calls `lines(meetingId, n)` once to take any line it missed.
 
 On launch, the app compares its version with the latest GitHub release and, when a newer one has an APK, shows an Update available banner.
 Tapping it downloads the APK and hands it to Android's installer, so an update is one tap and keeps the sign-in.

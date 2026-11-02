@@ -56,7 +56,7 @@ They run on the JVM with `just android`.
 The end-to-end test drives the debug app on an emulator against `tools/fake-cloud.mjs`, a fake Cloud, Deepgram, and GitHub release on the Mac, reached through `adb reverse`.
 Its test page calls the bridge the way the webapp does, and the recorder reads a generated wav instead of the mic.
 The wav stamps every sample with its second, so a lost or repeated line after a reconnect shows up as a gap or a repeat in the "second N" lines.
-It checks the first launch screen, recording through Home and a screen turned off for 75 seconds, the notification and its Stop, a reconnect after the fake server dies with no lost or repeated line, `lines(n)` after a reload, `stop()` returning only after the last line, and the update download and install intent.
+It checks the first launch screen, recording through Home and a screen turned off for 75 seconds, the notification and its Stop, a reconnect after the fake server dies with no lost or repeated line, `lines(meetingId, n)` after a reload, a resume that carries on the numbering through a reload, a start held up by the mic dialog that reads none of the previous meeting's lines, `stop()` returning only after the last line, and the update download and install intent.
 It wipes the app's data first, and takes about 4 minutes.
 
 ```bash
@@ -87,7 +87,7 @@ The page talks to the recorder through `window.YogurtAndroid`, as the design's [
 Calls work only while the WebView shows the Cloud origin you entered, and the app opens any other address in the browser.
 `start()` refuses a `tokenUrl` off that origin, since the recorder sends the session to it: a POST with the JWT as a Bearer header and `{"token": browserToken}` as the body, which is what `cloud/api/stt-token.ts` reads, expecting `{"token","url"}` back.
 The recorder opens `url` with the granted token as `Authorization: Bearer`, which Deepgram's token guide documents.
-`stop()` returns at once, and the recorder then sends Deepgram's last lines as events, waiting up to 5 seconds for them, followed by a `stopped` state event, after which `lines(n)` holds every line.
+`stop()` returns at once, and the recorder then sends Deepgram's last lines as events, waiting up to 5 seconds for them, followed by a `stopped` state event, after which `lines(meetingId, n)` holds every line.
 `start()` returns `{"ok":true}` while Android asks for the microphone, and the recording then starts, or ends with an `error` and a `stopped` state event.
 Events wait in the app while no Cloud page is loaded and go out once one is, except interim text.
 
