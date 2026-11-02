@@ -131,7 +131,6 @@ Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-desi
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
-- [ ] **SYNC-32** The Mac adopts ended meetings recorded on a phone into SQLite during its push pass, and marks the phone's copy deleted so each shows once ([design](.planning/mobile-recording-design.md#the-mac-adopts-phone-meetings))
 
 ## Import
 

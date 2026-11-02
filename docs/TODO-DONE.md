@@ -1605,3 +1605,9 @@ New closed items go at the bottom.
   `stop()` returns at once and the last lines and a `stopped` state follow as events, which `NativeRecorder.stop()` waits for, and a page that reloads mid-recording takes the recording back up.
   The release builds the APK only when both signing secrets exist, under the release's own version as `yogurt-android-<version>.apk`, and releases without it otherwise.
   `just android` builds and unit tests it, `node android/tools/e2e.mjs` runs the emulator end to end against a fake Cloud, and `just android-emu` with `just cloud-dev` runs it against a local Cloud.
+
+- [x] **SYNC-32** The Mac adopts ended meetings recorded on a phone into SQLite during its push pass, and marks the phone's copy deleted so each shows once ([design](.planning/mobile-recording-design.md#the-mac-adopts-phone-meetings))
+
+  Landed in the mobile-build integration (2026-11-02). Before each push pass the Mac lists ended phone meetings with `yogurt_phone_meetings`, imports each under a new UUIDv7 with the phone's ULID as `source_id`, and claims it with `yogurt_adopt(device_id, meeting_id, push_id)`, so it shows once, under the Mac, as "Recorded on <phone>".
+  A due timer wake always makes that one listing call, since only the Cloud knows of a phone meeting, and runs the rest of the pass only when it adopted one or something local is pending.
+  Covered by the `api::cloud` and `push` unit tests, `just test-cloud`, `just test-cloud-e2e`, and a scratch yogurt connected to `just cloud-dev` that adopted four phone meetings on its first timer wake.
