@@ -172,18 +172,26 @@ jobs:
           echo "DRY RUN -- would upload the following to a release tagged ${{ steps.version.outputs.version }}:"
           ls -la dist/
 
+      # The APK is there only when the android job had its signing secrets, so it is listed only then, and a missing tarball still fails the upload.
+      - name: List the release files
+        id: files
+        run: |
+          {
+            echo "list<<EOF"
+            echo "dist/*.tar.gz"
+            if compgen -G "dist/*.apk" >/dev/null; then echo "dist/*.apk"; fi
+            echo "dist/SHA256SUMS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         if: github.event_name == 'push' || inputs.dry-run == false
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          # The APK is there only when the android job had its signing secrets.
-          fail_on_unmatched_files: false
-          files: |
-            dist/*.tar.gz
-            dist/*.apk
-            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          files: ${{ steps.files.outputs.list }}
 
   tap:
     needs: release

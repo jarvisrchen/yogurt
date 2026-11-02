@@ -545,5 +545,10 @@ check "open_bump_pr: no orphaned worktree left after a failed cargo update" "$wo
 
 rm -f "$BIN/cargo"
 
+# The APK is optional, but a missing tarball must still fail the release upload.
+WORKFLOW="$SCRIPT_DIR/../../.github/workflows/release.yml"
+check "release.yml: no upload ignores unmatched files" "$(grep -c 'fail_on_unmatched_files: false' "$WORKFLOW" || true)" "0"
+contains "release.yml: the upload fails on unmatched files" "$(cat "$WORKFLOW")" "fail_on_unmatched_files: true"
+
 echo "release_test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
