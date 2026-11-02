@@ -19,6 +19,9 @@ export interface PhoneMeeting {
 }
 
 export const STT_ENGINE = "cloud · nova-3 · phone";
+
+/** Recorded on a phone. The webapp writes only these, never a Mac's meetings. */
+export const isPhoneMeeting = (m: { stt_engine?: string | null }) => !!m.stt_engine?.endsWith("· phone");
 export const UNTITLED = "Untitled meeting";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -42,8 +45,15 @@ export function ulid(now = Date.now(), random: (n: number) => Uint8Array = (n) =
   return time + rand;
 }
 
-/** The document a push sends: the Mac's `bundle_value` shape, field for field, for a meeting with no labels, chat, or enhance yet. */
-export function bundle(m: PhoneMeeting) {
+/** What an enhance changes in a meeting, under the Mac's field names. */
+export interface Enhanced {
+  enriched_md: string;
+  llm_model: string;
+  template: string;
+}
+
+/** The document a push sends: the Mac's `bundle_value` shape, field for field, for a meeting with no labels or chat. */
+export function bundle(m: PhoneMeeting, enhanced: Enhanced | null = null) {
   return {
     v: 1 as const,
     meeting: {
@@ -52,12 +62,12 @@ export function bundle(m: PhoneMeeting) {
       started_at: m.started_at,
       ended_at: m.ended_at,
       notes_md: m.notes_md,
-      enriched_md: null,
+      enriched_md: enhanced?.enriched_md ?? null,
       transcript_json: JSON.stringify(m.lines.map(({ channel, text, ts_ms }) => ({ channel, text, ts_ms }))),
       starred: false,
       stt_engine: STT_ENGINE,
-      llm_model: null,
-      template: null,
+      llm_model: enhanced?.llm_model ?? null,
+      template: enhanced?.template ?? null,
       created_at: m.created_at,
       labels: [],
     },

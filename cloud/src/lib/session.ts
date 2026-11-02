@@ -3,11 +3,22 @@ import { TokenRejected, type Api } from "./api";
 import type { Gap } from "./audioQueue";
 import { BrowserRecorder } from "./browserRecorder";
 import { NativeRecorder } from "./nativeRecorder";
-import { bundle, clearUnfinished, loadUnfinished, readDevice, saveDevice, saveUnfinished, ulid, type PhoneMeeting, type Unfinished } from "./phone";
+import { enhanceMeeting } from "./enhance";
+import { bundle, clearUnfinished, loadUnfinished, readDevice, saveDevice, saveUnfinished, ulid, type Enhanced, type PhoneMeeting, type Unfinished } from "./phone";
 import type { Recorder, RecorderEvent, RecorderState } from "./recorder";
 
 /** A killed tab loses at most this much of the Cloud's copy. */
 export const PUSH_EVERY_MS = 30_000;
+
+/** The enhance that runs after End, as the meeting view shows it. `done` holds the stored notes until the view reloads the meeting. */
+export type Finish =
+  | { status: "running"; text: string }
+  | { status: "error"; message: string; retry?: () => void }
+  | { status: "short" }
+  | { status: "done"; enriched_md: string };
+
+// About 12 updates a second, as the Mac's preview, so a long reply does not re-render on every chunk.
+const PREVIEW_MS = 80;
 
 export interface Snapshot {
   /** The meeting this page is recording, or ending. */
@@ -24,6 +35,8 @@ export interface Snapshot {
   native: boolean;
   /** A meeting a closed page left unfinished, to resume or end. */
   unfinished: Unfinished | null;
+  /** The last ended meeting's enhance, under its library key. */
+  finish: { key: string; run: Finish } | null;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -33,7 +46,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * The meeting is written to IndexedDB on every change and pushed whole every 30 seconds and at End, through the RPCs a laptop pushes with.
  */
 export class RecordingSession {
-  private snap: Snapshot = { meeting: null, state: "stopped", interim: "", gaps: [], downSince: null, error: null, saveError: null, ending: false, native: false, unfinished: null };
+  private snap: Snapshot = { meeting: null, state: "stopped", interim: "", gaps: [], downSince: null, error: null, saveError: null, ending: false, native: false, unfinished: null, finish: null };
   private subs = new Set<() => void>();
   private recorder: Recorder | null = null;
   private deviceId = "";
@@ -90,7 +103,7 @@ export class RecordingSession {
     this.deviceId = deviceId;
     this.lastPushed = "";
     const native = !!window.YogurtAndroid;
-    this.set({ meeting, unfinished: null, state: "connecting", interim: "", gaps: [], downSince: null, error: null, saveError: null, native });
+    this.set({ meeting, unfinished: null, finish: null, state: "connecting", interim: "", gaps: [], downSince: null, error: null, saveError: null, native });
     this.write();
     const rec: Recorder = window.YogurtAndroid
       ? new NativeRecorder(window.YogurtAndroid, async () => ({ jwt: await this.api.jwt(), browserToken: this.browserToken() ?? "" }), new URL("/api/stt-token", location.href).href)
@@ -168,9 +181,9 @@ export class RecordingSession {
   }
 
   /** One push at a time, of the meeting as it is when its turn comes. A push of an unchanged bundle is skipped, so the history does not fill with copies. */
-  private push(deviceId: string, m: () => PhoneMeeting): Promise<void> {
+  private push(deviceId: string, m: () => PhoneMeeting, enhanced: Enhanced | null = null): Promise<void> {
     const run = async () => {
-      const body = bundle(m());
+      const body = bundle(m(), enhanced);
       const sig = JSON.stringify(body);
       if (sig === this.lastPushed) return;
       await this.api.pushMeeting(deviceId, body.meeting.id, body);
@@ -192,7 +205,11 @@ export class RecordingSession {
     }
   }
 
-  /** Stops recording, then saves the ended meeting. Resolves to its library key, or null when the save failed and End can be tried again. */
+  /**
+   * Stops recording and saves the last of the transcript with `ended_at` still null, then enhances in the background and saves the ended meeting.
+   * A Mac adopts only an ended meeting, so it never takes one before its enhanced version exists.
+   * Resolves to the meeting's library key, or null when the save failed and End can be tried again.
+   */
   async end(): Promise<string | null> {
     const m = this.snap.meeting;
     if (!m || this.snap.ending) return null;
@@ -202,36 +219,80 @@ export class RecordingSession {
     const rec = this.recorder;
     this.recorder = null;
     await rec?.stop().catch(() => undefined);
-    const ended = { ...this.snap.meeting!, ended_at: m.ended_at ?? Date.now() };
-    this.set({ meeting: ended, interim: "", state: "stopped" });
+    this.set({ interim: "", state: "stopped" });
     this.write();
-    try {
-      await this.push(this.deviceId, () => ended);
-      await (this.writes = this.writes.then(clearUnfinished));
-    } catch (e) {
-      this.set({ ending: false, saveError: message(e) });
+    const last = this.snap.meeting!;
+    const endedAt = last.ended_at ?? Date.now();
+    const key = await this.close(this.deviceId, last, endedAt);
+    if (!key) {
+      // Kept on the record screen, which offers Try again with the same end time.
+      this.set({ ending: false, meeting: { ...last, ended_at: endedAt } });
       return null;
     }
     this.set({ meeting: null, ending: false, saveError: null, error: null, gaps: [] });
-    return `${this.deviceId}/${ended.id}`;
+    return key;
   }
 
-  /** Saves a meeting a closed page left, as ended when the page last wrote it. */
-  async endUnfinished(): Promise<boolean> {
+  /** Ends a meeting a closed page left, as ended when the page last wrote it, the same way End does. */
+  async endUnfinished(): Promise<string | null> {
     const u = this.snap.unfinished;
-    if (!u) return false;
-    const ended = { ...u.meeting, ended_at: u.meeting.ended_at ?? u.saved_at };
+    if (!u || this.snap.ending) return null;
     this.lastPushed = "";
     this.set({ ending: true, error: null });
+    const key = await this.close(u.device_id, u.meeting, u.meeting.ended_at ?? u.saved_at);
+    this.set({ ending: false, ...(key && { unfinished: null }) });
+    return key;
+  }
+
+  /** Pushes the meeting as it stands, still open, then starts the enhance that ends it. Null when that push failed. */
+  private async close(deviceId: string, m: PhoneMeeting, endedAt: number): Promise<string | null> {
+    const open = { ...m, ended_at: null };
     try {
-      await this.push(u.device_id, () => ended);
-      await (this.writes = this.writes.then(clearUnfinished));
+      await this.push(deviceId, () => open);
     } catch (e) {
-      this.set({ ending: false, error: `Could not save it. ${message(e)}` });
-      return false;
+      const err = message(e);
+      this.set(this.snap.meeting ? { saveError: err } : { error: `Could not save it. ${err}` });
+      return null;
     }
-    this.set({ ending: false, unfinished: null });
-    return true;
+    const key = `${deviceId}/${m.id}`;
+    void this.finish(key, deviceId, open, endedAt);
+    return key;
+  }
+
+  /** Enhances the meeting and pushes it ended. A failed or skipped enhance still saves it ended, and the meeting view offers Enhance again. */
+  private async finish(key: string, deviceId: string, m: PhoneMeeting, endedAt: number) {
+    const run = (r: Finish) => this.set({ finish: { key, run: r } });
+    run({ status: "running", text: "" });
+    let fields: Enhanced | null = null;
+    let failed: Finish | null = null;
+    let shown = 0;
+    try {
+      fields = await enhanceMeeting(this.api, this.browserToken() ?? "", bundle(m).meeting, {
+        onText: (text) => {
+          if (Date.now() - shown < PREVIEW_MS) return;
+          shown = Date.now();
+          run({ status: "running", text });
+        },
+      });
+      if (!fields) failed = { status: "short" };
+    } catch (e) {
+      if (e instanceof TokenRejected) this.onRejected();
+      failed = { status: "error", message: `Enhance failed. ${message(e)}` };
+    }
+    try {
+      await this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields);
+      await this.forget(m.id);
+    } catch (e) {
+      return run({ status: "error", message: `Not saved to your Cloud yet. ${message(e)}`, retry: () => void this.finish(key, deviceId, m, endedAt) });
+    }
+    run(failed ?? { status: "done", enriched_md: fields!.enriched_md });
+  }
+
+  /** Drops the IndexedDB copy, unless a newer recording has replaced it. */
+  private forget(id: string) {
+    return (this.writes = this.writes.then(async () => {
+      if ((await loadUnfinished())?.meeting.id === id) await clearUnfinished();
+    }));
   }
 }
 

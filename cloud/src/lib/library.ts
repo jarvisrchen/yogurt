@@ -1,5 +1,6 @@
 import type { StoredTranscriptSegment } from "@web/lib/ws";
 import type { LibraryRow, MeetingRow, SearchHit } from "./api";
+import { isPhoneMeeting } from "./phone";
 
 export interface Entry {
   key: string;
@@ -64,7 +65,7 @@ export function toEntry(device_id: string, meeting_id: string, r: MeetingRow): E
     notes: m.notes_md ?? "",
     enhanced: m.enriched_md,
     segments: parseSegments(m.transcript_json ?? "[]"),
-    phone: !!m.stt_engine?.endsWith("· phone"),
+    phone: isPhoneMeeting(m),
   };
 }
 

@@ -21,7 +21,8 @@ import {
   useDesktop,
 } from "../ui";
 import { type Api, type Label, TokenRejected } from "../lib/api";
-import { enhanceMeeting, isPhoneMeeting, pushEnhanced } from "../lib/enhance";
+import { enhanceMeeting } from "../lib/enhance";
+import { isPhoneMeeting } from "../lib/phone";
 import {
   asOfLabel,
   clock,
@@ -91,7 +92,7 @@ export function Library({
   onLock,
   onRejected,
 }: Props) {
-  const { unfinished } = useSession(session);
+  const { unfinished, finish: ended } = useSession(session);
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
   const [filter, setFilter] = useState<Pill>("all");
@@ -226,14 +227,27 @@ export function Library({
   const ask = libraryChat && (
     <Ask chat={libraryChat} copy={LIBRARY_CHAT_COPY} renderExtra={(m) => <ChatSources message={m} link={cite} />} position={`${DOCKED} mt-auto`} />
   );
+  // The enhance End started, while the open meeting is the one it ends.
+  const finish = !pushId && ended?.key === open ? ended.run : null;
+  const finishing = finish?.status === "running";
+  const wasFinishing = useRef(false);
+  useEffect(() => {
+    // The ended version is in the Cloud now, enhanced or not.
+    if (wasFinishing.current && !finishing) {
+      bodyLoad.retry();
+      pageLoad.retry();
+    }
+    wasFinishing.current = finishing;
+  });
   const row = bodyLoad.data?.row;
+  // Only an ended meeting, since the recording's next push would drop an enhance of a live one.
   const enhance: Enhance | null =
-    row && !pushId && isPhoneMeeting(row.body.meeting)
+    row && !pushId && !finishing && isPhoneMeeting(row.body.meeting) && row.body.meeting.ended_at !== null
       ? async (onText) => {
           try {
             const fields = await enhanceMeeting(api, token, row.body.meeting, { onText });
             if (!fields) return null;
-            await pushEnhanced(api, openDevice, row.body, fields);
+            await api.pushMeeting(openDevice, row.body.meeting.id, { ...row.body, meeting: { ...row.body.meeting, ...fields } });
             bodyLoad.retry();
             return fields.enriched_md;
           } catch (e) {
@@ -254,6 +268,7 @@ export function Library({
       body={body}
       chat={chat}
       enhance={enhance}
+      finish={finish}
     />
   );
   if (!desktop && meeting)
@@ -288,9 +303,10 @@ export function Library({
       session={session}
       unfinished={unfinished}
       onResume={onRecord}
-      onEnded={() => {
+      onEnded={(key) => {
         base.retry();
         pageLoad.retry();
+        go({ ...loc, meeting: key });
       }}
     />
   );

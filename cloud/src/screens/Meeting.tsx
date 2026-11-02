@@ -9,6 +9,7 @@ import { type ChatCopy, ChatWindow } from "@web/components/ChatWindow";
 import type { ChatMessage } from "@web/lib/api";
 import { Back, DeviceTag } from "../ui";
 import type { CloudChat } from "../lib/useChat";
+import type { Finish } from "../lib/session";
 import { defaultTab, pushedFrom, started, tabsFor, type Entry, type Tab } from "../lib/library";
 
 /** The sanitized HTML, with each transcript link given the "↳ mm:ss" text the desktop editor draws for it. */
@@ -32,7 +33,7 @@ export type BodyState = { status: "loading" } | { status: "ready" } | { status: 
 /** Runs an enhance of the open meeting and pushes it, calling `onText` with the document so far. Resolves to the stored `enriched_md`, or null when the meeting is too short. */
 export type Enhance = (onText: (text: string) => void) => Promise<string | null>;
 
-type Run = { status: "idle" } | { status: "running"; text: string } | { status: "error"; message: string } | { status: "short" };
+type Run = { status: "idle" } | Exclude<Finish, { status: "done" }>;
 
 // About 12 updates a second, as the Mac's preview, so a long reply does not re-render on every chunk.
 const PREVIEW_MS = 80;
@@ -41,12 +42,18 @@ const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px
 
 /** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
 /** `enhance` is set for a phone meeting's live view, the only meetings the webapp writes. */
-export function MeetingView({ entry, device, deviceColor, back, onBack, desktop, body, chat, enhance }: { entry: Entry | null; device: string; deviceColor: string; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null; enhance?: Enhance | null }) {
-  const [run, setRun] = useState<Run>({ status: "idle" });
+/** `finish` is the enhance End started for this meeting, which shows until the user starts one here. */
+export function MeetingView({ entry, device, deviceColor, back, onBack, desktop, body, chat, enhance, finish }: { entry: Entry | null; device: string; deviceColor: string; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null; enhance?: Enhance | null; finish?: Finish | null }) {
+  const [own, setRun] = useState<Run>({ status: "idle" });
+  const [took, setTook] = useState(false);
+  const outside = took ? null : finish;
+  const run: Run = outside && outside.status !== "done" ? outside : own;
   // The stored result shows until the reload after the push brings it.
-  const [enhanced, setEnhanced] = useState<string | null>(null);
+  const [stored, setEnhanced] = useState<string | null>(null);
+  const enhanced = stored ?? (outside?.status === "done" ? outside.enriched_md : null);
   const start = async () => {
-    if (!enhance || run.status === "running") return;
+    if (!enhance || own.status === "running") return;
+    setTook(true);
     setRun({ status: "running", text: "" });
     let shown = 0;
     try {
@@ -73,7 +80,7 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
             stacked={!desktop}
             chars={run.status === "running" ? run.text.length : undefined}
             errorMessage={run.status === "error" ? run.message : null}
-            onRetry={() => void start()}
+            onRetry={run.status === "error" && run.retry ? run.retry : () => void start()}
           />
         </div>
       )}

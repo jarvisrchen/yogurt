@@ -41,7 +41,7 @@ The browser never sees it.
 A new function, `cloud/api/stt-token.ts`, checks the caller is the signed-in owner with an unlocked browser token, then calls Deepgram's `POST /v1/auth/grant` for a 30 second token and returns only that ([Deepgram token-based auth](https://developers.deepgram.com/guides/fundamentals/token-based-authentication)).
 The token only has to be valid when the WebSocket opens, and the page asks for a fresh one on every reconnect.
 Browsers cannot set headers on a WebSocket, so the token goes in `Sec-WebSocket-Protocol` ([Deepgram: using the Sec-WebSocket-Protocol](https://developers.deepgram.com/docs/using-the-sec-websocket-protocol)).
-The docs show the `token, <api key>` form, and MOB-1 confirms the form for a granted token.
+The docs show the `token, <api key>` form for a key, and a granted token goes as `bearer, <token>`.
 
 Minting a token needs a key with the Member role or higher.
 The key in `.env.local` was checked on 2026-11-02 and gets `403 FORBIDDEN, Insufficient permissions`, so the setup docs tell the user to create a separate Member key for Vercel.
@@ -85,7 +85,7 @@ Every value crossing the bridge is a JSON string, because `@JavascriptInterface`
 | --- | --- | --- |
 | `YogurtAndroid.start(json)` | `{"meetingId","startedAtMs","tokenUrl","auth":{"jwt","browserToken"}}` | `{"ok":true}` or `{"ok":false,"error"}` |
 | `YogurtAndroid.setAuth(json)` | `{"jwt","browserToken"}`, sent whenever the page refreshes its session | nothing |
-| `YogurtAndroid.stop()` | none | nothing |
+| `YogurtAndroid.stop()` | none | nothing, at once; the last lines and then a `stopped` state follow as events |
 | `YogurtAndroid.status()` | none | `{"recording","meetingId","startedAtMs","state","lines"}` |
 | `YogurtAndroid.lines(from)` | index of the first line wanted | JSON array of final lines from that index |
 | `YogurtAndroid.appVersion()` | none | the app's version name, such as `"0.1.0"` |
@@ -99,7 +99,14 @@ The app posts events to the page with `window.dispatchEvent(new CustomEvent("yog
 - `{"type":"error","message"}`.
 
 The service mints its own Deepgram token by calling `tokenUrl` with the latest `auth`, so a reconnect works while the page is in the background.
+The call is a POST with the JWT as `Authorization: Bearer` and `{"token": browserToken}` as the body, the same request the browser makes, and the answer is `{"token","url"}`.
+The app opens `url` with the granted token in an `Authorization: Bearer` header, where the browser, which cannot set headers on a WebSocket, offers the `bearer` subprotocol with the token.
 Final lines are numbered from 0 and kept in a file until the next `start`, so a page that comes back calls `lines(n)` with the count it already has and never misses or repeats one.
+Events sent before the record screen listens, such as while the page reloads, are not replayed: the page recovers the state from `status()` and the lines from `lines(n)` when it attaches.
+
+`stop()` returns at once, because a `@JavascriptInterface` call blocks the page's JavaScript thread until it returns, and stopping waits up to 5 seconds for Deepgram's last results.
+The recorder then sends those lines as events, followed by `{"type":"state","state":"stopped"}`, also when nothing was recording.
+The page's `NativeRecorder.stop()` waits for that state, at most 10 seconds, and then calls `lines(n)` once to take any line it missed.
 
 On launch, the app compares its version with the latest GitHub release and, when a newer one has an APK, shows an Update available banner.
 Tapping it downloads the APK and hands it to Android's installer, so an update is one tap and keeps the sign-in.
@@ -138,6 +145,17 @@ The page renders the prompt in WASM and sends it to a new function, `cloud/api/e
 The page merges the result with the user's notes in WASM and pushes `enriched_md`, `llm_model`, and `template`.
 An hour of transcript can stream for over a minute, so the function asks for `maxDuration: 300`, which MOB-2 checks against the account's Vercel plan.
 A failed enhance leaves the meeting saved with its notes and transcript, and an Enhance button retries it.
+
+End runs in this order:
+
+1. The recorder stops, and the Android one is waited for until its last lines are in.
+2. The page pushes the final transcript and notes with `ended_at` still null.
+3. The meeting view opens with the enhance streaming under EnhancingBanner.
+4. The page pushes once more with `ended_at` set, and with `enriched_md`, `llm_model`, and `template` when the enhance worked.
+   A failed enhance, or a meeting too short to enhance, is pushed ended without them, and the view offers Enhance.
+
+A Mac adopts only ended meetings, so it never takes one before its enhanced version exists.
+The meeting stays in IndexedDB until that last push, so if the tab dies during the enhance, the Resume card's End runs the same steps again.
 
 ## Live chat
 

@@ -180,12 +180,18 @@ export class Api {
     const { error, status } = await this.sb.from("yogurt_devices").insert({ id, name, kind: "phone" });
     if (error && error.code !== "23505") throw offline({ status }) ? new Error(OFFLINE) : new Error(error.message);
   };
-  /** Pushes one meeting's whole bundle as its own push, the way a laptop's pass does, then lets search catch up. */
+  /**
+   * Pushes one meeting's whole bundle as its own push, the way a laptop's pass does, then lets search catch up.
+   * A push needs the owner's session but no browser token, as a laptop's does, so a 403 here is never a rejected token.
+   */
   pushMeeting = async (device: string, meeting: string, body: unknown) => {
-    const push = await this.rpc<number>("yogurt_start_push", { device_id: device });
-    const { error, status } = await this.sb.from("yogurt_versions").insert({ meeting_id: meeting, push_id: push, device_id: device, body });
-    if (error) throw offline({ status }) ? new Error(OFFLINE) : new Error(error.message);
-    await this.rpc("yogurt_search_catch_up", { max_ms: 2000 }).catch(() => undefined);
+    const fail = (error: { message: string }, status: number) => new Error(offline({ status }) ? OFFLINE : error.message);
+    const push = await this.sb.rpc("yogurt_start_push", { device_id: device });
+    if (push.error) throw fail(push.error, push.status);
+    const insert = await this.sb.from("yogurt_versions").insert({ meeting_id: meeting, push_id: push.data, device_id: device, body });
+    if (insert.error) throw fail(insert.error, insert.status);
+    // A failure here only delays search to the next push.
+    await this.sb.rpc("yogurt_search_catch_up", { max_ms: 2000 }).then(undefined, () => undefined);
   };
   /** The signed-in session's access token. getSession refreshes an expired one. */
   jwt = async () => (await this.sb.auth.getSession()).data.session?.access_token ?? "";

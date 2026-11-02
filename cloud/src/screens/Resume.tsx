@@ -14,7 +14,7 @@ export const MicIcon = ({ size }: { size: number }) => (
 );
 
 /** The Library's card for a meeting a closed page left unfinished. */
-export function ResumeCard({ session, unfinished, onResume, onEnded }: { session: RecordingSession; unfinished: Unfinished; onResume?: () => void; onEnded?: () => void }) {
+export function ResumeCard({ session, unfinished, onResume, onEnded }: { session: RecordingSession; unfinished: Unfinished; onResume?: () => void; onEnded?: (key: string) => void }) {
   const snap = useSession(session);
   const title = unfinished.meeting.title.trim() || UNTITLED;
   return (
@@ -38,7 +38,10 @@ export function ResumeCard({ session, unfinished, onResume, onEnded }: { session
         </Button>
         <Button
           variant="secondary"
-          onClick={async () => (await session.endUnfinished()) && onEnded?.()}
+          onClick={async () => {
+            const key = await session.endUnfinished();
+            if (key) onEnded?.(key);
+          }}
           disabled={snap.ending}
           className="flex-1 !py-[12px] !text-[15px] min-[721px]:!py-[8px] min-[721px]:!text-[12.5px]"
         >

@@ -1,13 +1,7 @@
 import { type Api, type Bundle, OFFLINE, TokenRejected } from "./api";
+import { isPhoneMeeting, type Enhanced } from "./phone";
 
-type Meeting = Bundle["meeting"] & { stt_engine?: string | null; template?: string | null };
-
-/** What an enhance changes in a meeting, under the Mac's field names. */
-export interface Enhanced {
-  enriched_md: string;
-  llm_model: string;
-  template: string;
-}
+type Meeting = Bundle["meeting"] & { template?: string | null };
 
 // The 1.3 MB module loads on the first enhance, not with the page.
 let wasm: Promise<typeof import("../wasm/yogurt_wasm.js")> | null = null;
@@ -16,9 +10,6 @@ const loadWasm = () =>
     await w.default();
     return w;
   }));
-
-/** Recorded on a phone. The webapp writes only these, never a Mac's meetings. */
-export const isPhoneMeeting = (m: Meeting) => !!m.stt_engine?.endsWith("· phone");
 
 /**
  * Enhances a phone meeting exactly as the Mac's `/enhance` does: the prompt and the merge run in yogurt-wasm, and `/api/enhance` streams the model's reply.
@@ -85,18 +76,4 @@ export async function enhanceMeeting(
   } finally {
     out.free();
   }
-}
-
-/** Pushes `bundle` with `fields` as a new version under its own device, through the RPCs a Mac's push uses. */
-export async function pushEnhanced(api: Api, deviceId: string, bundle: Bundle, fields: Enhanced): Promise<void> {
-  if (!isPhoneMeeting(bundle.meeting)) throw new Error("Only a meeting recorded on a phone can be enhanced here.");
-  // A push needs the owner's session but no browser token, as a laptop's does, so a 403 here is never a rejected token.
-  const fail = (error: { message: string }, status: number) => new Error(status === 0 ? OFFLINE : error.message);
-  const start = await api.sb.rpc("yogurt_start_push", { device_id: deviceId });
-  if (start.error) throw fail(start.error, start.status);
-  const body = { ...bundle, meeting: { ...bundle.meeting, ...fields } };
-  const insert = await api.sb.from("yogurt_versions").insert({ meeting_id: bundle.meeting.id, push_id: start.data, device_id: deviceId, body });
-  if (insert.error) throw fail(insert.error, insert.status);
-  // Search catches up after a push, as it does after a laptop's. A failure here only delays it to the next push.
-  await api.sb.rpc("yogurt_search_catch_up", { max_ms: 2000 });
 }
