@@ -1598,3 +1598,10 @@ New closed items go at the bottom.
   A failed or too short enhance is pushed ended without them, and the meeting view offers Enhance, and a tab that dies mid-enhance keeps the meeting in IndexedDB for the Resume card's End.
   `isPhoneMeeting` lives once in `cloud/src/lib/phone.ts` and every push goes through `Api.pushMeeting`, which never maps a 403 to a rejected browser token.
   Covered by `cloud/e2e/enhance.spec.ts` and `cloud/e2e/record.spec.ts`, and by hand in desktop Chrome and the emulator against `just cloud-dev` with real Deepgram and MiniMax.
+
+- [x] **MOB-5** Android app that wraps the Cloud webapp and records in a background foreground service, with a one-tap in-app update from GitHub releases ([design](.planning/mobile-recording-design.md#the-android-app))
+
+  Landed in the mobile-build integration (2026-11-02). `android/` is a Kotlin app whose WebView shows the Cloud and whose foreground service records with the Deepgram socket and the 5 minute buffer, talking to the page through `window.YogurtAndroid`.
+  `stop()` returns at once and the last lines and a `stopped` state follow as events, which `NativeRecorder.stop()` waits for, and a page that reloads mid-recording takes the recording back up.
+  The release builds the APK only when both signing secrets exist, under the release's own version as `yogurt-android-<version>.apk`, and releases without it otherwise.
+  `just android` builds and unit tests it, `node android/tools/e2e.mjs` runs the emulator end to end against a fake Cloud, and `just android-emu` with `just cloud-dev` runs it against a local Cloud.
