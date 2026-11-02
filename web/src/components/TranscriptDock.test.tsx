@@ -191,6 +191,24 @@ describe("TranscriptDock", () => {
 });
 
 describe("TranscriptDock — static mode (MeetingPost task 9)", () => {
+  it("shows a one-mic transcript with no speaker label and every line in ink", () => {
+    render(
+      <TranscriptDock
+        meetingId={null}
+        token={null}
+        forceOpen
+        single
+        segments={[
+          { ts_ms: 0, channel: "them", text: "Okay, next one." },
+          { ts_ms: 4000, channel: "them", text: "Pro pricing." },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Okay, next one.")).toBeInTheDocument();
+    expect(screen.queryByText("Them")).toBeNull();
+    expect(screen.getByText("Pro pricing.").style.color).toBe("var(--color-ink)");
+  });
+
   it("renders 'Transcript' label with no connection chip", () => {
     render(
       <TranscriptDock meetingId={null} token={null} segments={[]} forceOpen />,

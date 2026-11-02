@@ -601,6 +601,7 @@ export function MeetingPost() {
         forceOpen={transcriptOpen}
         onOpenChange={setTranscriptOpen}
         segments={segments}
+        single={source?.name === "phone"}
         recap={liveRecap && !recapInMain ? "final" : undefined}
         initialView={stateShape.dockRecap && !recapInMain ? "recap" : "transcript"}
       />

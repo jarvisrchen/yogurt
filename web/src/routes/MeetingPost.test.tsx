@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../components/TranscriptDock", () => ({
-  TranscriptDock: () => null,
+  TranscriptDock: ({ single }: { single?: boolean }) => <div data-testid="transcript-dock" data-single={String(!!single)} />,
 }));
 vi.mock("../components/AskExperience", () => ({
   AskExperience: () => null,
@@ -187,6 +187,35 @@ describe("MeetingPost — live-recording redirect", () => {
       expect(screen.getByTestId("meeting-post-route")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("live-view")).toBeNull();
+  });
+
+  it("hands the dock a phone meeting's one-mic transcript to show with no speaker, as the Cloud does", async () => {
+    mockMeetingFetch({
+      id: MEETING_ID,
+      title: "On the go",
+      started_at: 1000,
+      ended_at: 2000,
+      notes_md: "",
+      enriched_md: null,
+      transcript_json: JSON.stringify([
+        { ts_ms: 0, channel: "them", text: "Okay, next one." },
+        { ts_ms: 4000, channel: "them", text: "Pro pricing." },
+      ]),
+      stt_engine: "cloud · nova-3 · phone",
+      source: "phone",
+      source_id: "01KPHONE000000000000000000",
+      source_json: { device: "Pixel" },
+    });
+    renderPost();
+    await screen.findByTestId("imported-from");
+    expect(screen.getByTestId("transcript-dock")).toHaveAttribute("data-single", "true");
+  });
+
+  it("hands the dock a Mac meeting's transcript with its speakers", async () => {
+    mockMeetingFetch({ id: MEETING_ID, title: "Standup", started_at: 1000, ended_at: 2000, notes_md: "", enriched_md: "## Summary", transcript_json: "[]" });
+    renderPost();
+    await screen.findByText("Summary");
+    expect(screen.getByTestId("transcript-dock")).toHaveAttribute("data-single", "false");
   });
 
   describe("imported from Granola", () => {

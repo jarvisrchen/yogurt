@@ -56,6 +56,8 @@ export interface TranscriptDockProps {
   recap?: RecapMode;
   initialView?: DockView;
   onViewChange?: (view: DockView) => void;
+  /** One mic, as a meeting recorded on a phone: lines show with no speaker. */
+  single?: boolean;
 }
 
 type DockPhase = "closed" | "open" | "closing";
@@ -83,6 +85,7 @@ export function TranscriptDock({
   recap,
   initialView = "transcript",
   onViewChange,
+  single,
 }: TranscriptDockProps) {
   const [openLocal, setOpenLocal] = useState(false);
   const open = forceOpen ?? openLocal;
@@ -463,7 +466,7 @@ export function TranscriptDock({
                   </p>
                 ) : (
                   events.map((ev, i) => (
-                    <TranscriptLine key={`${ev.channel}-${ev.ts_ms}-${i}`} ev={ev} />
+                    <TranscriptLine key={`${ev.channel}-${ev.ts_ms}-${i}`} ev={ev} single={single} />
                   ))
                 )}
               </div>
