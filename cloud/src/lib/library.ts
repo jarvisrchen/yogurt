@@ -1,6 +1,6 @@
 import type { StoredTranscriptSegment } from "@web/lib/ws";
 import type { LibraryRow, MeetingRow, SearchHit } from "./api";
-import { isPhoneMeeting } from "./phone";
+import { oneMic } from "./phone";
 
 export interface Entry {
   key: string;
@@ -14,7 +14,7 @@ export interface Entry {
   notes: string;
   enhanced: string | null;
   segments: StoredTranscriptSegment[];
-  /** Recorded on a phone, whose one mic puts every line on the them channel. */
+  /** Transcribed from a phone's one mic, which puts every line on the them channel. */
   phone: boolean;
 }
 
@@ -65,7 +65,7 @@ export function toEntry(device_id: string, meeting_id: string, r: MeetingRow): E
     notes: m.notes_md ?? "",
     enhanced: m.enriched_md,
     segments: parseSegments(m.transcript_json ?? "[]"),
-    phone: isPhoneMeeting(m),
+    phone: oneMic(m),
   };
 }
 

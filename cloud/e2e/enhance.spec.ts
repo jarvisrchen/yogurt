@@ -10,6 +10,8 @@ const [CASE] = JSON.parse(readFileSync(new URL("../../crates/yogurt-wasm/tests/f
 const PHONE = "33333333-3333-4333-8333-333333333333";
 const MEETING = "01JPHONEMEETING0000000000A";
 const STT = "cloud · nova-3 · phone";
+// A Mac's adopted copy of a phone meeting keeps the phone's stt_engine, under the Mac's device and a UUID.
+const ADOPTED = "0199c0de-0000-7000-8000-000000000001";
 
 // A stand-in for the LLM provider. It streams the fixture's reply in pieces, holding the second half until the spec lets it go, or fails when told to.
 const LLM_PORT = Number(process.env.YOGURT_CLOUD_E2E_LLM_PORT ?? 5192);
@@ -43,7 +45,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => new Promise<void>((r) => (llm ? llm.close(() => r()) : r())));
 
-/** A meeting recorded on a phone, pushed the way the record screen pushes it, beside the two laptops of `seed`. */
+/** A meeting recorded on a phone, pushed the way the record screen pushes it, beside the two laptops of `seed`, and Laptop 1's adopted copy of another. */
 async function seedPhone() {
   const sb = createClient(API, KEY);
   const { error } = await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
@@ -51,12 +53,16 @@ async function seedPhone() {
   const ok = (r: { error: { message: string } | null }) => {
     if (r.error) throw new Error(r.error.message);
   };
-  ok(await sb.from("yogurt_devices").insert({ id: PHONE, name: "Phone" }));
+  ok(await sb.from("yogurt_devices").insert({ id: PHONE, name: "Phone", kind: "phone" }));
   const push = await sb.rpc("yogurt_start_push", { device_id: PHONE });
   ok(push);
   const start = Date.now() - 30 * 60_000;
   const meeting = { id: MEETING, title: "Pricing sync", started_at: start, ended_at: start + 18 * 60_000, notes_md: CASE.notes_md, enriched_md: null, transcript_json: CASE.transcript_json, starred: false, stt_engine: STT, llm_model: null, template: null, created_at: new Date(start).toISOString(), labels: [] };
   ok(await sb.from("yogurt_versions").insert({ meeting_id: MEETING, push_id: push.data, device_id: PHONE, body: { v: 1, meeting, chat: [] } }));
+  const mac = await sb.rpc("yogurt_start_push", { device_id: DEVICES.a });
+  ok(mac);
+  const adopted = { ...meeting, id: ADOPTED, title: "Adopted sync" };
+  ok(await sb.from("yogurt_versions").insert({ meeting_id: ADOPTED, push_id: mac.data, device_id: DEVICES.a, body: { v: 1, meeting: adopted, chat: [] } }));
   await sb.auth.signOut();
 }
 
@@ -86,6 +92,12 @@ test("enhance a phone meeting with the Mac's prompt and merge", async ({ page },
   // A Mac's meeting is read-only here.
   await page.goto(`/#/m/${DEVICES.b}/m-planning`);
   await expect(page.getByRole("heading", { name: "Q4 planning sync" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /enhance/i })).toHaveCount(0);
+
+  // So is a Mac's adopted copy of a phone meeting, which still carries the phone's transcript engine.
+  await page.goto(`/#/m/${DEVICES.a}/${ADOPTED}`);
+  await expect(page.getByRole("heading", { name: "Adopted sync" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Notes" })).toBeVisible();
   await expect(page.getByRole("button", { name: /enhance/i })).toHaveCount(0);
 
   await page.goto(`/#/m/${PHONE}/${MEETING}`);

@@ -89,6 +89,7 @@ select pg_temp.expect('42501', array[
   'select * from yogurt_history(''x'')',
   'select * from yogurt_device_list(''x'')',
   'select * from yogurt_device_info(''x'')',
+  'select * from yogurt_phone_devices(''x'')',
   'select yogurt_recolor_device(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''blue'')',
   'select yogurt_reorder_devices(''x'', array[''00000000-0000-0000-0000-0000000000d1'']::uuid[])',
   'select * from yogurt_labels(''x'', ''00000000-0000-0000-0000-0000000000d1'')',
@@ -109,7 +110,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_adopt,yogurt_browsers,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_phone_meetings,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_adopt,yogurt_browsers,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_phone_devices,yogurt_phone_meetings,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -232,6 +233,7 @@ select pg_temp.expect('28000', array[
   'select * from yogurt_history(''no such token'')',
   'select * from yogurt_device_list(''no such token'')',
   'select * from yogurt_device_info(''no such token'')',
+  'select * from yogurt_phone_devices(''no such token'')',
   'select yogurt_recolor_device(''no such token'', ''00000000-0000-0000-0000-0000000000d1'', ''blue'')',
   'select yogurt_reorder_devices(null, array[]::uuid[])',
   'select * from yogurt_labels(''no such token'', ''00000000-0000-0000-0000-0000000000d1'')',
@@ -913,6 +915,7 @@ insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p5',
 select pg_temp.eq(pg_temp.phones(), 'Pixel:p1:Ended,Old phone:p4:Old',
   'the phone list holds the latest version of each ended, live phone meeting, and nothing from a Mac');
 select pg_temp.eq((select push_id::text from yogurt_phone_meetings() where meeting_id = 'p1'), :'push_p2', 'with the push of that version');
+select pg_temp.eq((select string_agg(id::text, ',') from yogurt_phone_devices(:'stok') id), :f1 || ',' || :f2, 'the phone devices, and no Mac');
 
 select pg_temp.eq(yogurt_adopt(:f1, 'p1', :push_p1)::text, 'false', 'a stale version is not adopted');
 select pg_temp.eq(yogurt_adopt(:f1, 'p2', :push_p2)::text || yogurt_adopt(:f1, 'p3', :push_p2)::text || yogurt_adopt(:f1, 'nope', :push_p2)::text,

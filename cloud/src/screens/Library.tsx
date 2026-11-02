@@ -22,7 +22,6 @@ import {
 } from "../ui";
 import { type Api, type Label, TokenRejected } from "../lib/api";
 import { enhanceMeeting } from "../lib/enhance";
-import { isPhoneMeeting } from "../lib/phone";
 import {
   asOfLabel,
   clock,
@@ -107,12 +106,14 @@ export function Library({
 
   const base = useCloudLoad(
     async () => {
-      const [devices, history] = await Promise.all([
+      const [devices, phones, history] = await Promise.all([
         api.devices(token),
+        api.phoneDevices(token),
         pushId ? api.history(token) : null,
       ]);
       return {
         devices,
+        phones,
         pushedAt: history?.find((h) => h.push_id === pushId)?.pushed_at ?? null,
       };
     },
@@ -240,9 +241,9 @@ export function Library({
     wasFinishing.current = finishing;
   });
   const row = bodyLoad.data?.row;
-  // Only an ended meeting, since the recording's next push would drop an enhance of a live one.
+  // Only a phone's own meeting, since a Mac's copy, adopted ones too, is the Mac's to push, and only an ended one, since the recording's next push would drop an enhance of a live one.
   const enhance: Enhance | null =
-    row && !pushId && !finishing && isPhoneMeeting(row.body.meeting) && row.body.meeting.ended_at !== null
+    row && !pushId && !finishing && base.data?.phones.includes(openDevice) && row.body.meeting.ended_at !== null
       ? async (onText) => {
           try {
             const fields = await enhanceMeeting(api, token, row.body.meeting, { onText });

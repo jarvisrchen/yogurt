@@ -20,8 +20,8 @@ export interface PhoneMeeting {
 
 export const STT_ENGINE = "cloud · nova-3 · phone";
 
-/** Recorded on a phone. The webapp writes only these, never a Mac's meetings. */
-export const isPhoneMeeting = (m: { stt_engine?: string | null }) => !!m.stt_engine?.endsWith("· phone");
+/** Transcribed from a phone's one mic, so every line is on the them channel. A Mac's adopted copy is too, so whether the webapp may write a meeting comes from its device's kind instead. */
+export const oneMic = (m: { stt_engine?: string | null }) => !!m.stt_engine?.endsWith("· phone");
 export const UNTITLED = "Untitled meeting";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

@@ -126,6 +126,7 @@ The phone registers in `yogurt_devices` the first time it records, with an id it
 A new column, `kind text not null default 'mac'`, holds `'phone'` for it, so a Mac can tell a phone's meetings from another Mac's.
 The insert policy already allows the signed-in owner to add a device, and `yogurt_start_push` already accepts any device the owner owns, so the phone pushes through the same RPCs and the same `{"v":1,"meeting":...,"chat":[...]}` bundle the Mac sends.
 The Library, search, meeting view, and Cloud chat then show phone meetings with no changes.
+The webapp offers Enhance only on a meeting whose device is a phone, which it reads from `yogurt_phone_devices(token)`, because a Mac's adopted copy keeps the phone's `stt_engine`.
 
 If the user clears site data, the next recording registers a new phone device.
 The old device's meetings stay readable, and the Mac adopts them as usual.

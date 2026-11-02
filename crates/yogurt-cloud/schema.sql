@@ -850,6 +850,15 @@ begin
     order by d.position nulls last, d.created_at, d.id;
 end $$;
 
+-- The owner's phones, whose meetings the webapp may enhance. A Mac's adopted copy keeps the phone's stt_engine, so the device says it.
+create or replace function public.yogurt_phone_devices(token text) returns setof uuid
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  return query select d.id from public.yogurt_devices d where d.user_id = auth.uid() and d.kind = 'phone' order by d.id;
+end $$;
+
 -- Only an unlocked browser sets these, so a laptop's owner session cannot.
 create or replace function public.yogurt_recolor_device(token text, device_id uuid, new_color text) returns boolean
 language plpgsql security definer set search_path = '' as $$
@@ -939,6 +948,7 @@ grant execute on function
   public.yogurt_history(text),
   public.yogurt_device_list(text),
   public.yogurt_device_info(text),
+  public.yogurt_phone_devices(text),
   public.yogurt_recolor_device(text, uuid, text),
   public.yogurt_reorder_devices(text, uuid[])
 to authenticated;

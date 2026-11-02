@@ -172,6 +172,8 @@ export class Api {
     this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_info", { token });
+  /** The ids of the owner's phones, the only devices whose meetings the webapp writes. */
+  phoneDevices = (token: string) => this.rpc<string[]>("yogurt_phone_devices", { token });
   recolorDevice = (token: string, device: string, color: string) =>
     this.rpc<boolean>("yogurt_recolor_device", { token, device_id: device, new_color: color });
   reorderDevices = (token: string, devices: string[]) => this.rpc<boolean>("yogurt_reorder_devices", { token, device_ids: devices });

@@ -1,5 +1,5 @@
 import { type Api, type Bundle, OFFLINE, TokenRejected } from "./api";
-import { isPhoneMeeting, type Enhanced } from "./phone";
+import type { Enhanced } from "./phone";
 
 type Meeting = Bundle["meeting"] & { template?: string | null };
 
@@ -26,7 +26,6 @@ export async function enhanceMeeting(
   meeting: Meeting,
   { template = meeting.template ?? null, onText, signal }: { template?: string | null; onText?: (text: string) => void; signal?: AbortSignal } = {},
 ): Promise<Enhanced | null> {
-  if (!isPhoneMeeting(meeting)) throw new Error("Only a meeting recorded on a phone can be enhanced here.");
   const w = await loadWasm();
   if (w.too_short(meeting.notes_md, meeting.transcript_json)) return null;
   const messages = JSON.parse(w.render_enhance(meeting.notes_md, meeting.transcript_json, template));
