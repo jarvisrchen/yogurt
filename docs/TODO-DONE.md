@@ -1611,3 +1611,7 @@ New closed items go at the bottom.
   Landed in the mobile-build integration (2026-11-02). Before each push pass the Mac lists ended phone meetings with `yogurt_phone_meetings`, imports each under a new UUIDv7 with the phone's ULID as `source_id`, and claims it with `yogurt_adopt(device_id, meeting_id, push_id)`, so it shows once, under the Mac, as "Recorded on <phone>".
   A due timer wake always makes that one listing call, since only the Cloud knows of a phone meeting, and runs the rest of the pass only when it adopted one or something local is pending.
   Covered by the `api::cloud` and `push` unit tests, `just test-cloud`, `just test-cloud-e2e`, and a scratch yogurt connected to `just cloud-dev` that adopted four phone meetings on its first timer wake.
+
+- [x] **MOB-3** Chat about the meeting while recording on the phone ([design](.planning/mobile-recording-design.md#live-chat))
+
+  The record screen's Ask pill pushes the open meeting before each question, so the chat answers from the transcript up to that moment.
