@@ -18,6 +18,7 @@ Every item carries a `**<PREFIX>-<N>**` ID right after the checkbox so it can be
 | `DX` | Developer experience |
 | `SYNC` | Sync |
 | `IMP` | Import |
+| `MOB` | Mobile |
 
 Numbers are per prefix and allocated once: run `just ticket next <PREFIX>` to get the next ID; it is the highest existing number for that prefix plus one, counting `docs/TODO-DONE.md` and the titles and branch names of open PRs too.
 Never reuse or renumber an ID, including when an item moves to DONE.
@@ -130,8 +131,17 @@ Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-desi
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
+- [ ] **SYNC-32** The Mac adopts ended meetings recorded on a phone into SQLite during its push pass, and marks the phone's copy deleted so each shows once ([design](.planning/mobile-recording-design.md#the-mac-adopts-phone-meetings))
 
 ## Import
 
 Design: [.planning/granola-import-design.md](.planning/granola-import-design.md).
 
+## Mobile
+
+Design: [.planning/mobile-recording-design.md](.planning/mobile-recording-design.md).
+
+- [ ] **MOB-1** Record a meeting on the phone in the Cloud webapp with a live Deepgram transcript, saved as a phone device; starts with a real-device check of screen lock, a phone call, and the token handshake on Android ([design](.planning/mobile-recording-design.md#tickets))
+- [ ] **MOB-2** Take notes during a phone recording and enhance them at End with the Mac's prompt and merge compiled to WASM ([design](.planning/mobile-recording-design.md#notes-and-enhance))
+- [ ] **MOB-3** Chat about the meeting while recording on the phone ([design](.planning/mobile-recording-design.md#live-chat))
+- [ ] **MOB-4** Spike on-device transcription on the phone, such as Moonshine through Transformers.js, measured over an hour on a real Android phone ([design](.planning/mobile-recording-design.md#transcription))
