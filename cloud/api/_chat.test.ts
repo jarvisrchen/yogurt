@@ -116,13 +116,13 @@ test.each([
   expect(calls).toHaveLength(0);
 });
 
-test("the function reads only its five environment variables", () => {
+test("each function reads only its five environment variables", () => {
   const dir = new URL(".", import.meta.url);
   const reads = readdirSync(dir)
     .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-    .flatMap((f) => [...readFileSync(new URL(f, dir), "utf8").matchAll(/(?:const|let)\s*\{([^}]*)\}\s*=\s*process\.env|process\.env/g)].map((m) => m[1] ?? "bare"));
-  expect(reads).toHaveLength(1);
-  expect(reads[0].split(",").map((s) => s.trim()).sort()).toEqual(["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_URL", "YOGURT_LLM_API_KEY", "YOGURT_LLM_BASE_URL", "YOGURT_LLM_MODEL"]);
+    .flatMap((f) => [...readFileSync(new URL(f, dir), "utf8").matchAll(/(?:const|let)\s*\{([^}]*)\}\s*=\s*process\.env|process\.env/g)].map((m) => [f, (m[1] ?? "bare").split(",").map((s) => s.trim()).sort()]));
+  const five = ["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_URL", "YOGURT_LLM_API_KEY", "YOGURT_LLM_BASE_URL", "YOGURT_LLM_MODEL"];
+  expect(reads.sort()).toEqual([["chat.ts", five], ["enhance.ts", five]]);
 });
 
 test("the key is scrubbed from the whole error body before it is shortened", async () => {

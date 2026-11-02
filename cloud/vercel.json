@@ -6,6 +6,9 @@
   "functions": {
     "api/chat.ts": {
       "supportsCancellation": true
+    },
+    "api/enhance.ts": {
+      "supportsCancellation": true
     }
   }
 }
