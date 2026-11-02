@@ -51,8 +51,11 @@ if [ -z "$routes" ]; then
   echo "check-docs: found zero routes in crates/yogurt-server/src - extraction is broken"
   exit 1
 fi
-# Each route reduced to its literal prefix up to the first `{param}`.
-route_prefixes=$(echo "$routes" | sed -E 's/\{.*$//' | sed -E 's#/$##')
+# Each route reduced to its literal prefix up to the first `{param}`, plus the Cloud webapp's Vercel functions and their helpers, cloud/api/<name>.ts.
+route_prefixes=$(
+  echo "$routes" | sed -E 's/\{.*$//' | sed -E 's#/$##'
+  find cloud/api -maxdepth 1 -name '*.ts' ! -name '*.test.ts' | sed -E 's#^cloud(/api/.*)\.ts$#\1#'
+)
 
 for f in $DOC_FILES; do
   grep -noE '/api/[A-Za-z0-9_/${}:*-]+' "$f" 2>/dev/null | while IFS=: read -r line token; do

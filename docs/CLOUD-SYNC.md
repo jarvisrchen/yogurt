@@ -244,6 +244,23 @@ Add three more variables, limited to Production, and redeploy:
 Until all three are set, chat answers "Chat isn't set up on this Cloud."
 The local command-line providers, such as Claude Code, cannot run on Vercel.
 
+### Turn on recording
+
+The webapp's Record button records a meeting on a phone, or in any browser, and transcribes it live with Deepgram.
+The phone streams its audio to Deepgram directly, and the audio is never stored.
+
+1. In the [Deepgram console](https://console.deepgram.com), create an API key with the Member role or higher.
+   Recording mints a short-lived token for each connection, and a key with a lower role cannot.
+   Use a key of its own rather than the Mac's, so you can revoke it without touching the Mac.
+2. Add one more variable, limited to Production, and redeploy:
+
+| Name | Value |
+| --- | --- |
+| `YOGURT_DEEPGRAM_API_KEY` | the Member key, marked Sensitive |
+
+Until it is set, Record says "Recording isn't set up on this Cloud."
+The webapp never sees the key: each connection gets a token that expires in 30 seconds.
+
 ### Free tiers
 
 A Supabase free project pauses after 7 days of low activity, and API calls count as activity.

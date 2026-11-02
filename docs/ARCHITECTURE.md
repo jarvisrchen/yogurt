@@ -658,7 +658,7 @@ graph LR
         AUDIOB["raw audio buffers"]
     end
     subgraph Opt["Leaves only on explicit opt-in"]
-        AU["audio -> Deepgram (cloud STT)"]
+        AU["audio -> Deepgram (cloud STT, and every phone recording)"]
         TR["notes + transcript -> the configured LLM provider (enhance, chat)"]
         CL["notes + transcript + chat -> the user's own Yogurt Cloud (push)"]
         GRN["API key + read requests only -> Granola (import)"]
@@ -668,6 +668,11 @@ graph LR
         KEYS["API keys (keys.json only)"]
     end
 ```
+
+Two keys live outside `keys.json`, in the user's Vercel project's environment, Sensitive and Production only: `YOGURT_LLM_API_KEY` for the Cloud's chat and `YOGURT_DEEPGRAM_API_KEY` for recording on a phone.
+No function returns or logs either.
+`cloud/api/stt-token.ts` trades the Deepgram key for a token that expires in 30 seconds, and only for the signed-in owner with an unlocked browser token, so the phone never sees the key.
+The phone's audio goes from the browser to Deepgram directly, is held in memory only while a socket is down, and is never stored.
 
 Enforcement points, all in `routes.rs` unless noted:
 
@@ -838,8 +843,9 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 Notes and transcripts leave only to the LLM provider the user configures (enhance and chat) and to a Yogurt Cloud the user connects, which is their own Supabase project ([§12](#12-yogurt-cloud-sync)).
 That Cloud's chat sends a meeting's transcript, or the titles, dates, notes, and transcript excerpts of the meetings a cross-meeting question finds, from the user's Vercel project to the LLM provider set there.
 Captured audio is deleted after transcription.
+A meeting recorded on a phone in the Cloud webapp streams its audio to Deepgram, since a phone has no local STT yet, and the phone holds that audio in memory only while it waits for a socket ([§12](#12-yogurt-cloud-sync)).
 API keys and the Yogurt Cloud connection live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
-The one exception is the Cloud chat's LLM key, which lives in the user's Vercel project's environment and is never returned or logged.
+The exceptions are the Cloud chat's LLM key and the Cloud's Deepgram key, which live in the user's Vercel project's environment and are never returned or logged.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-4, 2026-08-31): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM provider, but only when the user has explicitly picked it in Settings - never as an automatic fallback behind another provider. See [§7.6](#76-the-cli-provider-exception-llm-4) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
@@ -870,7 +876,7 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 - **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
 - **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
 - **`cloud/` webapp**: a separate Vite app for the Yogurt Cloud, deployed to the user's own Vercel project and never embedded in the binary. `cloud/vite.config.ts` aliases `web/src` as `@web` to reuse the logo, buttons, and `@theme` tokens, serves `web/public` as its public folder, and dedupes `react`. `cloud/scripts/build.mjs` applies `crates/yogurt-cloud/schema.sql` on production builds and writes `config.json`. CI builds it in the web job because a change under `web/src` can break it.
-  `cloud/api/chat.ts` is its one Vercel function, chat about one meeting or across meetings ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)), which `vite.config.ts` also mounts for `vite preview` so the e2e specs reach it.
+  It has two Vercel functions, `cloud/api/chat.ts` for chat about one meeting or across meetings ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)) and `cloud/api/stt-token.ts` for a phone's Deepgram token, and `vite.config.ts` also mounts both for `vite preview` so the e2e specs reach them.
 
 ---
 
@@ -878,8 +884,9 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 
 Optional, one-way, and off until the user connects it in Settings > Cloud sync.
 A laptop pushes its meetings to a Yogurt Cloud the user deployed: a webapp on their Vercel account, backed by their own Supabase project.
-The webapp is static apart from one chat function.
+The webapp is static apart from its chat and Deepgram token functions.
 Yogurt hosts nothing.
+A phone can also record into the Cloud from the webapp, as a device of its own ([Recording on a phone](#recording-on-a-phone) below).
 The design, schema, and who can read what are in [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md), and `crates/yogurt-cloud/schema.sql` is the schema.
 
 ```mermaid
@@ -948,3 +955,43 @@ sequenceDiagram
 - **Verification.**
   `just test-cloud` runs the client against a local Supabase.
   `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a revoked session, and disconnect.
+
+### Recording on a phone
+
+The webapp's Record button records a meeting in any browser, and the design is [.planning/mobile-recording-design.md](.planning/mobile-recording-design.md).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant R as Record screen
+  participant F as cloud/api/stt-token.ts
+  participant D as Deepgram
+  participant P as Supabase project
+
+  R->>P: insert yogurt_devices {id, name, kind: 'phone'}, first recording only
+  R->>F: POST {browser token}, with the session JWT
+  F->>P: rpc yogurt_device_info (owner and unlocked browser)
+  F->>D: POST /v1/auth/grant with the Deepgram key
+  F-->>R: {token, url}
+  R->>D: WebSocket url, subprotocol bearer + token, 16 kHz linear16
+  D-->>R: interim and final results
+  loop every 30 seconds, and at End
+    R->>P: rpc yogurt_start_push, insert yogurt_versions {full bundle}
+  end
+```
+
+- **Device.**
+  The phone is a row in `yogurt_devices` with `kind = 'phone'`, under an id it makes and keeps in `localStorage` and a name the user types the first time, "Phone" by default.
+  It pushes through the same RPCs and the same `{"v":1,"meeting":...,"chat":[]}` bundle a laptop does, so the Library, search, the meeting view, and chat read its meetings unchanged.
+  Every line is on the `them` channel and the meeting's `stt_engine` is `cloud · nova-3 · phone`, which the meeting view reads to drop the speaker label.
+- **Audio.**
+  `cloud/src/lib/browserRecorder.ts` opens the mic, downsamples to 16 kHz mono linear16 in an AudioWorklet (`pcm-worklet.ts`), and streams 100 ms chunks to Deepgram with the Mac's query parameters.
+  While the socket is down, chunks queue in memory up to 5 minutes (`audioQueue.ts`), the oldest dropping past that as a gap the transcript marks, and the next socket, opened with a fresh token, gets them first, in order.
+  The page holds a Screen Wake Lock and tells the user that locking the phone or switching apps can stop the recording.
+- **Android.**
+  When `window.YogurtAndroid` exists, `nativeRecorder.ts` drives the app's recorder through the bridge in the design instead, and the page still does every push.
+- **Pushes and resume.**
+  `cloud/src/lib/session.ts` writes the meeting to IndexedDB on every change and pushes the whole bundle at the start, every 30 seconds while `ended_at` is null, and at End, skipping a push whose bundle has not changed.
+  A page that reopens with an unfinished meeting there shows it at the top of the Library with Resume and End.
+- **Verification.**
+  `cloud/e2e/record.spec.ts` records through Chrome's fake mic into a fake Deepgram, drops the socket, reloads the tab, resumes, and ends.
