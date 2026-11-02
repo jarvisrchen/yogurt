@@ -1,0 +1,67 @@
+# Local stack for `just cloud-dev`, a Cloud to try by hand. Its own project and ports (5644x), so the e2e stacks, which reset their data, never touch it.
+project_id = "yogurt-cloud-dev"
+
+[api]
+enabled = true
+port = 56441
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 56442
+shadow_port = 56440
+major_version = 17
+
+[db.pooler]
+enabled = false
+port = 56450
+
+[db.migrations]
+enabled = false
+
+[db.seed]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+port = 56443
+
+# The mail catcher that shows the confirmation email (Mailpit; the section keeps its Inbucket name).
+[inbucket]
+enabled = true
+port = 56444
+smtp_port = 56445
+pop3_port = 56446
+
+[storage]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+port = 56447
+
+[auth]
+enabled = true
+site_url = "http://localhost:56448"
+additional_redirect_urls = ["http://localhost:56448", "http://127.0.0.1:56448"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 0
+enable_signup = true
+minimum_password_length = 6
+
+[auth.rate_limit]
+token_refresh = 1000
+sign_in_sign_ups = 1000
+email_sent = 1000
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true

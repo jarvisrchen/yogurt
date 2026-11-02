@@ -150,6 +150,14 @@ android-release:
         YOGURT_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -a yogurt -s yogurt-android-keystore -w)" \
         ./gradlew assembleRelease
 
+# Boot the `yogurt` emulator with a window and the Mac's mic as its mic, install the debug app, and `adb reverse` the `just cloud-dev` ports, so the app opens http://localhost:56448.
+android-emu:
+    ./scripts/android-emu.sh
+
+# A Yogurt Cloud on this Mac to try by hand at http://localhost:56448: its own local Supabase (project yogurt-cloud-dev, ports 56440-56450, mail catcher on 56444) that the e2e stacks never reset, the schema and owner applied, and the LLM and Deepgram from .env.local. Without YOGURT_DEEPGRAM_GRANT_KEY it runs cloud/scripts/dev-deepgram-relay.mjs on 56449 with YOGURT_DEEPGRAM_API_KEY. Needs Docker and the supabase CLI.
+cloud-dev:
+    ./scripts/cloud-dev.sh
+
 # ── Quality gates ────────────────────────────────────────────────────
 
 # Full test suite, split across CI's rust job (test-rust) and web job (test-web). The Docker-based test-cloud-schema is CI's separate cloud-schema job and stays out of this.
