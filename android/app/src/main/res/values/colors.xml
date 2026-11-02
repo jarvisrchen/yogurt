@@ -2,7 +2,6 @@
 <!-- web/src/index.css, which the Cloud webapp shares. values-night holds the dark set. -->
 <resources>
     <color name="paper">#FBF7EF</color>
-    <color name="card">#FFFFFF</color>
     <color name="ink">#211D18</color>
     <color name="grey">#A89F90</color>
     <color name="line">#EBE3D5</color>

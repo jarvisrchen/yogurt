@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="paper">#1B1815</color>
-    <color name="card">#26221D</color>
     <color name="ink">#EDEAE2</color>
     <color name="grey">#8F877B</color>
     <color name="line">#3A342C</color>

@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
@@ -32,7 +33,6 @@ private const val CHANGE_CLOUD = "com.jarvisrchen.yogurt.CHANGE_CLOUD"
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("yogurt", MODE_PRIVATE) }
     private var web: WebView? = null
-    private var bridge: YogurtAndroid? = null
     private var pendingStart: StartRequest? = null
     private var pendingWebMic: PermissionRequest? = null
     private var back: OnBackInvokedCallback? = null
@@ -90,7 +90,6 @@ class MainActivity : Activity() {
         val view = findViewById<WebView>(R.id.web)
         val b = YogurtAndroid(this, origin)
         web = view
-        bridge = b
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         view.settings.javaScriptEnabled = true
         view.settings.domStorageEnabled = true
@@ -149,7 +148,6 @@ class MainActivity : Activity() {
         NativeEvents.detach()
         web?.destroy()
         web = null
-        bridge = null
         updateBack()
     }
 
@@ -174,10 +172,14 @@ class MainActivity : Activity() {
         }
     }
 
-    @Deprecated("Android 13 and later use the OnBackInvokedCallback in updateBack.")
-    override fun onBackPressed() {
+    // Before Android 13, back arrives as a key.
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val w = web
-        if (w != null && w.canGoBack()) w.goBack() else @Suppress("DEPRECATION") super.onBackPressed()
+        if (keyCode == KeyEvent.KEYCODE_BACK && w != null && w.canGoBack()) {
+            w.goBack()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     fun hasMic() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED

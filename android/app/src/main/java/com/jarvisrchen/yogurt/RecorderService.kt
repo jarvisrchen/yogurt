@@ -1,5 +1,6 @@
 package com.jarvisrchen.yogurt
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -18,7 +19,11 @@ import kotlin.concurrent.thread
 
 class StartRequest(val meetingId: String, val startedAtMs: Long, val tokenUrl: String, val auth: Auth)
 
-/** The process's one recording, which outlives the activity. The service only keeps the process in the foreground while it runs. */
+/**
+ * The process's one recording, which outlives the activity. The service only keeps the process in the foreground while it runs.
+ * It holds only the application context, which lives as long as the process anyway.
+ */
+@SuppressLint("StaticFieldLeak")
 object Recording {
     private lateinit var app: Context
     lateinit var store: LineStore
@@ -118,7 +123,7 @@ class RecorderService : Service() {
             .addAction(Notification.Action.Builder(null as Icon?, getString(R.string.stop), stop).build())
             .apply { if (Build.VERSION.SDK_INT >= 31) setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE) }
             .build()
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 30) {
             startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             startForeground(1, n)

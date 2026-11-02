@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The first launch screen, drawn in the webapp's AuthShell phone layout (docs/.lavish/mobile-recording-mocks.html, state 10). -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/paper"
     android:fillViewport="true">
 
     <LinearLayout
@@ -15,29 +15,18 @@
         android:paddingTop="16dp"
         android:paddingBottom="40dp">
 
-        <LinearLayout
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:drawablePadding="8dp"
+            android:fontFamily="@font/manrope_bold"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/logo" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:fontFamily="@font/manrope_bold"
-                android:includeFontPadding="false"
-                android:letterSpacing="-0.01"
-                android:text="@string/wordmark"
-                android:textColor="@color/ink"
-                android:textSize="20sp" />
-        </LinearLayout>
+            android:includeFontPadding="false"
+            android:letterSpacing="-0.01"
+            android:text="@string/wordmark"
+            android:textColor="@color/ink"
+            android:textSize="20sp"
+            android:drawableStart="@drawable/logo" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -91,6 +80,7 @@
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="10dp"
                 android:singleLine="true"
+                tools:ignore="LabelFor"
                 android:textColor="@color/ink"
                 android:textColorHint="@color/grey"
                 android:textSize="16sp" />
