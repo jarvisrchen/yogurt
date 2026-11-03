@@ -96,6 +96,15 @@ pub enum MeetingCmd {
         #[arg(long)]
         limit: Option<usize>,
     },
+    /// Save a finished meeting as a `.yogurt` file someone else can import into their yogurt.
+    Export {
+        meeting: String,
+        /// Where to write the file. Defaults to `<title>.yogurt` in the current directory. Never overwrites.
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+    /// Import a `.yogurt` file exported from another yogurt. Importing the same file again finds the meeting already here.
+    Import { file: PathBuf },
     /// Remove a meeting. Refuses without --yes unless --dry-run.
     Delete {
         meeting: String,
@@ -162,7 +171,124 @@ pub async fn run(cmd: MeetingCmd, port: Option<u16>, json_out: bool) -> Result<(
             dry_run,
             yes,
         } => delete(port, json_out, &meeting, dry_run, yes).await,
+        MeetingCmd::Export { meeting, output } => export(port, json_out, &meeting, output).await,
+        MeetingCmd::Import { file } => import(port, json_out, &file).await,
     }
+}
+
+/// Mirrors `exportMeetingFile` in web/src/lib/api/meetings.ts, so the button and `ctl` name a file alike.
+/// 80 characters keeps a CJK title under the 255-byte name limit, and a leading dot would hide the file.
+fn export_file_name(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| {
+            if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let words = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let stem: String = words.trim_start_matches('.').chars().take(80).collect();
+    format!(
+        "{}.yogurt",
+        match stem.trim() {
+            "" => "Meeting",
+            s => s,
+        }
+    )
+}
+
+async fn export(
+    port_flag: Option<u16>,
+    json_out: bool,
+    meeting: &str,
+    output: Option<PathBuf>,
+) -> Result<(), CtlError> {
+    let r = MeetingRef::parse(meeting);
+    let (c, id) = client_for_ref(port_flag, &r).await?;
+    let file = c.get_text(&format!("/api/meetings/{id}/export")).await?;
+    let path = match output {
+        Some(p) => p,
+        None => {
+            #[derive(Deserialize)]
+            struct Title {
+                title: String,
+            }
+            let t: Title = serde_json::from_str(&file).map_err(|e| {
+                CtlError::local(format!("bad export body: {e}"), "check `yogurt ctl status`")
+            })?;
+            PathBuf::from(export_file_name(&t.title))
+        }
+    };
+    let mut created = false;
+    let written = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        created = true;
+        f.write_all(file.as_bytes())?;
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        // A half-written file would block the retry and fail to import anywhere.
+        if created {
+            let _ = std::fs::remove_file(&path);
+        }
+        let help = match e.kind() {
+            std::io::ErrorKind::AlreadyExists => {
+                "pass --output with a path that does not exist yet"
+            }
+            _ => "check that the folder exists and you can write to it",
+        };
+        return Err(CtlError::local(
+            format!("could not write {}: {e}", path.display()),
+            help,
+        ));
+    }
+    if json_out {
+        println!("{}", json!({ "id": id, "path": path }));
+    } else {
+        println!("exported {id} to {}", path.display());
+    }
+    Ok(())
+}
+
+async fn import(port_flag: Option<u16>, json_out: bool, file: &Path) -> Result<(), CtlError> {
+    let content = std::fs::read_to_string(file).map_err(|e| {
+        CtlError::local(
+            format!("could not read {}: {e}", file.display()),
+            "pass the path of a .yogurt file you can read",
+        )
+    })?;
+    let body: serde_json::Value = serde_json::from_str(&content).map_err(|_| {
+        CtlError::local(
+            format!("{} is not a yogurt meeting file", file.display()),
+            "export one with `yogurt ctl meeting export <meeting>` or the Export button on a meeting page",
+        )
+    })?;
+    #[derive(Deserialize)]
+    struct Imported {
+        id: String,
+        existing: bool,
+    }
+    let c = Client::discover(port_flag).await?;
+    let m: Imported = c.post("/api/meetings/import", &body).await?;
+    let url = format!("http://localhost:{}/meeting/{}/post", c.port, m.id);
+    if json_out {
+        println!(
+            "{}",
+            json!({ "id": m.id, "existing": m.existing, "url": url })
+        );
+    } else if m.existing {
+        println!("already here: {url}");
+    } else {
+        println!("imported {url}");
+    }
+    Ok(())
 }
 
 #[derive(Debug, PartialEq)]
@@ -1002,7 +1128,18 @@ async fn delete(
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_pages, MeetingRef};
+    use super::{collect_pages, export_file_name, MeetingRef};
+
+    #[test]
+    fn export_file_name_drops_path_characters() {
+        assert_eq!(export_file_name("Q3 / Q4: plan?"), "Q3 Q4 plan.yogurt");
+        assert_eq!(export_file_name("  "), "Meeting.yogurt");
+        assert_eq!(export_file_name(".plan\0review"), "plan review.yogurt");
+        assert_eq!(
+            export_file_name(&"会".repeat(200)),
+            format!("{}.yogurt", "会".repeat(80))
+        );
+    }
 
     #[test]
     fn plain_id_is_id() {

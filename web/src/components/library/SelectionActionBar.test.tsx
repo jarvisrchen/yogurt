@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { SelectionActionBar } from "./SelectionActionBar";
 import { useLabels, useCreateLabel } from "../../lib/api/labels";
 import {
+  exportMeetingFile,
   useBulkDeleteMeetings,
   useBulkSetLabel,
   useSetArchived,
@@ -16,6 +17,7 @@ vi.mock("../../lib/api/labels", () => ({
 }));
 
 vi.mock("../../lib/api/meetings", () => ({
+  exportMeetingFile: vi.fn(),
   useBulkDeleteMeetings: vi.fn(),
   useBulkSetLabel: vi.fn(),
   useSetArchived: vi.fn(),
@@ -29,8 +31,8 @@ vi.mock("../../lib/api/settings", () => ({
   }),
 }));
 
-function meetings(n: number): Pick<Meeting, "id" | "labels">[] {
-  return Array.from({ length: n }, (_, i) => ({ id: `m${i}`, labels: [] }));
+function meetings(n: number): Pick<Meeting, "id" | "title" | "labels">[] {
+  return Array.from({ length: n }, (_, i) => ({ id: `m${i}`, title: `Meeting ${i}`, labels: [] }));
 }
 
 const bulkDeleteMutateAsync = vi.fn();
@@ -74,6 +76,28 @@ describe("SelectionActionBar", () => {
       mutateAsync: archiveMutateAsync,
       isPending: false,
     } as unknown as ReturnType<typeof useSetArchived>);
+    vi.mocked(exportMeetingFile).mockReset();
+    vi.mocked(exportMeetingFile).mockResolvedValue(undefined);
+  });
+
+  it("Export saves one file per selected meeting, skipping the recording one, then clears", async () => {
+    const { onClear } = renderBar(3, false, "m1");
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(onClear).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(exportMeetingFile).mock.calls).toEqual([
+      ["m0", "Meeting 0"],
+      ["m2", "Meeting 2"],
+    ]);
+  });
+
+  it("Export keeps the selection and says how many files failed", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(exportMeetingFile).mockRejectedValueOnce(new Error("404 Not Found"));
+    const { onClear } = renderBar(2);
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    expect(await screen.findByRole("button", { name: "Couldn't export 1" })).toBeInTheDocument();
+    expect(exportMeetingFile).toHaveBeenCalledTimes(2);
+    expect(onClear).not.toHaveBeenCalled();
   });
 
   it("Archive archives every selected meeting with no confirmation, then clears", async () => {

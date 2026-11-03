@@ -391,9 +391,17 @@ export async function exportMeetingFile(id: string, title: string): Promise<void
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${title.replace(/[/\\:*?"<>|]+/g, " ").trim() || "Meeting"}.yogurt`;
+  a.download = `${exportStem(title) || "Meeting"}.yogurt`;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Chrome holds the second and later downloads of a bulk export behind its multiple-downloads prompt.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Mirrors `export_file_name` in crates/yogurt-cli/src/commands/ctl/meeting.rs. */
+export function exportStem(title: string): string {
+  // eslint-disable-next-line no-control-regex
+  const words = title.replace(/[\u0000-\u001f\u007f-\u009f/\\:*?"<>|]/g, " ").split(/\s+/).filter(Boolean).join(" ");
+  return Array.from(words.replace(/^\.+/, "")).slice(0, 80).join("").trim();
 }
 
 /** Resolves to the meeting's id, the existing one when the file was imported before. */
