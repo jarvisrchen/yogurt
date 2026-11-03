@@ -69,6 +69,8 @@ export function useLoc() {
   useEffect(() => {
     const sync = () => setLoc(parse(location.hash));
     window.addEventListener("popstate", sync);
+    // A hash change between the first render and this listener fired before anyone listened.
+    if (format(parse(location.hash)) !== format(loc)) sync();
     return () => window.removeEventListener("popstate", sync);
   }, []);
 
