@@ -3,7 +3,7 @@
  * MicDevicePicker is stubbed with a prop-recording marker to assert its mount state and `recording` prop.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act, within } from "@testing-library/react";
+import { render, screen, waitFor, act, within, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -68,6 +68,9 @@ const state = vi.hoisted(() => ({
     id: string;
     is_active: boolean;
     model: string;
+    name?: string;
+    adapter?: "http" | "cli";
+    cli_model?: string;
   }>,
   activeRecording: null as {
     id: string;
@@ -81,6 +84,7 @@ const state = vi.hoisted(() => ({
 }));
 
 const keepRecordingSpy = vi.hoisted(() => vi.fn());
+const activateProviderSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("../lib/api/meetings", () => ({
   meetingKey: (id: string) => ["meetings", id],
@@ -104,6 +108,8 @@ vi.mock("../lib/api/meetings", () => ({
 }));
 
 vi.mock("../lib/api/settings", () => ({
+  settingsKey: ["settings"],
+  settingsApi: { activateProvider: activateProviderSpy },
   useSettings: () => ({
     data: {
       providers: state.providers,
@@ -490,6 +496,42 @@ describe("Meeting — recovers recording state on return", () => {
     expect(within(pill).getByRole("tooltip")).toHaveTextContent("Will enhance with gpt-5-mini");
 
     vi.unstubAllGlobals();
+  });
+
+  it("switches the active provider from the live LLM pill", async () => {
+    state.activeRecording = {
+      id: "meeting-live",
+      title: "Weekly sync",
+      started_at: Date.now(),
+      stt: "local",
+    };
+    const before = state.providers;
+    state.providers = [
+      { id: "p1", is_active: true, model: "gpt-5-mini", name: "OpenAI", adapter: "http", cli_model: "" },
+      { id: "p2", is_active: false, model: "claude", name: "Claude Code", adapter: "cli", cli_model: "sonnet" },
+    ];
+    activateProviderSpy.mockResolvedValue({});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        throw new Error(`unexpected fetch: ${String(input)}`);
+      }),
+    );
+    try {
+      renderAt("/meeting/meeting-live");
+
+      fireEvent.click(await screen.findByTestId("llm-pill"));
+      const menu = screen.getByRole("menu", { name: "Recap and enhance with" });
+      const current = within(menu).getByRole("menuitemradio", { name: /OpenAI/ });
+      expect(current).toHaveAttribute("aria-checked", "true");
+      expect(current).toHaveFocus();
+      fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Claude Code cli:claude:sonnet/ }));
+      await waitFor(() => expect(activateProviderSpy).toHaveBeenCalledWith("p2"));
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    } finally {
+      state.providers = before;
+      vi.unstubAllGlobals();
+    }
   });
 
   it("omits the engine chip when the active recording hasn't reported stt yet", async () => {

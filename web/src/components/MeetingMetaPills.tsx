@@ -4,16 +4,28 @@
  * Pills show a short label (the icon already says local vs cloud, or CLI) and the full name in a hover tooltip.
  */
 
-import { Cloud, HardDrive, Sparkles, Terminal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronDown, Cloud, HardDrive, Sparkles, Terminal } from "lucide-react";
+import {
+  settingsApi,
+  settingsKey,
+  useSettings,
+  type ProviderView,
+  type SettingsView,
+} from "../lib/api/settings";
+import { LABEL as CAPTION } from "./settings/labelClass";
 
 interface Props {
   startedAt?: number | null;
   endedAt?: number | null;
   sttEngine?: string | null;
   llmModel?: string | null;
-  /** True while the model has not enhanced this meeting yet (live header),
-   *  so the pill reads as "will enhance with" rather than "enhanced by". */
+  /** True while the model has not enhanced this meeting yet (live header), so the pill becomes the provider switch. */
   llmPending?: boolean;
+  /** Set while Enhance runs: it already resolved its provider, so a switch would only mislabel the pill. */
+  llmLocked?: boolean;
 }
 
 export function parseSttEngine(
@@ -37,6 +49,12 @@ export function parseLlmModel(
   if (!full) return null;
   const text = full.split(":").pop()!.split("/").pop()! || full;
   return { cli: full.startsWith("cli:"), text, full };
+}
+
+/** The id a provider stamps as `llm_model` once it enhances, so the live pill reads the same as the post page will. */
+export function providerModelId(p: ProviderView): string {
+  if (p.adapter !== "cli") return p.model;
+  return p.cli_model ? `cli:${p.model}:${p.cli_model}` : `cli:${p.model}`;
 }
 
 export function formatStartedAt(startedAt: number): string {
@@ -112,27 +130,159 @@ export function EnginePill({ sttEngine }: { sttEngine: string | null | undefined
   );
 }
 
-/** `llm_model` is stamped by enhance.rs after a successful enhance. The live header passes the active model with `pending`. */
-export function LlmPill({
-  llmModel,
-  pending = false,
-}: {
-  llmModel: string | null | undefined;
-  pending?: boolean;
-}) {
+/** `llm_model` is stamped by enhance.rs after a successful enhance. */
+export function LlmPill({ llmModel }: { llmModel: string | null | undefined }) {
   const model = parseLlmModel(llmModel);
   if (!model) return null;
-  // Filled once enhanced, outlined while pending; mirrors the STT pill's filled-vs-outlined convention.
-  const tone = pending ? "border border-blue/40 text-blue bg-transparent" : "bg-blsoft text-ink";
   const Icon = model.cli ? Terminal : Sparkles;
   return (
     <span
-      className={`${PILL} ${tone} relative group/pill`}
+      className={`${PILL} bg-blsoft text-ink relative group/pill`}
       data-testid="llm-pill"
     >
-      <Icon size={12} aria-hidden className={pending ? "shrink-0" : "shrink-0 text-blue"} />
+      <Icon size={12} aria-hidden className="shrink-0 text-blue" />
       <span className={LABEL}>{model.text}</span>
-      <FullName caption={pending ? "Will enhance with" : "Enhanced by"} value={model.full} />
+      <FullName caption="Enhanced by" value={model.full} />
+    </span>
+  );
+}
+
+/** The live header's pill: picking a provider activates it globally, and the next recap tick and the Enhance at End read it. */
+export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; disabled?: boolean }) {
+  const model = parseLlmModel(llmModel);
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const providers = useSettings().data?.providers ?? [];
+  const qc = useQueryClient();
+  const activate = useMutation({
+    mutationFn: (id: string) => settingsApi.activateProvider(id),
+    onSuccess: (_view, id) => {
+      // Flip the cached flag so the pill changes with the menu closing, not a refetch later.
+      qc.setQueryData<SettingsView>(settingsKey, (s) =>
+        s && { ...s, providers: s.providers.map((p) => ({ ...p, is_active: p.id === id })) },
+      );
+      setOpen(false);
+      return qc.invalidateQueries({ queryKey: settingsKey });
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    const first =
+      menu?.querySelector<HTMLElement>('[aria-checked="true"]') ??
+      menu?.querySelector<HTMLElement>('[role^="menuitem"]');
+    first?.focus();
+    const onDown = (e: MouseEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  function onMenuKey(e: React.KeyboardEvent) {
+    if (e.key === "Escape") {
+      // Stopped here so the chat window's own Escape shortcut does not also fire.
+      e.stopPropagation();
+      setOpen(false);
+      wrapperRef.current?.querySelector("button")?.focus();
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    const next = e.key === "ArrowDown" ? i + 1 : i - 1;
+    items[(next + items.length) % items.length]?.focus();
+  }
+
+  if (!model) return null;
+  const Icon = model.cli ? Terminal : Sparkles;
+  const tone = open
+    ? "border border-blue text-blue bg-blsoft"
+    : "border border-blue/40 text-blue bg-transparent enabled:hover:bg-blsoft/50";
+  return (
+    <span ref={wrapperRef} className="relative" onKeyDown={open ? onMenuKey : undefined}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => {
+          if (!activate.isPending) activate.reset();
+          setOpen((o) => !o);
+        }}
+        className={`${PILL} ${tone} relative group/pill cursor-pointer transition-colors disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue`}
+        data-testid="llm-pill"
+      >
+        <Icon size={12} aria-hidden className="shrink-0" />
+        <span className={LABEL}>{model.text}</span>
+        {!disabled && (
+          <ChevronDown
+            size={12}
+            aria-hidden
+            className={`shrink-0 -mr-0.5 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        )}
+        {!open && <FullName caption="Will enhance with" value={model.full} />}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 bg-card border border-line rounded-card shadow-pop py-1 min-w-[260px] max-w-[min(360px,calc(100vw-32px))] z-20 text-[13px]">
+          <p aria-hidden className={`${CAPTION} px-3 pt-1.5 pb-1`}>
+            Recap and enhance with
+          </p>
+          <div ref={menuRef} role="menu" aria-label="Recap and enhance with">
+            {providers.map((p) => {
+              const RowIcon = p.adapter === "cli" ? Terminal : Sparkles;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={p.is_active}
+                  disabled={activate.isPending}
+                  onClick={() => (p.is_active ? setOpen(false) : activate.mutate(p.id))}
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-paper focus-visible:bg-paper focus-visible:outline-none disabled:cursor-wait"
+                >
+                  <RowIcon
+                    size={14}
+                    aria-hidden
+                    className={`shrink-0 ${p.is_active ? "text-blue" : "text-mut"}`}
+                  />
+                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span className="truncate text-ink font-semibold">{p.name}</span>
+                    <span className="truncate font-mono text-[11.5px] text-mut">
+                      {providerModelId(p)}
+                    </span>
+                  </span>
+                  {p.is_active ? (
+                    <Check size={14} aria-hidden className="text-blue shrink-0" />
+                  ) : (
+                    <span className="w-[14px] shrink-0" aria-hidden />
+                  )}
+                </button>
+              );
+            })}
+            <div role="separator" className="my-1 border-t border-line" />
+            <Link
+              to="/settings/model"
+              role="menuitem"
+              className="block px-3 py-1.5 text-blue hover:bg-paper focus-visible:bg-paper focus-visible:outline-none"
+            >
+              Model settings
+            </Link>
+          </div>
+          {activate.isError && (
+            <p role="alert" className="px-3 py-1.5 text-[12px] leading-snug text-straw">
+              {activate.error.message}
+            </p>
+          )}
+          <p className="px-3 pt-0.5 pb-1.5 text-[12px] leading-snug text-mut">
+            Also the default for new meetings.
+          </p>
+        </div>
+      )}
     </span>
   );
 }
@@ -143,6 +293,7 @@ export function MeetingMetaPills({
   sttEngine,
   llmModel,
   llmPending,
+  llmLocked,
 }: Props) {
   const engine = parseSttEngine(sttEngine);
   const model = llmModel?.trim();
@@ -154,7 +305,7 @@ export function MeetingMetaPills({
       {startedAt != null && <MetaPill>{formatStartedAt(startedAt)}</MetaPill>}
       {duration && <MetaPill>{duration}</MetaPill>}
       {engine && <EnginePill sttEngine={sttEngine} />}
-      {model && <LlmPill llmModel={model} pending={llmPending} />}
+      {model && (llmPending ? <LlmSwitch llmModel={model} disabled={llmLocked} /> : <LlmPill llmModel={model} />)}
     </div>
   );
 }
