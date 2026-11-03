@@ -220,14 +220,20 @@ struct Link {
     session: Session,
 }
 
-/// Refreshes the session and persists the rotated refresh token before anything else uses it, unless the session kept from the last pass is still current.
+/// Refreshes the session and persists the rotated refresh token before anything else uses it.
+/// With `reuse`, an idle timer wake's, the session kept from the last pass serves while it is current, so the wake leaves keys.json alone.
+/// Every other caller refreshes, so a session revoked in the Cloud shows up at once.
 /// The guard parameter makes holding both locks a compile-time requirement.
-async fn link(state: &AppState, _held: &Held<'_>) -> ApiResult<Link> {
+async fn link(state: &AppState, _held: &Held<'_>, reuse: bool) -> ApiResult<Link> {
     let mut conn = load(state)?.ok_or_else(|| CloudApiError::coded("not_connected"))?;
     let project = Project::new(&conn.supabase_url, &conn.publishable_key);
-    let kept = state
-        .cloud_push
-        .session(&conn.refresh_token, now_ms() / 1000);
+    let kept = reuse
+        .then(|| {
+            state
+                .cloud_push
+                .session(&conn.refresh_token, now_ms() / 1000)
+        })
+        .flatten();
     let session = match kept {
         Some(s) => s,
         None => {
@@ -593,7 +599,7 @@ async fn rename(
             mut conn,
             project,
             session,
-        } = link(&state, &held).await?;
+        } = link(&state, &held, false).await?;
         project
             .rpc(
                 &session,
@@ -800,7 +806,7 @@ async fn push_locked(
     let idle = trigger != "manual" && matches!(pending(state).await, Ok(p) if p.not_pushed == 0);
     let pass = async {
         let recording = recording_id(state).await;
-        let mut link = link(state, held).await?;
+        let mut link = link(state, held, idle).await?;
         let adopt_failed = match adopt(state, &mut link, cancel).await {
             Ok(0) if idle => return Ok((Plan::default(), None)),
             Ok(_) => None,
@@ -1043,7 +1049,7 @@ async fn disconnect(
     state.cloud_push.cancel();
     detached(async move {
         let held = acquire(&state).await?;
-        let linked = link(&state, &held).await;
+        let linked = link(&state, &held, false).await;
         let mut linked = match linked {
             Ok(l) => Some(l),
             Err(e) if body.mark_deleted => {
@@ -1737,7 +1743,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn idle_wakes_reuse_the_session_until_it_is_near_expiry() {
+    async fn idle_wakes_reuse_the_session_and_a_manual_push_refreshes() {
         let (state, _tmp) = idle_state();
         let cloud = bare_cloud(&state).await;
         set_interval(&state, "15m");
@@ -1748,6 +1754,12 @@ mod tests {
         assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings").await, 2);
         assert_eq!(hits(&cloud, "/auth/v1/token").await, 1, "one refresh");
         assert_eq!(attempt_at(&state), None);
+        push_and_settle(&state).await;
+        assert_eq!(
+            hits(&cloud, "/auth/v1/token").await,
+            2,
+            "a manual push refreshes, so it notices a revoked session"
+        );
     }
 
     #[tokio::test]

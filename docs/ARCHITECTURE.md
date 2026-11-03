@@ -961,7 +961,8 @@ sequenceDiagram
   A meeting that fails to adopt does not stop the others, nor the rest of the pass, and the pass records the failure after its own push.
   A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then the pass skips this step.
   Only the Cloud knows a phone meeting is waiting, so every due timer wake starts a pass, which on an idle Mac stops after this listing call when it adopted nothing.
-  An idle wake that cannot reach the Cloud records the Mac as up to date, and wakes reuse the session in memory while it has five minutes left, so they rewrite `keys.json` only when the token rotates.
+  An idle wake that cannot reach the Cloud records the Mac as up to date, and idle wakes reuse the session in memory while it has five minutes left, so they rewrite `keys.json` only when the token rotates.
+  Every other pass refreshes, so a session revoked in the Cloud shows at once.
   The phone pushes a meeting with `ended_at` set only after its enhance, so a Mac never adopts a meeting before its enhanced version exists.
 - **Secrets.**
   The `yogurt-cloud` account in `keys.json` holds the address, login email, Supabase URL, publishable key, refresh token, device id, and machine name.
