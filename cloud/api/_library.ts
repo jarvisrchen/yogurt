@@ -99,7 +99,8 @@ export function startOfDay(date: string, tz: string): number {
 
 /**
  * Removes the wire-format spans the enhanced notes carry, leaving other markup intact.
- * A `data-ai-grey` span keeps its own text, and a `data-transcript-link` span goes whole, including its `↳ HH:MM` label.
+ * A `data-ai-grey` span keeps its own text, and a `data-transcript-link` span goes whole, including its `↳ HH:MM` label
+ * and the spaces on one side of it (see `closeLinkGaps`).
  */
 export function stripMarkers(s: string): string {
   let out = "";
@@ -116,11 +117,13 @@ export function stripMarkers(s: string): string {
         }
         // Only the wire span's own text survives: none of a link, and none inside a nested span.
         const keep = !tag.includes("data-transcript-link");
+        if (!keep) out += LINK_GAP;
         let depth = 1;
         while (i < s.length && depth > 0) {
           if (s.startsWith("<span", i)) {
             const e = s.indexOf(">", i);
             if (e < 0) break;
+            if (s.slice(i, e).includes("data-transcript-link")) out += LINK_GAP;
             depth++;
             i = e + 1;
           } else if (s.startsWith("</span>", i)) {
@@ -139,6 +142,24 @@ export function stripMarkers(s: string): string {
       continue;
     }
     out += s[i++];
+  }
+  return closeLinkGaps(out);
+}
+
+const LINK_GAP = "\u0000";
+
+/** Mirrors `close_link_gaps` in crates/yogurt-notes/src/ast.rs. */
+function closeLinkGaps(s: string): string {
+  const [first, ...rest] = s.split(LINK_GAP);
+  let out = first;
+  for (const part of rest) {
+    const before = out.replace(/ +$/, "");
+    if (before === "" || /\s$/.test(before)) {
+      out += part.replace(/^ +/, "");
+      continue;
+    }
+    if (part === "" || /^[\s.,;:!?)]/.test(part)) out = before;
+    out += part;
   }
   return out;
 }
