@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone recording mocks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+<!-- Tokens copied from web/src/index.css. cloud/src/index.css imports the same file, so the webapp shares them. -->
+<style type="text/tailwindcss">
+@theme {
+  --color-paper:   #FBF7EF;  /* app background, hero surfaces             */
+  --color-card:    #FFFFFF;  /* cards, surfaces over paper                */
+  --color-ink:     #211D18;  /* user notes, headings, primary text        */
+  --color-grey:    #A89F90;  /* secondary captions, transcript "Them"     */
+  --color-ai:      #7A7264;  /* AI-added text (4.5:1 on paper)            */
+  --color-line:    #EBE3D5;  /* borders, dividers                         */
+  --color-blue:    #5B4FC7;  /* primary blueberry: buttons, transcript   */
+  --color-blsoft:  #ECE9FB;  /* soft blueberry: active-nav, pill bg      */
+  --color-straw:   #E07A66;  /* recording indicator, error accent         */
+  --color-strsoft: #FBE6E0;  /* soft strawberry: error/warning bg        */
+  --color-matcha:  #5E9E73;  /* local-only / privacy / success            */
+  --color-mtsoft:  #E7F0E8;  /* soft matcha: local-mode badges           */
+  --color-mut:     #8A8174;  /* muted text on cards                       */
+  /* Label chip palette (LabelChip.tsx): the three non-brand label colors. */
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-honeyink:  #7A5A0F;  /* honey text that reaches 4.5:1 on white and on honeysoft */
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+
+  --font-sans:  "Manrope", "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --radius-chip:   8px;    /* small chip                                    */
+  --radius-button: 12px;   /* buttons, inputs, nav rows                     */
+  --radius-card:   16px;   /* cards                                         */
+  --radius-panel:  24px;   /* floating panels: chat window, dialogs, dock   */
+  --radius-pill:   999px;  /* pills, recording badge                        */
+
+  /* Tailwind copies a shadow's value into its utility class, so dark mode re-points the colors below, not these. */
+  --shadow-card:   0 16px 32px -4px var(--shadow-card-color);
+  --shadow-pop:    0 12px 16px -4px var(--shadow-pop-color);
+  --shadow-window: 0 24px 48px -8px var(--shadow-window-color);
+  --shadow-button-blue: 0 8px 16px -6px rgba(91, 79, 199, 0.35);
+
+  --animate-recpulse:  recpulse 1.4s ease-in-out infinite;
+  --animate-blink:     blink    1.0s step-end infinite;
+}
+
+@keyframes recpulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.55; transform: scale(1.15); }
+}
+@keyframes blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* The label palette is read from inline styles (LabelChip), which the runtime does not scan, so emit every token. */
+:root {
+  color-scheme: light;
+  --shadow-card-color:   rgba(33, 29, 24, 0.06);
+  --shadow-pop-color:    rgba(33, 29, 24, 0.18);
+  --shadow-window-color: rgba(33, 29, 24, 0.22);
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+}
+
+/* The app stamps data-theme="dark" on <html>. A mock forces dark on its own frame with .force-dark. */
+:root[data-theme="dark"], .force-dark {
+  color-scheme: dark;
+  --color-paper:   #1B1815;
+  --color-card:    #26221D;
+  --color-ink:     #EDEAE2;
+  --color-grey:    #8F877B;
+  --color-ai:      #A69D90;
+  --color-line:    #3A342C;
+  --color-blue:    #7D72DE;
+  --color-blsoft:  #2C2846;
+  --color-straw:   #E8886F;
+  --color-strsoft: #3D2622;
+  --color-matcha:  #7FBE8C;
+  --color-mtsoft:  #22342A;
+  --color-mut:     #9B9285;
+  --color-lilac:     #C4A2E8;
+  --color-lilacsoft: #33283F;
+  --color-honey:     #D9B24E;
+  --color-honeysoft: #3A3120;
+  --color-honeyink:  #D9B24E;
+  --color-slate:     #A9B7C4;
+  --color-slatesoft: #2A3138;
+  --shadow-card-color:   rgba(0, 0, 0, 0.35);
+  --shadow-pop-color:    rgba(0, 0, 0, 0.5);
+  --shadow-window-color: rgba(0, 0, 0, 0.6);
+}
+
+@utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
+@utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
+@utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
+@utility heading-state   { @apply font-extrabold tracking-[-0.01em] text-[30px] text-ink; }
+@utility heading-section { @apply font-extrabold tracking-[-0.01em] text-[24px] leading-none text-ink; }
+@utility heading-wordmark{ @apply font-bold tracking-[-0.01em] text-[20px] leading-none text-ink; }
+@utility heading-card    { @apply font-bold tracking-[-0.01em] text-[18px] leading-tight text-ink; }
+@utility heading-sm      { @apply font-sans font-bold tracking-[-0.01em] text-[16px] text-ink; }
+
+html, body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 0.009em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-grey { color: var(--color-ai); }
+
+/* cloud/src/index.css: on a phone the shared chat takes the webapp's phone scale. The mock applies it by frame, not viewport. */
+.phone .cloud-chat.text-\[14px\], .phone .cloud-chat .text-\[14px\] { font-size: 16px; }
+.phone .cloud-chat .text-\[13px\] { font-size: 15px; }
+.phone .cloud-chat .text-\[12px\] { font-size: 14px; }
+
+/* cloud/src/index.css: the read-only document at phone size. */
+.cloud-doc .doc :is(h1, h2, h3, h4) { font-size: 16px; font-weight: 700; margin: 6px 0 2px; }
+.cloud-doc .doc :is(p, ul, ol, li) { margin: 0; }
+.cloud-doc .doc :is(ul, ol) { padding-left: 16px; list-style: revert; }
+.cloud-doc .doc [data-ai-grey] { color: var(--color-ai); }
+
+/* web/src/index.css */
+.transcript-link { color: var(--color-blue); border-bottom: 1.5px dotted color-mix(in srgb, var(--color-blue) 45%, transparent); margin-left: 0.35em; white-space: nowrap; }
+.yogurt-editor .ProseMirror p { margin: 0.45em 0; }
+.yogurt-editor .ProseMirror > :first-child { margin-top: 0; }
+.yogurt-editor .ProseMirror ul { margin: 0.45em 0; padding-left: 1.4em; list-style: disc; }
+.yogurt-editor .ProseMirror li { margin: 0.2em 0; }
+.yogurt-editor .ProseMirror h2 { color: var(--color-ink); font-weight: 800; letter-spacing: -0.01em; line-height: 1.3; margin: 1em 0 0.35em; font-size: 19px; }
+.yogurt-editor .ProseMirror > h2:first-child { margin-top: 0; }
+[data-streaming] .doc, [data-streaming] .doc h2 { color: var(--color-grey); }
+[data-streaming] .doc > :last-child:not(ul)::after, [data-streaming] .doc > ul:last-child > li:last-child::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--color-blue); animation: recpulse 1s steps(2) infinite; }
+.enhancing-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--color-blue); animation: recpulse 1.4s ease-in-out infinite; flex: none; }
+.enhancing-bar-fill { width: 30%; height: 100%; background: var(--color-blue); border-radius: 999px; animation: enhancing-bar 1.8s ease-in-out infinite; }
+@keyframes enhancing-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+
+/* Android system surfaces (status bar, notification shade, Chrome's toolbar): Material 3 baseline, not yogurt tokens. */
+.frame { --sys-shade: #F4EFF4; --sys-card: #FFFFFF; --sys-ink: #1C1B1F; --sys-mut: #49454F; --sys-tile: #E7E0EC; --sys-on: #D0BCFF; --sys-field: #EEEAF0; }
+.frame.force-dark { --sys-shade: #141218; --sys-card: #211F26; --sys-ink: #E6E1E5; --sys-mut: #CAC4D0; --sys-tile: #36343B; --sys-on: #4F378B; --sys-field: #2B2930; }
+
+/* Mock page chrome, outside the apps. */
+body { background: #ECE7DE; }
+.page { max-width: 1440px; margin: 0 auto; padding: 40px 32px 80px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+@media (min-width: 1400px) { .pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.shot { min-width: 0; }
+.shot > .tag { font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: #7A7264; margin: 0 0 8px; }
+.frame { position: relative; overflow: hidden; background: var(--color-paper); color: var(--color-ink); border-radius: 10px; box-shadow: 0 0 0 1px rgba(33, 29, 24, .16), 0 10px 30px -12px rgba(33, 29, 24, .35); }
+.frame.phone { border-radius: 36px; overflow-y: auto; scrollbar-width: none; }
+.center { display: flex; justify-content: center; }
+/* The sheet's peek and the transcript under the gap fade in at the top edge. */
+.fade-top { mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mb-10">
+    <h1 class="heading-title">Phone recording mocks</h1>
+    <p class="mt-3 text-[14px] text-mut">Mocks for <a class="text-blue underline" href="../.planning/mobile-recording-design.md">docs/.planning/mobile-recording-design.md</a> (MOB-1, MOB-2, MOB-3, MOB-5), drawn with the webapp's own tokens and class strings at Pixel 10 Pro XL size (412 by 915 CSS px), light on the left and dark on the right. Unless a state says otherwise, the screen is the same in the Android app and in a browser. Meeting content is made up.</p>
+  </header>
+  <div id="sections" class="flex flex-col gap-14"></div>
+</div>
+
+<script>
+// Lucide paths as lucide-react renders them (web/node_modules).
+const PATHS = {
+  mic: '<path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect>',
+  chevronDown: '<path d="m6 9 6 6 6-6"></path>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+  more: '<circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle>',
+  download: '<path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path>',
+};
+const icon = (n, size, cls = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide ${cls}" aria-hidden="true">${PATHS[n]}</svg>`;
+
+// web/src/components/Logo.tsx
+const logo = (size) => `<svg viewBox="0 0 44 44" width="${size}" height="${size}" style="flex:none" aria-hidden="true"><circle cx="22" cy="22" r="22" fill="#5B4FC7"></circle><path d="M13 31 C 13 22, 31 25, 31 17 C 31 11, 19 12.5, 19 19" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"></path><circle cx="19" cy="19" r="1.7" fill="#E07A66"></circle></svg>`;
+
+// web/src/components/Button.tsx
+const BASE = "inline-flex items-center justify-center gap-2 rounded-button font-sans transition-colors transition-shadow duration-150 ease-out select-none disabled:opacity-50 disabled:cursor-not-allowed";
+const SIZE = { md: "px-[18px] py-2.5 text-[14px] font-semibold leading-none", sm: "border px-3.5 py-2 text-[12.5px] font-bold leading-normal" };
+const VARIANT = {
+  primary: "bg-blue border-blue text-white shadow-button-blue hover:opacity-90",
+  secondary: "bg-card text-ink border border-line hover:bg-paper",
+  ghost: "bg-transparent border-transparent text-mut hover:text-ink hover:bg-blsoft/50",
+};
+const btn = (variant = "primary", extra = "", size = "md") => `${BASE} ${SIZE[size]} ${VARIANT[variant]} ${extra}`.trim();
+// cloud/src/ui.tsx LockButton at phone size: the webapp's header button.
+const HEADER_BTN = "!px-[12px] !py-[5px] !text-[15px] !font-bold !leading-normal";
+// A full-width phone action, the Mac's py-3.5 big button at the webapp's 16px body size.
+const BIG_BTN = "w-full !py-[14px] !text-[16px]";
+
+/* ---------------- Android and webapp chrome ---------------- */
+
+function statusBar(time = "2:16") {
+  return `
+  <div class="h-[36px] flex-none flex items-center justify-between px-[26px] text-[14px] font-semibold" style="color:var(--sys-ink)">
+    <span>${time}</span>
+    <span class="flex items-center gap-[6px]">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor" aria-hidden="true"><path d="M8 11.5 0.5 3.6A10.6 10.6 0 0 1 15.5 3.6Z"></path></svg>
+      <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor" aria-hidden="true"><path d="M13.5 0.5V11.5H0.5Z"></path></svg>
+      <svg width="20" height="11" viewBox="0 0 20 11" aria-hidden="true"><rect x="0.5" y="0.5" width="17" height="10" rx="2.5" fill="none" stroke="currentColor"></rect><rect x="2" y="2" width="11" height="7" rx="1.2" fill="currentColor"></rect><rect x="18.3" y="3.5" width="1.4" height="4" rx="0.7" fill="currentColor"></rect></svg>
+    </span>
+  </div>`;
+}
+const gestureBar = `<div class="absolute bottom-0 inset-x-0 h-[24px] flex items-center justify-center z-50 pointer-events-none"><span class="block w-[108px] h-[4px] rounded-full" style="background:var(--sys-ink);opacity:.55"></span></div>`;
+
+// Chrome on Android, address bar at the top (its default).
+const chromeBar = `
+  <div class="flex-none flex items-center gap-[10px] px-[12px] pb-[8px]" style="background:var(--sys-card);color:var(--sys-ink)">
+    <div class="flex-1 min-w-0 h-[40px] flex items-center gap-[8px] px-[14px] rounded-full text-[15px]" style="background:var(--sys-field)">
+      ${icon("lock", 14, "shrink-0")}<span class="truncate">yogurt-example.vercel.app</span>
+    </div>
+    <span class="w-[20px] h-[20px] grid place-items-center rounded-[5px] text-[11px] font-bold" style="border:2px solid currentColor">1</span>
+    ${icon("more", 20)}
+  </div>`;
+
+function screen(body, { time, top = "" } = {}) {
+  return `
+  <div class="relative h-full flex flex-col bg-paper overflow-hidden">
+    <div class="flex-none" style="${top ? "background:var(--sys-card)" : ""}">${statusBar(time)}</div>
+    ${top}
+    ${body}
+    ${gestureBar}
+  </div>`;
+}
+
+/* ---------------- webapp pieces, cloud/src/ui.tsx at phone size ---------------- */
+
+const brand = `<div class="flex items-center gap-[8px]">${logo(28)}<span class="heading-wordmark">yogurt</span></div>`;
+const gear = `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"></circle><path d="M6.40 2.84L6.83 1.20L9.17 1.20L9.60 2.84L10.52 3.22L11.98 2.37L13.63 4.02L12.78 5.48L13.16 6.40L14.80 6.83L14.80 9.17L13.16 9.60L12.78 10.52L13.63 11.98L11.98 13.63L10.52 12.78L9.60 13.16L9.17 14.80L6.83 14.80L6.40 13.16L5.48 12.78L4.02 13.63L2.37 11.98L3.22 10.52L2.84 9.60L1.20 9.17L1.20 6.83L2.84 6.40L3.22 5.48L2.37 4.02L4.02 2.37L5.48 3.22Z"></path></svg>`;
+
+const TONE = {
+  blue: { bg: "var(--color-blsoft)", fg: "var(--color-blue)" },
+  honey: { bg: "var(--color-honeysoft)", fg: "var(--color-honey)" },
+};
+const DEVICES = { mbp: { name: "MacBook Pro", color: "blue" }, phone: { name: "Phone", color: "honey" } };
+const deviceTag = (id) => {
+  const d = DEVICES[id];
+  return `<span class="text-[11px] leading-normal font-bold px-[7px] py-[1px] rounded-pill whitespace-nowrap" style="background:${TONE[d.color].bg};color:${TONE[d.color].fg}">${d.name}</span>`;
+};
+
+// Library.tsx header. Record takes the place of the read-only pill.
+const libraryHeader = `
+  <header class="flex items-center justify-between gap-[10px] px-[16px] py-[16px]">
+    <a aria-label="Library" class="no-underline text-inherit">${brand}</a>
+    <div class="flex items-center gap-[6px]">
+      <button type="button" class="${btn("primary", HEADER_BTN)}">${icon("mic", 15)}Record</button>
+      <button type="button" aria-label="Settings" class="w-[24px] h-[24px] grid place-items-center rounded-full border border-line bg-card text-mut">${gear}</button>
+    </div>
+  </header>`;
+
+const searchField = `
+  <div role="search" class="flex items-center gap-[7px] bg-card border border-line rounded-pill px-[12px] py-[6px]">
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" class="text-mut flex-none" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+    <input type="text" placeholder="Search notes &amp; transcripts" class="flex-1 min-w-0 bg-transparent border-0 outline-none font-sans text-[16px] text-ink placeholder:text-mut p-[0px] pr-[10px]">
+  </div>`;
+
+const pill = (on) => `flex-none text-[13px] leading-normal font-bold px-[10px] py-[5px] rounded-pill border font-[inherit] ${on ? "bg-blue border-blue text-white" : "bg-card border-line text-mut"}`;
+const devicePills = `
+  <div role="group" aria-label="Device" class="flex gap-[6px] overflow-x-auto [scrollbar-width:none]">
+    <button type="button" aria-pressed="true" class="${pill(true)}">All devices</button>
+    ${Object.values(DEVICES).map((d) => `<button type="button" aria-pressed="false" class="${pill(false)} inline-flex items-center gap-[5px]"><span class="w-[7px] h-[7px] rounded-full shrink-0" style="background:${TONE[d.color].fg}"></span>${d.name}</button>`).join("")}
+  </div>`;
+const filterPills = `
+  <div role="group" aria-label="Filter" class="flex gap-[6px]">
+    <button type="button" aria-pressed="true" class="${pill(true)}">All</button>
+    <button type="button" aria-pressed="false" class="${pill(false)}">Starred</button>
+  </div>`;
+
+const listRow = (r) => `
+  <button type="button" class="block w-full text-left font-[inherit] text-ink bg-card border rounded-button px-[11px] py-[9px] border-line">
+    <b class="block text-[16px] font-bold truncate">${r.title}</b>
+    <span class="flex justify-between items-center gap-[6px] text-[13px] text-mut mt-[2px]"><span>${r.meta}</span>${deviceTag(r.dev)}</span>
+  </button>`;
+const dayList = (groups) => groups.map((g) => `
+  <section class="flex flex-col gap-[10px]">
+    <h2 class="font-mono text-[11px] font-normal uppercase tracking-[.08em] text-mut mt-[4px] m-[0px]">${g.label}</h2>
+    ${g.rows.map(listRow).join("")}
+  </section>`).join("");
+
+const ROWS = [
+  { label: "Today", rows: [
+    { title: "Weekly 1:1", meta: "11:30 AM · 28 min", dev: "mbp" },
+    { title: "Standup", meta: "9:15 AM · 12 min", dev: "mbp" },
+  ]},
+  { label: "Yesterday", rows: [
+    { title: "Site walk with Dana", meta: "4:00 PM · 41 min", dev: "phone" },
+    { title: "Budget review", meta: "1:00 PM · 35 min", dev: "mbp" },
+  ]},
+  { label: "Friday", rows: [
+    { title: "Hiring loop debrief", meta: "3:15 PM · 45 min", dev: "mbp" },
+  ]},
+];
+// With the Q4 sync still open on the phone after the app was killed: started, no duration yet.
+const ROWS_RESUME = [{ label: "Today", rows: [{ title: "Q4 pricing sync", meta: "2:04 PM", dev: "phone" }, ...ROWS[0].rows] }, ROWS[1]];
+
+// web/src/components/AskPill.tsx at the webapp's DOCKED position. The ⌘K chip hides on a coarse pointer.
+const askPill = (label, position, style = "") => `
+  <button type="button" style="${style}" class="cloud-chat ${position} h-12 flex items-center justify-between gap-3 px-4 py-2 bg-[var(--color-card)] border border-[var(--color-line)] rounded-full shadow-pop text-left text-[14px] text-[var(--color-mut)] z-30">
+    <span class="flex-1 truncate">${label}</span>
+    <span class="inline-flex items-center justify-center h-7 w-7 rounded-full bg-[var(--color-blue)] text-white">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M6 2.5L2.5 6M6 2.5L9.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>
+  </button>`;
+
+// Meeting.tsx NOTE: the webapp's blueberry notice with a trailing text action.
+const note = (body, action = "") => `
+  <div role="status" class="flex items-center justify-between gap-[8px] text-[13px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
+    <span class="min-w-0 break-words">${body}</span>
+    ${action ? `<button type="button" class="flex-none text-blue font-semibold bg-transparent border-0 p-[0px] font-[inherit]">${action}</button>` : ""}
+  </div>`;
+
+function library({ banner = "", rows = ROWS } = {}) {
+  return screen(`
+    ${libraryHeader}
+    <main class="flex-1 min-h-0 flex flex-col gap-[10px] px-[16px] pb-[40px] [&>*]:shrink-0">
+      ${banner}
+      ${searchField}
+      ${devicePills}
+      ${filterPills}
+      <div class="flex flex-col gap-[10px]">${dayList(rows)}</div>
+      ${askPill("Ask across meetings…", "sticky bottom-[16px] self-center w-full max-w-[480px] mt-auto")}
+    </main>`);
+}
+
+/* ---------------- the record screen ---------------- */
+
+const TITLE = "Q4 pricing sync";
+const meetingHead = (meta) => `
+  <div>
+    <h1 class="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">${TITLE}</h1>
+    <div class="flex flex-wrap items-center gap-[6px] text-[13px] text-mut mt-[3px]">${deviceTag("phone")}${meta}</div>
+  </div>`;
+
+// The recording bar: RecordingPill's dot and timer, and the Mac's End meeting.
+const recBar = (time = "12:48") => `
+  <div class="flex-none flex items-center justify-between gap-[10px] px-[16px] py-[10px] border-b border-line bg-paper">
+    <span class="flex items-center gap-[8px] min-w-0">
+      <span aria-hidden="true" class="inline-block w-2 h-2 rounded-pill bg-straw animate-recpulse"></span>
+      <span class="text-[15px] font-semibold text-ink">Recording</span>
+      <span class="font-mono text-[14px] tracking-tight text-mut">${time}</span>
+    </span>
+    <button type="button" class="${btn("primary", "!px-[14px] !py-[8px] !text-[15px] !font-bold !leading-normal")}">End meeting</button>
+  </div>`;
+
+// The Mac's notes card around the shared YogurtEditor, padded to the phone's 16px gutter.
+const caret = `<span class="inline-block w-[2px] h-[1.1em] ml-[1px] align-[-0.2em] bg-ink animate-blink"></span>`;
+const notesCard = (extra = "") => `
+  <section class="rounded-card bg-card p-[16px] border border-line text-[16px] leading-relaxed">
+    <div class="yogurt-editor"><div class="ProseMirror">
+      <h2>Pricing</h2>
+      <ul><li><p>pro tier → $18?</p></li><li><p>ask finance re annual cap${extra}</p></li></ul>
+    </div></div>
+  </section>`;
+
+// web/src/components/TranscriptLine.tsx. Every phone line is on the them channel, so it reads Them in grey.
+const fmt = (s) => [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map((n) => String(n).padStart(2, "0")).join(":");
+const tline = ([sec, text], final = true) => `
+  <div class="py-2 leading-snug" data-channel="them" data-final="${final}">
+    <span class="inline-block w-[3.43em] font-semibold" style="color:var(--color-grey)">Them</span>
+    <span class="font-mono text-[0.857em] mr-2" style="color:var(--color-grey)">${fmt(sec)}</span>
+    <span style="color:var(--color-grey);opacity:${final ? 1 : 0.7}">${text}</span>
+  </div>`;
+
+const LINES = [
+  [599, "Okay, next one. Pro pricing."],
+  [606, "Conversion on Pro is 4.1% now, down from 5.0% since the July change."],
+  [619, "Dana's proposal is $18 a month and $180 a year."],
+  [634, "Is that annual number something finance signs off on?"],
+  [641, "Finance wants the annual discount capped at 15%."],
+  [655, "At $18 that puts annual at about $184."],
+  [668, "So $180 is just over the cap. We can round to $185."],
+  [690, "And existing Pro users, do they keep the old price?"],
+  [704, "For twelve months, that's what we told them in July."],
+  [722, "Marco, can you model churn for the $18 case?"],
+  [731, "Yes, by Friday."],
+  [751, "Then the trial. I'd rather not move two things at once."],
+  [758, "What about the trial?"],
+];
+const INTERIM = [764, "it stays as is this"];
+const transcript = (lines = LINES, interim = INTERIM) => lines.map((l) => tline(l)).join("") + (interim ? tline(interim, false) : "");
+
+// TranscriptDock's header status, with the bridge's states.
+const STATUS = {
+  live: `<span class="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-matcha"><span aria-hidden="true">●</span>connected</span>`,
+  reconnecting: `<span class="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-grey"><span aria-hidden="true">○</span>reconnecting</span>`,
+};
+const sheetHead = (status, full) => `
+  <div class="flex justify-center pt-[8px]"><span class="block w-[36px] h-[4px] rounded-full bg-line"></span></div>
+  <header class="flex items-center justify-between gap-2 px-[20px] pt-[6px] pb-[4px] ${full ? "border-b border-line pb-[10px]" : ""}">
+    <span class="text-[13px] font-semibold text-ink">Live transcript</span>
+    <span class="flex items-center gap-[8px]">${STATUS[status]}${full ? `<button type="button" aria-label="Lower transcript" class="${btn("ghost", "!px-[6px] !py-[4px]", "sm")}">${icon("chevronDown", 16)}</button>` : ""}</span>
+  </header>`;
+const SHEET = "absolute inset-x-0 bottom-0 z-40 flex flex-col bg-card border-t border-line rounded-t-panel";
+const SHEET_SHADOW = "box-shadow:0 -16px 32px -8px var(--shadow-card-color)";
+// Peek: the last two transcript rows, bottom-aligned, the older one fading under the header.
+const PEEK_H = 152;
+const peekSheet = (status = "live", lines = LINES.slice(-2), interim = INTERIM) => `
+  <div class="${SHEET}" style="height:${PEEK_H}px;${SHEET_SHADOW}">
+    ${sheetHead(status, false)}
+    <div class="fade-top flex flex-col justify-end overflow-hidden px-[20px] text-[16px]" style="height:76px">${transcript(lines, interim)}</div>
+  </div>`;
+const fullSheet = (body, status = "live", top = 97) => `
+  <div class="${SHEET}" style="top:${top}px;${SHEET_SHADOW}">
+    ${sheetHead(status, true)}
+    <div class="flex-1 min-h-0 flex flex-col justify-end overflow-hidden px-[20px] pb-[28px] text-[16px]">${body}</div>
+  </div>`;
+
+function recording({ notice = "", sheet = peekSheet(), ask = true, chat = "", time, top = "" } = {}) {
+  return screen(`
+    ${recBar(time)}
+    <main class="flex-1 min-h-0 flex flex-col gap-[10px] px-[16px] pt-[14px]">
+      ${notice}
+      ${meetingHead("Nov 2 · 2:04 PM")}
+      ${notesCard(caret)}
+    </main>
+    ${ask && !chat ? askPill("Ask this meeting…", "absolute left-[16px] right-[16px]", `bottom:${PEEK_H + 12}px`) : ""}
+    ${chat}
+    ${sheet}`, { top });
+}
+
+/* ---------------- chat, web/src/components/ChatWindow.tsx at the webapp's phone scale ---------------- */
+
+const chatWindow = (bottom) => `
+  <div role="region" aria-label="Ask the meeting chat" class="cloud-chat absolute left-[16px] right-[16px] max-h-[520px] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-panel shadow-pop z-30" style="bottom:${bottom}px">
+    <header class="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)]">
+      <div class="flex items-center gap-2">
+        <div aria-hidden="true" class="h-5 w-5 rounded-full bg-[var(--color-blue)]"></div>
+        <span class="text-[14px] font-semibold text-[var(--color-ink)]">Ask the meeting</span>
+      </div>
+      <button type="button" aria-label="Collapse chat" class="inline-flex items-center justify-center h-7 w-7 rounded-chip text-[var(--color-mut)]">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 5.5L7 9L10.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </button>
+    </header>
+    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-[140px]">
+      <div class="flex justify-end"><div class="max-w-[78%] px-3 py-2 rounded-panel rounded-br-chip bg-[var(--color-blue)] text-white text-[14px] leading-relaxed">What did finance say about the annual plan?</div></div>
+      <div class="flex justify-start"><div class="max-w-[78%] px-3 py-2 rounded-panel rounded-bl-chip bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed">
+        <p class="m-0">Finance caps the annual discount at <strong>15%</strong>, about $184 a year at $18 a month.</p>
+      </div></div>
+      <div class="flex justify-end"><div class="max-w-[78%] px-3 py-2 rounded-panel rounded-br-chip bg-[var(--color-blue)] text-white text-[14px] leading-relaxed">Who owns the churn model?</div></div>
+      <div class="flex justify-start"><div class="max-w-[78%] px-3 py-2 rounded-panel rounded-bl-chip bg-[var(--color-card)] border border-[var(--color-line)] text-[var(--color-ink)] text-[14px] leading-relaxed">Marco, for the $18 case, by Friday<span aria-hidden="true" class="inline-block w-[6px] h-[14px] ml-1 align-middle bg-[var(--color-ink)] opacity-60 animate-blink"></span></div></div>
+    </div>
+    <footer class="px-3 py-3 border-t border-[var(--color-line)]">
+      <div class="flex items-center h-9 px-3 rounded-full bg-[var(--color-card)] border border-[var(--color-line)]">
+        <input type="text" placeholder="Ask this meeting…" class="w-full bg-transparent text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-mut)] outline-none">
+      </div>
+    </footer>
+  </div>`;
+
+/* ---------------- after End: cloud/src/screens/Meeting.tsx MeetingView ---------------- */
+
+// EnhancingBanner's parts. Its one row does not fit 412px, so the bar drops to a second row.
+const enhancingBanner = `
+  <div role="status" class="flex-none flex flex-col gap-[8px] px-[16px] py-[10px] bg-blsoft text-ink text-[13px] font-semibold" style="border-bottom:1px solid color-mix(in srgb, var(--color-blue) 22%, transparent)">
+    <div class="flex items-center gap-[10px]">
+      <span class="enhancing-dot" aria-hidden="true"></span>
+      <span class="flex-1">Weaving your notes into the transcript…</span>
+      <span class="font-mono text-[12px] font-medium text-mut whitespace-nowrap">1,284 chars</span>
+    </div>
+    <div class="h-[4px] rounded-full overflow-hidden" style="background:color-mix(in srgb, var(--color-blue) 22%, transparent)"><div class="enhancing-bar-fill"></div></div>
+  </div>`;
+
+const tabs = (active, list = ["Notes", "Enhanced", "Transcript"]) => `
+  <div role="tablist" class="flex gap-[4px] border-b border-line">
+    ${list.map((t) => `<button type="button" role="tab" aria-selected="${t === active}" class="text-[14px] font-bold px-[10px] py-[8px] bg-transparent border-0 font-[inherit] ${t === active ? "text-blue shadow-[inset_0_-2px_0_var(--color-blue)]" : "text-mut"}">${t}</button>`).join("")}
+  </div>`;
+
+const link = (ts) => `<span class="transcript-link" data-transcript-link role="link">↳ ${ts}</span>`;
+const ENHANCED = `
+  <h2>Pricing</h2>
+  <ul>
+    <li>pro tier → $18<span data-ai-grey>/month, $180/year proposed by Dana</span>${link("10:19")}</li>
+    <li data-ai-grey>Pro conversion 4.1%, down from 5.0% since the July change${link("10:06")}</li>
+    <li>ask finance re annual cap<span data-ai-grey>: finance caps the discount at 15%, so annual moves to $185</span>${link("11:08")}</li>
+    <li data-ai-grey>Current Pro users keep the old price for 12 months${link("11:44")}</li>
+  </ul>
+  <h2>Action items</h2>
+  <ul><li data-ai-grey>Marco: churn model for the $18 case, due Friday${link("12:02")}</li></ul>
+  <h2>Decisions</h2>
+  <ul><li data-ai-grey>No free-trial change this quarter${link("12:44")}</li></ul>`;
+const STREAMING = `
+  <h2>Pricing</h2>
+  <ul>
+    <li>pro tier → $18/month, $180/year proposed by Dana</li>
+    <li>Pro conversion 4.1%, down from 5.0% since the July change</li>
+    <li>ask finance re annual cap: finance caps the discount at 15%</li>
+  </ul>`;
+
+function ended(enhancing) {
+  return screen(`
+    ${enhancing ? enhancingBanner : ""}
+    <main class="flex-1 min-h-0 flex flex-col gap-[10px] px-[16px] pt-[16px] pb-[40px]">
+      <button type="button" class="text-[14px] text-mut bg-transparent border-0 p-[0px] font-[inherit] self-start">← All devices</button>
+      ${meetingHead("Nov 2 · 2:04 PM · 18 min")}
+      ${tabs("Enhanced")}
+      <div class="cloud-doc text-[16px] leading-[1.55]" ${enhancing ? "data-streaming" : ""}><div role="tabpanel" class="doc">${enhancing ? STREAMING : ENHANCED}</div></div>
+      ${enhancing ? "" : `<p class="text-[13px] text-mut mt-auto pt-[10px] mb-[0px]">Pushed from Phone · Nov 2 2:23 PM</p>`}
+      ${askPill("Ask this meeting…", `sticky bottom-[16px] self-center w-full max-w-[480px] ${enhancing ? "mt-auto" : ""}`)}
+    </main>`);
+}
+
+/* ---------------- the remaining screens ---------------- */
+
+// cloud/src/ui.tsx IconTile, with Lucide's mic.
+const micTile = `<div class="w-[44px] h-[44px] rounded-[14px] grid place-items-center bg-blsoft text-blue">${icon("mic", 22)}</div>`;
+const kLabel = "font-mono text-[12px] uppercase tracking-[.08em] text-mut";
+const field = (label, value, hint = "") => `
+  <label class="flex flex-col gap-[5px]">
+    <span class="${kLabel}">${label}</span>
+    <input value="${value}" class="font-sans text-[16px] bg-paper text-ink placeholder:text-grey border border-line rounded-button px-[12px] py-[10px] outline-none">
+    ${hint ? `<span class="text-[13px] text-mut">${hint}</span>` : ""}
+  </label>`;
+
+const ready = () => screen(`
+  <main class="flex-1 min-h-0 flex flex-col gap-[12px] px-[16px] pt-[16px] pb-[40px]">
+    <button type="button" class="text-[14px] text-mut bg-transparent border-0 p-[0px] font-[inherit] self-start">← All devices</button>
+    ${meetingHead("Nov 2 · 2:04 PM")}
+    <section class="rounded-card bg-card border border-line p-[16px] flex flex-col gap-[10px]">
+      ${micTile}
+      <h2 class="text-[18px] font-bold tracking-[-0.01em] text-ink m-[0px]">Record the room</h2>
+      <p class="text-[15px] text-mut m-[0px]">The phone's microphone picks up everyone in the room. The audio streams to Deepgram to be transcribed and is never saved.</p>
+      <p class="text-[15px] text-mut m-[0px]">A call on this phone cannot be recorded. Take the call on another device, on speaker.</p>
+    </section>
+    ${field("This phone's name", "Phone", "Its meetings show under this name in the Library.")}
+    <div class="mt-auto flex flex-col gap-[8px]">
+      <button type="button" class="${btn("primary", BIG_BTN)}">${icon("mic", 18)}Start recording</button>
+      <p class="text-[13px] text-mut text-center m-[0px]">Your phone asks for the microphone first.</p>
+    </div>
+  </main>`);
+
+const resumeCard = `
+  <section class="rounded-card bg-card border border-line p-[14px] flex flex-col gap-[10px]">
+    <div class="flex items-center gap-[8px]">
+      <span aria-hidden="true" class="inline-block w-2 h-2 rounded-pill bg-straw"></span>
+      <b class="text-[16px] font-bold text-ink">${TITLE} stopped recording</b>
+    </div>
+    <p class="text-[15px] text-mut m-[0px]">Yogurt closed at 18:20. Your notes and the transcript up to then are saved.</p>
+    <div class="flex gap-[8px]">
+      <button type="button" class="${btn("primary", "flex-1 !py-[12px] !text-[15px]")}">Resume</button>
+      <button type="button" class="${btn("secondary", "flex-1 !py-[12px] !text-[15px]")}">End</button>
+    </div>
+  </section>`;
+
+// A native screen on first launch, drawn in AuthShell's phone layout so the app opens on the webapp's look.
+const firstLaunch = () => screen(`
+  <main class="flex-1 min-h-0 flex flex-col px-[16px] pt-[16px] pb-[40px]">
+    <div class="flex-1 flex flex-col gap-[10px] w-full">
+      ${brand}
+      <div class="flex-1 flex flex-col gap-[12px] justify-center">
+        <h1 class="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">Connect your Cloud</h1>
+        <p class="text-[15px] text-mut m-[0px]">Type the address of your Yogurt Cloud. The app opens it and records meetings into it.</p>
+        ${field("Cloud address", "https://yogurt-example.vercel.app")}
+        <button type="button" class="${btn("primary", BIG_BTN)}">Continue</button>
+      </div>
+    </div>
+  </main>`);
+
+// The Android notification shade over the record screen.
+const tile = (label, on) => `<div class="h-[56px] rounded-full flex items-center px-[16px] text-[13px] font-semibold" style="background:${on ? "var(--sys-on)" : "var(--sys-tile)"};color:var(--sys-ink)">${label}</div>`;
+const shade = () => `
+  <div class="relative h-full flex flex-col overflow-hidden" style="background:var(--sys-shade);color:var(--sys-ink)">
+    <div class="flex items-end justify-between px-[26px] pt-[30px] pb-[18px]">
+      <div><div class="text-[44px] leading-none font-normal">2:16</div><div class="text-[14px] mt-[6px]" style="color:var(--sys-mut)">Mon, Nov 2</div></div>
+      <span class="text-[13px]" style="color:var(--sys-mut)">82%</span>
+    </div>
+    <div class="grid grid-cols-2 gap-[8px] px-[16px]">${tile("Internet", true)}${tile("Bluetooth", true)}${tile("Do Not Disturb", false)}${tile("Flashlight", false)}</div>
+    <div class="mx-[16px] mt-[16px] rounded-[24px] p-[16px]" style="background:var(--sys-card)">
+      <div class="flex items-center gap-[8px] text-[12px]" style="color:var(--sys-mut)">${logo(18)}<span>yogurt</span><span>·</span><span class="font-mono">12:48</span></div>
+      <div class="mt-[8px] text-[15px] font-semibold">Recording</div>
+      <div class="text-[14px]" style="color:var(--sys-mut)">${TITLE}</div>
+      <div class="mt-[12px] flex"><button type="button" class="px-[16px] py-[8px] rounded-full text-[14px] font-semibold" style="background:var(--sys-tile);color:var(--sys-ink)">Stop</button></div>
+    </div>
+    <div class="mt-auto mb-[40px] text-center text-[13px]" style="color:var(--sys-mut)">Notification settings</div>
+    ${gestureBar}
+  </div>`;
+
+const browserNote = note("Keep this page open. Locking the phone or switching apps can stop the recording. The screen stays on while you record.");
+
+/* ---------------- sections ---------------- */
+
+const PHONE = { w: 412, h: 915, phone: true };
+
+const SECTIONS = [
+  {
+    title: "1. Library: the Record button",
+    caption: "Record sits in the Library header, left of Settings, in the read-only pill's place, since a Cloud that records is no longer read-only. The header's right side already holds the page's own actions (Settings here, Lock on a desktop), and it keeps the bottom of the screen for the Ask pill alone. It uses the header button size the webapp gives Lock. Meetings recorded on the phone list under their Phone device, in its own color.",
+    frames: [{ ...PHONE, html: () => library() }],
+  },
+  {
+    title: "2. Ready to record",
+    caption: "Record opens the record screen with the meeting created. The card explains the mic before the system asks for it: what it hears, that audio goes to Deepgram and is never saved, and that a call on this phone cannot be recorded. The name field shows only the first time this phone records, when it registers as a device.",
+    frames: [{ ...PHONE, html: ready }],
+  },
+  {
+    title: "3. Recording, with the transcript in a sheet",
+    caption: "The main design. A bar under the status bar holds the strawberry Recording dot, the elapsed time, and End meeting, and it stays put while the notes scroll. The notes editor is in front. The live transcript is a bottom sheet that peeks its last two rows, with the words Deepgram has not finalized at the partial opacity TranscriptLine already uses. The Ask pill floats just above the sheet.",
+    frames: [{ ...PHONE, html: () => recording() }],
+  },
+  {
+    title: "4. The sheet pulled up",
+    caption: "Dragging the sheet up, or tapping its header, raises it to just under the recording bar, so the timer and End meeting stay in reach. It scrolls like the Mac's dock and stays pinned to the newest line. The chevron or a drag down lowers it to its peek.",
+    frames: [{ ...PHONE, html: () => recording({ ask: false, sheet: fullSheet(transcript()) }) }],
+  },
+  {
+    title: "5. Rejected: Notes and Transcript tabs",
+    caption: "Tabs under the recording bar, in the meeting view's tab style. Rejected because only one view shows at a time: checking what was just said means leaving the notes, and nothing on the Notes tab says the transcript is still arriving.",
+    frames: [{ ...PHONE, label: "Rejected alternative", html: () => screen(`
+      ${recBar()}
+      <div class="flex-none px-[16px]">${tabs("Notes", ["Notes", "Transcript"])}</div>
+      <main class="flex-1 min-h-0 flex flex-col gap-[10px] px-[16px] pt-[14px] pb-[40px]">
+        ${meetingHead("Nov 2 · 2:04 PM")}
+        ${notesCard(caret)}
+        ${askPill("Ask this meeting…", "sticky bottom-[16px] self-center w-full max-w-[480px] mt-auto")}
+      </main>`) }],
+  },
+  {
+    title: "6. Reconnecting, and the gap",
+    caption: "When the socket drops, the timer keeps running and the sheet's status turns to reconnecting. A notice says how much audio is held, against the 5 minute cap. If the outage outlasts the cap, the oldest audio drops, and once the socket is back the transcript shows a marker where the dropped stretch was, with its start and end times.",
+    frames: [
+      { ...PHONE, label: "Reconnecting", html: () => recording({ time: "14:11", notice: note("Reconnecting… Holding 1:12 of audio, up to 5 minutes. It is transcribed once the connection is back."), sheet: peekSheet("reconnecting", LINES.slice(-2), null) }) },
+      { ...PHONE, label: "Back, with a gap", html: () => recording({ time: "20:52", ask: false, sheet: fullSheet(transcript(LINES, null) + `
+        <div role="separator" class="flex items-center gap-[10px] py-[10px] text-[13px] text-mut">
+          <span class="flex-1 h-px bg-line"></span>
+          <span class="text-center">Not transcribed <span class="font-mono">00:14:02</span> to <span class="font-mono">00:15:40</span></span>
+          <span class="flex-1 h-px bg-line"></span>
+        </div>` + transcript([[940, "sorry, you cut out there. Where were we?"], [948, "The rollout email. Draft goes out Monday."], [1236, "Okay. Anything else for today?"]], [1249, "I think that covers"])) }) },
+    ],
+  },
+  {
+    title: "7. Asking the meeting while recording",
+    caption: "The Ask pill opens the shared ChatWindow at the webapp's phone scale, docked over the notes and above the sheet, so the transcript keeps arriving below it. Before each question the page pushes the meeting, so the answer covers everything said up to the question.",
+    frames: [{ ...PHONE, html: () => recording({ chat: chatWindow(PEEK_H + 12) }) }],
+  },
+  {
+    title: "8. After End",
+    caption: "End meeting stops the recording and opens the meeting's view while Enhance streams, under EnhancingBanner, whose bar drops to its own row to fit the phone. When it is saved the view settles on Enhanced, the same view every Mac meeting has in the webapp, with the AI's additions in grey and links into the transcript.",
+    frames: [
+      { ...PHONE, label: "Enhancing", html: () => ended(true) },
+      { ...PHONE, label: "Enhanced", html: () => ended(false) },
+    ],
+  },
+  {
+    title: "9. Resume after the app was killed",
+    caption: "Reopening Yogurt with an unfinished meeting in IndexedDB puts a card above the Library. Resume reopens the record screen and keeps recording into the same meeting. End enhances what was saved, as End meeting would. The meeting already lists under Today, because the page pushed it every 30 seconds.",
+    frames: [{ ...PHONE, html: () => library({ banner: resumeCard, rows: ROWS_RESUME }) }],
+  },
+  {
+    title: "10. Android app only",
+    caption: "On first launch the app asks once for the Cloud address, then opens it in its WebView. While the recorder service runs, Android shows its Recording notification, with the elapsed time and a Stop action, in the shade and on the lock screen. When a newer release has an APK, a banner over the Library offers the update, which downloads and hands it to the installer.",
+    frames: [
+      { ...PHONE, label: "First launch", html: firstLaunch },
+      { ...PHONE, label: "Recording notification", html: shade },
+      { ...PHONE, label: "Update available", html: () => library({ banner: note("Yogurt for Android 0.2.0 is ready.", "Update") }) },
+    ],
+  },
+  {
+    title: "11. Browser only: keep the page in front",
+    caption: "In a browser the record screen holds a Screen Wake Lock and says plainly, under the recording bar, that locking the phone or switching apps can stop the recording. The Android app never shows it, because its recorder keeps going in the background.",
+    frames: [{ ...PHONE, label: "Chrome", html: () => recording({ top: chromeBar, notice: browserNote, sheet: peekSheet() }) }],
+  },
+];
+
+const root = document.getElementById("sections");
+for (const s of SECTIONS) {
+  const sec = document.createElement("section");
+  sec.innerHTML = `
+    <h2 class="heading-sm text-[18px]!">${s.title}</h2>
+    <p class="mt-1 mb-5 text-[14px] text-mut max-w-[860px]">${s.caption}</p>
+    <div class="flex flex-col gap-8">
+      ${s.frames.map((f) => `
+        <div class="pair">
+          ${["light", "dark"].map((mode) => `
+            <div class="shot ${f.phone ? "center flex-col items-center" : ""}">
+              <p class="tag">${f.label ? `${f.label} · ` : ""}${mode}</p>
+              <div class="frame ${f.phone ? "phone" : ""} ${mode === "dark" ? "force-dark" : ""}" data-w="${f.w}" style="width:${f.w}px;height:${f.h}px">${f.html()}</div>
+            </div>`).join("")}
+        </div>`).join("")}
+    </div>`;
+  root.appendChild(sec);
+}
+
+// Shrink each frame to its column so a pair never overflows the page.
+function fit() {
+  for (const fr of document.querySelectorAll(".frame")) {
+    const room = fr.parentElement.clientWidth;
+    fr.style.zoom = Math.min(1, room / Number(fr.dataset.w));
+  }
+}
+fit();
+addEventListener("resize", fit);
+</script>
+</body>
+</html>
