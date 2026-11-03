@@ -131,7 +131,6 @@ Design: [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-desi
 Plan: [.planning/sync-implementation-plan.md](.planning/sync-implementation-plan.md).
 
 - [ ] **SYNC-14** Prune cloud history to 30 days with a daily `pg_cron` job, and add Recently deleted with Delete forever to the webapp; starts after the current cloud sync and import work ([design](.planning/sync-cloud-mirror-design.md#pruning-sync-14-planned))
-- [ ] **SYNC-32** The Mac adopts ended meetings recorded on a phone into SQLite during its push pass, and marks the phone's copy deleted so each shows once ([design](.planning/mobile-recording-design.md#the-mac-adopts-phone-meetings))
 
 ## Import
 
@@ -141,8 +140,4 @@ Design: [.planning/granola-import-design.md](.planning/granola-import-design.md)
 
 Design: [.planning/mobile-recording-design.md](.planning/mobile-recording-design.md).
 
-- [ ] **MOB-1** Record a meeting on the phone in the Cloud webapp with a live Deepgram transcript, saved as a phone device ([design](.planning/mobile-recording-design.md#tickets))
-- [ ] **MOB-2** Take notes during a phone recording and enhance them at End with the Mac's prompt and merge compiled to WASM ([design](.planning/mobile-recording-design.md#notes-and-enhance))
-- [ ] **MOB-3** Chat about the meeting while recording on the phone ([design](.planning/mobile-recording-design.md#live-chat))
-- [ ] **MOB-5** Android app that wraps the Cloud webapp and records in a background foreground service, with a one-tap in-app update from GitHub releases ([design](.planning/mobile-recording-design.md#the-android-app))
 - [ ] **MOB-4** Spike on-device transcription on the phone, such as Moonshine through Transformers.js, measured over an hour on a real Android phone ([design](.planning/mobile-recording-design.md#transcription))

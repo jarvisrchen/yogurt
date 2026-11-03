@@ -22,12 +22,13 @@ const owner = env.YOGURT_OWNER_EMAIL?.trim();
 if (production && !dbUrl) fail("production builds need POSTGRES_URL_NON_POOLING, the Supabase Session pooler connection string.");
 if (production && !owner) fail("production builds need YOGURT_OWNER_EMAIL, the email of the one Cloud login.");
 
-const dist = here("../dist");
+// `just cloud-dev` builds elsewhere, so an e2e run's build never replaces the one it serves.
+const dist = env.YOGURT_CLOUD_DIST ? fileURLToPath(new URL(env.YOGURT_CLOUD_DIST, `file://${process.cwd()}/`)) : here("../dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 writeFileSync(`${dist}/config.json`, JSON.stringify({ v: 1, supabase_url: supabaseUrl, publishable_key: publishableKey }) + "\n");
 
-const vite = spawnSync("pnpm", ["exec", "vite", "build"], { cwd: here(".."), stdio: "inherit" });
+const vite = spawnSync("pnpm", ["exec", "vite", "build", "--outDir", dist], { cwd: here(".."), stdio: "inherit" });
 if (vite.status !== 0) process.exit(vite.status ?? 1);
 
 // Migrate only after the build succeeded, so a broken build never changes the production schema.

@@ -9,6 +9,8 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#FBF7EF" />
+    <!-- The Android app's WebView reports prefers-color-scheme: dark only to a page that declares it supports both. -->
+    <meta name="color-scheme" content="light dark" />
     <!-- Stamps the theme before first paint. Mirrors web/src/lib/theme.ts and web/index.html, and also sets theme-color to the paper token. -->
     <script>
       (function () {

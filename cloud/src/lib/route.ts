@@ -13,7 +13,7 @@ export const validPin = (pin: string): boolean => /^(\d{4}|\d{6})$/.test(pin);
 /** Boxes to draw: the stored length while what is typed still fits in it, else 6. */
 export const pinBoxes = (stored: number | null, typed: string): number => (stored && typed.length <= stored ? stored : 6);
 
-export type View = "library" | "settings" | "change-pin" | "history";
+export type View = "library" | "settings" | "change-pin" | "history" | "record";
 export type Screen = "signin" | "not-owner" | "choose-pin" | "unlock" | View;
 
 /** `status` is null until yogurt_status has answered, and is only fetched once there is a session. */

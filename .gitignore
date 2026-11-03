@@ -31,5 +31,6 @@ repomix-output.*
 
 # cloud/ webapp Playwright output
 cloud/e2e/screenshots/
+cloud/e2e/.audio/
 cloud/test-results/
 cloud/playwright-report/

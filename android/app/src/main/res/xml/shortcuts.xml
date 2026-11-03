@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="change_cloud"
+        android:shortcutShortLabel="@string/change_cloud">
+        <intent
+            android:action="com.jarvisrchen.yogurt.CHANGE_CLOUD"
+            android:targetClass="com.jarvisrchen.yogurt.MainActivity"
+            android:targetPackage="com.jarvisrchen.yogurt" />
+    </shortcut>
+</shortcuts>

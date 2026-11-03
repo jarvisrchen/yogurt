@@ -43,7 +43,11 @@ git push origin v0.1.0        <- the trigger; nothing else starts this
       |              pnpm build (web/dist must exist -- rust-embed needs it)
       |              cargo build --release -p yogurt, strip, tar.gz, sha256
       |
-      +-- release    attaches both tarballs + SHA256SUMS to the GitHub Release
+      +-- android    macos-26, JDK 17, the runner's Android SDK, only with the signing secrets
+      |              gradlew assembleRelease -PyogurtVersion=<tag>, signed with the release key
+      |              yogurt-android-<version>.apk + sha256
+      |
+      +-- release    attaches both tarballs, the APK if built, and SHA256SUMS to the GitHub Release
       |
       +-- tap        rewrites Formula/yogurt.rb with the real version + shas,
                      opens a PR on jarvisrchen/homebrew-yogurt
@@ -74,6 +78,14 @@ Consequences: the grant is coarse (every CLI run from that terminal inherits it)
 Signing the CLI with a Developer ID would not change the prompt; only wrapping it in a `.app` with a `CFBundleIdentifier` would.
 Do not add a bundle without deciding to give up the Terminal attribution.
 
+**Every APK is signed with one key, and carries the release's version.**
+Android refuses an update signed with a different key, so losing `~/.yogurt/android-release.jks` or its password strands every installed copy, which then has to be uninstalled first.
+The `android` job passes the tag's version to Gradle, so the APK's `versionName` and its name, `yogurt-android-<version>.apk`, match the tag the app's update check compares with.
+A local build takes the version from `[workspace.package]` in `Cargo.toml`, which `ship` bumps before tagging.
+The bump also reruns `just wasm` and commits `cloud/src/wasm`, because crate versions change the WASM bytes, so the releasing Mac needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` 0.2.126.
+Every release therefore ships an APK that installed apps offer as an update.
+Without both signing secrets the `android` job skips the APK with a warning, and the release goes out with the Mac binaries only.
+
 **crates.io publishing is descoped.**
 When it returns it goes in as a `publish` job with `needs: [release, tap]`.
 Never reorder so publish runs before release or tap.
@@ -95,6 +107,10 @@ These are not per-release, but every one of them has to hold before the first `b
 - [x] **`jarvisrchen/yogurt` is public.** Release assets on a private repo require an auth token to download, so `brew install` 404s for everyone but the owner.
 - [x] **`jarvisrchen/homebrew-yogurt` exists and is public,** with a `Formula/` directory. Done.
 - [x] **`HOMEBREW_TAP_TOKEN` is set** as a repo secret on `jarvisrchen/yogurt`, with push + `pull_requests: write` on the tap repo. Check with `gh api repos/jarvisrchen/homebrew-yogurt --jq '.permissions'` using that token.
+- [ ] **The Android signing secrets are set** as repo secrets on `jarvisrchen/yogurt`, or each release has no APK.
+  `YOGURT_ANDROID_KEYSTORE_BASE64` is the keystore, `base64 -i ~/.yogurt/android-release.jks | gh secret set YOGURT_ANDROID_KEYSTORE_BASE64`.
+  `YOGURT_ANDROID_KEYSTORE_PASSWORD` is its password, `security find-generic-password -a yogurt -s yogurt-android-keystore -w | gh secret set YOGURT_ANDROID_KEYSTORE_PASSWORD`.
+  The key was made once with `keytool` (alias `yogurt`, PKCS12, RSA 4096), and its password lives only in Keychain and in that secret.
 - [x] **Git history carries no real secrets.** `.env.local` is gitignored; the history scan for `sk-` / `AKIA` / `ghp_` / `gsk_` found only a placeholder in an archived `MANUAL_TESTING.md`.
 - [x] **Repo merge settings, applied 2026-09-01:** `gh api -X PATCH repos/jarvisrchen/yogurt -F allow_rebase_merge=false -F allow_merge_commit=false -F delete_branch_on_merge=true`.
   Squash is the only merge button available on a PR.

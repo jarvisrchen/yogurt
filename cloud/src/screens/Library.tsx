@@ -20,7 +20,8 @@ import {
   SearchPager,
   useDesktop,
 } from "../ui";
-import type { Api, Label } from "../lib/api";
+import { Adopted, type Api, type Label, TokenRejected } from "../lib/api";
+import { enhanceMeeting } from "../lib/enhance";
 import {
   asOfLabel,
   clock,
@@ -34,8 +35,11 @@ import { SEARCH_PAGE, searchStatus } from "../lib/search";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { format, HOME, type Loc } from "../lib/hash";
-import { Ask, DOCKED, MeetingView, type BodyState } from "./Meeting";
+import { Ask, DOCKED, MeetingView, type BodyState, type Enhance } from "./Meeting";
 import { useChat } from "../lib/useChat";
+import { useSession, type RecordingSession } from "../lib/session";
+import { MicIcon, ResumeCard } from "./Resume";
+import { Button } from "@web/components/Button";
 
 export const GearIcon = () => (
   <svg
@@ -68,6 +72,8 @@ interface Props {
   replace: (to: Loc) => void;
   back: (to: Loc) => void;
   onSettings: () => void;
+  onRecord: () => void;
+  session: RecordingSession;
   onLock: () => void;
   onRejected: () => void;
 }
@@ -80,9 +86,12 @@ export function Library({
   replace,
   back,
   onSettings,
+  onRecord,
+  session,
   onLock,
   onRejected,
 }: Props) {
+  const { unfinished, finish: ended } = useSession(session);
   const desktop = useDesktop();
   const [device, setDevice] = useState<string | null>(null);
   const [filter, setFilter] = useState<Pill>("all");
@@ -92,17 +101,21 @@ export function Library({
   const starred = filter === "starred";
   const scope = { device, archived, starred, label: label?.id ?? null };
   const [query, setQuery] = useState("");
+  // The open meeting whose Enhance the Cloud refused because a Mac adopted it, shown as gone while the phone's body is still loaded.
+  const [adopted, setAdopted] = useState<string | null>(null);
   const { asOf: pushId, meeting: open, page } = loc;
   const size = loc.size ?? resolvePageSize(null);
 
   const base = useCloudLoad(
     async () => {
-      const [devices, history] = await Promise.all([
+      const [devices, phones, history] = await Promise.all([
         api.devices(token),
+        api.phoneDevices(token),
         pushId ? api.history(token) : null,
       ]);
       return {
         devices,
+        phones,
         pushedAt: history?.find((h) => h.push_id === pushId)?.pushed_at ?? null,
       };
     },
@@ -165,7 +178,7 @@ export function Library({
       const deviceId = open.slice(0, i);
       const id = open.slice(i + 1);
       const row = await api.meeting(token, deviceId, id, pushId);
-      return { entry: row ? toEntry(deviceId, id, row) : null };
+      return { entry: row ? toEntry(deviceId, id, row) : null, row };
     },
     onRejected,
     [api, token, open, pushId],
@@ -175,9 +188,10 @@ export function Library({
     ? { status: "error", message: bodyLoad.error, onRetry: bodyLoad.retry }
     : !bodyLoad.data
       ? { status: "loading" }
-      : bodyLoad.data.entry
+      : bodyLoad.data.entry && adopted !== open
         ? { status: "ready" }
-        : { status: "gone" };
+        : // A phone's meeting leaves the Cloud only when a Mac adopts it.
+          { status: "gone", adopted: !!base.data?.phones.includes(open?.slice(0, open.indexOf("/")) ?? "") };
 
   const meta = (startedAt: number, endedAt: number | null) => {
     const min = duration({ started_at: startedAt, endedAt });
@@ -217,6 +231,39 @@ export function Library({
   const ask = libraryChat && (
     <Ask chat={libraryChat} copy={LIBRARY_CHAT_COPY} renderExtra={(m) => <ChatSources message={m} link={cite} />} position={`${DOCKED} mt-auto`} />
   );
+  // The enhance End started, while the open meeting is the one it ends.
+  const finish = !pushId && ended?.key === open ? ended.run : null;
+  const finishing = finish?.status === "running";
+  const wasFinishing = useRef(false);
+  useEffect(() => {
+    // The ended version is in the Cloud now, enhanced or not.
+    if (wasFinishing.current && !finishing) {
+      bodyLoad.retry();
+      pageLoad.retry();
+    }
+    wasFinishing.current = finishing;
+  });
+  const row = bodyLoad.data?.row;
+  // Only a phone's own meeting, since a Mac's copy, adopted ones too, is the Mac's to push, and only an ended one, since the recording's next push would drop an enhance of a live one.
+  const enhance: Enhance | null =
+    row && !pushId && !finishing && base.data?.phones.includes(openDevice) && row.body.meeting.ended_at !== null
+      ? async (onText) => {
+          try {
+            const fields = await enhanceMeeting(api, token, row.body.meeting, { onText });
+            if (!fields) return null;
+            await api.pushMeeting(openDevice, row.body.meeting.id, { ...row.body, meeting: { ...row.body.meeting, ...fields } });
+            bodyLoad.retry();
+            return fields.enriched_md;
+          } catch (e) {
+            if (e instanceof TokenRejected) onRejected();
+            if (e instanceof Adopted) {
+              setAdopted(open);
+              pageLoad.retry();
+            }
+            throw e;
+          }
+        }
+      : null;
   const meeting = open && (
     <MeetingView
       key={open}
@@ -228,6 +275,8 @@ export function Library({
       desktop={desktop}
       body={body}
       chat={chat}
+      enhance={enhance}
+      finish={finish}
     />
   );
   if (!desktop && meeting)
@@ -257,8 +306,21 @@ export function Library({
   const retry = () => (base.error ? base : pageLoad).retry();
 
   const dim = search.active ? search.pending : turning;
+  const resume = unfinished && (
+    <ResumeCard
+      session={session}
+      unfinished={unfinished}
+      onResume={onRecord}
+      onEnded={(key) => {
+        base.retry();
+        pageLoad.retry();
+        go({ ...loc, meeting: key });
+      }}
+    />
+  );
   const list = (
     <>
+      {resume}
       {pushId && (
         <div className="flex items-center gap-[7px] pl-[10px] pr-[4px] py-[4px] bg-card border border-line rounded-pill shadow-[0_8px_18px_-6px_var(--shadow-card-color)] text-[13px] min-[721px]:text-[11px] min-w-0">
           <span className="w-[6px] h-[6px] rounded-full bg-blue flex-none" />
@@ -394,9 +456,10 @@ export function Library({
           <Brand />
         </a>
         <div className="flex items-center gap-[6px] min-[721px]:gap-[8px]">
-          <span className="text-[12px] min-[721px]:text-[11px] font-bold px-[10px] py-[3px] rounded-pill bg-slatesoft text-slate">
-            read-only
-          </span>
+          <Button onClick={onRecord} className="!px-[12px] !py-[5px] !text-[15px] min-[721px]:!text-[12.5px] !font-bold !leading-normal">
+            <MicIcon size={15} />
+            Record
+          </Button>
           <button
             type="button"
             aria-label="Settings"
@@ -417,6 +480,7 @@ export function Library({
         </main>
       ) : !devices || !shown ? null : pageLoad.data?.empty ? (
         <main className="flex-1 flex flex-col items-center text-center px-[16px] pt-[80px]">
+          {resume && <div className="w-full max-w-[480px] text-left -mt-[64px] mb-[40px]">{resume}</div>}
           <div className="float-3500 mb-[32px]">
             <Logo size={64} ariaLabel="Yogurt" />
           </div>

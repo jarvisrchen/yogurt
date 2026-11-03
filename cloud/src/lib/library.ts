@@ -1,5 +1,6 @@
 import type { StoredTranscriptSegment } from "@web/lib/ws";
 import type { LibraryRow, MeetingRow, SearchHit } from "./api";
+import { oneMic } from "./phone";
 
 export interface Entry {
   key: string;
@@ -13,6 +14,8 @@ export interface Entry {
   notes: string;
   enhanced: string | null;
   segments: StoredTranscriptSegment[];
+  /** Transcribed from a phone's one mic, which puts every line on the them channel. */
+  phone: boolean;
 }
 
 export type Tab = "notes" | "enhanced" | "transcript";
@@ -45,6 +48,7 @@ export const summaryEntry = (r: LibraryRow): Entry => ({
   notes: "",
   enhanced: null,
   segments: [],
+  phone: false,
 });
 
 /** A meeting with its content, from `yogurt_meeting`. */
@@ -61,6 +65,7 @@ export function toEntry(device_id: string, meeting_id: string, r: MeetingRow): E
     notes: m.notes_md ?? "",
     enhanced: m.enriched_md,
     segments: parseSegments(m.transcript_json ?? "[]"),
+    phone: oneMic(m),
   };
 }
 
@@ -76,6 +81,7 @@ export const hitEntry = (h: SearchHit): Entry => ({
   notes: "",
   enhanced: null,
   segments: [],
+  phone: false,
 });
 
 export const forDevice = <T extends { device_id: string }>(items: T[], id: string | null): T[] => (id ? items.filter((i) => i.device_id === id) : items);

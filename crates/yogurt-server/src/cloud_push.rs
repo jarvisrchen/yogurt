@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use yogurt_cloud::push::{Pacing, Progress};
+use yogurt_cloud::Session;
 
 struct Running {
     cancel: watch::Sender<bool>,
@@ -55,6 +56,8 @@ pub struct PushJob {
     counted: Mutex<Option<Counted>>,
     /// When a meeting last stopped or finished its notes, which the `meeting` auto-push setting waits on.
     requested: Mutex<Option<i64>>,
+    /// The last Cloud session, reused while it is current so an idle timer wake neither refreshes nor rewrites keys.json. Memory only.
+    session: Mutex<Option<Session>>,
 }
 
 impl PushJob {
@@ -78,6 +81,18 @@ impl PushJob {
             at: Instant::now(),
             pending,
         });
+    }
+
+    /// The kept session, if it came from `refresh_token` and has five minutes left, as a pass needs.
+    pub fn session(&self, refresh_token: &str, now_secs: i64) -> Option<Session> {
+        let g = self.session.lock().unwrap();
+        g.as_ref()
+            .filter(|s| s.refresh_token == refresh_token && s.expires_at - now_secs >= 300)
+            .cloned()
+    }
+
+    pub fn keep_session(&self, s: &Session) {
+        *self.session.lock().unwrap() = Some(s.clone());
     }
 
     pub fn request(&self, now: i64) {

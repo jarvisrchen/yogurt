@@ -41,7 +41,7 @@ The browser never sees it.
 A new function, `cloud/api/stt-token.ts`, checks the caller is the signed-in owner with an unlocked browser token, then calls Deepgram's `POST /v1/auth/grant` for a 30 second token and returns only that ([Deepgram token-based auth](https://developers.deepgram.com/guides/fundamentals/token-based-authentication)).
 The token only has to be valid when the WebSocket opens, and the page asks for a fresh one on every reconnect.
 Browsers cannot set headers on a WebSocket, so the token goes in `Sec-WebSocket-Protocol` ([Deepgram: using the Sec-WebSocket-Protocol](https://developers.deepgram.com/docs/using-the-sec-websocket-protocol)).
-The docs show the `token, <api key>` form, and MOB-1 confirms the form for a granted token.
+The docs show the `token, <api key>` form for a key, and a granted token goes as `bearer, <token>`.
 
 Minting a token needs a key with the Member role or higher.
 The key in `.env.local` was checked on 2026-11-02 and gets `403 FORBIDDEN, Insufficient permissions`, so the setup docs tell the user to create a separate Member key for Vercel.
@@ -50,7 +50,8 @@ A separate key is better anyway, since it can be revoked without touching the Ma
 ### Audio path
 
 The page opens the mic with `getUserMedia` and downsamples to 16 kHz mono linear16 in an AudioWorklet, the Mac's frame contract.
-Self-contained PCM chunks make a reconnect simple: while the socket is down, chunks queue in memory, up to 5 minutes (about 9.6 MB), and replay in order once a new socket opens.
+Self-contained PCM chunks make a reconnect simple: every chunk stays in memory until a final result covers it, up to 5 minutes (about 9.6 MB), and the held chunks replay in order once a new socket opens.
+Holding the chunks Deepgram has but has not finalized means a drop loses none of them, and since a replay starts after the last final, no line repeats.
 Past that cap the oldest chunks drop and the transcript shows a gap marker.
 `MediaRecorder` with WebM was rejected because a new socket needs a fresh container header, so a reconnect would lose everything buffered.
 Audio is never written to storage, so nothing is left to delete after transcription.
@@ -83,23 +84,38 @@ Every value crossing the bridge is a JSON string, because `@JavascriptInterface`
 
 | Call, page to app | Argument | Returns |
 | --- | --- | --- |
-| `YogurtAndroid.start(json)` | `{"meetingId","startedAtMs","tokenUrl","auth":{"jwt","browserToken"}}` | `{"ok":true}` or `{"ok":false,"error"}` |
+| `YogurtAndroid.start(json)` | `{"meetingId","startedAtMs","have","tokenUrl","auth":{"jwt","browserToken"}}`, where `have` is how many of the meeting's lines the page holds | `{"ok":true}` or `{"ok":false,"error"}` |
 | `YogurtAndroid.setAuth(json)` | `{"jwt","browserToken"}`, sent whenever the page refreshes its session | nothing |
-| `YogurtAndroid.stop()` | none | nothing |
-| `YogurtAndroid.status()` | none | `{"recording","meetingId","startedAtMs","state","lines"}` |
-| `YogurtAndroid.lines(from)` | index of the first line wanted | JSON array of final lines from that index |
+| `YogurtAndroid.stop()` | none | nothing, at once; the last lines and then a `stopped` state follow as events |
+| `YogurtAndroid.status()` | none | `{"recording","meetingId","startedAtMs","state","lines"}`, where `lines` is the index the next line gets |
+| `YogurtAndroid.lines(meetingId, from)` | the meeting, and the index of the first line wanted | JSON array of that meeting's final lines from that index, empty for any other meeting |
 | `YogurtAndroid.appVersion()` | none | the app's version name, such as `"0.1.0"` |
 
 The app posts events to the page with `window.dispatchEvent(new CustomEvent("yogurt-native", {detail}))`, where `detail` is one of:
 
-- `{"type":"line","index","line":{"channel":"them","text","ts_ms"}}` for each final line.
+- `{"type":"line","meetingId","index","line":{"channel":"them","text","ts_ms"}}` for each final line.
 - `{"type":"interim","text"}` for the words Deepgram has not finalized.
 - `{"type":"state","state":"connecting"|"live"|"reconnecting"|"stopped"}`.
 - `{"type":"gap","from_ms","to_ms"}` when the buffer overflowed and audio was dropped.
 - `{"type":"error","message"}`.
+- `{"type":"auth"}` when the Cloud refused the session the app holds, which the page answers with `setAuth`.
 
 The service mints its own Deepgram token by calling `tokenUrl` with the latest `auth`, so a reconnect works while the page is in the background.
-Final lines are numbered from 0 and kept in a file until the next `start`, so a page that comes back calls `lines(n)` with the count it already has and never misses or repeats one.
+A page in the background can stop renewing its session, so when `tokenUrl` answers 401 the app sends an `auth` event, and the page renews its session and calls `setAuth`, which the next attempt uses.
+The WebView keeps running while the foreground service holds the process, since the app never pauses its timers, and the refresh token never leaves the page.
+If no page answers, the audio waits in the 5 minute buffer while the app keeps asking.
+A page that joins a running recording also hands the app its session.
+The call is a POST with the JWT as `Authorization: Bearer` and `{"token": browserToken}` as the body, the same request the browser makes, and the answer is `{"token","url"}`.
+The app opens `url` with the granted token in an `Authorization: Bearer` header, where the browser, which cannot set headers on a WebSocket, offers the `bearer` subprotocol with the token.
+Final lines are numbered once for the whole meeting and kept in a file until another meeting starts.
+A new meeting numbers from `have`, and a `start` of the meeting the file already holds carries on its numbering, so a resume after the app was killed keeps one numbering with the lines the page already has.
+A page that comes back calls `lines(meetingId, n)` with the count it already has and never misses or repeats one.
+Lines and line events carry the meeting, so the page takes none of another meeting's, such as the previous meeting's lines while Android's mic dialog holds up a new `start`.
+Events sent before the record screen listens, such as while the page reloads, are not replayed: the page recovers the state from `status()` and the lines from `lines(meetingId, n)` when it attaches.
+
+`stop()` returns at once, because a `@JavascriptInterface` call blocks the page's JavaScript thread until it returns, and stopping waits up to 5 seconds for Deepgram's last results.
+The recorder then sends those lines as events, followed by `{"type":"state","state":"stopped"}`, also when nothing was recording.
+The page's `NativeRecorder.stop()` waits for that state, at most 10 seconds, and then calls `lines(meetingId, n)` once to take any line it missed.
 
 On launch, the app compares its version with the latest GitHub release and, when a newer one has an APK, shows an Update available banner.
 Tapping it downloads the APK and hands it to Android's installer, so an update is one tap and keeps the sign-in.
@@ -116,6 +132,7 @@ The phone registers in `yogurt_devices` the first time it records, with an id it
 A new column, `kind text not null default 'mac'`, holds `'phone'` for it, so a Mac can tell a phone's meetings from another Mac's.
 The insert policy already allows the signed-in owner to add a device, and `yogurt_start_push` already accepts any device the owner owns, so the phone pushes through the same RPCs and the same `{"v":1,"meeting":...,"chat":[...]}` bundle the Mac sends.
 The Library, search, meeting view, and Cloud chat then show phone meetings with no changes.
+The webapp offers Enhance only on a meeting whose device is a phone, which it reads from `yogurt_phone_devices(token)`, because a Mac's adopted copy keeps the phone's `stt_engine`.
 
 If the user clears site data, the next recording registers a new phone device.
 The old device's meetings stay readable, and the Mac adopts them as usual.
@@ -123,6 +140,7 @@ The old device's meetings stay readable, and the Mac adopts them as usual.
 While recording, the phone pushes the meeting every 30 seconds with `ended_at` null, so a killed tab loses at most 30 seconds of transcript.
 It also keeps the current meeting in IndexedDB.
 Reopening the page with an unfinished meeting there offers Resume or End.
+Start recording waits until that meeting is resumed or ended, because a new one would replace it in IndexedDB.
 Every push sends the full bundle, so a lost push is repaired by the next one.
 
 ## Notes and Enhance
@@ -139,6 +157,17 @@ The page merges the result with the user's notes in WASM and pushes `enriched_md
 An hour of transcript can stream for over a minute, so the function asks for `maxDuration: 300`, which MOB-2 checks against the account's Vercel plan.
 A failed enhance leaves the meeting saved with its notes and transcript, and an Enhance button retries it.
 
+End runs in this order:
+
+1. The recorder stops, and the Android one is waited for until its last lines are in.
+2. The page pushes the final transcript and notes with `ended_at` still null.
+3. The meeting view opens with the enhance streaming under EnhancingBanner.
+4. The page pushes once more with `ended_at` set, and with `enriched_md`, `llm_model`, and `template` when the enhance worked.
+   A failed enhance, or a meeting too short to enhance, is pushed ended without them, and the view offers Enhance.
+
+A Mac adopts only ended meetings, so it never takes one before its enhanced version exists.
+The meeting stays in IndexedDB until that last push, so if the tab dies during the enhance, the Resume card's End runs the same steps again.
+
 ## Live chat
 
 The meeting view's chat already sends one meeting's transcript to the LLM through `cloud/api/chat.ts`.
@@ -149,14 +178,17 @@ The chat function is unchanged.
 
 SYNC-32 adds a step to the Mac's push pass, before it plans what to send.
 
-1. An RPC, `yogurt_phone_meetings()`, lists the latest version of each ended, undeleted meeting on a `kind = 'phone'` device.
-2. For each one, the Mac inserts it into SQLite under the same ULID, with `source = 'phone'` for provenance, so a rerun is a no-op.
-3. The Mac then calls `yogurt_adopt(device_id, meeting_id)`, which writes a null version for the phone's copy only if its latest version is still non-null, and returns whether this call did it.
-4. If another Mac adopted it first, this Mac deletes its local insert.
+1. An RPC, `yogurt_phone_meetings()`, lists the latest version of each ended, undeleted meeting on a `kind = 'phone'` device, with the phone's name and the version's push id.
+2. For each one, the Mac inserts it into SQLite with `source = 'phone'`, the phone's ULID as `source_id`, and the phone's name for provenance, so a rerun is a no-op.
+   The row gets a new UUID, because the Mac's meeting routes (chat, Enhance) take a UUID and a phone mints ULIDs.
+3. The Mac then calls `yogurt_adopt(device_id, meeting_id, push_id)`, which writes a null version for the phone's copy only if `push_id` is still its latest version and that version has ended, and returns whether this call did it.
+   The push id keeps a Mac from adopting a copy the phone has since replaced, such as one pushed again after Enhance.
+4. If another Mac adopted it first, this Mac deletes its local insert, unless the row was there before the pass or the claim was retried after a lost answer.
 5. The rest of the pass pushes the meeting as one of this Mac's, so it shows once in the Library, under the Mac.
 
 Importing before claiming means a crash between the steps leaves the meeting on both sides, which the next pass repairs, rather than on neither.
 Once adopted, the meeting is read-only on the phone like every other Mac meeting.
+The Cloud refuses a phone's push of an adopted meeting, so an Enhance started on the phone before the adoption cannot bring the phone's copy back, and the page says the meeting now lists under the Mac.
 A meeting still recording is never adopted, because its `ended_at` is null.
 
 ## Constraint changes

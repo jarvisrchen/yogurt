@@ -132,6 +132,10 @@ pub fn map_note(
             "updated_at": note.updated_at,
         }),
         labels,
+        stt_engine: None,
+        llm_model: None,
+        template: None,
+        chat: Vec::new(),
     }))
 }
 

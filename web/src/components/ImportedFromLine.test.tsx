@@ -44,4 +44,9 @@ describe("ImportedFromLine", () => {
     render(<ImportedFromLine name="granola" source={{ web_url: "https://notes.granola.ai/d/example" }} />);
     expect(screen.queryByRole("link")).toBeNull();
   });
+
+  it("names the phone a meeting was recorded on", () => {
+    render(<ImportedFromLine name="phone" source={{ device: "Pixel 9" }} />);
+    expect(screen.getByTestId("imported-from")).toHaveTextContent(/^Recorded on Pixel 9$/);
+  });
 });

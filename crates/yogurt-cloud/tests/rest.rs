@@ -2,6 +2,11 @@
 
 use rand::RngCore;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::{Arc, Barrier};
+use std::time::Duration;
+use tokio::sync::watch;
+use yogurt_cloud::push::{self, Hooks, LocalMeeting, Pacing, Pass, PhoneMeeting, Plan, Progress};
 use yogurt_cloud::{Error, Project, Session};
 
 const PASSWORD: &str = "correct horse battery";
@@ -374,5 +379,236 @@ async fn owner_session_reads_no_table() {
         eprintln!("GET {table}: {status} {body}");
         assert_eq!(status, 403, "{table}: {body}");
         assert_eq!(body["code"], "42501", "{table}: {body}");
+    }
+}
+
+/// A Mac's meetings in memory, standing in for its SQLite.
+#[derive(Default)]
+struct Mac {
+    here: HashMap<String, Value>,
+    hashes: HashMap<String, String>,
+    unadopted: Vec<String>,
+    /// Holds `adopt` for this meeting until the other Mac has listed it too.
+    gate: Option<(String, Arc<Barrier>)>,
+}
+
+impl Hooks for Mac {
+    fn bundle(&mut self, id: &str) -> Result<Option<Value>, String> {
+        Ok(self.here.get(id).cloned())
+    }
+    fn refreshed(&mut self, _: &Session) -> Result<(), String> {
+        Ok(())
+    }
+    fn stored(&mut self, hashes: &[(String, String)]) -> Result<(), String> {
+        self.hashes.extend(hashes.iter().cloned());
+        Ok(())
+    }
+    fn progress(&mut self, _: &Progress) {}
+    fn adopt(&mut self, phone: &PhoneMeeting) -> Result<bool, String> {
+        if let Some((id, gate)) = &self.gate {
+            if *id == phone.meeting_id {
+                gate.wait();
+            }
+        }
+        if self.here.contains_key(&phone.meeting_id) {
+            return Ok(false);
+        }
+        self.here
+            .insert(phone.meeting_id.clone(), phone.body.clone());
+        Ok(true)
+    }
+    fn unadopt(&mut self, id: &str) -> Result<(), String> {
+        self.here.remove(id);
+        self.unadopted.push(id.into());
+        Ok(())
+    }
+}
+
+fn fast() -> Pacing {
+    Pacing {
+        pause: Duration::from_millis(10),
+        retries: vec![Duration::from_millis(100); 2],
+        ..Pacing::default()
+    }
+}
+
+/// The adopt step, then the pass that pushes this Mac's meetings. Returns what each did.
+async fn mac_pass(
+    project: &Project,
+    session: &mut Session,
+    device: &str,
+    mac: &mut Mac,
+) -> yogurt_cloud::Result<(Vec<String>, Plan)> {
+    let (_tx, mut rx) = watch::channel(false);
+    let pacing = fast();
+    let adopted = push::adopt(project, &pacing, session, &mut rx, mac).await?;
+    let local: Vec<LocalMeeting> = mac
+        .here
+        .iter()
+        .map(|(id, body)| LocalMeeting::new(id.clone(), mac.hashes.get(id).cloned(), body))
+        .collect();
+    let plan = Pass {
+        project,
+        device_id: device,
+        local: &local,
+        skip: None,
+        pacing: &pacing,
+    }
+    .run(session, &mut rx, mac)
+    .await?;
+    Ok((adopted, plan))
+}
+
+fn phone_bundle(id: &str, ended_at: Option<i64>) -> Value {
+    json!({ "v": 1, "chat": [], "meeting": {
+        "id": id, "title": format!("Phone {id}"), "started_at": 1_000, "ended_at": ended_at,
+        "notes_md": "", "enriched_md": null, "transcript_json": "[]", "starred": false,
+        "stt_engine": "cloud · nova-3 · phone", "llm_model": null, "template": null, "labels": [],
+    }})
+}
+
+async fn device(p: &Project, s: &Session, name: &str, kind: &str) -> String {
+    let id = uuid();
+    p.insert(
+        s,
+        "yogurt_devices",
+        &json!({ "id": id, "name": name, "kind": kind }),
+    )
+    .await
+    .unwrap();
+    id
+}
+
+/// What the phone does every 30 seconds: one push carrying its meetings whole.
+async fn phone_push(p: &Project, s: &Session, phone: &str, meetings: &[(&str, Option<i64>)]) {
+    let push = p
+        .rpc(s, "yogurt_start_push", &json!({ "device_id": phone }))
+        .await
+        .unwrap();
+    let rows: Vec<Value> = meetings
+        .iter()
+        .map(|(id, ended)| json!({ "meeting_id": id, "push_id": push, "device_id": phone, "body": phone_bundle(id, *ended) }))
+        .collect();
+    p.insert(s, "yogurt_versions", &Value::Array(rows))
+        .await
+        .unwrap();
+}
+
+async fn live(p: &Project, s: &Session, device: &str) -> Vec<Value> {
+    p.rpc_all(
+        s,
+        "yogurt_device_meetings",
+        &json!({ "device_id": device }),
+        "",
+    )
+    .await
+    .unwrap()
+}
+
+/// Sorted after `owner_pushes_unlocks_and_pages_the_library`, which expects to set the first passcode.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore]
+async fn phone_meetings_are_adopted_by_one_mac() {
+    let Some(env) = env() else { return };
+    let mut s = owner(&env).await;
+    let p = &env.project;
+    let status = p.rpc(&s, "yogurt_status", &json!({})).await.unwrap();
+    if status["passcode_set"] != true {
+        p.rpc(
+            &s,
+            "yogurt_set_passcode",
+            &json!({ "new_passcode": "123456" }),
+        )
+        .await
+        .unwrap();
+    }
+    let phone = device(p, &s, "Test phone", "phone").await;
+    let mac_a = device(p, &s, "Mac A", "mac").await;
+    let ended = format!("ended-{}", random_hex(4));
+    let open = format!("open-{}", random_hex(4));
+    phone_push(p, &s, &phone, &[(&ended, Some(9_000)), (&open, None)]).await;
+
+    let mut a = Mac::default();
+    let (adopted, plan) = mac_pass(p, &mut s, &mac_a, &mut a).await.unwrap();
+    assert_eq!(
+        adopted,
+        std::slice::from_ref(&ended),
+        "only the ended meeting"
+    );
+    assert_eq!(
+        plan.changed,
+        std::slice::from_ref(&ended),
+        "and the pass pushes it"
+    );
+    assert_eq!(a.here[&ended], phone_bundle(&ended, Some(9_000)));
+    assert_eq!(
+        live(p, &s, &phone).await,
+        [json!(open)],
+        "the phone's copy is marked deleted"
+    );
+    assert_eq!(
+        live(p, &s, &mac_a).await,
+        [json!(ended)],
+        "and the Mac's copy is live"
+    );
+
+    let (adopted, plan) = mac_pass(p, &mut s, &mac_a, &mut a).await.unwrap();
+    assert!(
+        adopted.is_empty() && plan == Plan::default(),
+        "a rerun does nothing: {adopted:?} {plan:?}"
+    );
+
+    // Two Macs list the same meeting, then both claim it.
+    let race = format!("race-{}", random_hex(4));
+    phone_push(p, &s, &phone, &[(&race, Some(9_500))]).await;
+    let mac_b = device(p, &s, "Mac B", "mac").await;
+    let mac_c = device(p, &s, "Mac C", "mac").await;
+    let gate = Arc::new(Barrier::new(2));
+    let run = |device: String, session: Session| {
+        let gate = gate.clone();
+        let race = race.clone();
+        let project = Project::new(&env.url, &env.publishable);
+        tokio::spawn(async move {
+            let mut session = session;
+            let mut mac = Mac {
+                gate: Some((race, gate)),
+                ..Mac::default()
+            };
+            let res = mac_pass(&project, &mut session, &device, &mut mac).await;
+            (res.map(|(adopted, _)| adopted).unwrap(), mac)
+        })
+    };
+    let (one, two) = tokio::join!(run(mac_b.clone(), s.clone()), run(mac_c.clone(), s.clone()));
+    let ((won_b, mac_one), (won_c, mac_two)) = (one.unwrap(), two.unwrap());
+    let (winner, loser) = match (won_b.contains(&race), won_c.contains(&race)) {
+        (true, false) => (mac_one, mac_two),
+        (false, true) => (mac_two, mac_one),
+        other => panic!("exactly one Mac adopts it, got {other:?}"),
+    };
+    assert!(winner.here.contains_key(&race));
+    assert!(
+        !loser.here.contains_key(&race),
+        "the loser removes its copy"
+    );
+    assert_eq!(loser.unadopted, std::slice::from_ref(&race));
+    let mut copies = 0;
+    for d in [&mac_a, &mac_b, &mac_c, &phone] {
+        copies += live(p, &s, d).await.contains(&json!(race)) as usize;
+    }
+    assert_eq!(copies, 1, "the Cloud holds the meeting once");
+
+    let stranger = sign_in_as(&env, &stranger()).await;
+    for (f, args) in [
+        ("yogurt_phone_meetings", json!({})),
+        (
+            "yogurt_adopt",
+            json!({ "device_id": phone, "meeting_id": open, "push_id": 1 }),
+        ),
+    ] {
+        let res = p.rpc(&stranger, f, &args).await;
+        assert!(
+            matches!(res, Err(Error::Http { status: 403, ref code, .. }) if code == "42501"),
+            "{f}: {res:?}"
+        );
     }
 }

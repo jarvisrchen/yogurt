@@ -35,6 +35,8 @@ export interface Bundle {
     notes_md: string;
     enriched_md: string | null;
     transcript_json: string;
+    /** Which STT wrote the transcript, such as "cloud · nova-3 · phone". Null for meetings from before the field. */
+    stt_engine?: string | null;
   };
 }
 
@@ -98,6 +100,9 @@ export interface HistoryRow {
 }
 
 export class TokenRejected extends Error {}
+
+/** The Cloud refused a phone's push of a meeting a Mac has adopted. */
+export class Adopted extends Error {}
 
 export const OFFLINE = "Couldn't reach your Cloud. Check your connection and try again.";
 
@@ -170,9 +175,45 @@ export class Api {
     this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_info", { token });
+  /** The ids of the owner's phones, the only devices whose meetings the webapp writes. */
+  phoneDevices = (token: string) => this.rpc<string[]>("yogurt_phone_devices", { token });
   recolorDevice = (token: string, device: string, color: string) =>
     this.rpc<boolean>("yogurt_recolor_device", { token, device_id: device, new_color: color });
   reorderDevices = (token: string, devices: string[]) => this.rpc<boolean>("yogurt_reorder_devices", { token, device_ids: devices });
+  /** Adds this browser as a phone device. Already added is fine, as after a lost reply. */
+  registerPhone = async (id: string, name: string) => {
+    const { error, status } = await this.sb.from("yogurt_devices").insert({ id, name, kind: "phone" });
+    if (error && error.code !== "23505") throw offline({ status }) ? new Error(OFFLINE) : new Error(error.message);
+  };
+  /**
+   * Pushes one meeting's whole bundle as its own push, the way a laptop's pass does, then lets search catch up.
+   * A push needs the owner's session but no browser token, as a laptop's does, so a 403 here is never a rejected token.
+   */
+  pushMeeting = async (device: string, meeting: string, body: unknown) => {
+    const fail = (error: { message: string }, status: number) => new Error(offline({ status }) ? OFFLINE : error.message);
+    const push = await this.sb.rpc("yogurt_start_push", { device_id: device });
+    if (push.error) throw fail(push.error, push.status);
+    const insert = await this.sb.from("yogurt_versions").insert({ meeting_id: meeting, push_id: push.data, device_id: device, body });
+    if (insert.error?.code === "PT409") throw new Adopted(insert.error.message);
+    if (insert.error) throw fail(insert.error, insert.status);
+    // A failure here only delays search to the next push.
+    await this.sb.rpc("yogurt_search_catch_up", { max_ms: 2000 }).then(undefined, () => undefined);
+  };
+  /** The signed-in session's access token. getSession refreshes an expired one. */
+  jwt = async () => (await this.sb.auth.getSession()).data.session?.access_token ?? "";
+  /** A Deepgram token and the socket address to use it on, from `cloud/api/stt-token.ts`. */
+  sttGrant = async (token: string): Promise<{ token: string; url: string }> => {
+    let res: Response;
+    try {
+      res = await fetch("/api/stt-token", { method: "POST", headers: { authorization: `Bearer ${await this.jwt()}`, "content-type": "application/json" }, body: JSON.stringify({ token }) });
+    } catch {
+      throw new Error(OFFLINE);
+    }
+    const body = await res.json().catch(() => ({}));
+    if (body.code === "28000") throw new TokenRejected(body.message);
+    if (!res.ok) throw new Error(body.message ?? `Recording answered ${res.status}.`);
+    return body;
+  };
   /** One device's labels, sorted by name, live or as of a push, from its unarchived meetings or, with `archived`, its archived ones. */
   labels = (token: string, device: string, atPush: number | null, archived: boolean) =>
     this.rpc<Label[]>("yogurt_labels", { token, only_device: device, at_push: atPush, ...(archived && { only_archived: true }) });

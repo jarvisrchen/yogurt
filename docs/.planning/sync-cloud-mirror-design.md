@@ -16,7 +16,7 @@ No central yogurt server or database exists.
 - Yogurt Cloud is the user's own Vercel project and Supabase project. Yogurt ships the webapp, a SQL file, and a setup guide, and hosts nothing.
 - Meetings are stored readable in the user's Supabase. There is no client-side encryption.
 - Reading requires the Cloud login and a passcode, and Postgres enforces both.
-- Sync is one-way. A laptop pushes and never reads meeting content back. The webapp is read-only.
+- Sync is one-way, with one exception. A laptop pushes, and reads meeting content back only to adopt an ended meeting recorded on a phone (SYNC-32, see [mobile-recording-design.md](mobile-recording-design.md)). The webapp is read-only.
 - Every push is kept. The cloud is an append-only history, so any earlier push can be viewed again, and a client cannot change what a push older than one hour shows.
 - Every meeting is pushed. There is no per-meeting exclusion.
 - One owner per Yogurt Cloud. The schema keys every row by `user_id`, so a hosted multi-user cloud stays possible later.
@@ -210,7 +210,9 @@ It first offers one last push that marks every meeting from this device deleted,
 The Push meetings button in Settings runs one pass.
 An Auto-push setting (off, 15m, 1h, 1d) runs the same pass from a timer that wakes every minute while Yogurt is running.
 It starts Off on every new connection.
-It pushes when the interval has passed since the last successful push, and a wake with nothing pending only stamps the time without touching the network.
+It pushes when the interval has passed since the last successful push.
+A due wake with nothing pending still makes one `yogurt_phone_meetings` call, since only the Cloud knows of a phone meeting to adopt, and it runs the rest of the pass only when it adopted one.
+It reuses the last session while that has five minutes left, so it refreshes the token and rewrites `keys.json` about once an hour, while a manual or non-idle pass always refreshes so a revoked session shows at once, and a failure to reach the Cloud on such a wake records the Mac as up to date rather than as a failed push.
 It retries a failure after 5 minutes.
 It stops after `session_expired`, `device_removed`, `not_owner`, or `passcode_not_set` until a sign-in, a connect, or a manual push clears the error.
 Every pass holds a lock file beside `keys.json`, so two yogurt processes on one data dir never rotate the same refresh token at once.
@@ -277,6 +279,7 @@ The functions, all `security definer` with a fixed `search_path`, and each check
 | `yogurt_history(token)` | webapp | each push that has a version, newest first, with its device id and name, time, and changed and deleted counts |
 | `yogurt_device_list(token)` | an older webapp still open in a tab | device ids, names, and creation times |
 | `yogurt_device_info(token)` | webapp | device ids, names, creation times, and colors, in the order set by `yogurt_reorder_devices` and then by creation. A device without a color gets blue, honey, or slate by creation order. |
+| `yogurt_phone_devices(token)` | webapp | the ids of the owner's `kind = 'phone'` devices, whose meetings are the only ones the webapp enhances and pushes |
 | `yogurt_recolor_device(token, device_id, new_color)` | webapp | sets a device's color, a label palette name or `#rrggbb` |
 | `yogurt_reorder_devices(token, device_ids)` | webapp | sets the device order. A device left out goes after the listed ones. |
 | `yogurt_labels(token, only_device, at_push, only_archived)` | webapp | that device's labels, `id`, `name`, and `color`, from the latest version at or before `at_push`, or now, of each of its live, unarchived meetings, or with `only_archived` its archived ones, sorted by name with case ignored. A label takes its name and color from the newest push that has it. |
@@ -311,7 +314,7 @@ A row that fails is counted and passed over, so every call makes progress and a 
 
 After every pass, including one that failed after some of its batches committed, the laptop calls `yogurt_search_catch_up` while it returns more than 0, at most 10 times.
 A pass with nothing to push still calls it once, which costs one scan of the latest versions, so a push heals an index a deploy left behind.
-The timer's idle wake makes no network call, so it does not call it.
+The timer's idle wake stops after the adopt check, so it does not call it.
 A failure there is logged as a warning and never changes the push result or its error state.
 A new push becomes searchable once the laptop finishes that catch-up, usually seconds later.
 The build applies the schema in one transaction, then calls the private function as `postgres` in 2 second calls, each its own transaction, until it returns 0 or 100 calls have passed, and laptops finish whatever is left.

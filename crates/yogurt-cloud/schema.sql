@@ -48,6 +48,9 @@ alter table public.yogurt_devices
   add column if not exists color text,
   add column if not exists position int;
 
+-- What pushes as the device: a Mac, or a phone recording in the webapp.
+alter table public.yogurt_devices add column if not exists kind text not null default 'mac' check (kind in ('mac', 'phone'));
+
 -- Ids are global across devices, so "as of push N" covers every device at that moment.
 create table if not exists public.yogurt_pushes (
   id        bigint generated always as identity primary key,
@@ -533,6 +536,72 @@ begin
     where l.body is not null order by l.meeting_id;
 end $$;
 
+-- The latest version of each ended, live meeting on the owner's phones, which a Mac adopts before its push.
+create or replace function public.yogurt_phone_meetings()
+returns table (device_id uuid, device_name text, meeting_id text, push_id bigint, body jsonb)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  return query
+    select l.device_id, d.name, l.meeting_id, l.push_id, l.body from (
+      select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body
+      from public.yogurt_versions v join public.yogurt_devices d on d.id = v.device_id
+      where d.kind = 'phone' and d.user_id = auth.uid() and v.user_id = auth.uid()
+      order by v.device_id, v.meeting_id, v.push_id desc
+    ) l join public.yogurt_devices d on d.id = l.device_id
+    where l.body -> 'meeting' ->> 'ended_at' is not null
+    order by l.device_id, l.meeting_id;
+end $$;
+
+-- Marks a phone's meeting deleted on the phone once a Mac holds a copy, and says whether this call did.
+-- It does only while push_id is still the meeting's latest version and that version has ended, so a Mac that copied an older version, or lost the race to another Mac, gets false.
+-- The lock on the phone's device row makes concurrent callers take turns, so only the first finds the version still live.
+create or replace function public.yogurt_adopt(device_id uuid, meeting_id text, push_id bigint) returns boolean
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  new_push bigint;
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform from public.yogurt_devices d where d.id = $1 and d.user_id = auth.uid() and d.kind = 'phone' for update;
+  if not found then
+    raise exception 'unknown phone' using errcode = 'PT404';
+  end if;
+  if not exists (
+    select from (
+      select v.push_id, v.body from public.yogurt_versions v
+      where v.device_id = $1 and v.meeting_id = $2 order by v.push_id desc limit 1
+    ) l where l.push_id = $3 and l.body -> 'meeting' ->> 'ended_at' is not null
+  ) then
+    return false;
+  end if;
+  insert into public.yogurt_pushes (device_id) values ($1) returning id into new_push;
+  insert into public.yogurt_versions (meeting_id, push_id, device_id, body) values ($2, new_push, $1, null);
+  return true;
+end $$;
+
+-- A phone cannot push a meeting again once a Mac adopted it, as an Enhance the webapp opened before the adoption would.
+-- The next adoption would keep the Mac's unenhanced copy and delete the phone's, so the enhance would vanish.
+-- It takes the phone's device row lock that yogurt_adopt takes, so a push and an adoption take turns.
+create or replace function yogurt_private.yogurt_refuse_adopted() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.body is null then return new; end if;
+  perform from public.yogurt_devices d where d.id = new.device_id and d.kind = 'phone' for update;
+  if found and exists (
+    select from (
+      select v.body from public.yogurt_versions v
+      where v.device_id = new.device_id and v.meeting_id = new.meeting_id order by v.push_id desc limit 1
+    ) l where l.body is null
+  ) then
+    raise exception 'A Mac took this meeting, so it now lists under that Mac.' using errcode = 'PT409';
+  end if;
+  return new;
+end $$;
+create or replace trigger yogurt_refuse_adopted before insert on public.yogurt_versions
+  for each row execute function yogurt_private.yogurt_refuse_adopted();
+
 -- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the three below goes first.
 do $$
 declare
@@ -802,6 +871,15 @@ begin
     order by d.position nulls last, d.created_at, d.id;
 end $$;
 
+-- The owner's phones, whose meetings the webapp may enhance. A Mac's adopted copy keeps the phone's stt_engine, so the device says it.
+create or replace function public.yogurt_phone_devices(token text) returns setof uuid
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  return query select d.id from public.yogurt_devices d where d.user_id = auth.uid() and d.kind = 'phone' order by d.id;
+end $$;
+
 -- Only an unlocked browser sets these, so a laptop's owner session cannot.
 create or replace function public.yogurt_recolor_device(token text, device_id uuid, new_color text) returns boolean
 language plpgsql security definer set search_path = '' as $$
@@ -854,7 +932,7 @@ revoke all on public.yogurt_owner, public.yogurt_browsers, public.yogurt_devices
   from public, anon, authenticated;
 revoke all on yogurt_private.yogurt_search_index from public, anon, authenticated;
 revoke all on sequence public.yogurt_browsers_id_seq, public.yogurt_pushes_id_seq from public, anon, authenticated;
-grant insert (id, name) on public.yogurt_devices to authenticated;
+grant insert (id, name, kind) on public.yogurt_devices to authenticated;
 grant insert (meeting_id, push_id, device_id, body) on public.yogurt_versions to authenticated;
 
 -- Execute is revoked everywhere first, so a new or dropped function is never granted by default.
@@ -880,6 +958,8 @@ grant execute on function
   public.yogurt_start_push(uuid),
   public.yogurt_rename_device(uuid, text),
   public.yogurt_device_meetings(uuid),
+  public.yogurt_phone_meetings(),
+  public.yogurt_adopt(uuid, text, bigint),
   public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
   public.yogurt_labels(text, uuid, bigint, boolean),
   public.yogurt_meeting(text, uuid, text, bigint),
@@ -889,6 +969,7 @@ grant execute on function
   public.yogurt_history(text),
   public.yogurt_device_list(text),
   public.yogurt_device_info(text),
+  public.yogurt_phone_devices(text),
   public.yogurt_recolor_device(text, uuid, text),
   public.yogurt_reorder_devices(text, uuid[])
 to authenticated;

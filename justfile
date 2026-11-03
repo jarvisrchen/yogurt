@@ -126,9 +126,37 @@ setup-quick:
 build:
     cargo build --release
 
+# Rebuild cloud/src/wasm, the Cloud webapp's build of yogurt-wasm. It is committed so Vercel needs no Rust, and CI rebuilds it and fails on any difference. Needs `rustup target add wasm32-unknown-unknown` and `cargo install wasm-bindgen-cli --version 0.2.126`.
+wasm:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Remapped paths keep the build byte-identical across machines.
+    RUSTFLAGS="--remap-path-prefix=$PWD=/yogurt --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo" \
+        cargo build -p yogurt-wasm --target wasm32-unknown-unknown --release
+    wasm-bindgen --target web --out-dir cloud/src/wasm target/wasm32-unknown-unknown/release/yogurt_wasm.wasm
+
 # Build the web bundle without running it.
 build-web:
     pnpm --dir web build
+
+# Build the Android app's debug APK and run its unit tests (android/app/build/outputs/apk/debug/app-debug.apk). See android/README.md.
+android:
+    cd android && JAVA_HOME="$(/usr/libexec/java_home -v 17)" ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew assembleDebug testDebugUnitTest
+
+# Build the signed release APK with the key in ~/.yogurt/android-release.jks and its password from Keychain.
+android-release:
+    cd android && JAVA_HOME="$(/usr/libexec/java_home -v 17)" ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" \
+        YOGURT_ANDROID_KEYSTORE="$HOME/.yogurt/android-release.jks" \
+        YOGURT_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -a yogurt -s yogurt-android-keystore -w)" \
+        ./gradlew assembleRelease
+
+# Boot the `yogurt` emulator with a window and the Mac's mic as its mic, install the debug app, `adb reverse` the `just cloud-dev` ports, and open the app on http://localhost:56448.
+android-emu:
+    ./scripts/android-emu.sh
+
+# A Yogurt Cloud on this Mac to try by hand at http://localhost:56448: its own local Supabase (project yogurt-cloud-dev, ports 56440-56450, mail catcher on 56444) that the e2e stacks never reset, the schema and owner applied, and the LLM and Deepgram from .env.local. Without YOGURT_DEEPGRAM_GRANT_KEY it runs cloud/scripts/dev-deepgram-relay.mjs on 56449 with YOGURT_DEEPGRAM_API_KEY. Needs Docker and the supabase CLI.
+cloud-dev:
+    ./scripts/cloud-dev.sh
 
 # ── Quality gates ────────────────────────────────────────────────────
 

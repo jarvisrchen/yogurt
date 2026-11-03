@@ -79,6 +79,8 @@ select pg_temp.expect('42501', array[
   'select * from yogurt_browsers(''x'')',
   'select yogurt_start_push(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
+  'select * from yogurt_phone_meetings()',
+  'select yogurt_adopt(''00000000-0000-0000-0000-0000000000d1'', ''m1'', 1)',
   'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', ''evil'')',
   'select * from yogurt_library(''x'')',
   'select * from yogurt_meeting(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'')',
@@ -87,6 +89,7 @@ select pg_temp.expect('42501', array[
   'select * from yogurt_history(''x'')',
   'select * from yogurt_device_list(''x'')',
   'select * from yogurt_device_info(''x'')',
+  'select * from yogurt_phone_devices(''x'')',
   'select yogurt_recolor_device(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''blue'')',
   'select yogurt_reorder_devices(''x'', array[''00000000-0000-0000-0000-0000000000d1'']::uuid[])',
   'select * from yogurt_labels(''x'', ''00000000-0000-0000-0000-0000000000d1'')',
@@ -107,7 +110,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_browsers,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_adopt,yogurt_browsers,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_phone_devices,yogurt_phone_meetings,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -144,6 +147,13 @@ select pg_temp.eq((yogurt_status()->>'passcode_length'), '6', 'passcode length r
 
 insert into yogurt_devices (id, name) values (:d1, 'Laptop 1'), (:d2, 'Laptop 2');
 select pg_temp.expect('23502', array['insert into yogurt_devices (name) values (''x'')']);
+-- A phone registers as one, and nothing else is a kind.
+insert into yogurt_devices (id, name, kind) values ('00000000-0000-0000-0000-0000000000f1', 'Phone', 'phone');
+select pg_temp.expect('23514', array['insert into yogurt_devices (id, name, kind) values (gen_random_uuid(), ''x'', ''tablet'')']);
+reset role;
+select pg_temp.eq((select string_agg(name || ':' || kind, ',' order by name) from yogurt_devices), 'Laptop 1:mac,Laptop 2:mac,Phone:phone', 'a laptop is a mac by default');
+delete from yogurt_devices where kind = 'phone';
+set role authenticated;
 
 select yogurt_start_push(:d1) as p1 \gset
 select pg_temp.eq(:p1::text, '1', 'first push id');
@@ -223,6 +233,7 @@ select pg_temp.expect('28000', array[
   'select * from yogurt_history(''no such token'')',
   'select * from yogurt_device_list(''no such token'')',
   'select * from yogurt_device_info(''no such token'')',
+  'select * from yogurt_phone_devices(''no such token'')',
   'select yogurt_recolor_device(''no such token'', ''00000000-0000-0000-0000-0000000000d1'', ''blue'')',
   'select yogurt_reorder_devices(null, array[]::uuid[])',
   'select * from yogurt_labels(''no such token'', ''00000000-0000-0000-0000-0000000000d1'')',
@@ -872,6 +883,73 @@ delete from yogurt_versions where device_id = :d3;
 delete from yogurt_pushes where device_id = :d3;
 delete from yogurt_devices where id = :d3;
 select pg_temp.eq((select count(*)::text from yogurt_private.yogurt_search_index where device_id in (:d3, :d4)), '0', 'no text is left once every device is purged');
+
+-- A Mac adopts the ended meetings recorded on a phone.
+\set f1 '''00000000-0000-0000-0000-0000000000f1'''
+\set f2 '''00000000-0000-0000-0000-0000000000f2'''
+create or replace function pg_temp.pm(title text, ended bigint) returns jsonb language sql as $$
+  select jsonb_build_object('v', 1, 'meeting', jsonb_build_object('title', title, 'started_at', 1000, 'ended_at', ended, 'notes_md', '', 'transcript_json', '[]'))
+$$;
+create or replace function pg_temp.phones() returns text language sql as $$
+  select coalesce(string_agg(device_name || ':' || meeting_id || ':' || (body -> 'meeting' ->> 'title'), ',' order by ord), '')
+  from (select p.*, row_number() over () ord from yogurt_phone_meetings() p) x
+$$;
+grant execute on function pg_temp.pm(text, bigint), pg_temp.phones() to public;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into yogurt_devices (id, name, kind) values (:f1, 'Pixel', 'phone'), (:f2, 'Old phone', 'phone');
+select yogurt_start_push(:f1) as push_p1 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('p1', :push_p1, :f1, pg_temp.pm('Recording', null)),
+  ('p2', :push_p1, :f1, pg_temp.pm('Still recording', null)),
+  ('p3', :push_p1, :f1, pg_temp.pm('Ended then deleted', 2000));
+select yogurt_start_push(:f1) as push_p2 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('p1', :push_p2, :f1, pg_temp.pm('Ended', 2000)),
+  ('p2', :push_p2, :f1, pg_temp.pm('Still recording', null)),
+  ('p3', :push_p2, :f1, null);
+select yogurt_start_push(:f2) as push_p3 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p4', :push_p3, :f2, pg_temp.pm('Old', 3000));
+select yogurt_start_push(:d5) as push_p4 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p5', :push_p4, :d5, pg_temp.pm('On a Mac', 4000));
+select pg_temp.eq(pg_temp.phones(), 'Pixel:p1:Ended,Old phone:p4:Old',
+  'the phone list holds the latest version of each ended, live phone meeting, and nothing from a Mac');
+select pg_temp.eq((select push_id::text from yogurt_phone_meetings() where meeting_id = 'p1'), :'push_p2', 'with the push of that version');
+select pg_temp.eq((select string_agg(id::text, ',') from yogurt_phone_devices(:'stok') id), :f1 || ',' || :f2, 'the phone devices, and no Mac');
+
+select pg_temp.eq(yogurt_adopt(:f1, 'p1', :push_p1)::text, 'false', 'a stale version is not adopted');
+select pg_temp.eq(yogurt_adopt(:f1, 'p2', :push_p2)::text || yogurt_adopt(:f1, 'p3', :push_p2)::text || yogurt_adopt(:f1, 'nope', :push_p2)::text,
+  'falsefalsefalse', 'nor is an unfinished, deleted, or unknown meeting');
+select pg_temp.eq(yogurt_adopt(:f1, 'p1', :push_p2)::text, 'true', 'the latest version is adopted');
+select pg_temp.eq(yogurt_adopt(:f1, 'p1', :push_p2)::text, 'false', 'once');
+select pg_temp.eq(pg_temp.phones(), 'Old phone:p4:Old', 'an adopted meeting leaves the list');
+select pg_temp.expect('PT404', array[
+  'select yogurt_adopt(''00000000-0000-0000-0000-0000000000d5'', ''p5'', 1)',
+  'select yogurt_adopt(gen_random_uuid(), ''p1'', 1)'
+]);
+-- The phone cannot push an adopted meeting again, as an Enhance opened before the adoption would, since the next adoption would keep the Mac's copy and delete this one.
+select yogurt_start_push(:f1) as push_p5 \gset
+select pg_temp.expect('PT409', array[
+  format('insert into yogurt_versions (meeting_id, push_id, device_id, body) values (%L, %s, %L, pg_temp.pm(%L, 2000))', 'p1', :push_p5, :f1, 'Enhanced')
+]);
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p2', :push_p5, :f1, pg_temp.pm('Still recording', null));
+select yogurt_start_push(:d5) as push_p6 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p5', :push_p6, :d5, null);
+select yogurt_start_push(:d5) as push_p7 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p5', :push_p7, :d5, pg_temp.pm('A Mac pushes a meeting again', 4000));
+reset role;
+select pg_temp.eq((select string_agg(meeting_id || ':' || coalesce(body -> 'meeting' ->> 'title', 'deleted'), ',' order by meeting_id)
+  from yogurt_versions where push_id in (:push_p5, :push_p7)),
+  'p2:Still recording,p5:A Mac pushes a meeting again', 'a live phone meeting and a Mac''s meetings still push');
+select pg_temp.eq((select (body is null)::text || ':' || (p.device_id = :f1)::text || ':' || (p.id > :push_p4)::text
+  from yogurt_versions v join yogurt_pushes p on p.id = v.push_id where v.device_id = :f1 and v.meeting_id = 'p1' order by v.push_id desc limit 1),
+  'true:true:true', 'adopting writes a deletion marker in a new push of the phone');
+update yogurt_devices set user_id = :n where id = :f2;
+set role authenticated;
+select pg_temp.eq(pg_temp.phones(), '', 'another user''s phone is not listed');
+select pg_temp.expect('PT404', array['select yogurt_adopt(''00000000-0000-0000-0000-0000000000f2'', ''p4'', 1)']);
+reset role;
+update yogurt_devices set user_id = :o where id = :f2;
 
 \o
 \echo schema_test: ok

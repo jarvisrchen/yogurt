@@ -1,5 +1,6 @@
+import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { scrollToTranscriptTime } from "./TranscriptLine";
+import { TranscriptLine, scrollToTranscriptTime } from "./TranscriptLine";
 
 function lines(...secs: (number | string)[]) {
   const root = document.createElement("div");
@@ -25,5 +26,20 @@ describe("scrollToTranscriptTime", () => {
 
   it("returns false when there are no lines", () => {
     expect(scrollToTranscriptTime(document.createElement("div"), 5)).toBe(false);
+  });
+});
+
+describe("TranscriptLine", () => {
+  const ev = { ts_ms: 61_000, channel: "system" as const, text: "Ship it Friday.", is_final: true };
+
+  it("names the speaker on a two-channel recording", () => {
+    const { container } = render(<TranscriptLine ev={ev} />);
+    expect(container.textContent).toBe("Them00:01:01Ship it Friday.");
+  });
+
+  it("names nobody on a one-mic recording and keeps the words in ink", () => {
+    const { container } = render(<TranscriptLine ev={ev} single />);
+    expect(container.textContent).toBe("00:01:01Ship it Friday.");
+    expect((container.querySelector("span:last-child") as HTMLElement).style.color).toBe("var(--color-ink)");
   });
 });

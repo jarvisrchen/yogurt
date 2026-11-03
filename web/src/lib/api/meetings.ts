@@ -21,6 +21,8 @@ export interface Label {
 /** Provenance of an imported meeting. `owner.is_user` is set by `GET /api/meetings/{id}` only. */
 export interface MeetingSourceJson {
   owner?: { name?: string | null; email?: string | null; is_user?: boolean };
+  /** The name of the phone a meeting adopted from Yogurt Cloud was recorded on. */
+  device?: string;
   web_url?: string;
   updated_at?: string;
   imported_at?: string;
@@ -43,7 +45,7 @@ export interface Meeting {
   llm_model: string | null;
   /** Note format that shaped `enriched_md` (e.g. "standup"); `null` until enhanced. */
   template: string | null;
-  /** E.g. "granola". Absent for a meeting recorded in yogurt. */
+  /** "granola" or "phone". Absent for a meeting recorded on this Mac. */
   source?: string;
   source_id?: string;
   source_json?: MeetingSourceJson;

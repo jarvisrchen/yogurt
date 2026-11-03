@@ -78,8 +78,70 @@ jobs:
             yogurt-${{ matrix.target }}.tar.gz
             yogurt-${{ matrix.target }}.tar.gz.sha256
 
+  # The Android companion app. Every APK is signed with the same key, since Android refuses an update signed with another.
+  # Secrets (docs/RELEASING.md): YOGURT_ANDROID_KEYSTORE_BASE64 is the base64 of ~/.yogurt/android-release.jks,
+  # YOGURT_ANDROID_KEYSTORE_PASSWORD its Keychain password. Without both the job skips the APK and the release goes out without it.
+  # The runner image ships the Android SDK at $ANDROID_HOME.
+  android:
+    runs-on: macos-26
+    steps:
+      - name: Check the signing secrets
+        id: secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.YOGURT_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.YOGURT_ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No Android signing secrets (docs/RELEASING.md), so this release has no APK"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.secrets.outputs.signed == 'true'
+
+      - uses: actions/setup-java@v5
+        if: steps.secrets.outputs.signed == 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The tag's version, or the workspace's on a dry run, which Gradle reads itself.
+      - name: Build the signed APK
+        if: steps.secrets.outputs.signed == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.YOGURT_ANDROID_KEYSTORE_BASE64 }}
+          YOGURT_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.YOGURT_ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          export YOGURT_ANDROID_KEYSTORE="$RUNNER_TEMP/android-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$YOGURT_ANDROID_KEYSTORE"
+          version=()
+          if [ "${{ github.event_name }}" = "push" ]; then version=("-PyogurtVersion=${GITHUB_REF#refs/tags/v}"); fi
+          ./android/gradlew -p android "${version[@]}" assembleRelease testReleaseUnitTest
+          rm "$YOGURT_ANDROID_KEYSTORE"
+
+      - name: Name the APK
+        if: steps.secrets.outputs.signed == 'true'
+        run: |
+          OUT=android/app/build/outputs/apk/release
+          VERSION=$(jq -r '.elements[0].versionName' "$OUT/output-metadata.json")
+          if [ "${{ github.event_name }}" = "push" ] && [ "$VERSION" != "${GITHUB_REF#refs/tags/v}" ]; then
+            echo "::error::The APK is $VERSION but the tag is ${GITHUB_REF#refs/tags/v}"
+            exit 1
+          fi
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify "$OUT/app-release.apk"
+          mkdir dist
+          cp "$OUT/app-release.apk" "dist/yogurt-android-$VERSION.apk"
+          (cd dist && shasum -a 256 "yogurt-android-$VERSION.apk" > "yogurt-android-$VERSION.apk.sha256")
+
+      - uses: actions/upload-artifact@v7
+        if: steps.secrets.outputs.signed == 'true'
+        with:
+          name: yogurt-android
+          path: dist/*
+
   release:
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,15 +172,26 @@ jobs:
           echo "DRY RUN -- would upload the following to a release tagged ${{ steps.version.outputs.version }}:"
           ls -la dist/
 
+      # The APK is there only when the android job had its signing secrets, so it is listed only then, and a missing tarball still fails the upload.
+      - name: List the release files
+        id: files
+        run: |
+          {
+            echo "list<<EOF"
+            echo "dist/*.tar.gz"
+            if compgen -G "dist/*.apk" >/dev/null; then echo "dist/*.apk"; fi
+            echo "dist/SHA256SUMS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         if: github.event_name == 'push' || inputs.dry-run == false
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: |
-            dist/*.tar.gz
-            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          files: ${{ steps.files.outputs.list }}
 
   tap:
     needs: release

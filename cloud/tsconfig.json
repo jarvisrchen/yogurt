@@ -21,7 +21,8 @@
       "react": ["./node_modules/@types/react"],
       "react/*": ["./node_modules/@types/react/*"],
       "markdown-it": ["./node_modules/@types/markdown-it"],
-      "dompurify": ["./node_modules/dompurify"]
+      "dompurify": ["./node_modules/dompurify"],
+      "@tiptap/*": ["./node_modules/@tiptap/*"]
     }
   },
   "include": ["src", "api", "vite.config.ts", "e2e", "playwright.config.ts"]

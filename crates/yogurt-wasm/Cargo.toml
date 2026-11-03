@@ -1,0 +1,18 @@
+[package]
+name = "yogurt-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Mac's enhance prompt and merge, compiled to WASM for the Cloud webapp."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pinned exactly: `just wasm` runs wasm-bindgen-cli of this same version.
+wasm-bindgen = "=0.2.126"
+serde_json = { workspace = true }
+yogurt-prompts = { path = "../yogurt-prompts" }
+yogurt-notes = { path = "../yogurt-notes" }

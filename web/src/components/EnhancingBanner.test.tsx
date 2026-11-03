@@ -31,4 +31,12 @@ describe("EnhancingBanner", () => {
     expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId("enhancing-banner")).toBeNull();
   });
+
+  it("puts the bar on a second row when stacked, keeping the copy and count on the first", () => {
+    render(<EnhancingBanner visible={true} chars={12} stacked />);
+    const banner = screen.getByTestId("enhancing-banner");
+    expect(banner).toHaveStyle({ flexDirection: "column" });
+    expect(banner.firstElementChild).toHaveTextContent("Weaving your notes into the transcript…12 chars");
+    expect(banner.lastElementChild?.querySelector(".enhancing-bar-fill")).not.toBeNull();
+  });
 });

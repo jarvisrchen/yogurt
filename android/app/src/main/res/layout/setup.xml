@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The first launch screen, drawn in the webapp's AuthShell phone layout (docs/.lavish/mobile-recording-mocks.html, state 10). -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="40dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:drawablePadding="8dp"
+            android:fontFamily="@font/manrope_bold"
+            android:gravity="center_vertical"
+            android:includeFontPadding="false"
+            android:letterSpacing="-0.01"
+            android:text="@string/wordmark"
+            android:textColor="@color/ink"
+            android:textSize="20sp"
+            android:drawableStart="@drawable/logo" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/manrope_extrabold"
+                android:letterSpacing="-0.01"
+                android:text="@string/connect_title"
+                android:textColor="@color/ink"
+                android:textSize="22sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:fontFamily="@font/manrope_regular"
+                android:text="@string/connect_body"
+                android:textColor="@color/mut"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:fontFamily="@font/jetbrains_mono"
+                android:labelFor="@+id/address"
+                android:letterSpacing="0.08"
+                android:text="@string/cloud_address"
+                android:textAllCaps="true"
+                android:textColor="@color/mut"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:autofillHints="url"
+                android:background="@drawable/field"
+                android:fontFamily="@font/manrope_regular"
+                android:hint="@string/cloud_hint"
+                android:imeOptions="actionGo"
+                android:inputType="textUri"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="10dp"
+                android:singleLine="true"
+                tools:ignore="LabelFor"
+                android:textColor="@color/ink"
+                android:textColorHint="@color/grey"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/error"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:fontFamily="@font/manrope_regular"
+                android:textColor="@color/straw"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/go"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/button"
+                android:fontFamily="@font/manrope_semibold"
+                android:minHeight="0dp"
+                android:paddingVertical="14dp"
+                android:stateListAnimator="@null"
+                android:text="@string/continue_"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

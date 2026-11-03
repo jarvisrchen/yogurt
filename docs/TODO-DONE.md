@@ -1581,6 +1581,41 @@ New closed items go at the bottom.
   Landed in the DX-24 PR (2026-11-01). The test now expects 2 to 6 logged requests, and the `Exhausted` result still proves the client made all six attempts.
   </details>
 
+- [x] **MOB-1** Record a meeting on the phone in the Cloud webapp with a live Deepgram transcript, saved as a phone device ([design](.planning/mobile-recording-design.md#tickets))
+
+  Landed in the MOB-1 PR (2026-11-02). The Library's Record button opens `#/record`, which records the room through `getUserMedia`, downsamples to 16 kHz linear16 in an AudioWorklet, and streams to Deepgram `nova-3` with the Mac's query parameters on a token from `cloud/api/stt-token.ts`.
+  The granted token goes in the `bearer` subprotocol, as Deepgram's own JS SDK (v4.11.3) sends it, since Deepgram's docs show only the `token` form for an API key.
+  A dropped socket reconnects with a fresh token and replays up to 5 minutes of held audio in order, and past that the oldest audio drops and the transcript shows a gap marker.
+  The phone registers as a `kind = 'phone'` device under a name typed on its first recording, writes the meeting to IndexedDB on every change, and pushes the whole Mac-shaped bundle at the start, every 30 seconds, and at End.
+  A page closed mid-meeting shows a Resume or End card at the top of the Library.
+  `NativeRecorder` is the page side of the Android bridge for MOB-5, and the meeting view drops the speaker label on a phone's transcript.
+  Covered by `cloud/e2e/record.spec.ts` against a fake Deepgram with Chrome's fake mic, at 412 px and desktop, light and dark.
+
+- [x] **MOB-2** Take notes during a phone recording and enhance them at End with the Mac's prompt and merge compiled to WASM ([design](.planning/mobile-recording-design.md#notes-and-enhance))
+
+  Landed in the mobile-build integration (2026-11-02). `crates/yogurt-wasm` builds the Mac's enhance prompt and merge for the webapp into the committed `cloud/src/wasm`, which `just wasm` rebuilds and CI checks for drift, and `cloud/api/enhance.ts` streams the reply from `YOGURT_LLM_*`.
+  End stops the recorder, pushes the last of the transcript with `ended_at` still null, opens the meeting view under EnhancingBanner while the enhance streams, and then pushes once with `ended_at`, `enriched_md`, `llm_model`, and `template`.
+  A failed or too short enhance is pushed ended without them, and the meeting view offers Enhance, and a tab that dies mid-enhance keeps the meeting in IndexedDB for the Resume card's End.
+  `isPhoneMeeting` lives once in `cloud/src/lib/phone.ts` and every push goes through `Api.pushMeeting`, which never maps a 403 to a rejected browser token.
+  Covered by `cloud/e2e/enhance.spec.ts` and `cloud/e2e/record.spec.ts`, and by hand in desktop Chrome and the emulator against `just cloud-dev` with real Deepgram and MiniMax.
+
+- [x] **MOB-5** Android app that wraps the Cloud webapp and records in a background foreground service, with a one-tap in-app update from GitHub releases ([design](.planning/mobile-recording-design.md#the-android-app))
+
+  Landed in the mobile-build integration (2026-11-02). `android/` is a Kotlin app whose WebView shows the Cloud and whose foreground service records with the Deepgram socket and the 5 minute buffer, talking to the page through `window.YogurtAndroid`.
+  `stop()` returns at once and the last lines and a `stopped` state follow as events, which `NativeRecorder.stop()` waits for, and a page that reloads mid-recording takes the recording back up.
+  The release builds the APK only when both signing secrets exist, under the release's own version as `yogurt-android-<version>.apk`, and releases without it otherwise.
+  `just android` builds and unit tests it, `node android/tools/e2e.mjs` runs the emulator end to end against a fake Cloud, and `just android-emu` with `just cloud-dev` runs it against a local Cloud.
+
+- [x] **SYNC-32** The Mac adopts ended meetings recorded on a phone into SQLite during its push pass, and marks the phone's copy deleted so each shows once ([design](.planning/mobile-recording-design.md#the-mac-adopts-phone-meetings))
+
+  Landed in the mobile-build integration (2026-11-02). Before each push pass the Mac lists ended phone meetings with `yogurt_phone_meetings`, imports each under a new UUIDv7 with the phone's ULID as `source_id`, and claims it with `yogurt_adopt(device_id, meeting_id, push_id)`, so it shows once, under the Mac, as "Recorded on <phone>".
+  A due timer wake always makes that one listing call, since only the Cloud knows of a phone meeting, and runs the rest of the pass only when it adopted one or something local is pending.
+  Covered by the `api::cloud` and `push` unit tests, `just test-cloud`, `just test-cloud-e2e`, and a scratch yogurt connected to `just cloud-dev` that adopted four phone meetings on its first timer wake.
+
+- [x] **MOB-3** Chat about the meeting while recording on the phone ([design](.planning/mobile-recording-design.md#live-chat))
+
+  The record screen's Ask pill pushes the open meeting before each question, so the chat answers from the transcript up to that moment.
+
 - [x] **LLM-13** Enhanced notes put a space before a period when the model writes its transcript link ahead of it, and a shorthand note such as `pro tier $18?` is dumped at the end instead of attributed to the bullet that expands it
 
   <details>
@@ -1603,6 +1638,8 @@ New closed items go at the bottom.
   A note now paints only the first AI bullet that carries it, so the wider window cannot also paint a summary bullet that repeats its words.
 
   Landed in the LLM-13 PR (2026-11-02).
+  </details>
+
 - [x] **UI-28** Show the app version in Settings
   <details>
   <summary>Details</summary>

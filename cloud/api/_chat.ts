@@ -3,19 +3,18 @@
 // The answer streams back as NDJSON `{"delta":"..."}` lines, after a `{"sources":[...]}` line for a cross-meeting answer to cite as [n].
 // A failure after that point arrives as a final delta, as the desktop's chat does.
 import { type Hit, dateIn, dateRange, extractTerms, knownZone, libraryMessages, startOfDay } from "./_library.js";
+import { type SupabaseEnv, bearer, caller, json, trimmed } from "./_auth.js";
 import { CHAT_SYSTEM } from "./_prompts.js";
 import { ThinkStripper } from "./_think.js";
 
-export interface Env {
-  SUPABASE_URL?: string;
-  SUPABASE_PUBLISHABLE_KEY?: string;
+export interface Env extends SupabaseEnv {
   YOGURT_LLM_BASE_URL?: string;
   YOGURT_LLM_MODEL?: string;
   YOGURT_LLM_API_KEY?: string;
 }
 
 export type Turn = { role: "user" | "assistant"; content: string };
-type Message = { role: "system" | Turn["role"]; content: string };
+export type Message = { role: "system" | Turn["role"]; content: string };
 
 export type ChatRequest = { token: string; messages: Turn[] } & ({ device_id: string; meeting_id: string } | { tz: string });
 
@@ -24,7 +23,6 @@ const MAX_QUESTION = 4 * 1024;
 export const NOT_SET_UP = "Chat isn't set up on this Cloud.";
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
-const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const text = (v: unknown): v is string => typeof v === "string" && v !== "";
 
 /** The request, or why it is refused. */
@@ -78,8 +76,7 @@ const LLM_TIMEOUT_MS = 50_000;
 const UNREACHABLE = "Chat couldn't reach your Cloud. Try again.";
 
 export async function handleChat(req: Request, rawEnv: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
-  // A value pasted with a stray space or newline would otherwise break a URL, or slip past the key scrub.
-  const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, v?.trim()])) as Env;
+  const env = trimmed(rawEnv);
   try {
     return await respond(req, env, fetchImpl);
   } catch {
@@ -89,28 +86,17 @@ export async function handleChat(req: Request, rawEnv: Env, fetchImpl: typeof fe
 
 async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise<Response> {
   if (req.method !== "POST") return json(405, { message: "Use POST." });
-  const jwt = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
+  const jwt = bearer(req);
   if (!jwt) return json(401, { message: "Sign in again." });
   const body = parseRequest(await req.text());
   if (typeof body === "string") return json(400, { message: body });
-  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return json(500, { message: "This Cloud has no Supabase settings." });
   // Stop reading and generating, on the owner's key, once nobody is waiting.
   const gone = new AbortController();
   if (req.signal?.aborted) gone.abort();
   req.signal?.addEventListener("abort", () => gone.abort());
-
-  // PostgREST's own status and code pass through, so the webapp treats a rejected token here as it does on every other read.
-  const rpc = async <T>(fn: string, args: object): Promise<T[] | Response> => {
-    const read = await fetchImpl(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-      method: "POST",
-      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY!, authorization: `Bearer ${jwt}`, "content-type": "application/json" },
-      body: JSON.stringify(args),
-      signal: gone.signal,
-    });
-    if (read.ok) return read.json();
-    const e = await read.json().catch(() => ({}));
-    return json(read.status, { code: e.code, message: e.message ?? `Your Cloud answered ${read.status}.` });
-  };
+  // The reads themselves check the owner and the browser token.
+  const who = caller(env, jwt, fetchImpl, { signal: gone.signal });
+  if (who instanceof Response) return who;
 
   let messages: Message[];
   let sources: Omit<Hit, "notes" | "excerpt">[] | undefined;
@@ -118,7 +104,7 @@ async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise
     const question = body.messages.at(-1)!.content;
     const today = dateIn(Date.now(), body.tz);
     const range = dateRange(question, today);
-    const hits = await rpc<Hit>("yogurt_retrieve", {
+    const hits = await who.rpc<Hit[]>("yogurt_retrieve", {
       token: body.token,
       terms: extractTerms(question),
       from_ms: range && startOfDay(range[0], body.tz),
@@ -128,7 +114,7 @@ async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise
     sources = hits.map(({ device_id, meeting_id, title, started_at }) => ({ device_id, meeting_id, title, started_at }));
     messages = libraryMessages(today, body.tz, hits, body.messages);
   } else {
-    const rows = await rpc<{ body: { meeting: { transcript_json: string } } | null }>("yogurt_meeting", { token: body.token, device_id: body.device_id, meeting_id: body.meeting_id, at_push: null });
+    const rows = await who.rpc<{ body: { meeting: { transcript_json: string } } | null }[]>("yogurt_meeting", { token: body.token, device_id: body.device_id, meeting_id: body.meeting_id, at_push: null });
     if (rows instanceof Response) return rows;
     const meeting = rows[0]?.body?.meeting;
     if (!meeting) return json(404, { message: "This meeting is no longer in your Cloud." });
@@ -158,8 +144,24 @@ async function respond(req: Request, env: Env, fetchImpl: typeof fetch): Promise
   );
 }
 
+/** Providers quote the key back in error bodies, and a fetch error can quote a base URL that carries credentials. */
+export const scrubber = (key: string) => (s: string) =>
+  (key.length < 4 ? s : s.replaceAll(key, "[key redacted]")).replace(/\/\/[^/\s@]+@/g, "//[credentials redacted]@");
+
+/** The streamed completion request yogurt-llm sends. */
+export function openCompletion(messages: Message[], llm: { base: string; model: string; key: string }, fetchImpl: typeof fetch, signal: AbortSignal): Promise<Response> {
+  // MiniMax spends minutes on hidden reasoning unless thinking is disabled, and splits any it does into another field.
+  const minimax = llm.model.toLowerCase().startsWith("minimax-");
+  return fetchImpl(`${llm.base.replace(/\/+$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${llm.key}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: llm.model, messages, stream: true, ...(minimax && { reasoning_split: true, thinking: { type: "disabled" } }) }),
+    signal,
+  });
+}
+
 /** The visible text of a streamed delta. Some providers send content as a list of parts, of which only the text ones show. */
-function deltaText(content: unknown): string {
+export function deltaText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((p) => (p?.type === "text" && typeof p.text === "string" ? p.text : "")).join("");
@@ -172,18 +174,10 @@ async function* answer(messages: Message[], env: Env, fetchImpl: typeof fetch, g
     yield NOT_SET_UP;
     return;
   }
-  // As in yogurt-llm: MiniMax spends minutes on hidden reasoning unless thinking is disabled, and splits any it does into another field.
-  const minimax = model.toLowerCase().startsWith("minimax-");
-  // Providers quote the key back in error bodies, and a fetch error can quote a base URL that carries credentials.
-  const scrub = (s: string) => (key.length < 4 ? s : s.replaceAll(key, "[key redacted]")).replace(/\/\/[^/\s@]+@/g, "//[credentials redacted]@");
+  const scrub = scrubber(key);
   const timeout = AbortSignal.timeout(LLM_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(`${base.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: true, ...(minimax && { reasoning_split: true, thinking: { type: "disabled" } }) }),
-      signal: AbortSignal.any([gone, timeout]),
-    });
+    const res = await openCompletion(messages, { base, model, key }, fetchImpl, AbortSignal.any([gone, timeout]));
     if (!res.ok || !res.body) {
       yield `[stream error: LLM stream open failed: ${res.status} - ${scrub(await res.text()).slice(0, 500)}]`;
       return;

@@ -14,8 +14,10 @@ const MAX_BODY = 60 * 1024;
 /**
  * One turn of `POST /api/chat` (`cloud/api/_chat.ts`), calling `onSources` with the meetings a cross-meeting answer may cite, then `onDelta` per streamed chunk.
  * A source's id is `<device_id>/<meeting_id>`, the key the library opens a meeting by.
+ * `before` runs first, and a failure there stops the question from being sent.
  */
-export async function streamChat(api: Api, token: string, scope: ChatScope, turns: Turn[], onSources: (sources: ChatSource[]) => void, onDelta: (delta: string) => void, signal: AbortSignal) {
+export async function streamChat(api: Api, token: string, scope: ChatScope, turns: Turn[], onSources: (sources: ChatSource[]) => void, onDelta: (delta: string) => void, signal: AbortSignal, before?: () => Promise<void>) {
+  await before?.();
   // The oldest exchanges go first once the conversation outgrows the cap, so a long chat keeps working.
   let body = "";
   for (let from = 0; from < turns.length; from += 2) {
@@ -71,8 +73,9 @@ export interface CloudChat {
  * Chat about `scope`, or null when there is none, as for a meeting from an earlier push.
  * The conversation lives only here, like the desktop's cross-meeting chat, and starts over when the scope changes.
  * It sits above the phone and desktop layouts, so crossing the breakpoint keeps it.
+ * `before` runs ahead of each question, as the record screen's push of the meeting so far.
  */
-export function useChat(api: Api, token: string, scope: ChatScope | null, onRejected: () => void): CloudChat | null {
+export function useChat(api: Api, token: string, scope: ChatScope | null, onRejected: () => void, before?: () => Promise<void>): CloudChat | null {
   const key = scope ? JSON.stringify(scope) : "";
   const [owner, setOwner] = useState(key);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -113,6 +116,7 @@ export function useChat(api: Api, token: string, scope: ChatScope | null, onReje
           (sources) => patch((m) => ({ ...m, sources })),
           (delta) => patch((m) => ({ ...m, content: m.content + delta })),
           ctl.signal,
+          before,
         );
       } catch (e) {
         if (ctl.signal.aborted) return;
@@ -128,7 +132,7 @@ export function useChat(api: Api, token: string, scope: ChatScope | null, onReje
     },
     // `scope` is a fresh object each render, so depend on its key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, token, key, onRejected],
+    [api, token, key, onRejected, before],
   );
 
   return scope ? { messages, streamingId, send: (q) => void send(q), open, setOpen } : null;

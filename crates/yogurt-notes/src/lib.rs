@@ -4,11 +4,15 @@
 
 pub mod ast;
 pub mod diff;
+pub mod enhance;
 pub mod render;
+pub mod sanitize;
 pub mod ts;
 pub mod weave;
 
 use serde::{Deserialize, Serialize};
+
+pub use sanitize::sanitize_enriched_md;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Source {

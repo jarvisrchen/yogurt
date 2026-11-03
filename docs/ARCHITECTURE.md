@@ -135,8 +135,9 @@ Crate responsibilities, one line each:
 | `yogurt-server` | axum router, auth, meeting registry, enhance/chat orchestration, WS fan-out, embedded assets. |
 | `yogurt-audio` | Mic (cpal) + system loopback (ScreenCaptureKit), resample to the frame contract, broadcast frames. |
 | `yogurt-stt` | Speech to text. `Stt` trait plus two impls: `DeepgramStt` (cloud WS) and `WhisperLocal` (whisper.cpp, feature `local-stt`). |
-| `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. |
-| `yogurt-prompts` | Embedded prompt templates and their render context, including the seven enhance note formats (LLM-9). |
+| `yogurt-notes` | Markdown parse, block-level diff of user notes vs LLM output plus an inline pass that finds the user's lines woven into AI bullets, render back to wire-format markdown. `enhance::finish` turns a whole enhance reply into the sanitized `enriched_md`, for the Mac and the Cloud alike. |
+| `yogurt-prompts` | Embedded prompt templates and their render context, including the seven enhance note formats (LLM-9), and the readers of model output: the `template:` line and the `<think>` stripper. |
+| `yogurt-wasm` | `yogurt-prompts` and `yogurt-notes` behind `wasm-bindgen`, so the Cloud webapp enhances a phone meeting with the Mac's prompt and merge. Built into `cloud/src/wasm` by `just wasm`. |
 | `yogurt-llm` | `LlmClient` trait, OpenAI-compatible HTTP client with `base_url` override, SSE streaming, and the local agent-CLI provider adapter (§7.6). |
 | `yogurt-db` | SQLite open/migrate, `MeetingRepo`, settings, providers, `ApiKeyStore` over `~/.yogurt/keys.json`. |
 | `yogurt-granola` | Granola public REST API client (paging, rate limit, retries, the 413 transcript fallback) and the pure mapping from a Granola note to a meeting. |
@@ -658,7 +659,7 @@ graph LR
         AUDIOB["raw audio buffers"]
     end
     subgraph Opt["Leaves only on explicit opt-in"]
-        AU["audio -> Deepgram (cloud STT)"]
+        AU["audio -> Deepgram (cloud STT, and every phone recording)"]
         TR["notes + transcript -> the configured LLM provider (enhance, chat)"]
         CL["notes + transcript + chat -> the user's own Yogurt Cloud (push)"]
         GRN["API key + read requests only -> Granola (import)"]
@@ -668,6 +669,11 @@ graph LR
         KEYS["API keys (keys.json only)"]
     end
 ```
+
+Two keys live outside `keys.json`, in the user's Vercel project's environment, Sensitive and Production only: `YOGURT_LLM_API_KEY` for the Cloud's chat and `YOGURT_DEEPGRAM_API_KEY` for recording on a phone.
+No function returns or logs either.
+`cloud/api/stt-token.ts` trades the Deepgram key for a token that expires in 30 seconds, and only for the signed-in owner with an unlocked browser token, so the phone never sees the key.
+The phone's audio goes from the browser to Deepgram directly, is held in memory only while a socket is down, and is never stored.
 
 Enforcement points, all in `routes.rs` unless noted:
 
@@ -735,6 +741,16 @@ graph TB
 | 2 | `enhance.rs:210` `llm.complete` | Configured LLM provider | Once per **End meeting**, once per **Re-enhance** | Input + output tokens |
 | 3 | `api/chat.rs` `llm.stream` | Same provider | Once per **chat message sent** | Input + output tokens |
 | 3b | `api/library_chat.rs` `llm.stream` | Same provider | Once per **Library chat question**, with at most 6 retrieved meetings in the prompt | Input + output tokens |
+
+The Cloud webapp adds two more, billed to the provider set in the user's Vercel project (`YOGURT_LLM_*`), never to the Mac's:
+
+| # | Where in code | Which AI | Fires when | Billing unit |
+|---|---|---|---|---|
+| 4 | `cloud/api/chat.ts` | The Cloud's provider | Once per question asked in the webapp | Input + output tokens |
+| 5 | `cloud/api/enhance.ts` | The Cloud's provider | Once per **Enhance** or **Re-enhance** of a meeting recorded on a phone | Input + output tokens, the same prompt as #2 |
+
+Call site 5 sends the prompt the page rendered with `yogurt-wasm` and streams the raw reply back.
+The page then cleans and merges it in `yogurt-wasm` with `yogurt_notes::enhance::finish`, the function the Mac's handler calls, so a phone meeting stores the `enriched_md` the Mac would.
 
 Fallbacks that cost nothing: if no provider is configured at all, `MockLlm` answers deterministically (`$0`).
 A provider that *is* configured but whose stored key cannot be read is a hard 502, never a silent free fallback, so you can never be silently downgraded to fake output.
@@ -838,8 +854,9 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 Notes and transcripts leave only to the LLM provider the user configures (enhance and chat) and to a Yogurt Cloud the user connects, which is their own Supabase project ([§12](#12-yogurt-cloud-sync)).
 That Cloud's chat sends a meeting's transcript, or the titles, dates, notes, and transcript excerpts of the meetings a cross-meeting question finds, from the user's Vercel project to the LLM provider set there.
 Captured audio is deleted after transcription.
+A meeting recorded on a phone in the Cloud webapp streams its audio to Deepgram, since a phone has no local STT yet, and the phone holds that audio in memory only while it waits for a socket ([§12](#12-yogurt-cloud-sync)).
 API keys and the Yogurt Cloud connection live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
-The one exception is the Cloud chat's LLM key, which lives in the user's Vercel project's environment and is never returned or logged.
+The exceptions are the Cloud chat's LLM key and the Cloud's Deepgram key, which live in the user's Vercel project's environment and are never returned or logged.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.
 No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception (LLM-4, 2026-08-31): `yogurt-llm::CliClient` may spawn a locally-installed agent CLI as an LLM provider, but only when the user has explicitly picked it in Settings - never as an automatic fallback behind another provider. See [§7.6](#76-the-cli-provider-exception-llm-4) for the mechanism and containment, and don't extend this exception to a new call site without revisiting it here.
 - **No telemetry:** zero phone-home, not even opt-in crash reporting.
@@ -870,16 +887,22 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 - **`rust-embed` on `web/dist`** (`yogurt-server/src/assets.rs`): the frontend must be built before the Rust build; CI does this explicitly.
 - **rpath link flags in each binary crate's `build.rs`**: ScreenCaptureKit bindings need `/usr/lib/swift` on the rpath, and `cargo:rustc-link-arg` does not propagate from dependencies - see `docs/archive/superpowers/notes/2026-06-25-sck-spike-result.md` for the discovery story.
 - **`cloud/` webapp**: a separate Vite app for the Yogurt Cloud, deployed to the user's own Vercel project and never embedded in the binary. `cloud/vite.config.ts` aliases `web/src` as `@web` to reuse the logo, buttons, and `@theme` tokens, serves `web/public` as its public folder, and dedupes `react`. `cloud/scripts/build.mjs` applies `crates/yogurt-cloud/schema.sql` on production builds and writes `config.json`. CI builds it in the web job because a change under `web/src` can break it.
-  `cloud/api/chat.ts` is its one Vercel function, chat about one meeting or across meetings ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)), which `vite.config.ts` also mounts for `vite preview` so the e2e specs reach it.
+  Its Vercel functions are `cloud/api/chat.ts`, chat about one meeting or across meetings ([.planning/cloud-chat-design.md](.planning/cloud-chat-design.md)), `cloud/api/stt-token.ts`, which grants a phone a Deepgram token, and `cloud/api/enhance.ts`, which streams the reply to a phone meeting's enhance prompt ([.planning/mobile-recording-design.md](.planning/mobile-recording-design.md)).
+  `vite.config.ts` also mounts all three for `vite preview` so the e2e specs reach them.
+- **`yogurt-wasm` in `cloud/src/wasm`**: the enhance prompt and merge compiled to WASM for the webapp.
+  The build is committed so Vercel needs no Rust, `just wasm` regenerates it, and CI rebuilds it and fails on any difference.
+  It stays byte-identical across machines only because `yogurt-prompts` embeds its templates with `include_str!` and the build remaps source paths.
 
 ---
 
 ## 12. Yogurt Cloud sync
 
-Optional, one-way, and off until the user connects it in Settings > Cloud sync.
+Optional, and off until the user connects it in Settings > Cloud sync.
 A laptop pushes its meetings to a Yogurt Cloud the user deployed: a webapp on their Vercel account, backed by their own Supabase project.
-The webapp is static apart from one chat function.
+The one thing a laptop reads back is an ended meeting recorded on a phone, which it adopts as its own.
+The webapp is static apart from three functions: chat, the Deepgram token, and enhance for meetings recorded on a phone.
 Yogurt hosts nothing.
+A phone can also record into the Cloud from the webapp, as a device of its own ([Recording on a phone](#recording-on-a-phone) below).
 The design, schema, and who can read what are in [.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md), and `crates/yogurt-cloud/schema.sql` is the schema.
 
 ```mermaid
@@ -900,6 +923,12 @@ sequenceDiagram
   UI->>S: POST /api/cloud/push
   S-->>UI: 202, the push runs in the background
   S->>K: refresh the session, store the rotated refresh token
+  S->>P: rpc yogurt_phone_meetings
+  loop each ended phone meeting
+    S->>S: insert it into SQLite with source 'phone' (a no-op if it is here)
+    S->>P: rpc yogurt_adopt, which marks the phone's copy deleted
+    S->>S: delete the insert if another Mac adopted it first
+  end
   S->>P: rpc yogurt_device_meetings, then yogurt_start_push
   loop small batches, paused between them
     S->>S: build this batch's bundles
@@ -920,6 +949,23 @@ sequenceDiagram
   Its SHA-256 is the meeting's `cloud_hash`, so a pass sends only meetings whose content changed, plus a null body for each meeting the cloud lists that is gone locally.
   A trigger leaves a tombstone in `cloud_deleted` when a pushed meeting is deleted, so the "not pushed" count includes deletions until a pass sends the markers.
   The meeting being recorded is skipped.
+- **Phone meetings.**
+  Before it plans, a pass lists the latest version of each ended, live meeting on a `kind = 'phone'` device (`yogurt_phone_meetings`).
+  It inserts each one into SQLite with its chat, under a new UUID because the meeting routes take one, with `source = 'phone'`, the phone's ULID as `source_id`, and the phone's name, then calls `yogurt_adopt(device_id, meeting_id, push_id)`.
+  The unique `(source, source_id)` index makes the insert a no-op when the meeting is already here.
+  `yogurt_adopt` locks the phone's device row and writes a null version for the meeting only while `push_id` is still its latest, ended version, so of two Macs only the first wins, and a Mac that copied an older version gets false.
+  A Mac that gets false deletes its insert, unless the row was there before the pass or the call was retried, since a lost answer may have been a win.
+  A trigger on `yogurt_versions` refuses a phone's push of a meeting whose latest version is that null, with `PT409`, under the same device row lock, so an Enhance the webapp started before the adoption cannot bring the phone's copy back for the next adoption to delete.
+  The webapp then shows the meeting as the Mac's, and an End whose answer was lost drops its local copy.
+  The rest of the pass then pushes the meeting as this Mac's, so it shows once, under the Mac, and the meeting page says "Recorded on <phone name>".
+  A crash between the insert and the claim leaves the meeting in both places for the next pass to repair, never in neither.
+  A phone removed from the Cloud before the claim leaves its meeting here only, so the copy stays and is pushed as this Mac's.
+  A meeting that fails to adopt does not stop the others, nor the rest of the pass, and the pass records the failure after its own push.
+  A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then the pass skips this step.
+  Only the Cloud knows a phone meeting is waiting, so every due timer wake starts a pass, which on an idle Mac stops after this listing call when it adopted nothing.
+  An idle wake that cannot reach the Cloud records the Mac as up to date, and idle wakes reuse the session in memory while it has five minutes left, so they rewrite `keys.json` only when the token rotates.
+  Every other pass refreshes, so a session revoked in the Cloud shows at once.
+  The phone pushes a meeting with `ended_at` set only after its enhance, so a Mac never adopts a meeting before its enhanced version exists.
 - **Secrets.**
   The `yogurt-cloud` account in `keys.json` holds the address, login email, Supabase URL, publishable key, refresh token, device id, and machine name.
   The password is a request field that is used once.
@@ -939,7 +985,7 @@ sequenceDiagram
 - **Errors.**
   Every failure carries a stable `code` next to its message: `bad_address`, `bad_config`, `bad_credentials`, `not_owner`, `passcode_not_set`, `session_expired`, `device_removed`, `network`, `cloud_error`, `not_connected`, `already_connected`, `bad_request`, `local_error`, `internal`.
   The server records the last success (`cloud.last_push`) and the last failure (`cloud.last_error`) separately, so a failed pass never hides when the cloud was last in step.
-  It also keeps the last 20 outcomes in `cloud.push_history` for the Settings history, newest first, with a run of wakes that found nothing to send collapsed into one `up_to_date` entry so an idle timer never pushes real runs out.
+  It also keeps the last 20 outcomes in `cloud.push_history` for the Settings history, newest first, with a run of wakes that found nothing to adopt or send collapsed into one `up_to_date` entry so an idle timer never pushes real runs out.
   Connect and disconnect clear all three.
   The UI shows a `session_expired` failure as "Sign in again" with an inline password field, which posts to `/api/cloud/sign-in` and stays up until a sign-in succeeds.
 - **Disconnect.**
@@ -947,4 +993,52 @@ sequenceDiagram
   With `mark_deleted` it first runs one pass that marks every meeting from this device deleted, and a failure there leaves the connection in place.
 - **Verification.**
   `just test-cloud` runs the client against a local Supabase.
-  `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a revoked session, and disconnect.
+  `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a phone meeting adopted once, a revoked session, and disconnect.
+
+### Recording on a phone
+
+The webapp's Record button records a meeting in any browser, and the design is [.planning/mobile-recording-design.md](.planning/mobile-recording-design.md).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant R as Record screen
+  participant F as cloud/api/stt-token.ts
+  participant D as Deepgram
+  participant P as Supabase project
+
+  R->>P: insert yogurt_devices {id, name, kind: 'phone'}, first recording only
+  R->>F: POST {browser token}, with the session JWT
+  F->>P: rpc yogurt_device_info (owner and unlocked browser)
+  F->>D: POST /v1/auth/grant with the Deepgram key
+  F-->>R: {token, url}
+  R->>D: WebSocket url, subprotocol bearer + token, 16 kHz linear16
+  D-->>R: interim and final results
+  loop every 30 seconds, before each chat question, and at End
+    R->>P: rpc yogurt_start_push, insert yogurt_versions {full bundle}
+  end
+```
+
+- **Device.**
+  The phone is a row in `yogurt_devices` with `kind = 'phone'`, under an id it makes and keeps in `localStorage` and a name the user types the first time, "Phone" by default.
+  It pushes through the same RPCs and the same `{"v":1,"meeting":...,"chat":[]}` bundle a laptop does, so the Library, search, the meeting view, and chat read its meetings unchanged.
+  Every line is on the `them` channel and the meeting's `stt_engine` is `cloud · nova-3 · phone`, which the meeting view reads to drop the speaker label.
+- **Audio.**
+  `cloud/src/lib/browserRecorder.ts` opens the mic, downsamples to 16 kHz mono linear16 in an AudioWorklet (`pcm-worklet.ts`), and streams 100 ms chunks to Deepgram with the Mac's query parameters.
+  Every chunk stays in memory (`audioQueue.ts`) until a final Deepgram result covers it, up to 5 minutes, the oldest dropping past that as a gap the transcript marks.
+  After a drop the next socket, opened with a fresh token, gets the held chunks first, in order, so audio sent but not yet finalized is transcribed once and never lost.
+  The page holds a Screen Wake Lock and tells the user that locking the phone or switching apps can stop the recording.
+- **Android.**
+  When `window.YogurtAndroid` exists, `nativeRecorder.ts` drives the app's recorder through the bridge in the design instead, and the page still does every push.
+  A page that reloads while the app records, as on a dark mode change, takes the recording back up on the record screen.
+- **Pushes and resume.**
+  `cloud/src/lib/session.ts` writes the meeting to IndexedDB on every change and pushes the whole bundle at the start and every 30 seconds while `ended_at` is null, skipping a push whose bundle has not changed.
+  At End it pushes the last of it still open, enhances it under EnhancingBanner in the meeting view, and only then pushes it ended, with the enhanced notes when the enhance worked.
+  A page that reopens with an unfinished meeting there shows it at the top of the Library with Resume and End.
+- **Live chat.**
+  The record screen docks the meeting view's Ask pill and ChatWindow above the transcript sheet.
+  Before each question it pushes the meeting still open, and only then calls `cloud/api/chat.ts`, which reads that version through `yogurt_meeting` as it does any meeting, so the answer covers everything said up to the question.
+  A failed push puts its error in the chat and the question is not sent.
+- **Verification.**
+  `cloud/e2e/record.spec.ts` records through Chrome's fake mic into a fake Deepgram, asks the meeting mid-recording, drops the socket, reloads the tab, resumes, ends while a chat answer streams, and enhances through a fake LLM.
+  `just cloud-dev` serves the webapp against a local Supabase for trying it by hand, in Chrome or in the Android emulator through `just android-emu`.

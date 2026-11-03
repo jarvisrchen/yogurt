@@ -131,6 +131,64 @@ pub struct ImportedMeeting {
     pub source_json: serde_json::Value,
     /// Label names, each found or created.
     pub labels: Vec<String>,
+    pub stt_engine: Option<String>,
+    pub llm_model: Option<String>,
+    pub template: Option<String>,
+    pub chat: Vec<crate::chat::ChatMessage>,
+}
+
+impl ImportedMeeting {
+    /// A meeting recorded on a phone, read back from the bundle the phone pushed to Yogurt Cloud (see [`bundle_value`]).
+    /// `id` is the id it gets here, and the phone's own id becomes `source_id`.
+    /// A missing field falls back to an empty one, so a Mac can always take the meeting in.
+    pub fn from_phone(
+        id: &str,
+        phone_id: &str,
+        device_name: &str,
+        bundle: &serde_json::Value,
+    ) -> Self {
+        let m = &bundle["meeting"];
+        let text = |k: &str| m[k].as_str().map(str::to_string);
+        let started_at = m["started_at"].as_i64().unwrap_or_default();
+        let chat = bundle["chat"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| {
+                Some(crate::chat::ChatMessage {
+                    id: c["id"].as_str()?.to_string(),
+                    meeting_id: id.to_string(),
+                    role: c["role"].as_str()?.parse().ok()?,
+                    content: c["content"].as_str()?.to_string(),
+                    created_at: c["created_at"].as_i64()?,
+                })
+            })
+            .collect();
+        Self {
+            id: id.to_string(),
+            title: text("title")
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| "Untitled meeting".into()),
+            started_at,
+            ended_at: m["ended_at"].as_i64().unwrap_or(started_at),
+            notes_md: text("notes_md").unwrap_or_default(),
+            enriched_md: text("enriched_md"),
+            transcript_json: text("transcript_json").unwrap_or_else(|| "[]".into()),
+            source: "phone".into(),
+            source_id: phone_id.to_string(),
+            source_json: serde_json::json!({ "device": device_name }),
+            labels: m["labels"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|l| l["name"].as_str().map(str::to_string))
+                .collect(),
+            stt_engine: text("stt_engine"),
+            llm_model: text("llm_model"),
+            template: text("template"),
+            chat,
+        }
+    }
 }
 
 /// Patch payload for [`MeetingRepo::patch`]. Every field is `Option` because a PATCH only carries the values to change.
@@ -230,8 +288,9 @@ impl MeetingRepo {
                 .execute(
                     r#"INSERT INTO meetings
                            (id, title, started_at, ended_at, notes_md, enriched_md, transcript_json,
-                            starred, created_at, updated_at, source, source_id, source_json)
-                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8, ?9, ?10, ?11)
+                            starred, created_at, updated_at, source, source_id, source_json,
+                            stt_engine, llm_model, template)
+                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                        ON CONFLICT(source, source_id) WHERE source IS NOT NULL DO NOTHING"#,
                     params![
                         m.id,
@@ -244,7 +303,10 @@ impl MeetingRepo {
                         now_ms,
                         m.source,
                         m.source_id,
-                        source_json.to_string()
+                        source_json.to_string(),
+                        m.stt_engine,
+                        m.llm_model,
+                        m.template
                     ],
                 )
                 .context("insert imported meeting")?;
@@ -260,6 +322,12 @@ impl MeetingRepo {
                 tx.execute(
                     "UPDATE labels SET updated_at = ?1 WHERE id = ?2",
                     params![now_ms, label.id],
+                )?;
+            }
+            for c in &m.chat {
+                tx.execute(
+                    "INSERT INTO chat_messages (id, meeting_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![c.id, m.id, c.role.as_str(), c.content, c.created_at],
                 )?;
             }
             tx.commit().context("commit import")?;
@@ -1435,7 +1503,100 @@ mod tests {
             source_id: source_id.into(),
             source_json: serde_json::json!({ "owner": { "name": "Pat", "email": "p@example.com" } }),
             labels: vec!["Clients".into(), "clients".into(), "Q4".into()],
+            stt_engine: None,
+            llm_model: None,
+            template: None,
+            chat: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_phone_bundle_imports_as_the_meeting_it_pushed_with_its_chat() {
+        let repo = fresh_repo();
+        let bundle = serde_json::json!({
+            "v": 1,
+            "meeting": {
+                "id": "01PHONE", "title": "Walk and talk", "started_at": 1_000, "ended_at": 9_000,
+                "notes_md": "typed on the phone", "enriched_md": "### Summary", "transcript_json": r#"[{"ts_ms":0,"channel":"them","text":"hi"}]"#,
+                "stt_engine": "cloud · nova-3 · phone", "llm_model": "m1", "template": "standup",
+                "labels": [{ "id": "l", "name": "Walks", "color": "blue" }],
+            },
+            "chat": [
+                { "id": "c1", "role": "user", "content": "what?", "created_at": 5 },
+                { "id": "c2", "role": "assistant", "content": "this", "created_at": 6 },
+            ],
+        });
+        let m = repo
+            .import(ImportedMeeting::from_phone(
+                "local-1", "01PHONE", "Pixel", &bundle,
+            ))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                m.title.as_str(),
+                m.started_at,
+                m.ended_at,
+                m.notes_md.as_str()
+            ),
+            ("Walk and talk", 1_000, Some(9_000), "typed on the phone")
+        );
+        assert_eq!(m.enriched_md.as_deref(), Some("### Summary"));
+        assert_eq!(
+            m.transcript_json,
+            r#"[{"ts_ms":0,"channel":"them","text":"hi"}]"#
+        );
+        assert_eq!(
+            (
+                m.stt_engine.as_deref(),
+                m.llm_model.as_deref(),
+                m.template.as_deref()
+            ),
+            (Some("cloud · nova-3 · phone"), Some("m1"), Some("standup"))
+        );
+        assert_eq!(
+            (m.source.as_deref(), m.source_id.as_deref()),
+            (Some("phone"), Some("01PHONE"))
+        );
+        assert_eq!(m.source_json.as_ref().unwrap()["device"], "Pixel");
+        assert_eq!(m.labels[0].name, "Walks");
+        let chat = repo.db.list_chat_messages("local-1").unwrap();
+        let chat: Vec<_> = chat
+            .iter()
+            .map(|c| (c.id.as_str(), c.role, c.content.as_str()))
+            .collect();
+        assert_eq!(
+            chat,
+            [("c1", Role::User, "what?"), ("c2", Role::Assistant, "this")]
+        );
+
+        assert!(
+            repo.import(ImportedMeeting::from_phone(
+                "local-2", "01PHONE", "Pixel", &bundle
+            ))
+            .unwrap()
+            .is_none(),
+            "a rerun is a no-op"
+        );
+    }
+
+    #[test]
+    fn a_sparse_phone_bundle_still_imports() {
+        let repo = fresh_repo();
+        let m = repo
+            .import(ImportedMeeting::from_phone(
+                "local-3",
+                "01SPARSE",
+                "Phone",
+                &serde_json::json!({ "v": 1, "meeting": { "started_at": 7, "title": "  " } }),
+            ))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (m.title.as_str(), m.ended_at, m.transcript_json.as_str()),
+            ("Untitled meeting", Some(7), "[]")
+        );
+        assert!(repo.db.list_chat_messages("local-3").unwrap().is_empty());
     }
 
     #[test]

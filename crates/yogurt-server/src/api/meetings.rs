@@ -470,12 +470,16 @@ async fn import_one(
         enriched_md: f
             .enriched_md
             .as_deref()
-            .map(crate::sanitize::sanitize_enriched_md),
+            .map(yogurt_notes::sanitize_enriched_md),
         transcript_json: serde_json::to_string(&f.transcript).map_err(anyhow::Error::from)?,
         source: SHARED_SOURCE.into(),
         source_id: f.id,
         source_json: serde_json::json!({}),
         labels: Vec::new(),
+        stt_engine: None,
+        llm_model: None,
+        template: None,
+        chat: Vec::new(),
     };
     let repo = s.meeting_repo.clone();
     let exporter = s.markdown_exporter.clone();

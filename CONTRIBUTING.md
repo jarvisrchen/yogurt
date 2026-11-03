@@ -100,6 +100,7 @@ Eight crates under `crates/`:
 | `yogurt-db` | SQLite (providers, settings, meetings) + `~/.yogurt/keys.json` key store |
 | `yogurt-notes` | Augmented-notes diffing/merge logic |
 | `yogurt-prompts` | Bundled enhance/chat prompt templates |
+| `yogurt-wasm` | The enhance prompt and merge for the Cloud webapp, built by `just wasm` |
 
 `web/` is the React + Vite + TipTap frontend, embedded into the binary via
 `rust-embed` at release-build time.
@@ -126,6 +127,16 @@ clippy/test for the same reason.
 - In Markdown files, put each full sentence on its own line (semantic
   linefeeds); wrap at the sentence, not at a fixed column.
 
+## Trying phone recording on this Mac
+
+`just cloud-dev` serves a Yogurt Cloud at http://localhost:56448 on a local Supabase of its own, which the e2e stacks never reset.
+It takes the LLM for Enhance and chat from the first LLM key in `.env.local`, in the order of `ENV_PRESETS` in `crates/yogurt-server/src/bootstrap.rs`.
+For transcription it uses `YOGURT_DEEPGRAM_GRANT_KEY` when set, and otherwise runs `cloud/scripts/dev-deepgram-relay.mjs`, which hands out a dummy token and forwards the audio to Deepgram with `YOGURT_DEEPGRAM_API_KEY`.
+The relay exists because that key cannot mint tokens, and it is a dev tool that nothing deployed uses.
+On first run, create a login with `me@yogurt.local` (or `YOGURT_CLOUD_DEV_OWNER`), click the link in the mail catcher at http://localhost:56444, and choose a PIN.
+Record in desktop Chrome with the Mac's mic, or run `just android-emu` to boot the `yogurt` emulator with the Mac's mic as its own and open the debug app on this Cloud.
+Reset it with `supabase stop --workdir cloud/dev --no-backup`.
+
 ## Adding a new STT or LLM provider
 
 - **STT engine:** implement the `Stt` trait in `crates/yogurt-stt/src/` (see `deepgram.rs` or `whisper_local.rs` for the shape).
@@ -146,6 +157,7 @@ Release builds never read `.env.local`.
 | `YOGURT_VITE_BASE` | `--dev` proxy | Vite origin to proxy to (default `http://127.0.0.1:5173`). |
 | `YOGURT_MEMORY_KEYSTORE=1` | tests | In-memory key store so tests never touch the real `~/.yogurt/keys.json`. Set automatically by `just test`. |
 | `YOGURT_PORT_POLICY` | `scripts/run-*.sh` | What to do when the port is busy: `ask` (default), `kill`, `next`, or `fail`. |
+| `YOGURT_DEEPGRAM_GRANT_KEY` | `just cloud-dev` | A Deepgram key with the Member role, which can mint the tokens a phone records with. Without it `just cloud-dev` relays to Deepgram with `YOGURT_DEEPGRAM_API_KEY`. |
 
 The `yogurt start` and `yogurt doctor` flags themselves are documented in the [README](README.md#command-line).
 

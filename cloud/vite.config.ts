@@ -4,20 +4,22 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { defineConfig, type Plugin, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { POST } from "./api/chat";
+import { POST as chat } from "./api/chat";
+import { POST as sttToken } from "./api/stt-token";
+import { POST as enhance } from "./api/enhance";
 
 const web = fileURLToPath(new URL("../web", import.meta.url));
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
-// Vercel serves api/chat.ts in production. Here it runs under `vite` and `vite preview`, so the e2e specs reach the same handler.
-function chatApi(): Plugin {
-  const serve = async (req: IncomingMessage, res: ServerResponse) => {
+// Vercel serves api/*.ts in production. Here they run under `vite` and `vite preview`, so the e2e specs reach the same handlers.
+function functionsApi(): Plugin {
+  const serve = async (POST: (req: Request) => Promise<Response> | Response, path: string, req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     // A client that leaves before the answer starts aborts the request, as Vercel's supportsCancellation does.
     const left = new AbortController();
     res.on("close", () => left.abort());
-    const out = await POST(new Request("http://localhost/api/chat", { method: req.method, headers: req.headers as Record<string, string>, body: req.method === "POST" ? Buffer.concat(chunks) : undefined, signal: left.signal }));
+    const out = await POST(new Request(`http://localhost${path}`, { method: req.method, headers: req.headers as Record<string, string>, body: req.method === "POST" ? Buffer.concat(chunks) : undefined, signal: left.signal }));
     res.writeHead(out.status, Object.fromEntries(out.headers));
     if (!out.body) return res.end();
     const reader = out.body.getReader();
@@ -28,19 +30,21 @@ function chatApi(): Plugin {
   // A hook that returns a function has it run later as a post hook, so this returns nothing.
   const mount = (server: { middlewares: { use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void } }) => {
     // An unhandled rejection here would exit the whole server, which the e2e specs run against.
-    server.middlewares.use("/api/chat", (req, res) =>
-      void serve(req, res).catch(() => {
-        if (!res.headersSent) res.statusCode = 500;
-        res.end();
-      }),
-    );
+    for (const [path, POST] of [["/api/chat", chat], ["/api/enhance", enhance], ["/api/stt-token", sttToken]] as const) {
+      server.middlewares.use(path, (req, res) =>
+        void serve(POST, path, req, res).catch(() => {
+          if (!res.headersSent) res.statusCode = 500;
+          res.end();
+        }),
+      );
+    }
   };
-  return { name: "yogurt-chat-api", configureServer: mount, configurePreviewServer: mount };
+  return { name: "yogurt-functions", configureServer: mount, configurePreviewServer: mount };
 }
 
 // Vitest ships vite 5 peer types but we run vite 6, so the cast keeps tsc happy while Vitest still reads `test:`.
 export default defineConfig({
-  plugins: [react(), tailwindcss(), chatApi()],
+  plugins: [react(), tailwindcss(), functionsApi()],
   // The favicon and app icons are the desktop app's own files.
   publicDir: `${web}/public`,
   resolve: {
@@ -50,7 +54,7 @@ export default defineConfig({
       tailwindcss: here("node_modules/tailwindcss/index.css"),
     },
     // Imports in ../web/src resolve from web/node_modules, which Vercel never installs, and react would bundle twice.
-    dedupe: ["react", "react-dom", "markdown-it", "dompurify"],
+    dedupe: ["react", "react-dom", "markdown-it", "dompurify", "@tiptap/core", "@tiptap/react", "@tiptap/starter-kit", "@tiptap/extension-placeholder", "@tiptap/pm"],
   },
   // build.mjs clears dist and writes config.json before Vite runs, so Vite must keep it.
   build: { outDir: "dist", emptyOutDir: false },

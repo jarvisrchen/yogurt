@@ -26,6 +26,7 @@ jobs:
         with:
           toolchain: "1.96.0"
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v3
       - uses: pnpm/action-setup@v6
@@ -50,6 +51,13 @@ jobs:
         run: just test-rust
         env:
           YOGURT_MEMORY_KEYSTORE: "1"
+      # Vercel builds the webapp without Rust, so cloud/src/wasm is committed and must match its source.
+      - name: cloud/src/wasm matches a fresh `just wasm`
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.126 --locked
+          just wasm
+          changed=$(git status --porcelain -- cloud/src/wasm)
+          [ -z "$changed" ] || { echo "$changed"; echo "::error::cloud/src/wasm is stale: run just wasm and commit it"; exit 1; }
 
   web:
     runs-on: ubuntu-latest

@@ -25,15 +25,20 @@ export async function reset() {
   await fetch(`${MAIL}/api/v1/messages`, { method: "DELETE" });
 }
 
-/** Revokes every browser token, so the next read from any browser is rejected. */
-export async function revokeBrowsers() {
+/** Rows from the local database, read as its superuser. */
+export async function query<T>(text: string, params: unknown[] = []): Promise<T[]> {
   const c = new pg.Client({ connectionString: DB });
   await c.connect();
   try {
-    await c.query("delete from yogurt_browsers");
+    return (await c.query(text, params)).rows;
   } finally {
     await c.end();
   }
+}
+
+/** Revokes every browser token, so the next read from any browser is rejected. */
+export async function revokeBrowsers() {
+  await query("delete from yogurt_browsers");
 }
 
 /** The confirmation link from the newest message in the local mail catcher. */

@@ -21,7 +21,7 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await expect(page.getByRole("button", { name: /1:1 with Steven/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Q4 planning sync/ })).toBeVisible();
   await expect(page.getByText("2:59 PM · 11 min")).toBeVisible();
-  await expect(page.getByText("read-only", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record" })).toBeVisible();
   await shot(page, info, phone ? "m-library" : "o-desktop-library-empty-pane");
 
   // The device filter.
@@ -73,7 +73,7 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await page.getByRole("button", { name: /edis update/ }).click();
   await expect(page.getByRole("tab")).toHaveCount(0);
   await expect(page.getByText("Ship the edis dashboard.")).toBeVisible();
-  if (phone) await page.getByRole("button", { name: "← All devices" }).click();
+  if (phone) await page.getByRole("button", { name: "All devices" }).click();
 
   // History lists every push, newest first, with combined counts.
   await page.getByRole("button", { name: "Settings" }).click();
@@ -108,7 +108,7 @@ test("read the library by device, open a meeting, browse History, and view an ea
   await expect(page.getByText("Ask for the SOC 2 report.")).toBeVisible();
   await expect(page).toHaveURL(/#\/at\/\d+\/m\//);
   if (phone) {
-    await page.getByRole("button", { name: "← All devices" }).click();
+    await page.getByRole("button", { name: "All devices" }).click();
     await expect(page).toHaveURL(/#\/at\/\d+$/);
   }
   await page.getByRole("button", { name: "Latest" }).click();

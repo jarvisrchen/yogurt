@@ -4106,17 +4106,21 @@ dependencies = [
  "serde_json",
  "tokio",
  "wiremock",
+ "yogurt-prompts",
 ]
 
 [[package]]
 name = "yogurt-notes"
 version = "2.3.0"
 dependencies = [
+ "ammonia",
  "anyhow",
  "html-escape",
  "pulldown-cmark",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
+ "yogurt-prompts",
 ]
 
 [[package]]
@@ -4124,7 +4128,6 @@ name = "yogurt-prompts"
 version = "2.3.0"
 dependencies = [
  "anyhow",
- "rust-embed",
  "serde",
  "tinytemplate",
 ]
@@ -4133,7 +4136,6 @@ dependencies = [
 name = "yogurt-server"
 version = "2.3.0"
 dependencies = [
- "ammonia",
  "anyhow",
  "async-trait",
  "axum",
@@ -4165,6 +4167,7 @@ dependencies = [
  "yogurt-prompts",
  "yogurt-server",
  "yogurt-stt",
+ "yogurt-wasm",
 ]
 
 [[package]]
@@ -4187,6 +4190,16 @@ dependencies = [
  "tracing",
  "webrtc-vad",
  "whisper-rs",
+]
+
+[[package]]
+name = "yogurt-wasm"
+version = "2.3.0"
+dependencies = [
+ "serde_json",
+ "wasm-bindgen",
+ "yogurt-notes",
+ "yogurt-prompts",
 ]
 
 [[package]]

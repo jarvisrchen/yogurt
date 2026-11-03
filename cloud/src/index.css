@@ -32,6 +32,19 @@
   }
 }
 
+/* The notes editor's heads are sized for the desktop app's 14px body. The webapp's desktop body is 13px, so they keep the same step above it. */
+@media (min-width: 721px) {
+  .cloud-notes .yogurt-editor .ProseMirror h1 {
+    font-size: 20px;
+  }
+  .cloud-notes .yogurt-editor .ProseMirror h2 {
+    font-size: 16px;
+  }
+  .cloud-notes .yogurt-editor .ProseMirror h3 {
+    font-size: 14px;
+  }
+}
+
 /* The shared chat is sized for the desktop app. On a phone it takes the webapp's phone scale, where body text is 16px. */
 @media (max-width: 720px) {
   .cloud-chat.text-\[14px\],
