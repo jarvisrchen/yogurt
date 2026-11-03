@@ -4,6 +4,8 @@ import { useLiveRecap, type RecapState } from "../lib/ws";
 import { refreshRecap, setRecapPaused } from "../lib/api/meetings";
 // `TranscriptLine` has its own `formatTs` (HH:MM:SS). This one writes `mm:ss` with minutes past 59, as the server and `ctl` do.
 import { formatTs as mmss } from "../editor/html";
+import { readNumber, writeNumber } from "../lib/storage";
+import { usePointerDrag } from "../lib/usePointerDrag";
 import { Button } from "./Button";
 import { LABEL } from "./settings/labelClass";
 
@@ -13,8 +15,13 @@ import { LABEL } from "./settings/labelClass";
  */
 export type RecapMode = "recording" | "stopped" | "final";
 
-/** Four one-line rows, the most one update adds. Longer bullets wrap and scroll under the top fade. */
+/** The list's default and minimum height: four one-line rows, the most one update adds. Longer bullets wrap and scroll under the top fade. */
 const CARD_LIST_HEIGHT = 148;
+const CARD_LIST_MAX = 640;
+const HEIGHT_KEY = "yogurt-recap-height";
+/** The tallest the list shows in this window, so a height saved on a big screen never pushes the notes off a small one. */
+const maxHeight = () => Math.max(CARD_LIST_HEIGHT, Math.min(CARD_LIST_MAX, Math.round(window.innerHeight * 0.6)));
+const clampHeight = (px: number) => Math.round(Math.max(CARD_LIST_HEIGHT, Math.min(px, maxHeight())));
 const LEAVE_MS = 200;
 
 /** Sticks a scroll container to the bottom as `deps` change, until the user scrolls more than 24px up. */
@@ -44,6 +51,55 @@ function useNow(intervalMs: number): number {
 function recapFlags(state: RecapState | null) {
   const paused = state?.paused ?? false;
   return { paused, updating: state?.status === "updating", failed: state?.status === "error" && !paused };
+}
+
+/** The card list's height, dragged from its bottom edge and saved across meetings. */
+function useListHeight() {
+  const [saved, setHeight] = useState(() => readNumber(HEIGHT_KEY) ?? CARD_LIST_HEIGHT);
+  const height = clampHeight(saved);
+  const { dragging, start } = usePointerDrag("recap-dragging");
+  const set = (px: number) => {
+    const next = clampHeight(px);
+    setHeight(next);
+    writeNumber(HEIGHT_KEY, next);
+  };
+  const steps: Record<string, number> = {
+    ArrowUp: height - 20,
+    ArrowDown: height + 20,
+    Home: CARD_LIST_HEIGHT,
+    End: maxHeight(),
+  };
+
+  const handleProps = {
+    role: "separator",
+    "aria-orientation": "horizontal" as const,
+    "aria-label": "Resize recap",
+    "aria-valuemin": CARD_LIST_HEIGHT,
+    "aria-valuemax": maxHeight(),
+    "aria-valuenow": height,
+    tabIndex: 0,
+    title: "Drag to resize, double-click to reset",
+    className: `recap-handle ${dragging ? "is-dragging" : ""}`,
+    onDoubleClick: () => set(CARD_LIST_HEIGHT),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (!(e.key in steps)) return;
+      e.preventDefault();
+      set(steps[e.key]);
+    },
+    onPointerDown: (e: React.PointerEvent) => {
+      const startHeight = height;
+      let last = height;
+      start(
+        e,
+        (_, dy) => {
+          last = clampHeight(startHeight + dy);
+          setHeight(last);
+        },
+        (moved) => moved && writeNumber(HEIGHT_KEY, last),
+      );
+    },
+  };
+  return { height, handleProps };
 }
 
 /** "Paused", "Updating…", "Updated 2 min ago", or "" before the first update. */
@@ -211,7 +267,7 @@ interface RecapCardProps {
 
 /**
  * The recap as a card above the notes. The list keeps a fixed height from the start of recording, so the notes never
- * move as bullets arrive. A bullet click opens the transcript dock at that moment.
+ * move as bullets arrive, and the user can drag its bottom edge taller. A bullet click opens the transcript dock at that moment.
  */
 export function RecapCard({ meetingId, token, mode, gapClassName = "" }: RecapCardProps) {
   const { recap: state, setRecap } = useLiveRecap(meetingId, token);
@@ -240,7 +296,8 @@ export function RecapCard({ meetingId, token, mode, gapClassName = "" }: RecapCa
   const unseen = collapsed ? Math.max(0, bulletCount - countAtCollapse) : 0;
 
   const shown = visible ? state : lastShown.current;
-  const list = useStickyBottom([shown, collapsed]);
+  const { height, handleProps } = useListHeight();
+  const list = useStickyBottom([shown, collapsed, height]);
   const [faded, setFaded] = useState(false);
   const status = useRecapStatus(shown);
   const listId = useId();
@@ -300,26 +357,29 @@ export function RecapCard({ meetingId, token, mode, gapClassName = "" }: RecapCa
             </div>
           </header>
           {!collapsed && (
-            <RecapBullets
-              id={listId}
-              listRef={list.ref}
-              onScroll={(e) => {
-                list.onScroll(e);
-                setFaded(e.currentTarget.scrollTop > 4);
-              }}
-              mode={mode}
-              state={shown}
-              onJump={(ms) =>
-                window.dispatchEvent(
-                  new CustomEvent("yogurt:transcript:scrollTo", { detail: { ts: Math.floor(ms / 1000) } }),
-                )
-              }
-              style={{
-                height: CARD_LIST_HEIGHT,
-                padding: "3px 20px",
-                maskImage: faded ? "linear-gradient(to bottom, transparent 0, #000 20px)" : undefined,
-              }}
-            />
+            <>
+              <RecapBullets
+                id={listId}
+                listRef={list.ref}
+                onScroll={(e) => {
+                  list.onScroll(e);
+                  setFaded(e.currentTarget.scrollTop > 4);
+                }}
+                mode={mode}
+                state={shown}
+                onJump={(ms) =>
+                  window.dispatchEvent(
+                    new CustomEvent("yogurt:transcript:scrollTo", { detail: { ts: Math.floor(ms / 1000) } }),
+                  )
+                }
+                style={{
+                  height,
+                  padding: "3px 20px 0",
+                  maskImage: faded ? "linear-gradient(to bottom, transparent 0, #000 20px)" : undefined,
+                }}
+              />
+              <div {...handleProps} />
+            </>
           )}
         </section>
         {gapClassName && <div className={gapClassName} />}

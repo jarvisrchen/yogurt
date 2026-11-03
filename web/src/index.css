@@ -201,6 +201,35 @@ html, body {
   cursor: col-resize !important;
   user-select: none !important;
 }
+.recap-handle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 12px;
+  cursor: row-resize;
+  touch-action: none;
+}
+.recap-handle::after {
+  content: "";
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-line);
+  transition: background-color 120ms;
+}
+.recap-handle:hover::after,
+.recap-handle:focus-visible::after,
+.recap-handle.is-dragging::after {
+  background: var(--color-blue);
+}
+.recap-handle:focus-visible {
+  outline: none;
+}
+:root.recap-dragging,
+:root.recap-dragging * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
 /* Live controls that stay out from under an overlapping dock, down to 200px, below which the dock covers them like the notes.
  * The dock only overlaps once the notes column is pinned to the window's left edge, so the column's 40px padding is the only offset. */
 .dock-visible {

@@ -1670,3 +1670,10 @@ New closed items go at the bottom.
   Both skip the meeting being recorded, which the server refuses to export.
   A failed bulk export keeps the selection and says how many files are missing.
   Import takes several files: one file still opens the meeting, several stay on the Library and name each file that failed with its reason.
+
+- [x] **MTG-29** Let the user drag the recap card above the notes taller to read more bullets
+
+  The recap card's list had a fixed 148px height, so on a long meeting only the last four bullets showed and the rest needed scrolling in a short box.
+  A grip on the card's bottom edge now drags the list between 148px and 640px, arrow keys step it by 20px, Home and End jump to the limits, and a double-click resets it.
+  The height lives in localStorage under `yogurt-recap-height`, so every meeting opens at the chosen size, and the notes still never move as bullets arrive.
+  `web/e2e/recap-resize.spec.ts` drags the handle in a real browser and checks the height survives a reload.
