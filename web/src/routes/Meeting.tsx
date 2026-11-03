@@ -15,7 +15,7 @@ import { MicEchoToggle } from "../components/MicEchoToggle";
 import { Pill } from "../components/Pill";
 import { SilenceStopBanner } from "../components/SilenceStopBanner";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
-import { MeetingMetaPills } from "../components/MeetingMetaPills";
+import { MeetingMetaPills, providerModelId } from "../components/MeetingMetaPills";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { LABEL } from "../components/settings/labelClass";
 import { bearerFetch, ensureSessionToken } from "../lib/session";
@@ -138,7 +138,8 @@ export function Meeting() {
   // `llm_model` stamp, so fall back to the active provider's model - the
   // one that *will* fuse these notes - the same way the STT pill falls
   // back to the active-recording poll before the row is refetched.
-  const activeLlmModel = useSettings().data?.providers.find((p) => p.is_active)?.model;
+  const activeProvider = useSettings().data?.providers.find((p) => p.is_active);
+  const activeLlmModel = activeProvider && providerModelId(activeProvider);
   const echoDevice = useSettings().data?.general?.audio_echo_output_device ?? "";
   const echoFeatureEnabled = useSettings().data?.general?.audio_echo_feature ?? false;
   const liveRecap = useSettings().data?.general?.live_recap ?? false;
@@ -574,6 +575,7 @@ export function Meeting() {
               }
               llmModel={meetingRow?.llm_model ?? activeLlmModel}
               llmPending={!meetingRow?.llm_model}
+              llmLocked={enhancing}
             />
           )}
           {/* Row 3: label chips, left-aligned under the title. */}

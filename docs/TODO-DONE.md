@@ -1677,3 +1677,12 @@ New closed items go at the bottom.
   A grip on the card's bottom edge now drags the list between 148px and 640px, arrow keys step it by 20px, Home and End jump to the limits, and a double-click resets it.
   The height lives in localStorage under `yogurt-recap-height`, so every meeting opens at the chosen size, and the notes still never move as bullets arrive.
   `web/e2e/recap-resize.spec.ts` drags the handle in a real browser and checks the height survives a reload.
+
+- [x] **LLM-14** Switch the LLM during a live meeting from the header's LLM pill, without a trip to Settings
+
+  Changing the model mid-meeting meant leaving the meeting for Settings, though the server already resolves the active provider on every recap tick and Enhance.
+  The live header's LLM pill is now a button with a caret that opens a menu of the configured providers, each with the exact model it sends, and picking one activates it, so it is also the default for later meetings.
+  The next recap tick and the Enhance at End use the new model, and a recap call already in flight finishes on the old one.
+  A CLI provider now reads as its `cli:<binary>:<model>` stamp in the live pill, so it shows the Terminal icon and the same label the post page will show.
+  Once a meeting is enhanced, the pill stays read-only and records what enhanced it.
+  Mocks: `docs/.lavish/live-llm-switch-mocks.html`.
