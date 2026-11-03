@@ -53,30 +53,34 @@ fn wrap_ai(rendered: &str, ts: u64, user_runs: &[(usize, usize)]) -> String {
     let mins = ts / 60;
     let secs = ts % 60;
     let stamp = format!("{:02}:{:02}", mins, secs);
-    // Weaker models echo the prompt's span markers literally. Strip them before escaping,
-    // or they come out HTML-escaped and double-wrapped. A hallucinated `<script>` survives
-    // stripping and is escaped below.
-    let stripped = strip_markers(rendered);
-    let trim = stripped.trim_end_matches('\n');
+    let trim = rendered.trim_end_matches('\n');
     let suffix_node = format!(r#"<span data-transcript-link data-ts="{ts}">↳ {stamp}</span>"#);
     // Keep a nested item's indent outside the span.
     let indent_len = trim.len() - trim.trim_start().len();
     let (indent, body) = trim.split_at(indent_len);
+    // Weaker models echo the prompt's span markers literally. Strip them before escaping,
+    // or they come out HTML-escaped and double-wrapped. A hallucinated `<script>` survives
+    // stripping and is escaped below. Stripping after the list marker is split off strips
+    // exactly the text `diff` stripped, so `user_runs` offsets line up.
     if let Some(inner) = body.strip_prefix("- ") {
+        let inner = strip_markers(inner);
         // `inner` is untrusted LLM output, so escape it. The wrapper span is ours and stays raw.
         if user_runs.is_empty() {
-            let safe_inner = html_escape::encode_safe(inner);
+            let safe_inner = html_escape::encode_safe(&inner);
             format!(
                 "{indent}- <span data-ai-grey data-ts=\"{ts}\">{safe_inner} {suffix_node}</span>\n"
             )
         } else {
-            format!("{indent}- {} {suffix_node}\n", paint(inner, ts, user_runs))
+            format!("{indent}- {} {suffix_node}\n", paint(&inner, ts, user_runs))
         }
-    } else if user_runs.is_empty() {
-        let safe_trim = html_escape::encode_safe(trim);
-        format!("<span data-ai-grey data-ts=\"{ts}\">{safe_trim} {suffix_node}</span>\n\n")
     } else {
-        format!("{} {suffix_node}\n\n", paint(trim, ts, user_runs))
+        let trim = strip_markers(trim);
+        if user_runs.is_empty() {
+            let safe_trim = html_escape::encode_safe(&trim);
+            format!("<span data-ai-grey data-ts=\"{ts}\">{safe_trim} {suffix_node}</span>\n\n")
+        } else {
+            format!("{} {suffix_node}\n\n", paint(&trim, ts, user_runs))
+        }
     }
 }
 

@@ -32,6 +32,11 @@ fn it_preserves_user_depth_when_llm_flattens_nested_list() {
     run("06_nested_list_flattened");
 }
 
+#[test]
+fn it_attributes_a_shorthand_note_to_the_bullet_that_expands_it() {
+    run("07_shorthand_note_and_link_before_period");
+}
+
 fn run(name: &str) {
     let dir = Path::new("tests/fixtures").join(name);
     let notes = std::fs::read_to_string(dir.join("notes.md")).unwrap();
@@ -95,5 +100,41 @@ fn it_strips_model_emitted_spans_instead_of_escaping_them() {
     assert!(
         md.contains(r#"- <span data-ai-grey data-ts="120">Pricing model debated <span data-transcript-link data-ts="120">↳ 02:00</span></span>"#),
         "bullet must be wrapped exactly once with clean inner text; got:\n{md}"
+    );
+}
+
+#[test]
+fn it_renders_no_space_before_a_period_and_no_orphaned_note() {
+    let dir = std::path::Path::new("tests/fixtures/07_shorthand_note_and_link_before_period");
+    let read = |f: &str| std::fs::read_to_string(dir.join(f)).unwrap();
+    let doc = yogurt_notes::merge_notes(
+        &read("notes.md"),
+        &read("enriched.md"),
+        &read("transcript.json"),
+    )
+    .unwrap();
+    let md = yogurt_notes::render::to_markdown(&doc);
+    assert!(!md.contains(" ."), "space before a period, got:\n{md}");
+    assert!(
+        md.contains(
+            "- Pro tier: Dana proposed moving it to $18<span data-ai-grey data-ts=\"3\"> a month and $180 a year.</span> "
+        ),
+        "the note's words are painted inside the Pro tier bullet, got:\n{md}"
+    );
+    assert!(
+        md.trim_end()
+            .ends_with("by Friday <span data-transcript-link data-ts=\"15\">↳ 00:15</span></span>"),
+        "nothing appended after Action items, got:\n{md}"
+    );
+}
+
+#[test]
+fn it_paints_the_right_words_when_a_bullet_opens_with_a_link() {
+    let enriched = "- <span data-transcript-link data-ts=\"3\">↳ 00:03</span> Pro tier: Dana proposed moving it to $18 a month\n";
+    let doc = yogurt_notes::merge_notes("pro tier $18?", enriched, "[]").unwrap();
+    let md = yogurt_notes::render::to_markdown(&doc);
+    assert!(
+        md.starts_with("- Pro tier: Dana proposed moving it to $18<span"),
+        "got:\n{md}"
     );
 }

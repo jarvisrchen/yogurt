@@ -1580,3 +1580,43 @@ New closed items go at the bottom.
 
   Landed in the DX-24 PR (2026-11-01). The test now expects 2 to 6 logged requests, and the `Exhausted` result still proves the client made all six attempts.
   </details>
+
+- [x] **LLM-13** Enhanced notes put a space before a period when the model writes its transcript link ahead of it, and a shorthand note such as `pro tier $18?` is dumped at the end instead of attributed to the bullet that expands it
+
+  <details>
+  <summary>Details</summary>
+
+  Reported 2026-11-02 with real MiniMax output: a Pricing bullet rendered "$180 a year . ↳ 00:03", and the note `pro tier $18?` was appended after Action items.
+  Both reproduced headlessly with fixture `crates/yogurt-notes/tests/fixtures/07_shorthand_note_and_link_before_period` and through the real server with `ctl meeting enhance` against a stub LLM.
+
+  **1. A space before the period.**
+  The model wrote its link span ahead of the period, `year <span data-transcript-link …>↳ 00:03</span>.`, and `strip_markers` dropped the span but kept the space before it.
+  A removed link now takes the spaces on one side with it (`close_link_gaps`): the spaces before it after a word and before punctuation, a space, or the end, so "year." reads right.
+  At the start of a line it takes the spaces after it, and between two words it keeps one space.
+  The `cloud/api/_library.ts` port does the same.
+  `render::wrap_ai` now strips the item text after splitting off the `- ` marker, so it strips exactly the text `diff` stripped and `user_runs` offsets line up.
+
+  **2. A shorthand note dumped at the end.**
+  Case, `$`, and `?` were fine: `weave::words` lowercases and keeps `$18`.
+  The cause was the match window of twice the line plus one, 7 words for a 3-word note, while "Pro tier: Dana proposed moving it to $18" puts `$18` eighth, so only 2 of 3 words matched and the line was appended.
+  The window now allows at least 6 interleaved model words (`MIN_GAP_WORDS`), so the note paints into the Pro tier bullet.
+  A note now paints only the first AI bullet that carries it, so the wider window cannot also paint a summary bullet that repeats its words.
+
+  Landed in the LLM-13 PR (2026-11-02).
+- [x] **UI-28** Show the app version in Settings
+  <details>
+  <summary>Details</summary>
+
+  Nothing in the web UI says which version is running, so checking it means `yogurt --version` or curling `/api/health`.
+  Add an About section to Settings with the version, whether this is a dev build, the license, and links to the source and that version's release notes.
+
+  Landed in the UI-28 PR (2026-11-02).
+  Settings gains an About section, last in the sidebar at `/settings/about`.
+  It reads `version` and `mode` from `/api/health` through the existing `fetchHealth()`, marks a dev build with a pill, and links GitHub and the matching `releases/tag/v<version>` page.
+  </details>
+
+- [x] **IMP-7** Share a meeting with someone who also runs yogurt: Export saves a `.yogurt` file from the meeting page, and Import in the Library header brings it in marked "Imported from a yogurt file"
+
+  Export on the meeting page saves a `.yogurt` JSON file of the title, times, raw and Enhanced notes, and transcript.
+  Import in the Library header posts it to `/api/meetings/import`, which stores it with source `yogurt` and the original meeting id as `source_id`, so a second import of the same file opens the existing meeting.
+  The meeting page shows "Imported from a yogurt file".

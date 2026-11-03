@@ -12,11 +12,12 @@ import { RecapCard } from "../components/Recap";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
-import { ImportedFromLine } from "../components/ImportedFromLine";
+import { ImportedFromLine, importedFrom } from "../components/ImportedFromLine";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
 import { DeleteMeetingConfirm } from "../components/library/DeleteMeetingConfirm";
 import { ArchiveMeetingButton } from "../components/library/ArchiveMeetingButton";
 import { CopyUrlButton } from "../components/CopyUrlButton";
+import { ExportMeetingButton } from "../components/ExportMeetingButton";
 import { bearerFetch, ensureSessionToken } from "../lib/session";
 import { useEnhanceProgress, type StoredTranscriptSegment } from "../lib/ws";
 import { useQueryClient } from "@tanstack/react-query";
@@ -472,12 +473,19 @@ export function MeetingPost() {
                 llmModel={llmModel}
               />
               {meetingId && <MeetingLabels meetingId={meetingId} />}
-              {source?.name === "granola" && <ImportedFromLine source={source.json} />}
+              {source && <ImportedFromLine name={source.name} source={source.json} />}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
         {meetingId && <CopyUrlButton />}
+        {meetingId && endedAtUnixMs != null && (
+          <ExportMeetingButton
+            id={meetingId}
+            title={displayTitle ?? "Meeting"}
+            beforeExport={flushDocuments}
+          />
+        )}
         {token && (
           <TemplatePicker
             value={template}
@@ -494,7 +502,9 @@ export function MeetingPost() {
             startedAtUnixMs={startedAtUnixMs}
             endedAtUnixMs={endedAtUnixMs}
             template={template === AUTO_TEMPLATE ? undefined : template}
-            confirmMessage={source?.name === "granola" ? "This replaces the notes imported from Granola." : undefined}
+            confirmMessage={
+              source ? `This replaces the notes imported from ${importedFrom(source.name)}.` : undefined
+            }
             onEnhanced={handleEnhanced}
             onEnhancing={handleEnhancing}
             onError={handleError}

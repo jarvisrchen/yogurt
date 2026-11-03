@@ -35,7 +35,8 @@ pub fn block_key(b: &Block) -> String {
 
 /// Removes our wire-format spans in one linear scan, leaving other markup intact.
 /// A `data-ai-grey` span keeps its inner text, which holds the user's bullet content.
-/// A `data-transcript-link` span is dropped whole, including its `↳ HH:MM` text.
+/// A `data-transcript-link` span is dropped whole, including its `↳ HH:MM` text and the spaces on one side
+/// of it (see `close_link_gaps`).
 /// Stripping `</span>` globally would leave link text behind when the spans nest.
 pub fn strip_markers(s: &str) -> String {
     if !s.contains("<span") && !s.contains("</span>") {
@@ -53,6 +54,9 @@ pub fn strip_markers(s: &str) -> String {
                     open_tag.contains("data-ai-grey") || open_tag.contains("data-transcript-link");
                 if is_wire_format {
                     let is_link_span = open_tag.contains("data-transcript-link");
+                    if is_link_span {
+                        out.push(LINK_GAP);
+                    }
                     let mut depth = 1;
                     let mut j = open_end;
                     while j < bytes.len() && depth > 0 {
@@ -61,6 +65,7 @@ pub fn strip_markers(s: &str) -> String {
                             if let Some(rel) = s[j..].find('>') {
                                 let nested_open = &s[j..j + rel + 1];
                                 if nested_open.contains("data-transcript-link") {
+                                    out.push(LINK_GAP);
                                     let mut k = j + rel + 1;
                                     let mut inner_depth = 1;
                                     while k < bytes.len() && inner_depth > 0 {
@@ -119,6 +124,34 @@ pub fn strip_markers(s: &str) -> String {
         let c = char_at(s, i);
         out.push(c);
         i += c.len_utf8();
+    }
+    close_link_gaps(&out)
+}
+
+/// Where `strip_markers` removed a link, so the spaces around it can be settled once the text after it is known.
+const LINK_GAP: char = '\u{0}';
+
+/// A removed link takes the spaces on one side with it.
+/// After a word and before closing punctuation, a space, or the end: the spaces before it, so `year <link>.` reads "year.".
+/// At the start of a line: the spaces after it, so `- <link> Pro` keeps its list marker and reads "- Pro".
+/// Between two words, `15% <link>for` keeps its space and reads "15% for".
+fn close_link_gaps(s: &str) -> String {
+    let mut parts = s.split(LINK_GAP);
+    let mut out = String::from(parts.next().unwrap_or_default());
+    for part in parts {
+        let before = out.trim_end_matches(' ');
+        if before.is_empty() || before.ends_with(char::is_whitespace) {
+            out.push_str(part.trim_start_matches(' '));
+            continue;
+        }
+        if part
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || ".,;:!?)".contains(c))
+        {
+            out.truncate(before.len());
+        }
+        out.push_str(part);
     }
     out
 }
@@ -233,7 +266,7 @@ mod tests {
         let stripped = strip_markers(input);
         assert_eq!(
             stripped,
-            "- Today is the user\u{2019}s last day caf\u{e9} \u{2026} \u{4f1a}\u{8b70}  done"
+            "- Today is the user\u{2019}s last day caf\u{e9} \u{2026} \u{4f1a}\u{8b70} done"
         );
     }
 
@@ -261,6 +294,26 @@ mod tests {
             !stripped.contains("</span>"),
             "close spans removed, got: {stripped:?}"
         );
+    }
+
+    #[test]
+    fn strip_markers_settles_the_spaces_around_a_removed_link() {
+        let link = r#"<span data-transcript-link data-ts="3">↳ 00:03</span>"#;
+        assert_eq!(
+            strip_markers(&format!("$180 a year {link}.")),
+            "$180 a year."
+        );
+        assert_eq!(
+            strip_markers(&format!(
+                r#"<span data-ai-grey data-ts="3">$180 a year {link}</span>."#
+            )),
+            "$180 a year."
+        );
+        assert_eq!(strip_markers(&format!("year {link} and")), "year and");
+        assert_eq!(strip_markers(&format!("15% {link}for")), "15% for");
+        assert_eq!(strip_markers(&format!("{link} Pro tier")), "Pro tier");
+        assert_eq!(strip_markers(&format!("- {link} Pro tier")), "- Pro tier");
+        assert_eq!(strip_markers(&format!("a\n  {link} b")), "a\n  b");
     }
 
     #[test]

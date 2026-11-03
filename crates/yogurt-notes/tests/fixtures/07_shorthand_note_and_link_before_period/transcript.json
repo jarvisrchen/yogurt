@@ -1,0 +1,5 @@
+[
+  {"ts_ms": 3000, "channel": "them", "text": "Dana proposed moving the pro tier to $18 a month and $180 a year."},
+  {"ts_ms": 9000, "channel": "them", "text": "Finance wants to cap the annual discount at 15%."},
+  {"ts_ms": 15000, "channel": "me", "text": "Okay, so we go with eighteen. Sam, can you update the pricing page by Friday?"}
+]
