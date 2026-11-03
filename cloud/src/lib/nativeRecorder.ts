@@ -49,8 +49,9 @@ export class NativeRecorder extends Emitter implements Recorder {
     this.seen = have;
     const status = JSON.parse(this.bridge.status());
     if (status.recording && status.meetingId === meetingId) {
-      // The state events went out before this page listened.
+      // The state events went out before this page listened, and the app may hold a session older than this page's.
       this.emit({ type: "state", state: status.state });
+      this.renewAuth();
     } else {
       const r = JSON.parse(this.bridge.start(JSON.stringify({ meetingId, startedAtMs, have, tokenUrl: this.tokenUrl, auth: await this.auth() })));
       if (!r.ok) throw new Error(r.error || "The recorder did not start.");
@@ -85,13 +86,19 @@ export class NativeRecorder extends Emitter implements Recorder {
 
   private onEvent = (e: Event) => {
     const raw = (e as CustomEvent).detail;
-    const d: RecorderEvent & { meetingId?: string } = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const d: (RecorderEvent & { meetingId?: string }) | { type: "auth" } = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // The app's session went stale while the page was in the background, where it stops renewing on its own.
+    if (d.type === "auth") return this.renewAuth();
     if (d.type === "state" && d.state === "stopped") this.onStopped?.();
     if (d.type !== "line") return this.emit(d);
     if (d.meetingId !== this.meetingId) return;
     if (d.index === this.seen) this.line(d.line);
     else if (d.index > this.seen) this.catchUp();
   };
+
+  private renewAuth() {
+    this.auth().then((a) => this.setAuth(a), () => undefined);
+  }
 
   private onVisible = () => {
     if (this.win.document.visibilityState === "visible") this.catchUp();

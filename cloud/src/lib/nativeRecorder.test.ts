@@ -148,3 +148,24 @@ test("a start that waits for the mic takes none of the previous meeting's lines,
   app.heard(4, "M0");
   expect(texts()).toEqual(["0:line 0"]);
 });
+
+test("the app's request for a fresh session is answered through setAuth, and never reaches the record screen", async () => {
+  const app = fakeApp();
+  let n = 0;
+  const rec = new NativeRecorder(app.bridge, async () => ({ jwt: `j${++n}`, browserToken: "b" }), "https://cloud.test/api/stt-token", app.win);
+  const events: RecorderEvent[] = [];
+  rec.on((e) => events.push(e));
+  await rec.start({ meetingId: "M1", startedAtMs: 1000, have: 3 });
+  const before = events.length;
+  app.post({ type: "auth" });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(app.calls.at(-1)).toBe('setAuth {"jwt":"j2","browserToken":"b"}');
+  expect(events).toHaveLength(before);
+});
+
+test("a page joining a running recorder hands it its own session", async () => {
+  const app = fakeApp({ recording: true, meetingId: "M1", state: "live" });
+  await started(app, 3);
+  await new Promise((r) => setTimeout(r, 0));
+  expect(app.calls).toContain('setAuth {"jwt":"j","browserToken":"b"}');
+});

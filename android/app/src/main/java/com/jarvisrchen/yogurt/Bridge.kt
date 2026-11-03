@@ -7,7 +7,7 @@ import kotlin.concurrent.thread
 
 /**
  * Events for the page, in order. While no Cloud page is loaded they wait here and go out when one is.
- * Interim text is the exception: it is stale by then, and the next one replaces it.
+ * Interim text and a request for a fresh session are the exceptions: they are stale by then, and the recorder sends the next one when it needs it.
  */
 object NativeEvents {
     private val pending = ArrayList<String>()
@@ -17,7 +17,7 @@ object NativeEvents {
     fun post(detail: JSONObject) {
         val s = detail.toString()
         val to = sink
-        if (to != null) to(s) else if (detail.optString("type") != "interim") pending.add(s)
+        if (to != null) to(s) else if (detail.optString("type") !in setOf("interim", "auth")) pending.add(s)
     }
 
     @Synchronized

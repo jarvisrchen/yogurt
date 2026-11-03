@@ -169,6 +169,26 @@ async function main() {
   check("the reconnect lost and repeated no line", !contiguous(store()), contiguous(store()) || `${store().length} lines`);
   check("the reconnect minted a fresh token", cloud.state.tokens >= 2, `${cloud.state.tokens} tokens`);
 
+  // The app's session expires with the screen locked, where the page no longer renews it on its own, and then the socket drops.
+  log("a session that expires while locked");
+  cloud.state.jwt = "jwt-2";
+  cloud.command({ cmd: "rotate", jwt: "jwt-2" });
+  await until("the page to hold the new session", () => page().events.some((e) => e.type === "rotated"));
+  sh("input keyevent KEYCODE_POWER");
+  await sleep(2_000);
+  const lockedSockets = cloud.state.sockets;
+  const lockedLines = store().length;
+  await cloud.kill();
+  await sleep(3_000);
+  await cloud.listen();
+  await until("a socket on the renewed session", () => cloud.state.sockets > lockedSockets, 60_000);
+  await until("lines after it", () => store().length >= lockedLines + 5, 60_000);
+  check("a refused session asks the locked page for a fresh one", cloud.state.refused >= 1 && page().events.some((e) => e.type === "auth"), `${cloud.state.refused} refused`);
+  check("the renewed session reconnects with no lost or repeated line", !contiguous(store()), contiguous(store()) || `${store().length} lines`);
+  sh("input keyevent KEYCODE_WAKEUP");
+  sh("wm dismiss-keyguard");
+  sh(`am start -n ${PKG}/.MainActivity`);
+
   log("reloading the page with 5 lines missing");
   const keep = page().lines.length - 5;
   cloud.command({ cmd: "keep", n: keep });

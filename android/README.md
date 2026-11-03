@@ -56,7 +56,7 @@ They run on the JVM with `just android`.
 The end-to-end test drives the debug app on an emulator against `tools/fake-cloud.mjs`, a fake Cloud, Deepgram, and GitHub release on the Mac, reached through `adb reverse`.
 Its test page calls the bridge the way the webapp does, and the recorder reads a generated wav instead of the mic.
 The wav stamps every sample with its second, so a lost or repeated line after a reconnect shows up as a gap or a repeat in the "second N" lines.
-It checks the first launch screen, recording through Home and a screen turned off for 75 seconds, the notification and its Stop, a reconnect after the fake server dies with no lost or repeated line, `lines(meetingId, n)` after a reload, a resume that carries on the numbering through a reload, a start held up by the mic dialog that reads none of the previous meeting's lines, `stop()` returning only after the last line, and the update download and install intent.
+It checks the first launch screen, recording through Home and a screen turned off for 75 seconds, the notification and its Stop, a reconnect after the fake server dies with no lost or repeated line, `lines(meetingId, n)` after a reload, a resume that carries on the numbering through a reload, a start held up by the mic dialog that reads none of the previous meeting's lines, a session that expires with the screen locked and is renewed by the page through an `auth` event, `stop()` returning only after the last line, and the update download and install intent.
 It wipes the app's data first, and takes about 4 minutes.
 
 ```bash

@@ -18,6 +18,9 @@ import kotlin.concurrent.thread
 
 data class Auth(val jwt: String, val browserToken: String)
 
+/** The Cloud refused the session, which the page renews. */
+private class SessionExpired : IOException("Your Cloud session expired.")
+
 private const val CHUNK_BYTES = 100 * BYTES_PER_MS
 private const val MAX_BACKOFF_MS = 10_000L
 // Deepgram sends the last results after CloseStream, then closes. This bounds a socket that never does.
@@ -125,6 +128,10 @@ class Recorder(
         synchronized(lock) { setState(if (attempt > 0) "reconnecting" else "connecting") }
         val grant = try {
             mint()
+        } catch (_: SessionExpired) {
+            // A page left in the background stops renewing its session, so it is asked for one, and the next attempt uses what setAuth brings.
+            emit(JSONObject().put("type", "auth"))
+            return retry()
         } catch (e: Exception) {
             event("error", "message", e.message ?: "Couldn't get a transcription token.")
             return retry()
@@ -142,6 +149,7 @@ class Recorder(
         val req = Request.Builder().url(tokenUrl).header("Authorization", "Bearer ${a.jwt}").post(body).build()
         http.newCall(req).execute().use { r ->
             val j = runCatching { JSONObject(r.body.string()) }.getOrDefault(JSONObject())
+            if (r.code == 401) throw SessionExpired()
             if (!r.isSuccessful) throw IOException(j.optString("message").ifEmpty { "Your Cloud answered ${r.code}." })
             val token = j.optString("token")
             val url = j.optString("url")

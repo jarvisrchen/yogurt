@@ -3,7 +3,7 @@
 // GET  /                       a test page that drives window.YogurtAndroid the way the webapp's NativeRecorder does
 // GET  /cmd, POST /report      the driver's channel to that page: one queued command out, the page's state back
 // POST /cmd                    queues a command by hand, as in curl -d '{"cmd":"start","meetingId":"m-1"}' localhost:8787/cmd
-// POST /api/stt-token          checks the session like cloud/api/stt-token.ts and returns {token, url}
+// POST /api/stt-token          checks the session like cloud/api/stt-token.ts and returns {token, url}, or 401 for any session but state.jwt
 // WS   /v1/listen              checks the granted token, then turns each 2 s of audio into one final line
 // GET  /releases/latest        a release with yogurt-android-99.0.0.apk, served from the APK given to fakeCloud
 //
@@ -18,7 +18,7 @@ const BLOCK = 2 * 16_000 * 2; // 2 s of 16 kHz linear16
 const INTERIM = BLOCK / 4;
 
 export function fakeCloud({ port = 8787, apk = null, log = () => {} } = {}) {
-  const state = { tokens: 0, sockets: 0, finals: 0, cmds: [], page: null, reports: 0 };
+  const state = { tokens: 0, refused: 0, sockets: 0, finals: 0, cmds: [], page: null, reports: 0, jwt: "jwt-test" };
   let server = null;
   const conns = new Set();
 
@@ -57,7 +57,11 @@ export function fakeCloud({ port = 8787, apk = null, log = () => {} } = {}) {
         try {
           ({ token } = JSON.parse(s));
         } catch {}
-        if (req.headers.authorization !== "Bearer jwt-test") return json(401, { message: "Sign in again." });
+        if (req.headers.authorization !== `Bearer ${state.jwt}`) {
+          state.refused++;
+          log(`token refused: ${req.headers.authorization}`);
+          return json(401, { message: "JWT expired" });
+        }
         if (token !== "browser-test") return json(400, { message: "The request has no browser token." });
         state.tokens++;
         log(`token ${state.tokens}`);
@@ -200,6 +204,8 @@ let lines = JSON.parse(localStorage.getItem("lines") || "[]");
 const events = [];
 const pageId = Math.random();
 let stopping = false;
+// The session the page would hand the app. "rotate" changes it without telling the app, as a page that renews in the background would.
+let jwt = localStorage.getItem("jwt") || "jwt-test";
 const save = () => {
   localStorage.setItem("meetingId", meetingId);
   localStorage.setItem("lines", JSON.stringify(lines));
@@ -224,6 +230,7 @@ addEventListener("yogurt-native", (e) => {
     events.push(d.type === "line" ? { type: "line", meetingId: d.meetingId, index: d.index } : d);
     console.log("yogurt-native " + JSON.stringify(d));
   }
+  if (d.type === "auth") B.setAuth(JSON.stringify({ jwt, browserToken: "browser-test" }));
   if (d.type === "state" && d.state === "stopped" && stopping) {
     // As the record screen does: the lines it missed, once the app says the last ones went out.
     stopping = false;
@@ -252,7 +259,7 @@ async function poll() {
       if (c.meetingId !== meetingId) lines = [];
       meetingId = c.meetingId;
       save();
-      const auth = { jwt: "jwt-test", browserToken: "browser-test" };
+      const auth = { jwt, browserToken: "browser-test" };
       const r = B.start(JSON.stringify({ meetingId, startedAtMs: Date.now(), have: lines.length, tokenUrl: "/api/stt-token", auth }));
       events.push({ type: "start", meetingId, have: lines.length, result: JSON.parse(r) });
       catchUp("start");
@@ -267,6 +274,11 @@ async function poll() {
     if (c.cmd === "keep") {
       lines = lines.slice(0, c.n);
       save();
+    }
+    if (c.cmd === "rotate") {
+      jwt = c.jwt;
+      localStorage.setItem("jwt", jwt);
+      events.push({ type: "rotated" });
     }
     if (c.cmd === "reload") return location.reload();
     if (c.cmd) report();

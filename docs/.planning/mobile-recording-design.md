@@ -97,8 +97,13 @@ The app posts events to the page with `window.dispatchEvent(new CustomEvent("yog
 - `{"type":"state","state":"connecting"|"live"|"reconnecting"|"stopped"}`.
 - `{"type":"gap","from_ms","to_ms"}` when the buffer overflowed and audio was dropped.
 - `{"type":"error","message"}`.
+- `{"type":"auth"}` when the Cloud refused the session the app holds, which the page answers with `setAuth`.
 
 The service mints its own Deepgram token by calling `tokenUrl` with the latest `auth`, so a reconnect works while the page is in the background.
+A page in the background can stop renewing its session, so when `tokenUrl` answers 401 the app sends an `auth` event, and the page renews its session and calls `setAuth`, which the next attempt uses.
+The WebView keeps running while the foreground service holds the process, since the app never pauses its timers, and the refresh token never leaves the page.
+If no page answers, the audio waits in the 5 minute buffer while the app keeps asking.
+A page that joins a running recording also hands the app its session.
 The call is a POST with the JWT as `Authorization: Bearer` and `{"token": browserToken}` as the body, the same request the browser makes, and the answer is `{"token","url"}`.
 The app opens `url` with the granted token in an `Authorization: Bearer` header, where the browser, which cannot set headers on a WebSocket, offers the `bearer` subprotocol with the token.
 Final lines are numbered once for the whole meeting and kept in a file until another meeting starts.
