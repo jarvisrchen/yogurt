@@ -391,7 +391,8 @@ export async function exportMeetingFile(id: string, title: string): Promise<void
   a.href = url;
   a.download = `${exportStem(title) || "Meeting"}.yogurt`;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Chrome holds the second and later downloads of a bulk export behind its multiple-downloads prompt.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Mirrors `export_file_name` in crates/yogurt-cli/src/commands/ctl/meeting.rs. */

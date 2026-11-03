@@ -96,7 +96,7 @@ describe("MeetingCard — engine pill", () => {
   });
 });
 
-describe("MeetingCard - archive menu item", () => {
+describe("MeetingCard - export and archive menu items", () => {
   const menuItems = () => {
     fireEvent.click(screen.getByRole("button", { name: "Meeting actions" }));
     return screen.getAllByRole("menuitem").map((b) => b.textContent);
@@ -104,7 +104,13 @@ describe("MeetingCard - archive menu item", () => {
 
   it("sits above Delete", () => {
     renderCard(meeting());
-    expect(menuItems()).toEqual(["Copy markdown", "Reveal in Finder", "Archive", "Delete"]);
+    expect(menuItems()).toEqual([
+      "Copy markdown",
+      "Reveal in Finder",
+      "Export meeting file",
+      "Archive",
+      "Delete",
+    ]);
   });
 
   it("reads Unarchive in the Archive view", () => {

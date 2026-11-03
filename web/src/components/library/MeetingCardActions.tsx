@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Star, Tag } from "lucide-react";
 import {
   copyMeetingMarkdown,
+  exportMeetingFile,
   revealMeetingInFinder,
   useSetArchived,
   useToggleStarred,
@@ -12,6 +13,7 @@ import { LabelPicker } from "../labels/LabelPicker";
 
 interface Props {
   id: string;
+  title: string;
   starred: boolean;
   labels: Label[];
   /** The card sits in the Archive view, so the menu offers Unarchive. */
@@ -20,7 +22,7 @@ interface Props {
   isLive?: boolean;
 }
 
-export function MeetingCardActions({ id, starred, labels, archived = false, isLive = false }: Props) {
+export function MeetingCardActions({ id, title, starred, labels, archived = false, isLive = false }: Props) {
   const [open, setOpen] = useState(false);
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -54,6 +56,11 @@ export function MeetingCardActions({ id, starred, labels, archived = false, isLi
     stop(e);
     setOpen(false);
     await copyMeetingMarkdown(id);
+  };
+  const onExport = (e: React.MouseEvent) => {
+    stop(e);
+    setOpen(false);
+    exportMeetingFile(id, title).catch((err) => console.error("export meeting failed", err));
   };
   const onReveal = async (e: React.MouseEvent) => {
     stop(e);
@@ -148,14 +155,24 @@ export function MeetingCardActions({ id, starred, labels, archived = false, isLi
             Reveal in Finder
           </button>
           {!isLive && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onArchive}
-              className="block w-full text-left px-3 py-2 text-ink hover:bg-paper"
-            >
-              {archived ? "Unarchive" : "Archive"}
-            </button>
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onExport}
+                className="block w-full text-left px-3 py-2 text-ink hover:bg-paper"
+              >
+                Export meeting file
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onArchive}
+                className="block w-full text-left px-3 py-2 text-ink hover:bg-paper"
+              >
+                {archived ? "Unarchive" : "Archive"}
+              </button>
+            </>
           )}
           <DeleteMeetingConfirm
             id={id}

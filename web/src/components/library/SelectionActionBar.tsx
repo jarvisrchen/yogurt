@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 import { ConfirmPanel } from "./DeleteMeetingConfirm";
 import { BulkLabelPicker } from "../labels/BulkLabelPicker";
-import { useBulkDeleteMeetings, useSetArchived, type Meeting } from "../../lib/api/meetings";
+import { exportMeetingFile, useBulkDeleteMeetings, useSetArchived, type Meeting } from "../../lib/api/meetings";
 
 interface Props {
   // Label bulk-ops need each meeting's current `labels` to compute its next set.
-  meetings: Pick<Meeting, "id" | "labels">[];
+  meetings: Pick<Meeting, "id" | "title" | "labels">[];
   onSelectAll: () => void;
   onClear: () => void;
   /** The Archive view, where the bar offers Unarchive. */
   archived?: boolean;
-  /** The meeting being recorded, which Archive skips because the server refuses it. */
+  /** The meeting being recorded, which Archive and Export skip because the server refuses it. */
   activeId?: string | null;
 }
 
@@ -25,6 +25,8 @@ export function SelectionActionBar({
   const [removeOpen, setRemoveOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleteFile, setDeleteFile] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportFailed, setExportFailed] = useState(0);
   const bulkDelete = useBulkDeleteMeetings();
   const setArchived = useSetArchived();
 
@@ -33,6 +35,12 @@ export function SelectionActionBar({
     const t = setTimeout(() => setConfirming(false), 3000);
     return () => clearTimeout(t);
   }, [confirming, deleteFile]);
+
+  useEffect(() => {
+    if (!exportFailed) return;
+    const t = setTimeout(() => setExportFailed(0), 4000);
+    return () => clearTimeout(t);
+  }, [exportFailed]);
 
   const stop = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -59,6 +67,21 @@ export function SelectionActionBar({
     const toArchive = ids.filter((id) => id !== activeId);
     await setArchived.mutateAsync({ ids: toArchive, archived: !archived }).catch(() => {});
     onClear();
+  };
+
+  const onExport = async () => {
+    setExporting(true);
+    let failed = 0;
+    for (const m of meetings) {
+      if (m.id === activeId) continue;
+      await exportMeetingFile(m.id, m.title).catch((err) => {
+        failed++;
+        console.error("export meeting failed", m.id, err);
+      });
+    }
+    setExporting(false);
+    if (failed) setExportFailed(failed);
+    else onClear();
   };
 
   const itemButton =
@@ -125,6 +148,14 @@ export function SelectionActionBar({
         onClick={onArchive}
       >
         {archived ? "Unarchive" : "Archive"}
+      </button>
+      <button
+        type="button"
+        className={`${itemButton} ${exportFailed ? "text-straw" : "text-ink"}`}
+        disabled={exporting}
+        onClick={onExport}
+      >
+        {exporting ? "Exporting…" : exportFailed ? `Couldn't export ${exportFailed}` : "Export"}
       </button>
       <div className="relative">
         <button

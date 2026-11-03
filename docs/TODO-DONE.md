@@ -1626,3 +1626,10 @@ New closed items go at the bottom.
   `ctl meeting export <url-or-id> [-o <file>]` writes the `/api/meetings/:id/export` file, `<title>.yogurt` by default, and never overwrites.
   `ctl meeting import <file>` posts it to `/api/meetings/import`, which now also returns `existing`, and prints the meeting URL.
   The yogurt-control skill documents both.
+
+- [x] **IMP-8** Export meeting files from the Library card menu and the multiselect bar, and import several `.yogurt` files at once
+
+  The card's "..." menu has Export meeting file, and the multiselect bar has Export, which saves one `.yogurt` file per selected meeting.
+  Both skip the meeting being recorded, which the server refuses to export.
+  A failed bulk export keeps the selection and says how many files are missing.
+  Import takes several files: one file still opens the meeting, several stay on the Library and name each file that failed with its reason.
