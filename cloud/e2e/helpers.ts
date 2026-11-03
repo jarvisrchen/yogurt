@@ -3,7 +3,7 @@ import { expect, type Page, type TestInfo } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 
-export const DB = process.env.YOGURT_CLOUD_E2E_DB ?? "postgresql://postgres:postgres@127.0.0.1:56432/postgres";
+const DB = process.env.YOGURT_CLOUD_E2E_DB ?? "postgresql://postgres:postgres@127.0.0.1:56432/postgres";
 export const API = process.env.YOGURT_CLOUD_E2E_API ?? "http://127.0.0.1:56431";
 export const KEY = process.env.YOGURT_CLOUD_E2E_KEY ?? "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
 const MAIL = process.env.YOGURT_CLOUD_E2E_MAIL ?? "http://127.0.0.1:56434";
@@ -38,13 +38,7 @@ export async function query<T>(text: string, params: unknown[] = []): Promise<T[
 
 /** Revokes every browser token, so the next read from any browser is rejected. */
 export async function revokeBrowsers() {
-  const c = new pg.Client({ connectionString: DB });
-  await c.connect();
-  try {
-    await c.query("delete from yogurt_browsers");
-  } finally {
-    await c.end();
-  }
+  await query("delete from yogurt_browsers");
 }
 
 /** The confirmation link from the newest message in the local mail catcher. */

@@ -2,8 +2,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import pg from "pg";
-import { API, DB, DEVICES, KEY, OWNER, PASSWORD, isPhone, onboard, reset, seed, shot } from "./helpers";
+import { API, DEVICES, KEY, OWNER, PASSWORD, isPhone, onboard, query, reset, seed, shot } from "./helpers";
 
 // The case crates/yogurt-server/tests/wasm_parity.rs runs through the Mac's /enhance route, with the enriched_md the Mac stored.
 const [CASE] = JSON.parse(readFileSync(new URL("../../crates/yogurt-wasm/tests/fixture.json", import.meta.url), "utf8"));
@@ -66,15 +65,11 @@ async function seedPhone() {
   await sb.auth.signOut();
 }
 
-async function versions(): Promise<{ push_id: number; body: { v: number; meeting: Record<string, unknown>; chat: unknown[] } }[]> {
-  const c = new pg.Client({ connectionString: DB });
-  await c.connect();
-  try {
-    return (await c.query("select push_id, body from yogurt_versions where device_id = $1 and meeting_id = $2 order by push_id", [PHONE, MEETING])).rows;
-  } finally {
-    await c.end();
-  }
-}
+const versions = () =>
+  query<{ push_id: number; body: { v: number; meeting: Record<string, unknown>; chat: unknown[] } }>(
+    "select push_id, body from yogurt_versions where device_id = $1 and meeting_id = $2 order by push_id",
+    [PHONE, MEETING],
+  );
 
 test("enhance a phone meeting with the Mac's prompt and merge", async ({ page }, info) => {
   const phone = isPhone(page);
