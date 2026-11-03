@@ -29,13 +29,12 @@ export async function enhanceMeeting(
   const w = await loadWasm();
   if (w.too_short(meeting.notes_md, meeting.transcript_json)) return null;
   const messages = JSON.parse(w.render_enhance(meeting.notes_md, meeting.transcript_json, template));
-  // getSession refreshes an expired session, as every other read does through supabase-js.
-  const { data } = await api.sb.auth.getSession();
+  const jwt = await api.jwt();
   let res: Response;
   try {
     res = await fetch("/api/enhance", {
       method: "POST",
-      headers: { authorization: `Bearer ${data.session?.access_token ?? ""}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${jwt}`, "content-type": "application/json" },
       body: JSON.stringify({ token, messages }),
       signal,
     });
