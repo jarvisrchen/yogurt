@@ -153,7 +153,8 @@ export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; di
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const providers = useSettings().data?.providers ?? [];
+  const settings = useSettings().data;
+  const providers = settings?.providers ?? [];
   const qc = useQueryClient();
   const activate = useMutation({
     mutationFn: (id: string) => settingsApi.activateProvider(id),
@@ -162,10 +163,29 @@ export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; di
       qc.setQueryData<SettingsView>(settingsKey, (s) =>
         s && { ...s, providers: s.providers.map((p) => ({ ...p, is_active: p.id === id })) },
       );
-      setOpen(false);
+      close();
       return qc.invalidateQueries({ queryKey: settingsKey });
     },
   });
+  const setModel = useMutation({
+    mutationFn: ({ p, cli_model }: { p: ProviderView; cli_model: string }) =>
+      settingsApi.updateProvider(p.id, { name: p.name, base_url: p.base_url, model: p.model, cli_model }),
+    onSuccess: (view) => {
+      qc.setQueryData<SettingsView>(settingsKey, (s) =>
+        s && { ...s, providers: s.providers.map((p) => (p.id === view.id ? view : p)) },
+      );
+      close();
+      return qc.invalidateQueries({ queryKey: settingsKey });
+    },
+  });
+  const busy = activate.isPending || setModel.isPending;
+
+  // The picked item was disabled while saving, which dropped focus, so hand it back to the pill.
+  function close() {
+    setOpen(false);
+    wrapperRef.current?.querySelector("button")?.focus();
+  }
+  const failed = activate.error ?? setModel.error;
 
   useEffect(() => {
     if (!open) return;
@@ -185,8 +205,7 @@ export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; di
     if (e.key === "Escape") {
       // Stopped here so the chat window's own Escape shortcut does not also fire.
       e.stopPropagation();
-      setOpen(false);
-      wrapperRef.current?.querySelector("button")?.focus();
+      close();
       return;
     }
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -210,7 +229,10 @@ export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; di
         aria-expanded={open}
         disabled={disabled}
         onClick={() => {
-          if (!activate.isPending) activate.reset();
+          if (!busy) {
+            activate.reset();
+            setModel.reset();
+          }
           setOpen((o) => !o);
         }}
         className={`${PILL} ${tone} relative group/pill cursor-pointer transition-colors disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue`}
@@ -228,40 +250,77 @@ export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; di
         {!open && <FullName caption="Will enhance with" value={model.full} />}
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1.5 bg-card border border-line rounded-card shadow-pop py-1 min-w-[260px] max-w-[min(360px,calc(100vw-32px))] z-20 text-[13px]">
+        <div className="absolute left-0 top-full mt-1.5 bg-card border border-line rounded-card shadow-pop py-1 min-w-[280px] max-w-[min(360px,calc(100vw-32px))] z-20 text-[13px]">
           <p aria-hidden className={`${CAPTION} px-3 pt-1.5 pb-1`}>
             Recap and enhance with
           </p>
           <div ref={menuRef} role="menu" aria-label="Recap and enhance with">
             {providers.map((p) => {
               const RowIcon = p.adapter === "cli" ? Terminal : Sparkles;
+              // Only a CLI preset's curated aliases always resolve: an http or opencode list can name a model the user's
+              // setup does not serve, failing the next recap. An empty cli_model means Settings' Test has not passed yet.
+              const preset =
+                p.is_active && p.adapter === "cli" && p.cli_model
+                  ? settings?.presets.find((x) => x.adapter === "cli" && x.default_model === p.model)
+                  : undefined;
+              const models = preset && preset.models.length > 1 ? [...new Set([...preset.models, p.cli_model])] : [];
+              const chips = models.length > 1;
               return (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={p.is_active}
-                  disabled={activate.isPending}
-                  onClick={() => (p.is_active ? setOpen(false) : activate.mutate(p.id))}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-paper focus-visible:bg-paper focus-visible:outline-none disabled:cursor-wait"
-                >
-                  <RowIcon
-                    size={14}
-                    aria-hidden
-                    className={`shrink-0 ${p.is_active ? "text-blue" : "text-mut"}`}
-                  />
-                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <span className="truncate text-ink font-semibold">{p.name}</span>
-                    <span className="truncate font-mono text-[11.5px] text-mut">
-                      {providerModelId(p)}
+                <div key={p.id}>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={p.is_active}
+                    disabled={busy}
+                    onClick={() => (p.is_active ? setOpen(false) : activate.mutate(p.id))}
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-paper focus-visible:bg-paper focus-visible:outline-none disabled:cursor-wait"
+                  >
+                    <RowIcon
+                      size={14}
+                      aria-hidden
+                      className={`shrink-0 ${p.is_active ? "text-blue" : "text-mut"}`}
+                    />
+                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <span className="truncate text-ink font-semibold">{p.name}</span>
+                      {!chips && (
+                        <span className="truncate font-mono text-[11.5px] text-mut">
+                          {providerModelId(p)}
+                        </span>
+                      )}
                     </span>
-                  </span>
-                  {p.is_active ? (
-                    <Check size={14} aria-hidden className="text-blue shrink-0" />
-                  ) : (
-                    <span className="w-[14px] shrink-0" aria-hidden />
+                    {p.is_active ? (
+                      <Check size={14} aria-hidden className="text-blue shrink-0" />
+                    ) : (
+                      <span className="w-[14px] shrink-0" aria-hidden />
+                    )}
+                  </button>
+                  {chips && (
+                    <div
+                      role="group"
+                      aria-label={`${p.name} model`}
+                      className="flex flex-wrap gap-1 pl-[36px] pr-3 pb-2 pt-0.5"
+                    >
+                      {models.map((m) => {
+                        const on = m === p.cli_model;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={on}
+                            disabled={busy}
+                            onClick={() => (on ? setOpen(false) : setModel.mutate({ p, cli_model: m }))}
+                            className={`rounded-pill px-2 py-[3px] font-mono text-[11.5px] leading-none border transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue disabled:cursor-wait ${
+                              on ? "bg-blsoft border-blue/50 text-blue" : "border-line text-ink hover:bg-paper"
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
             <div role="separator" className="my-1 border-t border-line" />
@@ -273,9 +332,9 @@ export function LlmSwitch({ llmModel, disabled = false }: { llmModel: string; di
               Model settings
             </Link>
           </div>
-          {activate.isError && (
+          {failed && (
             <p role="alert" className="px-3 py-1.5 text-[12px] leading-snug text-straw">
-              {activate.error.message}
+              {failed.message}
             </p>
           )}
           <p className="px-3 pt-0.5 pb-1.5 text-[12px] leading-snug text-mut">

@@ -1686,3 +1686,11 @@ New closed items go at the bottom.
   A CLI provider now reads as its `cli:<binary>:<model>` stamp in the live pill, so it shows the Terminal icon and the same label the post page will show.
   Once a meeting is enhanced, the pill stays read-only and records what enhanced it.
   Mocks: `docs/.lavish/live-llm-switch-mocks.html`.
+
+- [x] **LLM-15** Switch the model inside the active CLI provider from the live LLM menu, for example Claude Code from haiku to sonnet to opus
+
+  The live LLM menu from LLM-14 switched providers, but changing Claude Code from haiku to sonnet or opus still meant a trip to Settings.
+  When the active provider is a CLI provider, its row in the menu now shows its preset models as chips, with the current one highlighted, and picking a chip saves that `--model` on the provider through the same PATCH Settings uses.
+  Like the provider switch, it is global, so the next recap tick, the Enhance at End, and later meetings use it.
+  HTTP providers get no chips, because their preset lists can name a model the endpoint does not serve, which would fail the next recap mid-meeting.
+  Mocks: `docs/.lavish/live-model-chips-mocks.html`.

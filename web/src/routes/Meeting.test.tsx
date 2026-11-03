@@ -112,6 +112,7 @@ vi.mock("../lib/api/settings", () => ({
   settingsApi: { activateProvider: activateProviderSpy },
   useSettings: () => ({
     data: {
+      presets: [],
       providers: state.providers,
       general: { audio_echo_feature: state.audioEchoFeature },
     },
