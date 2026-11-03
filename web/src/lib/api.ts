@@ -3,6 +3,8 @@ import { bearerFetch } from "./session";
 export interface HealthResponse {
   status: string;
   service: string;
+  version: string;
+  mode: "dev" | "release";
 }
 
 export type ChatRole = "user" | "assistant";
