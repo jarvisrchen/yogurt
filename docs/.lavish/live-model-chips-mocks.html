@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live model chips</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+<!-- Tokens copied from web/src/index.css. cloud/src/index.css imports the same file, so the webapp shares them. -->
+<style type="text/tailwindcss">
+@theme {
+  --color-paper:   #FBF7EF;  /* app background, hero surfaces             */
+  --color-card:    #FFFFFF;  /* cards, surfaces over paper                */
+  --color-ink:     #211D18;  /* user notes, headings, primary text        */
+  --color-grey:    #A89F90;  /* secondary captions, transcript "Them"     */
+  --color-ai:      #7A7264;  /* AI-added text (4.5:1 on paper)            */
+  --color-line:    #EBE3D5;  /* borders, dividers                         */
+  --color-blue:    #5B4FC7;  /* primary blueberry: buttons, transcript   */
+  --color-blsoft:  #ECE9FB;  /* soft blueberry: active-nav, pill bg      */
+  --color-straw:   #E07A66;  /* recording indicator, error accent         */
+  --color-strsoft: #FBE6E0;  /* soft strawberry: error/warning bg        */
+  --color-matcha:  #5E9E73;  /* local-only / privacy / success            */
+  --color-mtsoft:  #E7F0E8;  /* soft matcha: local-mode badges           */
+  --color-mut:     #8A8174;  /* muted text on cards                       */
+  /* Label chip palette (LabelChip.tsx): the three non-brand label colors. */
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-honeyink:  #7A5A0F;  /* honey text that reaches 4.5:1 on white and on honeysoft */
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+
+  --font-sans:  "Manrope", "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --radius-chip:   8px;    /* small chip                                    */
+  --radius-button: 12px;   /* buttons, inputs, nav rows                     */
+  --radius-card:   16px;   /* cards                                         */
+  --radius-panel:  24px;   /* floating panels: chat window, dialogs, dock   */
+  --radius-pill:   999px;  /* pills, recording badge                        */
+
+  /* Tailwind copies a shadow's value into its utility class, so dark mode re-points the colors below, not these. */
+  --shadow-card:   0 16px 32px -4px var(--shadow-card-color);
+  --shadow-pop:    0 12px 16px -4px var(--shadow-pop-color);
+  --shadow-window: 0 24px 48px -8px var(--shadow-window-color);
+  --shadow-button-blue: 0 8px 16px -6px rgba(91, 79, 199, 0.35);
+}
+
+/* The label palette is read from inline styles (LabelChip), which the runtime does not scan, so emit every token. */
+:root {
+  color-scheme: light;
+  --shadow-card-color:   rgba(33, 29, 24, 0.06);
+  --shadow-pop-color:    rgba(33, 29, 24, 0.18);
+  --shadow-window-color: rgba(33, 29, 24, 0.22);
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+}
+
+/* The app stamps data-theme="dark" on <html>. A mock forces dark on its own frame with .force-dark. */
+:root[data-theme="dark"], .force-dark {
+  color-scheme: dark;
+  --color-paper:   #1B1815;
+  --color-card:    #26221D;
+  --color-ink:     #EDEAE2;
+  --color-grey:    #8F877B;
+  --color-ai:      #A69D90;
+  --color-line:    #3A342C;
+  --color-blue:    #7D72DE;
+  --color-blsoft:  #2C2846;
+  --color-straw:   #E8886F;
+  --color-strsoft: #3D2622;
+  --color-matcha:  #7FBE8C;
+  --color-mtsoft:  #22342A;
+  --color-mut:     #9B9285;
+  --color-lilac:     #C4A2E8;
+  --color-lilacsoft: #33283F;
+  --color-honey:     #D9B24E;
+  --color-honeysoft: #3A3120;
+  --color-honeyink:  #D9B24E;
+  --color-slate:     #A9B7C4;
+  --color-slatesoft: #2A3138;
+  --shadow-card-color:   rgba(0, 0, 0, 0.35);
+  --shadow-pop-color:    rgba(0, 0, 0, 0.5);
+  --shadow-window-color: rgba(0, 0, 0, 0.6);
+}
+
+@utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
+@utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
+@utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
+@utility heading-state   { @apply font-extrabold tracking-[-0.01em] text-[30px] text-ink; }
+@utility heading-section { @apply font-extrabold tracking-[-0.01em] text-[24px] leading-none text-ink; }
+@utility heading-wordmark{ @apply font-bold tracking-[-0.01em] text-[20px] leading-none text-ink; }
+@utility heading-card    { @apply font-bold tracking-[-0.01em] text-[18px] leading-tight text-ink; }
+@utility heading-sm      { @apply font-sans font-bold tracking-[-0.01em] text-[16px] text-ink; }
+
+html, body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 0.009em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-grey { color: var(--color-ai); }
+
+/* cloud/src/index.css: on a phone the shared chat pill takes the webapp's phone scale. The mock applies it by frame, not viewport. */
+.phone .cloud-chat.text-\[14px\] { font-size: 16px; }
+
+/* Mock page chrome, outside the apps. */
+body { background: #ECE7DE; }
+.page { max-width: 1440px; margin: 0 auto; padding: 40px 32px 80px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+@media (min-width: 1400px) { .pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.shot { min-width: 0; }
+.shot > .tag { font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: #7A7264; margin: 0 0 8px; }
+.frame { position: relative; overflow: hidden; background: var(--color-paper); color: var(--color-ink); border-radius: 10px; box-shadow: 0 0 0 1px rgba(33, 29, 24, .16), 0 10px 30px -12px rgba(33, 29, 24, .35); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mb-10 max-w-[760px]">
+    <h1 class="heading-title">Live model chips</h1>
+    <p class="mt-3 text-[14px] text-mut">A follow-up to LLM-14: switch the model inside a provider from the same live LLM menu, for example Claude Code from haiku to sonnet to opus. Same tokens and class strings as the merged menu.</p>
+    <ul class="mt-4 text-[14px] text-ink list-disc pl-5 space-y-1">
+      <li>The model chips come from the same list Settings suggests: the provider's preset models plus its current model. A provider with no preset, or only one model, shows no chips.</li>
+      <li>Picking a chip saves that model on the provider, the same PATCH Settings makes. On another provider it also activates that provider, so one click switches both.</li>
+      <li>Like the provider switch, the model is global: the next recap tick, the Enhance at End, and later meetings use it.</li>
+    </ul>
+  </header>
+  <div id="sections" class="flex flex-col gap-14"></div>
+</div>
+
+<script>
+const PATHS = {
+  link2: '<path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 1 1 0 10h-2"></path><line x1="8" x2="16" y1="12" y2="12"></line>',
+  chevronDown: '<path d="m6 9 6 6 6-6"></path>',
+  check: '<path d="M20 6 9 17l-5-5"></path>',
+  sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path><path d="M4 17v2"></path><path d="M5 18H3"></path>',
+  terminal: '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line>',
+  hardDrive: '<line x1="22" x2="2" y1="12" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" x2="6.01" y1="16" y2="16"></line><line x1="10" x2="10.01" y1="16" y2="16"></line>',
+};
+const icon = (n, size, cls = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide ${cls}" aria-hidden="true">${PATHS[n]}</svg>`;
+
+const BASE = "inline-flex items-center justify-center gap-2 rounded-button font-sans transition-colors transition-shadow duration-150 ease-out select-none";
+const btn = (extra = "") => `${BASE} px-[18px] py-2.5 text-[14px] font-semibold leading-none bg-blue border-blue text-white shadow-button-blue hover:opacity-90 ${extra}`;
+const PILL = "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12px] font-medium leading-none";
+const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-mut";
+
+const PROVIDERS = [
+  { name: "OpenAI", cli: false, model: "gpt-5.1", models: ["gpt-5.1", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o4-mini", "o3"] },
+  { name: "Claude Code", cli: true, model: "sonnet", models: ["haiku", "sonnet", "opus", "fable"] },
+  { name: "Ollama", cli: false, model: "qwen3:14b", models: ["qwen3:14b", "llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2"] },
+  { name: "Work proxy", cli: false, model: "gpt-5.1-internal", models: [] },
+];
+const stamp = (p, m = p.model) => (p.cli ? `cli:claude:${m}` : m);
+
+
+// Live pill: today's pending tone, plus a caret and a pressed state while the menu is open.
+function llmPill(p, { open = false, readOnly = false } = {}) {
+  const text = p.pillModel ?? p.model;
+  const ico = icon(p.cli ? "terminal" : "sparkles", 12, readOnly ? "shrink-0 text-blue" : "shrink-0");
+  if (readOnly) return `<span class="${PILL} bg-blsoft text-ink">${ico}<span class="min-w-0 max-w-[12rem] truncate">${text}</span></span>`;
+  const tone = open ? "border border-blue text-blue bg-blsoft" : "border border-blue/40 text-blue bg-transparent hover:bg-blsoft/50";
+  return `<button type="button" aria-haspopup="listbox" aria-expanded="${open}" class="${PILL} ${tone} cursor-pointer transition-colors">${ico}<span class="min-w-0 max-w-[12rem] truncate">${text}</span>${icon("chevronDown", 12, `shrink-0 -mr-0.5 transition-transform ${open ? "rotate-180" : ""}`)}</button>`;
+}
+
+const CHIP = "rounded-pill px-2 py-[3px] font-mono text-[11.5px] leading-none border transition-colors";
+const chips = (p, current, picked) => `
+  <div class="flex flex-wrap gap-1 pl-[36px] pr-3 pb-2 pt-0.5">
+    ${p.models.map((m) => {
+      const on = m === current;
+      const tone = on ? "bg-blsoft border-blue/50 text-blue" : m === picked ? "bg-paper border-mut text-ink" : "border-line text-ink hover:bg-paper";
+      return `<button type="button" role="menuitemradio" aria-checked="${on}" class="${CHIP} ${tone}">${m}</button>`;
+    }).join("")}
+  </div>`;
+
+// variant "active": chips only under the active provider. variant "all": chips under every provider that has a list.
+function menu(activeIdx, { variant = "active", model, hover } = {}) {
+  const rows = PROVIDERS.map((p, i) => {
+    const isActive = i === activeIdx;
+    const current = isActive ? (model ?? p.model) : p.model;
+    const showChips = p.models.length > 1 && (variant === "all" || isActive);
+    return `
+    <div>
+      <button type="button" role="menuitemradio" aria-checked="${isActive}" class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-paper">
+        ${icon(p.cli ? "terminal" : "sparkles", 14, isActive ? "shrink-0 text-blue" : "shrink-0 text-mut")}
+        <span class="flex-1 min-w-0 flex flex-col gap-0.5">
+          <span class="truncate text-ink font-semibold">${p.name}</span>
+          ${showChips ? "" : `<span class="truncate font-mono text-[11.5px] text-mut">${stamp(p, current)}</span>`}
+        </span>
+        ${isActive ? icon("check", 14, "text-blue shrink-0") : `<span class="w-[14px] shrink-0"></span>`}
+      </button>
+      ${showChips ? chips(p, isActive ? current : (variant === "all" ? p.model : null), hover) : ""}
+    </div>`;
+  }).join("");
+  return `
+  <div class="absolute left-0 top-full mt-1.5 bg-card border border-line rounded-card shadow-pop py-1 min-w-[280px] max-w-[320px] z-20 text-[13px]">
+    <p class="${LABEL} px-3 pt-1.5 pb-1">Recap and enhance with</p>
+    ${rows}
+    <div class="my-1 border-t border-line"></div>
+    <a class="block px-3 py-1.5 text-blue hover:bg-paper">Model settings</a>
+    <p class="px-3 pt-0.5 pb-1.5 text-[12px] leading-snug text-mut">Also the default for new meetings.</p>
+  </div>`;
+}
+
+function header({ active = 0, open = false, post = false, menuOpts = {}, pillModel } = {}) {
+  const p = { ...PROVIDERS[active], pillModel: pillModel ?? PROVIDERS[active].model };
+  const buttons = post
+    ? `<button class="${btn()}">Re-enhance</button>`
+    : `<button class="${btn()}">Stop recording</button><button class="${btn()}">End meeting</button>`;
+  return `
+  <div class="px-8 pt-6 ${open ? "pb-[400px]" : "pb-8"}">
+    <a class="inline-flex items-center gap-1 text-[13px] text-mut mb-4"><span>←</span><span>Library</span>${post ? "" : `<span class="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-straw)] ml-1 animate-recpulse"></span>`}</a>
+    <header class="space-y-2">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="heading-title">Pricing sync</h1>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="inline-flex items-center justify-center w-9 h-9 rounded-button border border-line bg-card text-mut">${icon("link2", 15)}</button>
+          ${buttons}
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="${PILL} bg-card text-mut border border-line">Nov 3 · 2:00 PM</span>
+        ${post ? `<span class="${PILL} bg-card text-mut border border-line">34 min</span>` : ""}
+        <span class="${PILL} bg-mtsoft text-ink">${icon("hardDrive", 12, "shrink-0 text-matcha")}<span>large-v3-turbo</span></span>
+        <span class="relative">${llmPill(p, { open, readOnly: post })}${open ? menu(active, menuOpts) : ""}</span>
+      </div>
+    </header>
+    <div class="mt-6 space-y-2 text-[15px]">
+      <p>- Pro price for launch review</p>
+      <p>- Marco churn model by Fri</p>
+    </div>
+  </div>`;
+}
+
+const SECTIONS = [
+  { title: "A. Chips under the active provider only (recommended)", note: "The active provider's row trades its mono model line for a row of model chips, with the current one filled. Other providers keep one line each, so the menu stays short. To change another provider's model, pick that provider first and reopen the menu.", opts: { active: 1, open: true, menuOpts: { variant: "active" } } },
+  { title: "B. Chips under every provider", note: "One click switches both provider and model anywhere in the list, but presets with long lists (OpenAI has 7 chips, Ollama 6) make the menu tall. The Work proxy row has no preset, so it keeps its single line in both variants.", opts: { active: 1, open: true, menuOpts: { variant: "all" } } },
+  { title: "After picking opus", note: "The menu closes and the pill reads opus. The next recap tick runs on opus, and so does the Enhance at End.", opts: { active: 1, pillModel: "opus" } },
+];
+
+
+document.getElementById("sections").innerHTML = SECTIONS.map((s) => `
+  <section>
+    <h2 class="heading-card">${s.title}</h2>
+    <p class="mt-1.5 mb-4 text-[14px] text-mut max-w-[760px]">${s.note}</p>
+    <div class="pair">
+      <div class="shot"><p class="tag">Light</p><div class="frame">${header(s.opts)}</div></div>
+      <div class="shot"><p class="tag">Dark</p><div class="frame force-dark">${header(s.opts)}</div></div>
+    </div>
+  </section>`).join("");
+</script>
+</body>
+</html>

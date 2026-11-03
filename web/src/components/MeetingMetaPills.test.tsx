@@ -158,11 +158,23 @@ describe("providerModelId", () => {
 });
 
 describe("LlmSwitch", () => {
-  function renderLive({ active = "a", ...opts }: { llmLocked?: boolean; active?: string } = {}) {
+  const claude = provider({ id: "c", name: "Claude Code", model: "claude", adapter: "cli", cli_model: "sonnet", is_active: true });
+  const presets = [
+    { name: "Claude Code", base_url: "", default_model: "claude", models: ["haiku", "sonnet", "opus"], docs_url: "", adapter: "cli", default_cli_model: "haiku" },
+    { name: "OpenCode", base_url: "", default_model: "opencode", models: ["minimax-coding-plan/MiniMax-M3"], docs_url: "", adapter: "cli", default_cli_model: "minimax-coding-plan/MiniMax-M3" },
+    { name: "OpenAI", base_url: "https://api.openai.com/v1", default_model: "gpt-5.1", models: ["gpt-5.1", "gpt-4o"], docs_url: "", adapter: "http", default_cli_model: "" },
+  ];
+
+  function renderLive({
+    active = "a",
+    providers,
+    ...opts
+  }: { llmLocked?: boolean; active?: string; providers?: ProviderView[] } = {}) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(settingsKey, {
-      providers: [
-        provider({ id: "a", name: "OpenAI", model: "gpt-5.1", is_active: active === "a" }),
+      presets,
+      providers: providers ?? [
+        provider({ id: "a", name: "OpenAI", base_url: "https://api.openai.com/v1", model: "gpt-5.1", is_active: active === "a" }),
         provider({ id: "b", name: "Ollama", model: "qwen3:14b", is_active: active === "b" }),
       ],
     });
@@ -220,6 +232,44 @@ describe("LlmSwitch", () => {
     expect(screen.getByRole("menuitemradio", { name: /OpenAI/ })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
     expect(screen.getByRole("menuitem", { name: "Model settings" })).toHaveFocus();
+  });
+
+  it("saves the picked model chip on the active CLI provider and closes the menu", async () => {
+    const update = vi
+      .spyOn(settingsApi, "updateProvider")
+      .mockResolvedValue({ ...claude, cli_model: "opus" });
+    renderLive({ providers: [claude] });
+    fireEvent.click(screen.getByTestId("llm-pill"));
+    const chips = within(screen.getByRole("group", { name: "Claude Code model" }));
+    expect(chips.getAllByRole("menuitemradio").map((c) => c.textContent)).toEqual(["haiku", "sonnet", "opus"]);
+    expect(chips.getByRole("menuitemradio", { name: "sonnet" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(chips.getByRole("menuitemradio", { name: "opus" }));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("c", { name: "Claude Code", base_url: "", model: "claude", cli_model: "opus" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.getByTestId("llm-pill")).toHaveFocus();
+    fireEvent.click(screen.getByTestId("llm-pill"));
+    expect(screen.getByRole("menuitemradio", { name: "opus" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keeps the menu open with the server's error when the model save fails", async () => {
+    vi.spyOn(settingsApi, "updateProvider").mockRejectedValue(new Error("provider not found"));
+    renderLive({ providers: [claude] });
+    fireEvent.click(screen.getByTestId("llm-pill"));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "opus" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("provider not found");
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["an http provider", undefined],
+    ["a CLI whose Test has not passed", [{ ...claude, cli_model: "" }]],
+    ["a CLI preset with one model", [{ ...claude, model: "opencode", cli_model: "anthropic/claude-sonnet-4-5" }]],
+  ])("shows no chips for %s", (_, providers) => {
+    renderLive({ providers });
+    fireEvent.click(screen.getByTestId("llm-pill"));
+    expect(screen.queryByRole("group")).toBeNull();
   });
 
   it("cannot be opened while Enhance runs", () => {
