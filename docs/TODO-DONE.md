@@ -1620,3 +1620,9 @@ New closed items go at the bottom.
   Export on the meeting page saves a `.yogurt` JSON file of the title, times, raw and Enhanced notes, and transcript.
   Import in the Library header posts it to `/api/meetings/import`, which stores it with source `yogurt` and the original meeting id as `source_id`, so a second import of the same file opens the existing meeting.
   The meeting page shows "Imported from a yogurt file".
+
+- [x] **CLI-9** `yogurt ctl meeting export` and `yogurt ctl meeting import` for `.yogurt` meeting files, so an agent can share a meeting without the browser
+
+  `ctl meeting export <url-or-id> [-o <file>]` writes the `/api/meetings/:id/export` file, `<title>.yogurt` by default, and never overwrites.
+  `ctl meeting import <file>` posts it to `/api/meetings/import`, which now also returns `existing`, and prints the meeting URL.
+  The yogurt-control skill documents both.

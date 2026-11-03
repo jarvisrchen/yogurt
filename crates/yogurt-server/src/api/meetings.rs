@@ -500,7 +500,11 @@ async fn import_one(
     .await
     .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
     .map_err(ApiError::from)?;
-    Ok((code, Json(serde_json::json!({ "id": id }))))
+    let existing = code == StatusCode::OK;
+    Ok((
+        code,
+        Json(serde_json::json!({ "id": id, "existing": existing })),
+    ))
 }
 
 /// Returns the on-disk markdown file, re-emitting it first if it is missing.
@@ -761,6 +765,7 @@ mod tests {
             )
             .await;
         assert_eq!((code, own["id"].as_str()), (200, Some(id.as_str())));
+        assert_eq!(own["existing"], true);
 
         // A fresh instance plays the friend, since this one holds the original.
         let h = Harness::new().await;
@@ -772,6 +777,7 @@ mod tests {
             )
             .await;
         assert_eq!(code, 201, "{body}");
+        assert_eq!(body["existing"], false);
         let copy = body["id"].as_str().unwrap().to_string();
         assert_ne!(copy, id);
         let (_, m) = h
