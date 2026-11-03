@@ -2,7 +2,7 @@
 //! DELETE removes the file only with `?delete_file=true`, since the file is the user's grep-able source of truth.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -25,6 +25,12 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/meetings/{id}/markdown", get(get_markdown))
         .route("/api/meetings/{id}/reveal", post(reveal_in_finder))
+        .route("/api/meetings/{id}/export", get(export_one))
+        // A long meeting's transcript can pass axum's 2 MB default.
+        .route(
+            "/api/meetings/import",
+            post(import_one).layer(DefaultBodyLimit::max(64 << 20)),
+        )
 }
 
 /// Every field is optional. An empty body gets the dated "Meeting 10/6/26" default.
@@ -382,6 +388,121 @@ fn exporter_view(m: &Meeting) -> ExpMeeting<'_> {
     }
 }
 
+const SHARED_SOURCE: &str = "yogurt";
+const FILE_VERSION: u32 = 1;
+
+/// A meeting file one yogurt exports and another imports. Labels and chat stay behind.
+#[derive(Debug, Deserialize, Serialize)]
+struct MeetingFile {
+    yogurt_meeting: u32,
+    /// The id of the recording, kept across re-shares so importing it twice is a no-op.
+    id: String,
+    title: String,
+    started_at: i64,
+    ended_at: i64,
+    notes_md: String,
+    enriched_md: Option<String>,
+    transcript: Vec<FixtureSegment>,
+}
+
+async fn export_one(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<MeetingFile>, ApiError> {
+    let repo = s.meeting_repo.clone();
+    let m = tokio::task::spawn_blocking(move || repo.get(&id))
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    let ended_at = m
+        .ended_at
+        .ok_or_else(|| ApiError::Conflict("the meeting is still recording".into()))?;
+    // Like enhance and chat, an unreadable transcript counts as none.
+    let transcript = serde_json::from_str(&m.transcript_json).unwrap_or_default();
+    let id = match (m.source.as_deref(), m.source_id) {
+        (Some(SHARED_SOURCE), Some(original)) => original,
+        _ => m.id,
+    };
+    Ok(Json(MeetingFile {
+        yogurt_meeting: FILE_VERSION,
+        id,
+        title: m.title,
+        started_at: m.started_at,
+        ended_at,
+        notes_md: m.notes_md,
+        enriched_md: m.enriched_md,
+        transcript,
+    }))
+}
+
+/// 201 with the new meeting's id, or 200 with the existing one when this file was imported before.
+async fn import_one(
+    State(s): State<AppState>,
+    body: axum::body::Bytes,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let f: MeetingFile = serde_json::from_slice(&body)
+        .map_err(|_| ApiError::BadRequest("this is not a yogurt meeting file".into()))?;
+    if f.yogurt_meeting != FILE_VERSION {
+        return Err(ApiError::BadRequest(
+            "this meeting file comes from a newer yogurt, update to import it".into(),
+        ));
+    }
+    if f.id.trim().is_empty() || f.ended_at < f.started_at {
+        return Err(ApiError::BadRequest("the meeting file is damaged".into()));
+    }
+    if f.transcript
+        .iter()
+        .any(|seg| seg.ts_ms < 0 || (seg.channel != "me" && seg.channel != "them"))
+    {
+        return Err(ApiError::BadRequest("the meeting file is damaged".into()));
+    }
+    let title = match f.title.trim() {
+        "" => "Untitled meeting".to_string(),
+        t => t.to_string(),
+    };
+    let meeting = yogurt_db::ImportedMeeting {
+        id: uuid::Uuid::now_v7().to_string(),
+        title,
+        started_at: f.started_at,
+        ended_at: f.ended_at,
+        notes_md: f.notes_md,
+        enriched_md: f
+            .enriched_md
+            .as_deref()
+            .map(crate::sanitize::sanitize_enriched_md),
+        transcript_json: serde_json::to_string(&f.transcript).map_err(anyhow::Error::from)?,
+        source: SHARED_SOURCE.into(),
+        source_id: f.id,
+        source_json: serde_json::json!({}),
+        labels: Vec::new(),
+    };
+    let repo = s.meeting_repo.clone();
+    let exporter = s.markdown_exporter.clone();
+    let (code, id) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let source_id = meeting.source_id.clone();
+        // Your own meeting, shared back to you.
+        if repo.get(&source_id)?.is_some() {
+            return Ok((StatusCode::OK, source_id));
+        }
+        let Some(m) = repo.import(meeting)? else {
+            let id = repo
+                .id_for_source(SHARED_SOURCE, &source_id)?
+                .ok_or_else(|| anyhow::anyhow!("import: existing meeting vanished"))?;
+            return Ok((StatusCode::OK, id));
+        };
+        // The file is re-emitted on demand, so a failed write does not undo the import.
+        if let Err(e) = exporter.write(&exporter_view(&m)) {
+            tracing::warn!(meeting = %m.id, error = %e, "markdown export failed after import");
+        }
+        Ok((StatusCode::CREATED, m.id))
+    })
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::Error::new(e)))?
+    .map_err(ApiError::from)?;
+    Ok((code, Json(serde_json::json!({ "id": id }))))
+}
+
 /// Returns the on-disk markdown file, re-emitting it first if it is missing.
 async fn get_markdown(
     State(s): State<AppState>,
@@ -593,6 +714,113 @@ mod tests {
                 .iter()
                 .map(|m| m["title"].as_str().unwrap().to_string())
                 .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_shared_meeting_file_imports_once_and_keeps_its_original_id() {
+        let h = Harness::new().await;
+        let id = h.meeting("Standup", 1_000, false).await;
+        let (code, _) = h
+            .call(
+                reqwest::Method::GET,
+                &format!("/api/meetings/{id}/export"),
+                None,
+            )
+            .await;
+        assert_eq!(code, 409, "a live meeting cannot be exported");
+
+        let transcript = json!([{ "ts_ms": 0, "channel": "me", "text": "hello" }]).to_string();
+        h.call(
+            reqwest::Method::PATCH,
+            &format!("/api/meetings/{id}"),
+            Some(json!({
+                "ended_at": 5_000,
+                "notes_md": "raw",
+                "enriched_md": "## Summary<script>x()</script>",
+                "transcript_json": transcript,
+            })),
+        )
+        .await;
+        let (code, file) = h
+            .call(
+                reqwest::Method::GET,
+                &format!("/api/meetings/{id}/export"),
+                None,
+            )
+            .await;
+        assert_eq!(code, 200, "{file}");
+        assert_eq!(file["id"], id.as_str());
+        assert_eq!(file["transcript"][0]["text"], "hello");
+
+        let (code, own) = h
+            .call(
+                reqwest::Method::POST,
+                "/api/meetings/import",
+                Some(file.clone()),
+            )
+            .await;
+        assert_eq!((code, own["id"].as_str()), (200, Some(id.as_str())));
+
+        // A fresh instance plays the friend, since this one holds the original.
+        let h = Harness::new().await;
+        let (code, body) = h
+            .call(
+                reqwest::Method::POST,
+                "/api/meetings/import",
+                Some(file.clone()),
+            )
+            .await;
+        assert_eq!(code, 201, "{body}");
+        let copy = body["id"].as_str().unwrap().to_string();
+        assert_ne!(copy, id);
+        let (_, m) = h
+            .call(reqwest::Method::GET, &format!("/api/meetings/{copy}"), None)
+            .await;
+        assert_eq!(m["source"], "yogurt");
+        assert_eq!(m["source_id"], id.as_str());
+        assert_eq!(m["title"], "Standup");
+        assert_eq!(m["ended_at"], 5_000);
+        assert_eq!(m["notes_md"], "raw");
+        assert!(!m["enriched_md"].as_str().unwrap().contains("<script"));
+        assert_eq!(
+            serde_json::from_str::<Value>(m["transcript_json"].as_str().unwrap()).unwrap(),
+            serde_json::from_str::<Value>(&transcript).unwrap()
+        );
+
+        let (code, again) = h
+            .call(reqwest::Method::POST, "/api/meetings/import", Some(file))
+            .await;
+        assert_eq!((code, again["id"].as_str()), (200, Some(copy.as_str())));
+
+        let (_, reshared) = h
+            .call(
+                reqwest::Method::GET,
+                &format!("/api/meetings/{copy}/export"),
+                None,
+            )
+            .await;
+        assert_eq!(
+            reshared["id"],
+            id.as_str(),
+            "a re-share keeps the original id"
+        );
+
+        for bad in [
+            json!({ "title": "x" }),
+            json!({ "yogurt_meeting": 2, "id": "a", "title": "", "started_at": 0, "ended_at": 1,
+                    "notes_md": "", "enriched_md": null, "transcript": [] }),
+            json!({ "yogurt_meeting": 1, "id": "a", "title": "", "started_at": 0, "ended_at": 1,
+                    "notes_md": "", "enriched_md": null,
+                    "transcript": [{ "ts_ms": 0, "channel": "x", "text": "" }] }),
+            json!({ "yogurt_meeting": 1, "id": "a", "title": "", "started_at": 0, "ended_at": 1,
+                    "notes_md": "", "enriched_md": null,
+                    "transcript": [{ "ts_ms": -1, "channel": "me", "text": "" }] }),
+        ] {
+            let (code, body) = h
+                .call(reqwest::Method::POST, "/api/meetings/import", Some(bad))
+                .await;
+            assert_eq!(code, 400, "{body}");
         }
     }
 

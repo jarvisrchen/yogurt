@@ -350,6 +350,19 @@ impl MeetingRepo {
         })
     }
 
+    /// The id of the meeting imported from `source` as `source_id`, if any.
+    pub fn id_for_source(&self, source: &str, source_id: &str) -> Result<Option<String>> {
+        self.db.with_conn(|conn| -> Result<_> {
+            Ok(conn
+                .query_row(
+                    "SELECT id FROM meetings WHERE source = ?1 AND source_id = ?2",
+                    [source, source_id],
+                    |r| r.get(0),
+                )
+                .optional()?)
+        })
+    }
+
     /// The owner email shared by most meetings imported from `source`, which stands in for the user.
     /// Ties break on the email so the answer is stable.
     pub fn most_common_source_owner(&self, source: &str) -> Result<Option<String>> {

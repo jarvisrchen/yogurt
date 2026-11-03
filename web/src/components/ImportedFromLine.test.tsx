@@ -35,6 +35,11 @@ describe("ImportedFromLine", () => {
     expect(screen.getByTestId("imported-from")).toHaveTextContent("Captured by a@example.com");
   });
 
+  it("says a shared meeting came from a yogurt file", () => {
+    render(<ImportedFromLine name="yogurt" source={{ imported_at: "2026-11-02T00:00:00Z" }} />);
+    expect(screen.getByTestId("imported-from")).toHaveTextContent(/^Imported from a yogurt file$/);
+  });
+
   it("shows no link back to Granola", () => {
     render(<ImportedFromLine name="granola" source={{ web_url: "https://notes.granola.ai/d/example" }} />);
     expect(screen.queryByRole("link")).toBeNull();
