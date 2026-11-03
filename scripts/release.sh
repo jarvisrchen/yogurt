@@ -889,8 +889,13 @@ open_bump_pr() {
       echo "release.sh ship: cargo update --workspace --offline failed - an intra-workspace path dep may have a hand-pinned version= that needs removing or bumping; never retry without --offline" >&2
       exit 1
     fi
+    # Crate versions feed Rust's symbol hashes, so a bump changes the Cloud's committed WASM and CI's drift check fails without this.
+    if ! PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" just wasm >/dev/null; then
+      echo "release.sh ship: just wasm failed - it needs the wasm32-unknown-unknown target and wasm-bindgen-cli 0.2.126 (see the justfile's wasm recipe)" >&2
+      exit 1
+    fi
     git checkout -q -b "$branch"
-    git add Cargo.toml Cargo.lock
+    git add Cargo.toml Cargo.lock cloud/src/wasm
     git commit -q -m "chore: bump version to $version"
     git push -q origin "HEAD:refs/heads/$branch"
   ) || return 1

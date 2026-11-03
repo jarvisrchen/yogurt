@@ -82,6 +82,7 @@ Do not add a bundle without deciding to give up the Terminal attribution.
 Android refuses an update signed with a different key, so losing `~/.yogurt/android-release.jks` or its password strands every installed copy, which then has to be uninstalled first.
 The `android` job passes the tag's version to Gradle, so the APK's `versionName` and its name, `yogurt-android-<version>.apk`, match the tag the app's update check compares with.
 A local build takes the version from `[workspace.package]` in `Cargo.toml`, which `ship` bumps before tagging.
+The bump also reruns `just wasm` and commits `cloud/src/wasm`, because crate versions change the WASM bytes, so the releasing Mac needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` 0.2.126.
 Every release therefore ships an APK that installed apps offer as an update.
 Without both signing secrets the `android` job skips the APK with a warning, and the release goes out with the Mac binaries only.
 
