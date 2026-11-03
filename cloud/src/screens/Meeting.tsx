@@ -37,9 +37,11 @@ type Run = { status: "idle" } | Exclude<Finish, { status: "done" }>;
 
 const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
 
-/** `entry` is null when nothing is known of the meeting yet, as after opening a link. */
-/** `enhance` is set for a phone meeting's live view, the only meetings the webapp writes. */
-/** `finish` is the enhance End started for this meeting, which shows until the user starts one here. */
+/**
+ * `entry` is null when nothing is known of the meeting yet, as after opening a link.
+ * `enhance` is set for a phone meeting's live view, the only meetings the webapp writes.
+ * `finish` is the enhance End started for this meeting, which shows until the user starts one here.
+ */
 export function MeetingView({ entry, device, deviceColor, back, onBack, desktop, body, chat, enhance, finish }: { entry: Entry | null; device: string; deviceColor: string; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null; enhance?: Enhance | null; finish?: Finish | null }) {
   const [own, setRun] = useState<Run>({ status: "idle" });
   const [took, setTook] = useState(false);
