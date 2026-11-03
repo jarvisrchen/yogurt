@@ -527,6 +527,86 @@ async fn meeting_new_transcript_file_round_trips_exactly() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn meeting_export_then_import_into_another_instance() {
+    let (alice, bob) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (_a, a_port) = spawn_server(alice.path()).await;
+    let (_b, b_port) = spawn_server(bob.path()).await;
+
+    let segments_path = alice.path().join("segments.json");
+    std::fs::write(
+        &segments_path,
+        r#"[{"ts_ms": 0, "channel": "them", "text": "ship it on friday"}]"#,
+    )
+    .unwrap();
+    let created = ctl(
+        a_port,
+        alice.path(),
+        &[
+            "meeting",
+            "new",
+            "--transcript-file",
+            segments_path.to_str().unwrap(),
+            "--title",
+            "launch sync",
+            "--json",
+        ],
+    )
+    .success();
+    let created: serde_json::Value = serde_json::from_str(&stdout_of(&created)).unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let file = alice.path().join("launch.yogurt");
+    let file_arg = file.to_str().unwrap();
+    ctl(
+        a_port,
+        alice.path(),
+        &["meeting", "export", &id, "-o", file_arg],
+    )
+    .success();
+    let again = ctl(
+        a_port,
+        alice.path(),
+        &["meeting", "export", &id, "-o", file_arg],
+    )
+    .failure();
+    assert!(
+        stdout_of(&again).contains("could not write"),
+        "an export never overwrites"
+    );
+
+    let default_name = ctl_cmd(a_port, alice.path(), &["meeting", "export", &id])
+        .current_dir(alice.path())
+        .assert()
+        .success();
+    assert!(stdout_of(&default_name).contains("launch sync.yogurt"));
+    assert_eq!(
+        std::fs::read(alice.path().join("launch sync.yogurt")).unwrap(),
+        std::fs::read(&file).unwrap()
+    );
+
+    let import = |port, home: &Path| {
+        let out = ctl(port, home, &["meeting", "import", file_arg, "--json"]).success();
+        serde_json::from_str::<serde_json::Value>(&stdout_of(&out)).unwrap()
+    };
+    let first = import(b_port, bob.path());
+    assert_eq!(first["existing"], false);
+    let again = import(b_port, bob.path());
+    assert_eq!(
+        (again["existing"].clone(), again["id"].clone()),
+        (true.into(), first["id"].clone())
+    );
+    let back_home = import(a_port, alice.path());
+    assert_eq!(
+        (back_home["existing"].clone(), back_home["id"].as_str()),
+        (true.into(), Some(id.as_str()))
+    );
+
+    let copy = first["id"].as_str().unwrap();
+    let transcript = ctl(b_port, bob.path(), &["meeting", "transcript", copy]).success();
+    assert!(stdout_of(&transcript).contains("ship it on friday"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn meeting_transcript_markdown_formats_title_speaker_and_timestamp() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let (_guard, port) = spawn_server(tmp.path()).await;

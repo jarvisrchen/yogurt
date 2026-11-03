@@ -1,6 +1,6 @@
 ---
 name: yogurt-control
-description: Read or control a meeting in a running yogurt instance. Use when handed a yogurt meeting URL (http://localhost:7878/meeting/<id>/post) or asked "what was discussed in this meeting", "summarize this yogurt meeting", "what did they say about X" - or a vague reference like "my last meeting with Steven", "my 1:1 with Steven" - and for "start a meeting in yogurt", "start recording", "end/stop the meeting", "is yogurt recording".
+description: Read or control a meeting in a running yogurt instance. Use when handed a yogurt meeting URL (http://localhost:7878/meeting/<id>/post) or asked "what was discussed in this meeting", "summarize this yogurt meeting", "what did they say about X" - or a vague reference like "my last meeting with Steven", "my 1:1 with Steven" - and for "start a meeting in yogurt", "start recording", "end/stop the meeting", "is yogurt recording" - and for "export this meeting", "share this meeting with a friend", "import this .yogurt file".
 ---
 
 # Read and control yogurt
@@ -38,6 +38,14 @@ Narrow by date client-side on `started_at`, then read it with `ctl meeting summa
 `ctl meeting list --json` is newest first and returns `{"meetings":[...],"total":n}`, where each row is a summary (`id`, `title`, `started_at`, `ended_at`, `starred`, `labels`, `has_enriched`) with no notes or transcript.
 Add `--limit N` for the newest N rows, since `total` still counts every meeting; without it `ctl` pages through them all.
 `ctl meeting show <id>` or `summary <id>` reads the body.
+
+## Sharing a meeting
+
+`ctl meeting export <url-or-id> [-o <file>]` saves a finished meeting as a `.yogurt` file someone who also runs yogurt can import.
+It writes `<title>.yogurt` in the current directory by default and never overwrites an existing file.
+`ctl meeting import <file> --json` brings one in and returns `{"id","existing","url"}`.
+`existing` is true when the meeting was already here, either from an earlier import of the same file or because this yogurt recorded it.
+Both need a running server.
 
 Three rules:
 
