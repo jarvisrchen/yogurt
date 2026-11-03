@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { settingsApi } from "../lib/api/settings";
 import type { Preset, ProviderView } from "../lib/api/settings";
-import { SidebarNav } from "../components/settings/SidebarNav";
+import { SECTIONS, SidebarNav } from "../components/settings/SidebarNav";
 import type { SettingsSection } from "../components/settings/SidebarNav";
 import { ProviderCard } from "../components/settings/ProviderCard";
 import { ProviderRow } from "../components/settings/ProviderRow";
@@ -14,12 +14,11 @@ import { AudioSection } from "../components/settings/AudioSection";
 import { GeneralSection } from "../components/settings/GeneralSection";
 import { CloudSection } from "../components/settings/cloud/CloudSection";
 import { ImportSection } from "../components/settings/ImportSection";
+import { AboutSection } from "../components/settings/AboutSection";
 import { LABEL } from "../components/settings/labelClass";
 
-const VALID_SECTIONS = ["model", "transcription", "audio", "general", "cloud", "import"] as const;
-
 function isValidSection(s: unknown): s is SettingsSection {
-  return typeof s === "string" && (VALID_SECTIONS as readonly string[]).includes(s);
+  return SECTIONS.some((x) => x.id === s);
 }
 
 /**
@@ -198,6 +197,8 @@ export function Settings() {
         {section === "cloud" && <CloudSection view={params.view} />}
 
         {section === "import" && <ImportSection />}
+
+        {section === "about" && <AboutSection />}
       </main>
     </div>
   );

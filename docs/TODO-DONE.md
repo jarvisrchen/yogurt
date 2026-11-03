@@ -1580,3 +1580,15 @@ New closed items go at the bottom.
 
   Landed in the DX-24 PR (2026-11-01). The test now expects 2 to 6 logged requests, and the `Exhausted` result still proves the client made all six attempts.
   </details>
+
+- [x] **UI-28** Show the app version in Settings
+  <details>
+  <summary>Details</summary>
+
+  Nothing in the web UI says which version is running, so checking it means `yogurt --version` or curling `/api/health`.
+  Add an About section to Settings with the version, whether this is a dev build, the license, and links to the source and that version's release notes.
+
+  Landed in the UI-28 PR (2026-11-02).
+  Settings gains an About section, last in the sidebar at `/settings/about`.
+  It reads `version` and `mode` from `/api/health` through the existing `fetchHealth()`, marks a dev build with a pill, and links GitHub and the matching `releases/tag/v<version>` page.
+  </details>

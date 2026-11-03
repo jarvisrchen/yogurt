@@ -9,7 +9,7 @@ import { useCloudStatus } from "../../lib/api/cloud";
 // not shared because the section lists differ.
 // The `→` in the caption is U+2192, never ASCII `->`.
 
-export type SettingsSection = "model" | "transcription" | "audio" | "general" | "cloud" | "import";
+export type SettingsSection = "model" | "transcription" | "audio" | "general" | "cloud" | "import" | "about";
 
 interface Props {
   active: SettingsSection;
@@ -18,13 +18,14 @@ interface Props {
   paths: DataPaths;
 }
 
-const SECTIONS: { id: SettingsSection; label: string }[] = [
+export const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "model", label: "Model" },
   { id: "transcription", label: "Transcription" },
   { id: "audio", label: "Audio" },
   { id: "general", label: "General" },
   { id: "cloud", label: "Cloud sync" },
   { id: "import", label: "Import" },
+  { id: "about", label: "About" },
 ];
 
 export function SidebarNav({ active, onChange, providers, paths }: Props) {
