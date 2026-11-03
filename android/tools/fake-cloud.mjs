@@ -217,12 +217,15 @@ function catchUp(why) {
   save();
   events.push({ type: "catchup", why, from, got: got.length });
 }
+let reported = Promise.resolve();
 function report() {
   const status = JSON.parse(B.status());
   document.getElementById("status").textContent = JSON.stringify(status);
   document.getElementById("lines").start = Math.max(0, lines.length - 8);
   document.getElementById("lines").innerHTML = lines.slice(-8).map((l) => "<li>" + l.text + "</li>").join("");
-  fetch("/report", { method: "POST", body: JSON.stringify({ pageId, meetingId, status, lines, events: events.slice(-200), version: B.appVersion() }) }).catch(() => {});
+  const body = JSON.stringify({ pageId, meetingId, status, lines, events: events.slice(-200), version: B.appVersion() });
+  // One at a time, so a report that overtakes a newer one never replaces it, as the last line's could the stopped event's.
+  reported = reported.then(() => fetch("/report", { method: "POST", body })).catch(() => {});
 }
 addEventListener("yogurt-native", (e) => {
   const d = e.detail;
