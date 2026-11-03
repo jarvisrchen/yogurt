@@ -1592,3 +1592,9 @@ New closed items go at the bottom.
   Settings gains an About section, last in the sidebar at `/settings/about`.
   It reads `version` and `mode` from `/api/health` through the existing `fetchHealth()`, marks a dev build with a pill, and links GitHub and the matching `releases/tag/v<version>` page.
   </details>
+
+- [x] **IMP-7** Share a meeting with someone who also runs yogurt: Export saves a `.yogurt` file from the meeting page, and Import in the Library header brings it in marked "Imported from a yogurt file"
+
+  Export on the meeting page saves a `.yogurt` JSON file of the title, times, raw and Enhanced notes, and transcript.
+  Import in the Library header posts it to `/api/meetings/import`, which stores it with source `yogurt` and the original meeting id as `source_id`, so a second import of the same file opens the existing meeting.
+  The meeting page shows "Imported from a yogurt file".

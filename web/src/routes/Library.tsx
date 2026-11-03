@@ -10,6 +10,7 @@ import { useLabels } from "../lib/api/labels";
 import { DateGroup } from "../components/library/DateGroup";
 import { ArchiveOlderMeetings } from "../components/library/ArchiveOlderMeetings";
 import { Greeting } from "../components/library/Greeting";
+import { ImportMeetingButton } from "../components/library/ImportMeetingButton";
 import { Pager } from "../components/library/Pager";
 import { SearchPill } from "../components/library/SearchPill";
 import { SelectionActionBar } from "../components/library/SelectionActionBar";
@@ -181,6 +182,7 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
           <div className="flex items-center gap-2">
             {/* It archives across every label, so a view narrowed to one leaves it out. */}
             {archivedOnly && !labelId && <ArchiveOlderMeetings />}
+            {!archivedOnly && <ImportMeetingButton />}
             <SearchPill value={query} onChange={onQueryChange} />
           </div>
         </div>

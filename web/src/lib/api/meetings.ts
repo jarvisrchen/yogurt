@@ -382,6 +382,39 @@ export async function copyMeetingMarkdown(id: string): Promise<void> {
   await navigator.clipboard.writeText(md);
 }
 
+/** Saves the meeting as a `.yogurt` file another yogurt can import. */
+export async function exportMeetingFile(id: string, title: string): Promise<void> {
+  const res = await bearerFetch(`/api/meetings/${id}/export`);
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[/\\:*?"<>|]+/g, " ").trim() || "Meeting"}.yogurt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Resolves to the meeting's id, the existing one when the file was imported before. */
+export function useImportMeetingFile(): UseMutationResult<string, Error, File> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file) => {
+      const res = await bearerFetch("/api/meetings/import", {
+        method: "POST",
+        body: file,
+      });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return ((await res.json()) as { id: string }).id;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: meetingsKey }),
+  });
+}
+
+async function errorMessage(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return typeof body?.error === "string" ? body.error : `${res.status} ${res.statusText}`;
+}
+
 /** The server shells out to `open -R` on macOS to reveal the file in Finder. */
 export async function revealMeetingInFinder(id: string): Promise<void> {
   await json<void>(`/api/meetings/${id}/reveal`, { method: "POST" });
