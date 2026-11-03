@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Button } from "@web/components/Button";
 import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
 import { Back, DeviceTag, Field, Note } from "../ui";
 import type { Api } from "../lib/api";
-import type { Gap } from "../lib/audioQueue";
+import { QUEUE_MS, type Gap } from "../lib/audioQueue";
 import { clock } from "../lib/library";
 import { readDevice, UNTITLED, type Line, type PhoneMeeting } from "../lib/phone";
-import { QUEUE_MS } from "../lib/audioQueue";
 import { useSession, type RecordingSession, type Snapshot } from "../lib/session";
 import { useChat } from "../lib/useChat";
 import { Ask } from "./Meeting";
@@ -184,28 +183,12 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
   );
 }
 
-const STATUS: Record<Snapshot["state"], ReactNode> = {
-  live: (
-    <span className="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-matcha">
-      <span aria-hidden>●</span>connected
-    </span>
-  ),
-  connecting: (
-    <span className="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-grey">
-      <span aria-hidden>○</span>connecting
-    </span>
-  ),
-  reconnecting: (
-    <span className="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-grey">
-      <span aria-hidden>○</span>reconnecting
-    </span>
-  ),
-  stopped: (
-    <span className="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-grey">
-      <span aria-hidden>○</span>stopped
-    </span>
-  ),
-};
+const Status = ({ state }: { state: Snapshot["state"] }) => (
+  <span className={`text-[11px] inline-flex items-center gap-1 whitespace-nowrap ${state === "live" ? "text-matcha" : "text-grey"}`}>
+    <span aria-hidden>{state === "live" ? "●" : "○"}</span>
+    {state === "live" ? "connected" : state}
+  </span>
+);
 
 function GapMarker({ gap }: { gap: Gap }) {
   return (
@@ -264,7 +247,7 @@ function Sheet({ full, setFull, state, lines, interim, interimAt, gaps }: { full
         <header className={`flex items-center justify-between gap-2 px-[20px] pt-[6px] ${full ? "border-b border-line pb-[10px]" : "pb-[4px]"}`}>
           <span className="text-[13px] min-[721px]:text-[12px] font-semibold text-ink">Live transcript</span>
           <span className="flex items-center gap-[8px]">
-            {STATUS[state]}
+            <Status state={state} />
             {full && (
               <span aria-hidden className="inline-flex px-[6px] py-[4px] text-mut">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
