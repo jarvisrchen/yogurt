@@ -123,6 +123,7 @@ export function MeetingCard({
         <LlmPill llmModel={meeting.llm_model} />
         <MeetingCardActions
           id={meeting.id}
+          title={meeting.title}
           starred={meeting.starred}
           labels={meeting.labels}
           archived={archived}
