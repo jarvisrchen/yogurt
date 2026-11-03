@@ -1,3 +1,5 @@
+import { readNumber, writeNumber } from "./storage";
+
 export const DOCK_DEFAULT = 330;
 export const DOCK_MIN = 320;
 export const DOCK_MAX = 600;
@@ -39,23 +41,6 @@ export function dockLayout(width: number, windowWidth: number): { pad: number; c
   );
   const notes = Math.min(NOTES_MAX, windowWidth - pad);
   return { pad, clear, overlaps: (windowWidth - pad + notes) / 2 > windowWidth - clear };
-}
-
-function readNumber(key: string): number | null {
-  try {
-    const v = Number(localStorage.getItem(key));
-    return Number.isFinite(v) && v > 0 ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeNumber(key: string, v: number) {
-  try {
-    localStorage.setItem(key, String(v));
-  } catch {
-    // Private mode or blocked storage: the choice lasts until reload.
-  }
 }
 
 export const loadDockWidth = () => readNumber(WIDTH_KEY) ?? DOCK_DEFAULT;

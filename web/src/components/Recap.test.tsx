@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
 import { RecapCard } from "./Recap";
 import { TranscriptDock } from "./TranscriptDock";
 import type { TranscriptEvent } from "../lib/ws";
@@ -75,6 +75,37 @@ describe("RecapCard", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("grows the list from its bottom handle, clamps it, remembers it, and resets on double-click", async () => {
+    const { unmount } = render(<RecapCard meetingId="m" token="t" mode="recording" />);
+    await screen.findByText("Dana proposes $18/month");
+    const handle = screen.getByRole("separator", { name: "Resize recap" });
+    const height = () => screen.getByTestId("recap-list").style.height;
+
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+    expect(height()).toBe("168px");
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(height()).toBe("148px");
+
+    // jsdom has no PointerEvent, and the Event fallback drops clientY.
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    fireEvent.pointerDown(handle, { button: 0, clientY: 300 });
+    fireEvent.pointerMove(window, { buttons: 1, clientY: 1300 });
+    // jsdom's window is 768px tall, and the list stops at 60% of it.
+    expect(height()).toBe("461px");
+    fireEvent.pointerMove(window, { buttons: 1, clientY: 500 });
+    fireEvent.pointerUp(window);
+    expect(height()).toBe("348px");
+
+    unmount();
+    render(<RecapCard meetingId="m" token="t" mode="recording" />);
+    await screen.findByText("Dana proposes $18/month");
+    expect(height()).toBe("348px");
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize recap" }));
+    expect(height()).toBe("148px");
   });
 
   it("reserves the list's height before the first update and keeps it as bullets arrive", async () => {

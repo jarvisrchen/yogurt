@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { usePointerDrag } from "../lib/usePointerDrag";
 import {
   useTranscriptWs,
   useAudioLevels,
@@ -139,7 +140,7 @@ export function TranscriptDock({
   const windowWidth = useWindowWidth();
   const [savedWidth, setSavedWidth] = useState(loadDockWidth);
   const [textSize, setTextSize] = useState(loadDockText);
-  const [dragging, setDragging] = useState(false);
+  const { dragging, start: startDrag } = usePointerDrag("dock-dragging");
   const width = clampDockWidth(savedWidth, windowWidth);
   const { pad, clear, overlaps } = dockLayout(width, windowWidth);
 
@@ -164,49 +165,23 @@ export function TranscriptDock({
     };
   }, [open]);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dock-dragging", dragging);
-    return () => document.documentElement.classList.remove("dock-dragging");
-  }, [dragging]);
-
-  // Detaches a drag's window listeners if the dock unmounts mid-drag.
-  const endDragRef = useRef<(() => void) | null>(null);
-  useEffect(() => () => endDragRef.current?.(), []);
-
   function setWidth(px: number) {
     setSavedWidth(px);
     saveDockWidth(px);
   }
 
   function onHandlePointerDown(e: React.PointerEvent) {
-    if (e.button > 0) return;
-    e.preventDefault();
-    const startX = e.clientX;
     const startWidth = width;
-    let last: number | null = null;
-    setDragging(true);
-    const move = (ev: PointerEvent) => {
-      // The release can land outside the page (another app, Cmd-Tab), so a move with no button held ends the drag.
-      if (ev.buttons === 0) {
-        end();
-        return;
-      }
-      last = clampDockWidth(startWidth + startX - ev.clientX, viewportWidth());
-      setSavedWidth(last);
-    };
-    const end = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
-      endDragRef.current = null;
-      setDragging(false);
+    let last = width;
+    startDrag(
+      e,
+      (dx) => {
+        last = clampDockWidth(startWidth - dx, viewportWidth());
+        setSavedWidth(last);
+      },
       // A click without a move must not overwrite a saved width that a small window is clamping.
-      if (last !== null) saveDockWidth(last);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
-    endDragRef.current = end;
+      (moved) => moved && saveDockWidth(last),
+    );
   }
 
   function onHandleKeyDown(e: React.KeyboardEvent) {
