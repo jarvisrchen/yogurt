@@ -955,6 +955,8 @@ sequenceDiagram
   The unique `(source, source_id)` index makes the insert a no-op when the meeting is already here.
   `yogurt_adopt` locks the phone's device row and writes a null version for the meeting only while `push_id` is still its latest, ended version, so of two Macs only the first wins, and a Mac that copied an older version gets false.
   A Mac that gets false deletes its insert, unless the row was there before the pass or the call was retried, since a lost answer may have been a win.
+  A trigger on `yogurt_versions` refuses a phone's push of a meeting whose latest version is that null, with `PT409`, under the same device row lock, so an Enhance the webapp started before the adoption cannot bring the phone's copy back for the next adoption to delete.
+  The webapp then shows the meeting as the Mac's, and an End whose answer was lost drops its local copy.
   The rest of the pass then pushes the meeting as this Mac's, so it shows once, under the Mac, and the meeting page says "Recorded on <phone name>".
   A crash between the insert and the claim leaves the meeting in both places for the next pass to repair, never in neither.
   A phone removed from the Cloud before the claim leaves its meeting here only, so the copy stays and is pushed as this Mac's.

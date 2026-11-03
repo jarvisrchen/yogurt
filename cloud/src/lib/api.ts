@@ -101,6 +101,9 @@ export interface HistoryRow {
 
 export class TokenRejected extends Error {}
 
+/** The Cloud refused a phone's push of a meeting a Mac has adopted. */
+export class Adopted extends Error {}
+
 export const OFFLINE = "Couldn't reach your Cloud. Check your connection and try again.";
 
 /** postgrest-js reports a failed fetch as status 0 and auth-js as an AuthRetryableFetchError, both with the browser's raw message. */
@@ -191,6 +194,7 @@ export class Api {
     const push = await this.sb.rpc("yogurt_start_push", { device_id: device });
     if (push.error) throw fail(push.error, push.status);
     const insert = await this.sb.from("yogurt_versions").insert({ meeting_id: meeting, push_id: push.data, device_id: device, body });
+    if (insert.error?.code === "PT409") throw new Adopted(insert.error.message);
     if (insert.error) throw fail(insert.error, insert.status);
     // A failure here only delays search to the next push.
     await this.sb.rpc("yogurt_search_catch_up", { max_ms: 2000 }).then(undefined, () => undefined);

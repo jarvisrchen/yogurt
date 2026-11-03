@@ -159,3 +159,47 @@ test("enhance a phone meeting with the Mac's prompt and merge", async ({ page },
   expect(asked.at(-1)!.messages[0].content).toContain("Note format: Team meeting");
   await expect.poll(async () => (await versions()).length).toBe(3);
 });
+
+/** What a Mac's push pass does with an ended phone meeting: it claims the phone's latest version, then pushes its own copy under a UUID. */
+async function adoptAsMac(id: string) {
+  const sb = createClient(API, KEY);
+  const { error } = await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
+  if (error) throw error;
+  const [latest] = (await versions()).slice(-1);
+  const adopt = await sb.rpc("yogurt_adopt", { device_id: PHONE, meeting_id: MEETING, push_id: latest.push_id });
+  if (adopt.data !== true) throw new Error(`adopt: ${adopt.error?.message ?? adopt.data}`);
+  const push = await sb.rpc("yogurt_start_push", { device_id: DEVICES.a });
+  const copy = await sb.from("yogurt_versions").insert({ meeting_id: id, push_id: push.data, device_id: DEVICES.a, body: { ...latest.body, meeting: { ...latest.body.meeting, id } } });
+  if (copy.error) throw new Error(copy.error.message);
+  await sb.auth.signOut();
+}
+
+test("a Mac that adopts the meeting while its Enhance streams keeps it, and the page says the meeting is the Mac's now", async ({ page }, info) => {
+  const phone = isPhone(page);
+  if (phone) await page.setViewportSize({ width: 412, height: 915 });
+  fail = false;
+  held = new Promise<void>((r) => (release = r));
+  await reset();
+  await onboard(page);
+  await seed();
+  await seedPhone();
+  await page.reload();
+
+  await page.goto(`/#/m/${PHONE}/${MEETING}`);
+  await page.getByRole("button", { name: "Enhance", exact: true }).click();
+  await expect(page.getByTestId("enhancing-banner")).toContainText("Weaving your notes into the transcript…");
+  await adoptAsMac("0199c0de-0000-7000-8000-000000000002");
+  release();
+
+  await expect(page.getByText("A Mac took this meeting, so it now lists under that Mac.")).toBeVisible();
+  await expect(page.getByTestId("enhancing-banner")).toHaveCount(0);
+  await expect(page.getByTestId("enhancing-banner-error")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /enhance|retry/i })).toHaveCount(0);
+  await shot(page, info, phone ? "enhance-adopted" : "desktop-enhance-adopted", false);
+  // The phone's copy stays adopted, so the next pass cannot delete the Mac's copy in its place.
+  expect((await versions()).at(-1)!.body).toBeNull();
+
+  if (phone) await page.getByRole("button", { name: "All devices" }).click();
+  await expect(page.getByTestId("list-row").filter({ hasText: "Pricing sync" })).toHaveCount(1);
+  await expect(page.getByTestId("list-row").filter({ hasText: "Pricing sync" })).toContainText("Laptop 1");
+});

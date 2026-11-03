@@ -20,7 +20,7 @@ import {
   SearchPager,
   useDesktop,
 } from "../ui";
-import { type Api, type Label, TokenRejected } from "../lib/api";
+import { Adopted, type Api, type Label, TokenRejected } from "../lib/api";
 import { enhanceMeeting } from "../lib/enhance";
 import {
   asOfLabel,
@@ -101,6 +101,8 @@ export function Library({
   const starred = filter === "starred";
   const scope = { device, archived, starred, label: label?.id ?? null };
   const [query, setQuery] = useState("");
+  // The open meeting whose Enhance the Cloud refused because a Mac adopted it, shown as gone while the phone's body is still loaded.
+  const [adopted, setAdopted] = useState<string | null>(null);
   const { asOf: pushId, meeting: open, page } = loc;
   const size = loc.size ?? resolvePageSize(null);
 
@@ -186,9 +188,10 @@ export function Library({
     ? { status: "error", message: bodyLoad.error, onRetry: bodyLoad.retry }
     : !bodyLoad.data
       ? { status: "loading" }
-      : bodyLoad.data.entry
+      : bodyLoad.data.entry && adopted !== open
         ? { status: "ready" }
-        : { status: "gone" };
+        : // A phone's meeting leaves the Cloud only when a Mac adopts it.
+          { status: "gone", adopted: !!base.data?.phones.includes(open?.slice(0, open.indexOf("/")) ?? "") };
 
   const meta = (startedAt: number, endedAt: number | null) => {
     const min = duration({ started_at: startedAt, endedAt });
@@ -253,6 +256,10 @@ export function Library({
             return fields.enriched_md;
           } catch (e) {
             if (e instanceof TokenRejected) onRejected();
+            if (e instanceof Adopted) {
+              setAdopted(open);
+              pageLoad.retry();
+            }
             throw e;
           }
         }

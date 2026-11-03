@@ -9,6 +9,7 @@ import { type ChatCopy, ChatWindow } from "@web/components/ChatWindow";
 import type { ChatMessage } from "@web/lib/api";
 import { Back, DeviceTag } from "../ui";
 import type { CloudChat } from "../lib/useChat";
+import { Adopted } from "../lib/api";
 import type { Finish } from "../lib/session";
 import { defaultTab, pushedFrom, started, tabsFor, type Entry, type Tab } from "../lib/library";
 
@@ -28,7 +29,7 @@ function render(md: string): string {
 const LABELS: Record<Tab, string> = { notes: "Notes", enhanced: "Enhanced", transcript: "Transcript" };
 
 /** What the open meeting's body is doing. Until it is `ready`, `entry` carries only a header. */
-export type BodyState = { status: "loading" } | { status: "ready" } | { status: "error"; message: string; onRetry: () => void } | { status: "gone" };
+export type BodyState = { status: "loading" } | { status: "ready" } | { status: "error"; message: string; onRetry: () => void } | { status: "gone"; adopted?: boolean };
 
 /** Runs an enhance of the open meeting and pushes it, calling `onText` with the document so far. Resolves to the stored `enriched_md`, or null when the meeting is too short. */
 export type Enhance = (onText: (text: string) => void) => Promise<string | null>;
@@ -60,6 +61,8 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
       setEnhanced(md);
       setRun({ status: "idle" });
     } catch (e) {
+      // The body says the meeting is the Mac's now.
+      if (e instanceof Adopted) return setRun({ status: "idle" });
       setRun({ status: "error", message: `Enhance failed. ${e instanceof Error ? e.message : String(e)}` });
     }
   };
@@ -102,7 +105,7 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
       )}
       {body.status === "gone" && (
         <p role="status" className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
-          This meeting is no longer in your Cloud.
+          {body.adopted ? "A Mac took this meeting, so it now lists under that Mac." : "This meeting is no longer in your Cloud."}
         </p>
       )}
       {body.status === "error" && (

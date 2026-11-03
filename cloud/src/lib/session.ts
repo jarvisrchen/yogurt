@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { TokenRejected, type Api } from "./api";
+import { Adopted, TokenRejected, type Api } from "./api";
 import type { Gap } from "./audioQueue";
 import { BrowserRecorder } from "./browserRecorder";
 import { NativeRecorder } from "./nativeRecorder";
@@ -270,14 +270,16 @@ export class RecordingSession {
   /** Pushes the meeting as it stands, still open, then starts the enhance that ends it. Null when that push failed. */
   private async close(deviceId: string, m: PhoneMeeting, endedAt: number): Promise<string | null> {
     const open = { ...m, ended_at: null };
+    const key = `${deviceId}/${m.id}`;
     try {
       await this.push(deviceId, () => open);
     } catch (e) {
+      // A Mac took it, as after an End whose answer was lost, so the Mac's copy is the meeting now.
+      if (e instanceof Adopted) return (await this.forget(m.id), key);
       const err = message(e);
       this.set(this.snap.meeting ? { saveError: err } : { error: `Could not save it. ${err}` });
       return null;
     }
-    const key = `${deviceId}/${m.id}`;
     void this.finish(key, deviceId, open, endedAt);
     return key;
   }
@@ -299,7 +301,10 @@ export class RecordingSession {
     // A failed push keeps the enhance, so Retry only pushes again.
     const save = async () => {
       try {
-        await this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields);
+        // Refused only when this ended version went in on an earlier try whose answer was lost, and a Mac adopted it since.
+        await this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields).catch((e) => {
+          if (!(e instanceof Adopted)) throw e;
+        });
         await this.forget(m.id);
       } catch (e) {
         return run({ status: "error", message: `Not saved to your Cloud yet. ${message(e)}`, retry: () => (run({ status: "running", text }), void save()) });
