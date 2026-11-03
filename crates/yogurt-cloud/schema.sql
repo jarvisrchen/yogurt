@@ -581,6 +581,27 @@ begin
   return true;
 end $$;
 
+-- A phone cannot push a meeting again once a Mac adopted it, as an Enhance the webapp opened before the adoption would.
+-- The next adoption would keep the Mac's unenhanced copy and delete the phone's, so the enhance would vanish.
+-- It takes the phone's device row lock that yogurt_adopt takes, so a push and an adoption take turns.
+create or replace function yogurt_private.yogurt_refuse_adopted() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.body is null then return new; end if;
+  perform from public.yogurt_devices d where d.id = new.device_id and d.kind = 'phone' for update;
+  if found and exists (
+    select from (
+      select v.body from public.yogurt_versions v
+      where v.device_id = new.device_id and v.meeting_id = new.meeting_id order by v.push_id desc limit 1
+    ) l where l.body is null
+  ) then
+    raise exception 'A Mac took this meeting, so it now lists under that Mac.' using errcode = 'PT409';
+  end if;
+  return new;
+end $$;
+create or replace trigger yogurt_refuse_adopted before insert on public.yogurt_versions
+  for each row execute function yogurt_private.yogurt_refuse_adopted();
+
 -- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the three below goes first.
 do $$
 declare

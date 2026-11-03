@@ -927,7 +927,20 @@ select pg_temp.expect('PT404', array[
   'select yogurt_adopt(''00000000-0000-0000-0000-0000000000d5'', ''p5'', 1)',
   'select yogurt_adopt(gen_random_uuid(), ''p1'', 1)'
 ]);
+-- The phone cannot push an adopted meeting again, as an Enhance opened before the adoption would, since the next adoption would keep the Mac's copy and delete this one.
+select yogurt_start_push(:f1) as push_p5 \gset
+select pg_temp.expect('PT409', array[
+  format('insert into yogurt_versions (meeting_id, push_id, device_id, body) values (%L, %s, %L, pg_temp.pm(%L, 2000))', 'p1', :push_p5, :f1, 'Enhanced')
+]);
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p2', :push_p5, :f1, pg_temp.pm('Still recording', null));
+select yogurt_start_push(:d5) as push_p6 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p5', :push_p6, :d5, null);
+select yogurt_start_push(:d5) as push_p7 \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values ('p5', :push_p7, :d5, pg_temp.pm('A Mac pushes a meeting again', 4000));
 reset role;
+select pg_temp.eq((select string_agg(meeting_id || ':' || coalesce(body -> 'meeting' ->> 'title', 'deleted'), ',' order by meeting_id)
+  from yogurt_versions where push_id in (:push_p5, :push_p7)),
+  'p2:Still recording,p5:A Mac pushes a meeting again', 'a live phone meeting and a Mac''s meetings still push');
 select pg_temp.eq((select (body is null)::text || ':' || (p.device_id = :f1)::text || ':' || (p.id > :push_p4)::text
   from yogurt_versions v join yogurt_pushes p on p.id = v.push_id where v.device_id = :f1 and v.meeting_id = 'p1' order by v.push_id desc limit 1),
   'true:true:true', 'adopting writes a deletion marker in a new push of the phone');
