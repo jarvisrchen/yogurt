@@ -17,8 +17,11 @@ export const QUEUE_MS = 5 * 60_000;
 const ms = (c: Chunk) => c.data.byteLength / BYTES_PER_MS;
 
 /**
- * Audio waiting for a socket. Chunks are self-contained PCM, so a new socket takes them as they are, in order.
- * Past the cap the oldest chunks drop, and `drain` reports the span they covered as one gap.
+ * Audio Deepgram has not finalized yet: everything waiting for a socket, plus what was sent but not yet covered by a final result.
+ * Holding the sent part means a dropped socket loses nothing, since the next one replays from the last finalized window.
+ * Chunks are self-contained PCM, so a new socket takes them as they are, in order.
+ * Past the cap the oldest chunks drop, and `takeGap` reports the span they covered as one gap.
+ * A port of `AudioQueue` in the Android app.
  */
 export class AudioQueue {
   private chunks: Chunk[] = [];
@@ -41,12 +44,33 @@ export class AudioQueue {
     }
   }
 
-  /** Every queued chunk, oldest first, and the gap dropped before them, if any. Leaves the queue empty. */
-  drain(): { chunks: Chunk[]; gap: Gap | null } {
-    const out = { chunks: this.chunks, gap: this.gap };
-    this.chunks = [];
-    this.held = 0;
+  /** Drops the audio before `untilMs`, cutting a chunk that straddles it. */
+  confirm(untilMs: number) {
+    while (this.chunks.length) {
+      const head = this.chunks[0];
+      if (head.ts_ms + ms(head) <= untilMs) {
+        this.chunks.shift();
+        this.held -= ms(head);
+        continue;
+      }
+      if (head.ts_ms < untilMs) {
+        // Whole samples only, so the cut chunk is still linear16.
+        const cut = Math.floor((untilMs - head.ts_ms) * BYTES_PER_MS / 2) * 2;
+        this.chunks[0] = { ts_ms: head.ts_ms + cut / BYTES_PER_MS, data: head.data.slice(cut) };
+        this.held -= cut / BYTES_PER_MS;
+      }
+      return;
+    }
+  }
+
+  /** Every held chunk, oldest first, for a new socket to replay. */
+  pending(): Chunk[] {
+    return [...this.chunks];
+  }
+
+  takeGap(): Gap | null {
+    const g = this.gap;
     this.gap = null;
-    return out;
+    return g;
   }
 }

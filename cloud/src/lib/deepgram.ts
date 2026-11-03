@@ -64,3 +64,13 @@ export function flush(st: Utterance): Heard | null {
   st.lastFinal = text;
   return { text, ts_ms, final: true };
 }
+
+/** Where a window-final result ends, in ms of its socket's audio, or null for any other frame. Deepgram has finished the audio before it. */
+export function finalEndMs(frame: string): number | null {
+  try {
+    const v = JSON.parse(frame);
+    return v?.type === "Results" && v.is_final === true ? Math.round(((v.start ?? 0) + (v.duration ?? 0)) * 1000) : null;
+  } catch {
+    return null;
+  }
+}

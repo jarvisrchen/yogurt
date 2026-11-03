@@ -1,4 +1,4 @@
-import { flush, fold, utterance } from "./deepgram";
+import { finalEndMs, flush, fold, utterance } from "./deepgram";
 
 const frame = (transcript: string, o: { is_final?: boolean; speech_final?: boolean; start?: number } = {}) =>
   JSON.stringify({ type: "Results", channel: { alternatives: [{ transcript, confidence: 0.9 }] }, start: 0, ...o });
@@ -36,4 +36,11 @@ test("flush keeps the finished words of an utterance whose socket closed", () =>
   fold(st, frame("thought", { start: 4 }));
   expect(flush(st)).toEqual({ text: "half a", ts_ms: 3000, final: true });
   expect(flush(st)).toBeNull();
+});
+
+test("a window-final says where Deepgram has finished the audio, and nothing else does", () => {
+  expect(finalEndMs(JSON.stringify({ type: "Results", start: 4.5, duration: 2.25, is_final: true, channel: { alternatives: [{ transcript: "" }] } }))).toBe(6750);
+  expect(finalEndMs(frame("hello", { start: 1 }))).toBeNull();
+  expect(finalEndMs(JSON.stringify({ type: "Metadata", is_final: true }))).toBeNull();
+  expect(finalEndMs("not json")).toBeNull();
 });

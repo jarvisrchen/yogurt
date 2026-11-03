@@ -247,7 +247,10 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   const lines: { channel: string; text: string; ts_ms: number }[] = JSON.parse(ended.transcript_json);
   expect(lines.length).toBeGreaterThan(kept);
   expect(lines.every((l) => l.channel === "them" && /^Heard line \d+ in full\.$/.test(l.text))).toBe(true);
-  expect(lines.map((l) => l.ts_ms)).toEqual([...lines.map((l) => l.ts_ms)].sort((a, b) => a - b));
+  // The fake's lines each cover 2 seconds, so a step of any other size lost or repeated audio. Only the killed tab may lose some: the dropped socket loses and repeats none.
+  const steps = lines.slice(1).map((l, i) => l.ts_ms - lines[i].ts_ms);
+  expect(steps.filter((s) => s !== 2_000)).toEqual([expect.any(Number)]);
+  expect(Math.min(...steps)).toBe(2_000);
   expect(Object.keys(lines[0])).toEqual(["channel", "text", "ts_ms"]);
 
   // The meeting view shows the phone's lines with no speaker, and the notes as typed.

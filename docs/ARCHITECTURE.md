@@ -1023,7 +1023,8 @@ sequenceDiagram
   Every line is on the `them` channel and the meeting's `stt_engine` is `cloud · nova-3 · phone`, which the meeting view reads to drop the speaker label.
 - **Audio.**
   `cloud/src/lib/browserRecorder.ts` opens the mic, downsamples to 16 kHz mono linear16 in an AudioWorklet (`pcm-worklet.ts`), and streams 100 ms chunks to Deepgram with the Mac's query parameters.
-  While the socket is down, chunks queue in memory up to 5 minutes (`audioQueue.ts`), the oldest dropping past that as a gap the transcript marks, and the next socket, opened with a fresh token, gets them first, in order.
+  Every chunk stays in memory (`audioQueue.ts`) until a final Deepgram result covers it, up to 5 minutes, the oldest dropping past that as a gap the transcript marks.
+  After a drop the next socket, opened with a fresh token, gets the held chunks first, in order, so audio sent but not yet finalized is transcribed once and never lost.
   The page holds a Screen Wake Lock and tells the user that locking the phone or switching apps can stop the recording.
 - **Android.**
   When `window.YogurtAndroid` exists, `nativeRecorder.ts` drives the app's recorder through the bridge in the design instead, and the page still does every push.

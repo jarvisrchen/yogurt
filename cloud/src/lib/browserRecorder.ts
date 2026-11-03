@@ -1,6 +1,6 @@
 import workletUrl from "./pcm-worklet.ts?worker&url";
 import { AudioQueue, type Chunk } from "./audioQueue";
-import { flush, fold, utterance, type Heard } from "./deepgram";
+import { finalEndMs, flush, fold, utterance, type Heard } from "./deepgram";
 import { BYTES_PER_MS } from "./pcm";
 import { Emitter, type Recorder, type RecorderState, type StartOptions } from "./recorder";
 
@@ -13,7 +13,7 @@ const MAX_BACKOFF_MS = 10_000;
 // Deepgram sends the last results after CloseStream, then closes. This bounds a socket that never does.
 const CLOSE_WAIT_MS = 5_000;
 
-/** Records in the page: the mic through an AudioWorklet to a Deepgram socket, with a fresh token and a replay of the queued audio after every drop. */
+/** Records in the page: the mic through an AudioWorklet to a Deepgram socket, with a fresh token and a replay of the audio Deepgram had not finalized after every drop. */
 export class BrowserRecorder extends Emitter implements Recorder {
   private stream: MediaStream | null = null;
   private ctx: AudioContext | null = null;
@@ -60,12 +60,22 @@ export class BrowserRecorder extends Emitter implements Recorder {
     this.stream?.getTracks().forEach((t) => t.stop());
     await this.ctx?.close().catch(() => undefined);
     const ws = this.ws;
-    if (ws && this.open) {
-      await new Promise<void>((done) => {
-        this.closed = done;
+    const clean =
+      !!ws &&
+      this.open &&
+      (await new Promise<boolean>((done) => {
+        this.closed = () => done(true);
         ws.send(JSON.stringify({ type: "CloseStream" }));
-        window.setTimeout(done, CLOSE_WAIT_MS);
-      });
+        window.setTimeout(() => done(false), CLOSE_WAIT_MS);
+      }));
+    if (!clean) {
+      this.heard(flush(this.st));
+      const held = this.queue.pending();
+      const dropped = this.queue.takeGap();
+      const last = held.at(-1);
+      if (last || dropped) {
+        this.emit({ type: "gap", from_ms: dropped?.from_ms ?? held[0].ts_ms, to_ms: last ? last.ts_ms + last.data.byteLength / BYTES_PER_MS : dropped!.to_ms });
+      }
     }
     ws?.close();
     this.ws = null;
@@ -85,8 +95,8 @@ export class BrowserRecorder extends Emitter implements Recorder {
   private audio(data: ArrayBuffer) {
     const chunk: Chunk = { ts_ms: this.offset + this.sent / BYTES_PER_MS, data };
     this.sent += data.byteLength;
+    this.queue.push(chunk);
     if (this.open && this.ws) this.send(this.ws, chunk);
-    else this.queue.push(chunk);
   }
 
   private send(ws: WebSocket, c: Chunk) {
@@ -127,13 +137,18 @@ export class BrowserRecorder extends Emitter implements Recorder {
       this.attempt = 0;
       this.st = utterance();
       this.socketStart = null;
-      const { chunks, gap } = this.queue.drain();
+      const gap = this.queue.takeGap();
       if (gap) this.emit({ type: "gap", ...gap });
-      for (const c of chunks) this.send(ws, c);
+      for (const c of this.queue.pending()) this.send(ws, c);
       this.open = true;
       this.state("live");
     };
-    ws.onmessage = (m) => typeof m.data === "string" && this.heard(fold(this.st, m.data));
+    ws.onmessage = (m) => {
+      if (this.ws !== ws || typeof m.data !== "string") return;
+      const end = finalEndMs(m.data);
+      if (end !== null && this.socketStart !== null) this.queue.confirm(this.socketStart + end);
+      this.heard(fold(this.st, m.data));
+    };
     ws.onclose = () => {
       if (this.ws !== ws) return;
       this.heard(flush(this.st));

@@ -50,7 +50,8 @@ A separate key is better anyway, since it can be revoked without touching the Ma
 ### Audio path
 
 The page opens the mic with `getUserMedia` and downsamples to 16 kHz mono linear16 in an AudioWorklet, the Mac's frame contract.
-Self-contained PCM chunks make a reconnect simple: while the socket is down, chunks queue in memory, up to 5 minutes (about 9.6 MB), and replay in order once a new socket opens.
+Self-contained PCM chunks make a reconnect simple: every chunk stays in memory until a final result covers it, up to 5 minutes (about 9.6 MB), and the held chunks replay in order once a new socket opens.
+Holding the chunks Deepgram has but has not finalized means a drop loses none of them, and since a replay starts after the last final, no line repeats.
 Past that cap the oldest chunks drop and the transcript shows a gap marker.
 `MediaRecorder` with WebM was rejected because a new socket needs a fresh container header, so a reconnect would lose everything buffered.
 Audio is never written to storage, so nothing is left to delete after transcription.

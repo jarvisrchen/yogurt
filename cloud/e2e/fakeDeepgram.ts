@@ -16,6 +16,7 @@ export interface Socket {
  * A stand-in for Deepgram at the address playwright.config.ts gives the stt-token function.
  * The grant checks the key. A socket must offer the bearer subprotocol with a granted token.
  * For every 2 seconds of audio a socket receives it sends an interim, then a final line, numbered across sockets, timed in that socket's audio as Deepgram does.
+ * Each final covers exactly its 2 seconds, so the lines of a recording that loses and repeats no audio sit 2 seconds apart.
  */
 export class FakeDeepgram {
   grants = 0;
@@ -54,8 +55,8 @@ export class FakeDeepgram {
     this.live.add(ws);
     ws.on("close", () => this.live.delete(ws));
     let sent = 0;
-    const result = (text: string, start: number, final: boolean) =>
-      ws.send(JSON.stringify({ type: "Results", channel: { alternatives: [{ transcript: text, confidence: 0.9 }] }, start, duration: 1, is_final: final, speech_final: final }));
+    const result = (text: string, start: number, duration: number, final: boolean) =>
+      ws.send(JSON.stringify({ type: "Results", channel: { alternatives: [{ transcript: text, confidence: 0.9 }] }, start, duration, is_final: final, speech_final: final }));
     ws.on("message", (data, binary) => {
       if (!binary) {
         if (JSON.parse(String(data)).type === "CloseStream") ws.close(1000);
@@ -68,8 +69,8 @@ export class FakeDeepgram {
       // One step per second of audio: an interim on odd seconds, the final on even ones.
       for (; sent < Math.floor(s.bytes / 32_000); sent++) {
         const start = sent - (sent % 2);
-        if (sent % 2 === 0) result(`Heard line ${this.line + 1}`, start, false);
-        else result(`Heard line ${++this.line} in full.`, start, true);
+        if (sent % 2 === 0) result(`Heard line ${this.line + 1}`, start, 1, false);
+        else result(`Heard line ${++this.line} in full.`, start, 2, true);
       }
     });
   }
