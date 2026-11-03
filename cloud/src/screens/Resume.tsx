@@ -51,4 +51,3 @@ export function ResumeCard({ session, unfinished, onResume, onEnded }: { session
     </section>
   );
 }
-
