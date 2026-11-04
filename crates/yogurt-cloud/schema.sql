@@ -75,6 +75,22 @@ alter table public.yogurt_versions
   add column if not exists starred boolean generated always as (coalesce(body -> 'meeting' -> 'starred' = 'true'::jsonb, false)) stored,
   add column if not exists labels jsonb generated always as (body -> 'meeting' -> 'labels') stored;
 
+-- Changes an unlocked browser asks the Mac that owns a meeting to make. The Mac applies them to its own copy and pushes the result, so a meeting keeps one writer.
+create table if not exists public.yogurt_edits (
+  id         bigint generated always as identity primary key,
+  user_id    uuid   not null default auth.uid() references auth.users on delete cascade,
+  device_id  uuid   not null references public.yogurt_devices on delete cascade,
+  meeting_id text   not null,
+  op         text   not null check (op in ('rename', 'delete', 'append_note')),
+  value      text   not null default '',
+  -- The title the browser showed. A rename applies only while it is still the Mac's title.
+  base       text,
+  created_at timestamptz not null default now(),
+  status     text   not null default 'pending' check (status in ('pending', 'applied', 'superseded', 'cancelled')),
+  done_at    timestamptz
+);
+create index if not exists yogurt_edits_pending on public.yogurt_edits (device_id, id) where status = 'pending';
+
 -- The helpers used to live in public, and the old insert policies depend on them.
 drop policy if exists add on public.yogurt_devices;
 drop policy if exists add on public.yogurt_versions;
@@ -602,6 +618,100 @@ end $$;
 create or replace trigger yogurt_refuse_adopted before insert on public.yogurt_versions
   for each row execute function yogurt_private.yogurt_refuse_adopted();
 
+-- Only an unlocked browser asks, so a laptop's session alone cannot make another Mac rename or delete a meeting.
+-- A phone's meeting is not asked for: the webapp pushes a new version of it, since the phone owns it.
+create or replace function public.yogurt_request_edit(token text, device_id uuid, meeting_id text, op text, value text default '', base text default null)
+returns bigint
+language plpgsql security definer set search_path = '' as $$
+declare
+  new_id bigint;
+  v text := coalesce($5, '');
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  if not exists (select from public.yogurt_devices d where d.id = $2 and d.user_id = auth.uid() and d.kind = 'mac') then
+    raise exception 'unknown Mac' using errcode = 'PT404';
+  end if;
+  if $4 = 'rename' then
+    v := btrim(v);
+    if char_length(v) not between 1 and 500 then
+      raise exception 'a title must be 1 to 500 characters' using errcode = '22023';
+    end if;
+  elsif $4 = 'append_note' then
+    if v !~ '\S' or char_length(v) > 20000 then
+      raise exception 'a note must be 1 to 20,000 characters' using errcode = '22023';
+    end if;
+  elsif $4 is distinct from 'delete' then
+    raise exception 'op must be rename, delete, or append_note' using errcode = '22023';
+  end if;
+  insert into public.yogurt_edits (device_id, meeting_id, op, value, base) values ($2, $3, $4, v, $6) returning id into new_id;
+  return new_id;
+end $$;
+
+-- Takes back an edit the Mac has not applied yet. False once it has.
+create or replace function public.yogurt_cancel_edit(token text, edit_id bigint) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  update public.yogurt_edits e set status = 'cancelled', done_at = now()
+  where e.id = edit_id and e.user_id = auth.uid() and e.status = 'pending';
+  return found;
+end $$;
+
+-- The edits no Mac has applied yet, oldest first, which the webapp shows over the meetings they change.
+create or replace function public.yogurt_pending_edits(token text)
+returns table (id bigint, device_id uuid, meeting_id text, op text, value text, created_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  perform yogurt_private.yogurt_check_token(token);
+  return query
+    select e.id, e.device_id, e.meeting_id, e.op, e.value, e.created_at from public.yogurt_edits e
+    where e.user_id = auth.uid() and e.status = 'pending' order by e.id;
+end $$;
+
+-- The edits waiting for one Mac, oldest first, so a rename then a delete apply in the order asked.
+create or replace function public.yogurt_device_edits(device_id uuid)
+returns table (id bigint, meeting_id text, op text, value text, base text, created_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  perform yogurt_private.yogurt_require_owner();
+  if not yogurt_private.yogurt_owns_device($1) then
+    raise exception 'unknown device' using errcode = 'PT404';
+  end if;
+  return query
+    select e.id, e.meeting_id, e.op, e.value, e.base, e.created_at from public.yogurt_edits e
+    where e.device_id = $1 and e.user_id = auth.uid() and e.status = 'pending' order by e.id;
+end $$;
+
+-- The Mac reports an edit applied, or superseded when its copy changed first. False when it was not pending, as after a cancel.
+create or replace function public.yogurt_finish_edit(device_id uuid, edit_id bigint, applied boolean) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  if not yogurt_private.yogurt_owns_device($1) then
+    raise exception 'unknown device' using errcode = 'PT404';
+  end if;
+  update public.yogurt_edits e set status = case when $3 then 'applied' else 'superseded' end, done_at = now()
+  where e.id = $2 and e.device_id = $1 and e.user_id = auth.uid() and e.status = 'pending';
+  return found;
+end $$;
+
+-- What a Mac's timer asks between pushes: whether an edit for it, or an ended phone meeting to adopt, is waiting.
+create or replace function public.yogurt_inbox(device_id uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform yogurt_private.yogurt_require_owner();
+  if not yogurt_private.yogurt_owns_device($1) then
+    raise exception 'unknown device' using errcode = 'PT404';
+  end if;
+  return exists (select from public.yogurt_edits e where e.device_id = $1 and e.user_id = auth.uid() and e.status = 'pending')
+    or exists (select from public.yogurt_phone_meetings());
+end $$;
+
 -- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the three below goes first.
 do $$
 declare
@@ -914,6 +1024,7 @@ alter table public.yogurt_browsers enable row level security;
 alter table public.yogurt_devices  enable row level security;
 alter table public.yogurt_pushes   enable row level security;
 alter table public.yogurt_versions enable row level security;
+alter table public.yogurt_edits    enable row level security;
 
 -- Only devices and versions are insertable. Pushes start through yogurt_start_push, because insert ... returning needs select.
 drop policy if exists add on public.yogurt_devices;
@@ -928,10 +1039,10 @@ create policy add on public.yogurt_versions for insert to authenticated
   );
 
 -- Grants are explicit because Supabase no longer grants new public tables to the API roles, and TRUNCATE is outside RLS.
-revoke all on public.yogurt_owner, public.yogurt_browsers, public.yogurt_devices, public.yogurt_pushes, public.yogurt_versions
+revoke all on public.yogurt_owner, public.yogurt_browsers, public.yogurt_devices, public.yogurt_pushes, public.yogurt_versions, public.yogurt_edits
   from public, anon, authenticated;
 revoke all on yogurt_private.yogurt_search_index from public, anon, authenticated;
-revoke all on sequence public.yogurt_browsers_id_seq, public.yogurt_pushes_id_seq from public, anon, authenticated;
+revoke all on sequence public.yogurt_browsers_id_seq, public.yogurt_pushes_id_seq, public.yogurt_edits_id_seq from public, anon, authenticated;
 grant insert (id, name, kind) on public.yogurt_devices to authenticated;
 grant insert (meeting_id, push_id, device_id, body) on public.yogurt_versions to authenticated;
 
@@ -960,6 +1071,12 @@ grant execute on function
   public.yogurt_device_meetings(uuid),
   public.yogurt_phone_meetings(),
   public.yogurt_adopt(uuid, text, bigint),
+  public.yogurt_request_edit(text, uuid, text, text, text, text),
+  public.yogurt_cancel_edit(text, bigint),
+  public.yogurt_pending_edits(text),
+  public.yogurt_device_edits(uuid),
+  public.yogurt_finish_edit(uuid, bigint, boolean),
+  public.yogurt_inbox(uuid),
   public.yogurt_library(text, bigint, int, int, uuid, boolean, boolean, text),
   public.yogurt_labels(text, uuid, bigint, boolean),
   public.yogurt_meeting(text, uuid, text, bigint),

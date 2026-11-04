@@ -99,6 +99,18 @@ export interface HistoryRow {
   deleted: number;
 }
 
+export type EditOp = "rename" | "delete" | "append_note";
+
+/** An edit asked of the Mac that owns the meeting, which no Mac has applied yet. `value` is the new title or the note. */
+export interface PendingEdit {
+  id: number;
+  device_id: string;
+  meeting_id: string;
+  op: EditOp;
+  value: string;
+  created_at: string;
+}
+
 export class TokenRejected extends Error {}
 
 /** The Cloud refused a phone's push of a meeting a Mac has adopted. */
@@ -175,6 +187,11 @@ export class Api {
     this.rpc<SearchHit[]>("yogurt_search", { token, query, only_device: scope.device, page_offset: offset, ...filters(scope) });
   history = (token: string) => this.rpc<HistoryRow[]>("yogurt_history", { token });
   devices = (token: string) => this.rpc<Device[]>("yogurt_device_info", { token });
+  /** Asks the Mac `device` to make an edit to one of its meetings on its next check. `base` is the title shown, which a rename applies over. */
+  requestEdit = (token: string, device: string, meeting: string, op: EditOp, value = "", base: string | null = null) =>
+    this.rpc<number>("yogurt_request_edit", { token, device_id: device, meeting_id: meeting, op, value, base });
+  cancelEdit = (token: string, id: number) => this.rpc<boolean>("yogurt_cancel_edit", { token, edit_id: id });
+  pendingEdits = (token: string) => this.rpc<PendingEdit[]>("yogurt_pending_edits", { token });
   /** The ids of the owner's phones, the only devices whose meetings the webapp writes. */
   phoneDevices = (token: string) => this.rpc<string[]>("yogurt_phone_devices", { token });
   recolorDevice = (token: string, device: string, color: string) =>

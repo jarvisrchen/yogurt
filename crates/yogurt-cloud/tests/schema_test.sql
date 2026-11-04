@@ -81,6 +81,13 @@ select pg_temp.expect('42501', array[
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_phone_meetings()',
   'select yogurt_adopt(''00000000-0000-0000-0000-0000000000d1'', ''m1'', 1)',
+  'select yogurt_request_edit(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'', ''delete'')',
+  'select yogurt_cancel_edit(''x'', 1)',
+  'select * from yogurt_pending_edits(''x'')',
+  'select * from yogurt_device_edits(''00000000-0000-0000-0000-0000000000d1'')',
+  'select yogurt_finish_edit(''00000000-0000-0000-0000-0000000000d1'', 1, true)',
+  'select yogurt_inbox(''00000000-0000-0000-0000-0000000000d1'')',
+  'insert into yogurt_edits (device_id, meeting_id, op) values (''00000000-0000-0000-0000-0000000000d1'', ''m1'', ''delete'')',
   'select yogurt_rename_device(''00000000-0000-0000-0000-0000000000d1'', ''evil'')',
   'select * from yogurt_library(''x'')',
   'select * from yogurt_meeting(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'')',
@@ -110,7 +117,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_adopt,yogurt_browsers,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_forget_browser,yogurt_history,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_phone_devices,yogurt_phone_meetings,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_adopt,yogurt_browsers,yogurt_cancel_edit,yogurt_device_edits,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_finish_edit,yogurt_forget_browser,yogurt_history,yogurt_inbox,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_pending_edits,yogurt_phone_devices,yogurt_phone_meetings,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_request_edit,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -950,6 +957,59 @@ select pg_temp.eq(pg_temp.phones(), '', 'another user''s phone is not listed');
 select pg_temp.expect('PT404', array['select yogurt_adopt(''00000000-0000-0000-0000-0000000000f2'', ''p4'', 1)']);
 reset role;
 update yogurt_devices set user_id = :o where id = :f2;
+
+
+-- An unlocked browser asks a Mac to edit one of its meetings, and the Mac reports back.
+\set m6 '''00000000-0000-0000-0000-00000000ed17'''
+create or replace function pg_temp.pending(tok text) returns text language sql as $$
+  select coalesce(string_agg(meeting_id || ':' || op || ':' || value, ',' order by id), '') from yogurt_pending_edits(tok)
+$$;
+grant execute on function pg_temp.pending(text) to public;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into yogurt_devices (id, name) values (:m6, 'Desk Mac');
+select pg_temp.eq(yogurt_inbox(:m6)::text, 'true', 'an ended phone meeting to adopt fills the inbox');
+select yogurt_request_edit(:'stok', :m6, 'e1', 'rename', '  New title  ', 'Old title') as edit1 \gset
+select yogurt_request_edit(:'stok', :m6, 'e1', 'append_note', 'Call Steven') as edit2 \gset
+select yogurt_request_edit(:'stok', :m6, 'e2', 'delete') as edit3 \gset
+select pg_temp.eq(pg_temp.pending(:'stok'), 'e1:rename:New title,e1:append_note:Call Steven,e2:delete:', 'pending edits in order, the title trimmed');
+select pg_temp.eq((select string_agg(meeting_id || ':' || op || ':' || coalesce(base, '-'), ',' order by id) from yogurt_device_edits(:m6)),
+  'e1:rename:Old title,e1:append_note:-,e2:delete:-', 'the Mac lists its edits with the base title');
+select pg_temp.eq((select count(*)::text from yogurt_device_edits(:d5)), '0', 'another Mac lists none');
+select pg_temp.expect('22023', array[
+  format('select yogurt_request_edit(%L, %L, ''e1'', ''rename'', ''   '')', :'stok', :m6),
+  format('select yogurt_request_edit(%L, %L, ''e1'', ''append_note'', '' '')', :'stok', :m6),
+  format('select yogurt_request_edit(%L, %L, ''e1'', ''append_note'', repeat(''x'', 20001))', :'stok', :m6),
+  format('select yogurt_request_edit(%L, %L, ''e1'', ''archive'')', :'stok', :m6)
+]);
+select pg_temp.expect('PT404', array[
+  format('select yogurt_request_edit(%L, %L, ''p2'', ''delete'')', :'stok', :f1),
+  format('select yogurt_request_edit(%L, gen_random_uuid(), ''e1'', ''delete'')', :'stok'),
+  'select * from yogurt_device_edits(gen_random_uuid())',
+  'select yogurt_finish_edit(gen_random_uuid(), 1, true)',
+  'select yogurt_inbox(gen_random_uuid())'
+]);
+select pg_temp.expect('28000', array[
+  format('select yogurt_request_edit(''no such token'', %L, ''e1'', ''delete'')', :m6),
+  'select yogurt_cancel_edit(''no such token'', 1)',
+  'select * from yogurt_pending_edits(''no such token'')'
+]);
+select pg_temp.eq(yogurt_finish_edit(:d5, :edit1, true)::text, 'false', 'a Mac cannot finish another Mac''s edit');
+select pg_temp.eq(yogurt_finish_edit(:m6, :edit1, true)::text || yogurt_finish_edit(:m6, :edit2, false)::text, 'truetrue', 'the Mac finishes its edits');
+select pg_temp.eq(yogurt_finish_edit(:m6, :edit1, false)::text, 'false', 'once');
+select pg_temp.eq(yogurt_cancel_edit(:'stok', :edit1)::text, 'false', 'an applied edit cannot be cancelled');
+select pg_temp.eq(yogurt_cancel_edit(:'stok', :edit3)::text, 'true', 'a pending one can');
+select pg_temp.eq(yogurt_finish_edit(:m6, :edit3, true)::text, 'false', 'and the Mac then cannot apply it');
+select pg_temp.eq(pg_temp.pending(:'stok'), '', 'nothing is pending');
+reset role;
+select pg_temp.eq((select string_agg(status, ',' order by id) from yogurt_edits), 'applied,superseded,cancelled', 'each edit keeps how it ended');
+delete from yogurt_versions where device_id in (:f1, :f2);
+delete from yogurt_pushes where device_id in (:f1, :f2);
+set role authenticated;
+select pg_temp.eq(yogurt_inbox(:m6)::text, 'false', 'an empty inbox');
+reset role;
+delete from yogurt_devices where id = :m6;
+select pg_temp.eq((select count(*)::text from yogurt_edits), '0', 'purging a device removes its edits');
 
 \o
 \echo schema_test: ok

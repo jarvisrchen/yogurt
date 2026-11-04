@@ -20,13 +20,15 @@ import {
   SearchPager,
   useDesktop,
 } from "../ui";
-import { Adopted, type Api, type Label, TokenRejected } from "../lib/api";
+import { Adopted, type Api, type EditOp, type Label, TokenRejected } from "../lib/api";
+import { appendNote, noteBlock, overlays } from "../lib/edits";
 import { enhanceMeeting } from "../lib/enhance";
 import {
   asOfLabel,
   clock,
   duration,
   hitEntry,
+  keyOf,
   summaryEntry,
   toEntry,
   type Entry,
@@ -35,7 +37,7 @@ import { SEARCH_PAGE, searchStatus } from "../lib/search";
 import { useSearch } from "../lib/useSearch";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { format, HOME, type Loc } from "../lib/hash";
-import { Ask, DOCKED, MeetingView, type BodyState, type Enhance } from "./Meeting";
+import { Ask, DOCKED, MeetingView, type BodyState, type Editing, type Enhance } from "./Meeting";
 import { useChat } from "../lib/useChat";
 import { useSession, type RecordingSession } from "../lib/session";
 import { MicIcon, ResumeCard } from "./Resume";
@@ -58,6 +60,9 @@ export const GearIcon = () => (
 );
 
 type Row = Entry & { snippet: string | null };
+
+// How often the page asks whether a Mac has made the edits still waiting.
+const EDIT_POLL_MS = 15_000;
 
 // Labels belong to one Mac, so they and the Archive are offered only once a Mac is picked.
 type Pill = "all" | "starred" | "archive";
@@ -153,6 +158,11 @@ export function Library({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stale]);
 
+  // Edits asked of a Mac and not made yet, shown over the meetings they change. A Cloud from before edits answers an error, read as none.
+  const editLoad = useCloudLoad(async () => (pushId ? [] : api.pendingEdits(token)), onRejected, [api, token, pushId]);
+  const pending = useMemo(() => editLoad.data ?? editLoad.previous ?? [], [editLoad.data, editLoad.previous]);
+  const over = useMemo(() => overlays(pending), [pending]);
+
   const field = useRef<HTMLInputElement>(null);
   // The as-of view has no search, so the hook gets an empty query there.
   const search = useSearch(api, token, pushId ? "" : query, scope, onRejected);
@@ -163,10 +173,10 @@ export function Library({
     : null;
   const rows = useMemo<Row[]>(
     () =>
-      hits
-        ? hits.map((h) => ({ ...hitEntry(h), snippet: h.snippet }))
-        : (shown?.entries ?? []).map((e) => ({ ...e, snippet: null })),
-    [hits, shown],
+      (hits ? hits.map((h) => ({ ...hitEntry(h), snippet: h.snippet })) : (shown?.entries ?? []).map((e) => ({ ...e, snippet: null })))
+        .filter((r) => !over.get(r.key)?.deleted)
+        .map((r) => ({ ...r, title: over.get(r.key)?.title ?? r.title })),
+    [hits, shown, over],
   );
   const groups = useMemo(() => groupMeetingsByDay(rows), [rows]);
 
@@ -183,7 +193,27 @@ export function Library({
     onRejected,
     [api, token, open, pushId],
   );
-  const entry = bodyLoad.data?.entry ?? rows.find((r) => r.key === open) ?? null;
+  const loaded = bodyLoad.data?.entry ?? rows.find((r) => r.key === open) ?? null;
+  const openOver = open ? over.get(open) : undefined;
+  const entry = loaded && openOver ? { ...loaded, title: openOver.title ?? loaded.title, notes: openOver.notes.reduce(appendNote, loaded.notes) } : loaded;
+
+  const waiting = pending.length;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(editLoad.retry, EDIT_POLL_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting]);
+  // An edit left the list, made by its Mac or undone, so the pushed meeting replaces the overlay.
+  const lastPending = useRef(pending);
+  useEffect(() => {
+    if (lastPending.current === pending) return;
+    if (lastPending.current.some((e) => !pending.some((p) => p.id === e.id))) {
+      pageLoad.retry();
+      bodyLoad.retry();
+    }
+    lastPending.current = pending;
+  });
   const body: BodyState = bodyLoad.error
     ? { status: "error", message: bodyLoad.error, onRetry: bodyLoad.retry }
     : !bodyLoad.data
@@ -244,6 +274,14 @@ export function Library({
     wasFinishing.current = finishing;
   });
   const row = bodyLoad.data?.row;
+  const writeFailed = (e: unknown) => {
+    if (e instanceof TokenRejected) onRejected();
+    if (e instanceof Adopted) {
+      setAdopted(open);
+      pageLoad.retry();
+    }
+    return e;
+  };
   // Only a phone's own meeting, since a Mac's copy, adopted ones too, is the Mac's to push, and only an ended one, since the recording's next push would drop an enhance of a live one.
   const enhance: Enhance | null =
     row && !pushId && !finishing && base.data?.phones.includes(openDevice) && row.body.meeting.ended_at !== null
@@ -255,13 +293,44 @@ export function Library({
             bodyLoad.retry();
             return fields.enriched_md;
           } catch (e) {
-            if (e instanceof TokenRejected) onRejected();
-            if (e instanceof Adopted) {
-              setAdopted(open);
-              pageLoad.retry();
-            }
-            throw e;
+            throw writeFailed(e);
           }
+        }
+      : null;
+  const meetingId = open ? open.slice(open.indexOf("/") + 1) : "";
+  const phoneOwned = !!base.data?.phones.includes(openDevice);
+  // A phone's own meeting changes at once, as its own push. A Mac's waits for that Mac, so a meeting keeps one writer. A phone meeting still recording is the recording's to push.
+  const editing: Editing | null =
+    row && base.data && !pushId && !finishing && !(phoneOwned && row.body.meeting.ended_at === null)
+      ? {
+          mac: phoneOwned ? null : nameOf(openDevice),
+          pending: pending.filter((e) => keyOf(e) === open),
+          edit: async (op: EditOp, value = "") => {
+            try {
+              if (phoneOwned) {
+                const m = row.body.meeting;
+                const body = op === "delete" ? null : { ...row.body, meeting: op === "rename" ? { ...m, title: value.trim() } : { ...m, notes_md: appendNote(m.notes_md, noteBlock(value)) } };
+                await api.pushMeeting(openDevice, meetingId, body);
+                pageLoad.retry();
+                if (op === "delete") back({ ...loc, meeting: null });
+                else bodyLoad.retry();
+                return;
+              }
+              const shownTitle = openOver?.title ?? row.body.meeting.title;
+              await api.requestEdit(token, openDevice, meetingId, op, op === "append_note" ? noteBlock(value) : value, op === "rename" ? shownTitle : null);
+              editLoad.retry();
+            } catch (e) {
+              throw writeFailed(e);
+            }
+          },
+          cancel: async (id: number) => {
+            try {
+              await api.cancelEdit(token, id);
+              editLoad.retry();
+            } catch (e) {
+              throw writeFailed(e);
+            }
+          },
         }
       : null;
   const meeting = open && (
@@ -277,6 +346,7 @@ export function Library({
       chat={chat}
       enhance={enhance}
       finish={finish}
+      editing={editing}
     />
   );
   if (!desktop && meeting)

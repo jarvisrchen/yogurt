@@ -64,6 +64,11 @@ A push writes one new row (a version) for each meeting that changed since the la
 Nothing is ever updated or overwritten, so the cloud keeps the whole history.
 The first push sends every meeting, and later pushes send only what changed.
 
+A meeting changes only on the device that pushed it, so two devices never edit the same copy.
+When you rename, add a note to, or delete a Mac's meeting in the webapp, the webapp leaves a request for that Mac in your Supabase project.
+The Mac makes the change in its own library on its next check, pushes the result, and then marks the request done.
+A meeting recorded on a phone and not yet taken by a Mac belongs to the phone, so the webapp pushes the change itself at once.
+
 When you connect, the laptop reads `config.json` from your webapp to find your Supabase project.
 That file holds the project address and a publishable key, and both are public by design.
 
@@ -165,7 +170,7 @@ Anyone else may be able to create a login while sign-ups are on, but every table
 
 | | Cloud login | PIN | Can read meetings |
 | --- | --- | --- | --- |
-| A laptop | refresh token in `keys.json` | never | No. It can insert, and list its own meeting ids. |
+| A laptop | refresh token in `keys.json` | never | No. It can insert, list its own meeting ids, and read the edits the webapp asked of it. |
 | A browser after unlock | session | a browser token for 12 hours, or 90 days with "Remember this browser" | Yes |
 | Someone with the email and password | yes | no | No |
 | The Supabase dashboard, its owner, or Supabase staff | n/a | n/a | Yes, because the data is stored readable |
@@ -178,7 +183,7 @@ It does not protect against anyone with access to your Supabase project itself.
 
 If IT controls a work laptop, they could take its refresh token, or the email and password if you typed them there.
 That lets them add junk meetings or deletion markers in new pushes.
-It does not let them read a meeting or erase history.
+It does not let them read a meeting or erase history, and it cannot ask another Mac to rename or delete a meeting, because only an unlocked browser can ask.
 A push can only be added to for one hour, so the library as of a push from before the damage still shows the real data.
 They could also type wrong PINs on purpose to lock you out, since each lockout doubles up to about 10 days.
 [A forgotten PIN](#a-forgotten-pin) shows how to reset the PIN and clear the lockout from the Supabase dashboard.
@@ -389,7 +394,9 @@ If an automatic push fails, the page shows the error under the last push, like a
 Yogurt tries again after 5 minutes.
 If the error is one only you can fix, such as "Your Cloud session expired" or "This machine was removed from the Yogurt Cloud", Yogurt stops trying.
 It resumes after you sign in again, connect again, or push by hand successfully.
-When nothing has changed, a check costs no network call.
+Between pushes, each check also asks your Cloud whether a phone recording or an edit from the webapp is waiting, and pushes early when one is.
+That is one small request a minute, and Off stops it too.
+The meeting you are recording is never changed under you: its edits wait until it ends, and no early push runs while you record.
 `yogurt ctl cloud status` prints the interval and the time until the next push on its `auto-push:` line.
 
 ## 6. Read on your phone
@@ -434,11 +441,20 @@ A new push becomes searchable once the laptop finishes indexing after the push, 
 
 Tap a meeting to read it.
 Its notes and transcript load when you open it, from the library or from a search result, and they are always the latest version.
-The page is read-only and has a Notes, an Enhanced, and a Transcript tab.
+The page has a Notes, an Enhanced, and a Transcript tab.
 A tab is missing when that meeting has no such content, and a meeting with one kind of content shows no tabs.
 Enhanced opens first when the meeting has it.
 A transcript link in the notes opens the Transcript tab, scrolls to the line nearest that time, and tints it briefly.
 The footer says which machine pushed the meeting and when.
+
+Rename, Add note, and Delete sit under the meeting's title.
+Rename changes the title, and Add note adds your text to the end of the meeting's notes under a line such as "Added in Yogurt Cloud, Nov 4, 10:42 AM".
+Delete asks first, and the meeting's earlier versions stay in History.
+A meeting a Mac pushed changes on that Mac, which picks the edit up within a minute while Yogurt is running there with Auto-push on.
+Until then the page shows the change with a line such as "Waiting for MacBook Pro to rename this to …" and an Undo, and the library already lists the new title or leaves the deleted meeting out.
+If the title changed on the Mac before it picked up your rename, the Mac keeps its own title.
+A meeting recorded on your phone and not yet taken by a Mac changes at once.
+A meeting shown from History, or one a phone is still recording, has no edit buttons.
 
 Ask this meeting, at the bottom of a meeting, opens a chat about it.
 Your question and the meeting's transcript go to the LLM provider you set in [Turn on chat](#turn-on-chat), and the answer streams back.

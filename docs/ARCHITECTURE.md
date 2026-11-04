@@ -899,7 +899,7 @@ No subprocesses, no IPC, no sidecar binaries - with one narrow, opt-in exception
 
 Optional, and off until the user connects it in Settings > Cloud sync.
 A laptop pushes its meetings to a Yogurt Cloud the user deployed: a webapp on their Vercel account, backed by their own Supabase project.
-The one thing a laptop reads back is an ended meeting recorded on a phone, which it adopts as its own.
+A laptop reads back two things: an ended meeting recorded on a phone, which it adopts as its own, and the edits the webapp asked of it ([Edits from the webapp](#edits-from-the-webapp) below).
 The webapp is static apart from three functions: chat, the Deepgram token, and enhance for meetings recorded on a phone.
 Yogurt hosts nothing.
 A phone can also record into the Cloud from the webapp, as a device of its own ([Recording on a phone](#recording-on-a-phone) below).
@@ -929,6 +929,8 @@ sequenceDiagram
     S->>P: rpc yogurt_adopt, which marks the phone's copy deleted
     S->>S: delete the insert if another Mac adopted it first
   end
+  S->>P: rpc yogurt_device_edits
+  S->>S: make each edit in SQLite
   S->>P: rpc yogurt_device_meetings, then yogurt_start_push
   loop small batches, paused between them
     S->>S: build this batch's bundles
@@ -937,6 +939,7 @@ sequenceDiagram
     S->>P: rpc yogurt_search_catch_up
     S-)UI: cloud_push_progress {sent, total, retry_in}
   end
+  S->>P: rpc yogurt_finish_edit for each edit made
   S-)UI: cloud_push_complete or cloud_push_error
 ```
 
@@ -962,7 +965,7 @@ sequenceDiagram
   A phone removed from the Cloud before the claim leaves its meeting here only, so the copy stays and is pushed as this Mac's.
   A meeting that fails to adopt does not stop the others, nor the rest of the pass, and the pass records the failure after its own push.
   A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then the pass skips this step.
-  Only the Cloud knows a phone meeting is waiting, so every due timer wake starts a pass, which on an idle Mac stops after this listing call when it adopted nothing.
+  Only the Cloud knows a phone meeting is waiting, so every due timer wake starts a pass, which on an idle Mac stops after this listing call and the edit listing when it adopted nothing and found no edit.
   An idle wake that cannot reach the Cloud records the Mac as up to date, and idle wakes reuse the session in memory while it has five minutes left, so they rewrite `keys.json` only when the token rotates.
   Every other pass refreshes, so a session revoked in the Cloud shows at once.
   The phone pushes a meeting with `ended_at` set only after its enhance, so a Mac never adopts a meeting before its enhanced version exists.
@@ -994,6 +997,28 @@ sequenceDiagram
 - **Verification.**
   `just test-cloud` runs the client against a local Supabase.
   `just test-cloud-e2e` drives two real yogurt instances through connect, push, edit, delete, a second laptop, a phone meeting adopted once, a revoked session, and disconnect.
+
+### Edits from the webapp
+
+The webapp renames, appends a note to, and deletes a meeting, and a meeting keeps one writer: the device that pushed it.
+For a phone's own ended meeting the webapp pushes a new version, or a null one to delete it, as the phone.
+A push refused with `PT409` means a Mac adopted it first, and the page says so.
+For a Mac's meeting the webapp calls `yogurt_request_edit`, which needs the browser token, so a laptop's session alone cannot make another Mac change anything.
+A row in `yogurt_edits` holds the device, the meeting, the op, the new title or the stamped note, and for a rename the title the page showed.
+The webapp lists `yogurt_pending_edits`, shows each over the meeting it changes with an Undo (`yogurt_cancel_edit`), and polls every 15 seconds while any wait.
+
+- **The pass.**
+  After adopting, a pass lists `yogurt_device_edits` and makes each in order through `PassHooks::edit`, skipping the meeting being recorded.
+  A rename applies only while the local title still equals the title the page showed, and otherwise counts as superseded.
+  An appended note goes after a blank line at the end of `notes_md`, the My notes tab.
+  A delete also removes the exported markdown file, as the library's Delete does by default.
+  The pass then pushes as usual and only after that calls `yogurt_finish_edit`, so the webapp never sees an edit done before its result is in the Cloud.
+  A crash before the finish makes the edits again on the next pass, which leaves them as they are: the title already matches, the note is already there, the meeting is already gone.
+- **The inbox check.**
+  A due timer wake runs a pass as before.
+  Between due wakes, each 60 second wake that is not paused by an error only the user can fix, and has no recording running, calls `yogurt_inbox(device_id)` on the kept session.
+  It answers whether an edit for this Mac or an ended phone meeting is waiting, and a yes starts a pass with the `phone` trigger.
+  A failed check counts as no, and the next due push reports the problem.
 
 ### Recording on a phone
 

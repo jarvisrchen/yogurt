@@ -1694,3 +1694,10 @@ New closed items go at the bottom.
   Like the provider switch, it is global, so the next recap tick, the Enhance at End, and later meetings use it.
   HTTP providers get no chips, because their preset lists can name a model the endpoint does not serve, which would fail the next recap mid-meeting.
   Mocks: `docs/.lavish/live-model-chips-mocks.html`.
+
+- [x] **MOB-6** Rename, add a note to, and delete a meeting from the Cloud webapp, with a Mac's meetings changed by that Mac on its next minute check ([architecture](ARCHITECTURE.md#edits-from-the-webapp))
+
+  The webapp renames, appends a note to, and deletes meetings.
+  A phone's own meeting changes at once as its own push.
+  A Mac's meeting gets an edit request in `yogurt_edits`, which only an unlocked browser can file.
+  The Mac checks `yogurt_inbox` each minute between pushes, makes the edit in SQLite, pushes, and then marks it done.

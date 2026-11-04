@@ -16,7 +16,7 @@ export interface LastError {
   code: string;
 }
 
-export type PushTrigger = "manual" | "auto" | "meeting" | "disconnect";
+export type PushTrigger = "manual" | "auto" | "meeting" | "phone" | "disconnect";
 
 /** One push in the Settings history. `up_to_date` stands for a run of wakes that found nothing to send, stamped with the newest. */
 export type PushHistoryEntry =

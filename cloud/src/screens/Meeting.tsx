@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@web/components/Button";
 import { EnhancingBanner } from "@web/components/EnhancingBanner";
 import { formatTs, markdownToHtml } from "@web/editor/html";
@@ -9,7 +9,8 @@ import { type ChatCopy, ChatWindow } from "@web/components/ChatWindow";
 import type { ChatMessage } from "@web/lib/api";
 import { Back, DeviceTag } from "../ui";
 import type { CloudChat } from "../lib/useChat";
-import { Adopted } from "../lib/api";
+import { Adopted, type EditOp, type PendingEdit } from "../lib/api";
+import { waitingText } from "../lib/edits";
 import type { Finish } from "../lib/session";
 import { defaultTab, pushedFrom, started, tabsFor, type Entry, type Tab } from "../lib/library";
 
@@ -36,14 +37,25 @@ export type Enhance = (onText: (text: string) => void) => Promise<string | null>
 
 type Run = { status: "idle" } | Exclude<Finish, { status: "done" }>;
 
+/** What the open meeting can change from here. */
+export interface Editing {
+  /** The Mac that makes the edits, or null for a phone's own meeting, which changes at once. */
+  mac: string | null;
+  pending: PendingEdit[];
+  /** `value` is the new title or the note's text. */
+  edit: (op: EditOp, value?: string) => Promise<void>;
+  cancel: (id: number) => Promise<void>;
+}
+
 const NOTE = "flex items-center justify-between gap-[8px] text-[13px] min-[721px]:text-[11.5px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink";
 
 /**
  * `entry` is null when nothing is known of the meeting yet, as after opening a link.
  * `enhance` is set for a phone meeting's live view, the only meetings the webapp writes.
  * `finish` is the enhance End started for this meeting, which shows until the user starts one here.
+ * `editing` is null where nothing may change, as in History or while a phone still records the meeting.
  */
-export function MeetingView({ entry, device, deviceColor, back, onBack, desktop, body, chat, enhance, finish }: { entry: Entry | null; device: string; deviceColor: string; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null; enhance?: Enhance | null; finish?: Finish | null }) {
+export function MeetingView({ entry, device, deviceColor, back, onBack, desktop, body, chat, enhance, finish, editing }: { entry: Entry | null; device: string; deviceColor: string; back: string; onBack: () => void; desktop: boolean; body: BodyState; chat: CloudChat | null; enhance?: Enhance | null; finish?: Finish | null; editing?: Editing | null }) {
   const [own, setRun] = useState<Run>({ status: "idle" });
   const [took, setTook] = useState(false);
   const outside = took ? null : finish;
@@ -96,6 +108,7 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
             <DeviceTag name={device} color={deviceColor} />
             {started(entry)}
           </div>
+          {ready && editing && <EditBar key={entry.key} editing={editing} title={entry.title} />}
         </div>
       )}
       {body.status === "loading" && (
@@ -131,6 +144,118 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
       )}
       {body.status === "ready" && chat && <Ask chat={chat} />}
     </article>
+  );
+}
+
+const ACTION = "text-[14px] min-[721px]:text-[12.5px] font-semibold bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] disabled:opacity-50 disabled:cursor-not-allowed";
+const INPUT = "w-full font-sans text-[16px] min-[721px]:text-[13px] bg-paper text-ink placeholder:text-grey border border-line rounded-button px-[12px] py-[10px] outline-none focus:border-blue focus:ring-1 focus:ring-blue";
+
+type Mode = "rename" | "note" | "delete";
+
+/** Rename, Add note, and Delete, each opening its form under the header, then a line for each edit the Mac has yet to make. */
+function EditBar({ editing, title }: { editing: Editing; title: string }) {
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const open = (m: Mode) => {
+    setMode(m);
+    setText(m === "rename" ? title : "");
+    setError(null);
+  };
+  const run = async (f: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await f();
+      setMode(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Undo leaves an open form alone.
+  const undo = async (id: number) => {
+    setError(null);
+    try {
+      await editing.cancel(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const save = () => void run(() => (mode === "rename" ? editing.edit("rename", text) : mode === "note" ? editing.edit("append_note", text) : editing.edit("delete")));
+  const ready = mode === "delete" || (mode === "rename" ? !!text.trim() && text.trim() !== title : !!text.trim());
+  const keys = (e: KeyboardEvent) => {
+    if (e.key === "Escape") setMode(null);
+    else if (e.key === "Enter" && (mode === "rename" || e.metaKey || e.ctrlKey) && ready && !busy) {
+      e.preventDefault();
+      save();
+    }
+  };
+  return (
+    <div className="flex flex-col gap-[8px] mt-[10px] min-[721px]:max-w-[560px]">
+      {!mode && (
+        <div className="flex gap-[16px]">
+          <button type="button" className={`${ACTION} text-blue`} onClick={() => open("rename")}>
+            Rename
+          </button>
+          <button type="button" className={`${ACTION} text-blue`} onClick={() => open("note")}>
+            Add note
+          </button>
+          <button type="button" className={`${ACTION} text-straw`} onClick={() => open("delete")}>
+            Delete
+          </button>
+        </div>
+      )}
+      {mode && (
+        <form
+          className="flex flex-col gap-[8px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (ready && !busy) save();
+          }}
+        >
+          {mode === "rename" && <input aria-label="New title" autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={keys} maxLength={500} className={INPUT} />}
+          {mode === "note" && (
+            <textarea aria-label="New note" autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={keys} maxLength={20000} placeholder="Added to the end of your notes" className={`${INPUT} resize-y`} />
+          )}
+          {mode === "delete" && (
+            <p className="text-[15px] min-[721px]:text-[12.5px] text-ink m-[0px]">
+              {editing.mac ? `Delete this meeting? ${editing.mac} deletes it, and your Cloud keeps it in History.` : "Delete this meeting? Your Cloud keeps it in History."}
+            </p>
+          )}
+          <div className="flex gap-[8px]">
+            <Button size="sm" type="submit" variant={mode === "delete" ? "warn" : "primary"} disabled={!ready || busy}>
+              {mode === "rename" ? "Save title" : mode === "note" ? "Add note" : "Delete"}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setMode(null)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+      {error && (
+        <div role="alert" className={NOTE}>
+          <span className="min-w-0 break-words">{error}</span>
+        </div>
+      )}
+      {editing.mac &&
+        editing.pending.map((e) => (
+          <Waiting key={e.id} text={waitingText(e, editing.mac!)} onUndo={() => void undo(e.id)} />
+        ))}
+    </div>
+  );
+}
+
+function Waiting({ text, onUndo }: { text: string; onUndo: () => void }) {
+  return (
+    <div role="status" className={NOTE}>
+      <span className="min-w-0 break-words">{text}</span>
+      <button type="button" onClick={onUndo} className={`${ACTION} flex-none text-blue`}>
+        Undo
+      </button>
+    </div>
   );
 }
 

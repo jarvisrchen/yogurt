@@ -378,7 +378,7 @@ async fn archive_matching(
 }
 
 /// Mirrors `AppState::patch_and_export`: the enriched body wins over raw notes.
-fn exporter_view(m: &Meeting) -> ExpMeeting<'_> {
+pub(crate) fn exporter_view(m: &Meeting) -> ExpMeeting<'_> {
     ExpMeeting {
         id: &m.id,
         title: &m.title,

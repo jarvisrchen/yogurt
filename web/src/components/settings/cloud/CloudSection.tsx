@@ -125,6 +125,7 @@ const TRIGGER: Record<PushHistoryEntry["trigger"], string> = {
   manual: "Manual",
   auto: "Auto",
   meeting: "Meeting",
+  phone: "Phone",
   disconnect: "Disconnect",
 };
 
