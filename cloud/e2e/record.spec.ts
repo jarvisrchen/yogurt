@@ -177,7 +177,7 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
 
   // A slow drag follows the finger and leaves the sheet where it was let go, and a flick down sends it back to the peek.
   const height = async () => (await sheet(page).boundingBox())!.height;
-  const peek = 152;
+  const peek = 128;
   await expect.poll(height).toBe(peek);
   const grip = (await sheet(page).getByRole("button", { name: "Raise transcript" }).boundingBox())!;
   const [x, y] = [grip.x + grip.width / 2, grip.y + grip.height / 2];

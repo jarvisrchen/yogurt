@@ -125,14 +125,16 @@ function Ready({ snap, session, device, color, onBack }: { snap: Snapshot; sessi
 }
 
 const NOTES_PLACEHOLDER = "Take sparse notes while the transcript runs below.";
-const PEEK = 152;
+const PEEK = 128;
 const FULL = Infinity;
 // Let go this close to either end and the sheet settles there. A release faster than FLICK px/ms throws it to the end it moves toward.
 const SNAP = 48;
 const FLICK = 0.5;
 // The one line the sheet keeps while the keyboard or the chat is up.
 const TICKER = 48;
-const ASK = "cloud-chat w-full min-h-0 !shadow-none";
+const ASK = "cloud-chat w-full min-h-0";
+// The gap that keeps the floating sheet off the Ask bar below it and the recording bar above it.
+const GAP = 10;
 // More than a browser's toolbar sliding away, less than any phone keyboard.
 const KEYBOARD = 120;
 // A move shorter than this is a tap with a shaky finger.
@@ -202,7 +204,7 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
         </Button>
       </div>
       <div className="relative flex-1 min-h-0">
-        <main className="absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px]" style={{ paddingBottom: (compact ? TICKER : height === FULL ? PEEK : height) + 16 }}>
+        <main className="absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px]" style={{ paddingBottom: (compact ? TICKER : height === FULL ? PEEK : height) + GAP + 16 }}>
           {reconnecting ? (
             <p role="status" className={NOTICE}>
               Reconnecting… Holding {minSec(Math.min(now - snap.downSince!, QUEUE_MS))} of audio, up to 5 minutes. It is transcribed once the connection is back.
@@ -233,7 +235,7 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
         />
       </div>
       {chat && (
-        <div className="flex-none max-h-[60%] flex flex-col bg-card border-t border-line px-[12px] pt-[8px] pb-[10px]">
+        <div className="flex-none max-h-[60%] flex flex-col px-[12px] pb-[12px]">
           <Ask chat={chat} position={ASK} />
         </div>
       )}
@@ -286,7 +288,7 @@ function Sheet({ height, setHeight, compact, onTicker, state, lines, interim, in
   const { dragging, start } = usePointerDrag("sheet-dragging");
   const grab = (e: PointerEvent) => {
     const from = self.current!.offsetHeight;
-    const max = self.current!.parentElement!.clientHeight;
+    const max = self.current!.parentElement!.clientHeight - 2 * GAP;
     let h = from;
     let last = { dy: 0, t: performance.now() };
     let speed = 0;
@@ -315,19 +317,19 @@ function Sheet({ height, setHeight, compact, onTicker, state, lines, interim, in
     <section
       ref={self}
       aria-label="Live transcript"
-      className="absolute inset-x-0 bottom-0 z-40 flex flex-col bg-card border-t border-line rounded-t-panel"
+      className="absolute inset-x-[12px] z-40 flex flex-col overflow-hidden bg-card border border-line rounded-panel shadow-pop"
       style={{
-        height: shownHeight === FULL ? "100%" : `min(${shownHeight}px, 100%)`,
+        bottom: GAP,
+        height: shownHeight === FULL ? `calc(100% - ${2 * GAP}px)` : `min(${shownHeight}px, calc(100% - ${2 * GAP}px))`,
         transition: dragging ? "none" : "height 240ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-        boxShadow: "0 -16px 32px -8px var(--shadow-card-color)",
       }}
     >
       {compact ? (
-        <button type="button" onClick={onTicker} className="h-full flex items-center gap-[10px] px-[20px] text-left">
+        <button type="button" onClick={onTicker} className="h-full flex items-center gap-[10px] px-[16px] text-left">
           <span className="sr-only">Show transcript: </span>
           <span aria-hidden className={`flex-none w-[7px] h-[7px] rounded-pill ${state === "live" ? "bg-matcha" : "bg-grey"}`} />
           {/* Right to left so a long line keeps its newest words and loses its start to the ellipsis. */}
-          <span dir="rtl" className={`flex-1 min-w-0 truncate text-left text-[15px] min-[721px]:text-[13px] ${interim ? "text-mut" : "text-ink"}`}>
+          <span dir="rtl" className={`flex-1 min-w-0 truncate text-left text-[16px] min-[721px]:text-[14px] ${interim ? "text-mut" : "text-ink"}`}>
             <span dir="ltr">{interim || lines.at(-1)?.text || (state === "live" ? "Listening…" : "Connecting to Deepgram…")}</span>
           </span>
         </button>
