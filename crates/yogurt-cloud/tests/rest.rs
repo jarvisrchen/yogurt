@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Barrier};
 use std::time::Duration;
 use tokio::sync::watch;
-use yogurt_cloud::push::{self, Hooks, LocalMeeting, Pacing, Pass, PhoneMeeting, Plan, Progress};
+use yogurt_cloud::push::{
+    self, Edit, Hooks, LocalMeeting, Pacing, Pass, PhoneMeeting, Plan, Progress,
+};
 use yogurt_cloud::{Error, Project, Session};
 
 const PASSWORD: &str = "correct horse battery";
@@ -421,6 +423,9 @@ impl Hooks for Mac {
         self.here.remove(id);
         self.unadopted.push(id.into());
         Ok(())
+    }
+    fn edit(&mut self, _: &Edit) -> Result<bool, String> {
+        Ok(true)
     }
 }
 

@@ -22,8 +22,9 @@ use tokio::sync::{watch, MutexGuard};
 use yogurt_cloud::push::{self, LocalMeeting, Pass, Plan, Progress};
 use yogurt_cloud::{config, Error as CloudError, Project, Session};
 use yogurt_db::keys::ProcessLock;
-use yogurt_db::MeetingRepo;
+use yogurt_db::{MeetingPatch, MeetingRepo};
 
+use crate::api::meetings::exporter_view;
 use crate::cloud_push::Pending;
 use crate::ws::{self, WsEvent};
 use crate::AppState;
@@ -700,6 +701,40 @@ impl push::Hooks for PassHooks<'_> {
             .map_err(|e| format!("{e:#}"))
     }
 
+    /// A rename applies only over the title the webapp showed. A delete also removes the markdown file, as the library's Delete does.
+    fn edit(&mut self, e: &push::Edit) -> Result<bool, String> {
+        let fail = |e: anyhow::Error| format!("{e:#}");
+        let Some(m) = self.repo.get(&e.meeting_id).map_err(fail)? else {
+            return Ok(e.op == "delete");
+        };
+        let patch = match e.op.as_str() {
+            "rename" if e.base.as_deref() != Some(m.title.as_str()) => {
+                return Ok(m.title == e.value)
+            }
+            "rename" => MeetingPatch {
+                title: Some(e.value.clone()),
+                ..Default::default()
+            },
+            // A rerun after a lost answer finds the note already there.
+            "append_note" if m.notes_md.contains(&e.value) => return Ok(true),
+            "append_note" => MeetingPatch {
+                notes_md: Some(append_note(&m.notes_md, &e.value)),
+                ..Default::default()
+            },
+            "delete" => {
+                if self.repo.delete(&m.id).map_err(fail)? {
+                    if let Err(err) = self.state.markdown_exporter.remove(&exporter_view(&m)) {
+                        tracing::warn!(?err, "cloud edit: could not remove markdown file");
+                    }
+                }
+                return Ok(true);
+            }
+            _ => return Ok(false),
+        };
+        self.state.patch_and_export(&m.id, patch).map_err(fail)?;
+        Ok(true)
+    }
+
     fn progress(&mut self, p: &Progress) {
         let now = now_ms();
         if self.job && self.state.cloud_push.update(p, now) {
@@ -713,6 +748,14 @@ impl push::Hooks for PassHooks<'_> {
                 },
             );
         }
+    }
+}
+
+fn append_note(notes: &str, note: &str) -> String {
+    if notes.trim().is_empty() {
+        note.to_string()
+    } else {
+        format!("{}\n\n{note}", notes.trim_end())
     }
 }
 
@@ -792,8 +835,82 @@ async fn adopt(
     Ok(adopted.len())
 }
 
+/// Makes the edits the webapp asked of this Mac, so the pass that follows pushes them. Returns each edit's id and whether it was made.
+async fn apply_edits(
+    state: &AppState,
+    link: &mut Link,
+    recording: Option<&str>,
+    cancel: &mut watch::Receiver<bool>,
+) -> ApiResult<Vec<(i64, bool)>> {
+    let Link {
+        conn,
+        project,
+        session,
+    } = link;
+    let device_id = conn.device_id.clone();
+    let mut hooks = PassHooks {
+        state,
+        conn,
+        repo: state.meeting_repo.clone(),
+        job: true,
+        adopted: HashMap::new(),
+    };
+    let done = push::apply_edits(
+        project,
+        state.cloud_push.pacing(),
+        session,
+        cancel,
+        &mut hooks,
+        &device_id,
+        recording,
+    )
+    .await?;
+    let made = done.iter().filter(|(_, made)| *made).count();
+    if made > 0 {
+        tracing::info!(made, "made edits asked in Yogurt Cloud");
+    }
+    Ok(done)
+}
+
+/// Tells the Cloud how each edit went, once the pass has pushed the results.
+async fn finish_edits(
+    state: &AppState,
+    link: &mut Link,
+    done: &[(i64, bool)],
+    cancel: &mut watch::Receiver<bool>,
+) -> ApiResult<()> {
+    let Link {
+        conn,
+        project,
+        session,
+    } = link;
+    let device_id = conn.device_id.clone();
+    let mut hooks = PassHooks {
+        state,
+        conn,
+        repo: state.meeting_repo.clone(),
+        job: true,
+        adopted: HashMap::new(),
+    };
+    push::finish_edits(
+        project,
+        state.cloud_push.pacing(),
+        session,
+        cancel,
+        &mut hooks,
+        &device_id,
+        done,
+    )
+    .await?;
+    Ok(())
+}
+
+fn step_error(step: &str, e: CloudApiError) -> CloudApiError {
+    CloudApiError::new(e.code, format!("{step} {}", e.message))
+}
+
 /// The pass behind the Push button and the timer. `now` stamps the success or failure record.
-/// A timer's pass that adopted nothing and has nothing local to send stops after the adopt check, so an idle Mac makes one listing call.
+/// A timer's pass that adopted nothing, found no edit, and has nothing local to send stops after those two checks, so an idle Mac makes two listing calls.
 /// That idle check failing on the network is no failure of the Mac's, which is up to date, so it records the wake as up to date.
 /// A failed adoption still lets the pass push this Mac's meetings, and is recorded after it.
 async fn push_locked(
@@ -807,25 +924,49 @@ async fn push_locked(
     let pass = async {
         let recording = recording_id(state).await;
         let mut link = link(state, held, idle).await?;
-        let adopt_failed = match adopt(state, &mut link, cancel).await {
-            Ok(0) if idle => return Ok((Plan::default(), None)),
-            Ok(_) => None,
-            Err(e) if e.code == "cancelled" || (idle && e.code == "network") => return Err(e),
-            Err(e) => Some(CloudApiError::new(
-                e.code,
-                format!("Couldn't take a meeting from a phone. {}", e.message),
-            )),
+        // A failure in either step still lets the pass push this Mac's meetings, and is recorded after it.
+        const ADOPT: &str = "Couldn't take a meeting from a phone.";
+        const EDIT: &str = "Couldn't make an edit from Yogurt Cloud.";
+        let stop = |e: &CloudApiError| e.code == "cancelled" || (idle && e.code == "network");
+        let mut inbox_failed = None;
+        let adopted = match adopt(state, &mut link, cancel).await {
+            Ok(n) => n,
+            Err(e) if stop(&e) => return Err(e),
+            Err(e) => {
+                inbox_failed = Some(step_error(ADOPT, e));
+                0
+            }
         };
+        let done = match apply_edits(state, &mut link, recording.as_deref(), cancel).await {
+            Ok(d) => d,
+            Err(e) if stop(&e) => return Err(e),
+            Err(e) => {
+                inbox_failed.get_or_insert(step_error(EDIT, e));
+                Vec::new()
+            }
+        };
+        // A superseded edit is not made but still has to be reported, so any listed edit keeps the pass going.
+        if idle && adopted == 0 && done.is_empty() && inbox_failed.is_none() {
+            return Ok((Plan::default(), None));
+        }
         let repo = state.meeting_repo.clone();
         let local = blocking(move || local_meetings(&repo)).await?;
         let plan = run_pass(state, &mut link, local, recording, cancel, true).await?;
-        Ok((plan, adopt_failed))
+        if !done.is_empty() {
+            if let Err(e) = finish_edits(state, &mut link, &done, cancel).await {
+                if e.code == "cancelled" {
+                    return Err(e);
+                }
+                inbox_failed.get_or_insert(step_error(EDIT, e));
+            }
+        }
+        Ok((plan, inbox_failed))
     };
     match pass.await {
-        Ok((plan, adopt_failed)) => {
+        Ok((plan, inbox_failed)) => {
             record_success(state, trigger, now, plan.changed.len(), plan.deleted.len());
-            if let Some(e) = &adopt_failed {
-                tracing::warn!(code = e.code, "adopting a phone meeting failed");
+            if let Some(e) = &inbox_failed {
+                tracing::warn!(code = e.code, "taking a phone meeting or an edit failed");
                 record_failure(state, trigger, e, now);
             }
             Ok(plan)
@@ -883,7 +1024,7 @@ async fn push_task(
 }
 
 /// Starts the one background push, or says why not. The result of the push itself arrives as frames and in `GET /api/cloud`.
-/// `trigger` is `manual`, `auto`, or `meeting`, shown in the history.
+/// `trigger` is `manual`, `auto`, `meeting`, or `phone`, shown in the history.
 fn start_push(state: &AppState, trigger: &'static str, now: i64) -> ApiResult<()> {
     if load(state)?.is_none() {
         return Err(CloudApiError::coded("not_connected"));
@@ -995,26 +1136,53 @@ impl TimerInputs {
 }
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
-/// A due wake always starts a pass, since a phone meeting to adopt is known only to the Cloud, and on an idle Mac that pass ends after one `yogurt_phone_meetings` call.
+/// A due wake always starts a pass, since a phone meeting to adopt or an edit to make is known only to the Cloud, and on an idle Mac that pass ends after the `yogurt_phone_meetings` and `yogurt_device_edits` calls.
 async fn auto_tick(state: &AppState, now: i64) {
     if push_interval(state) == "off" || state.cloud_push.is_running() {
         return;
     }
     let state = state.clone();
     let result = detached(async move {
-        let _held = acquire(&state).await?;
+        let held = acquire(&state).await?;
         if load(&state)?.is_none() {
             return Ok(());
         }
-        let Some(trigger) = TimerInputs::read(&state).and_then(|t| t.due(now)) else {
+        let Some(timer) = TimerInputs::read(&state) else {
             return Ok(());
         };
-        start_push(&state, trigger, now)
+        if let Some(trigger) = timer.due(now) {
+            return start_push(&state, trigger, now);
+        }
+        // Between pushes, an edit or a phone recording waiting in the Cloud starts one, so the phone sees it within a minute.
+        // A failure waits out the same gap a due push does, so an edit that keeps failing is not retried every minute.
+        let backing_off = timer
+            .error()
+            .is_some_and(|(at, _)| now < at + RETRY_AFTER_FAILURE_MS);
+        if timer.next_push().is_some()
+            && !backing_off
+            && recording_id(&state).await.is_none()
+            && inbox(&state, &held).await
+        {
+            return start_push(&state, "phone", now);
+        }
+        Ok(())
     })
     .await;
     if let Err(e) = result {
         tracing::warn!(code = e.code, "auto-push failed");
     }
+}
+
+/// Whether the Cloud holds an edit for this Mac or a phone meeting to adopt. A failure counts as no, and the next due push reports it.
+async fn inbox(state: &AppState, held: &Held<'_>) -> bool {
+    let Ok(link) = link(state, held, true).await else {
+        return false;
+    };
+    let args = json!({ "device_id": link.conn.device_id });
+    link.project
+        .rpc(&link.session, "yogurt_inbox", &args)
+        .await
+        .is_ok_and(|v| v == Value::Bool(true))
 }
 
 /// `clock` returns wall-clock milliseconds, and only tests substitute it.
@@ -1293,6 +1461,58 @@ mod tests {
         assert_eq!(push_interval(&state), "off");
     }
 
+    #[test]
+    fn cloud_edits_rename_over_the_shown_title_append_once_and_delete() {
+        use push::Hooks as _;
+        let (state, _tmp) = idle_state();
+        let m = state
+            .meeting_repo
+            .create(yogurt_db::NewMeeting {
+                title: "Old".into(),
+                started_at_unix_ms: None,
+                id: None,
+            })
+            .unwrap();
+        let mut conn = load(&state).unwrap().unwrap();
+        let mut hooks = PassHooks {
+            state: &state,
+            conn: &mut conn,
+            repo: state.meeting_repo.clone(),
+            job: false,
+            adopted: HashMap::new(),
+        };
+        let mut edit = |op: &str, value: &str, base: Option<&str>| {
+            hooks
+                .edit(&push::Edit {
+                    id: 1,
+                    meeting_id: m.id.clone(),
+                    op: op.into(),
+                    value: value.into(),
+                    base: base.map(Into::into),
+                })
+                .unwrap()
+        };
+        let get = || state.meeting_repo.get(&m.id).unwrap();
+
+        assert!(!edit("rename", "Stale", Some("Something else")));
+        assert!(edit("rename", "New", Some("Old")));
+        assert!(edit("rename", "New", Some("Old")), "a rerun finds it done");
+        assert_eq!(get().unwrap().title, "New");
+
+        assert!(edit("append_note", "**Added**\n\nCall Steven", None));
+        assert!(edit("append_note", "Bring slides", None));
+        assert!(edit("append_note", "Bring slides", None));
+        assert_eq!(
+            get().unwrap().notes_md,
+            "**Added**\n\nCall Steven\n\nBring slides"
+        );
+
+        assert!(edit("delete", "", None));
+        assert!(get().is_none());
+        assert!(edit("delete", "", None), "already gone is done");
+        assert!(!edit("rename", "Late", Some("New")));
+    }
+
     #[tokio::test]
     async fn auto_tick_follows_the_setting_the_connection_and_the_clock() {
         let (state, _tmp) = state();
@@ -1505,6 +1725,129 @@ mod tests {
         assert_eq!(recorded(&state, HISTORY_KEY)[0]["trigger"], "auto");
     }
 
+    #[tokio::test]
+    async fn between_pushes_a_waiting_edit_is_made_and_pushed() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+        let (state, _tmp) = with_meetings(1);
+        let id = local_meetings(&state.meeting_repo).unwrap()[0].id.clone();
+        let cloud = mock_cloud(&state, 201).await;
+        catch_up(200, json!(0)).mount(&cloud).await;
+        let ok = |p: &str, body: Value| {
+            Mock::given(method("POST"))
+                .and(path(p.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .with_priority(1)
+        };
+        ok("/rest/v1/rpc/yogurt_inbox", json!(true))
+            .mount(&cloud)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_device_edits"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                { "id": 4, "meeting_id": id, "op": "rename", "value": "From the phone", "base": "unpushed 0", "created_at": "x" }
+            ])))
+            .with_priority(1)
+            .up_to_n_times(1)
+            .mount(&cloud)
+            .await;
+        ok("/rest/v1/rpc/yogurt_finish_edit", json!(true))
+            .mount(&cloud)
+            .await;
+        set_interval(&state, "1d");
+
+        auto_tick(&state, T0 + 10 * MIN).await;
+        settle(&state).await;
+
+        assert_eq!(
+            state.meeting_repo.get(&id).unwrap().unwrap().title,
+            "From the phone"
+        );
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_finish_edit").await, 1);
+        assert_eq!(pushed_ids(&cloud).await, [id]);
+        assert_eq!(history(&state)[0]["trigger"], "phone");
+        let order: Vec<String> = cloud
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.url.path().to_string())
+            .filter(|p| p == "/rest/v1/yogurt_versions" || p.ends_with("yogurt_finish_edit"))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                "/rest/v1/yogurt_versions",
+                "/rest/v1/rpc/yogurt_finish_edit"
+            ],
+            "the webapp sees an edit done only once its result is pushed"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_idle_mac_reports_a_superseded_edit_and_a_failure_waits_its_gap() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+        let (state, _tmp) = idle_state();
+        let cloud = bare_cloud(&state).await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_inbox"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!(true)))
+            .with_priority(1)
+            .mount(&cloud)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_device_edits"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                { "id": 5, "meeting_id": "gone", "op": "rename", "value": "Late", "base": "Old", "created_at": "x" }
+            ])))
+            .with_priority(1)
+            .up_to_n_times(1)
+            .mount(&cloud)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_finish_edit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!(true)))
+            .mount(&cloud)
+            .await;
+        set_interval(&state, "1d");
+
+        auto_tick(&state, T0 + 10 * MIN).await;
+        settle(&state).await;
+        let finished: Vec<Value> = cloud
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path().ends_with("yogurt_finish_edit"))
+            .map(|r| serde_json::from_slice(&r.body).unwrap())
+            .collect();
+        assert_eq!(
+            finished,
+            [json!({ "device_id": "d", "edit_id": 5, "applied": false })]
+        );
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_start_push").await, 0);
+
+        record(
+            &state,
+            LAST_ERROR_KEY,
+            &json!({ "at": T0 + 20 * MIN, "code": "network", "error": "x" }),
+        );
+        let asked = hits(&cloud, "/rest/v1/rpc/yogurt_inbox").await;
+        auto_tick(&state, T0 + 22 * MIN).await;
+        settle(&state).await;
+        assert_eq!(
+            hits(&cloud, "/rest/v1/rpc/yogurt_inbox").await,
+            asked,
+            "still in the gap"
+        );
+        auto_tick(&state, T0 + 25 * MIN).await;
+        settle(&state).await;
+        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_inbox").await, asked + 1);
+    }
+
     /// A mock Supabase with everything a push needs except the insert and the search catch-up, which each test mounts, and `state` connected to it.
     async fn bare_cloud(state: &AppState) -> wiremock::MockServer {
         cloud_listing(state, &[]).await
@@ -1535,6 +1878,12 @@ mod tests {
             .mount(&cloud)
             .await;
         answer("/rest/v1/rpc/yogurt_phone_meetings", json!([]))
+            .mount(&cloud)
+            .await;
+        answer("/rest/v1/rpc/yogurt_device_edits", json!([]))
+            .mount(&cloud)
+            .await;
+        answer("/rest/v1/rpc/yogurt_inbox", json!(false))
             .mount(&cloud)
             .await;
         let mut conn = load(state).unwrap().unwrap();

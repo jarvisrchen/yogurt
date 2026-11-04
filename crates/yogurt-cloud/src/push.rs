@@ -201,6 +201,76 @@ pub trait Hooks {
     fn adopt(&mut self, phone: &PhoneMeeting) -> std::result::Result<bool, String>;
     /// Deletes the copy [`Hooks::adopt`] wrote in this pass of the phone meeting `phone_id`, after another Mac adopted it first.
     fn unadopt(&mut self, phone_id: &str) -> std::result::Result<(), String>;
+    /// Makes an edit the webapp asked for. `Ok(false)` when this Mac's copy changed first, which leaves it as it is.
+    /// It may run again after a crash before the Cloud heard back, so it must leave an applied edit's result alone.
+    fn edit(&mut self, edit: &Edit) -> std::result::Result<bool, String>;
+}
+
+/// An edit the webapp asked this Mac to make, as `yogurt_device_edits` lists it.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct Edit {
+    pub id: i64,
+    pub meeting_id: String,
+    /// `rename`, `delete`, or `append_note`.
+    pub op: String,
+    pub value: String,
+    /// For a rename, the title the webapp showed.
+    pub base: Option<String>,
+}
+
+/// Makes this Mac's waiting edits in the order they were asked. Returns each edit's id and whether it was made, for [`finish_edits`] once the pass has pushed the result.
+/// An edit of `skip`, the meeting being recorded, waits for a later pass.
+/// A Cloud deployed before edits has no `yogurt_device_edits`, and then there is nothing to make.
+pub async fn apply_edits(
+    project: &Project,
+    pacing: &Pacing,
+    session: &mut Session,
+    cancel: &mut watch::Receiver<bool>,
+    hooks: &mut impl Hooks,
+    device_id: &str,
+    skip: Option<&str>,
+) -> Result<Vec<(i64, bool)>> {
+    let args = json!({ "device_id": device_id });
+    let args = &args;
+    let listed = retried(project, pacing, session, cancel, hooks, |s| async move {
+        project.rpc_all(&s, "yogurt_device_edits", args, "").await
+    })
+    .await;
+    let rows = match listed {
+        Err(e) if e.code() == "cloud_outdated" => return Ok(Vec::new()),
+        other => other?.0,
+    };
+    let mut done = Vec::new();
+    for row in rows {
+        let edit: Edit = serde_json::from_value(row)
+            .map_err(|e| Error::Local(format!("unreadable edit: {e}")))?;
+        if skip != Some(edit.meeting_id.as_str()) {
+            done.push((edit.id, hooks.edit(&edit).map_err(Error::Local)?));
+        }
+    }
+    Ok(done)
+}
+
+/// Tells the Cloud how each edit went. It runs after the push, so the webapp never sees an edit finished before its result is there.
+/// If it fails, the next pass makes the edits again, which leaves their results as they are.
+pub async fn finish_edits(
+    project: &Project,
+    pacing: &Pacing,
+    session: &mut Session,
+    cancel: &mut watch::Receiver<bool>,
+    hooks: &mut impl Hooks,
+    device_id: &str,
+    done: &[(i64, bool)],
+) -> Result<()> {
+    for (id, applied) in done {
+        let args = json!({ "device_id": device_id, "edit_id": id, "applied": applied });
+        let args = &args;
+        retried(project, pacing, session, cancel, hooks, |s| async move {
+            project.rpc(&s, "yogurt_finish_edit", args).await
+        })
+        .await?;
+    }
+    Ok(())
 }
 
 /// One request on the pass's retry schedule. Also returns how many attempts failed first, because a write whose answer was lost may have committed.
@@ -634,6 +704,9 @@ mod run_tests {
         /// Meeting ids this Mac holds. `adopt` adds to it, `unadopt` removes.
         here: Vec<String>,
         unadopted: Vec<String>,
+        /// `op:meeting` of each edit made, and the meetings whose copy changed first.
+        edits: Vec<String>,
+        changed: Vec<String>,
     }
 
     impl Hooks for Rec {
@@ -662,6 +735,10 @@ mod run_tests {
             self.here.retain(|h| h != id);
             self.unadopted.push(id.into());
             Ok(())
+        }
+        fn edit(&mut self, e: &Edit) -> std::result::Result<bool, String> {
+            self.edits.push(format!("{}:{}", e.op, e.meeting_id));
+            Ok(!self.changed.contains(&e.meeting_id))
         }
     }
 
@@ -1186,5 +1263,85 @@ mod run_tests {
             .is_empty());
         assert!(rec.here.is_empty());
         assert_eq!(hits(&server, ADOPT).await, 0);
+    }
+
+    const FINISH: &str = "/rest/v1/rpc/yogurt_finish_edit";
+
+    async fn run_edits(
+        project: &Project,
+        session: &mut Session,
+        rec: &mut Rec,
+        skip: Option<&str>,
+    ) -> Result<Vec<(i64, bool)>> {
+        let (_tx, mut rx) = watch::channel(false);
+        let done = apply_edits(project, &fast(10), session, &mut rx, rec, "mac", skip).await?;
+        finish_edits(project, &fast(10), session, &mut rx, rec, "mac", &done).await?;
+        Ok(done)
+    }
+
+    #[tokio::test]
+    async fn edits_apply_in_order_and_report_back_and_a_recording_waits() {
+        let (server, project, mut session) = cloud(&[]).await;
+        let rows = json!([
+            { "id": 1, "meeting_id": "a", "op": "rename", "value": "New", "base": "Old", "created_at": "x" },
+            { "id": 2, "meeting_id": "rec", "op": "append_note", "value": "Note", "base": null, "created_at": "x" },
+            { "id": 3, "meeting_id": "b", "op": "delete", "value": "", "base": null, "created_at": "x" },
+        ]);
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_device_edits"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rows))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_device_edits"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(FINISH))
+            .respond_with(answer(true))
+            .mount(&server)
+            .await;
+        let mut rec = Rec {
+            changed: vec!["a".into()],
+            ..Rec::default()
+        };
+        let made = run_edits(&project, &mut session, &mut rec, Some("rec"))
+            .await
+            .unwrap();
+        assert_eq!(made, [(1, false), (3, true)], "the recording's edit waits");
+        assert_eq!(rec.edits, ["rename:a", "delete:b"]);
+        let finished: Vec<Value> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == FINISH)
+            .map(|r| serde_json::from_slice(&r.body).unwrap())
+            .collect();
+        assert_eq!(
+            finished,
+            [
+                json!({ "device_id": "mac", "edit_id": 1, "applied": false }),
+                json!({ "device_id": "mac", "edit_id": 3, "applied": true }),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cloud_without_edits_makes_none() {
+        let (server, project, mut session) = cloud(&[]).await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_device_edits"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "code": "PGRST202" })))
+            .mount(&server)
+            .await;
+        let mut rec = Rec::default();
+        assert!(run_edits(&project, &mut session, &mut rec, None)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(hits(&server, FINISH).await, 0);
     }
 }

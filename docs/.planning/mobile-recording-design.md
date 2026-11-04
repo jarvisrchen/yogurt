@@ -187,7 +187,7 @@ SYNC-32 adds a step to the Mac's push pass, before it plans what to send.
 5. The rest of the pass pushes the meeting as one of this Mac's, so it shows once in the Library, under the Mac.
 
 Importing before claiming means a crash between the steps leaves the meeting on both sides, which the next pass repairs, rather than on neither.
-Once adopted, the meeting is read-only on the phone like every other Mac meeting.
+Once adopted, the phone edits the meeting as it edits every other Mac meeting, by asking that Mac (MOB-6, ARCHITECTURE.md §12).
 The Cloud refuses a phone's push of an adopted meeting, so an Enhance started on the phone before the adoption cannot bring the phone's copy back, and the page says the meeting now lists under the Mac.
 A meeting still recording is never adopted, because its `ended_at` is null.
 

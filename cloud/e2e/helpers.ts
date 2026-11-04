@@ -16,7 +16,7 @@ export async function reset() {
   const c = new pg.Client({ connectionString: DB });
   await c.connect();
   try {
-    await c.query("drop table if exists yogurt_versions, yogurt_pushes, yogurt_devices, yogurt_browsers, yogurt_owner cascade; delete from auth.users;");
+    await c.query("drop table if exists yogurt_edits, yogurt_versions, yogurt_pushes, yogurt_devices, yogurt_browsers, yogurt_owner cascade; delete from auth.users;");
     await c.query(sql("schema.sql"));
     await c.query(sql("owner.sql"), [OWNER]);
   } finally {
