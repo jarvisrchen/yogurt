@@ -1061,7 +1061,10 @@ sequenceDiagram
   At End it pushes the last of it still open, enhances it under EnhancingBanner in the meeting view, and only then pushes it ended, with the enhanced notes when the enhance worked.
   A page that reopens with an unfinished meeting there shows it at the top of the Library with Resume and End.
 - **Live chat.**
-  The record screen docks the meeting view's Ask pill and ChatWindow above the transcript sheet.
+  The record screen docks the meeting view's Ask pill and ChatWindow at the bottom of the screen, under the transcript sheet.
+  The sheet drags to any height, and a flick or a release near either end settles it at the peek or the full height.
+  While the chat is open or a field has the focus on a touch screen, the sheet shrinks to a one-line ticker of the newest words, then returns to its height.
+  `interactive-widget=resizes-content` in `cloud/index.html` makes the keyboard shrink the page in Chrome, as `adjustResize` does in the Android app, so the docked bar sits above the keyboard.
   Before each question it pushes the meeting still open, and only then calls `cloud/api/chat.ts`, which reads that version through `yogurt_meeting` as it does any meeting, so the answer covers everything said up to the question.
   A failed push puts its error in the chat and the question is not sent.
 - **Verification.**

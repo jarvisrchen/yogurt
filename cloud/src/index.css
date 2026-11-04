@@ -58,3 +58,8 @@
     font-size: 14px;
   }
 }
+:root.sheet-dragging,
+:root.sheet-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
