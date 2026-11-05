@@ -1733,3 +1733,13 @@ New closed items go at the bottom.
   React Router's `ScrollRestoration` opens every other navigation at the top, including a page change, and restores the spot on Back.
   The sidebar carries `?q=` to the view it opens, so switching labels keeps the search as it did when the search was component state.
   </details>
+
+- [x] **MOB-9** Drag the transcript card and swipe the Ask chat from anywhere on them by touch
+
+  Landed in the MOB-9 PR (2026-11-04).
+  By touch, the phone's transcript card drags from anywhere on its lines below its full height, including at the two-line peek.
+  At full height the lines scroll, and a drag the scroll cannot follow, up at the newest line or down at the oldest, moves the card.
+  The Ask chat swipes away from its messages once they are scrolled to the top, which they always are while they fit.
+  A tap on the lines does not toggle the card, presses on buttons, links, and fields keep their own taps, and a mouse drag on a body still selects text.
+  `useScrollEdges` (`web/src/lib/useScrollEdges.ts`) tracks the scroll edges and sets `touch-action`, and the web test setup stubs `ResizeObserver`, which jsdom lacks.
+  The Cloud's Tailwind build now scans that file, since it holds the `touch-pan-up` and `touch-pan-down` classes, and a chat bubble now wraps a long unbroken word, such as a raw error, instead of running past its edge.

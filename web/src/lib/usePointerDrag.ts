@@ -22,14 +22,18 @@ export function usePointerDrag(rootClass: string) {
   function start(e: React.PointerEvent, onMove: (dx: number, dy: number) => void, onDone: (moved: boolean, cancelled: boolean, speedY: number) => void) {
     // A second pointer while one drags would stack listeners and fight over the size.
     if (e.button > 0 || endRef.current) return;
-    e.preventDefault();
+    // A mouse press would start a text selection, so it takes the drag at once. A touch press waits for a move, so a long press still selects and a tap still moves the focus.
+    if (e.pointerType !== "touch") {
+      e.preventDefault();
+      setDragging(true);
+    }
     const { clientX, clientY } = e;
     let moved = false;
     const samples = [{ y: clientY, t: performance.now() }];
-    setDragging(true);
     const move = (ev: PointerEvent) => {
       // The release can land outside the page (another app, Cmd-Tab), so a move with no button held ends the drag.
       if (ev.buttons === 0) return finish(false);
+      if (!moved) setDragging(true);
       moved = true;
       const t = performance.now();
       samples.push({ y: ev.clientY, t });
@@ -60,3 +64,6 @@ export function usePointerDrag(rootClass: string) {
 
   return { dragging, start };
 }
+
+/** Whether a press landed on something with its own tap, which a drag must not take. */
+export const onControl = (target: EventTarget | null) => target instanceof Element && !!target.closest("button, a, input, textarea, select, [contenteditable]");

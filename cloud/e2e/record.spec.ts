@@ -78,6 +78,19 @@ const newest = async (page: Page) => {
   return Number(/Heard line (\d+)/.exec((await finals(page).last().textContent()) ?? "")?.[1] ?? 0);
 };
 
+/** A finger's drag, sent as touch events so the page sees a touch pointer. Slow steps, then a pause, so it lands as a drag rather than a flick. */
+async function touchDrag(page: Page, x: number, y: number, dy: number) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  for (let i = 1; i <= 10; i++) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y + (dy * i) / 10 }] });
+    await page.waitForTimeout(16);
+  }
+  await page.waitForTimeout(150);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+}
+
 type Meeting = { id: string; title: string; ended_at: number | null; notes_md: string; transcript_json: string; stt_engine: string; enriched_md: string | null; llm_model: string | null; template: string | null };
 type Version = { body: { meeting: Meeting } };
 const latest = async (deviceId: string) =>
@@ -238,6 +251,26 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await page.mouse.up();
   await expect.poll(height).toBeCloseTo(peek, 0);
   await expect(ask).toBeVisible();
+
+  // On a touch screen the whole card drags while its lines fit, and the open chat swipes away from its messages too. A tap on the lines does nothing.
+  if (phone) {
+    const line = (await finals(page).last().boundingBox())!;
+    await page.touchscreen.tap(line.x + 40, line.y + line.height / 2);
+    await page.waitForTimeout(300);
+    expect(await height()).toBe(peek);
+    await touchDrag(page, line.x + 40, line.y + line.height / 2, -160);
+    await expect.poll(height).toBeCloseTo(peek + 160, -1);
+    await sheet(page).getByRole("button", { name: "Lower transcript" }).click();
+    await expect.poll(height).toBe(peek);
+
+    // The classes that hand the browser one finger direction live in the shared web code, which the Cloud's Tailwind build must scan.
+    expect(await page.evaluate(() => ["touch-pan-up", "touch-pan-down"].map((c) => Object.assign(document.body.appendChild(document.createElement("div")), { className: c })).map((el) => getComputedStyle(el).touchAction))).toEqual(["pan-up", "pan-down"]);
+
+    await ask.click();
+    const said = (await chat.getByText("What was just said?").boundingBox())!;
+    await touchDrag(page, said.x - 60, said.y + said.height / 2, 140);
+    await expect(chat).toBeHidden();
+  }
 
   // A dropped socket: the page holds the audio, takes a fresh token once Deepgram answers again, and replays what it held at once, in order.
   const lineBefore = await newest(page);

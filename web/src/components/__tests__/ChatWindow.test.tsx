@@ -262,4 +262,71 @@ describe("ChatWindow", () => {
     swipe(30, 20, 0);
     expect(onCollapse).toHaveBeenCalledTimes(2);
   });
+
+  it("swipes away from its messages by touch while they fit, and leaves a mouse drag there to select text", () => {
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {
+      pointerType = "";
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerType = init.pointerType ?? "";
+      }
+    });
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onCollapse = vi.fn();
+    render(<ChatWindow messages={sampleMessages} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />);
+    const message = screen.getByText("hi there");
+    const drag = (pointerType: string) => {
+      fireEvent.pointerDown(message, { button: 0, clientY: 100, pointerType });
+      now += 400;
+      fireEvent.pointerMove(window, { buttons: 1, clientY: 220, pointerType });
+      now += 200;
+      fireEvent.pointerUp(window, { pointerType });
+    };
+
+    drag("mouse");
+    expect(onCollapse).not.toHaveBeenCalled();
+    drag("touch");
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves overflowing messages to scroll, and swipes the window from them once they are scrolled to the top", () => {
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {
+      pointerType = "";
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerType = init.pointerType ?? "";
+      }
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onCollapse = vi.fn();
+    render(<ChatWindow messages={sampleMessages} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />);
+    const message = screen.getByText("hi there");
+    const scroller = message.closest<HTMLElement>(".overflow-y-auto")!;
+    const scrollTo = (top: number) => {
+      Object.defineProperty(scroller, "scrollTop", { value: top, configurable: true });
+      fireEvent.scroll(scroller);
+    };
+    const drag = () => {
+      fireEvent.pointerDown(message, { button: 0, clientY: 100, pointerType: "touch" });
+      now += 400;
+      fireEvent.pointerMove(window, { buttons: 1, clientY: 220, pointerType: "touch" });
+      now += 200;
+      fireEvent.pointerUp(window, { pointerType: "touch" });
+    };
+
+    scrollTo(600);
+    expect(scroller).not.toHaveClass("touch-none");
+    expect(scroller).not.toHaveClass("touch-pan-down");
+    drag();
+    expect(onCollapse).not.toHaveBeenCalled();
+
+    scrollTo(0);
+    expect(scroller).toHaveClass("touch-pan-down");
+    drag();
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
 });
