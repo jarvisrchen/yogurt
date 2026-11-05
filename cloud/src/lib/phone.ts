@@ -34,7 +34,7 @@ export const LABEL_MAX = 40;
 /** A label's name as the Mac matches it: trimmed, with only A to Z folded, as SQLite's NOCASE does. */
 export const labelKey = (name: string) => name.trim().replace(/[A-Z]/g, (c) => c.toLowerCase());
 
-/** The Macs' labels as one list: one per name as the Mac matches it, sorted by name. */
+/** Labels as one list: one per name as the Mac matches it, the first of each kept, sorted by name. */
 export function mergeLabels(labels: PhoneLabel[]): PhoneLabel[] {
   const byName = new Map<string, PhoneLabel>();
   for (const l of labels) {
@@ -118,7 +118,7 @@ export function readMac(macs: { id: string; seen_at: string }[]): string | null 
   try {
     last = localStorage.getItem(MAC_KEY);
   } catch {
-    // Storage blocked: the first Mac.
+    // Storage blocked: the Mac seen last.
   }
   const latest = [...macs].sort((a, b) => Date.parse(b.seen_at) - Date.parse(a.seen_at))[0];
   return macs.find((m) => m.id === last)?.id ?? latest?.id ?? null;
@@ -128,7 +128,7 @@ export function saveMac(id: string): void {
   try {
     localStorage.setItem(MAC_KEY, id);
   } catch {
-    // Storage blocked: the next recording starts on the first Mac.
+    // Storage blocked: the next recording starts on the Mac seen last.
   }
 }
 

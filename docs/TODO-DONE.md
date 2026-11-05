@@ -1762,3 +1762,13 @@ New closed items go at the bottom.
   A label the Mac lacks is created in the color the list showed, or the Mac's next color for one typed on the phone.
   A name or color the Mac cannot store is dropped rather than refusing the meeting, and `ImportedMeeting.labels` holds `ImportedLabel`s with an optional color.
   `scripts/test-cloud-e2e.sh` now adopts a phone meeting with two labels into a Mac that already has one of them in another case, and a meeting saved for the second Mac goes only to it.
+
+- [x] **MOB-11** Type the Macs a phone recording can be saved to as the Device they are, and fix what MOB-10's ponytail review found
+
+  MOB-10 added a `Mac` interface beside `Device` that repeated its id, name, and color.
+
+  Landed in the MOB-11 PR (2026-11-04).
+  `api.macs` returns `Device & { seen_at: string }`, and `Mac` is gone.
+  `Device` no longer declares `created_at`, which `yogurt_device_info` still returns but nothing in the webapp read, and which `yogurt_macs` does not return.
+  The ponytail review of MOB-10's final diff, which had skipped it, found comments and a label error still describing labels from every Mac, and a readMac fallback comment naming the first Mac where the code picks the Mac seen last, and those now match the code.
+  It also found the 10-minute `seen_at` stamp written in both `yogurt_phone_meetings_for` and `yogurt_inbox`, which now call one `yogurt_private.yogurt_mark_seen`.

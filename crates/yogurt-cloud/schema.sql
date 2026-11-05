@@ -155,6 +155,13 @@ language sql security definer set search_path = '' as $$
   select exists (select from public.yogurt_devices d where d.id = device and d.user_id = auth.uid())
 $$;
 
+-- Stamps a Mac's seen_at, at most every 10 minutes, so a phone meeting saved for it waits for it while it runs.
+create or replace function yogurt_private.yogurt_mark_seen(device uuid) returns void
+language sql security definer set search_path = '' as $$
+  update public.yogurt_devices d set seen_at = now()
+  where d.id = device and d.user_id = auth.uid() and d.kind = 'mac' and (d.seen_at is null or d.seen_at < now() - interval '10 minutes')
+$$;
+
 -- A version can only join a push of its own device from the last hour, so a compromised laptop cannot change what an older push shows.
 create or replace function yogurt_private.yogurt_push_open(push bigint, device uuid) returns boolean
 language sql security definer set search_path = '' as $$
@@ -564,8 +571,7 @@ language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
 begin
   perform yogurt_private.yogurt_require_owner();
-  update public.yogurt_devices d set seen_at = now()
-  where d.id = $1 and d.user_id = auth.uid() and d.kind = 'mac' and (d.seen_at is null or d.seen_at < now() - interval '10 minutes');
+  perform yogurt_private.yogurt_mark_seen($1);
   return query
     select l.device_id, d.name, l.meeting_id, l.push_id, l.body from (
       select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body
@@ -726,8 +732,7 @@ begin
     raise exception 'unknown device' using errcode = 'PT404';
   end if;
   -- A Mac from before the Mac choice calls only this, so it marks the Mac seen too.
-  update public.yogurt_devices d set seen_at = now()
-  where d.id = $1 and d.user_id = auth.uid() and d.kind = 'mac' and (d.seen_at is null or d.seen_at < now() - interval '10 minutes');
+  perform yogurt_private.yogurt_mark_seen($1);
   return exists (select from public.yogurt_edits e where e.device_id = $1 and e.user_id = auth.uid() and e.status = 'pending')
     or exists (select from public.yogurt_phone_meetings_for($1));
 end $$;

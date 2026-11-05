@@ -41,7 +41,7 @@ test("picked labels ride in the bundle by name, the shape the Mac reads when it 
   ]);
 });
 
-test("the Macs' labels merge to one per name as the Mac matches it, sorted, keeping the first color", () => {
+test("labels merge to one per name as the Mac matches it, sorted, keeping the first color", () => {
   expect(mergeLabels([{ name: "build", color: "blue" }, { name: " Build ", color: "matcha" }, { name: "Admin", color: "straw" }, { name: " ", color: "blue" }])).toEqual([
     { name: "Admin", color: "straw" },
     { name: "build", color: "blue" },
