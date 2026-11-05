@@ -3,7 +3,7 @@ import type { ChatMessage as Msg } from "../lib/api";
 import { ChatMessage } from "./ChatMessage";
 import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 import { onControl, usePointerDrag } from "../lib/usePointerDrag";
-import { useFits } from "../lib/useFits";
+import { dragTouch, useScrollEdges } from "../lib/useScrollEdges";
 
 // Pull the header down this far, or flick it faster than SWIPE_FLICK px/ms, and the window collapses.
 // A pull shorter than SWIPE_MIN is a tap with a shaky finger, however fast.
@@ -63,13 +63,14 @@ export function ChatWindow({
   const regionRef = useRef<HTMLDivElement | null>(null);
   const { start } = usePointerDrag("chat-dragging");
 
-  // A touch on the messages swipes too while they fit, since there is nothing to scroll. Once they overflow, they scroll and the header swipes.
+  // By touch, the messages swipe the window down once they are scrolled to the top, and take an upward finger too while they fit.
   const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
   const scrollerCallback = useCallback((el: HTMLDivElement | null) => {
     scrollerRef.current = el;
     setScrollerEl(el);
   }, []);
-  const fits = useFits(scrollerEl);
+  const edges = useScrollEdges(scrollerEl);
+  const fits = edges.top && edges.bottom;
 
   // The pull moves the window through its style, so a drag does not re-render every message.
   function swipe(e: React.PointerEvent) {
@@ -153,8 +154,8 @@ export function ChatWindow({
       </header>
       <div
         ref={scrollerCallback}
-        onPointerDown={(e) => fits && e.pointerType === "touch" && swipe(e)}
-        className={`flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-[140px] ${fits ? "touch-none" : ""}`}
+        onPointerDown={(e) => edges.top && e.pointerType === "touch" && swipe(e)}
+        className={`flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-[140px] ${dragTouch(fits, edges.top)}`}
       >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-6">

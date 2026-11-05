@@ -3,7 +3,7 @@ import { Button } from "@web/components/Button";
 import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
 import { onControl, usePointerDrag } from "@web/lib/usePointerDrag";
-import { useFits } from "@web/lib/useFits";
+import { dragTouch, useScrollEdges } from "@web/lib/useScrollEdges";
 import { Back, DeviceTag, Field, Note } from "../ui";
 import type { Api } from "../lib/api";
 import { QUEUE_MS, type Gap } from "../lib/audioQueue";
@@ -301,9 +301,11 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
     return () => ro.disconnect();
   }, [bodyEl]);
   const { dragging, start } = usePointerDrag("sheet-dragging");
-  // A touch on the lines drags the card while they fit, since there is nothing to scroll. Once they overflow, the lines scroll and the header drags.
-  const fits = useFits(bodyEl);
-  const bodyDrags = !up || fits;
+  // By touch, the lines drag the card below its full height, as a phone's bottom sheet does. At full height they scroll, and a finger the scroll cannot follow drags the card.
+  const edges = useScrollEdges(bodyEl);
+  const full = height === FULL;
+  const pullUp = !locked && (!full || edges.bottom);
+  const pullDown = !locked && (!full || edges.top);
   const grab = (e: PointerEvent, fromBody = false) => {
     const from = self.current!.offsetHeight;
     const max = self.current!.parentElement!.clientHeight - 2 * GAP;
@@ -312,6 +314,8 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
     start(
       e,
       (_, dy) => {
+        // Before the browser takes a scroll, it still sends a few small moves.
+        if (fromBody && !(dy < 0 ? pullUp : pullDown)) return;
         travel = dy;
         h = Math.min(max, Math.max(PEEK, from - dy));
         setDragged(h);
@@ -319,10 +323,15 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
       (moved, cancelled, speed) => {
         setDragged(null);
         if (cancelled) return;
-        if (!moved || Math.abs(travel) < TAP) return fromBody ? undefined : setHeight(up ? PEEK : FULL);
-        if (speed < -FLICK) setHeight(FULL);
-        else if (speed > FLICK) setHeight(PEEK);
-        else setHeight(max - h < SNAP ? FULL : h - PEEK < SNAP ? PEEK : h);
+        const tap = !moved || Math.abs(travel) < TAP;
+        if (tap && fromBody) return;
+        const next = tap ? (up ? PEEK : FULL) : speed < -FLICK ? FULL : speed > FLICK ? PEEK : max - h < SNAP ? FULL : h - PEEK < SNAP ? PEEK : h;
+        // Below full height the lines do not scroll by touch, so they return to the newest.
+        if (next !== FULL && body.current) {
+          pinned.current = true;
+          body.current.scrollTop = body.current.scrollHeight;
+        }
+        setHeight(next);
       },
     );
   };
@@ -380,12 +389,12 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
           </div>
           <div
             ref={bodyRef}
-            onPointerDown={(e) => !locked && bodyDrags && e.pointerType === "touch" && !onControl(e.target) && grab(e, true)}
+            onPointerDown={(e) => (pullUp || pullDown) && e.pointerType === "touch" && !onControl(e.target) && grab(e, true)}
             onScroll={(e) => {
               const el = e.currentTarget;
               pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
             }}
-            className={`${bodyDrags && !locked ? "touch-none" : ""} ${up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}`}
+            className={`${dragTouch(pullUp, pullDown)} ${up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}`}
           >
             {!rows.length && !interim && <p className="py-2 leading-snug text-grey m-[0px]">{state === "live" ? "Listening…" : "Connecting to Deepgram…"}</p>}
             {shown.map((r, i) => ("line" in r ? <TranscriptLine key={i} ev={{ ts_ms: r.line.ts_ms, channel: "system", text: r.line.text, is_final: true }} single /> : <GapMarker key={`g${r.gap.from_ms}`} gap={r.gap} />))}

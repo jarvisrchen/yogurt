@@ -1734,10 +1734,12 @@ New closed items go at the bottom.
   The sidebar carries `?q=` to the view it opens, so switching labels keeps the search as it did when the search was component state.
   </details>
 
-- [x] **MOB-9** Drag the transcript card and swipe the Ask chat from anywhere on them by touch, while their content fits
+- [x] **MOB-9** Drag the transcript card and swipe the Ask chat from anywhere on them by touch
 
   Landed in the MOB-9 PR (2026-11-04).
-  By touch, the phone's transcript card drags from anywhere on its lines while they fit, including at the two-line peek, and the Ask chat swipes away from its messages while they fit.
-  Once the content overflows, a swipe on it scrolls, and the header still drags.
+  By touch, the phone's transcript card drags from anywhere on its lines below its full height, including at the two-line peek.
+  At full height the lines scroll, and a drag the scroll cannot follow, up at the newest line or down at the oldest, moves the card.
+  The Ask chat swipes away from its messages once they are scrolled to the top, which they always are while they fit.
   A tap on the lines does not toggle the card, presses on buttons, links, and fields keep their own taps, and a mouse drag on a body still selects text.
-  `useFits` (`web/src/lib/useFits.ts`) tracks whether the content fits, and the web test setup stubs `ResizeObserver`, which jsdom lacks.
+  `useScrollEdges` (`web/src/lib/useScrollEdges.ts`) tracks the scroll edges and sets `touch-action`, and the web test setup stubs `ResizeObserver`, which jsdom lacks.
+  The Cloud's Tailwind build now scans that file, since it holds the `touch-pan-up` and `touch-pan-down` classes, and a chat bubble now wraps a long unbroken word, such as a raw error, instead of running past its edge.

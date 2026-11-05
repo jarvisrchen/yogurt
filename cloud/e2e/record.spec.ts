@@ -263,6 +263,9 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
     await sheet(page).getByRole("button", { name: "Lower transcript" }).click();
     await expect.poll(height).toBe(peek);
 
+    // The classes that hand the browser one finger direction live in the shared web code, which the Cloud's Tailwind build must scan.
+    expect(await page.evaluate(() => ["touch-pan-up", "touch-pan-down"].map((c) => Object.assign(document.body.appendChild(document.createElement("div")), { className: c })).map((el) => getComputedStyle(el).touchAction))).toEqual(["pan-up", "pan-down"]);
+
     await ask.click();
     const said = (await chat.getByText("What was just said?").boundingBox())!;
     await touchDrag(page, said.x - 60, said.y + said.height / 2, 140);

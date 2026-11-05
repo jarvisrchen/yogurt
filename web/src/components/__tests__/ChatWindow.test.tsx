@@ -290,7 +290,7 @@ describe("ChatWindow", () => {
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves overflowing messages to scroll, so a touch drag on them does not swipe the window", () => {
+  it("leaves overflowing messages to scroll, and swipes the window from them once they are scrolled to the top", () => {
     vi.stubGlobal("PointerEvent", class extends MouseEvent {
       pointerType = "";
       constructor(type: string, init: PointerEventInit = {}) {
@@ -305,13 +305,28 @@ describe("ChatWindow", () => {
     const onCollapse = vi.fn();
     render(<ChatWindow messages={sampleMessages} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />);
     const message = screen.getByText("hi there");
-    expect(message.closest(".overflow-y-auto")).not.toHaveClass("touch-none");
-    fireEvent.pointerDown(message, { button: 0, clientY: 100, pointerType: "touch" });
-    now += 400;
-    fireEvent.pointerMove(window, { buttons: 1, clientY: 220, pointerType: "touch" });
-    now += 200;
-    fireEvent.pointerUp(window, { pointerType: "touch" });
+    const scroller = message.closest<HTMLElement>(".overflow-y-auto")!;
+    const scrollTo = (top: number) => {
+      Object.defineProperty(scroller, "scrollTop", { value: top, configurable: true });
+      fireEvent.scroll(scroller);
+    };
+    const drag = () => {
+      fireEvent.pointerDown(message, { button: 0, clientY: 100, pointerType: "touch" });
+      now += 400;
+      fireEvent.pointerMove(window, { buttons: 1, clientY: 220, pointerType: "touch" });
+      now += 200;
+      fireEvent.pointerUp(window, { pointerType: "touch" });
+    };
+
+    scrollTo(600);
+    expect(scroller).not.toHaveClass("touch-none");
+    expect(scroller).not.toHaveClass("touch-pan-down");
+    drag();
     expect(onCollapse).not.toHaveBeenCalled();
+
+    scrollTo(0);
+    expect(scroller).toHaveClass("touch-pan-down");
+    drag();
+    expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 });
-
