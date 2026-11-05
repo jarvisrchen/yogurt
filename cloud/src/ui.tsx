@@ -4,6 +4,7 @@ import { DEFAULT_CUSTOM_COLOR, LABEL_COLORS, isHexColor, labelTone } from "@web/
 import { Logo } from "@web/components/Logo";
 import { PAGER_BUTTON } from "@web/components/library/Pager";
 import { TokenRejected, type Api, type Device, type Label } from "./lib/api";
+import { LABEL_MAX, labelKey, mergeLabels, type PhoneLabel } from "./lib/phone";
 import { snippetParts } from "./lib/search";
 
 const DESKTOP = "(min-width: 721px)";
@@ -307,8 +308,8 @@ const LucideIcon = ({ d, className }: { d: string; className: string }) => (
   </svg>
 );
 
-/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it, and All labels takes it off. `labels` is null while loading, and opening the list after a failed load tries again. */
-export function LabelMenu({ labels, error, onRetry, value, onChange, archived }: { labels: Label[] | null; error: string | null; onRetry: () => void; value: Label | null; onChange: (l: Label | null) => void; archived: boolean }) {
+/** A popover's open state. A tap outside its box closes it, and Escape closes it and returns focus to its button. */
+function usePopover() {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -332,6 +333,14 @@ export function LabelMenu({ labels, error, onRetry, value, onChange, archived }:
       document.removeEventListener("keydown", key, true);
     };
   }, [open]);
+  // Tabbing out closes it. A null relatedTarget is a tap that Safari does not focus, which the pointerdown listener judges instead.
+  const onBlur = (e: React.FocusEvent) => e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && setOpen(false);
+  return { open, setOpen, close, box, button, onBlur };
+}
+
+/** A pill at the end of the filter row that opens a device's labels as a list. Picking one closes the list, and the pill then shows it, and All labels takes it off. `labels` is null while loading, and opening the list after a failed load tries again. */
+export function LabelMenu({ labels, error, onRetry, value, onChange, archived }: { labels: Label[] | null; error: string | null; onRetry: () => void; value: Label | null; onChange: (l: Label | null) => void; archived: boolean }) {
+  const { open, setOpen, close, box, button, onBlur } = usePopover();
   const note = (text: string) => <p className="px-3 py-2 text-mut m-[0px]">{text}</p>;
   const option = (l: Label | null) => (
     <button
@@ -351,8 +360,7 @@ export function LabelMenu({ labels, error, onRetry, value, onChange, archived }:
     </button>
   );
   return (
-    // Tabbing out closes the list. A null relatedTarget is a tap that Safari does not focus, which the pointerdown listener judges instead.
-    <div ref={box} onBlur={(e) => e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && setOpen(false)} className="relative ml-auto min-w-0">
+    <div ref={box} onBlur={onBlur} className="relative ml-auto min-w-0">
       <button
         ref={button}
         type="button"
@@ -383,6 +391,113 @@ export function LabelMenu({ labels, error, onRetry, value, onChange, archived }:
               : !labels.length && !value
                 ? note(archived ? "No labels in this Mac's archive." : "No labels on this Mac.")
                 : [option(null), ...labels.map(option)]}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TAG = "M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42zM7.5 7.5h.01";
+
+/**
+ * A recording's labels as chips, then a Label button that opens the Macs' labels to tick, with a field that searches them or makes a new one.
+ * A new label has no color yet, since the Mac that takes the meeting gives it one. `options` is null while loading.
+ */
+export function LabelPicker({ options, error, onRetry, value, onChange }: { options: PhoneLabel[] | null; error: string | null; onRetry: () => void; value: PhoneLabel[]; onChange: (labels: PhoneLabel[]) => void }) {
+  const { open, setOpen, box, button, onBlur } = usePopover();
+  const [query, setQuery] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    // A phone would raise its keyboard over the list, so only a mouse gets the field focused.
+    if (matchMedia("(pointer: fine)").matches) input.current?.focus();
+  }, [open]);
+  const picked = (l: PhoneLabel) => value.some((v) => labelKey(v.name) === labelKey(l.name));
+  const toggle = (l: PhoneLabel) => onChange(picked(l) ? value.filter((v) => labelKey(v.name) !== labelKey(l.name)) : [...value, l]);
+  const q = query.trim();
+  const all = mergeLabels([...value, ...(options ?? [])]);
+  const shown = all.filter((l) => l.name.toLowerCase().includes(q.toLowerCase()));
+  const match = q ? all.find((l) => labelKey(l.name) === labelKey(q)) : undefined;
+  // Enter picks the label the field names, or creates it.
+  const enter = () => {
+    if (!q || (match && picked(match))) return;
+    onChange([...value, match ?? { name: q, color: "" }]);
+    setQuery("");
+  };
+  const note = (text: string) => <p className="px-3 py-2 text-mut m-[0px]">{text}</p>;
+  return (
+    <div ref={box} onBlur={onBlur} className="relative flex flex-wrap items-center gap-[6px]">
+      {value.map((l) => {
+        const tone = labelTone(l.color);
+        return (
+          <span key={labelKey(l.name)} className="inline-flex items-center gap-[5px] rounded-pill px-[10px] py-[4px] text-[13px] min-[721px]:text-[11.5px] font-medium leading-none" style={{ background: tone.bg, color: tone.fg }}>
+            {l.name}
+            <button type="button" aria-label={`Remove ${l.name} label`} onClick={() => toggle(l)} className="leading-none bg-transparent border-0 p-[0px] text-[inherit] font-[inherit] cursor-pointer hover:opacity-70">
+              ×
+            </button>
+          </span>
+        );
+      })}
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          if (!open && error) onRetry();
+          setOpen(!open);
+        }}
+        className="inline-flex items-center gap-[4px] bg-transparent border-0 px-[5px] py-[4px] first:-ml-[5px] rounded-[6px] font-[inherit] text-[13px] min-[721px]:text-[11.5px] font-medium text-mut hover:text-ink cursor-pointer"
+      >
+        <LucideIcon d={TAG} className="w-[13px] h-[13px] min-[721px]:w-[11px] min-[721px]:h-[11px]" />
+        Label
+      </button>
+      {open && (
+        // Above the transcript card, which comes later at z-40.
+        <div role="dialog" aria-label="Labels" className="absolute left-0 top-full mt-1 bg-card border border-line rounded-card shadow-pop py-1 w-[240px] z-50 text-[15px] min-[721px]:text-[12px]">
+          <div className="px-2 pb-1">
+            <input
+              ref={input}
+              type="text"
+              aria-label="Search or create label"
+              value={query}
+              maxLength={LABEL_MAX}
+              enterKeyHint="done"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && enter()}
+              placeholder="Search or create label"
+              className="w-full px-2 py-[6px] min-[721px]:py-1 rounded-button border border-line bg-paper text-[16px] min-[721px]:text-[12px] text-ink placeholder:text-mut outline-none focus:ring-2 focus:ring-blue/30 font-[inherit]"
+            />
+          </div>
+          <div className="max-h-[220px] overflow-y-auto">
+            {!!shown.length && (
+              <div role="listbox" aria-label="Labels" aria-multiselectable>
+                {shown.map((l) => (
+                  <button
+                    key={labelKey(l.name)}
+                    type="button"
+                    role="option"
+                    aria-selected={picked(l)}
+                    onClick={() => toggle(l)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left bg-transparent border-0 font-[inherit] text-[inherit] hover:bg-paper cursor-pointer"
+                  >
+                    <span className="w-[9px] h-[9px] rounded-[3px] shrink-0" style={{ background: labelTone(l.color).fg }} />
+                    <span className="flex-1 truncate text-ink">{l.name}</span>
+                    {picked(l) && <LucideIcon d="M20 6 9 17l-5-5" className="w-[14px] h-[14px] text-blue shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+            {q && !match && (
+              <button type="button" onClick={enter} className="w-full text-left px-3 py-2 bg-transparent border-0 font-[inherit] text-[inherit] text-blue hover:bg-paper cursor-pointer truncate">
+                Create &ldquo;{q}&rdquo;
+              </button>
+            )}
+            {!shown.length &&
+              !(q && !match) &&
+              (error ? note(`Could not load your Macs' labels. ${error}`) : !options ? note("Loading labels…") : note(all.length ? "No matches." : "No labels yet. Type to create one."))}
+          </div>
         </div>
       )}
     </div>

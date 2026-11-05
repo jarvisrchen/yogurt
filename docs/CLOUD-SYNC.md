@@ -259,6 +259,14 @@ The enhance function may run for 300 seconds, the most Vercel's Hobby plan allow
 
 The webapp's Record button records a meeting on a phone, or in any browser, and transcribes it live with Deepgram.
 The phone streams its audio to Deepgram directly, and the audio is never stored.
+Saves to, under the title, picks the Mac that takes the meeting once it ends, and the phone remembers it for the next recording.
+It lists the Macs that checked your Cloud in the last 7 days, which a Mac does every minute while Yogurt runs there with Auto-push on.
+Only the picked Mac takes the meeting, unless it goes 7 days without checking, and then any Mac does.
+A Mac running a Yogurt from before this choice takes any phone meeting, so update every Mac to keep the choice.
+Label, under it, gives the meeting labels before or while you record.
+It lists the labels that Mac uses on meetings you have not archived, and typing a name it does not list offers to create it.
+The Mac files the meeting under its own label of the same name, in any case.
+It creates a label it does not have in the color the list showed, or in its own next color for a label typed on the phone.
 
 1. In the [Deepgram console](https://console.deepgram.com), create an API key with the Member role or higher.
    Recording mints a short-lived token for each connection, and a key with a lower role cannot.

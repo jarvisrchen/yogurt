@@ -257,7 +257,7 @@ pub(crate) fn set_for_meeting_conn(
     Ok(())
 }
 
-fn validate_name(name: &str) -> Result<String> {
+pub(crate) fn validate_name(name: &str) -> Result<String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         bail!("label name must not be empty");
@@ -270,7 +270,7 @@ fn validate_name(name: &str) -> Result<String> {
 
 /// Accepts a palette key as-is, or a `#rrggbb` hex string (any case,
 /// lowercased before storage). Anything else bails "invalid color".
-fn normalize_color(color: &str) -> Result<String> {
+pub(crate) fn normalize_color(color: &str) -> Result<String> {
     if COLORS.contains(&color) {
         return Ok(color.to_string());
     }

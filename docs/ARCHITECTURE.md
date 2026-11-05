@@ -953,7 +953,10 @@ sequenceDiagram
   A trigger leaves a tombstone in `cloud_deleted` when a pushed meeting is deleted, so the "not pushed" count includes deletions until a pass sends the markers.
   The meeting being recorded is skipped.
 - **Phone meetings.**
-  Before it plans, a pass lists the latest version of each ended, live meeting on a `kind = 'phone'` device (`yogurt_phone_meetings`).
+  Before it plans, a pass lists the latest version of each ended, live meeting on a `kind = 'phone'` device for this Mac (`yogurt_phone_meetings_for(device_id)`).
+  A meeting is for this Mac when its `for_device` is null, names this Mac, or names a Mac not seen in 7 days, and `yogurt_inbox` asks the same.
+  Both calls stamp the Mac's `yogurt_devices.seen_at`, at most every 10 minutes, and the inbox does so for a Mac from before the choice too, since a device row outlives a disconnect.
+  The zero-argument `yogurt_phone_meetings` stays for Macs from before the choice and lists every one, and a pass falls back to it on a Cloud without the new function.
   It inserts each one into SQLite with its chat, under a new UUID because the meeting routes take one, with `source = 'phone'`, the phone's ULID as `source_id`, and the phone's name, then calls `yogurt_adopt(device_id, meeting_id, push_id)`.
   The unique `(source, source_id)` index makes the insert a no-op when the meeting is already here.
   `yogurt_adopt` locks the phone's device row and writes a null version for the meeting only while `push_id` is still its latest, ended version, so of two Macs only the first wins, and a Mac that copied an older version gets false.
@@ -1048,6 +1051,9 @@ sequenceDiagram
   The phone is a row in `yogurt_devices` with `kind = 'phone'`, under an id it makes and keeps in `localStorage` and a name the user types the first time, "Phone" by default.
   It pushes through the same RPCs and the same `{"v":1,"meeting":...,"chat":[]}` bundle a laptop does, so the Library, search, the meeting view, and chat read its meetings unchanged.
   Every line is on the `them` channel and the meeting's `stt_engine` is `cloud · nova-3 · phone`, which the meeting view reads to drop the speaker label.
+  Its labels are names, each pushed with its id set to the name as SQLite's `NOCASE` matches it, A to Z folded and nothing else.
+  The Record screen's Saves to offers the Macs `yogurt_macs` lists, those seen in 7 days, and sets `for_device` to the one remembered in `localStorage` or else the one seen last, then offers that Mac's `yogurt_labels`, and the adopting Mac's import finds each by name or creates it in the pushed color, dropping a name or color it cannot store.
+  Names are capped at the Mac's 40 characters.
 - **Audio.**
   `cloud/src/lib/browserRecorder.ts` opens the mic, downsamples to 16 kHz mono linear16 in an AudioWorklet (`pcm-worklet.ts`), and streams 100 ms chunks to Deepgram with the Mac's query parameters.
   Every chunk stays in memory (`audioQueue.ts`) until a final Deepgram result covers it, up to 5 minutes, the oldest dropping past that as a gap the transcript marks.
