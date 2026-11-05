@@ -1711,3 +1711,10 @@ New closed items go at the bottom.
   While a touch screen's keyboard is up without the chat, the card shrinks to a one-line ticker of the newest words, and a tap on the ticker closes the keyboard.
   The keyboard is read from the visible viewport's height, since Android's back gesture hides it and leaves the field focused.
   `interactive-widget=resizes-content` makes the keyboard shrink the page in Chrome, so the docked bar sits above it.
+
+- [x] **MOB-8** Swipe the Ask chat down by its header to collapse it
+
+  Landed in the MOB-8 PR (2026-11-04).
+  The Ask chat's header follows a finger or mouse down, and letting go past 80px or flicking faster than 0.5px/ms collapses the chat, as the caret does.
+  A shorter, slower pull springs back, and the conversation below the header still scrolls.
+  `ChatWindow` is shared, so the swipe works in the desktop app's floating chat, the Cloud meeting view, and the phone record screen.

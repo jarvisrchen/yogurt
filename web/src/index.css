@@ -225,6 +225,11 @@ html, body {
 .recap-handle:focus-visible {
   outline: none;
 }
+:root.chat-dragging,
+:root.chat-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
 :root.recap-dragging,
 :root.recap-dragging * {
   cursor: row-resize !important;

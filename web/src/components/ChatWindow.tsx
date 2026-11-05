@@ -2,6 +2,13 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ChatMessage as Msg } from "../lib/api";
 import { ChatMessage } from "./ChatMessage";
 import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
+import { usePointerDrag } from "../lib/usePointerDrag";
+
+// Pull the header down this far, or flick it faster than SWIPE_FLICK px/ms, and the window collapses.
+// A pull shorter than SWIPE_MIN is a tap with a shaky finger, however fast.
+const SWIPE = 80;
+const SWIPE_FLICK = 0.5;
+const SWIPE_MIN = 8;
 
 export interface ChatCopy {
   title: string;
@@ -39,7 +46,7 @@ interface Props {
 /** `.ask-floating` in index.css keeps it under the notes and clear of an open transcript dock. */
 export const FLOATING = "fixed bottom-6 -translate-x-1/2 ask-floating";
 
-/** Sticky: outside-click does not collapse the window (no document mousedown listener). Only the header caret and Escape do. */
+/** Sticky: outside-click does not collapse the window (no document mousedown listener). Only the header caret, a swipe down on the header, and Escape do. */
 export function ChatWindow({
   messages,
   streamingId,
@@ -52,6 +59,33 @@ export function ChatWindow({
   const [draft, setDraft] = useState("");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const regionRef = useRef<HTMLDivElement | null>(null);
+  const { start } = usePointerDrag("chat-dragging");
+
+  // The pull moves the window through its style, so a drag does not re-render every message.
+  function swipe(e: React.PointerEvent) {
+    const el = regionRef.current;
+    if (!el || (e.target instanceof Element && e.target.closest("button"))) return;
+    let pull = 0;
+    // popUp holds `transform`, and the floating position centers with Tailwind's x translate, so the pull moves only the y of `translate`.
+    const place = (y: number) => (el.style.translate = y ? `var(--tw-translate-x, 0) ${y}px` : "");
+    start(
+      e,
+      (_, dy) => {
+        pull = Math.max(0, dy);
+        el.style.transition = "none";
+        place(pull);
+      },
+      (moved, cancelled, speed) => {
+        if (moved && !cancelled && pull >= SWIPE_MIN && (pull > SWIPE || speed > SWIPE_FLICK)) return onCollapse();
+        if (!pull) return;
+        // The spring back clears its transition after, so the dock's slide of `.ask-floating` still applies.
+        el.style.transition = "translate 200ms ease-out";
+        el.addEventListener("transitionend", () => (el.style.transition = ""), { once: true });
+        place(0);
+      },
+    );
+  }
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -76,10 +110,11 @@ export function ChatWindow({
   return (
     <div
       role="region"
+      ref={regionRef}
       aria-label={`${copy.title} chat`}
       className={`${position} max-h-[60vh] flex flex-col bg-[var(--color-paper)] border border-[var(--color-line)] rounded-panel shadow-pop anim-popUp z-30`}
     >
-      <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)]">
+      <header onPointerDown={swipe} className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-line)] touch-none select-none cursor-grab">
         <div className="flex items-center gap-2">
           {/* Placeholder for the swirl logo: same shape and tone as the AskPill arrow circle. */}
           <div

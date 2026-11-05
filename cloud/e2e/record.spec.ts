@@ -222,7 +222,13 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
     await shot(page, info, "r4d-keyboard", false);
     await keyboard(false);
   }
-  await chat.getByRole("button", { name: "Collapse chat" }).click();
+  // A swipe down the chat's header collapses it, like its caret.
+  const head = (await chat.getByText("Ask the meeting").boundingBox())!;
+  await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2 + i * 25);
+  await shot(page, info, "r4e-chat-swipe", false);
+  await page.mouse.up();
   await expect(chat).toBeHidden();
   await expect.poll(height).toBeCloseTo(peek + 240, -1);
   const mid = (await sheet(page).getByRole("button", { name: "Lower transcript" }).boundingBox())!;

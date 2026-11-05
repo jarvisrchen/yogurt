@@ -1062,6 +1062,7 @@ sequenceDiagram
   A page that reopens with an unfinished meeting there shows it at the top of the Library with Resume and End.
 - **Live chat.**
   The record screen docks the meeting view's Ask pill and ChatWindow at the bottom of the screen, under the transcript sheet.
+  A swipe down the ChatWindow's header collapses it, as its caret does, on every screen that shows it.
   The sheet floats as a rounded card above the Ask bar and drags to any height, and a flick or a release near either end settles it at the peek or the full height.
   While the chat is open, the sheet fills the space above it up to the recording bar.
   While a touch screen's keyboard is up without the chat, the sheet shrinks to a one-line ticker of the newest words, then returns to its height.
