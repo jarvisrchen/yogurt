@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "../../lib/api/settings";
 import { useCloudStatus } from "../../lib/api/cloud";
 import { SidebarLabelRow } from "./SidebarLabelRow";
+import { keepSearch } from "./libraryReturn";
 import { Button } from "../Button";
 import { LABEL } from "../settings/labelClass";
 import { getLabelSortMode, setLabelSortMode, sortLabels } from "../../lib/labelSort";
@@ -34,7 +35,8 @@ export function Sidebar() {
   const allSorted = sortLabels(labels.data ?? [], sortMode);
   const sortedLabels = allSorted.filter((l) => !isArchivedLabel(l));
   const archivedLabels = allSorted.filter(isArchivedLabel);
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const carry = keepSearch(search);
   const inArchive = pathname.startsWith("/archive");
   // Set during render, so the selected row never paints hidden: the group opens once per arrival on one of its labels, and can be closed there.
   if (archivedLabels.some((l) => pathname === `/archive/label/${l.id}`) && openedFor !== pathname) {
@@ -121,16 +123,16 @@ export function Sidebar() {
       </div>
 
       <nav className="px-2 flex flex-col gap-0.5">
-        <NavLink to="/" end className={navClass("")}>
+        <NavLink to={`/${carry}`} end className={navClass("")}>
           All meetings
         </NavLink>
-        <NavLink to="/starred" className={navClass("flex items-center gap-1.5")}>
+        <NavLink to={`/starred${carry}`} className={navClass("flex items-center gap-1.5")}>
           <Star size={14} className="shrink-0 fill-current" aria-hidden />
           Starred
         </NavLink>
         {/* `end` keeps aria-current on the label row alone, and the highlight still marks a narrowed archive as the Archive. */}
         <NavLink
-          to="/archive"
+          to={`/archive${carry}`}
           end
           className={({ isActive }) => navClass("flex items-center gap-1.5")({ isActive: isActive || inArchive })}
         >

@@ -11,6 +11,7 @@ import { TranscriptDock } from "../components/TranscriptDock";
 import { RecapCard } from "../components/Recap";
 import { AskExperience } from "../components/AskExperience";
 import { InlineTitle } from "../components/library/InlineTitle";
+import { RETURN, libraryUrl, useLibraryBack } from "../components/library/libraryReturn";
 import { MeetingLabels } from "../components/labels/MeetingLabels";
 import { ImportedFromLine, importedFrom } from "../components/ImportedFromLine";
 import { MeetingMetaPills } from "../components/MeetingMetaPills";
@@ -65,6 +66,7 @@ export function MeetingPost() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const libraryBack = useLibraryBack();
   const meetingId = params.id ?? null;
 
   const qc = useQueryClient();
@@ -393,7 +395,7 @@ export function MeetingPost() {
     // The server drops the stub row, so the cached library list is stale.
     void qc.invalidateQueries({ queryKey: meetingsKey });
     const t = setTimeout(
-      () => navigate("/", { replace: true }),
+      () => navigate(libraryUrl(), { ...RETURN, replace: true }),
       TOO_SHORT_REDIRECT_MS,
     );
     return () => clearTimeout(t);
@@ -452,8 +454,8 @@ export function MeetingPost() {
       >
         <div className="flex items-center gap-4 min-w-0">
           <Link
-            to="/"
-            className="inline-flex items-center gap-1.5 shrink-0 text-[13px] font-medium text-mut hover:text-ink transition-colors"
+            {...libraryBack}
+              className="inline-flex items-center gap-1.5 shrink-0 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           >
             <ArrowLeft size={14} aria-hidden="true" />
             <span>Library</span>
@@ -515,7 +517,7 @@ export function MeetingPost() {
           <DeleteMeetingConfirm
             id={meetingId}
             variant="icon"
-            onDeleted={() => navigate("/")}
+            onDeleted={() => navigate(libraryUrl(), RETURN)}
           />
         )}
         </div>

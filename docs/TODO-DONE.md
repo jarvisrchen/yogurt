@@ -1718,3 +1718,18 @@ New closed items go at the bottom.
   The Ask chat's header follows a finger or mouse down, and letting go past 80px or flicking faster than 0.5px/ms collapses the chat, as the caret does.
   A shorter, slower pull springs back, and the conversation below the header still scrolls.
   `ChatWindow` is shared, so the swipe works in the desktop app's floating chat, the Cloud meeting view, and the phone record screen.
+
+- [x] **UI-29** Return to the same library view from a meeting
+  <details>
+  <summary>Details</summary>
+
+  A meeting page's Library link always went to All meetings, so finding a meeting inside a label meant reopening the label and retyping the search after every wrong pick.
+  The search text lived only in the Library's memory, and no page reset or restored the window scroll.
+
+  Landed in the UI-29 PR (2026-11-04).
+  The Library keeps its search in the URL as `?q=`, beside the label, page, and size, and remembers its last URL and scroll per tab in sessionStorage.
+  A meeting page's Library link, Settings' Library link, and the redirects after a delete or a too-short meeting go to that URL instead of `/`.
+  The Library restores the scroll itself once its rows load, so a return after the list left the query cache still lands in place.
+  React Router's `ScrollRestoration` opens every other navigation at the top, including a page change, and restores the spot on Back.
+  The sidebar carries `?q=` to the view it opens, so switching labels keeps the search as it did when the search was component state.
+  </details>

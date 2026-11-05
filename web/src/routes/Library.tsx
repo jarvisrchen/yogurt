@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
 import {
   useActiveRecording,
   useCreateMeeting,
@@ -16,6 +16,7 @@ import { SearchPill } from "../components/library/SearchPill";
 import { SelectionActionBar } from "../components/library/SelectionActionBar";
 import { EMPTY_SELECTION, clickSelect, clearSelection, selectAll } from "../components/library/selection";
 import { pageCount, parsePage, rememberPageSize, resolvePageSize } from "../components/library/pagination";
+import { keepSearch, librarySpot, rememberLibrary } from "../components/library/libraryReturn";
 import { Sidebar } from "../components/library/Sidebar";
 import { ShimmerSkeleton } from "../components/ShimmerSkeleton";
 import { LibraryAskExperience } from "../components/AskExperience";
@@ -36,10 +37,11 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
   const { labelId } = useParams<{ labelId: string }>();
   const labels = useLabels();
   const createMeeting = useCreateMeeting();
-  const [query, setQuery] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The search lives in the URL with the label and page, so the whole view can be returned to.
+  const query = searchParams.get("q") ?? "";
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
-  const [searchParams, setSearchParams] = useSearchParams();
   const page = parsePage(searchParams.get("page"));
   const size = resolvePageSize(searchParams.get("size"));
 
@@ -52,12 +54,20 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
         else p.delete("page");
         return p;
       },
-      { replace },
+      // Only the step back from a page emptied by a delete replaces, and that keeps the scroll.
+      { replace, preventScrollReset: replace },
     );
-  const onQueryChange = (next: string) => {
-    setQuery(next);
-    goToPage(1, true);
-  };
+  const onQueryChange = (next: string) =>
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next.trim()) p.set("q", next);
+        else p.delete("q");
+        p.delete("page");
+        return p;
+      },
+      { replace: true, preventScrollReset: true },
+    );
   const onSizeChange = (next: number) => {
     rememberPageSize(next);
     setSearchParams((prev) => {
@@ -96,6 +106,36 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
   const totalMeetings = (isFiltered ? everything : list).data?.total ?? 0;
   // One poll for the whole list, not one per card.
   const activeId = useActiveRecording().data?.id ?? null;
+
+  // Back, or a Library link back here, lands where the list was left once its rows are in, since they may still be loading.
+  // A first load of the tab (key "default") is neither, and Back with no spot of ours is left to ScrollRestoration.
+  const location = useLocation();
+  const navType = useNavigationType();
+  const here = location.pathname + location.search;
+  const [pending] = useState(() => {
+    const linked = location.state?.libraryReturn === true;
+    const spot = librarySpot();
+    if (spot?.url === here && (linked || (navType === "POP" && location.key !== "default"))) return spot;
+    return linked ? { url: here, y: 0 } : null;
+  });
+  const restored = useRef(pending === null);
+  useLayoutEffect(() => {
+    if (restored.current || !pending) return;
+    // A view changed before the rows came in opens like any other navigation.
+    if (here !== pending.url) restored.current = true;
+    else if (list.data) {
+      restored.current = true;
+      window.scrollTo(0, pending.y);
+    }
+  }, [list.data, pending, here]);
+  useLayoutEffect(() => {
+    const save = () => {
+      if (restored.current) rememberLibrary({ url: here, y: window.scrollY });
+    };
+    save();
+    window.addEventListener("scroll", save, { passive: true });
+    return () => window.removeEventListener("scroll", save);
+  }, [here]);
 
   const meetings = list.data?.meetings ?? [];
   const total = list.data?.total ?? 0;
@@ -146,7 +186,7 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
 
   // Wait for the labels list so a fresh load doesn't redirect early.
   if (labelId && !labels.isLoading && labels.data && !labels.data.some((l) => l.id === labelId)) {
-    return <Navigate to={archivedOnly ? "/archive" : "/"} replace />;
+    return <Navigate to={(archivedOnly ? "/archive" : "/") + keepSearch(location.search)} replace />;
   }
 
   // Wait for the probe to avoid a one-frame flash of PermissionDenied.
@@ -220,10 +260,7 @@ export function Library({ starredOnly = false, archivedOnly = false }: LibraryPr
               page={page}
               size={size}
               total={total}
-              onPage={(next) => {
-                goToPage(next);
-                window.scrollTo(0, 0);
-              }}
+              onPage={goToPage}
               onSize={onSizeChange}
             />
           </div>

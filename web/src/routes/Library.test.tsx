@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { MeetingsParams, MeetingSummary } from "../lib/api/meetings";
 import { Library } from "./Library";
+import { libraryUrl } from "../components/library/libraryReturn";
 
 const TOTAL = 60;
 const all: MeetingSummary[] = Array.from({ length: TOTAL }, (_, i) => ({
@@ -108,6 +109,7 @@ beforeEach(() => {
   requested.length = 0;
   labels = [];
   localStorage.clear();
+  sessionStorage.clear();
   window.scrollTo = vi.fn();
 });
 afterEach(() => cleanup());
@@ -155,8 +157,16 @@ describe("Library paging", () => {
   it("returns to page 1 when the search text changes", async () => {
     renderLibrary("/?page=2");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "budget" } });
-    await waitFor(() => expect(where()).toBe("/"));
+    await waitFor(() => expect(where()).toBe("/?q=budget"));
     expect(lastRequest()).toMatchObject({ page: 1, q: "budget" });
+  });
+
+  it("reads the search from the URL and remembers the view for a meeting's Library link", () => {
+    labels = [{ id: "L1" }];
+    renderLibrary("/label/L1?q=framing&page=2");
+    expect(screen.getByRole("textbox")).toHaveValue("framing");
+    expect(lastRequest()).toMatchObject({ labelId: "L1", q: "framing", page: 2 });
+    expect(libraryUrl()).toBe("/label/L1?q=framing&page=2");
   });
 
   it("asks for the starred filter in the query and starts at page 1 on that route", () => {

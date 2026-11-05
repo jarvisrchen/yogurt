@@ -86,3 +86,95 @@ test("opening a library meeting shows its saved notes, not the live placeholder"
     page.getByText("Take sparse notes during the meeting"),
   ).toHaveCount(0);
 });
+
+test("a meeting's Library link and Back both return to the label, search, and scroll it was opened from", async ({
+  page,
+}) => {
+  await mockBackend(page);
+  await page.route("**/api/labels", (r) =>
+    r.fulfill({
+      json: [{ id: "L1", name: "Build", color: "blue", meeting_count: 25, archived_count: 0, position: 0, updated_at: 1 }],
+    }),
+  );
+  const many = Array.from({ length: 25 }, (_, i) => ({
+    ...MEETING,
+    id: `019f0000-0000-7000-8000-0000000000${String(i).padStart(2, "0")}`,
+    title: `Framing ${i}`,
+  }));
+  await page.route(/\/api\/meetings(\/search)?(\?|$)/, (r) =>
+    r.fulfill({ json: { meetings: many, total: 25 } }),
+  );
+  await page.setViewportSize({ width: 1280, height: 600 });
+
+  await page.goto("/label/L1");
+  await page.getByLabel("Search notes and transcripts").fill("framing");
+  await expect(page).toHaveURL(/\/label\/L1\?q=framing$/);
+  await page.getByText("Framing 20", { exact: true }).scrollIntoViewIfNeeded();
+  const y = await page.evaluate(() => scrollY);
+  expect(y).toBeGreaterThan(300);
+
+  await page.getByText("Framing 20", { exact: true }).click();
+  await expect(page).toHaveURL(/\/post$/);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  await page.getByRole("link", { name: "Library" }).click();
+  await expect(page).toHaveURL(/\/label\/L1\?q=framing$/);
+  await expect(page.getByLabel("Search notes and transcripts")).toHaveValue("framing");
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(y);
+
+  await page.getByText("Framing 20", { exact: true }).click();
+  await expect(page).toHaveURL(/\/post$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/label\/L1\?q=framing$/);
+  await expect(page.getByLabel("Search notes and transcripts")).toHaveValue("framing");
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(y);
+
+  // Another view keeps the search and opens at its top.
+  await page.getByRole("link", { name: "All meetings" }).click();
+  await expect(page).toHaveURL(/\/\?q=framing$/);
+  await expect(page.getByLabel("Search notes and transcripts")).toHaveValue("framing");
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+});
+
+test("a page change, and a Library link with no remembered view, open at the top", async ({ page }) => {
+  await mockBackend(page);
+  await page.route("**/api/labels", (r) => r.fulfill({ json: [] }));
+  const many = Array.from({ length: 25 }, (_, i) => ({
+    ...MEETING,
+    id: `019f0000-0000-7000-8000-0000000000${String(i).padStart(2, "0")}`,
+    title: `Standup ${i}`,
+  }));
+  await page.route(/\/api\/meetings(\?|$)/, (r) => {
+    const u = new URL(r.request().url());
+    const offset = Number(u.searchParams.get("offset") ?? 0);
+    const limit = Number(u.searchParams.get("limit") ?? 25);
+    r.fulfill({ json: { meetings: many.slice(offset, offset + limit), total: 25 } });
+  });
+  await page.setViewportSize({ width: 1280, height: 400 });
+  const bottom = () => page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+  const y = () => page.evaluate(() => scrollY);
+
+  await page.goto("/?size=10");
+  await expect(page.getByText("Standup 9", { exact: true })).toBeVisible();
+  await bottom();
+  await page.getByRole("button", { name: /next/i }).click();
+  await expect(page.getByText("Standup 10", { exact: true })).toBeVisible();
+  await expect.poll(y).toBe(0);
+  await bottom();
+  await page.getByRole("button", { name: /prev/i }).click();
+  await expect(page.getByText("Standup 0", { exact: true })).toBeVisible();
+  await expect.poll(y).toBe(0);
+
+  // A fresh tab opened straight on a scrolled meeting page has no view to return to.
+  const long = Array.from({ length: 60 }, (_, i) => `- point ${i}`).join("\n");
+  await page.route(/\/api\/meetings\/[0-9a-f-]+(\?|$)/, (r) =>
+    r.fulfill({ json: { ...MEETING, notes_md: long, enriched_md: `## Notes\n\n${long}\n` } }),
+  );
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto(`/meeting/${MEETING.id}/post`);
+  await expect(page.getByText("point 59")).toBeVisible();
+  await bottom();
+  expect(await y()).toBeGreaterThan(0);
+  await page.getByRole("link", { name: "Library" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(y).toBe(0);
+});

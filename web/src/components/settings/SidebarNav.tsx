@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import type { DataPaths, ProviderView } from "../../lib/api/settings";
 import { Pill } from "../Pill";
 import { useCloudStatus } from "../../lib/api/cloud";
+import { useLibraryBack } from "../library/libraryReturn";
 
 // The 212px width matches the Library sidebar, but the components are deliberately
 // not shared because the section lists differ.
@@ -29,6 +30,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 ];
 
 export function SidebarNav({ active, onChange, providers, paths }: Props) {
+  const libraryBack = useLibraryBack();
   // Local-only holds iff no active provider points to a non-localhost host.
   const localOnly = !providers.some(
     (p) => p.is_active && !/localhost|127\.0\.0\.1/.test(p.base_url),
@@ -45,7 +47,7 @@ export function SidebarNav({ active, onChange, providers, paths }: Props) {
     >
       <header className="px-5 pt-6 pb-2 space-y-3">
         <Link
-          to="/"
+          {...libraryBack}
           className="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           aria-label="Back to library"
         >
