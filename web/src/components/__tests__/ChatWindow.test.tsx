@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ChatMessage } from "../../lib/api";
 import { ChatWindow } from "../ChatWindow";
@@ -21,6 +21,11 @@ const sampleMessages: ChatMessage[] = [
 ];
 
 describe("ChatWindow", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("renders all messages (user + assistant bubbles)", () => {
     render(
       <ChatWindow
@@ -222,5 +227,39 @@ describe("ChatWindow", () => {
     expect(screen.getByText("ship")).toBeInTheDocument();
     expect(screen.getByText("ship").tagName).toBe("STRONG");
     expect(screen.getByText("follow up later")).toBeInTheDocument();
+  });
+
+  it("collapses on a long or quick swipe down the header, and springs back from a short slow one or a shaky tap", () => {
+    // jsdom has no PointerEvent, and the Event fallback drops clientY.
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onCollapse = vi.fn();
+    render(<ChatWindow messages={sampleMessages} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />);
+    const header = screen.getByText("Ask the meeting");
+    const region = screen.getByRole("region", { name: "Ask the meeting chat" });
+    const swipe = (dy: number, ms: number, hold: number) => {
+      fireEvent.pointerDown(header, { button: 0, clientY: 100 });
+      now += ms;
+      fireEvent.pointerMove(window, { buttons: 1, clientY: 100 + dy });
+      now += hold;
+      fireEvent.pointerUp(window);
+    };
+
+    fireEvent.pointerDown(header, { button: 0, clientY: 100 });
+    now += 200;
+    fireEvent.pointerMove(window, { buttons: 1, clientY: 140 });
+    expect(region.style.translate).toBe("var(--tw-translate-x, 0) 40px");
+    now += 200;
+    fireEvent.pointerUp(window);
+    expect(onCollapse).not.toHaveBeenCalled();
+    expect(region.style.translate).toBe("");
+
+    swipe(5, 2, 0);
+    expect(onCollapse).not.toHaveBeenCalled();
+    swipe(120, 400, 200);
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+    swipe(30, 20, 0);
+    expect(onCollapse).toHaveBeenCalledTimes(2);
   });
 });

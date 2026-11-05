@@ -299,25 +299,20 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
     const from = self.current!.offsetHeight;
     const max = self.current!.parentElement!.clientHeight - 2 * GAP;
     let h = from;
-    let last = { dy: 0, t: performance.now() };
-    let speed = 0;
+    let travel = 0;
     start(
       e,
       (_, dy) => {
-        const t = performance.now();
-        speed = (dy - last.dy) / Math.max(t - last.t, 1);
-        last = { dy, t };
+        travel = dy;
         h = Math.min(max, Math.max(PEEK, from - dy));
         setDragged(h);
       },
-      (moved, cancelled) => {
+      (moved, cancelled, speed) => {
         setDragged(null);
         if (cancelled) return;
-        if (!moved || Math.abs(last.dy) < TAP) return setHeight(up ? PEEK : FULL);
-        // A finger held still before letting go is no flick.
-        const flick = performance.now() - last.t < 80 ? speed : 0;
-        if (flick < -FLICK) setHeight(FULL);
-        else if (flick > FLICK) setHeight(PEEK);
+        if (!moved || Math.abs(travel) < TAP) return setHeight(up ? PEEK : FULL);
+        if (speed < -FLICK) setHeight(FULL);
+        else if (speed > FLICK) setHeight(PEEK);
         else setHeight(max - h < SNAP ? FULL : h - PEEK < SNAP ? PEEK : h);
       },
     );
