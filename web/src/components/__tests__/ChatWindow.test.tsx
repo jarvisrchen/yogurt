@@ -262,4 +262,56 @@ describe("ChatWindow", () => {
     swipe(30, 20, 0);
     expect(onCollapse).toHaveBeenCalledTimes(2);
   });
+
+  it("swipes away from its messages by touch while they fit, and leaves a mouse drag there to select text", () => {
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {
+      pointerType = "";
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerType = init.pointerType ?? "";
+      }
+    });
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onCollapse = vi.fn();
+    render(<ChatWindow messages={sampleMessages} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />);
+    const message = screen.getByText("hi there");
+    const drag = (pointerType: string) => {
+      fireEvent.pointerDown(message, { button: 0, clientY: 100, pointerType });
+      now += 400;
+      fireEvent.pointerMove(window, { buttons: 1, clientY: 220, pointerType });
+      now += 200;
+      fireEvent.pointerUp(window, { pointerType });
+    };
+
+    drag("mouse");
+    expect(onCollapse).not.toHaveBeenCalled();
+    drag("touch");
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves overflowing messages to scroll, so a touch drag on them does not swipe the window", () => {
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {
+      pointerType = "";
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerType = init.pointerType ?? "";
+      }
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onCollapse = vi.fn();
+    render(<ChatWindow messages={sampleMessages} streamingId={null} onSend={() => {}} onCollapse={onCollapse} />);
+    const message = screen.getByText("hi there");
+    expect(message.closest(".overflow-y-auto")).not.toHaveClass("touch-none");
+    fireEvent.pointerDown(message, { button: 0, clientY: 100, pointerType: "touch" });
+    now += 400;
+    fireEvent.pointerMove(window, { buttons: 1, clientY: 220, pointerType: "touch" });
+    now += 200;
+    fireEvent.pointerUp(window, { pointerType: "touch" });
+    expect(onCollapse).not.toHaveBeenCalled();
+  });
 });
+

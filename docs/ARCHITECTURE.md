@@ -1063,6 +1063,8 @@ sequenceDiagram
 - **Live chat.**
   The record screen docks the meeting view's Ask pill and ChatWindow at the bottom of the screen, under the transcript sheet.
   A swipe down the ChatWindow's header collapses it, as its caret does, on every screen that shows it.
+  By touch, the transcript card and the chat also drag from anywhere on their content while it fits, and scroll it once it overflows (`web/src/lib/useFits.ts`).
+  A long press and a mouse drag on the content still select text.
   The sheet floats as a rounded card above the Ask bar and drags to any height, and a flick or a release near either end settles it at the peek or the full height.
   While the chat is open, the sheet fills the space above it up to the recording bar.
   While a touch screen's keyboard is up without the chat, the sheet shrinks to a one-line ticker of the newest words, then returns to its height.

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { Button } from "@web/components/Button";
 import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
-import { usePointerDrag } from "@web/lib/usePointerDrag";
+import { onControl, usePointerDrag } from "@web/lib/usePointerDrag";
+import { useFits } from "@web/lib/useFits";
 import { Back, DeviceTag, Field, Note } from "../ui";
 import type { Api } from "../lib/api";
 import { QUEUE_MS, type Gap } from "../lib/audioQueue";
@@ -279,7 +280,13 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
   const up = !compact && shownHeight > PEEK;
   const shown = useMemo(() => (up ? rows : rows.slice(-2)), [rows, up]);
   const self = useRef<HTMLElement>(null);
-  const body = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement | null>(null);
+  // The body unmounts while the card is a ticker, so the observers follow the element itself.
+  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+  const bodyRef = useCallback((el: HTMLDivElement | null) => {
+    body.current = el;
+    setBodyEl(el);
+  }, []);
   const pinned = useRef(true);
   if (!up) pinned.current = true;
   useLayoutEffect(() => {
@@ -288,14 +295,16 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
   }, [rows, interim, up]);
   // The card shrinks through a transition, or under a keyboard, after the render that pinned it.
   useEffect(() => {
-    const el = body.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => pinned.current && (el.scrollTop = el.scrollHeight));
-    ro.observe(el);
+    if (!bodyEl) return;
+    const ro = new ResizeObserver(() => pinned.current && (bodyEl.scrollTop = bodyEl.scrollHeight));
+    ro.observe(bodyEl);
     return () => ro.disconnect();
-  }, [up]);
+  }, [bodyEl]);
   const { dragging, start } = usePointerDrag("sheet-dragging");
-  const grab = (e: PointerEvent) => {
+  // A touch on the lines drags the card while they fit, since there is nothing to scroll. Once they overflow, the lines scroll and the header drags.
+  const fits = useFits(bodyEl);
+  const bodyDrags = !up || fits;
+  const grab = (e: PointerEvent, fromBody = false) => {
     const from = self.current!.offsetHeight;
     const max = self.current!.parentElement!.clientHeight - 2 * GAP;
     let h = from;
@@ -310,7 +319,7 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
       (moved, cancelled, speed) => {
         setDragged(null);
         if (cancelled) return;
-        if (!moved || Math.abs(travel) < TAP) return setHeight(up ? PEEK : FULL);
+        if (!moved || Math.abs(travel) < TAP) return fromBody ? undefined : setHeight(up ? PEEK : FULL);
         if (speed < -FLICK) setHeight(FULL);
         else if (speed > FLICK) setHeight(PEEK);
         else setHeight(max - h < SNAP ? FULL : h - PEEK < SNAP ? PEEK : h);
@@ -370,12 +379,13 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
             </header>
           </div>
           <div
-            ref={body}
+            ref={bodyRef}
+            onPointerDown={(e) => !locked && bodyDrags && e.pointerType === "touch" && !onControl(e.target) && grab(e, true)}
             onScroll={(e) => {
               const el = e.currentTarget;
               pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
             }}
-            className={up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}
+            className={`${bodyDrags && !locked ? "touch-none" : ""} ${up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}`}
           >
             {!rows.length && !interim && <p className="py-2 leading-snug text-grey m-[0px]">{state === "live" ? "Listening…" : "Connecting to Deepgram…"}</p>}
             {shown.map((r, i) => ("line" in r ? <TranscriptLine key={i} ev={{ ts_ms: r.line.ts_ms, channel: "system", text: r.line.text, is_final: true }} single /> : <GapMarker key={`g${r.gap.from_ms}`} gap={r.gap} />))}
