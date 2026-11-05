@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Button } from "@web/components/Button";
 import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
@@ -185,7 +185,10 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
     const key = await session.end();
     if (key) onEnded(key);
   };
-  const compact = keyboard || !!chat?.open;
+  // The chat holds the transcript at full height beside it. Without the chat, a keyboard shrinks it to the ticker for the notes.
+  const asking = !!chat?.open;
+  const compact = keyboard && !asking;
+  const shown = asking ? FULL : compact ? TICKER : height;
   const reconnecting = snap.state === "reconnecting" && snap.downSince !== null;
   // Interim words carry no time, so they take the moment they started showing.
   const interimAt = useRef<number | null>(null);
@@ -204,7 +207,7 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
         </Button>
       </div>
       <div className="relative flex-1 min-h-0">
-        <main className="absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px]" style={{ paddingBottom: (compact ? TICKER : height === FULL ? PEEK : height) + GAP + 16 }}>
+        <main className={`absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px] ${shown === FULL ? "invisible" : ""}`} style={{ paddingBottom: (shown === FULL ? PEEK : shown) + GAP + 16 }}>
           {reconnecting ? (
             <p role="status" className={NOTICE}>
               Reconnecting… Holding {minSec(Math.min(now - snap.downSince!, QUEUE_MS))} of audio, up to 5 minutes. It is transcribed once the connection is back.
@@ -220,13 +223,11 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
           </section>
         </main>
         <Sheet
-          height={compact ? TICKER : height}
+          height={shown}
           setHeight={setHeight}
           compact={compact}
-          onTicker={() => {
-            chat?.setOpen(false);
-            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-          }}
+          locked={asking}
+          onTicker={() => document.activeElement instanceof HTMLElement && document.activeElement.blur()}
           state={snap.state}
           lines={meeting.lines}
           interim={snap.interim}
@@ -268,9 +269,9 @@ const rowTs = (r: Row) => ("line" in r ? r.line.ts_ms : r.gap.from_ms);
 /**
  * The live transcript: two rows peeking at the bottom, or dragged to any height up to just under the recording bar.
  * A tap on its header toggles the peek and the full height, and a flick throws it to either.
- * While compact it is one line of the newest words, and a tap on it closes the chat and the keyboard.
+ * While compact it is one line of the newest words, and a tap on it closes the keyboard. While locked it holds its height and has no grip.
  */
-function Sheet({ height, setHeight, compact, onTicker, state, lines, interim, interimAt, gaps }: { height: number; setHeight: (h: number) => void; compact: boolean; onTicker: () => void; state: Snapshot["state"]; lines: Line[]; interim: string; interimAt: number; gaps: Gap[] }) {
+function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, interim, interimAt, gaps }: { height: number; setHeight: (h: number) => void; compact: boolean; locked: boolean; onTicker: () => void; state: Snapshot["state"]; lines: Line[]; interim: string; interimAt: number; gaps: Gap[] }) {
   const rows = useMemo<Row[]>(() => [...lines.map((line) => ({ line })), ...gaps.map((gap) => ({ gap }))].sort((a, b) => rowTs(a) - rowTs(b)), [lines, gaps]);
   // The height mid-drag stays here, so a drag re-renders the sheet and not the whole record screen.
   const [dragged, setDragged] = useState<number | null>(null);
@@ -284,7 +285,15 @@ function Sheet({ height, setHeight, compact, onTicker, state, lines, interim, in
   useLayoutEffect(() => {
     const el = body.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [rows, interim, shownHeight]);
+  }, [rows, interim, up]);
+  // The card shrinks through a transition, or under a keyboard, after the render that pinned it.
+  useEffect(() => {
+    const el = body.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => pinned.current && (el.scrollTop = el.scrollHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [up]);
   const { dragging, start } = usePointerDrag("sheet-dragging");
   const grab = (e: PointerEvent) => {
     const from = self.current!.offsetHeight;
@@ -336,22 +345,26 @@ function Sheet({ height, setHeight, compact, onTicker, state, lines, interim, in
       ) : (
         <>
           <div
-            role="button"
-            tabIndex={0}
-            aria-expanded={up}
-            aria-label={up ? "Lower transcript" : "Raise transcript"}
-            onPointerDown={grab}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setHeight(up ? PEEK : FULL))}
-            className="flex-none cursor-grab select-none touch-none outline-none"
+            {...(!locked && {
+              role: "button",
+              tabIndex: 0,
+              "aria-expanded": up,
+              "aria-label": up ? "Lower transcript" : "Raise transcript",
+              onPointerDown: grab,
+              onKeyDown: (e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setHeight(up ? PEEK : FULL)),
+            })}
+            className={`flex-none select-none outline-none ${locked ? "" : "cursor-grab touch-none"}`}
           >
-            <div className="flex justify-center pt-[8px]">
-              <span className="block w-[36px] h-[4px] rounded-full bg-line" />
-            </div>
-            <header className={`flex items-center justify-between gap-2 px-[20px] pt-[6px] ${up ? "border-b border-line pb-[10px]" : "pb-[4px]"}`}>
+            {!locked && (
+              <div className="flex justify-center pt-[8px]">
+                <span className="block w-[36px] h-[4px] rounded-full bg-line" />
+              </div>
+            )}
+            <header className={`flex items-center justify-between gap-2 px-[20px] ${locked ? "pt-[12px]" : "pt-[6px]"} ${up ? "border-b border-line pb-[10px]" : "pb-[4px]"}`}>
               <span className="text-[13px] min-[721px]:text-[12px] font-semibold text-ink">Live transcript</span>
               <span className="flex items-center gap-[8px]">
                 <Status state={state} />
-                {up && (
+                {up && !locked && (
                   <span aria-hidden className="inline-flex px-[6px] py-[4px] text-mut">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m6 9 6 6 6-6" />
@@ -367,7 +380,7 @@ function Sheet({ height, setHeight, compact, onTicker, state, lines, interim, in
               const el = e.currentTarget;
               pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
             }}
-            className={up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[28px] text-[16px] min-[721px]:text-[13px]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}
+            className={up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}
           >
             {!rows.length && !interim && <p className="py-2 leading-snug text-grey m-[0px]">{state === "live" ? "Listening…" : "Connecting to Deepgram…"}</p>}
             {shown.map((r, i) => ("line" in r ? <TranscriptLine key={i} ev={{ ts_ms: r.line.ts_ms, channel: "system", text: r.line.text, is_final: true }} single /> : <GapMarker key={`g${r.gap.from_ms}`} gap={r.gap} />))}

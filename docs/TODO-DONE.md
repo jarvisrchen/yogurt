@@ -1702,10 +1702,12 @@ New closed items go at the bottom.
   A Mac's meeting gets an edit request in `yogurt_edits`, which only an unlocked browser can file.
   The Mac checks `yogurt_inbox` each minute between pushes, makes the edit in SQLite, pushes, and then marks it done.
 
-- [x] **MOB-7** Drag the phone's live transcript to any height, dock Ask under it, and keep a one-line ticker while typing or asking
+- [x] **MOB-7** Drag the phone's live transcript to any height as a card above a docked Ask bar, fill the screen above the chat, and keep a one-line ticker while typing
 
   Landed in the MOB-7 PR (2026-11-04).
-  The phone's live transcript sheet follows the finger and stays at any height, and a flick or a release within 48px of either end settles it at the peek or the full height.
-  The Ask bar docks at the bottom of the record screen under the sheet, so the chat no longer stacks over it.
-  While the chat is open or a field has the focus on a touch screen, the sheet shrinks to a one-line ticker of the newest words, and a tap on the ticker closes the chat and the keyboard.
+  The phone's live transcript floats as a rounded card above the Ask bar, which docks at the bottom of the record screen.
+  The card follows the finger and stays at any height, and a flick or a release within 48px of either end settles it at the peek or the full height.
+  While the chat is open, the card fills the space above it up to the recording bar.
+  While a touch screen's keyboard is up without the chat, the card shrinks to a one-line ticker of the newest words, and a tap on the ticker closes the keyboard.
+  The keyboard is read from the visible viewport's height, since Android's back gesture hides it and leaves the field focused.
   `interactive-widget=resizes-content` makes the keyboard shrink the page in Chrome, so the docked bar sits above it.

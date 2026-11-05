@@ -144,7 +144,8 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   const chat = page.getByRole("region", { name: "Ask the meeting chat" });
   const input = chat.getByPlaceholder("Ask this meeting…");
   await ask.click();
-  await expect(ticker(page)).toBeVisible();
+  // The chat holds the transcript at full height above it, with no grip to drag.
+  await expect(sheet(page).getByRole("button")).toHaveCount(0);
   const heard = await newest(page);
   await input.fill("What was just said?");
   await input.press("Enter");
@@ -203,17 +204,25 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await expect(sheet(page).getByRole("button", { name: "Lower transcript" })).toBeVisible();
   await expect(ask).toBeVisible();
   await shot(page, info, "r4b-sheet-mid", false);
-  // The chat shrinks the sheet to its ticker, and a tap on the ticker closes the chat and puts the sheet back where it was.
+  // The chat raises the sheet to the recording bar, and closing it puts the sheet back where it was.
   await ask.click();
-  await expect.poll(height).toBe(48);
-  await shot(page, info, "r4c-ticker", false);
-  // About what the page keeps above an open keyboard, which resizes it.
+  const chatTop = async () => (await chat.boundingBox())!.y;
+  const sheetBottom = async () => {
+    const b = (await sheet(page).boundingBox())!;
+    return b.y + b.height;
+  };
+  await expect.poll(async () => (await chatTop()) - (await sheetBottom())).toBeCloseTo(10, -1);
+  await expect.poll(async () => (await sheet(page).boundingBox())!.y - (await page.getByRole("button", { name: "End meeting" }).boundingBox())!.y).toBeLessThan(80);
+  await shot(page, info, "r4c-chat-full", false);
+  // A keyboard leaves the sheet whatever room the chat does not take.
   if (phone) {
     await keyboard(true);
+    await expect(sheet(page).getByText("Live transcript")).toBeVisible();
+    await expect(ticker(page)).toBeHidden();
     await shot(page, info, "r4d-keyboard", false);
     await keyboard(false);
   }
-  await ticker(page).click();
+  await chat.getByRole("button", { name: "Collapse chat" }).click();
   await expect(chat).toBeHidden();
   await expect.poll(height).toBeCloseTo(peek + 240, -1);
   const mid = (await sheet(page).getByRole("button", { name: "Lower transcript" }).boundingBox())!;
