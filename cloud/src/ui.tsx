@@ -400,8 +400,8 @@ export function LabelMenu({ labels, error, onRetry, value, onChange, archived }:
 const TAG = "M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42zM7.5 7.5h.01";
 
 /**
- * A recording's labels as chips, then a Label button that opens the Macs' labels to tick, with a field that searches them or makes a new one.
- * A new label has no color yet, since the Mac that takes the meeting gives it one. `options` is null while loading.
+ * A recording's labels as chips, then a Label button that opens the chosen Mac's labels to tick, with a field that searches them or makes a new one.
+ * A label typed here has no color yet, since the Mac that takes the meeting gives it one. `options` is null while loading.
  */
 export function LabelPicker({ options, error, onRetry, value, onChange }: { options: PhoneLabel[] | null; error: string | null; onRetry: () => void; value: PhoneLabel[]; onChange: (labels: PhoneLabel[]) => void }) {
   const { open, setOpen, box, button, onBlur } = usePopover();
@@ -496,7 +496,7 @@ export function LabelPicker({ options, error, onRetry, value, onChange }: { opti
             )}
             {!shown.length &&
               !(q && !match) &&
-              (error ? note(`Could not load your Macs' labels. ${error}`) : !options ? note("Loading labels…") : note(all.length ? "No matches." : "No labels yet. Type to create one."))}
+              (error ? note(`Could not load this Mac's labels. ${error}`) : !options ? note("Loading labels…") : note(all.length ? "No matches." : "No labels yet. Type to create one."))}
           </div>
         </div>
       )}
