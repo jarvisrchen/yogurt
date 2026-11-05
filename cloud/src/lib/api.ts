@@ -24,6 +24,14 @@ export interface Device {
   color: string;
 }
 
+export interface Mac {
+  id: string;
+  name: string;
+  color: string;
+  /** RFC 3339. */
+  seen_at: string;
+}
+
 /** One pushed meeting, `crates/yogurt-db` `bundle_value`. `transcript_json` is the desktop's stored text, a JSON array of segments. */
 export interface Bundle {
   v: 1;
@@ -193,6 +201,8 @@ export class Api {
   cancelEdit = (token: string, id: number) => this.rpc<boolean>("yogurt_cancel_edit", { token, edit_id: id });
   pendingEdits = (token: string) => this.rpc<PendingEdit[]>("yogurt_pending_edits", { token });
   /** The ids of the owner's phones, the only devices whose meetings the webapp writes. */
+  /** The Macs a phone recording can be saved to: those seen in the last 7 days, in the Library's order. */
+  macs = (token: string) => this.rpc<Mac[]>("yogurt_macs", { token });
   phoneDevices = (token: string) => this.rpc<string[]>("yogurt_phone_devices", { token });
   recolorDevice = (token: string, device: string, color: string) =>
     this.rpc<boolean>("yogurt_recolor_device", { token, device_id: device, new_color: color });

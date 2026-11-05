@@ -4,7 +4,7 @@ use crate::model::{Note, TranscriptLine};
 use chrono::DateTime;
 use serde_json::json;
 use uuid::{NoContext, Timestamp, Uuid};
-use yogurt_db::ImportedMeeting;
+use yogurt_db::{ImportedLabel, ImportedMeeting};
 
 pub const SOURCE: &str = "granola";
 const MAX_LABEL_CHARS: usize = 40;
@@ -102,11 +102,11 @@ pub fn map_note(
         .map(str::to_string)
         .unwrap_or_else(|| untitled(started_at));
 
-    let mut labels: Vec<String> = Vec::new();
+    let mut labels: Vec<ImportedLabel> = Vec::new();
     for f in &note.folder_membership {
         let name: String = f.name.trim().chars().take(MAX_LABEL_CHARS).collect();
-        if !name.is_empty() && !labels.iter().any(|l| l.eq_ignore_ascii_case(&name)) {
-            labels.push(name);
+        if !name.is_empty() && !labels.iter().any(|l| l.name.eq_ignore_ascii_case(&name)) {
+            labels.push(ImportedLabel::named(name));
         }
     }
 
@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(m.ended_at, 1_767_344_412_000);
         assert_eq!(m.notes_md, "my note");
         assert_eq!(m.enriched_md.as_deref(), Some("### Decisions\n\n- ship it"));
-        assert_eq!(m.labels, ["Clients"]);
+        assert_eq!(m.labels, [ImportedLabel::named("Clients")]);
         assert_eq!(
             (m.source.as_str(), m.source_id.as_str()),
             ("granola", "not_synthetic000001")
@@ -398,6 +398,6 @@ mod tests {
         )]));
         v["folder_membership"] = json!([{ "name": "x".repeat(60) }, { "name": "  " }]);
         let m = map(v).unwrap().unwrap();
-        assert_eq!(m.labels, ["x".repeat(40)]);
+        assert_eq!(m.labels, [ImportedLabel::named("x".repeat(40))]);
     }
 }

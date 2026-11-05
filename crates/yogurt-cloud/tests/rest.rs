@@ -446,7 +446,7 @@ async fn mac_pass(
 ) -> yogurt_cloud::Result<(Vec<String>, Plan)> {
     let (_tx, mut rx) = watch::channel(false);
     let pacing = fast();
-    let adopted = push::adopt(project, &pacing, session, &mut rx, mac).await?;
+    let adopted = push::adopt(project, &pacing, session, &mut rx, mac, device).await?;
     let local: Vec<LocalMeeting> = mac
         .here
         .iter()

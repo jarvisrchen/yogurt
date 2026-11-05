@@ -317,19 +317,32 @@ pub struct PhoneMeeting {
 /// A local copy is removed only when this pass wrote it and the Cloud's first answer said another Mac won. After a retry the lost answer may have been ours, so the copy stays.
 /// A phone removed from the Cloud between the listing and the claim leaves its meeting here only, so the copy stays and counts as adopted.
 /// One meeting that fails does not stop the rest: the first failure is returned once every meeting was tried.
-/// A Cloud deployed before phone recording has no `yogurt_phone_meetings`, and then there is nothing to adopt.
+/// It lists only the meetings for this Mac or for any Mac. A Cloud deployed before that choice lists every one, and one deployed before phone recording has none to adopt.
 pub async fn adopt(
     project: &Project,
     pacing: &Pacing,
     session: &mut Session,
     cancel: &mut watch::Receiver<bool>,
     hooks: &mut impl Hooks,
+    device_id: &str,
 ) -> Result<Vec<String>> {
-    let none = &json!({});
+    let mine = &json!({ "for_device": device_id });
     let listed = retried(project, pacing, session, cancel, hooks, |s| async move {
-        project.rpc_all(&s, "yogurt_phone_meetings", none, "").await
+        project
+            .rpc_all(&s, "yogurt_phone_meetings_for", mine, "")
+            .await
     })
     .await;
+    let listed = match listed {
+        Err(e) if e.code() == "cloud_outdated" => {
+            let none = &json!({});
+            retried(project, pacing, session, cancel, hooks, |s| async move {
+                project.rpc_all(&s, "yogurt_phone_meetings", none, "").await
+            })
+            .await
+        }
+        other => other,
+    };
     let rows = match listed {
         Err(e) if e.code() == "cloud_outdated" => return Ok(Vec::new()),
         other => other?.0,
@@ -1115,13 +1128,16 @@ mod run_tests {
             .map(|id| json!({ "device_id": "p", "device_name": "Pixel", "meeting_id": id, "push_id": 7, "body": { "v": 1 } }))
             .collect();
         Mock::given(method("POST"))
-            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings_for"))
+            .and(wiremock::matchers::body_json(
+                json!({ "for_device": "mac" }),
+            ))
             .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(rows))
             .mount(&server)
             .await;
         Mock::given(method("POST"))
-            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings_for"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
             .mount(&server)
             .await;
@@ -1158,7 +1174,7 @@ mod run_tests {
         rec: &mut Rec,
     ) -> Result<Vec<String>> {
         let (_tx, mut rx) = watch::channel(false);
-        adopt(project, &fast(10), session, &mut rx, rec).await
+        adopt(project, &fast(10), session, &mut rx, rec, "mac").await
     }
 
     #[tokio::test]
@@ -1252,7 +1268,9 @@ mod run_tests {
     async fn a_cloud_without_phone_meetings_adopts_nothing() {
         let (server, project, mut session) = cloud(&[]).await;
         Mock::given(method("POST"))
-            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(wiremock::matchers::path_regex(
+                "^/rest/v1/rpc/yogurt_phone_meetings(_for)?$",
+            ))
             .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "code": "PGRST202" })))
             .mount(&server)
             .await;
@@ -1263,6 +1281,36 @@ mod run_tests {
             .is_empty());
         assert!(rec.here.is_empty());
         assert_eq!(hits(&server, ADOPT).await, 0);
+    }
+
+    #[tokio::test]
+    async fn a_cloud_from_before_the_mac_choice_lists_every_phone_meeting() {
+        let (server, project, mut session) = cloud(&[]).await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings_for"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "code": "PGRST202" })))
+            .mount(&server)
+            .await;
+        let row = json!({ "device_id": "p", "device_name": "Pixel", "meeting_id": "a", "push_id": 7, "body": { "v": 1 } });
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([row])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(ADOPT))
+            .respond_with(answer(true))
+            .mount(&server)
+            .await;
+        let mut rec = Rec::default();
+        let adopted = run_adopt(&project, &mut session, &mut rec).await.unwrap();
+        assert_eq!(adopted, ["a"]);
     }
 
     const FINISH: &str = "/rest/v1/rpc/yogurt_finish_edit";

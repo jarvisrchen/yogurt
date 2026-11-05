@@ -16,6 +16,32 @@ export interface PhoneMeeting {
   lines: Line[];
   /** RFC 3339, as the Mac's chrono timestamp serializes. */
   created_at: string;
+  /** Absent on a meeting saved before labels. */
+  labels?: PhoneLabel[];
+  /** The Mac that takes the meeting, or any Mac when null or absent. */
+  for_device?: string | null;
+}
+
+/** A label by name, since the Mac that takes the meeting finds its own label with that name or makes one. */
+export interface PhoneLabel {
+  name: string;
+  color: string;
+}
+
+/** The Mac refuses a longer label name, and then could not take the meeting. */
+export const LABEL_MAX = 40;
+
+/** A label's name as the Mac matches it: trimmed, with only A to Z folded, as SQLite's NOCASE does. */
+export const labelKey = (name: string) => name.trim().replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/** The Macs' labels as one list: one per name as the Mac matches it, sorted by name. */
+export function mergeLabels(labels: PhoneLabel[]): PhoneLabel[] {
+  const byName = new Map<string, PhoneLabel>();
+  for (const l of labels) {
+    const key = labelKey(l.name);
+    if (key && !byName.has(key)) byName.set(key, { name: l.name.trim(), color: l.color });
+  }
+  return [...byName.values()].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 }
 
 export const STT_ENGINE = "cloud · nova-3 · phone";
@@ -52,7 +78,7 @@ export interface Enhanced {
   template: string;
 }
 
-/** The document a push sends: the Mac's `bundle_value` shape, field for field, for a meeting with no labels or chat. */
+/** The document a push sends: the Mac's `bundle_value` shape, field for field, for a meeting with no chat. A label's id is its matched name, the one key the phone has. */
 export function bundle(m: PhoneMeeting, enhanced: Enhanced | null = null) {
   return {
     v: 1 as const,
@@ -69,7 +95,8 @@ export function bundle(m: PhoneMeeting, enhanced: Enhanced | null = null) {
       llm_model: enhanced?.llm_model ?? null,
       template: enhanced?.template ?? null,
       created_at: m.created_at,
-      labels: [],
+      labels: (m.labels ?? []).map(({ name, color }) => ({ id: labelKey(name), name, color })),
+      for_device: m.for_device ?? null,
     },
     chat: [],
   };
@@ -83,6 +110,27 @@ export interface PhoneDevice {
 }
 
 const DEVICE_KEY = "yogurt-cloud-phone";
+const MAC_KEY = "yogurt-cloud-phone-mac";
+
+/** The Mac this phone last saved a recording to, if it is still one of `macs`, or else the one seen last. */
+export function readMac(macs: { id: string; seen_at: string }[]): string | null {
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem(MAC_KEY);
+  } catch {
+    // Storage blocked: the first Mac.
+  }
+  const latest = [...macs].sort((a, b) => Date.parse(b.seen_at) - Date.parse(a.seen_at))[0];
+  return macs.find((m) => m.id === last)?.id ?? latest?.id ?? null;
+}
+
+export function saveMac(id: string): void {
+  try {
+    localStorage.setItem(MAC_KEY, id);
+  } catch {
+    // Storage blocked: the next recording starts on the first Mac.
+  }
+}
 
 export function readDevice(): PhoneDevice {
   try {

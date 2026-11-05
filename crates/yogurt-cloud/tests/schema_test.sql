@@ -80,6 +80,7 @@ select pg_temp.expect('42501', array[
   'select yogurt_start_push(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_device_meetings(''00000000-0000-0000-0000-0000000000d1'')',
   'select * from yogurt_phone_meetings()',
+  'select * from yogurt_phone_meetings_for(null)',
   'select yogurt_adopt(''00000000-0000-0000-0000-0000000000d1'', ''m1'', 1)',
   'select yogurt_request_edit(''x'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'', ''delete'')',
   'select yogurt_cancel_edit(''x'', 1)',
@@ -117,7 +118,7 @@ select pg_temp.expect('42501', array[
 reset role;
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'public'::regnamespace and proname like 'yogurt\_%' and has_function_privilege('authenticated', oid, 'execute')),
-  'yogurt_adopt,yogurt_browsers,yogurt_cancel_edit,yogurt_device_edits,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_finish_edit,yogurt_forget_browser,yogurt_history,yogurt_inbox,yogurt_labels,yogurt_library,yogurt_lock,yogurt_meeting,yogurt_pending_edits,yogurt_phone_devices,yogurt_phone_meetings,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_request_edit,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
+  'yogurt_adopt,yogurt_browsers,yogurt_cancel_edit,yogurt_device_edits,yogurt_device_info,yogurt_device_list,yogurt_device_meetings,yogurt_finish_edit,yogurt_forget_browser,yogurt_history,yogurt_inbox,yogurt_labels,yogurt_library,yogurt_lock,yogurt_macs,yogurt_meeting,yogurt_pending_edits,yogurt_phone_devices,yogurt_phone_meetings,yogurt_phone_meetings_for,yogurt_recolor_device,yogurt_rename_device,yogurt_reorder_devices,yogurt_request_edit,yogurt_retrieve,yogurt_search,yogurt_search_catch_up,yogurt_set_passcode,yogurt_start_push,yogurt_status,yogurt_unlock',
   'public allowlist');
 select pg_temp.eq((select string_agg(proname, ',' order by proname) from pg_proc
   where pronamespace = 'yogurt_private'::regnamespace and has_function_privilege('authenticated', oid, 'execute')),
@@ -233,6 +234,7 @@ select pg_temp.eq((select string_agg(x, ',') from yogurt_device_meetings(:d2) x)
 select pg_temp.expect('28000', array[
   'select * from yogurt_library(''no such token'')',
   'select * from yogurt_library(null)',
+  'select * from yogurt_macs(''no such token'')',
   'select * from yogurt_meeting(''no such token'', ''00000000-0000-0000-0000-0000000000d1'', ''m1'')',
   'select * from yogurt_search(''no such token'', ''x'', null, 25)',
   'select * from yogurt_search(''no such token'', ''x'')',
@@ -957,6 +959,29 @@ select pg_temp.eq(pg_temp.phones(), '', 'another user''s phone is not listed');
 select pg_temp.expect('PT404', array['select yogurt_adopt(''00000000-0000-0000-0000-0000000000f2'', ''p4'', 1)']);
 reset role;
 update yogurt_devices set user_id = :o where id = :f2;
+
+-- A phone meeting saved for one Mac waits for that Mac while it was seen in the last 7 days, and goes to any Mac after. A Mac from before the choice lists every one.
+\set g1 '''00000000-0000-0000-0000-0000000000a1'''
+set role authenticated;
+insert into yogurt_devices (id, name) values (:g1, 'Home Mac');
+select yogurt_start_push(:f1) as push_t \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('t1', :push_t, :f1, jsonb_set(pg_temp.pm('For home', 5000), '{meeting,for_device}', to_jsonb(:g1::text)));
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings_for(:d5)), 'p4,t1', 'a Mac never seen does not hold its meetings');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings_for(:g1)), 'p4,t1', 'the chosen Mac lists it beside a meeting for any Mac, and is seen');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings_for(:d5)), 'p4', 'another Mac then does not');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings()), 'p4,t1', 'an older Mac lists every one');
+select pg_temp.eq((select string_agg(name, ',') from yogurt_macs(:'stok')), 'Labels 5,Home Mac', 'a phone is offered the Macs seen lately, in the webapp''s order');
+select pg_temp.eq(yogurt_adopt(:f2, 'p4', :push_p3)::text, 'true', 'the meeting for any Mac is adopted');
+select pg_temp.eq(yogurt_inbox(:d5)::text || yogurt_inbox(:g1)::text, 'falsetrue', 'only the chosen Mac''s inbox holds it');
+reset role;
+update yogurt_devices set seen_at = now() - interval '8 days' where id = :g1;
+select pg_temp.eq((select (seen_at > now() - interval '1 minute')::text from yogurt_devices where id = :d5), 'true', 'the inbox marks a Mac seen');
+set role authenticated;
+select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_phone_meetings_for(:d5)), 't1', 'a chosen Mac unseen for a week lets any Mac take it');
+select pg_temp.eq(yogurt_inbox(:d5)::text, 'true', 'and the inbox says so');
+select pg_temp.eq((select string_agg(name, ',') from yogurt_macs(:'stok')), 'Labels 5', 'and the phone no longer offers that Mac');
+reset role;
 
 
 -- An unlocked browser asks a Mac to edit one of its meetings, and the Mac reports back.

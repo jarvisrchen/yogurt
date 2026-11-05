@@ -4,7 +4,7 @@ import type { Gap } from "./audioQueue";
 import { BrowserRecorder } from "./browserRecorder";
 import { NativeRecorder } from "./nativeRecorder";
 import { enhanceMeeting } from "./enhance";
-import { bundle, clearUnfinished, loadUnfinished, readDevice, saveDevice, saveUnfinished, ulid, type Enhanced, type PhoneMeeting, type Unfinished } from "./phone";
+import { bundle, clearUnfinished, loadUnfinished, readDevice, saveDevice, saveUnfinished, ulid, type Enhanced, type PhoneLabel, type PhoneMeeting, type Unfinished } from "./phone";
 import type { Recorder, RecorderEvent, RecorderState } from "./recorder";
 
 /** A killed tab loses at most this much of the Cloud's copy. */
@@ -86,7 +86,7 @@ export class RecordingSession {
   }
 
   /** Makes sure the Cloud has this browser as a phone device, then records a new meeting. */
-  async start(title: string, name: string) {
+  async start(title: string, name: string, labels: PhoneLabel[] = [], forDevice: string | null = null) {
     // Starting replaces the IndexedDB copy, so a meeting a closed page left must be resumed or ended first.
     const left = this.snap.unfinished ?? (await loadUnfinished().catch(() => null));
     if (left || this.snap.meeting) return void (left && this.set({ unfinished: left }));
@@ -101,7 +101,7 @@ export class RecordingSession {
     }
     saveDevice({ id: device.id, name: named, registered: true });
     const now = Date.now();
-    await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString() }, true);
+    await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString(), labels, for_device: forDevice }, true);
   }
 
   async resume() {
@@ -174,6 +174,12 @@ export class RecordingSession {
   }
   setNotes(notes_md: string) {
     this.edit({ notes_md });
+  }
+  setLabels(labels: PhoneLabel[]) {
+    this.edit({ labels });
+  }
+  setForDevice(for_device: string) {
+    this.edit({ for_device });
   }
   private edit(p: Partial<PhoneMeeting>) {
     const m = this.snap.meeting;

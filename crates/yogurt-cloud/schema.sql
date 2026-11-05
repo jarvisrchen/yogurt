@@ -51,6 +51,9 @@ alter table public.yogurt_devices
 -- What pushes as the device: a Mac, or a phone recording in the webapp.
 alter table public.yogurt_devices add column if not exists kind text not null default 'mac' check (kind in ('mac', 'phone'));
 
+-- When a Mac last asked for phone meetings or its inbox, kept to 10 minutes. A phone meeting saved for a Mac waits for it only while it was seen in the last 7 days.
+alter table public.yogurt_devices add column if not exists seen_at timestamptz;
+
 -- Ids are global across devices, so "as of push N" covers every device at that moment.
 create table if not exists public.yogurt_pushes (
   id        bigint generated always as identity primary key,
@@ -553,12 +556,16 @@ begin
 end $$;
 
 -- The latest version of each ended, live meeting on the owner's phones, which a Mac adopts before its push.
-create or replace function public.yogurt_phone_meetings()
+-- A meeting whose for_device names a Mac goes only to that Mac while it was seen in the last 7 days, and to any Mac after. A null for_device lists every one.
+-- A new name rather than an argument on yogurt_phone_meetings, since two shapes of one name make a call with no arguments ambiguous after a rollback.
+create or replace function public.yogurt_phone_meetings_for(for_device uuid)
 returns table (device_id uuid, device_name text, meeting_id text, push_id bigint, body jsonb)
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
 begin
   perform yogurt_private.yogurt_require_owner();
+  update public.yogurt_devices d set seen_at = now()
+  where d.id = $1 and d.user_id = auth.uid() and d.kind = 'mac' and (d.seen_at is null or d.seen_at < now() - interval '10 minutes');
   return query
     select l.device_id, d.name, l.meeting_id, l.push_id, l.body from (
       select distinct on (v.device_id, v.meeting_id) v.device_id, v.meeting_id, v.push_id, v.body
@@ -567,8 +574,18 @@ begin
       order by v.device_id, v.meeting_id, v.push_id desc
     ) l join public.yogurt_devices d on d.id = l.device_id
     where l.body -> 'meeting' ->> 'ended_at' is not null
+      and ($1 is null or l.body -> 'meeting' ->> 'for_device' is null or l.body -> 'meeting' ->> 'for_device' = $1::text
+        or not exists (select from public.yogurt_devices t where t.id::text = l.body -> 'meeting' ->> 'for_device' and t.user_id = auth.uid() and t.kind = 'mac'
+          and t.seen_at > now() - interval '7 days'))
     order by l.device_id, l.meeting_id;
 end $$;
+
+-- What a Mac from before the choice calls, which lists every one.
+create or replace function public.yogurt_phone_meetings()
+returns table (device_id uuid, device_name text, meeting_id text, push_id bigint, body jsonb)
+language sql security definer set search_path = '' as $$
+  select * from public.yogurt_phone_meetings_for(null);
+$$;
 
 -- Marks a phone's meeting deleted on the phone once a Mac holds a copy, and says whether this call did.
 -- It does only while push_id is still the meeting's latest version and that version has ended, so a Mac that copied an older version, or lost the race to another Mac, gets false.
@@ -708,8 +725,11 @@ begin
   if not yogurt_private.yogurt_owns_device($1) then
     raise exception 'unknown device' using errcode = 'PT404';
   end if;
+  -- A Mac from before the Mac choice calls only this, so it marks the Mac seen too.
+  update public.yogurt_devices d set seen_at = now()
+  where d.id = $1 and d.user_id = auth.uid() and d.kind = 'mac' and (d.seen_at is null or d.seen_at < now() - interval '10 minutes');
   return exists (select from public.yogurt_edits e where e.device_id = $1 and e.user_id = auth.uid() and e.status = 'pending')
-    or exists (select from public.yogurt_phone_meetings());
+    or exists (select from public.yogurt_phone_meetings_for($1));
 end $$;
 
 -- A changed argument list makes a new function beside the old one, and a call both accept is ambiguous, so every shape of the three below goes first.
@@ -981,6 +1001,18 @@ begin
     order by d.position nulls last, d.created_at, d.id;
 end $$;
 
+-- The Macs a phone recording can be saved to: those seen in the last 7 days, in the webapp's order, with when each was seen.
+create or replace function public.yogurt_macs(token text)
+returns table (id uuid, name text, color text, seen_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  return query
+    select i.id, i.name, i.color, d.seen_at from public.yogurt_device_info(token) i join public.yogurt_devices d on d.id = i.id
+    where d.kind = 'mac' and d.seen_at > now() - interval '7 days'
+    order by d.position nulls last, d.created_at, d.id;
+end $$;
+
 -- The owner's phones, whose meetings the webapp may enhance. A Mac's adopted copy keeps the phone's stt_engine, so the device says it.
 create or replace function public.yogurt_phone_devices(token text) returns setof uuid
 language plpgsql security definer set search_path = '' as $$
@@ -1070,6 +1102,7 @@ grant execute on function
   public.yogurt_rename_device(uuid, text),
   public.yogurt_device_meetings(uuid),
   public.yogurt_phone_meetings(),
+  public.yogurt_phone_meetings_for(uuid),
   public.yogurt_adopt(uuid, text, bigint),
   public.yogurt_request_edit(text, uuid, text, text, text, text),
   public.yogurt_cancel_edit(text, bigint),
@@ -1087,6 +1120,7 @@ grant execute on function
   public.yogurt_device_list(text),
   public.yogurt_device_info(text),
   public.yogurt_phone_devices(text),
+  public.yogurt_macs(text),
   public.yogurt_recolor_device(text, uuid, text),
   public.yogurt_reorder_devices(text, uuid[])
 to authenticated;

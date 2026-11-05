@@ -1743,3 +1743,22 @@ New closed items go at the bottom.
   A tap on the lines does not toggle the card, presses on buttons, links, and fields keep their own taps, and a mouse drag on a body still selects text.
   `useScrollEdges` (`web/src/lib/useScrollEdges.ts`) tracks the scroll edges and sets `touch-action`, and the web test setup stubs `ResizeObserver`, which jsdom lacks.
   The Cloud's Tailwind build now scans that file, since it holds the `touch-pan-up` and `touch-pan-down` classes, and a chat bubble now wraps a long unbroken word, such as a raw error, instead of running past its edge.
+
+- [x] **MOB-10** Save a meeting recorded on the phone to a chosen Mac, with labels from that Mac or new ones, before and while it records
+
+  A meeting recorded on the phone always pushed `labels: []`, so it reached the Mac with no label and had to be filed there by hand.
+  It also went to whichever Mac checked first, so a meeting meant for a personal Mac could land on a work one.
+  The Mac's adoption already found or created each label a phone bundle named, but always in its own next color.
+
+  Landed in the MOB-10 PR (2026-11-04).
+  The Record screen has a Saves to row of the Macs under the title, before and while recording, and the phone remembers the pick.
+  It offers the Macs seen in the last 7 days, from a `yogurt_devices.seen_at` that `yogurt_inbox` and the new listing stamp, since a device row outlives a disconnect.
+  The meeting carries the pick as `for_device`, and `yogurt_phone_meetings_for(device_id)` and `yogurt_inbox` give it only to that Mac, or to any Mac once that one goes 7 days unseen.
+  The zero-argument `yogurt_phone_meetings` stays as a wrapper for older Macs, which still take any phone meeting, since a second shape of that one name would make a call with no arguments ambiguous after a rollback.
+  Under it, a Label row lists that Mac's labels from `yogurt_labels`, with the picked labels as chips, matched by name as SQLite's `NOCASE` does, A to Z folded and nothing else.
+  Typing a name it does not list offers to create it, capped at the Mac's 40 characters, and Enter picks the listed label the field names or creates it.
+  A label made on the phone shows grey there, since the Mac that takes the meeting gives it a color.
+  The phone pushes each label with its id set to that matched name, and the adopting Mac files the meeting under its own label of the name.
+  A label the Mac lacks is created in the color the list showed, or the Mac's next color for one typed on the phone.
+  A name or color the Mac cannot store is dropped rather than refusing the meeting, and `ImportedMeeting.labels` holds `ImportedLabel`s with an optional color.
+  `scripts/test-cloud-e2e.sh` now adopts a phone meeting with two labels into a Mac that already has one of them in another case, and a meeting saved for the second Mac goes only to it.

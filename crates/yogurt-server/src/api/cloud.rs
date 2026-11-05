@@ -811,6 +811,7 @@ async fn adopt(
         project,
         session,
     } = link;
+    let device_id = conn.device_id.clone();
     let mut hooks = PassHooks {
         state,
         conn,
@@ -824,6 +825,7 @@ async fn adopt(
         session,
         cancel,
         &mut hooks,
+        &device_id,
     )
     .await?;
     if !adopted.is_empty() {
@@ -1136,7 +1138,7 @@ impl TimerInputs {
 }
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
-/// A due wake always starts a pass, since a phone meeting to adopt or an edit to make is known only to the Cloud, and on an idle Mac that pass ends after the `yogurt_phone_meetings` and `yogurt_device_edits` calls.
+/// A due wake always starts a pass, since a phone meeting to adopt or an edit to make is known only to the Cloud, and on an idle Mac that pass ends after the `yogurt_phone_meetings_for` and `yogurt_device_edits` calls.
 async fn auto_tick(state: &AppState, now: i64) {
     if push_interval(state) == "off" || state.cloud_push.is_running() {
         return;
@@ -1698,7 +1700,10 @@ mod tests {
         assert_eq!(attempt_at(&state), None);
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["at"], T0 + 15 * MIN);
         assert_eq!(recorded(&state, LAST_PUSH_KEY)["changed"], 0);
-        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings").await, 1);
+        assert_eq!(
+            hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings_for").await,
+            1
+        );
         assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_device_meetings").await, 0);
         assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_start_push").await, 0);
         auto_tick(&state, T0 + 30 * MIN).await;
@@ -1877,7 +1882,7 @@ mod tests {
         answer("/rest/v1/rpc/yogurt_start_push", json!(7))
             .mount(&cloud)
             .await;
-        answer("/rest/v1/rpc/yogurt_phone_meetings", json!([]))
+        answer("/rest/v1/rpc/yogurt_phone_meetings_for", json!([]))
             .mount(&cloud)
             .await;
         answer("/rest/v1/rpc/yogurt_device_edits", json!([]))
@@ -1952,7 +1957,7 @@ mod tests {
             "notes_md": "phone notes", "transcript_json": "[]", "stt_engine": "cloud · nova-3 · phone" },
             "chat": [{ "id": "01KCHAT0000000000000000000", "role": "user", "content": "and then?", "created_at": 1_500 }] });
         Mock::given(method("POST"))
-            .and(path("/rest/v1/rpc/yogurt_phone_meetings"))
+            .and(path("/rest/v1/rpc/yogurt_phone_meetings_for"))
             .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([
                 { "device_id": "p", "device_name": "Pixel", "meeting_id": PHONE_MEETING, "push_id": 3, "body": body }
@@ -2100,7 +2105,10 @@ mod tests {
         settle(&state).await;
         auto_tick(&state, T0 + 30 * MIN).await;
         settle(&state).await;
-        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings").await, 2);
+        assert_eq!(
+            hits(&cloud, "/rest/v1/rpc/yogurt_phone_meetings_for").await,
+            2
+        );
         assert_eq!(hits(&cloud, "/auth/v1/token").await, 1, "one refresh");
         assert_eq!(attempt_at(&state), None);
         push_and_settle(&state).await;
@@ -2116,8 +2124,8 @@ mod tests {
         let (state, _tmp) = with_meetings(1);
         let cloud = mock_cloud(&state, 201).await;
         catch_up(200, json!(0)).mount(&cloud).await;
-        wiremock::Mock::given(wiremock::matchers::path(
-            "/rest/v1/rpc/yogurt_phone_meetings",
+        wiremock::Mock::given(wiremock::matchers::path_regex(
+            "^/rest/v1/rpc/yogurt_phone_meetings(_for)?$",
         ))
         .respond_with(
             wiremock::ResponseTemplate::new(404).set_body_json(json!({ "code": "PGRST202" })),

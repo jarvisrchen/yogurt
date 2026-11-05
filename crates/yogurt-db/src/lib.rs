@@ -14,7 +14,7 @@ pub mod settings;
 
 pub use labels::{Label, LabelRepo, LabelWithCount};
 pub use meetings::{
-    ImportedMeeting, Meeting, MeetingFilter, MeetingPage, MeetingPatch, MeetingRepo,
+    ImportedLabel, ImportedMeeting, Meeting, MeetingFilter, MeetingPage, MeetingPatch, MeetingRepo,
     MeetingSummary, NewMeeting, RetrievalHit,
 };
 

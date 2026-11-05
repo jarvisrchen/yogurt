@@ -129,12 +129,27 @@ pub struct ImportedMeeting {
     pub source_id: String,
     /// A JSON object. `import` adds `imported_at` to it.
     pub source_json: serde_json::Value,
-    /// Label names, each found or created.
-    pub labels: Vec<String>,
+    pub labels: Vec<ImportedLabel>,
     pub stt_engine: Option<String>,
     pub llm_model: Option<String>,
     pub template: Option<String>,
     pub chat: Vec<crate::chat::ChatMessage>,
+}
+
+/// A label an import finds by name, or creates in `color` when it has one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedLabel {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+impl ImportedLabel {
+    pub fn named(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            color: None,
+        }
+    }
 }
 
 impl ImportedMeeting {
@@ -177,11 +192,19 @@ impl ImportedMeeting {
             source: "phone".into(),
             source_id: phone_id.to_string(),
             source_json: serde_json::json!({ "device": device_name }),
+            // A name or color this Mac cannot store is dropped, since refusing it would leave the meeting on the phone.
             labels: m["labels"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter_map(|l| l["name"].as_str().map(str::to_string))
+                .filter_map(|l| {
+                    Some(ImportedLabel {
+                        name: labels::validate_name(l["name"].as_str()?).ok()?,
+                        color: l["color"]
+                            .as_str()
+                            .and_then(|c| labels::normalize_color(c).ok()),
+                    })
+                })
                 .collect(),
             stt_engine: text("stt_engine"),
             llm_model: text("llm_model"),
@@ -313,8 +336,8 @@ impl MeetingRepo {
             if n == 0 {
                 return Ok(false);
             }
-            for name in &m.labels {
-                let (label, _) = labels::find_or_create_conn(&tx, name, None)?;
+            for l in &m.labels {
+                let (label, _) = labels::find_or_create_conn(&tx, &l.name, l.color.as_deref())?;
                 tx.execute(
                     "INSERT OR IGNORE INTO meeting_labels (meeting_id, label_id) VALUES (?1, ?2)",
                     params![m.id, label.id],
@@ -1502,7 +1525,11 @@ mod tests {
             source: "granola".into(),
             source_id: source_id.into(),
             source_json: serde_json::json!({ "owner": { "name": "Pat", "email": "p@example.com" } }),
-            labels: vec!["Clients".into(), "clients".into(), "Q4".into()],
+            labels: vec![
+                ImportedLabel::named("Clients"),
+                ImportedLabel::named("clients"),
+                ImportedLabel::named("Q4"),
+            ],
             stt_engine: None,
             llm_model: None,
             template: None,
@@ -1519,7 +1546,7 @@ mod tests {
                 "id": "01PHONE", "title": "Walk and talk", "started_at": 1_000, "ended_at": 9_000,
                 "notes_md": "typed on the phone", "enriched_md": "### Summary", "transcript_json": r#"[{"ts_ms":0,"channel":"them","text":"hi"}]"#,
                 "stt_engine": "cloud · nova-3 · phone", "llm_model": "m1", "template": "standup",
-                "labels": [{ "id": "l", "name": "Walks", "color": "blue" }],
+                "labels": [{ "id": "l", "name": "Walks", "color": "lilac" }, { "id": "e", "name": "Errands", "color": "neon" }, { "id": "x", "name": "   " }, { "id": "y", "name": "y".repeat(41) }],
             },
             "chat": [
                 { "id": "c1", "role": "user", "content": "what?", "created_at": 5 },
@@ -1559,7 +1586,14 @@ mod tests {
             (Some("phone"), Some("01PHONE"))
         );
         assert_eq!(m.source_json.as_ref().unwrap()["device"], "Pixel");
-        assert_eq!(m.labels[0].name, "Walks");
+        // A new label takes the phone's color, and one this Mac cannot store gets its own.
+        let mut labels: Vec<_> = m
+            .labels
+            .iter()
+            .map(|l| (l.name.as_str(), l.color.as_str()))
+            .collect();
+        labels.sort();
+        assert_eq!(labels, [("Errands", "blue"), ("Walks", "lilac")]);
         let chat = repo.db.list_chat_messages("local-1").unwrap();
         let chat: Vec<_> = chat
             .iter()
@@ -1657,7 +1691,7 @@ mod tests {
     fn a_failed_import_rolls_back_the_row() {
         let repo = fresh_repo();
         let mut bad = imported("not_1", "Half written");
-        bad.labels = vec!["x".repeat(41)];
+        bad.labels = vec![ImportedLabel::named("x".repeat(41))];
         assert!(repo.import(bad).is_err());
         assert!(list(&repo).is_empty());
         assert!(repo.imported_source_ids("granola").unwrap().is_empty());
