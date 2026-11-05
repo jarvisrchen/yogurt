@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 
 interface SearchPillProps {
@@ -8,16 +8,22 @@ interface SearchPillProps {
 
 export function SearchPill({ value, onChange }: SearchPillProps) {
   const [local, setLocal] = useState(value);
+  const sent = useRef(value);
 
-  // Follow parent-forced changes such as clearing on route change.
+  // Follow parent-forced changes such as clearing on route change. The echo of our own text can land after
+  // another keystroke, since the URL commits in a transition, so it must not overwrite the box.
   useEffect(() => {
-    setLocal(value);
+    if (value !== sent.current) setLocal(value);
+    sent.current = value;
   }, [value]);
 
   // Collapse a burst of keystrokes into one server query.
   useEffect(() => {
     if (local === value) return;
-    const id = setTimeout(() => onChange(local), 200);
+    const id = setTimeout(() => {
+      sent.current = local;
+      onChange(local);
+    }, 200);
     return () => clearTimeout(id);
   }, [local, value, onChange]);
 

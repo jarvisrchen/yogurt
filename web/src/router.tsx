@@ -2,6 +2,7 @@ import {
   createBrowserRouter,
   Navigate,
   Outlet,
+  ScrollRestoration,
   type RouteObject,
 } from "react-router";
 import { StyleGuide } from "./routes/StyleGuide";
@@ -35,6 +36,8 @@ function Shell() {
         <PushPill />
       </div>
       <ModelDownloadDialog />
+      {/* A new page opens at the top and Back restores the old spot. A meeting page's return to the Library restores its own, once the rows are in. */}
+      <ScrollRestoration />
       <Outlet />
     </>
   );

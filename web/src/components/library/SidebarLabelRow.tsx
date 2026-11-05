@@ -9,6 +9,7 @@ import {
 } from "../../lib/api/labels";
 import { useArchiveMatching, useArchivePreview } from "../../lib/api/meetings";
 import { formatCount } from "./pagination";
+import { keepSearch } from "./libraryReturn";
 import { DEFAULT_CUSTOM_COLOR, isHexColor, labelTone } from "../../lib/labelColors";
 
 const SWATCH_COLORS: PaletteColor[] = ["blue", "matcha", "straw", "lilac", "honey", "slate"];
@@ -31,7 +32,7 @@ export function SidebarLabelRow({ label, inArchive }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const update = useUpdateLabel();
   const del = useDeleteLabel();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const live = label.meeting_count - label.archived_count;
   const archive = useArchiveMatching();
@@ -93,18 +94,20 @@ export function SidebarLabelRow({ label, inArchive }: Props) {
     );
   }
 
-  const to = inArchive ? `/archive/label/${label.id}` : `/label/${label.id}`;
+  const base = inArchive ? "/archive" : "";
+  const path = `${base}/label/${label.id}`;
+  const carry = keepSearch(search);
 
   return (
     <div ref={wrapperRef} className="relative group/label">
       <NavLink
-        to={to}
+        to={path + carry}
         onClick={(e) => {
           if (menuOpen) e.preventDefault();
           // A modified click keeps its browser meaning, such as a new tab.
-          else if (pathname === to && e.button === 0 && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
+          else if (pathname === path && e.button === 0 && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
             e.preventDefault();
-            navigate(inArchive ? "/archive" : "/");
+            navigate((base || "/") + carry);
           }
         }}
         className={({ isActive }) =>
@@ -205,7 +208,7 @@ export function SidebarLabelRow({ label, inArchive }: Props) {
                   setMenuOpen(false);
                   setConfirming(null);
                   // The label's own page would now be empty, so follow its meetings into the Archive.
-                  if (pathname === `/label/${label.id}`) navigate(`/archive/label/${label.id}`);
+                  if (pathname === `/label/${label.id}`) navigate(`/archive/label/${label.id}${carry}`);
                 }, () => {})
               }
               onCancel={() => setConfirming(null)}

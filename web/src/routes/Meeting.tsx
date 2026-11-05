@@ -28,6 +28,7 @@ import {
   useMeeting,
 } from "../lib/api/meetings";
 import { useSettings } from "../lib/api/settings";
+import { useLibraryBack } from "../components/library/libraryReturn";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   storedSegmentToEvent,
@@ -89,6 +90,7 @@ export function Meeting() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const libraryBack = useLibraryBack();
 
   // `id` is either the routed UUID, or `"new"` (the bootstrap shape).
   //
@@ -486,7 +488,7 @@ export function Meeting() {
     >
       <main className="max-w-[660px] mx-auto px-10 py-12 space-y-6">
         <Link
-          to="/"
+          {...libraryBack}
           className="inline-flex items-center gap-1.5 text-[13px] font-medium text-mut hover:text-ink transition-colors"
           aria-label="Back to library — recording continues in the background"
           title={
