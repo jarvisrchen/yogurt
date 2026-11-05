@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 /**
  * A resize handle's drag: `start` follows the pointer on the window and reports how far it moved from the press,
- * then `onDone` once it is released. While dragging, `rootClass` on <html> holds the cursor and blocks text selection.
+ * then `onDone` once it is released, with whether the browser cancelled it instead. While dragging, `rootClass` on <html> holds the cursor and blocks text selection.
  */
 export function usePointerDrag(rootClass: string) {
   const [dragging, setDragging] = useState(false);
@@ -14,7 +14,7 @@ export function usePointerDrag(rootClass: string) {
     return () => document.documentElement.classList.remove(rootClass);
   }, [dragging, rootClass]);
 
-  function start(e: React.PointerEvent, onMove: (dx: number, dy: number) => void, onDone: (moved: boolean) => void) {
+  function start(e: React.PointerEvent, onMove: (dx: number, dy: number) => void, onDone: (moved: boolean, cancelled: boolean) => void) {
     // A second pointer while one drags would stack listeners and fight over the size.
     if (e.button > 0 || endRef.current) return;
     e.preventDefault();
@@ -27,13 +27,13 @@ export function usePointerDrag(rootClass: string) {
       moved = true;
       onMove(ev.clientX - clientX, ev.clientY - clientY);
     };
-    const end = () => {
+    const end = (ev?: PointerEvent) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
       endRef.current = null;
       setDragging(false);
-      onDone(moved);
+      onDone(moved, ev?.type === "pointercancel");
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);

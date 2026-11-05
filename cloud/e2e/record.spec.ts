@@ -68,8 +68,15 @@ test.afterAll(async () => {
 
 const sheet = (page: Page) => page.getByRole("region", { name: "Live transcript" });
 const finals = (page: Page) => sheet(page).locator('[data-final="true"]');
-/** The number of the newest final line the fake sent that the sheet shows. The peek shows only two rows. */
-const newest = async (page: Page) => Number(/Heard line (\d+)/.exec((await finals(page).last().textContent()) ?? "")?.[1] ?? 0);
+const ticker = (page: Page) => sheet(page).getByRole("button", { name: "Show transcript" });
+/** The number of the newest final line the fake sent that the sheet shows. The peek shows only two rows, and the ticker one line, which may be the next line's interim words. */
+const newest = async (page: Page) => {
+  if (await ticker(page).isVisible()) {
+    const [, n, full] = /Heard line (\d+)( in full)?/.exec((await ticker(page).textContent()) ?? "") ?? [];
+    return n ? Number(n) - (full ? 0 : 1) : 0;
+  }
+  return Number(/Heard line (\d+)/.exec((await finals(page).last().textContent()) ?? "")?.[1] ?? 0);
+};
 
 type Meeting = { id: string; title: string; ended_at: number | null; notes_md: string; transcript_json: string; stt_engine: string; enriched_md: string | null; llm_model: string | null; template: string | null };
 type Version = { body: { meeting: Meeting } };
@@ -120,7 +127,16 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   const editor = page.locator(".ProseMirror");
   await editor.click();
   await page.keyboard.type("## Pricing\npro tier at $18?\nask finance re annual cap");
-  await expect(sheet(page).getByText(/Heard line 2/)).toBeVisible({ timeout: 15_000 });
+  // A phone's keyboard shrinks the page, and the sheet keeps just the newest line until it goes down.
+  const screen = page.viewportSize()!;
+  const keyboard = (up: boolean) => page.setViewportSize({ width: screen.width, height: up ? 500 : screen.height });
+  if (phone) {
+    await keyboard(true);
+    await expect(ticker(page)).toBeVisible();
+    await keyboard(false);
+    await expect(ticker(page)).toBeHidden();
+  }
+  await expect.poll(() => newest(page), { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
   await shot(page, info, "r3-recording", false);
 
   // A question mid-recording pushes the meeting first, still open, so the answer quotes the line just heard. The transcript keeps arriving under the chat.
@@ -128,6 +144,8 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   const chat = page.getByRole("region", { name: "Ask the meeting chat" });
   const input = chat.getByPlaceholder("Ask this meeting…");
   await ask.click();
+  // The chat holds the transcript at full height above it, with no grip to drag.
+  await expect(sheet(page).getByRole("button")).toHaveCount(0);
   const heard = await newest(page);
   await input.fill("What was just said?");
   await input.press("Enter");
@@ -157,6 +175,63 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await shot(page, info, "r4-sheet-up", false);
   await sheet(page).getByRole("button", { name: "Lower transcript" }).click();
   await expect(sheet(page).getByRole("button", { name: "Raise transcript" })).toBeVisible();
+
+  // A slow drag follows the finger and leaves the sheet where it was let go, and a flick down sends it back to the peek.
+  const height = async () => (await sheet(page).boundingBox())!.height;
+  const peek = 128;
+  await expect.poll(height).toBe(peek);
+  const grip = (await sheet(page).getByRole("button", { name: "Raise transcript" }).boundingBox())!;
+  const [x, y] = [grip.x + grip.width / 2, grip.y + grip.height / 2];
+  // A finger that wobbles a few pixels still taps.
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 3);
+  await page.mouse.up();
+  await expect(sheet(page).getByRole("button", { name: "Lower transcript" })).toBeVisible();
+  await sheet(page).getByRole("button", { name: "Lower transcript" }).click();
+  await expect.poll(height).toBe(peek);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) {
+    await page.mouse.move(x, y - i * 20);
+    await page.waitForTimeout(16);
+  }
+  expect(await height()).toBeCloseTo(peek + 240, -1);
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  expect(await height()).toBeCloseTo(peek + 240, -1);
+  await expect(sheet(page).getByRole("button", { name: "Lower transcript" })).toBeVisible();
+  await expect(ask).toBeVisible();
+  await shot(page, info, "r4b-sheet-mid", false);
+  // The chat raises the sheet to the recording bar, and closing it puts the sheet back where it was.
+  await ask.click();
+  const chatTop = async () => (await chat.boundingBox())!.y;
+  const sheetBottom = async () => {
+    const b = (await sheet(page).boundingBox())!;
+    return b.y + b.height;
+  };
+  await expect.poll(async () => (await chatTop()) - (await sheetBottom())).toBeCloseTo(10, -1);
+  await expect.poll(async () => (await sheet(page).boundingBox())!.y - (await page.getByRole("button", { name: "End meeting" }).boundingBox())!.y).toBeLessThan(80);
+  await shot(page, info, "r4c-chat-full", false);
+  // A keyboard leaves the sheet whatever room the chat does not take.
+  if (phone) {
+    await keyboard(true);
+    await expect(sheet(page).getByText("Live transcript")).toBeVisible();
+    await expect(ticker(page)).toBeHidden();
+    await shot(page, info, "r4d-keyboard", false);
+    await keyboard(false);
+  }
+  await chat.getByRole("button", { name: "Collapse chat" }).click();
+  await expect(chat).toBeHidden();
+  await expect.poll(height).toBeCloseTo(peek + 240, -1);
+  const mid = (await sheet(page).getByRole("button", { name: "Lower transcript" }).boundingBox())!;
+  await page.mouse.move(x, mid.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(x, mid.y + 200, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(height).toBeCloseTo(peek, 0);
+  await expect(ask).toBeVisible();
 
   // A dropped socket: the page holds the audio, takes a fresh token once Deepgram answers again, and replays what it held at once, in order.
   const lineBefore = await newest(page);

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Button } from "@web/components/Button";
 import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
+import { usePointerDrag } from "@web/lib/usePointerDrag";
 import { Back, DeviceTag, Field, Note } from "../ui";
 import type { Api } from "../lib/api";
 import { QUEUE_MS, type Gap } from "../lib/audioQueue";
@@ -124,13 +125,54 @@ function Ready({ snap, session, device, color, onBack }: { snap: Snapshot; sessi
 }
 
 const NOTES_PLACEHOLDER = "Take sparse notes while the transcript runs below.";
-const PEEK = 152;
-// 12px above the peeking sheet, whose z-40 covers it when the sheet is up.
-const ASK = "cloud-chat absolute inset-x-[16px] mx-auto max-w-[480px] bottom-[164px]";
+const PEEK = 128;
+const FULL = Infinity;
+// Let go this close to either end and the sheet settles there. A release faster than FLICK px/ms throws it to the end it moves toward.
+const SNAP = 48;
+const FLICK = 0.5;
+// The one line the sheet keeps while the keyboard or the chat is up.
+const TICKER = 48;
+const ASK = "cloud-chat w-full min-h-0";
+// The gap that keeps the floating sheet off the Ask bar below it and the recording bar above it.
+const GAP = 10;
+// More than a browser's toolbar sliding away, less than any phone keyboard.
+const KEYBOARD = 120;
+// A move shorter than this is a tap with a shaky finger.
+const TAP = 8;
+
+/**
+ * Whether a touch screen's keyboard is up: the visible viewport is well short of the tallest it has been at this width.
+ * Focus alone is not enough, since Android's back gesture hides the keyboard and leaves the field focused.
+ */
+function useKeyboardUp() {
+  const [up, setUp] = useState(false);
+  useEffect(() => {
+    const touch = window.matchMedia("(pointer: coarse)");
+    const view = window.visualViewport;
+    let width = 0;
+    let tallest = 0;
+    const check = () => {
+      const h = view?.height ?? window.innerHeight;
+      if (window.innerWidth !== width) [width, tallest] = [window.innerWidth, 0];
+      tallest = Math.max(tallest, h);
+      setUp(touch.matches && h < tallest - KEYBOARD);
+    };
+    check();
+    // Chrome's mobile emulation, and so the e2e, resizes the window without a visualViewport event.
+    window.addEventListener("resize", check);
+    view?.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      view?.removeEventListener("resize", check);
+    };
+  }, []);
+  return up;
+}
 
 function Recording({ api, token, snap, meeting, session, device, color, onEnded, onRejected }: { api: Api; token: string; snap: Snapshot; meeting: PhoneMeeting; session: RecordingSession; device: string; color: string; onEnded: (key: string) => void; onRejected: () => void }) {
   const now = useNow(true);
-  const [full, setFull] = useState(false);
+  const [height, setHeight] = useState(PEEK);
+  const keyboard = useKeyboardUp();
   const pushFirst = useCallback(
     () =>
       session.pushNow().catch((e) => {
@@ -143,6 +185,10 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
     const key = await session.end();
     if (key) onEnded(key);
   };
+  // The chat holds the transcript at full height beside it. Without the chat, a keyboard shrinks it to the ticker for the notes.
+  const asking = !!chat?.open;
+  const compact = keyboard && !asking;
+  const shown = asking ? FULL : compact ? TICKER : height;
   const reconnecting = snap.state === "reconnecting" && snap.downSince !== null;
   // Interim words carry no time, so they take the moment they started showing.
   const interimAt = useRef<number | null>(null);
@@ -161,7 +207,7 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
         </Button>
       </div>
       <div className="relative flex-1 min-h-0">
-        <main className="absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px]" style={{ paddingBottom: PEEK + 76 }}>
+        <main className={`absolute inset-0 overflow-y-auto flex flex-col gap-[10px] px-[16px] pt-[14px] ${shown === FULL ? "invisible" : ""}`} style={{ paddingBottom: (shown === FULL ? PEEK : shown) + GAP + 16 }}>
           {reconnecting ? (
             <p role="status" className={NOTICE}>
               Reconnecting… Holding {minSec(Math.min(now - snap.downSince!, QUEUE_MS))} of audio, up to 5 minutes. It is transcribed once the connection is back.
@@ -176,9 +222,24 @@ function Recording({ api, token, snap, meeting, session, device, color, onEnded,
             <YogurtEditor initialMarkdown={meeting.notes_md} onChange={(md) => session.setNotes(md)} placeholder={NOTES_PLACEHOLDER} />
           </section>
         </main>
-        {chat && <Ask chat={chat} position={ASK} />}
-        <Sheet full={full} setFull={setFull} state={snap.state} lines={meeting.lines} interim={snap.interim} interimAt={interimAt.current ?? 0} gaps={snap.gaps} />
+        <Sheet
+          height={shown}
+          setHeight={setHeight}
+          compact={compact}
+          locked={asking}
+          onTicker={() => document.activeElement instanceof HTMLElement && document.activeElement.blur()}
+          state={snap.state}
+          lines={meeting.lines}
+          interim={snap.interim}
+          interimAt={interimAt.current ?? 0}
+          gaps={snap.gaps}
+        />
       </div>
+      {chat && (
+        <div className="flex-none max-h-[60%] flex flex-col px-[12px] pb-[12px]">
+          <Ask chat={chat} position={ASK} />
+        </div>
+      )}
     </div>
   );
 }
@@ -205,71 +266,128 @@ function GapMarker({ gap }: { gap: Gap }) {
 type Row = { line: Line } | { gap: Gap };
 const rowTs = (r: Row) => ("line" in r ? r.line.ts_ms : r.gap.from_ms);
 
-/** The live transcript: two rows peeking at the bottom, or pulled up to just under the recording bar. A tap on its header or a drag moves it. */
-function Sheet({ full, setFull, state, lines, interim, interimAt, gaps }: { full: boolean; setFull: (f: boolean) => void; state: Snapshot["state"]; lines: Line[]; interim: string; interimAt: number; gaps: Gap[] }) {
+/**
+ * The live transcript: two rows peeking at the bottom, or dragged to any height up to just under the recording bar.
+ * A tap on its header toggles the peek and the full height, and a flick throws it to either.
+ * While compact it is one line of the newest words, and a tap on it closes the keyboard. While locked it holds its height and has no grip.
+ */
+function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, interim, interimAt, gaps }: { height: number; setHeight: (h: number) => void; compact: boolean; locked: boolean; onTicker: () => void; state: Snapshot["state"]; lines: Line[]; interim: string; interimAt: number; gaps: Gap[] }) {
   const rows = useMemo<Row[]>(() => [...lines.map((line) => ({ line })), ...gaps.map((gap) => ({ gap }))].sort((a, b) => rowTs(a) - rowTs(b)), [lines, gaps]);
-  const shown = full ? rows : rows.slice(-2);
+  // The height mid-drag stays here, so a drag re-renders the sheet and not the whole record screen.
+  const [dragged, setDragged] = useState<number | null>(null);
+  const shownHeight = dragged ?? height;
+  const up = !compact && shownHeight > PEEK;
+  const shown = useMemo(() => (up ? rows : rows.slice(-2)), [rows, up]);
+  const self = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
-  useEffect(() => {
+  if (!up) pinned.current = true;
+  useLayoutEffect(() => {
     const el = body.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [rows, interim, full]);
-  const drag = useRef<number | null>(null);
-  const down = (e: PointerEvent) => (drag.current = e.clientY);
-  const up = (e: PointerEvent) => {
-    if (drag.current === null) return;
-    const dy = e.clientY - drag.current;
-    drag.current = null;
-    if (Math.abs(dy) < 8) setFull(!full);
-    else setFull(dy < 0);
+  }, [rows, interim, up]);
+  // The card shrinks through a transition, or under a keyboard, after the render that pinned it.
+  useEffect(() => {
+    const el = body.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => pinned.current && (el.scrollTop = el.scrollHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [up]);
+  const { dragging, start } = usePointerDrag("sheet-dragging");
+  const grab = (e: PointerEvent) => {
+    const from = self.current!.offsetHeight;
+    const max = self.current!.parentElement!.clientHeight - 2 * GAP;
+    let h = from;
+    let last = { dy: 0, t: performance.now() };
+    let speed = 0;
+    start(
+      e,
+      (_, dy) => {
+        const t = performance.now();
+        speed = (dy - last.dy) / Math.max(t - last.t, 1);
+        last = { dy, t };
+        h = Math.min(max, Math.max(PEEK, from - dy));
+        setDragged(h);
+      },
+      (moved, cancelled) => {
+        setDragged(null);
+        if (cancelled) return;
+        if (!moved || Math.abs(last.dy) < TAP) return setHeight(up ? PEEK : FULL);
+        // A finger held still before letting go is no flick.
+        const flick = performance.now() - last.t < 80 ? speed : 0;
+        if (flick < -FLICK) setHeight(FULL);
+        else if (flick > FLICK) setHeight(PEEK);
+        else setHeight(max - h < SNAP ? FULL : h - PEEK < SNAP ? PEEK : h);
+      },
+    );
   };
   return (
     <section
+      ref={self}
       aria-label="Live transcript"
-      className="absolute inset-x-0 bottom-0 z-40 flex flex-col bg-card border-t border-line rounded-t-panel"
-      style={{ height: full ? "100%" : PEEK, boxShadow: "0 -16px 32px -8px var(--shadow-card-color)" }}
+      className="absolute inset-x-[12px] z-40 flex flex-col overflow-hidden bg-card border border-line rounded-panel shadow-pop"
+      style={{
+        bottom: GAP,
+        height: shownHeight === FULL ? `calc(100% - ${2 * GAP}px)` : `min(${shownHeight}px, calc(100% - ${2 * GAP}px))`,
+        transition: dragging ? "none" : "height 240ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+      }}
     >
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={full}
-        aria-label={full ? "Lower transcript" : "Raise transcript"}
-        onPointerDown={down}
-        onPointerUp={up}
-        onPointerCancel={() => (drag.current = null)}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setFull(!full))}
-        className="flex-none cursor-pointer select-none touch-none outline-none"
-      >
-        <div className="flex justify-center pt-[8px]">
-          <span className="block w-[36px] h-[4px] rounded-full bg-line" />
-        </div>
-        <header className={`flex items-center justify-between gap-2 px-[20px] pt-[6px] ${full ? "border-b border-line pb-[10px]" : "pb-[4px]"}`}>
-          <span className="text-[13px] min-[721px]:text-[12px] font-semibold text-ink">Live transcript</span>
-          <span className="flex items-center gap-[8px]">
-            <Status state={state} />
-            {full && (
-              <span aria-hidden className="inline-flex px-[6px] py-[4px] text-mut">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </span>
-            )}
+      {compact ? (
+        <button type="button" onClick={onTicker} className="h-full flex items-center gap-[10px] px-[16px] text-left">
+          <span className="sr-only">Show transcript: </span>
+          <span aria-hidden className={`flex-none w-[7px] h-[7px] rounded-pill ${state === "live" ? "bg-matcha" : "bg-grey"}`} />
+          {/* Right to left so a long line keeps its newest words and loses its start to the ellipsis. */}
+          <span dir="rtl" className={`flex-1 min-w-0 truncate text-left text-[16px] min-[721px]:text-[14px] ${interim ? "text-mut" : "text-ink"}`}>
+            <span dir="ltr">{interim || lines.at(-1)?.text || (state === "live" ? "Listening…" : "Connecting to Deepgram…")}</span>
           </span>
-        </header>
-      </div>
-      <div
-        ref={body}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-        }}
-        className={full ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[28px] text-[16px] min-[721px]:text-[13px]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}
-      >
-        {!rows.length && !interim && <p className="py-2 leading-snug text-grey m-[0px]">{state === "live" ? "Listening…" : "Connecting to Deepgram…"}</p>}
-        {shown.map((r, i) => ("line" in r ? <TranscriptLine key={i} ev={{ ts_ms: r.line.ts_ms, channel: "system", text: r.line.text, is_final: true }} single /> : <GapMarker key={`g${r.gap.from_ms}`} gap={r.gap} />))}
-        {interim && <TranscriptLine ev={{ ts_ms: interimAt, channel: "system", text: interim, is_final: false }} single />}
-      </div>
+        </button>
+      ) : (
+        <>
+          <div
+            {...(!locked && {
+              role: "button",
+              tabIndex: 0,
+              "aria-expanded": up,
+              "aria-label": up ? "Lower transcript" : "Raise transcript",
+              onPointerDown: grab,
+              onKeyDown: (e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setHeight(up ? PEEK : FULL)),
+            })}
+            className={`flex-none select-none outline-none ${locked ? "" : "cursor-grab touch-none"}`}
+          >
+            {!locked && (
+              <div className="flex justify-center pt-[8px]">
+                <span className="block w-[36px] h-[4px] rounded-full bg-line" />
+              </div>
+            )}
+            <header className={`flex items-center justify-between gap-2 px-[20px] ${locked ? "pt-[12px]" : "pt-[6px]"} ${up ? "border-b border-line pb-[10px]" : "pb-[4px]"}`}>
+              <span className="text-[13px] min-[721px]:text-[12px] font-semibold text-ink">Live transcript</span>
+              <span className="flex items-center gap-[8px]">
+                <Status state={state} />
+                {up && !locked && (
+                  <span aria-hidden className="inline-flex px-[6px] py-[4px] text-mut">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </span>
+                )}
+              </span>
+            </header>
+          </div>
+          <div
+            ref={body}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+            }}
+            className={up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}
+          >
+            {!rows.length && !interim && <p className="py-2 leading-snug text-grey m-[0px]">{state === "live" ? "Listening…" : "Connecting to Deepgram…"}</p>}
+            {shown.map((r, i) => ("line" in r ? <TranscriptLine key={i} ev={{ ts_ms: r.line.ts_ms, channel: "system", text: r.line.text, is_final: true }} single /> : <GapMarker key={`g${r.gap.from_ms}`} gap={r.gap} />))}
+            {interim && <TranscriptLine ev={{ ts_ms: interimAt, channel: "system", text: interim, is_final: false }} single />}
+          </div>
+        </>
+      )}
     </section>
   );
 }
