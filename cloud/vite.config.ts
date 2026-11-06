@@ -54,7 +54,7 @@ export default defineConfig({
       tailwindcss: here("node_modules/tailwindcss/index.css"),
     },
     // Imports in ../web/src resolve from web/node_modules, which Vercel never installs, and react would bundle twice.
-    dedupe: ["react", "react-dom", "markdown-it", "dompurify", "@tiptap/core", "@tiptap/react", "@tiptap/starter-kit", "@tiptap/extension-placeholder", "@tiptap/pm"],
+    dedupe: ["react", "react-dom", "markdown-it", "dompurify", "@tiptap/core", "@tiptap/react", "@tiptap/starter-kit", "@tiptap/extension-placeholder", "@tiptap/pm", "clsx", "lucide-react"],
   },
   // build.mjs clears dist and writes config.json before Vite runs, so Vite must keep it.
   build: { outDir: "dist", emptyOutDir: false },
