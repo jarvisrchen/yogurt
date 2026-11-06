@@ -564,6 +564,7 @@ end $$;
 
 -- The latest version of each ended, live meeting on the owner's phones, which a Mac adopts before its push.
 -- A meeting whose for_device names a Mac goes only to that Mac while it was seen in the last 7 days, and to any Mac after. A null for_device lists every one.
+-- One whose for_device names a phone stays on that phone, for every caller, since a Mac from before the choice passes null.
 -- A new name rather than an argument on yogurt_phone_meetings, since two shapes of one name make a call with no arguments ambiguous after a rollback.
 create or replace function public.yogurt_phone_meetings_for(for_device uuid)
 returns table (device_id uuid, device_name text, meeting_id text, push_id bigint, body jsonb)
@@ -580,6 +581,7 @@ begin
       order by v.device_id, v.meeting_id, v.push_id desc
     ) l join public.yogurt_devices d on d.id = l.device_id
     where l.body -> 'meeting' ->> 'ended_at' is not null
+      and not exists (select from public.yogurt_devices p where p.id::text = l.body -> 'meeting' ->> 'for_device' and p.user_id = auth.uid() and p.kind = 'phone')
       and ($1 is null or l.body -> 'meeting' ->> 'for_device' is null or l.body -> 'meeting' ->> 'for_device' = $1::text
         or not exists (select from public.yogurt_devices t where t.id::text = l.body -> 'meeting' ->> 'for_device' and t.user_id = auth.uid() and t.kind = 'mac'
           and t.seen_at > now() - interval '7 days'))

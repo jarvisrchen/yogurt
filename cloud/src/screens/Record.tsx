@@ -8,7 +8,7 @@ import { Back, DeviceTag, Field, LabelPicker, Note, Pills } from "../ui";
 import type { Api } from "../lib/api";
 import { QUEUE_MS, type Gap } from "../lib/audioQueue";
 import { clock } from "../lib/library";
-import { readDevice, readMac, saveMac, UNTITLED, type Line, type PhoneLabel, type PhoneMeeting } from "../lib/phone";
+import { readDevice, readTarget, saveTarget, UNTITLED, type Line, type PhoneDevice, type PhoneLabel, type PhoneMeeting } from "../lib/phone";
 import { useSession, type RecordingSession, type Snapshot } from "../lib/session";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { useChat } from "../lib/useChat";
@@ -46,23 +46,25 @@ function useDeviceColor(api: Api, token: string, id: string) {
 type Macs = ReturnType<typeof useMacs>;
 const useMacs = (api: Api, token: string, onRejected: () => void) => useCloudLoad(() => api.macs(token), onRejected, [api, token]);
 
-/** One Mac's labels, from the meetings it pushed, for a recording saved to it to take. */
-function useMacLabels(api: Api, token: string, mac: string | null, onRejected: () => void) {
-  return useCloudLoad(async () => (mac ? api.labels(token, mac, null, false) : []), onRejected, [api, token, mac]);
+/** One device's labels, from the meetings it pushed, for a recording saved to it to take. */
+function useTargetLabels(api: Api, token: string, target: string | null, onRejected: () => void) {
+  return useCloudLoad(async () => (target ? api.labels(token, target, null, false) : []), onRejected, [api, token, target]);
 }
 
 interface Saves {
+  /** This phone, the first place a recording can be saved. */
+  phone: string;
   macs: Macs;
-  mac: string | null;
-  onMac: (id: string) => void;
+  target: string | null;
+  onTarget: (id: string) => void;
   labels: PhoneLabel[];
   onLabels: (l: PhoneLabel[]) => void;
-  options: ReturnType<typeof useMacLabels>;
+  options: ReturnType<typeof useTargetLabels>;
 }
 
 function Head({ title, onTitle, device, color, startedAt, saves }: { title: string; onTitle: (t: string) => void; device: string; color: string; startedAt: number; saves: Saves }) {
-  const { mac, onMac, labels, onLabels, options } = saves;
-  const macs = saves.macs.data;
+  const { phone, target, onTarget, labels, onLabels, options } = saves;
+  const places = [{ value: phone, label: device }, ...(saves.macs.data ?? []).map((m) => ({ value: m.id, label: m.name }))];
   return (
     <div>
       <input
@@ -78,17 +80,17 @@ function Head({ title, onTitle, device, color, startedAt, saves }: { title: stri
       </div>
       {saves.macs.error && (
         <p className="text-[13px] min-[721px]:text-[11.5px] text-mut mt-[10px] mb-[0px]">
-          Could not load your Macs, so any Mac takes this meeting.{" "}
+          Could not load your Macs, so this meeting can only stay on this phone.{" "}
           <button type="button" onClick={saves.macs.retry} className="bg-transparent border-0 p-[0px] font-[inherit] text-[inherit] text-blue cursor-pointer">
             Try again
           </button>
         </p>
       )}
-      {!!macs?.length && (
+      {!saves.macs.loading && (
         <div className="flex items-center gap-[8px] mt-[10px] min-w-0">
           <span className="flex-none text-[13px] min-[721px]:text-[11.5px] text-mut">Saves to</span>
           <div className="min-w-0">
-            <Pills label="Saves to" options={macs.map((m) => ({ value: m.id, label: m.name }))} value={mac} onChange={onMac} />
+            <Pills label="Saves to" options={places} value={target} onChange={onTarget} />
           </div>
         </div>
       )}
@@ -120,18 +122,19 @@ export function Record({ api, token, session, onBack, onEnded, onRejected }: Pro
   return <Ready api={api} token={token} snap={snap} session={session} device={device} color={color} macs={macs} onBack={onBack} onRejected={onRejected} />;
 }
 
-function Ready({ api, token, snap, session, device, color, macs, onBack, onRejected }: { api: Api; token: string; snap: Snapshot; session: RecordingSession; device: { name: string; registered: boolean }; color: string; macs: Macs; onBack: () => void; onRejected: () => void }) {
+function Ready({ api, token, snap, session, device, color, macs, onBack, onRejected }: { api: Api; token: string; snap: Snapshot; session: RecordingSession; device: PhoneDevice; color: string; macs: Macs; onBack: () => void; onRejected: () => void }) {
   const [title, setTitle] = useState("");
   const [labels, setLabels] = useState<PhoneLabel[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
-  const mac = picked ?? (macs.data ? readMac(macs.data) : null);
-  const options = useMacLabels(api, token, mac, onRejected);
+  // Nothing until the Macs load, so Label does not offer this phone's labels for a recording about to go to a remembered Mac.
+  const target = picked ?? (macs.loading ? null : readTarget(device.id, macs.data ?? []));
+  const options = useTargetLabels(api, token, target, onRejected);
   const [name, setName] = useState(device.name);
   const [busy, setBusy] = useState(false);
   const now = useNow(true);
   const start = async () => {
     setBusy(true);
-    await session.start(title, name, labels, mac);
+    await session.start(title, name, labels, target === device.id ? null : target);
     setBusy(false);
   };
   return (
@@ -142,11 +145,12 @@ function Ready({ api, token, snap, session, device, color, macs, onBack, onRejec
       {snap.unfinished && <ResumeCard session={session} unfinished={snap.unfinished} />}
       <Head title={title} onTitle={setTitle} device={device.registered ? device.name : name.trim() || "Phone"} color={color} startedAt={now}
         saves={{
+          phone: device.id,
           macs,
-          mac,
-          onMac: (id) => {
+          target,
+          onTarget: (id) => {
             setPicked(id);
-            saveMac(id);
+            saveTarget(id);
           },
           labels,
           onLabels: setLabels,
@@ -228,8 +232,8 @@ function useKeyboardUp() {
 
 function Recording({ api, token, snap, meeting, session, device, color, macs, onEnded, onRejected }: { api: Api; token: string; snap: Snapshot; meeting: PhoneMeeting; session: RecordingSession; device: string; color: string; macs: Macs; onEnded: (key: string) => void; onRejected: () => void }) {
   const now = useNow(true);
-  const mac = meeting.for_device ?? null;
-  const options = useMacLabels(api, token, mac, onRejected);
+  const target = meeting.for_device ?? null;
+  const options = useTargetLabels(api, token, target, onRejected);
   const [height, setHeight] = useState(PEEK);
   const keyboard = useKeyboardUp();
   const pushFirst = useCallback(
@@ -278,11 +282,12 @@ function Recording({ api, token, snap, meeting, session, device, color, macs, on
           {snap.saveError && <Note>Not saved to your Cloud yet. {snap.saveError}{meeting.ended_at ? "" : " It tries again every 30 seconds."}</Note>}
           <Head title={meeting.title} onTitle={(t) => session.setTitle(t)} device={device} color={color} startedAt={meeting.started_at}
             saves={{
+              phone: session.device,
               macs,
-              mac,
-              onMac: (id) => {
+              target,
+              onTarget: (id) => {
                 session.setForDevice(id);
-                saveMac(id);
+                saveTarget(id);
               },
               labels: meeting.labels ?? [],
               onLabels: (l) => session.setLabels(l),

@@ -1776,3 +1776,12 @@ New closed items go at the bottom.
 - [x] **MOB-12** Delete a phone meeting too short to enhance and return to the library, as the Mac does
 
   End or Enhance on a phone meeting too short to enhance deletes it from the Cloud, shows "Meeting too short", and returns to the library after 1.4 s, as the Mac does.
+
+- [x] **MOB-13** Save a phone recording to the phone itself, with the phone's own labels, and move it to a Mac later
+
+  Landed in the MOB-13 PR (2026-11-06).
+  Saves to lists the phone first, then the Macs seen in 7 days, and starts on the last pick, or the phone the first time.
+  A meeting whose `for_device` names a phone is offered to no Mac, enforced in `yogurt_phone_meetings_for`, so a 2.4.0 Mac's zero-argument call obeys it too.
+  The phone's labels come from `yogurt_labels` on the phone's own meetings, so a label made on the phone is offered on its next recording while a meeting kept there has it.
+  Move to a Mac on a phone's ended meeting pushes a new version with that Mac as `for_device`, and the page shows "Moving to <Mac>" until the Mac takes it.
+  `session.start` takes null for this phone and fills in the id it registers, since an unregistered phone's `readDevice` makes a new id on every call.

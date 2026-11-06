@@ -20,7 +20,7 @@ import {
   SearchPager,
   useDesktop,
 } from "../ui";
-import { Adopted, type Api, type EditOp, type Label, TokenRejected } from "../lib/api";
+import { Adopted, type Api, type Bundle, type EditOp, type Label, TokenRejected } from "../lib/api";
 import { appendNote, noteBlock, overlays } from "../lib/edits";
 import { enhanceMeeting } from "../lib/enhance";
 import {
@@ -109,6 +109,12 @@ export function Library({
   // The open meeting whose Enhance the Cloud refused because a Mac adopted it, shown as gone while the phone's body is still loaded.
   const [adopted, setAdopted] = useState<string | null>(null);
   const { asOf: pushId, meeting: open, page } = loc;
+  // The body this page last pushed for a phone's meeting, newer than the loaded one until its reload lands, so a rename, a move, and an enhance build on each other.
+  const ownPush = useRef<{ key: string; body: Bundle | null } | null>(null);
+  // Opening a meeting again reads it fresh, in case another tab changed it since.
+  useEffect(() => {
+    ownPush.current = null;
+  }, [open]);
   const size = loc.size ?? resolvePageSize(null);
 
   const base = useCloudLoad(
@@ -128,6 +134,8 @@ export function Library({
     [api, token, pushId],
   );
   const devices = base.data?.devices;
+  // Apart from base, so the library still loads when it fails: only a phone meeting's Move to a Mac needs it.
+  const macsLoad = useCloudLoad(() => api.macs(token), onRejected, [api, token]);
 
   // One page at a time. The last page stays up, dimmed, while the next loads.
   const pageLoad = useCloudLoad(
@@ -282,6 +290,14 @@ export function Library({
     }
     return e;
   };
+  /** Pushes a new version of the open phone meeting, made from the newest body this page knows. */
+  const pushOwn = async (next: (b: Bundle) => Bundle | null) => {
+    const from = ownPush.current?.key === open ? ownPush.current.body : row?.body;
+    if (!open || !from) return;
+    const body = next(from);
+    await api.pushMeeting(openDevice, meetingId, body);
+    ownPush.current = { key: open, body };
+  };
   // Only a phone's own meeting, since a Mac's copy, adopted ones too, is the Mac's to push, and only an ended one, since the recording's next push would drop an enhance of a live one.
   const enhance: Enhance | null =
     row && !pushId && !finishing && base.data?.phones.includes(openDevice) && row.body.meeting.ended_at !== null
@@ -290,11 +306,11 @@ export function Library({
             const fields = await enhanceMeeting(api, token, row.body.meeting, { onText });
             if (!fields) {
               // Deleted, as the Mac deletes an accidental start and stop on Enhance.
-              await api.pushMeeting(openDevice, row.body.meeting.id, null);
+              await pushOwn(() => null);
               pageLoad.retry();
               return null;
             }
-            await api.pushMeeting(openDevice, row.body.meeting.id, { ...row.body, meeting: { ...row.body.meeting, ...fields } });
+            await pushOwn((b) => ({ ...b, meeting: { ...b.meeting, ...fields } }));
             bodyLoad.retry();
             return fields.enriched_md;
           } catch (e) {
@@ -310,12 +326,26 @@ export function Library({
       ? {
           mac: phoneOwned ? null : nameOf(openDevice),
           pending: pending.filter((e) => keyOf(e) === open),
+          move: phoneOwned
+            ? {
+                macs: macsLoad.data ?? [],
+                to: row.body.meeting.for_device ?? null,
+                go: async (mac: string) => {
+                  try {
+                    await pushOwn((b) => ({ ...b, meeting: { ...b.meeting, for_device: mac } }));
+                    bodyLoad.retry();
+                  } catch (e) {
+                    throw writeFailed(e);
+                  }
+                },
+              }
+            : null,
           edit: async (op: EditOp, value = "") => {
             try {
               if (phoneOwned) {
-                const m = row.body.meeting;
-                const body = op === "delete" ? null : { ...row.body, meeting: op === "rename" ? { ...m, title: value.trim() } : { ...m, notes_md: appendNote(m.notes_md, noteBlock(value)) } };
-                await api.pushMeeting(openDevice, meetingId, body);
+                await pushOwn((b) =>
+                  op === "delete" ? null : { ...b, meeting: op === "rename" ? { ...b.meeting, title: value.trim() } : { ...b.meeting, notes_md: appendNote(b.meeting.notes_md, noteBlock(value)) } },
+                );
                 pageLoad.retry();
                 if (op === "delete") back({ ...loc, meeting: null });
                 else bodyLoad.retry();

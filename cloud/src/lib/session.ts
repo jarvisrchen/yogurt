@@ -85,7 +85,7 @@ export class RecordingSession {
     for (const fn of this.subs) fn();
   }
 
-  /** Makes sure the Cloud has this browser as a phone device, then records a new meeting. */
+  /** Makes sure the Cloud has this browser as a phone device, then records a new meeting, saved to the Mac `forDevice` or, when null, to this phone. */
   async start(title: string, name: string, labels: PhoneLabel[] = [], forDevice: string | null = null) {
     // Starting replaces the IndexedDB copy, so a meeting a closed page left must be resumed or ended first.
     const left = this.snap.unfinished ?? (await loadUnfinished().catch(() => null));
@@ -101,7 +101,7 @@ export class RecordingSession {
     }
     saveDevice({ id: device.id, name: named, registered: true });
     const now = Date.now();
-    await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString(), labels, for_device: forDevice }, true);
+    await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString(), labels, for_device: forDevice ?? device.id }, true);
   }
 
   async resume() {

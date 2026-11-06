@@ -36,6 +36,8 @@ export interface Bundle {
     transcript_json: string;
     /** Which STT wrote the transcript, such as "cloud · nova-3 · phone". Null for meetings from before the field. */
     stt_engine?: string | null;
+    /** On a phone's meeting, the Mac that takes it, or the phone itself to keep it there. Null lets any Mac take it. */
+    for_device?: string | null;
   };
 }
 

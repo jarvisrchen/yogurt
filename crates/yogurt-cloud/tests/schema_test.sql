@@ -981,6 +981,17 @@ set role authenticated;
 select pg_temp.eq((select string_agg(meeting_id, ',') from yogurt_phone_meetings_for(:d5)), 't1', 'a chosen Mac unseen for a week lets any Mac take it');
 select pg_temp.eq(yogurt_inbox(:d5)::text, 'true', 'and the inbox says so');
 select pg_temp.eq((select string_agg(name, ',') from yogurt_macs(:'stok')), 'Labels 5', 'and the phone no longer offers that Mac');
+
+-- A meeting saved to the phone stays there, even for a Mac from before the choice, until it is moved to a Mac.
+select yogurt_start_push(:f1) as push_k \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('k1', :push_k, :f1, jsonb_set(pg_temp.pm('Kept', 6000), '{meeting,for_device}', to_jsonb(:f1::text)));
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings_for(:d5)), 't1', 'a meeting saved to the phone is not offered to a Mac');
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings()), 't1', 'nor to a Mac from before the choice');
+select yogurt_start_push(:f1) as push_k \gset
+insert into yogurt_versions (meeting_id, push_id, device_id, body) values
+  ('k1', :push_k, :f1, jsonb_set(pg_temp.pm('Kept', 6000), '{meeting,for_device}', to_jsonb(:d5::text)));
+select pg_temp.eq((select string_agg(meeting_id, ',' order by meeting_id) from yogurt_phone_meetings_for(:d5)), 'k1,t1', 'moved to a Mac, that Mac takes it');
 reset role;
 
 

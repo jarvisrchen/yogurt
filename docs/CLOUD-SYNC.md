@@ -259,12 +259,13 @@ The enhance function may run for 300 seconds, the most Vercel's Hobby plan allow
 
 The webapp's Record button records a meeting on a phone, or in any browser, and transcribes it live with Deepgram.
 The phone streams its audio to Deepgram directly, and the audio is never stored.
-Saves to, under the title, picks the Mac that takes the meeting once it ends, and the phone remembers it for the next recording.
-It lists the Macs that checked your Cloud in the last 7 days, which a Mac does every minute while Yogurt runs there with Auto-push on.
-Only the picked Mac takes the meeting, unless it goes 7 days without checking, and then any Mac does.
-A Mac running a Yogurt from before this choice takes any phone meeting, so update every Mac to keep the choice.
+Saves to, under the title, picks where the meeting is kept once it ends, and the phone remembers it for the next recording.
+It lists the phone first, then the Macs that checked your Cloud in the last 7 days, which a Mac does every minute while Yogurt runs there with Auto-push on.
+A meeting saved to the phone stays in your Cloud under the phone, and no Mac takes it.
+A meeting saved to a Mac goes only to that Mac, unless the Mac goes 7 days without checking, and then any Mac takes it.
+A Mac running Yogurt 2.4.0 or earlier takes any meeting not saved to the phone, so update every Mac to keep the choice.
 Label, under it, gives the meeting labels before or while you record.
-It lists the labels that Mac uses on meetings you have not archived, and typing a name it does not list offers to create it.
+It lists the labels that the phone or Mac uses on meetings you have not archived, and typing a name it does not list offers to create it.
 The Mac files the meeting under its own label of the same name, in any case.
 It creates a label it does not have in the color the list showed, or in its own next color for a label typed on the phone.
 
@@ -455,13 +456,14 @@ Enhanced opens first when the meeting has it.
 A transcript link in the notes opens the Transcript tab, scrolls to the line nearest that time, and tints it briefly.
 The footer says which machine pushed the meeting and when.
 
-Rename, Add note, and Delete sit under the meeting's title.
+Rename, Add note, and Delete sit under the meeting's title, with Move to a Mac between them on a meeting recorded on your phone.
 Rename changes the title, and Add note adds your text to the end of the meeting's notes under a line such as "Added in Yogurt Cloud, Nov 4, 10:42 AM".
 Delete asks first, and the meeting's earlier versions stay in History.
 A meeting a Mac pushed changes on that Mac, which picks the edit up within a minute while Yogurt is running there with Auto-push on.
 Until then the page shows the change with a line such as "Waiting for MacBook Pro to rename this to …" and an Undo, and the library already lists the new title or leaves the deleted meeting out.
 If the title changed on the Mac before it picked up your rename, the Mac keeps its own title.
 A meeting recorded on your phone and not yet taken by a Mac changes at once.
+Move to a Mac picks one of the Macs Saves to offers, and that Mac takes the meeting with its labels within a minute while Yogurt runs there, until which the page says "Moving to MacBook Pro".
 A meeting shown from History, or one a phone is still recording, has no edit buttons.
 
 Ask this meeting, at the bottom of a meeting, opens a chat about it.

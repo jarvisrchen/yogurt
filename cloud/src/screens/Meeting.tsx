@@ -7,7 +7,7 @@ import { storedSegmentToEvent } from "@web/lib/ws";
 import { AskPill } from "@web/components/AskPill";
 import { type ChatCopy, ChatWindow } from "@web/components/ChatWindow";
 import type { ChatMessage } from "@web/lib/api";
-import { Back, DeviceTag } from "../ui";
+import { Back, DeviceTag, Pills } from "../ui";
 import type { CloudChat } from "../lib/useChat";
 import { Adopted, type EditOp, type PendingEdit } from "../lib/api";
 import { waitingText } from "../lib/edits";
@@ -45,6 +45,8 @@ export interface Editing {
   /** The Mac that makes the edits, or null for a phone's own meeting, which changes at once. */
   mac: string | null;
   pending: PendingEdit[];
+  /** A phone's own meeting can move to one of `macs`. `to` is where it is saved now. */
+  move: { macs: { id: string; name: string }[]; to: string | null; go: (mac: string) => Promise<void> } | null;
   /** `value` is the new title or the note's text. */
   edit: (op: EditOp, value?: string) => Promise<void>;
   cancel: (id: number) => Promise<void>;
@@ -166,17 +168,20 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
 const ACTION = "text-[14px] min-[721px]:text-[12.5px] font-semibold bg-transparent border-0 p-[0px] cursor-pointer font-[inherit] disabled:opacity-50 disabled:cursor-not-allowed";
 const INPUT = "w-full font-sans text-[16px] min-[721px]:text-[13px] bg-paper text-ink placeholder:text-grey border border-line rounded-button px-[12px] py-[10px] outline-none focus:border-blue focus:ring-1 focus:ring-blue";
 
-type Mode = "rename" | "note" | "delete";
+type Mode = "rename" | "note" | "delete" | "move";
 
 /** Rename, Add note, and Delete, each opening its form under the header, then a line for each edit the Mac has yet to make. */
 function EditBar({ editing, title }: { editing: Editing; title: string }) {
   const [mode, setMode] = useState<Mode | null>(null);
   const [text, setText] = useState("");
+  const move = editing.move;
+  const macs = move?.macs ?? [];
+  const movingTo = macs.find((m) => m.id === move?.to);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const open = (m: Mode) => {
     setMode(m);
-    setText(m === "rename" ? title : "");
+    setText(m === "rename" ? title : m === "move" ? (movingTo?.id ?? macs[0]?.id ?? "") : "");
     setError(null);
   };
   const run = async (f: () => Promise<void>) => {
@@ -200,8 +205,11 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
-  const save = () => void run(() => (mode === "rename" ? editing.edit("rename", text) : mode === "note" ? editing.edit("append_note", text) : editing.edit("delete")));
-  const ready = mode === "delete" || (mode === "rename" ? !!text.trim() && text.trim() !== title : !!text.trim());
+  const save = () =>
+    void run(() =>
+      mode === "rename" ? editing.edit("rename", text) : mode === "note" ? editing.edit("append_note", text) : mode === "move" ? move!.go(text) : editing.edit("delete"),
+    );
+  const ready = mode === "delete" || (mode === "rename" ? !!text.trim() && text.trim() !== title : mode === "move" ? !!text && text !== move?.to : !!text.trim());
   const keys = (e: KeyboardEvent) => {
     if (e.key === "Escape") setMode(null);
     else if (e.key === "Enter" && (mode === "rename" || e.metaKey || e.ctrlKey) && ready && !busy) {
@@ -212,13 +220,18 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
   return (
     <div className="flex flex-col gap-[8px] mt-[10px] min-[721px]:max-w-[560px]">
       {!mode && (
-        <div className="flex gap-[16px]">
+        <div className="flex flex-wrap gap-x-[16px] gap-y-[6px]">
           <button type="button" className={`${ACTION} text-blue`} onClick={() => open("rename")}>
             Rename
           </button>
           <button type="button" className={`${ACTION} text-blue`} onClick={() => open("note")}>
             Add note
           </button>
+          {!!macs.length && (
+            <button type="button" className={`${ACTION} text-blue`} onClick={() => open("move")}>
+              Move to a Mac
+            </button>
+          )}
           <button type="button" className={`${ACTION} text-straw`} onClick={() => open("delete")}>
             Delete
           </button>
@@ -236,6 +249,12 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
           {mode === "note" && (
             <textarea aria-label="New note" autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={keys} maxLength={20000} placeholder="Added to the end of your notes" className={`${INPUT} resize-y`} />
           )}
+          {mode === "move" && (
+            <div className="flex flex-col gap-[8px]" onKeyDown={(e) => e.key === "Escape" && setMode(null)}>
+              <Pills label="Move to" options={macs.map((m) => ({ value: m.id, label: m.name }))} value={text} onChange={setText} />
+              <p className="text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]">The Mac takes it, with its labels, within a minute while yogurt runs there.</p>
+            </div>
+          )}
           {mode === "delete" && (
             <p className="text-[15px] min-[721px]:text-[12.5px] text-ink m-[0px]">
               {editing.mac ? `Delete this meeting? ${editing.mac} deletes it, and your Cloud keeps it in History.` : "Delete this meeting? Your Cloud keeps it in History."}
@@ -243,7 +262,7 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
           )}
           <div className="flex gap-[8px]">
             <Button size="sm" type="submit" variant={mode === "delete" ? "warn" : "primary"} disabled={!ready || busy}>
-              {mode === "rename" ? "Save title" : mode === "note" ? "Add note" : "Delete"}
+              {mode === "rename" ? "Save title" : mode === "note" ? "Add note" : mode === "move" ? "Move" : "Delete"}
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setMode(null)} disabled={busy}>
               Cancel
@@ -254,6 +273,11 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
       {error && (
         <div role="alert" className={NOTE}>
           <span className="min-w-0 break-words">{error}</span>
+        </div>
+      )}
+      {movingTo && !mode && (
+        <div role="status" className={NOTE}>
+          <span className="min-w-0 break-words">Moving to {movingTo.name}. It takes this meeting within a minute while yogurt runs there.</span>
         </div>
       )}
       {editing.mac &&
