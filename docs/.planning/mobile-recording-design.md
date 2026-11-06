@@ -163,7 +163,8 @@ End runs in this order:
 2. The page pushes the final transcript and notes with `ended_at` still null.
 3. The meeting view opens with the enhance streaming under EnhancingBanner.
 4. The page pushes once more with `ended_at` set, and with `enriched_md`, `llm_model`, and `template` when the enhance worked.
-   A failed enhance, or a meeting too short to enhance, is pushed ended without them, and the view offers Enhance.
+   A failed enhance is pushed ended without them, and the view offers Enhance.
+   A meeting too short to enhance is deleted instead, and the view says so and returns to the library, as the Mac does for an accidental start and stop.
 
 A Mac adopts only ended meetings, so it never takes one before its enhanced version exists.
 The meeting stays in IndexedDB until that last push, so if the tab dies during the enhance, the Resume card's End runs the same steps again.

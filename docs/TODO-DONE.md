@@ -1772,3 +1772,7 @@ New closed items go at the bottom.
   `Device` no longer declares `created_at`, which `yogurt_device_info` still returns but nothing in the webapp read, and which `yogurt_macs` does not return.
   The ponytail review of MOB-10's final diff, which had skipped it, found comments and a label error still describing labels from every Mac, and a readMac fallback comment naming the first Mac where the code picks the Mac seen last, and those now match the code.
   It also found the 10-minute `seen_at` stamp written in both `yogurt_phone_meetings_for` and `yogurt_inbox`, which now call one `yogurt_private.yogurt_mark_seen`.
+
+- [x] **MOB-12** Delete a phone meeting too short to enhance and return to the library, as the Mac does
+
+  End or Enhance on a phone meeting too short to enhance deletes it from the Cloud, shows "Meeting too short", and returns to the library after 1.4 s, as the Mac does.

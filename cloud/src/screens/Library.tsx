@@ -288,7 +288,12 @@ export function Library({
       ? async (onText) => {
           try {
             const fields = await enhanceMeeting(api, token, row.body.meeting, { onText });
-            if (!fields) return null;
+            if (!fields) {
+              // Deleted, as the Mac deletes an accidental start and stop on Enhance.
+              await api.pushMeeting(openDevice, row.body.meeting.id, null);
+              pageLoad.retry();
+              return null;
+            }
             await api.pushMeeting(openDevice, row.body.meeting.id, { ...row.body, meeting: { ...row.body.meeting, ...fields } });
             bodyLoad.retry();
             return fields.enriched_md;

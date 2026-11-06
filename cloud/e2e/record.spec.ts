@@ -383,3 +383,26 @@ test("record on a phone: live lines, notes, a dropped socket, a killed tab, and 
   await expect(page.getByText(/stopped recording/)).toHaveCount(0);
   await shot(page, info, "r11-library-phone", false);
 });
+
+test("an End with nothing to enhance deletes the meeting and goes back to the library, as the Mac does", async ({ page }, info) => {
+  await reset();
+  await onboard(page);
+  await seed();
+  await page.reload();
+  await expect(page.getByRole("button", { name: /edis update/ })).toBeVisible();
+  const rows = await page.getByTestId("list-row").count();
+  await page.getByRole("button", { name: "Record" }).click();
+  await page.getByLabel("This phone's name").fill(isPhone(page) ? "Pixel 10" : "Desk mic");
+  await page.getByRole("button", { name: "Start recording" }).click();
+  // Ended before the fake's second line, so the transcript has fewer than 6 words and there are no notes.
+  const enhancesBefore = enhances;
+  await page.getByRole("button", { name: "End meeting" }).click();
+  await expect(page.getByText("Meeting too short")).toBeVisible();
+  await shot(page, info, "r12-too-short");
+  await expect(page.getByText("Meeting too short")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Record" })).toBeVisible();
+  await expect(page.getByTestId("list-row")).toHaveCount(rows);
+  expect(enhances).toBe(enhancesBefore);
+  const [last] = await query<{ body: unknown }>("select v.body from yogurt_versions v join yogurt_devices d on d.id = v.device_id where d.kind = 'phone' order by v.push_id desc limit 1");
+  expect(last.body).toBeNull();
+});

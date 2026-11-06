@@ -210,6 +210,13 @@ export class RecordingSession {
     return p;
   }
 
+  /** Deletes the meeting from the Cloud, in turn after any push still going. */
+  private remove(deviceId: string, id: string): Promise<void> {
+    const p = this.pushes.then(() => this.api.pushMeeting(deviceId, id, null));
+    this.pushes = p.catch(() => undefined);
+    return p;
+  }
+
   /** The device the meeting is recorded under, which a resumed meeting keeps from when it started. */
   get device() {
     return this.deviceId;
@@ -290,7 +297,7 @@ export class RecordingSession {
     return key;
   }
 
-  /** Enhances the meeting and pushes it ended. A failed or skipped enhance still saves it ended, and the meeting view offers Enhance again. */
+  /** Enhances the meeting and pushes it ended. A failed enhance still saves it ended, and the meeting view offers Enhance again. A too-short one is deleted, as the Mac deletes an accidental start and stop. */
   private async finish(key: string, deviceId: string, m: PhoneMeeting, endedAt: number) {
     const run = (r: Finish) => this.set({ finish: { key, run: r } });
     run({ status: "running", text: "" });
@@ -304,16 +311,18 @@ export class RecordingSession {
       if (e instanceof TokenRejected) this.onRejected();
       failed = { status: "error", message: `Enhance failed. ${message(e)}` };
     }
+    const short = failed?.status === "short";
     // A failed push keeps the enhance, so Retry only pushes again.
     const save = async () => {
       try {
         // Refused only when this ended version went in on an earlier try whose answer was lost, and a Mac adopted it since.
-        await this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields).catch((e) => {
+        await (short ? this.remove(deviceId, m.id) : this.push(deviceId, () => ({ ...m, ended_at: endedAt }), fields)).catch((e) => {
           if (!(e instanceof Adopted)) throw e;
         });
         await this.forget(m.id);
       } catch (e) {
-        return run({ status: "error", message: `Not saved to your Cloud yet. ${message(e)}`, retry: () => (run({ status: "running", text }), void save()) });
+        const what = short ? "Could not delete this too-short meeting from your Cloud." : "Not saved to your Cloud yet.";
+        return run({ status: "error", message: `${what} ${message(e)}`, retry: () => (run({ status: "running", text }), void save()) });
       }
       run(failed ?? { status: "done", enriched_md: fields!.enriched_md });
     };

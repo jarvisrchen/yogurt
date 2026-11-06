@@ -45,7 +45,7 @@ test.beforeAll(async () => {
 test.afterAll(() => new Promise<void>((r) => (llm ? llm.close(() => r()) : r())));
 
 /** A meeting recorded on a phone, pushed the way the record screen pushes it, beside the two laptops of `seed`, and Laptop 1's adopted copy of another. */
-async function seedPhone() {
+async function seedPhone(extra: object = {}) {
   const sb = createClient(API, KEY);
   const { error } = await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD });
   if (error) throw error;
@@ -56,7 +56,7 @@ async function seedPhone() {
   const push = await sb.rpc("yogurt_start_push", { device_id: PHONE });
   ok(push);
   const start = Date.now() - 30 * 60_000;
-  const meeting = { id: MEETING, title: "Pricing sync", started_at: start, ended_at: start + 18 * 60_000, notes_md: CASE.notes_md, enriched_md: null, transcript_json: CASE.transcript_json, starred: false, stt_engine: STT, llm_model: null, template: null, created_at: new Date(start).toISOString(), labels: [] };
+  const meeting = { id: MEETING, title: "Pricing sync", started_at: start, ended_at: start + 18 * 60_000, notes_md: CASE.notes_md, enriched_md: null, transcript_json: CASE.transcript_json, starred: false, stt_engine: STT, llm_model: null, template: null, created_at: new Date(start).toISOString(), labels: [], ...extra };
   ok(await sb.from("yogurt_versions").insert({ meeting_id: MEETING, push_id: push.data, device_id: PHONE, body: { v: 1, meeting, chat: [] } }));
   const mac = await sb.rpc("yogurt_start_push", { device_id: DEVICES.a });
   ok(mac);
@@ -202,4 +202,22 @@ test("a Mac that adopts the meeting while its Enhance streams keeps it, and the 
   if (phone) await page.getByRole("button", { name: "All devices" }).click();
   await expect(page.getByTestId("list-row").filter({ hasText: "Pricing sync" })).toHaveCount(1);
   await expect(page.getByTestId("list-row").filter({ hasText: "Pricing sync" })).toContainText("Laptop 1");
+});
+
+test("Enhance on a phone meeting too short to enhance deletes it and goes back to the library, as the Mac does", async ({ page }) => {
+  await reset();
+  await onboard(page);
+  await seed();
+  await seedPhone({ title: "Accidental start", notes_md: "", transcript_json: JSON.stringify([{ ts_ms: 0, channel: "them", text: "hello there" }]) });
+  await page.reload();
+  await page.goto(`/#/m/${PHONE}/${MEETING}`);
+  await expect(page.getByRole("heading", { name: "Accidental start" })).toBeVisible();
+  const asks = asked.length;
+  await page.getByRole("button", { name: "Enhance", exact: true }).click();
+  await expect(page.getByText("Meeting too short")).toBeVisible();
+  await expect(page.getByText("Meeting too short")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /edis update/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Accidental start/ })).toHaveCount(0);
+  expect(asked.length).toBe(asks);
+  expect((await versions()).at(-1)!.body).toBeNull();
 });
