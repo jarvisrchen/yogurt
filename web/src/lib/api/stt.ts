@@ -9,22 +9,8 @@ import {
 } from "@tanstack/react-query";
 import { bearerFetch } from "../session";
 
-export type ModelName =
-  | "tiny.en"
-  | "small.en"
-  | "medium.en"
-  | "large-v3-turbo"
-  | "large-v3";
-
-export interface ModelView {
-  name: ModelName;
-  size_mb: number;
-  downloaded: boolean;
-  downloading: boolean;
-  intel_supported: boolean;
-  /** The verified copy lives in a Homebrew prefix. DELETE refuses these, so the picker shows a "brew" chip. */
-  managed_by_homebrew: boolean;
-}
+import type { ModelName, ModelView } from "../../components/settings/modelTypes";
+export type { ModelName, ModelView } from "../../components/settings/modelTypes";
 
 async function http<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await bearerFetch(input, {

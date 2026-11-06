@@ -3,7 +3,7 @@ import { Button } from "@web/components/Button";
 import { Pill } from "@web/components/Pill";
 import { ModelPicker } from "@web/components/settings/ModelPicker";
 import { LABEL } from "@web/components/settings/labelClass";
-import type { ModelView } from "@web/lib/api/stt";
+import type { ModelView } from "@web/components/settings/modelTypes";
 import { Back, LockButton, useDesktop } from "../ui";
 import { phoneModels, readStt, saveStt, type PhoneModel, type SttChoice } from "../lib/stt";
 

@@ -22,7 +22,9 @@
       "react/*": ["./node_modules/@types/react/*"],
       "markdown-it": ["./node_modules/@types/markdown-it"],
       "dompurify": ["./node_modules/dompurify"],
-      "@tiptap/*": ["./node_modules/@tiptap/*"]
+      "@tiptap/*": ["./node_modules/@tiptap/*"],
+      "clsx": ["./node_modules/clsx"],
+      "lucide-react": ["./node_modules/lucide-react"]
     }
   },
   "include": ["src", "api", "vite.config.ts", "e2e", "playwright.config.ts"]
