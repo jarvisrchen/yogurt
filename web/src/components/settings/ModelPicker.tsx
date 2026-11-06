@@ -4,8 +4,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Trash2 } from "lucide-react";
-import type { ModelView } from "../../lib/api/stt";
-import type { DownloadState } from "../../hooks/useModelDownload";
+import type { DownloadState, ModelView } from "./modelTypes";
 
 interface ModelPickerProps {
   models: ModelView[];

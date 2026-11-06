@@ -659,7 +659,7 @@ graph LR
         AUDIOB["raw audio buffers"]
     end
     subgraph Opt["Leaves only on explicit opt-in"]
-        AU["audio -> Deepgram (cloud STT, and every phone recording)"]
+        AU["audio -> Deepgram (cloud STT, and a phone recording unless Local is picked)"]
         TR["notes + transcript -> the configured LLM provider (enhance, chat)"]
         CL["notes + transcript + chat -> the user's own Yogurt Cloud (push)"]
         GRN["API key + read requests only -> Granola (import)"]
@@ -674,6 +674,11 @@ Two keys live outside `keys.json`, in the user's Vercel project's environment, S
 No function returns or logs either.
 `cloud/api/stt-token.ts` trades the Deepgram key for a token that expires in 30 seconds, and only for the signed-in owner with an unlocked browser token, so the phone never sees the key.
 The phone's audio goes from the browser to Deepgram directly, is held in memory only while a socket is down, and is never stored.
+In the Android app the user can pick Local instead, in Settings > Transcription, and then the audio never leaves the phone.
+The app's recorder service runs sherpa-onnx: Silero cuts the mic's audio at pauses, and Whisper (`tiny.en`, `base.en`, `small.en`) or Parakeet TDT v3 (`parakeet-v3`) turns each stretch into one line.
+Speech waits in memory for the model, up to 20 minutes, and the record screen shows how far behind it is past 15 seconds.
+The models download through Android's download manager, over Wi-Fi only, from pinned Hugging Face revisions, and count only once every file matches its SHA-256 (`android/.../Models.kt`).
+The meeting's `stt_engine` names the engine, `cloud · nova-3 · phone` or `local · <model> · phone`, which the Mac shows as its engine pill.
 
 Enforcement points, all in `routes.rs` unless noted:
 
@@ -854,7 +859,7 @@ Version truth lives in `Cargo.toml` / `web/package.json`; this section records t
 Notes and transcripts leave only to the LLM provider the user configures (enhance and chat) and to a Yogurt Cloud the user connects, which is their own Supabase project ([§12](#12-yogurt-cloud-sync)).
 That Cloud's chat sends a meeting's transcript, or the titles, dates, notes, and transcript excerpts of the meetings a cross-meeting question finds, from the user's Vercel project to the LLM provider set there.
 Captured audio is deleted after transcription.
-A meeting recorded on a phone in the Cloud webapp streams its audio to Deepgram, since a phone has no local STT yet, and the phone holds that audio in memory only while it waits for a socket ([§12](#12-yogurt-cloud-sync)).
+A meeting recorded on a phone in the Cloud webapp streams its audio to Deepgram, unless the user picked Local in the Android app, where a model on the phone transcribes it, and the phone holds that audio in memory only while it waits for a socket or the model ([§12](#12-yogurt-cloud-sync)).
 API keys and the Yogurt Cloud connection live only in `keys.json` in the data directory, `~/.yogurt/keys.json` by default (mode 0600, written atomically) - never in SQLite, never in a response body, never in a log line.
 The exceptions are the Cloud chat's LLM key and the Cloud's Deepgram key, which live in the user's Vercel project's environment and are never returned or logged.
 - **Single process:** audio capture, STT, LLM calls, web serving, and SQLite all run in one Rust binary.

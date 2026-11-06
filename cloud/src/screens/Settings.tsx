@@ -5,6 +5,7 @@ import { Back, Brand, LockButton, FieldLabel, LoadError, PinField, Segmented, us
 import { NewPin } from "./Pin";
 import { pinBoxes, validPin } from "../lib/route";
 import { TokenRejected, type Api, type Browser } from "../lib/api";
+import { localChoice } from "../lib/stt";
 
 const THEMES: { value: ThemePref; label: string }[] = [
   { value: "system", label: "System" },
@@ -51,6 +52,7 @@ interface Props {
   remember: boolean;
   onBack: () => void;
   onHistory: () => void;
+  onTranscription: () => void;
   onLock: () => void;
   onSignOut: () => void;
   onRejected: () => void;
@@ -117,6 +119,17 @@ export function Settings(p: Props) {
                 <Chev />
               </Row>
             )}
+          </GroupBox>
+        </Group>
+        <Group title="Recording">
+          <GroupBox>
+            <Row onClick={desktop ? undefined : p.onTranscription}>
+              <div>
+                Transcription
+                <Small>{localChoice() ? `Local · ${localChoice()} · on this phone` : "Cloud · Deepgram"}</Small>
+              </div>
+              {desktop ? <Button variant="secondary" onClick={p.onTranscription} className="!px-[14px] !py-[8px] !text-[12.5px] !font-bold !leading-normal">Change</Button> : <Chev />}
+            </Row>
           </GroupBox>
         </Group>
         <Group title="PIN">

@@ -19,6 +19,11 @@ function fakeApp(status: object = { recording: false, meetingId: null }, meeting
       return JSON.stringify(id === app.meetingId ? kept.slice(Math.max(0, from - app.base)) : []);
     },
     appVersion: () => "0.1.0",
+    models: () => "[]",
+    downloadModel: () => '{"ok":true}',
+    cancelDownload: () => undefined,
+    deleteModel: () => '{"ok":true}',
+    testModel: () => undefined,
   };
   const win = new EventTarget() as unknown as Window;
   const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -29,19 +34,31 @@ function fakeApp(status: object = { recording: false, meetingId: null }, meeting
   return { app, kept, calls, bridge, win, doc, post, heard };
 }
 
-async function started(app: ReturnType<typeof fakeApp>, have = 0, meetingId = "M1") {
+async function started(app: ReturnType<typeof fakeApp>, have = 0, meetingId = "M1", model: string | null = null) {
   const rec = new NativeRecorder(app.bridge, async () => ({ jwt: "j", browserToken: "b" }), "https://cloud.test/api/stt-token", app.win);
   const events: RecorderEvent[] = [];
   rec.on((e) => events.push(e));
-  await rec.start({ meetingId, startedAtMs: 1000, have });
+  await rec.start({ meetingId, startedAtMs: 1000, have, model });
   return { rec, events, texts: () => events.filter((e) => e.type === "line").map((e) => (e.type === "line" ? `${e.index}:${e.line.text}` : "")) };
 }
 
 test("start hands the app the meeting, the token address, and the session, then takes the lines it already has", async () => {
   const app = fakeApp();
   const { texts } = await started(app);
-  expect(JSON.parse(app.calls[0].slice(6))).toEqual({ meetingId: "M1", startedAtMs: 1000, have: 0, tokenUrl: "https://cloud.test/api/stt-token", auth: { jwt: "j", browserToken: "b" } });
+  expect(JSON.parse(app.calls[0].slice(6))).toEqual({ meetingId: "M1", startedAtMs: 1000, have: 0, model: null, tokenUrl: "https://cloud.test/api/stt-token", auth: { jwt: "j", browserToken: "b" } });
   expect(texts()).toEqual(["0:line 0", "1:line 1", "2:line 2"]);
+});
+
+test("a recording transcribed on the phone names its model, and the model's speech and backlog reach the page", async () => {
+  const app = fakeApp();
+  const { events } = await started(app, 0, "M1", "parakeet-v3");
+  expect(JSON.parse(app.calls[0].slice(6)).model).toBe("parakeet-v3");
+  app.post({ type: "speaking", speaking: true });
+  app.post({ type: "backlog", ms: 18_000 });
+  expect(events.filter((e) => e.type === "speaking" || e.type === "backlog")).toEqual([
+    { type: "speaking", speaking: true },
+    { type: "backlog", ms: 18_000 },
+  ]);
 });
 
 test("a line event in order is taken, a repeat is dropped, and a skipped one fetches the missed lines", async () => {

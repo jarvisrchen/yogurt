@@ -33,8 +33,8 @@ The Android app removes this limit, because its recorder runs in a foreground se
 
 ## Transcription
 
-The phone streams audio to Deepgram `nova-3` live, the same model the Mac uses.
-On-device transcription is MOB-4, a later spike: a small model such as Moonshine in the page through Transformers.js, measured on a real phone over a full hour for speed, heat, and battery.
+The phone streams audio to Deepgram `nova-3` live, the same model the Mac uses, unless the user picks Local in the Android app.
+Local (MOB-4) runs sherpa-onnx in the recorder service with a Whisper or Parakeet model, as [ARCHITECTURE.md §9](../ARCHITECTURE.md#9-trust-boundaries) describes, with mocks in [phone-local-stt-mocks.html](../.lavish/phone-local-stt-mocks.html).
 
 The Deepgram key lives in the Vercel project's environment as `YOGURT_DEEPGRAM_API_KEY`, Sensitive and Production only, beside `YOGURT_LLM_API_KEY`.
 The browser never sees it.
@@ -196,7 +196,7 @@ A meeting still recording is never adopted, because its `ended_at` is null.
 
 AGENTS.md and ARCHITECTURE.md §9 and §12 change in MOB-1, and MOB-5 adds the Android app:
 
-- Audio leaves the phone for Deepgram when the user records there, since a phone has no local STT yet.
+- Audio leaves the phone for Deepgram when the user records there with Cloud, and stays on the phone with Local.
 - The Cloud's Vercel environment holds the Deepgram key next to the LLM key, Sensitive and Production only, never returned or logged.
 - Phone audio is held in memory only while it waits for a socket, and never stored.
 - "macOS 13+ only" gains an Android companion app, which records for the Cloud and runs no part of the Mac app.

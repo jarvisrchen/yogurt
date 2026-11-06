@@ -16,14 +16,8 @@ import { applyImportEvent, applyImportStatus, type ImportEvent } from "./useGran
 import { applyCloudPushEvent, applyCloudPushStatus, type CloudPushEvent } from "./useCloudPush";
 import { CLOUD_KEY, cloudApi, type CloudStatus } from "../lib/api/cloud";
 
-export interface DownloadState {
-  bytesDownloaded: number;
-  totalBytes: number;
-  bytesPerSec: number;
-  etaSeconds: number | null;
-  complete: boolean;
-  error: string | null;
-}
+import type { DownloadState } from "../components/settings/modelTypes";
+export type { DownloadState } from "../components/settings/modelTypes";
 
 export interface ModelDownload {
   model: string;

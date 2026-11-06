@@ -20,6 +20,8 @@ export interface PhoneMeeting {
   labels?: PhoneLabel[];
   /** The Mac that takes the meeting, or any Mac when null or absent. */
   for_device?: string | null;
+  /** What transcribes it, as `stt.ts` names it. Absent on a meeting started before the phone could transcribe, which used Deepgram. */
+  stt_engine?: string;
 }
 
 /** A label by name, since the Mac that takes the meeting finds its own label with that name or makes one. */
@@ -91,7 +93,7 @@ export function bundle(m: PhoneMeeting, enhanced: Enhanced | null = null) {
       enriched_md: enhanced?.enriched_md ?? null,
       transcript_json: JSON.stringify(m.lines.map(({ channel, text, ts_ms }) => ({ channel, text, ts_ms }))),
       starred: false,
-      stt_engine: STT_ENGINE,
+      stt_engine: m.stt_engine ?? STT_ENGINE,
       llm_model: enhanced?.llm_model ?? null,
       template: enhanced?.template ?? null,
       created_at: m.created_at,

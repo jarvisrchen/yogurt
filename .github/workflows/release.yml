@@ -117,7 +117,7 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 --decode > "$YOGURT_ANDROID_KEYSTORE"
           version=()
           if [ "${{ github.event_name }}" = "push" ]; then version=("-PyogurtVersion=${GITHUB_REF#refs/tags/v}"); fi
-          ./android/gradlew -p android "${version[@]}" assembleRelease testReleaseUnitTest
+          ./android/gradlew -p android "${version[@]}" assembleRelease testDebugUnitTest
           rm "$YOGURT_ANDROID_KEYSTORE"
 
       - name: Name the APK

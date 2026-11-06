@@ -1785,3 +1785,15 @@ New closed items go at the bottom.
   The phone's labels come from `yogurt_labels` on the phone's own meetings, so a label made on the phone is offered on its next recording while a meeting kept there has it.
   Move to a Mac on a phone's ended meeting pushes a new version with that Mac as `for_device`, and the page shows "Moving to <Mac>" until the Mac takes it.
   `session.start` takes null for this phone and fills in the id it registers, since an unregistered phone's `readDevice` makes a new id on every call.
+
+- [x] **MOB-4** Transcribe on the phone with a Whisper or Parakeet model the Android app downloads, picked in Settings > Transcription as on the Mac ([design](.planning/mobile-recording-design.md#transcription), [mocks](.lavish/phone-local-stt-mocks.html))
+
+  Landed 2026-11-06.
+  The Android app runs sherpa-onnx in its recorder service: Silero cuts the mic's audio at pauses, with a 300 ms lead so a first word stays whole, and Whisper `tiny.en`, `base.en`, `small.en` or Parakeet TDT v3 (`parakeet-v3`) turns each stretch into one line.
+  Settings has a Recording > Transcription row that opens a page with the Mac's Cloud and Local cards and its `ModelPicker`, scaled to the webapp's phone sizes.
+  Models download through Android's download manager over Wi-Fi from pinned Hugging Face revisions, and count once every file matches its SHA-256.
+  The record screen names the engine, shows a wave while the phone hears speech it has no line for yet, and says how far behind the model is past 15 seconds.
+  The meeting's `stt_engine` is `local · <model> · phone`.
+  On the arm64 emulator, `parakeet-v3` kept up with speech in real time and `tiny.en` loaded and ran in about 1 second.
+  Speed, battery and heat over an hour on a real Pixel are still unmeasured.
+  The APK grows by the 24 MB arm64 native library.

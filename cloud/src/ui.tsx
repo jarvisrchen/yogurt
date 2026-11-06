@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Cloud, HardDrive } from "lucide-react";
 import { Button } from "@web/components/Button";
 import { DEFAULT_CUSTOM_COLOR, LABEL_COLORS, isHexColor, labelTone } from "@web/lib/labelColors";
 import { Logo } from "@web/components/Logo";
@@ -266,6 +267,16 @@ export function Back({ to, onClick }: { to: string; onClick: () => void }) {
       </svg>
       {to}
     </button>
+  );
+}
+
+/** The Mac's engine pill (MeetingMetaPills): filled matcha with a drive for a model on the device, a bordered card with a cloud for Deepgram. */
+export function EnginePill({ model }: { model: string | null }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[13px] min-[721px]:text-[12px] font-medium leading-none whitespace-nowrap ${model ? "bg-mtsoft text-ink" : "bg-card text-mut border border-line"}`}>
+      {model ? <HardDrive size={12} aria-hidden className="shrink-0 text-matcha" /> : <Cloud size={12} aria-hidden className="shrink-0" />}
+      {model ?? "nova-3"}
+    </span>
   );
 }
 

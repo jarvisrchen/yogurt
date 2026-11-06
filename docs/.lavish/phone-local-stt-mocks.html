@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone transcription mocks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+<!-- Tokens copied from web/src/index.css. cloud/src/index.css imports the same file, so the webapp shares them. -->
+<style type="text/tailwindcss">
+@theme {
+  --color-paper:   #FBF7EF;  /* app background, hero surfaces             */
+  --color-card:    #FFFFFF;  /* cards, surfaces over paper                */
+  --color-ink:     #211D18;  /* user notes, headings, primary text        */
+  --color-grey:    #A89F90;  /* secondary captions, transcript "Them"     */
+  --color-ai:      #7A7264;  /* AI-added text (4.5:1 on paper)            */
+  --color-line:    #EBE3D5;  /* borders, dividers                         */
+  --color-blue:    #5B4FC7;  /* primary blueberry: buttons, transcript   */
+  --color-blsoft:  #ECE9FB;  /* soft blueberry: active-nav, pill bg      */
+  --color-straw:   #E07A66;  /* recording indicator, error accent         */
+  --color-strsoft: #FBE6E0;  /* soft strawberry: error/warning bg        */
+  --color-matcha:  #5E9E73;  /* local-only / privacy / success            */
+  --color-mtsoft:  #E7F0E8;  /* soft matcha: local-mode badges           */
+  --color-mut:     #8A8174;  /* muted text on cards                       */
+  /* Label chip palette (LabelChip.tsx): the three non-brand label colors. */
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-honeyink:  #7A5A0F;  /* honey text that reaches 4.5:1 on white and on honeysoft */
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+
+  --font-sans:  "Manrope", "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --radius-chip:   8px;    /* small chip                                    */
+  --radius-button: 12px;   /* buttons, inputs, nav rows                     */
+  --radius-card:   16px;   /* cards                                         */
+  --radius-panel:  24px;   /* floating panels: chat window, dialogs, dock   */
+  --radius-pill:   999px;  /* pills, recording badge                        */
+
+  /* Tailwind copies a shadow's value into its utility class, so dark mode re-points the colors below, not these. */
+  --shadow-card:   0 16px 32px -4px var(--shadow-card-color);
+  --shadow-pop:    0 12px 16px -4px var(--shadow-pop-color);
+  --shadow-window: 0 24px 48px -8px var(--shadow-window-color);
+  --shadow-button-blue: 0 8px 16px -6px rgba(91, 79, 199, 0.35);
+
+  --animate-recpulse:  recpulse 1.4s ease-in-out infinite;
+  --animate-blink:     blink    1.0s step-end infinite;
+}
+
+@keyframes recpulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.55; transform: scale(1.15); }
+}
+@keyframes blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* The label palette is read from inline styles (LabelChip), which the runtime does not scan, so emit every token. */
+:root {
+  color-scheme: light;
+  --shadow-card-color:   rgba(33, 29, 24, 0.06);
+  --shadow-pop-color:    rgba(33, 29, 24, 0.18);
+  --shadow-window-color: rgba(33, 29, 24, 0.22);
+  --color-lilac:     #8A5BB8;
+  --color-lilacsoft: #F3E8FB;
+  --color-honey:     #A67C1B;
+  --color-honeysoft: #FBF0D6;
+  --color-slate:     #4E5D6B;
+  --color-slatesoft: #E8ECF0;
+}
+
+/* The app stamps data-theme="dark" on <html>. A mock forces dark on its own frame with .force-dark. */
+:root[data-theme="dark"], .force-dark {
+  color-scheme: dark;
+  --color-paper:   #1B1815;
+  --color-card:    #26221D;
+  --color-ink:     #EDEAE2;
+  --color-grey:    #8F877B;
+  --color-ai:      #A69D90;
+  --color-line:    #3A342C;
+  --color-blue:    #7D72DE;
+  --color-blsoft:  #2C2846;
+  --color-straw:   #E8886F;
+  --color-strsoft: #3D2622;
+  --color-matcha:  #7FBE8C;
+  --color-mtsoft:  #22342A;
+  --color-mut:     #9B9285;
+  --color-lilac:     #C4A2E8;
+  --color-lilacsoft: #33283F;
+  --color-honey:     #D9B24E;
+  --color-honeysoft: #3A3120;
+  --color-honeyink:  #D9B24E;
+  --color-slate:     #A9B7C4;
+  --color-slatesoft: #2A3138;
+  --shadow-card-color:   rgba(0, 0, 0, 0.35);
+  --shadow-pop-color:    rgba(0, 0, 0, 0.5);
+  --shadow-window-color: rgba(0, 0, 0, 0.6);
+}
+
+@utility heading-hero    { @apply font-extrabold tracking-[-0.01em] text-[44px] leading-none text-ink; }
+@utility heading-greeting{ @apply font-extrabold tracking-[-0.01em] text-[34px] leading-tight text-ink; }
+@utility heading-title   { @apply font-extrabold tracking-[-0.01em] text-[26px] leading-none text-ink; }
+@utility heading-state   { @apply font-extrabold tracking-[-0.01em] text-[30px] text-ink; }
+@utility heading-section { @apply font-extrabold tracking-[-0.01em] text-[24px] leading-none text-ink; }
+@utility heading-wordmark{ @apply font-bold tracking-[-0.01em] text-[20px] leading-none text-ink; }
+@utility heading-card    { @apply font-bold tracking-[-0.01em] text-[18px] leading-tight text-ink; }
+@utility heading-sm      { @apply font-sans font-bold tracking-[-0.01em] text-[16px] text-ink; }
+
+html, body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 0.009em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-grey { color: var(--color-ai); }
+
+/* cloud/src/index.css: on a phone the shared chat takes the webapp's phone scale. The mock applies it by frame, not viewport. */
+.phone .cloud-chat.text-\[14px\], .phone .cloud-chat .text-\[14px\] { font-size: 16px; }
+.phone .cloud-chat .text-\[13px\] { font-size: 15px; }
+.phone .cloud-chat .text-\[12px\] { font-size: 14px; }
+
+/* cloud/src/index.css: the read-only document at phone size. */
+.cloud-doc .doc :is(h1, h2, h3, h4) { font-size: 16px; font-weight: 700; margin: 6px 0 2px; }
+.cloud-doc .doc :is(p, ul, ol, li) { margin: 0; }
+.cloud-doc .doc :is(ul, ol) { padding-left: 16px; list-style: revert; }
+.cloud-doc .doc [data-ai-grey] { color: var(--color-ai); }
+
+/* web/src/index.css */
+.transcript-link { color: var(--color-blue); border-bottom: 1.5px dotted color-mix(in srgb, var(--color-blue) 45%, transparent); margin-left: 0.35em; white-space: nowrap; }
+.yogurt-editor .ProseMirror p { margin: 0.45em 0; }
+.yogurt-editor .ProseMirror > :first-child { margin-top: 0; }
+.yogurt-editor .ProseMirror ul { margin: 0.45em 0; padding-left: 1.4em; list-style: disc; }
+.yogurt-editor .ProseMirror li { margin: 0.2em 0; }
+.yogurt-editor .ProseMirror h2 { color: var(--color-ink); font-weight: 800; letter-spacing: -0.01em; line-height: 1.3; margin: 1em 0 0.35em; font-size: 19px; }
+.yogurt-editor .ProseMirror > h2:first-child { margin-top: 0; }
+[data-streaming] .doc, [data-streaming] .doc h2 { color: var(--color-grey); }
+[data-streaming] .doc > :last-child:not(ul)::after, [data-streaming] .doc > ul:last-child > li:last-child::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--color-blue); animation: recpulse 1s steps(2) infinite; }
+.enhancing-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--color-blue); animation: recpulse 1.4s ease-in-out infinite; flex: none; }
+.enhancing-bar-fill { width: 30%; height: 100%; background: var(--color-blue); border-radius: 999px; animation: enhancing-bar 1.8s ease-in-out infinite; }
+@keyframes enhancing-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+
+/* Android system surfaces (status bar, notification shade, Chrome's toolbar): Material 3 baseline, not yogurt tokens. */
+.frame { --sys-shade: #F4EFF4; --sys-card: #FFFFFF; --sys-ink: #1C1B1F; --sys-mut: #49454F; --sys-tile: #E7E0EC; --sys-on: #D0BCFF; --sys-field: #EEEAF0; }
+.frame.force-dark { --sys-shade: #141218; --sys-card: #211F26; --sys-ink: #E6E1E5; --sys-mut: #CAC4D0; --sys-tile: #36343B; --sys-on: #4F378B; --sys-field: #2B2930; }
+
+/* Mock page chrome, outside the apps. */
+body { background: #ECE7DE; }
+.page { max-width: 1440px; margin: 0 auto; padding: 40px 32px 80px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+@media (min-width: 1400px) { .pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.shot { min-width: 0; }
+.shot > .tag { font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: #7A7264; margin: 0 0 8px; }
+.frame { position: relative; overflow: hidden; background: var(--color-paper); color: var(--color-ink); border-radius: 10px; box-shadow: 0 0 0 1px rgba(33, 29, 24, .16), 0 10px 30px -12px rgba(33, 29, 24, .35); }
+.frame.phone { border-radius: 36px; overflow-y: auto; scrollbar-width: none; }
+.center { display: flex; justify-content: center; }
+/* The sheet's peek and the transcript under the gap fade in at the top edge. */
+.fade-top { mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
+</style>
+</head>
+<body>
+<style>
+.eval { max-width: 1100px; }
+.eval table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; background: var(--color-card); border: 1px solid var(--color-line); border-radius: 16px; overflow: hidden; }
+.eval th { text-align: left; font: 500 10.5px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--color-mut); background: var(--color-paper); padding: 10px 14px; border-bottom: 1px solid var(--color-line); }
+.eval td { padding: 10px 14px; border-bottom: 1px solid var(--color-line); vertical-align: top; }
+.eval tr:last-child td { border-bottom: 0; }
+.eval tr.pick td { background: color-mix(in srgb, var(--color-mtsoft) 60%, transparent); }
+.eval code { font: 12px var(--font-mono); background: var(--color-paper); border: 1px solid var(--color-line); border-radius: 6px; padding: 0 4px; }
+.box { border: 1px solid var(--color-line); background: var(--color-card); border-radius: 12px; padding: 10px 12px; font-size: 13px; min-width: 0; }
+.box b { display: block; font-size: 13.5px; }
+.box small { display: block; color: var(--color-mut); font-size: 12px; }
+.arrow { color: var(--color-mut); font: 600 13px var(--font-mono); align-self: center; text-align: center; }
+.q { background: var(--color-card); border: 1px solid var(--color-line); border-radius: 16px; padding: 16px; }
+.q label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; padding: 6px 0; cursor: pointer; }
+.q label small { display: block; color: var(--color-mut); font-size: 12.5px; }
+.q input[type=radio] { margin-top: 4px; accent-color: var(--color-blue); }
+.q textarea { width: 100%; margin-top: 8px; font: 14px var(--font-sans); border: 1px solid var(--color-line); border-radius: 12px; padding: 8px 10px; background: var(--color-paper); }
+</style>
+<div class="page">
+  <header class="mb-10 max-w-[1100px]">
+    <h1 class="heading-title">Transcribe on the phone</h1>
+    <p class="mt-3 text-[14px] text-mut">Mocks and an evaluation for MOB-4. The phone gets the same choice the Mac has: Deepgram in the cloud, or a model that runs on the device. Screens are drawn with the webapp's own tokens and class strings at Pixel 10 Pro XL size (412 by 915 CSS px), light on the left and dark on the right. Meeting content is made up. Parts of a screen this change leaves alone, such as the Mac and label pickers on the record screen, are left out.</p>
+    <div class="mt-5 grid gap-3 md:grid-cols-3">
+      <div class="box"><b>Today</b><small>Every phone recording streams to Deepgram nova-3, from the Android app's recorder service or from the page in Chrome. The Settings screen has no transcription section.</small></div>
+      <div class="box"><b>The Mac</b><small>Settings has a Cloud card (Deepgram) and a Local card (whisper.cpp) with downloadable models. Use Local stays disabled until the chosen model is on disk.</small></div>
+      <div class="box" style="border-color:var(--color-matcha)"><b>Proposal</b><small>The Android app runs sherpa-onnx inside its recorder service, with Whisper and Parakeet models. Settings gets one Transcription row that opens a page with the Mac's Cloud and Local cards and model pills. Chrome keeps Cloud only.</small></div>
+    </div>
+  </header>
+  <div id="sections" class="flex flex-col gap-14"></div>
+  <div id="eval" class="eval flex flex-col gap-12 mt-16"></div>
+</div>
+
+<script>
+const PATHS = {
+  mic: '<path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+  more: '<circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle>',
+  download: '<path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path>',
+  trash: '<path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>',
+  phone: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>',
+};
+const icon = (n, size, cls = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide ${cls}" aria-hidden="true">${PATHS[n]}</svg>`;
+
+// web/src/components/Button.tsx
+const BASE = "inline-flex items-center justify-center gap-2 rounded-button font-sans transition-colors duration-150 ease-out select-none";
+const SIZE = { md: "px-[18px] py-2.5 text-[14px] font-semibold leading-none", sm: "border px-3.5 py-2 text-[12.5px] font-bold leading-normal" };
+const VARIANT = {
+  primary: "bg-blue border-blue text-white shadow-button-blue",
+  secondary: "bg-card text-ink border border-line",
+  ghost: "bg-transparent border-transparent text-mut",
+};
+const btn = (variant = "primary", extra = "", size = "md") => `${BASE} ${SIZE[size]} ${VARIANT[variant]} ${extra}`.trim();
+const BIG_BTN = "w-full !py-[14px] !text-[16px]";
+
+function statusBar(time = "2:16") {
+  return `
+  <div class="h-[36px] flex-none flex items-center justify-between px-[26px] text-[14px] font-semibold" style="color:var(--sys-ink)">
+    <span>${time}</span>
+    <span class="flex items-center gap-[6px]">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor" aria-hidden="true"><path d="M8 11.5 0.5 3.6A10.6 10.6 0 0 1 15.5 3.6Z"></path></svg>
+      <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor" aria-hidden="true"><path d="M13.5 0.5V11.5H0.5Z"></path></svg>
+      <svg width="20" height="11" viewBox="0 0 20 11" aria-hidden="true"><rect x="0.5" y="0.5" width="17" height="10" rx="2.5" fill="none" stroke="currentColor"></rect><rect x="2" y="2" width="11" height="7" rx="1.2" fill="currentColor"></rect><rect x="18.3" y="3.5" width="1.4" height="4" rx="0.7" fill="currentColor"></rect></svg>
+    </span>
+  </div>`;
+}
+const gestureBar = `<div class="absolute bottom-0 inset-x-0 h-[24px] flex items-center justify-center z-50 pointer-events-none"><span class="block w-[108px] h-[4px] rounded-full" style="background:var(--sys-ink);opacity:.55"></span></div>`;
+const chromeBar = `
+  <div class="flex-none flex items-center gap-[10px] px-[12px] pb-[8px]" style="background:var(--sys-card);color:var(--sys-ink)">
+    <div class="flex-1 min-w-0 h-[40px] flex items-center gap-[8px] px-[14px] rounded-full text-[15px]" style="background:var(--sys-field)">
+      ${icon("lock", 14, "shrink-0")}<span class="truncate">yogurt-example.vercel.app</span>
+    </div>
+    <span class="w-[20px] h-[20px] grid place-items-center rounded-[5px] text-[11px] font-bold" style="border:2px solid currentColor">1</span>
+    ${icon("more", 20)}
+  </div>`;
+function screen(body, { time, top = "" } = {}) {
+  return `
+  <div class="relative h-full flex flex-col bg-paper overflow-hidden">
+    <div class="flex-none" style="${top ? "background:var(--sys-card)" : ""}">${statusBar(time)}</div>
+    ${top}
+    ${body}
+    ${gestureBar}
+  </div>`;
+}
+
+/* ---------------- Settings.tsx at phone size ---------------- */
+// cloud/src/ui.tsx Back: a drawn arrow, since the glyph falls back to another font in Android's WebView.
+const back = (to) => `<button type="button" class="inline-flex items-center gap-[4px] text-[14px] text-mut bg-transparent border-0 p-[0px] font-[inherit] self-start"><svg aria-hidden="true" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>${to}</button>`;
+const dayLabel = "font-mono text-[11px] uppercase tracking-[.08em] text-mut mt-[4px]";
+const group = (title, rows) => `
+  <div class="${dayLabel}">${title}</div>
+  <div class="bg-card border border-line rounded-button overflow-hidden [&>*:not(:last-child)]:border-b [&>*]:border-line">${rows.join("")}</div>`;
+const row = (left, right = "") => `
+  <div class="flex w-full items-center justify-between gap-[8px] px-[11px] py-[9px] text-[14px] text-left text-ink">
+    <div class="min-w-0">${left}</div>${right}
+  </div>`;
+const small = (t, cls = "") => `<small class="block text-[12px] text-mut mt-px ${cls}">${t}</small>`;
+const chev = `<span class="text-mut flex-none">›</span>`;
+
+/* The Mac's STTPicker, LocalSTTCard and ModelPicker, same classes, a step larger for the webapp's phone sizes. */
+const PILL = "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[13px] font-medium leading-none border whitespace-nowrap";
+const pill = (tone, inner, cls = "") => `<span class="${PILL} ${tone === "matcha" ? "bg-mtsoft text-matcha border-transparent" : "bg-card text-mut border-line"} ${cls}">${inner}</span>`;
+const inUse = pill("matcha", `<span class="inline-block w-[7px] h-[7px] rounded-pill bg-matcha" aria-hidden="true"></span>In use`, "shrink-0");
+const useBtn = (label, disabled = false) => `<button type="button" class="${btn("primary", "whitespace-nowrap shrink-0")}" ${disabled ? 'style="opacity:.5"' : ""}>${label}</button>`;
+const cardCls = (active) => `rounded-card bg-card p-5 space-y-4 ${active ? "border-[1.5px] border-blue shadow-button-blue" : "border border-line"}`;
+const CAPTION = "text-[12px] font-semibold uppercase tracking-[0.06em] text-mut";
+const MB = (mb) => (mb < 1000 ? `${mb} MB` : `${(mb / 1024).toFixed(1)} GB`);
+
+// sherpa-onnx int8 builds on Hugging Face, ascending by size as on the Mac. The Whisper names match the Mac's.
+const MODELS = [
+  { name: "tiny.en", mb: 104 },
+  { name: "base.en", mb: 161 },
+  { name: "small.en", mb: 376 },
+  { name: "parakeet-v3", mb: 670 },
+];
+function modelPill(m, st, selected, active) {
+  const isSelected = selected === m.name && st === "downloaded";
+  const downloading = st === "downloading";
+  const glyph = st === "downloaded" ? "✓" : downloading ? "⟳" : "↓";
+  const cls = isSelected
+    ? "border-[1.5px] border-matcha bg-mtsoft text-matcha"
+    : st === "downloaded" ? "border border-line bg-card text-ink"
+    : downloading ? "border border-matcha bg-mtsoft text-matcha"
+    : "border border-dashed border-line bg-card text-mut";
+  const trash = st === "downloaded" && m.name !== active
+    ? `<button type="button" aria-label="Delete ${m.name}" class="p-1 rounded-full text-mut">${icon("trash", 15)}</button>` : "";
+  const bar = downloading ? `
+    <span class="inline-flex items-center gap-1.5 w-28">
+      <span aria-hidden="true" class="h-1.5 flex-1 rounded-pill bg-line overflow-hidden"><span class="block h-full rounded-pill bg-blue" style="width:47%"></span></span>
+      <span aria-hidden="true" class="text-[13px] text-blue font-semibold">47%</span>
+    </span>` : "";
+  return `
+    <span class="inline-flex gap-1.5 ${downloading ? "flex-col items-start" : "items-center"}">
+      <span class="inline-flex items-center gap-1.5">
+        <button type="button" aria-pressed="${isSelected}" class="text-[15px] font-medium px-2.5 py-1 rounded-pill inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 ${cls}">
+          <span>${m.name}</span><span class="${downloading ? "inline-block animate-spin" : ""}">${glyph}</span><span class="text-[13px] text-mut">${MB(m.mb)}</span>
+        </button>${trash}
+      </span>${bar}
+    </span>`;
+}
+
+const forget = `<span class="text-[12px] leading-normal font-bold px-[10px] py-[3px] rounded-pill bg-strsoft text-straw">Forget</span>`;
+const segmented = (opts, on) => `<div class="inline-flex self-start bg-paper border border-line rounded-button p-[3px] gap-[2px]">${opts.map((o) => `<span class="font-sans text-[13px] font-semibold px-[12px] py-[3px] rounded-[9px] ${o === on ? "bg-card text-ink shadow-[0_2px_6px_rgba(40,30,15,.10)]" : "text-mut"}">${o}</span>`).join("")}</div>`;
+// Settings.tsx: the page as it is today, with one Transcription row after Account, like Change PIN opens its own view.
+function settingsHome({ local = false, browser = false, pressed = false } = {}) {
+  return screen(`
+  <main class="flex-1 min-h-0 overflow-hidden flex flex-col gap-[10px] px-[16px] pt-[16px] pb-[40px] [&>*]:shrink-0">
+    ${back("Library")}
+    <h1 class="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">Settings</h1>
+    ${group("Account", [row(`me@example.com${small("yogurt-example.vercel.app", "font-mono")}`), row("Sign out", chev)])}
+    ${group("Recording", [`<div class="${pressed ? "bg-blsoft/60" : ""}">${row(`Transcription${small(local ? "Local · parakeet-v3 · on this phone" : "Cloud · Deepgram")}`, chev)}</div>`])}
+    ${group("PIN", [row(`Lock${small("Forget the token in this browser")}`, chev), row("Change PIN", chev)])}
+    ${group("Remembered browsers", [row(`Chrome on Android${small("This browser · expires Feb 2")}`, forget), row(`Chrome on Mac${small("expires Feb 3")}`, forget)])}
+    ${group("Appearance", [row("Theme", segmented(["System", "Light", "Dark"], "System"))])}
+  </main>`, { top: browser ? chromeBar : "" });
+}
+
+function settings({ engine = "cloud", models = {}, selected = "parakeet-v3", browser = false } = {}) {
+  const local = engine === "local";
+  const ready = models[selected] === "downloaded";
+  return screen(`
+  <main class="flex-1 min-h-0 overflow-hidden flex flex-col gap-[10px] px-[16px] pt-[16px] pb-[40px] [&>*]:shrink-0">
+    ${back("Settings")}
+    <h1 class="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">Transcription</h1>
+    <p class="text-[13px] text-mut m-[0px] -mt-[4px]">Changes apply to the next recording.</p>
+    <article class="${cardCls(!local)}">
+      <header class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2 min-w-0"><h3 class="heading-card truncate">Cloud</h3>${pill("neutral", "Deepgram")}</div>
+        ${local ? useBtn("Use Cloud") : inUse}
+      </header>
+      <p class="text-[14px] text-mut">Real-time partials, ~2s end-to-end via Deepgram. Audio is sent to the provider.</p>
+      <div class="border-t border-line pt-4 mt-4 space-y-2">
+        <div class="${CAPTION}">Deepgram key · in your Vercel project</div>
+        <div class="flex items-center gap-2"><span class="font-mono text-[14px] text-ink">YOGURT_DEEPGRAM_API_KEY</span><span class="text-matcha text-[14px] font-medium">✓ set</span></div>
+      </div>
+    </article>
+    <article class="${cardCls(local)}">
+      <header class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2 min-w-0"><h3 class="heading-card whitespace-nowrap">Local</h3>${pill("neutral", "sherpa-onnx")}</div>
+        ${local ? inUse : useBtn("Use Local", browser || !ready)}
+      </header>
+      ${!local && !browser && !ready ? `<span class="text-[13px] text-straw">Download the model first</span>` : ""}
+      <p class="text-[14px] text-mut">${browser
+        ? "Needs the Yogurt app for Android. A page in Chrome stops when you switch apps, and the model with it."
+        : "Runs on this phone's processor. Audio never leaves this phone. Local is free."}</p>
+      ${browser ? "" : `
+      <div class="flex flex-wrap gap-2">${MODELS.map((m) => modelPill(m, models[m.name], selected, local ? selected : null)).join("")}</div>
+      <div class="flex flex-wrap items-center gap-2 border-t border-line pt-4 mt-4"><button type="button" class="${btn("secondary", "!text-[14px]", "sm")}">Test</button></div>
+      <p class="text-[14px] text-mut pt-1">Tap a model to download it · stored in the app on this phone. Parakeet is by NVIDIA, CC-BY-4.0.</p>`}
+    </article>
+  </main>`, { top: browser ? chromeBar : "" });
+}
+
+/* ---------------- Record.tsx ---------------- */
+const TITLE = "Q4 pricing sync";
+const ICONS = {
+  hardDrive: '<line x1="22" x2="2" y1="12" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" x2="6.01" y1="16" y2="16"></line><line x1="10" x2="10.01" y1="16" y2="16"></line>',
+  tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle>',
+};
+Object.assign(PATHS, ICONS);
+// MeetingMetaPills EnginePill: filled matcha with a drive for local, a bordered card with a cloud for a provider.
+const enginePill = (local, model = local ? "parakeet-v3" : "nova-3") =>
+  `<span class="inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[13px] font-medium leading-none ${local ? "bg-mtsoft text-ink" : "bg-card text-mut border border-line"}">${local ? icon("hardDrive", 13, "shrink-0 text-matcha") : icon("cloud", 13, "shrink-0")}<span>${model}</span></span>`;
+const head = (local = true) => `
+  <div class="flex flex-col gap-[8px]">
+    <div>
+      <h1 class="text-[22px] font-extrabold tracking-[-0.01em] text-ink m-[0px]">${TITLE}</h1>
+      <div class="flex flex-wrap items-center gap-[6px] text-[13px] text-mut mt-[3px]"><span class="text-[11px] leading-normal font-bold px-[7px] py-[1px] rounded-pill" style="background:var(--color-slatesoft);color:var(--color-slate)">Phone</span>Nov 5 · 2:04 PM${enginePill(local)}</div>
+    </div>
+    <span class="inline-flex items-center gap-[6px] text-[13px] font-medium text-mut">${icon("tag", 15)}Label</span>
+  </div>`;
+const micTile = `<div class="w-[44px] h-[44px] rounded-[14px] grid place-items-center bg-blsoft text-blue">${icon("mic", 22)}</div>`;
+const NOTE = (body, action = "") => `
+  <div role="status" class="flex items-center justify-between gap-[8px] text-[13px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink">
+    <span class="min-w-0 break-words">${body}</span>
+    ${action ? `<button type="button" class="flex-none text-blue font-semibold bg-transparent border-0 p-[0px] font-[inherit]">${action}</button>` : ""}
+  </div>`;
+const engineLine = (local) => `
+  <div class="flex items-center justify-between gap-[10px] pt-[12px] mt-[2px] border-t border-line">
+    <span class="flex items-center gap-[8px] min-w-0 text-[14px] text-mut">${local ? "Local" : "Cloud"} ${enginePill(local)}</span>
+    <button type="button" class="flex-none text-[14px] text-blue font-semibold bg-transparent border-0 p-[0px] font-[inherit]">Change</button>
+  </div>`;
+function ready({ local = true, error = "" } = {}) {
+  return screen(`
+  <main class="flex-1 min-h-0 flex flex-col gap-[12px] px-[16px] pt-[16px] pb-[40px]">
+    ${back("All devices")}
+    ${head(local)}
+    <section class="rounded-card bg-card border border-line p-[16px] flex flex-col gap-[10px]">
+      ${micTile}
+      <h2 class="text-[18px] font-bold tracking-[-0.01em] text-ink m-[0px]">Record the room</h2>
+      <p class="text-[15px] text-mut m-[0px]">${local
+        ? "The phone's microphone picks up everyone in the room. This phone transcribes it, so the audio never leaves it and is never saved."
+        : "The phone's microphone picks up everyone in the room. The audio streams to Deepgram to be transcribed and is never saved."}</p>
+      <p class="text-[15px] text-mut m-[0px]">A call on this phone cannot be recorded. Take the call on another device, on speaker.</p>
+      ${engineLine(local)}
+    </section>
+    ${error}
+    <div class="mt-auto flex flex-col gap-[8px]">
+      <button type="button" class="${btn("primary", BIG_BTN)}" ${error ? 'style="opacity:.5"' : ""}>${icon("mic", 18)}Start recording</button>
+      <p class="text-[13px] text-mut text-center m-[0px]">${error ? "Download the model or use Cloud first." : "Your phone asks for the microphone first."}</p>
+    </div>
+  </main>`);
+}
+
+const fmt = (ms) => { const s = Math.floor(ms / 1000); return [Math.floor(s / 60), s % 60].map((n) => String(n).padStart(2, "0")).join(":"); };
+const tline = ([sec, text], final = true) => `
+  <div class="py-2 leading-snug">
+    <span class="font-mono text-[0.857em] mr-2" style="color:var(--color-grey)">${fmt(sec * 1000)}</span>
+    <span class="text-ink" style="opacity:${final ? 1 : 0.7}">${text}</span>
+  </div>`;
+// Parakeet has no interim words: while the VAD hears speech, the row shows that a line is on its way.
+const speaking = (sec) => `
+  <div class="py-2 leading-snug flex items-center">
+    <span class="font-mono text-[0.857em] mr-2" style="color:var(--color-grey)">${fmt(sec * 1000)}</span>
+    <span class="inline-flex items-end gap-[3px] h-[14px]" aria-label="Someone is speaking">
+      ${[45, 100, 65, 85].map((h, i) => `<span class="w-[3px] rounded-full bg-grey animate-wave" style="height:${h}%;animation-delay:${i * 0.12}s;transform-origin:bottom"></span>`).join("")}
+    </span>
+  </div>`;
+const LINES = [
+  [606, "Conversion on Pro is 4.1% now, down from 5.0% since the July change."],
+  [619, "Dana's proposal is $18 a month and $180 a year."],
+  [634, "Is that annual number something finance signs off on?"],
+  [641, "Finance wants the annual discount capped at 15%."],
+  [655, "At $18 that puts annual at about $184."],
+  [668, "So $180 is just over the cap. We can round to $185."],
+  [690, "And existing Pro users, do they keep the old price?"],
+  [704, "For twelve months, that's what we told them in July."],
+];
+const status = (kind) => ({
+  deepgram: `<span class="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-matcha"><span aria-hidden="true">●</span>connected</span>`,
+  local: `<span class="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-matcha"><span aria-hidden="true">●</span>local</span>`,
+  behind: `<span class="text-[11px] inline-flex items-center gap-1 whitespace-nowrap text-grey"><span aria-hidden="true">○</span>48s behind</span>`,
+})[kind];
+const card = (st, body, h = 128) => `
+  <section class="absolute inset-x-[12px] z-40 flex flex-col overflow-hidden bg-card border border-line rounded-panel shadow-pop" style="bottom:10px;height:${h}px">
+    <div class="flex justify-center pt-[8px]"><span class="block w-[36px] h-[4px] rounded-full bg-line"></span></div>
+    <header class="flex items-center justify-between gap-2 px-[20px] pt-[6px] pb-[4px]">
+      <span class="text-[13px] font-semibold text-ink">Live transcript</span>${status(st)}
+    </header>
+    <div class="flex-1 min-h-0 flex flex-col justify-end overflow-hidden px-[20px] text-[16px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]">${body}</div>
+  </section>`;
+const askBar = `
+  <div class="flex-none px-[12px] pb-[30px]">
+    <button type="button" class="cloud-chat w-full h-12 flex items-center justify-between gap-3 px-4 py-2 bg-card border border-line rounded-full shadow-pop text-left text-[16px] text-mut">
+      <span class="flex-1 truncate">Ask this meeting…</span>
+      <span class="inline-flex items-center justify-center h-7 w-7 rounded-full bg-blue text-white"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M6 2.5L2.5 6M6 2.5L9.5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+    </button>
+  </div>`;
+const NOTICE = "text-[13px] rounded-button px-[12px] py-[8px] bg-blsoft text-ink m-[0px]";
+function recording({ st = "local", body, notice = "", h = 128, time = "11:52" } = {}) {
+  return screen(`
+    <div class="flex-none flex items-center justify-between gap-[10px] px-[16px] py-[10px] border-b border-line bg-paper">
+      <span class="flex items-center gap-[8px] min-w-0">
+        <span aria-hidden="true" class="inline-block w-2 h-2 rounded-pill bg-straw animate-recpulse"></span>
+        <span class="text-[15px] font-semibold text-ink">Recording</span>
+        <span class="font-mono text-[14px] tracking-tight text-mut">${time}</span>
+      </span>
+      <button type="button" class="${btn("primary", "!px-[14px] !py-[8px] !text-[15px] !font-bold !leading-normal")}">End meeting</button>
+    </div>
+    <div class="relative flex-1 min-h-0">
+      <main class="absolute inset-0 overflow-hidden flex flex-col gap-[10px] px-[16px] pt-[14px]">
+        ${notice}
+        ${head(st !== "deepgram")}
+        <section class="rounded-card bg-card p-[16px] border border-line text-[16px] leading-relaxed">
+          <div class="yogurt-editor"><div class="ProseMirror"><h2>Pricing</h2><ul><li><p>pro tier → $18?</p></li><li><p>ask finance re annual cap</p></li></ul></div></div>
+        </section>
+      </main>
+      ${card(st, body, h)}
+    </div>
+    ${askBar}`);
+}
+
+const shade = () => `
+  <div class="relative h-full flex flex-col overflow-hidden" style="background:var(--sys-shade);color:var(--sys-ink)">
+    ${statusBar("2:16")}
+    <div class="px-[16px] pt-[8px] flex flex-col gap-[10px]">
+      <div class="rounded-[24px] p-[16px] flex flex-col gap-[6px]" style="background:var(--sys-card)">
+        <div class="flex items-center gap-[8px] text-[12px]" style="color:var(--sys-mut)">${icon("download", 14)}<span>Yogurt · Downloading model</span></div>
+        <div class="text-[15px] font-semibold">parakeet-v3</div>
+        <div class="text-[13px]" style="color:var(--sys-mut)">312 of 670 MB · Wi-Fi</div>
+        <div class="h-[4px] rounded-full overflow-hidden" style="background:var(--sys-tile)"><div class="h-full" style="width:47%;background:var(--sys-ink)"></div></div>
+      </div>
+      <div class="rounded-[24px] p-[16px] flex flex-col gap-[6px]" style="background:var(--sys-card)">
+        <div class="flex items-center gap-[8px] text-[12px]" style="color:var(--sys-mut)">${icon("mic", 14)}<span>Yogurt · Recording · 11:52</span></div>
+        <div class="text-[15px] font-semibold">Q4 pricing sync</div>
+        <div class="text-[13px]" style="color:var(--sys-mut)">Transcribing on this phone</div>
+        <div class="flex gap-[18px] pt-[4px] text-[14px] font-semibold"><span>Stop</span></div>
+      </div>
+    </div>
+    ${gestureBar}
+  </div>`;
+
+const PHONE = { w: 412, h: 915, phone: true };
+const SECTIONS = [
+  {
+    title: "1. Settings stays short: one Transcription row",
+    caption: "The Settings page keeps the groups it has today and gains a Recording group after Account, with one row. The row names the engine in use, and its chevron opens the Transcription page, the way Change PIN opens its own view. In Chrome the row is the same and always reads Cloud.",
+    frames: [
+      { ...PHONE, label: "Cloud in use", html: () => settingsHome() },
+      { ...PHONE, label: "Local in use", html: () => settingsHome({ local: true }) },
+    ],
+  },
+  {
+    title: "2. The Transcription page: the Mac's two cards, Cloud in use",
+    caption: "Back returns to Settings. The page holds the Mac's Transcription section: the Cloud card and the Local card, the same classes as STTPicker and LocalSTTCard at the webapp's phone sizes. The card in use has the blue border and In use. Use Local stays disabled until the chosen model is downloaded, as on the Mac. The Cloud card shows the key's place, since the phone's key lives in the Vercel project.",
+    frames: [{ ...PHONE, html: () => settings() }],
+  },
+  {
+    title: "3. Downloading a model",
+    caption: "The models are the Mac's pills: dashed with a down arrow before download, a spinner and a progress bar while it downloads, a check and a size after. Whisper models keep the Mac's names. The download runs through Android's download manager, so it keeps going if you leave the app and shows in the notification shade. The app checks each file's SHA-256 against a pinned value before the pill gets its check.",
+    frames: [
+      { ...PHONE, label: "Settings", html: () => settings({ models: { "tiny.en": "downloaded", "parakeet-v3": "downloading" } }) },
+      { ...PHONE, label: "Notification shade", html: shade },
+    ],
+  },
+  {
+    title: "4. Local in use",
+    caption: "Tapping a downloaded pill selects it, in matcha, and Use Local moves the blue border and In use to the Local card. A downloaded model that isn't in use shows the trash can. The one in use has none, as on the Mac. Test runs the chosen model on a short clip, like the Mac's Test.",
+    frames: [{ ...PHONE, html: () => settings({ engine: "local", models: { "tiny.en": "downloaded", "parakeet-v3": "downloaded" } }) }],
+  },
+  {
+    title: "5. In Chrome, without the app",
+    caption: "A page in Chrome can't keep a model running once you switch apps, so the browser keeps Cloud. The Local card shows with Use Local disabled and the reason, so you know where the option lives, and no models.",
+    frames: [{ ...PHONE, label: "Chrome", html: () => settings({ browser: true }) }],
+  },
+  {
+    title: "6. The record screen says where the audio goes",
+    caption: "The meeting's header gets the Mac's engine pill: filled matcha with a drive for local, a bordered pill with a cloud for Deepgram. Record the room repeats it at its bottom, with Change opening the Transcription page, and its privacy sentence changes with it. A meeting can't switch engines once it starts.",
+    frames: [
+      { ...PHONE, label: "Local", html: () => ready({ local: true }) },
+      { ...PHONE, label: "Cloud", html: () => ready({ local: false }) },
+    ],
+  },
+  {
+    title: "7. The model was deleted, or never finished downloading",
+    caption: "If Local is chosen but its model is missing, Start recording waits. The note offers the fix that keeps the meeting going: record this one with Cloud.",
+    frames: [{ ...PHONE, html: () => ready({ local: true, error: NOTE("parakeet-v3 isn't on this phone. Download it in Transcription settings, or record this meeting with Cloud.", "Use Cloud") }) }],
+  },
+  {
+    title: "8. Recording on the phone",
+    caption: "Parakeet and Whisper both transcribe a whole stretch of speech at once, so there are no grey words while someone talks. While the phone hears speech, the newest row shows a small wave instead, and the line lands a second or two after the pause. The card's status reads local, and the header keeps the engine pill.",
+    frames: [
+      { ...PHONE, label: "Someone is speaking", html: () => recording({ body: LINES.slice(-1).map((l) => tline(l)).join("") + speaking(712) }) },
+      { ...PHONE, label: "Card raised", html: () => recording({ body: LINES.map((l) => tline(l)).join("") + speaking(712), h: 520 }) },
+    ],
+  },
+  {
+    title: "9. The phone falls behind",
+    caption: "If the phone transcribes slower than people talk, speech waits in memory and the status counts how far behind it is. The notice says nothing is lost. The phone catches up during quiet stretches, and End meeting waits for the last lines. This is the state the spike has to prove rare.",
+    frames: [{ ...PHONE, html: () => recording({ st: "behind", body: LINES.slice(-2).map((l) => tline(l)).join(""), notice: `<p role="status" class="${NOTICE}">Transcription is 48 seconds behind. The phone catches up when the room goes quiet, and no speech is lost.</p>` }) }],
+  },
+];
+
+const root = document.getElementById("sections");
+for (const s of SECTIONS) {
+  const sec = document.createElement("section");
+  sec.innerHTML = `
+    <h2 class="heading-sm text-[18px]!">${s.title}</h2>
+    <p class="mt-1 mb-5 text-[14px] text-mut max-w-[860px]">${s.caption}</p>
+    <div class="flex flex-col gap-8">
+      ${s.frames.map((f) => `
+        <div class="pair">
+          ${["light", "dark"].map((mode) => `
+            <div class="shot center flex-col items-center">
+              <p class="tag">${f.label ? `${f.label} · ` : ""}${mode}</p>
+              <div class="frame phone ${mode === "dark" ? "force-dark" : ""}" data-w="${f.w}" style="width:${f.w}px;height:${f.h}px">${f.html()}</div>
+            </div>`).join("")}
+        </div>`).join("")}
+    </div>`;
+  root.appendChild(sec);
+}
+function fit() {
+  for (const fr of document.querySelectorAll(".frame")) {
+    const room = fr.parentElement.clientWidth;
+    fr.style.zoom = Math.min(1, room / Number(fr.dataset.w));
+  }
+}
+fit();
+addEventListener("resize", fit);
+</script>
+
+<template id="eval-html">
+  <section>
+    <h2 class="heading-section">Where the model runs</h2>
+    <p class="mt-2 mb-4 text-[14px] text-mut">Four ways to transcribe without Deepgram. The recommendation is the first row.</p>
+    <table>
+      <thead><tr><th>Approach</th><th>Keeps going in the background</th><th>Works with no Mac</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr class="pick"><td><b>sherpa-onnx in the app's recorder service</b><br><span class="text-mut">Kotlin API (<code>OfflineRecognizer</code>, <code>Vad</code>), prebuilt AAR on its releases. AUD-2 recommends the same engine for the Mac.</span></td><td>Yes. The foreground service already keeps the mic open.</td><td>Yes</td><td>Apache-2.0 library. The all-ABI AAR is 49 MB, and an arm64-only build adds less to the APK (not measured). Android only.</td></tr>
+        <tr><td><b>Transformers.js in the page</b><br><span class="text-mut">MOB-4 as written today, with Moonshine.</span></td><td>Unlikely. Android throttles a WebView in the background.</td><td>Yes</td><td>Works in Chrome too, but WASM or WebGPU on a phone is slower than native, and the model must sit in browser storage.</td></tr>
+        <tr><td><b>Stream to the Mac</b><br><span class="text-mut">What Orca does: the phone sends audio, the desktop transcribes.</span></td><td>Yes</td><td>No. The Mac must be on and reachable for the whole meeting.</td><td>Audio would cross Supabase, which breaks the AGENTS.md audio rule.</td></tr>
+        <tr><td><b>whisper.cpp through JNI</b><br><span class="text-mut">The Mac's current local engine.</span></td><td>Yes</td><td>Yes</td><td>No Parakeet. Whisper small runs slower on a phone CPU than Parakeet int8 (expected, not measured), and we'd maintain JNI bindings.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 class="heading-section">Which models to offer</h2>
+    <p class="mt-2 mb-4 text-[14px] text-mut">Sizes add up the int8 sherpa-onnx files on Hugging Face (encoder, decoder, tokens). The Mac's whisper.cpp builds differ in size, so tiny.en is 75 MB there and 104 MB here. Speed on a Pixel is unmeasured for all of them.</p>
+    <table>
+      <thead><tr><th>Model</th><th>Size</th><th>Languages</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><b>tiny.en</b> (Whisper)</td><td>104 MB</td><td>English</td><td>Same name as the Mac's. Fastest, least accurate. A floor for older phones.</td></tr>
+        <tr><td><b>base.en</b> (Whisper)</td><td>161 MB</td><td>English</td><td>The Mac doesn't list it. A middle step a phone may need between tiny and small.</td></tr>
+        <tr><td><b>small.en</b> (Whisper)</td><td>376 MB</td><td>English</td><td>Same name as the Mac's. Whisper decodes word by word, so it is likely slower than Parakeet at a similar size (not measured).</td></tr>
+        <tr class="pick"><td><b>parakeet-v3</b> (Parakeet TDT 0.6B v3)</td><td>670 MB</td><td>25 European</td><td>Punctuation and capitals. Weights CC-BY-4.0, so the Local card credits NVIDIA. AUD-2 wants it on the Mac too, which would make the lists match.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 class="heading-section">How it fits the recorder</h2>
+    <p class="mt-2 mb-4 text-[14px] text-mut">Only the box in the middle is new. The page already takes the same <code>line</code>, <code>state</code> and <code>error</code> events from the app, so the record screen changes only its copy and status.</p>
+    <div class="grid gap-2 items-stretch" style="grid-template-columns: minmax(0,1fr) 28px minmax(0,1.3fr) 28px minmax(0,1fr) 28px minmax(0,1fr)">
+      <div class="box"><b>PcmSource</b><small>16 kHz mono PCM, unchanged</small></div>
+      <div class="arrow">→</div>
+      <div class="flex flex-col gap-2">
+        <div class="box"><b>Deepgram socket</b><small>Today. Token from <code>stt-token</code>, audio held in memory until a final covers it.</small></div>
+        <div class="box" style="border-color:var(--color-matcha);background:var(--color-mtsoft)"><b>LocalStt (new)</b><small>Silero VAD cuts speech at pauses. Parakeet turns each stretch into one line with its <code>ts_ms</code>. A backlog queue holds speech while it catches up.</small></div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box"><b>LineStore</b><small>Numbered final lines in a file, unchanged</small></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>Bridge → page → Cloud</b><small>Same events. The meeting's <code>stt_engine</code> becomes <code>local · parakeet-tdt-0.6b-v3 · phone</code>.</small></div>
+    </div>
+    <table class="mt-5">
+      <thead><tr><th>Where</th><th>What changes</th></tr></thead>
+      <tbody>
+        <tr><td><code>android/</code></td><td>A <code>LocalStt</code> next to <code>Deepgram.kt</code>. A <code>Models</code> store for download, SHA-256 check and delete in app storage. The bridge adds <code>models()</code>, <code>download(id)</code>, <code>deleteModel(id)</code> and an <code>engine</code> on <code>start</code>. The choice lives on the phone in app preferences, since the model lives there too.</td></tr>
+        <tr><td><code>cloud/src/</code></td><td>Settings gets a Transcription row, and a new <code>transcription</code> view beside <code>change-pin</code> holds the cards. The Local card shows its models only when <code>window.YogurtAndroid</code> exists. The Ready screen and the transcript card read the engine. <code>phone.ts</code> writes the engine into <code>stt_engine</code>.</td></tr>
+        <tr><td><code>AGENTS.md</code>, docs</td><td>The hard constraint says a phone streams to Deepgram "since a phone has no local STT yet". It changes to: unless the user picked on-device transcription, in which case audio never leaves the phone. ARCHITECTURE §12 and the mobile design doc follow.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 class="heading-section">What the spike has to measure first</h2>
+    <p class="mt-2 mb-4 text-[14px] text-mut">Before any of the screens above: a debug build that runs each model in the list over a recorded one-hour meeting played into the Pixel 10 Pro XL, then a live hour. The pass marks are my proposal.</p>
+    <table>
+      <thead><tr><th>Measure</th><th>Pass mark</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Time to transcribe a stretch, divided by its length</td><td>Under 0.5 on average</td><td>Leaves room for long monologues and a warm phone.</td></tr>
+        <tr><td>Largest backlog over the hour</td><td>Under 30 s</td><td>Section 9 should be rare.</td></tr>
+        <tr><td>Battery used in an hour</td><td>Within 10 points of a Deepgram hour</td><td>Deepgram keeps a socket and radio busy too, so compare like for like.</td></tr>
+        <tr><td>Thermal state</td><td>No throttling reported by <code>PowerManager</code></td><td>A hot phone slows the model and the backlog grows.</td></tr>
+        <tr><td>Memory and first load</td><td>Note the numbers</td><td>The 652 MB encoder has to load before the first line.</td></tr>
+        <tr><td>Word error rate against the Deepgram transcript of the same hour</td><td>Note the number</td><td>Tells us whether v3 is good enough to recommend.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 class="heading-section">Risks</h2>
+    <ul class="mt-3 text-[14px] flex flex-col gap-2 list-disc pl-5">
+      <li><b>No live words with Parakeet or Whisper.</b> Lines land after each pause. The wave in section 8 covers the gap. sherpa-onnx has small streaming Zipformer models if this feels too slow.</li>
+      <li><b>A 670 MB download.</b> The Mac hit this in AUD-4 when Hugging Face was blocked. A copy on our GitHub release is allowed under CC-BY-4.0 with credit, if Hugging Face proves unreliable.</li>
+      <li><b>Older phones.</b> Only the Pixel 10 Pro XL gets tested. A phone that falls behind keeps every word but finishes late, as in section 9.</li>
+      <li><b>No network during a meeting.</b> Transcription would keep working on the phone. Whether the page queues its Cloud pushes until the network is back is not checked yet.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="heading-section">Your calls</h2>
+    <p class="mt-2 mb-4 text-[14px] text-mut">Pick one per question and queue it. Each sends one answer back.</p>
+    <div class="grid gap-4 md:grid-cols-2" id="questions"></div>
+  </section>
+</template>
+<script>
+document.getElementById("eval").appendChild(document.getElementById("eval-html").content.cloneNode(true));
+const QUESTIONS = [
+  { id: "models", q: "Which models ship in the list at first?", opts: [
+    ["All four, as mocked", "tiny.en, base.en, small.en and parakeet-v3."],
+    ["The Mac's names only", "tiny.en, small.en and parakeet-v3, so both lists read the same once AUD-2 lands."],
+    ["parakeet-v3 and tiny.en", "The most accurate and the fastest. Fewest pills to test."]] },
+  { id: "where", q: "Where do you pick the engine?", opts: [
+    ["A Transcription page in Settings, with Change on the record screen", "As mocked. Matches the Mac, where the choice lives in Settings."],
+    ["A switch on the record screen itself", "Faster per meeting, but one more control before Start."]] },
+  { id: "data", q: "Downloading 670 MB on mobile data?", opts: [
+    ["Wi-Fi only", "The download manager waits for Wi-Fi."],
+    ["Ask first on mobile data", "One confirm with the size."],
+    ["Allow either", "Starts at once."]] },
+  { id: "behind", q: "When the phone falls behind?", opts: [
+    ["Keep going and show how far behind", "As mocked. Audio never leaves the phone."],
+    ["Also offer to switch this meeting to Deepgram", "Catches up at once, but sends the audio out."]] },
+];
+document.getElementById("questions").innerHTML = QUESTIONS.map((x) => `
+  <form class="q" data-lavish-question="${x.id}" onsubmit="event.preventDefault(); const f = new FormData(this); const a = f.get('a'); const n = f.get('note'); if (!a) return; const t = '${x.q.replace(/'/g, "\\'")} ' + a + (n ? ' (' + n + ')' : ''); if (window.lavish) window.lavish.queuePrompt(t, { tag: 'choice', text: t, element: this, queueKey: '${x.id}', data: { question: '${x.id}', answer: a } }); this.querySelector('.queued').textContent = 'Queued: ' + a;">
+    <div class="font-bold text-[15px] mb-1">${x.q}</div>
+    ${x.opts.map(([v, d], i) => `<label><input type="radio" name="a" value="${v}" ${i === 0 ? "checked" : ""}><span>${v}<small>${d}</small></span></label>`).join("")}
+    <textarea name="note" rows="2" placeholder="Anything to add (optional)"></textarea>
+    <div class="flex items-center gap-3 mt-2"><button type="submit" class="${btn("secondary", "", "sm")}">Queue answer</button><span class="queued text-[12.5px] text-matcha"></span></div>
+  </form>`).join("");
+</script>
+</body>
+</html>

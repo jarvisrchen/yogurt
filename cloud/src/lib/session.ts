@@ -6,6 +6,7 @@ import { NativeRecorder } from "./nativeRecorder";
 import { enhanceMeeting } from "./enhance";
 import { bundle, clearUnfinished, loadUnfinished, readDevice, saveDevice, saveUnfinished, ulid, type Enhanced, type PhoneLabel, type PhoneMeeting, type Unfinished } from "./phone";
 import type { Recorder, RecorderEvent, RecorderState } from "./recorder";
+import { engineFor, localChoice, localModel } from "./stt";
 
 /** A killed tab loses at most this much of the Cloud's copy. */
 export const PUSH_EVERY_MS = 30_000;
@@ -32,6 +33,10 @@ export interface Snapshot {
   native: boolean;
   /** A meeting a closed page left unfinished, to resume or end. */
   unfinished: Unfinished | null;
+  /** Whether a model on the phone hears speech it has no line for yet. */
+  speaking: boolean;
+  /** How much heard speech the model on the phone has yet to transcribe. */
+  behindMs: number;
   /** The last ended meeting's enhance, under its library key. */
   finish: { key: string; run: Finish } | null;
 }
@@ -48,7 +53,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * The meeting is written to IndexedDB on every change and pushed whole every 30 seconds and at End, through the RPCs a laptop pushes with.
  */
 export class RecordingSession {
-  private snap: Snapshot = { meeting: null, state: "stopped", interim: "", gaps: [], downSince: null, error: null, saveError: null, ending: false, native: false, unfinished: null, finish: null };
+  private snap: Snapshot = { meeting: null, state: "stopped", interim: "", gaps: [], downSince: null, error: null, saveError: null, ending: false, native: false, unfinished: null, finish: null, speaking: false, behindMs: 0 };
   private subs = new Set<() => void>();
   private recorder: Recorder | null = null;
   private deviceId = "";
@@ -101,7 +106,7 @@ export class RecordingSession {
     }
     saveDevice({ id: device.id, name: named, registered: true });
     const now = Date.now();
-    await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString(), labels, for_device: forDevice ?? device.id }, true);
+    await this.run(device.id, { id: ulid(now), title, started_at: now, ended_at: null, notes_md: "", lines: [], created_at: new Date(now).toISOString(), labels, for_device: forDevice ?? device.id, stt_engine: engineFor(localChoice()) }, true);
   }
 
   async resume() {
@@ -113,7 +118,7 @@ export class RecordingSession {
     this.deviceId = deviceId;
     this.lastPushed = "";
     const native = !!window.YogurtAndroid;
-    this.set({ meeting, unfinished: null, finish: null, state: "connecting", interim: "", gaps: [], downSince: null, error: null, saveError: null, native });
+    this.set({ meeting, unfinished: null, finish: null, state: "connecting", interim: "", gaps: [], downSince: null, error: null, saveError: null, native, speaking: false, behindMs: 0 });
     this.write();
     const rec: Recorder = window.YogurtAndroid
       ? new NativeRecorder(window.YogurtAndroid, async () => ({ jwt: await this.api.jwt(), browserToken: this.browserToken() ?? "" }), new URL("/api/stt-token", location.href).href)
@@ -121,7 +126,7 @@ export class RecordingSession {
     rec.on(this.heard);
     this.recorder = rec;
     try {
-      await rec.start({ meetingId: meeting.id, startedAtMs: meeting.started_at, have: meeting.lines.length });
+      await rec.start({ meetingId: meeting.id, startedAtMs: meeting.started_at, have: meeting.lines.length, model: native ? localModel(meeting.stt_engine) : null });
     } catch (e) {
       this.recorder = null;
       await rec.stop().catch(() => undefined);
@@ -166,6 +171,10 @@ export class RecordingSession {
         return this.set({ gaps: [...this.snap.gaps, { from_ms: e.from_ms, to_ms: e.to_ms }] });
       case "error":
         return this.set({ error: e.message });
+      case "speaking":
+        return this.set({ speaking: e.speaking });
+      case "backlog":
+        return this.set({ behindMs: e.ms });
     }
   };
 
@@ -255,7 +264,7 @@ export class RecordingSession {
     const rec = this.recorder;
     this.recorder = null;
     await rec?.stop().catch(() => undefined);
-    this.set({ interim: "", state: "stopped" });
+    this.set({ interim: "", state: "stopped", speaking: false, behindMs: 0 });
     this.write();
     const last = this.snap.meeting!;
     const endedAt = last.ended_at ?? Date.now();
