@@ -32,10 +32,13 @@ const LABELS: Record<Tab, string> = { notes: "Notes", enhanced: "Enhanced", tran
 /** What the open meeting's body is doing. Until it is `ready`, `entry` carries only a header. */
 export type BodyState = { status: "loading" } | { status: "ready" } | { status: "error"; message: string; onRetry: () => void } | { status: "gone"; adopted?: boolean };
 
-/** Runs an enhance of the open meeting and pushes it, calling `onText` with the document so far. Resolves to the stored `enriched_md`, or null when the meeting is too short. */
+/** Runs an enhance of the open meeting and pushes it, calling `onText` with the document so far. Resolves to the stored `enriched_md`, or null when the meeting was too short and is deleted. */
 export type Enhance = (onText: (text: string) => void) => Promise<string | null>;
 
 type Run = { status: "idle" } | Exclude<Finish, { status: "done" }>;
+
+/** Long enough to read, short enough not to feel stuck, as on the Mac. */
+const TOO_SHORT_BACK_MS = 1400;
 
 /** What the open meeting can change from here. */
 export interface Editing {
@@ -78,6 +81,24 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
       setRun({ status: "error", message: `Enhance failed. ${e instanceof Error ? e.message : String(e)}` });
     }
   };
+  const short = run.status === "short";
+  // The latest onBack, since the list beside it on a desktop can change the location during the wait.
+  const backRef = useRef(onBack);
+  backRef.current = onBack;
+  useEffect(() => {
+    if (!short) return;
+    const t = setTimeout(() => backRef.current(), TOO_SHORT_BACK_MS);
+    return () => clearTimeout(t);
+  }, [short]);
+  if (short)
+    return (
+      <article className="flex flex-1 items-center justify-center min-w-0">
+        <div role="status" aria-live="polite" className="text-center flex flex-col gap-[6px]">
+          <p className="heading-card m-[0px]">Meeting too short</p>
+          <p className="text-[13px] text-mut m-[0px]">Nothing to enhance, back to the library…</p>
+        </div>
+      </article>
+    );
   const ready = body.status === "ready" && entry;
   return (
     <article className="flex flex-col gap-[10px] min-[721px]:gap-[12px] flex-1 min-w-0">
@@ -128,11 +149,6 @@ export function MeetingView({ entry, device, deviceColor, back, onBack, desktop,
             Retry
           </button>
         </div>
-      )}
-      {run.status === "short" && (
-        <p role="status" className="text-[15px] min-[721px]:text-[12px] text-mut m-[0px]">
-          This meeting is too short to enhance.
-        </p>
       )}
       {ready && (
         <MeetingBody
