@@ -1,4 +1,4 @@
-import { bundle, mergeLabels, readDevice, readMac, saveDevice, saveMac, ulid, type PhoneMeeting } from "./phone";
+import { bundle, mergeLabels, readDevice, readTarget, saveDevice, saveTarget, ulid, type PhoneMeeting } from "./phone";
 
 test("a ULID is the time then the randomness, in Crockford base32, and sorts by time", () => {
   const zeros = (n: number) => new Uint8Array(n);
@@ -50,15 +50,16 @@ test("labels merge to one per name as the Mac matches it, sorted, keeping the fi
   expect(mergeLabels([{ name: "Über", color: "blue" }, { name: "über", color: "lilac" }])).toHaveLength(2);
 });
 
-test("a recording goes to the Mac picked last while it is still offered, or else the one seen last", () => {
+test("a recording goes where this phone saved the last one while it is still offered, or else stays on this phone", () => {
   const store = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) });
-  const macs = [{ id: "mbp", seen_at: "2026-11-04T10:00:00Z" }, { id: "mini", seen_at: "2026-11-04T11:00:00Z" }];
-  expect(readMac(macs)).toBe("mini");
-  saveMac("mbp");
-  expect(readMac(macs)).toBe("mbp");
-  expect(readMac([macs[1]])).toBe("mini");
-  expect(readMac([])).toBeNull();
+  const macs = [{ id: "mbp" }, { id: "mini" }];
+  expect(readTarget("pixel", macs)).toBe("pixel");
+  saveTarget("mbp");
+  expect(readTarget("pixel", macs)).toBe("mbp");
+  expect(readTarget("pixel", [macs[1]])).toBe("pixel");
+  saveTarget("pixel");
+  expect(readTarget("pixel", macs)).toBe("pixel");
   expect(bundle({ ...m, for_device: "mini" }).meeting.for_device).toBe("mini");
   expect(bundle(m).meeting.for_device).toBeNull();
   vi.unstubAllGlobals();

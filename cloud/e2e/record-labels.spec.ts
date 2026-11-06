@@ -1,12 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { FakeDeepgram } from "./fakeDeepgram";
-import { API, KEY, OWNER, PASSWORD, onboard, query, reset, shot } from "./helpers";
+import { API, KEY, OWNER, PASSWORD, PIN, expectScreen, onboard, query, reset, shot, signIn, typePin } from "./helpers";
 
 test.use({
   launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] },
   permissions: ["microphone"],
 });
+
+test.describe.configure({ mode: "serial" });
 
 const dg = new FakeDeepgram(5193, "fake-dg-key");
 test.beforeAll(async () => {
@@ -18,6 +20,7 @@ test.afterAll(() => dg.stop());
 const MBP = "33333333-3333-4333-8333-333333333333";
 const MINI = "44444444-4444-4444-8444-444444444444";
 const OLD = "55555555-5555-4555-8555-555555555555";
+const PIXEL = "66666666-6666-4666-8666-666666666666";
 
 /** Two Macs whose labels overlap by name in another case, an archived label that a recording is not offered, and a Mac gone quiet. */
 async function seedMacs() {
@@ -49,11 +52,17 @@ test("a recording is saved to a chosen Mac and takes that Mac's labels and new o
   await page.getByRole("button", { name: "Record" }).click();
   await expect(page.getByRole("heading", { name: "Record the room" })).toBeVisible();
 
-  // The Mac seen last is picked, a Mac quiet for a week is not offered, and Label lists the picked Mac's labels without the archive's.
-  await expect(savesTo(page).getByRole("button")).toHaveText(["MacBook Pro", "Mac mini"]);
-  await expect(savesTo(page).getByRole("button", { name: "MacBook Pro" })).toHaveAttribute("aria-pressed", "true");
+  // This phone is picked first and has no labels yet, and a Mac quiet for a week is not offered.
+  await expect(savesTo(page).getByRole("button")).toHaveText(["Phone", "MacBook Pro", "Mac mini"]);
+  await expect(savesTo(page).getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
   await labelButton(page).click();
   const list = page.getByRole("listbox", { name: "Labels" });
+  await expect(list.getByRole("option")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // A Mac lists its labels without the archive's.
+  await savesTo(page).getByRole("button", { name: "MacBook Pro" }).click();
+  await labelButton(page).click();
   await expect(list.getByRole("option")).toHaveText(["Build", "Clients"]);
   await list.getByRole("option", { name: "Build" }).click();
   await page.getByLabel("Search or create label").fill("Site visit");
@@ -108,4 +117,51 @@ test("a recording is saved to a chosen Mac and takes that Mac's labels and new o
       ],
     }),
   );
+});
+
+const latest = async (device: string, meeting: string) =>
+  (await query<{ body: { meeting: { title: string; labels: unknown; for_device: string | null } } }>("select body from yogurt_versions where device_id = $1 and meeting_id = $2 order by push_id desc limit 1", [device, meeting]))[0]?.body.meeting;
+
+test("a meeting kept on a phone moves to a Mac with its labels, and a new phone saves to itself", async ({ page }, info) => {
+  const sb = createClient(API, KEY);
+  expect((await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD })).error).toBeNull();
+  expect((await sb.from("yogurt_devices").insert({ id: PIXEL, name: "Pixel", kind: "phone" })).error).toBeNull();
+  const { data: pushId } = await sb.rpc("yogurt_start_push", { device_id: PIXEL });
+  const start = Date.now() - 3_600_000;
+  const labels = [{ id: "errands", name: "Errands", color: "lilac" }];
+  const meeting = { id: "kept", title: "Kept on phone", started_at: start, ended_at: start + 600_000, notes_md: "", enriched_md: null, transcript_json: "[]", starred: false, labels, for_device: PIXEL };
+  expect((await sb.from("yogurt_versions").insert({ meeting_id: "kept", push_id: pushId, device_id: PIXEL, body: { v: 1, meeting } })).error).toBeNull();
+  await sb.auth.signOut();
+
+  await signIn(page);
+  await expectScreen(page, "Unlock your meetings");
+  await typePin(page, PIN);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByRole("button", { name: /Kept on phone/ }).click();
+  await page.getByRole("button", { name: "Move to a Mac" }).click();
+  const moveTo = page.getByRole("group", { name: "Move to" });
+  await expect(moveTo.getByRole("button")).toHaveText(["MacBook Pro", "Mac mini"]);
+  await moveTo.getByRole("button", { name: "Mac mini" }).click();
+  await shot(page, info, "l5-move-form", false);
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Moving to Mac mini." })).toBeVisible();
+  await shot(page, info, "l6-moving", false);
+  expect(await latest(PIXEL, "kept")).toEqual(expect.objectContaining({ for_device: MINI, labels }));
+
+  // A rename right after builds on the move rather than the body the page loaded.
+  await page.getByRole("button", { name: "Rename" }).click();
+  await page.getByLabel("New title").fill("Errand run");
+  await page.getByLabel("New title").press("Enter");
+  await expect(page.getByRole("heading", { name: "Errand run" })).toBeVisible();
+  expect(await latest(PIXEL, "kept")).toEqual(expect.objectContaining({ title: "Errand run", for_device: MINI, labels }));
+
+  // A phone that never recorded registers on Start, and the meeting is saved under the id it registered.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Record" }).click();
+  await expect(savesTo(page).getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await expect(page.getByRole("button", { name: "End meeting" })).toBeVisible();
+  const [phone] = await query<{ id: string }>("select id::text from yogurt_devices where kind = 'phone' order by created_at desc limit 1");
+  expect(phone.id).not.toBe(PIXEL);
+  await expect.poll(pushed).toEqual(expect.objectContaining({ for_device: phone.id }));
 });

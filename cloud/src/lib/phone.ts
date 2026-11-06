@@ -110,25 +110,25 @@ export interface PhoneDevice {
 }
 
 const DEVICE_KEY = "yogurt-cloud-phone";
-const MAC_KEY = "yogurt-cloud-phone-mac";
+// Named for when only a Mac could be picked, so a pick made then still counts.
+const TARGET_KEY = "yogurt-cloud-phone-mac";
 
-/** The Mac this phone last saved a recording to, if it is still one of `macs`, or else the one seen last. */
-export function readMac(macs: { id: string; seen_at: string }[]): string | null {
+/** Where this phone saved its last recording, if that is still this phone or one of `macs`, or else this phone. */
+export function readTarget(phone: string, macs: { id: string }[]): string {
   let last: string | null = null;
   try {
-    last = localStorage.getItem(MAC_KEY);
+    last = localStorage.getItem(TARGET_KEY);
   } catch {
-    // Storage blocked: the Mac seen last.
+    // Storage blocked: this phone.
   }
-  const latest = [...macs].sort((a, b) => Date.parse(b.seen_at) - Date.parse(a.seen_at))[0];
-  return macs.find((m) => m.id === last)?.id ?? latest?.id ?? null;
+  return macs.find((m) => m.id === last)?.id ?? phone;
 }
 
-export function saveMac(id: string): void {
+export function saveTarget(id: string): void {
   try {
-    localStorage.setItem(MAC_KEY, id);
+    localStorage.setItem(TARGET_KEY, id);
   } catch {
-    // Storage blocked: the next recording starts on the Mac seen last.
+    // Storage blocked: the next recording starts on this phone.
   }
 }
 
