@@ -21,7 +21,7 @@ export function parse(hash: string): Loc {
     return HOME;
   }
   const [a, b] = parts;
-  if (a === "settings") return { ...HOME, view: b === "pin" ? "change-pin" : "settings" };
+  if (a === "settings") return { ...HOME, view: b === "pin" ? "change-pin" : b === "transcription" ? "transcription" : "settings" };
   if (a === "history") return { ...HOME, view: "history" };
   if (a === "record") return { ...HOME, view: "record" };
   let asOf: number | null = null;
@@ -45,6 +45,7 @@ export function parse(hash: string): Loc {
 export function format(l: Loc): string {
   if (l.view === "settings") return "#/settings";
   if (l.view === "change-pin") return "#/settings/pin";
+  if (l.view === "transcription") return "#/settings/transcription";
   if (l.view === "history") return "#/history";
   if (l.view === "record") return "#/record";
   const at = l.asOf ? `/at/${l.asOf}` : "";

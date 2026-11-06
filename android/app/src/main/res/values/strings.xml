@@ -12,6 +12,7 @@
     <string name="change_cloud">Change Cloud address</string>
     <string name="recording">Recording</string>
     <string name="stop">Stop</string>
+    <string name="transcribing_here">Transcribing on this phone</string>
     <string name="update_ready">Yogurt for Android %1$s is ready.</string>
     <string name="update">Update</string>
     <string name="downloading">Downloading…</string>

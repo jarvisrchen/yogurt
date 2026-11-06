@@ -1,5 +1,6 @@
 package com.jarvisrchen.yogurt
 
+import android.os.Build
 import android.webkit.JavascriptInterface
 import org.json.JSONObject
 import java.net.URI
@@ -65,7 +66,7 @@ class YogurtAndroid(private val activity: MainActivity, private val origin: Stri
         if (meetingId.isEmpty() || startedAtMs <= 0 || have < 0 || auth == null || !Cloud.sameOrigin(tokenUrl, origin)) {
             return result("The start request needs meetingId, startedAtMs, have, a tokenUrl on this Cloud, and auth.")
         }
-        val r = StartRequest(meetingId, startedAtMs, have, tokenUrl!!, auth)
+        val r = StartRequest(meetingId, startedAtMs, have, tokenUrl!!, auth, a.optString("model").ifEmpty { null })
         // Asking for the mic is a dialog. The recording then starts or fails through events.
         if (!activity.hasMic()) return result(null).also { activity.askMic(r) }
         return result(Recording.start(r))
@@ -91,4 +92,50 @@ class YogurtAndroid(private val activity: MainActivity, private val origin: Stri
 
     @JavascriptInterface
     fun appVersion(): String = BuildConfig.VERSION_NAME
+
+    /** The on-device models and their downloads, which the Transcription page polls while one runs. */
+    @JavascriptInterface
+    fun models(): String = if (allowed()) Recording.models.list().toString() else "[]"
+
+    @JavascriptInterface
+    fun downloadModel(name: String): String {
+        val spec = spec(name) ?: return result("There is no model called $name.")
+        // The APK carries the speech runtime for 64-bit ARM only, so a model elsewhere would download and then fail to load.
+        if ("arm64-v8a" !in Build.SUPPORTED_ABIS) return result("This phone can't run on-device models, which need a 64-bit ARM processor. Cloud still works.")
+        Recording.models.download(spec)
+        return result(null)
+    }
+
+    @JavascriptInterface
+    fun cancelDownload(name: String) {
+        spec(name)?.let(Recording.models::cancel)
+    }
+
+    @JavascriptInterface
+    fun deleteModel(name: String): String {
+        val spec = spec(name) ?: return result("There is no model called $name.")
+        if (Recording.localModel() === spec) return result("A recording is using ${spec.name}. End it first.")
+        Recording.models.delete(spec)
+        return result(null)
+    }
+
+    /** Loads the model and decodes silence off this thread. The verdict arrives as a `model-test` event. */
+    @JavascriptInterface
+    fun testModel(name: String) {
+        val spec = spec(name) ?: return
+        thread {
+            val started = System.currentTimeMillis()
+            val busy = Recording.localModel()
+            val error = when {
+                busy != null -> "A recording is transcribing with ${busy.name}, and the phone holds one model at a time. Test after it ends."
+                !Recording.models.downloaded(spec) -> "${spec.name} isn't downloaded yet."
+                else -> LocalRecorder.selfTest(spec, Recording.models.dir(spec))
+            }
+            val verdict = JSONObject().put("type", "model-test").put("name", spec.name).put("ok", error == null)
+            if (error == null) verdict.put("model", "${spec.name} · loaded and ran in ${System.currentTimeMillis() - started}ms") else verdict.put("error", error)
+            NativeEvents.post(verdict)
+        }
+    }
+
+    private fun spec(name: String) = if (allowed()) CATALOG.firstOrNull { it.name == name } else null
 }

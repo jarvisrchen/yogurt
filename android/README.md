@@ -8,6 +8,9 @@ The design is [docs/.planning/mobile-recording-design.md](../docs/.planning/mobi
 ## What it sends where
 
 The mic's audio goes to Deepgram, through a short-lived token your Cloud grants, and is never written to storage.
+If you pick Local in Settings > Transcription, it goes nowhere: sherpa-onnx transcribes it on the phone with the model you downloaded, and speech waits in memory for the model.
+A model downloads only when you tap it, from Hugging Face (Whisper and Parakeet) and GitHub (the Silero voice detector), over Wi-Fi, and counts only once every file matches its pinned SHA-256.
+The models live in the app's own storage, which Android deletes with the app.
 While the socket is down, up to 5 minutes of audio waits in memory and replays once a new socket opens.
 Past that cap the oldest audio drops, and the page shows a gap.
 Final transcript lines are kept in the app's own storage until the next recording starts, so the page can fetch any it missed.
@@ -36,6 +39,8 @@ Tapping it downloads the APK and hands it to Android's installer, which keeps yo
 ## Build
 
 The build needs JDK 17 and the Android SDK with platform 36, at `~/Library/Android/sdk` unless `ANDROID_HOME` says otherwise.
+The first build downloads the sherpa-onnx AAR from its GitHub release into `~/.gradle/caches/yogurt/` and checks its pinned SHA-256.
+The APK carries its native library for 64-bit ARM only, about 24 MB, so on another ABI Local reports that the phone can't run it and Cloud still works.
 
 ```bash
 just android            # debug APK and unit tests: android/app/build/outputs/apk/debug/app-debug.apk
@@ -50,7 +55,7 @@ Every yogurt release ships the APK under its own version, which Gradle takes fro
 
 ## Test
 
-Unit tests cover the reconnect queue, the line store, Deepgram message parsing, version comparison, and the Cloud address check.
+Unit tests cover the reconnect queue, the line store, Deepgram message parsing, version comparison, the Cloud address check, and the on-device model's speech queue, lead-in, and catalog.
 They run on the JVM with `just android`.
 
 The end-to-end test drives the debug app on an emulator against `tools/fake-cloud.mjs`, a fake Cloud, Deepgram, and GitHub release on the Mac, reached through `adb reverse`.

@@ -4,12 +4,13 @@ import { TranscriptLine, formatTs } from "@web/components/TranscriptLine";
 import { YogurtEditor } from "@web/editor";
 import { onControl, usePointerDrag } from "@web/lib/usePointerDrag";
 import { dragTouch, useScrollEdges } from "@web/lib/useScrollEdges";
-import { Back, DeviceTag, Field, LabelPicker, Note, Pills } from "../ui";
+import { Back, DeviceTag, EnginePill, Field, LabelPicker, Note, Pills } from "../ui";
 import type { Api } from "../lib/api";
 import { QUEUE_MS, type Gap } from "../lib/audioQueue";
 import { clock } from "../lib/library";
 import { readDevice, readTarget, saveTarget, UNTITLED, type Line, type PhoneDevice, type PhoneLabel, type PhoneMeeting } from "../lib/phone";
 import { useSession, type RecordingSession, type Snapshot } from "../lib/session";
+import { localChoice, localModel, phoneModels, readStt, saveStt } from "../lib/stt";
 import { useCloudLoad } from "../lib/useCloudLoad";
 import { useChat } from "../lib/useChat";
 import { Ask } from "./Meeting";
@@ -62,7 +63,7 @@ interface Saves {
   options: ReturnType<typeof useTargetLabels>;
 }
 
-function Head({ title, onTitle, device, color, startedAt, saves }: { title: string; onTitle: (t: string) => void; device: string; color: string; startedAt: number; saves: Saves }) {
+function Head({ title, onTitle, device, color, startedAt, model, saves }: { title: string; onTitle: (t: string) => void; device: string; color: string; startedAt: number; model: string | null; saves: Saves }) {
   const { phone, target, onTarget, labels, onLabels, options } = saves;
   const places = [{ value: phone, label: device }, ...(saves.macs.data ?? []).map((m) => ({ value: m.id, label: m.name }))];
   return (
@@ -77,6 +78,7 @@ function Head({ title, onTitle, device, color, startedAt, saves }: { title: stri
       <div className="flex flex-wrap items-center gap-[6px] min-[721px]:gap-[8px] text-[13px] min-[721px]:text-[12px] text-mut mt-[3px] min-[721px]:mt-[4px]">
         <DeviceTag name={device} color={color} />
         {dateTime(startedAt)}
+        <EnginePill model={model} />
       </div>
       {saves.macs.error && (
         <p className="text-[13px] min-[721px]:text-[11.5px] text-mut mt-[10px] mb-[0px]">
@@ -109,20 +111,21 @@ interface Props {
   session: RecordingSession;
   onBack: () => void;
   onEnded: (key: string) => void;
+  onTranscription: () => void;
   onRejected: () => void;
 }
 
 /** Ready to record, then recording, until End. While it records it is the whole page, with no way back but End. */
-export function Record({ api, token, session, onBack, onEnded, onRejected }: Props) {
+export function Record({ api, token, session, onBack, onEnded, onTranscription, onRejected }: Props) {
   const snap = useSession(session);
   const device = useMemo(readDevice, [snap.meeting]);
   const color = useDeviceColor(api, token, device.id);
   const macs = useMacs(api, token, onRejected);
   if (snap.meeting) return <Recording api={api} token={token} snap={snap} meeting={snap.meeting} session={session} device={device.name} color={color} macs={macs} onEnded={onEnded} onRejected={onRejected} />;
-  return <Ready api={api} token={token} snap={snap} session={session} device={device} color={color} macs={macs} onBack={onBack} onRejected={onRejected} />;
+  return <Ready api={api} token={token} snap={snap} session={session} device={device} color={color} macs={macs} onBack={onBack} onTranscription={onTranscription} onRejected={onRejected} />;
 }
 
-function Ready({ api, token, snap, session, device, color, macs, onBack, onRejected }: { api: Api; token: string; snap: Snapshot; session: RecordingSession; device: PhoneDevice; color: string; macs: Macs; onBack: () => void; onRejected: () => void }) {
+function Ready({ api, token, snap, session, device, color, macs, onBack, onTranscription, onRejected }: { api: Api; token: string; snap: Snapshot; session: RecordingSession; device: PhoneDevice; color: string; macs: Macs; onBack: () => void; onTranscription: () => void; onRejected: () => void }) {
   const [title, setTitle] = useState("");
   const [labels, setLabels] = useState<PhoneLabel[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -132,6 +135,13 @@ function Ready({ api, token, snap, session, device, color, macs, onBack, onRejec
   const [name, setName] = useState(device.name);
   const [busy, setBusy] = useState(false);
   const now = useNow(true);
+  const [model, setModel] = useState(localChoice);
+  // A model deleted since it was chosen would refuse to start, so the screen says so first.
+  const missing = useMemo(() => !!model && !phoneModels().find((m) => m.name === model)?.downloaded, [model]);
+  const useCloud = () => {
+    saveStt({ ...readStt(), engine: "cloud" });
+    setModel(null);
+  };
   const start = async () => {
     setBusy(true);
     await session.start(title, name, labels, target === device.id ? null : target);
@@ -143,7 +153,7 @@ function Ready({ api, token, snap, session, device, color, macs, onBack, onRejec
         <Back to="All devices" onClick={onBack} />
       </div>
       {snap.unfinished && <ResumeCard session={session} unfinished={snap.unfinished} />}
-      <Head title={title} onTitle={setTitle} device={device.registered ? device.name : name.trim() || "Phone"} color={color} startedAt={now}
+      <Head title={title} onTitle={setTitle} device={device.registered ? device.name : name.trim() || "Phone"} color={color} startedAt={now} model={model}
         saves={{
           phone: device.id,
           macs,
@@ -162,9 +172,29 @@ function Ready({ api, token, snap, session, device, color, macs, onBack, onRejec
           <MicIcon size={22} />
         </div>
         <h2 className="text-[18px] min-[721px]:text-[15px] font-bold tracking-[-0.01em] text-ink m-[0px]">Record the room</h2>
-        <p className="text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]">The phone's microphone picks up everyone in the room. The audio streams to Deepgram to be transcribed and is never saved.</p>
+        <p className="text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]">
+          {model
+            ? "The phone's microphone picks up everyone in the room. This phone transcribes it, so the audio never leaves it and is never saved."
+            : "The phone's microphone picks up everyone in the room. The audio streams to Deepgram to be transcribed and is never saved."}
+        </p>
         <p className="text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]">A call on this phone cannot be recorded. Take the call on another device, on speaker.</p>
+        <div className="flex items-center justify-between gap-[10px] pt-[12px] mt-[2px] border-t border-line">
+          <span className="flex items-center gap-[8px] min-w-0 text-[14px] min-[721px]:text-[12px] text-mut">
+            {model ? "Local" : "Cloud"} <EnginePill model={model} />
+          </span>
+          <button type="button" onClick={onTranscription} className="flex-none text-[14px] min-[721px]:text-[12px] text-blue font-semibold bg-transparent border-0 p-[0px] cursor-pointer font-[inherit]">
+            Change
+          </button>
+        </div>
       </section>
+      {missing && (
+        <Note>
+          {model} isn't on this phone. Download it in Transcription settings, or record this meeting with Cloud.{" "}
+          <button type="button" onClick={useCloud} className="bg-transparent border-0 p-[0px] font-[inherit] text-[inherit] font-semibold underline cursor-pointer">
+            Use Cloud
+          </button>
+        </Note>
+      )}
       {!device.registered && (
         <div className="flex flex-col gap-[5px]">
           <Field label="This phone's name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
@@ -173,12 +203,12 @@ function Ready({ api, token, snap, session, device, color, macs, onBack, onRejec
       )}
       {snap.error && <Note>{snap.error}</Note>}
       <div className="mt-auto flex flex-col gap-[8px] pt-[12px]">
-        <Button onClick={start} disabled={busy || !!snap.unfinished || macs.loading} className="w-full !py-[14px] !text-[16px] min-[721px]:!py-[11px] min-[721px]:!text-[13px]">
+        <Button onClick={start} disabled={busy || !!snap.unfinished || macs.loading || missing} className="w-full !py-[14px] !text-[16px] min-[721px]:!py-[11px] min-[721px]:!text-[13px]">
           <MicIcon size={18} />
           {busy ? "Starting…" : "Start recording"}
         </Button>
         <p className="text-[13px] min-[721px]:text-[11.5px] text-mut text-center m-[0px]">
-          {snap.unfinished ? `Resume or end ${snap.unfinished.meeting.title.trim() || UNTITLED} first.` : "Your phone asks for the microphone first."}
+          {snap.unfinished ? `Resume or end ${snap.unfinished.meeting.title.trim() || UNTITLED} first.` : missing ? "Download the model or use Cloud first." : "Your phone asks for the microphone first."}
         </p>
       </div>
     </main>
@@ -253,9 +283,11 @@ function Recording({ api, token, snap, meeting, session, device, color, macs, on
   const compact = keyboard && !asking;
   const shown = asking ? FULL : compact ? TICKER : height;
   const reconnecting = snap.state === "reconnecting" && snap.downSince !== null;
-  // Interim words carry no time, so they take the moment they started showing.
+  const model = snap.native ? localModel(meeting.stt_engine) : null;
+  const behind = snap.behindMs >= BEHIND_MS ? Math.round(snap.behindMs / 1000) : 0;
+  // Interim words and the speech a model on the phone is hearing carry no time, so they take the moment they started showing.
   const interimAt = useRef<number | null>(null);
-  if (!snap.interim) interimAt.current = null;
+  if (!snap.interim && !snap.speaking) interimAt.current = null;
   else interimAt.current ??= now - meeting.started_at;
   return (
     <div className="h-dvh w-full max-w-[640px] mx-auto flex flex-col min-[721px]:border-x min-[721px]:border-line">
@@ -275,12 +307,16 @@ function Recording({ api, token, snap, meeting, session, device, color, macs, on
             <p role="status" className={NOTICE}>
               Reconnecting… Holding {minSec(Math.min(now - snap.downSince!, QUEUE_MS))} of audio, up to 5 minutes. It is transcribed once the connection is back.
             </p>
+          ) : behind ? (
+            <p role="status" className={NOTICE}>
+              Transcription is {behind} seconds behind. The phone catches up when the room goes quiet, and no speech is lost.
+            </p>
           ) : (
             !snap.native && <p className={NOTICE}>Keep this page open. Locking the phone or switching apps can stop the recording. The screen stays on while you record.</p>
           )}
           {snap.error && <Note>{snap.error}</Note>}
           {snap.saveError && <Note>Not saved to your Cloud yet. {snap.saveError}{meeting.ended_at ? "" : " It tries again every 30 seconds."}</Note>}
-          <Head title={meeting.title} onTitle={(t) => session.setTitle(t)} device={device} color={color} startedAt={meeting.started_at}
+          <Head title={meeting.title} onTitle={(t) => session.setTitle(t)} device={device} color={color} startedAt={meeting.started_at} model={localModel(meeting.stt_engine)}
             saves={{
               phone: session.device,
               macs,
@@ -305,6 +341,9 @@ function Recording({ api, token, snap, meeting, session, device, color, macs, on
           locked={asking}
           onTicker={() => document.activeElement instanceof HTMLElement && document.activeElement.blur()}
           state={snap.state}
+          model={model}
+          speaking={snap.speaking}
+          behind={behind}
           lines={meeting.lines}
           interim={snap.interim}
           interimAt={interimAt.current ?? 0}
@@ -320,11 +359,29 @@ function Recording({ api, token, snap, meeting, session, device, color, macs, on
   );
 }
 
-const Status = ({ state }: { state: Snapshot["state"] }) => (
-  <span className={`text-[11px] inline-flex items-center gap-1 whitespace-nowrap ${state === "live" ? "text-matcha" : "text-grey"}`}>
-    <span aria-hidden>{state === "live" ? "●" : "○"}</span>
-    {state === "live" ? "connected" : state}
-  </span>
+// Past this much speech waiting for the model on the phone, the screen says how far behind it is.
+const BEHIND_MS = 15_000;
+
+const Status = ({ state, model, behind }: { state: Snapshot["state"]; model: string | null; behind: number }) => {
+  const live = state === "live" && !behind;
+  return (
+    <span className={`text-[11px] inline-flex items-center gap-1 whitespace-nowrap ${live ? "text-matcha" : "text-grey"}`}>
+      <span aria-hidden>{live ? "●" : "○"}</span>
+      {behind ? `${behind}s behind` : state === "live" ? (model ? "local" : "connected") : model && state === "connecting" ? "loading" : state}
+    </span>
+  );
+};
+
+/** A model on the phone has no words until a pause, so while it hears speech the newest row shows that a line is on its way. */
+const Speaking = ({ at }: { at: number }) => (
+  <div className="py-2 leading-snug flex items-center" aria-label="Someone is speaking">
+    <span className="font-mono text-[0.857em] mr-2 text-grey">{formatTs(at)}</span>
+    <span aria-hidden className="inline-flex items-end gap-[3px] h-[14px]">
+      {[45, 100, 65, 85].map((h, i) => (
+        <span key={i} className="w-[3px] rounded-full bg-grey animate-wave origin-bottom" style={{ height: `${h}%`, animationDelay: `${i * 120}ms` }} />
+      ))}
+    </span>
+  </div>
 );
 
 function GapMarker({ gap }: { gap: Gap }) {
@@ -347,7 +404,8 @@ const rowTs = (r: Row) => ("line" in r ? r.line.ts_ms : r.gap.from_ms);
  * A tap on its header toggles the peek and the full height, and a flick throws it to either.
  * While compact it is one line of the newest words, and a tap on it closes the keyboard. While locked it holds its height and has no grip.
  */
-function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, interim, interimAt, gaps }: { height: number; setHeight: (h: number) => void; compact: boolean; locked: boolean; onTicker: () => void; state: Snapshot["state"]; lines: Line[]; interim: string; interimAt: number; gaps: Gap[] }) {
+function Sheet({ height, setHeight, compact, locked, onTicker, state, model, speaking, behind, lines, interim, interimAt, gaps }: { height: number; setHeight: (h: number) => void; compact: boolean; locked: boolean; onTicker: () => void; state: Snapshot["state"]; model: string | null; speaking: boolean; behind: number; lines: Line[]; interim: string; interimAt: number; gaps: Gap[] }) {
+  const waiting = state === "live" ? "Listening…" : model ? `Loading ${model}…` : "Connecting to Deepgram…";
   const rows = useMemo<Row[]>(() => [...lines.map((line) => ({ line })), ...gaps.map((gap) => ({ gap }))].sort((a, b) => rowTs(a) - rowTs(b)), [lines, gaps]);
   // The height mid-drag stays here, so a drag re-renders the sheet and not the whole record screen.
   const [dragged, setDragged] = useState<number | null>(null);
@@ -367,7 +425,7 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
   useLayoutEffect(() => {
     const el = body.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [rows, interim, up]);
+  }, [rows, interim, speaking, up]);
   // The card shrinks through a transition, or under a keyboard, after the render that pinned it.
   useEffect(() => {
     if (!bodyEl) return;
@@ -427,7 +485,7 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
           <span aria-hidden className={`flex-none w-[7px] h-[7px] rounded-pill ${state === "live" ? "bg-matcha" : "bg-grey"}`} />
           {/* Right to left so a long line keeps its newest words and loses its start to the ellipsis. */}
           <span dir="rtl" className={`flex-1 min-w-0 truncate text-left text-[16px] min-[721px]:text-[14px] ${interim ? "text-mut" : "text-ink"}`}>
-            <span dir="ltr">{interim || lines.at(-1)?.text || (state === "live" ? "Listening…" : "Connecting to Deepgram…")}</span>
+            <span dir="ltr">{interim || lines.at(-1)?.text || waiting}</span>
           </span>
         </button>
       ) : (
@@ -451,7 +509,7 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
             <header className={`flex items-center justify-between gap-2 px-[20px] ${locked ? "pt-[12px]" : "pt-[6px]"} ${up ? "border-b border-line pb-[10px]" : "pb-[4px]"}`}>
               <span className="text-[13px] min-[721px]:text-[12px] font-semibold text-ink">Live transcript</span>
               <span className="flex items-center gap-[8px]">
-                <Status state={state} />
+                <Status state={state} model={model} behind={behind} />
                 {up && !locked && (
                   <span aria-hidden className="inline-flex px-[6px] py-[4px] text-mut">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -471,9 +529,10 @@ function Sheet({ height, setHeight, compact, locked, onTicker, state, lines, int
             }}
             className={`${dragTouch(pullUp, pullDown)} ${up ? "flex-1 min-h-0 overflow-y-auto px-[20px] pb-[12px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_12px)]" : "h-[76px] flex flex-col justify-end overflow-hidden px-[20px] text-[16px] min-[721px]:text-[13px] [mask-image:linear-gradient(to_bottom,transparent_0,#000_22px)]"}`}
           >
-            {!rows.length && !interim && <p className="py-2 leading-snug text-grey m-[0px]">{state === "live" ? "Listening…" : "Connecting to Deepgram…"}</p>}
+            {!rows.length && !interim && !speaking && <p className="py-2 leading-snug text-grey m-[0px]">{waiting}</p>}
             {shown.map((r, i) => ("line" in r ? <TranscriptLine key={i} ev={{ ts_ms: r.line.ts_ms, channel: "system", text: r.line.text, is_final: true }} single /> : <GapMarker key={`g${r.gap.from_ms}`} gap={r.gap} />))}
             {interim && <TranscriptLine ev={{ ts_ms: interimAt, channel: "system", text: interim, is_final: false }} single />}
+            {speaking && !interim && <Speaking at={interimAt} />}
           </div>
         </>
       )}

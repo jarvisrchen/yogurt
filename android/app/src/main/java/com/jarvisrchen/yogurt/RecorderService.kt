@@ -17,7 +17,8 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-class StartRequest(val meetingId: String, val startedAtMs: Long, val have: Int, val tokenUrl: String, val auth: Auth)
+/** [model] names a [CATALOG] model to transcribe on the phone, or is null for Deepgram. */
+class StartRequest(val meetingId: String, val startedAtMs: Long, val have: Int, val tokenUrl: String, val auth: Auth, val model: String? = null)
 
 /**
  * The process's one recording, which outlives the activity. The service only keeps the process in the foreground while it runs.
@@ -28,15 +29,18 @@ object Recording {
     private lateinit var app: Context
     lateinit var store: LineStore
         private set
+    lateinit var models: Models
+        private set
     // Pings find a socket whose network vanished without a close.
     private val http = OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build()
-    @Volatile private var current: Recorder? = null
+    @Volatile private var current: Rec? = null
 
     @Synchronized
     fun init(context: Context) {
         if (::app.isInitialized) return
         app = context.applicationContext
         store = LineStore(File(app.filesDir, "recording"))
+        models = Models(app)
     }
 
     /** Starts recording, or returns why it could not. Call while the app is on screen, as a microphone foreground service requires. */
@@ -45,18 +49,27 @@ object Recording {
         current?.takeIf { !it.stopped }?.let {
             return if (store.meetingId == r.meetingId) null else "Already recording another meeting. Stop it first."
         }
+        val spec = r.model?.let { name -> CATALOG.firstOrNull { it.name == name } ?: return "There is no model called $name." }
+        if (spec != null && !models.downloaded(spec)) return "${spec.name} isn't on this phone. Download it in Transcription settings, or record this meeting with Cloud."
         val source = try {
             DebugSeam.pcmSource(app) ?: MicSource.open()
         } catch (e: Exception) {
             return e.message ?: "The microphone is not available."
         }
         store.begin(r.meetingId, r.startedAtMs, r.have)
-        lateinit var rec: Recorder
-        rec = Recorder(store, r.meetingId, source, http, r.tokenUrl, r.auth, r.startedAtMs, NativeEvents::post) {
+        lateinit var rec: Rec
+        val onEnd = {
             synchronized(this) { if (current === rec) app.stopService(Intent(app, RecorderService::class.java)) }
         }
+        rec = if (spec != null) {
+            LocalRecorder(store, r.meetingId, source, spec, models.dir(spec), r.startedAtMs, NativeEvents::post, onEnd)
+        } else {
+            Recorder(store, r.meetingId, source, http, r.tokenUrl, r.auth, r.startedAtMs, NativeEvents::post, onEnd)
+        }
         try {
-            app.startForegroundService(Intent(app, RecorderService::class.java).putExtra(EXTRA_STARTED, r.startedAtMs))
+            app.startForegroundService(
+                Intent(app, RecorderService::class.java).putExtra(EXTRA_STARTED, r.startedAtMs).putExtra(EXTRA_LOCAL, spec != null),
+            )
         } catch (e: Exception) {
             source.close()
             return "Android did not let the recorder start: ${e.message}"
@@ -67,8 +80,11 @@ object Recording {
     }
 
     fun setAuth(a: Auth) {
-        current?.auth = a
+        current?.renew(a)
     }
+
+    /** The model a recording is transcribing with, until it has finished every line. Its files must stay, and a phone holds one model at a time. */
+    fun localModel(): ModelSpec? = current.let { if (it is LocalRecorder && !it.stopped) it.spec else null }
 
     /** Ends with a stopped state event even when nothing records, since the page waits for one. */
     fun stop() {
@@ -89,6 +105,7 @@ object Recording {
 }
 
 private const val EXTRA_STARTED = "startedAtMs"
+private const val EXTRA_LOCAL = "local"
 private const val ACTION_STOP = "com.jarvisrchen.yogurt.STOP"
 private const val CHANNEL = "recording"
 
@@ -118,6 +135,7 @@ class RecorderService : Service() {
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.recording))
+            .apply { if (intent?.getBooleanExtra(EXTRA_LOCAL, false) == true) setContentText(getString(R.string.transcribing_here)) }
             .setWhen(intent?.getLongExtra(EXTRA_STARTED, 0L)?.takeIf { it > 0 } ?: System.currentTimeMillis())
             .setShowWhen(true)
             .setUsesChronometer(true)

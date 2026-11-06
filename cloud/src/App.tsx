@@ -9,6 +9,7 @@ import { RecordingSession, useSession } from "./lib/session";
 import { Library } from "./screens/Library";
 import { ChoosePin, Unlock } from "./screens/Pin";
 import { Settings } from "./screens/Settings";
+import { Transcription } from "./screens/Transcription";
 import { AuthShell, Note, h3, sub } from "./ui";
 
 // The notes editor and the recorder load only when a recording starts, so reading the library stays light.
@@ -206,10 +207,12 @@ function Signed({ api }: { api: Api }) {
           onRejected={drop}
         />
       );
+    case "transcription":
+      return <Transcription onBack={() => back({ ...HOME, view: "settings" })} onLock={lock} />;
     case "record":
       return (
         <Suspense fallback={null}>
-          <Record api={api} token={token!} session={session} onBack={() => back(HOME)} onEnded={(key) => replace({ ...HOME, meeting: key })} onRejected={drop} />
+          <Record api={api} token={token!} session={session} onBack={() => back(HOME)} onEnded={(key) => replace({ ...HOME, meeting: key })} onTranscription={() => go({ ...HOME, view: "transcription" })} onRejected={drop} />
         </Suspense>
       );
     case "settings":
@@ -225,6 +228,7 @@ function Signed({ api }: { api: Api }) {
           changed={pinChanged}
           onBack={() => back(HOME)}
           onHistory={() => go({ ...HOME, view: "history" })}
+          onTranscription={() => go({ ...HOME, view: "transcription" })}
           onLock={lock}
           onSignOut={signOut}
           onRejected={drop}

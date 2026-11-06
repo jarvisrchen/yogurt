@@ -18,6 +18,16 @@ import kotlin.concurrent.thread
 
 data class Auth(val jwt: String, val browserToken: String)
 
+/** A recording in progress, transcribed by Deepgram ([Recorder]) or on the phone ([LocalRecorder]). */
+interface Rec {
+    val stopped: Boolean
+    val state: String
+    fun start()
+    fun stop()
+    /** A fresh Cloud session from the page. Only a recorder that asks the Cloud for tokens needs it. */
+    fun renew(a: Auth) = Unit
+}
+
 /** The Cloud refused the session, which the page renews. */
 private class SessionExpired : IOException("Your Cloud session expired.")
 
@@ -41,7 +51,7 @@ class Recorder(
     startedAtMs: Long,
     private val emit: (JSONObject) -> Unit,
     private val onEnd: () -> Unit,
-) {
+) : Rec {
     private val lock = Any()
     private val queue = AudioQueue()
     private val offsetMs = System.currentTimeMillis() - startedAtMs
@@ -55,10 +65,14 @@ class Recorder(
     private var st = Utterance()
     private var attempt = 0
 
-    @Volatile var stopped = false
+    @Volatile override var stopped = false
         private set
-    @Volatile var state = "connecting"
+    @Volatile override var state = "connecting"
         private set
+
+    override fun renew(a: Auth) {
+        auth = a
+    }
 
     private val capture = thread(start = false, name = "yogurt-capture") {
         val buf = ByteArray(CHUNK_BYTES)
@@ -76,13 +90,13 @@ class Recorder(
         if (!stopped) thread { stop() }
     }
 
-    fun start() {
+    override fun start() {
         capture.start()
         scheduler.execute(::connect)
     }
 
     /** Ends the recording once Deepgram has sent its last lines, so a caller that reads the lines next sees them all. */
-    fun stop() {
+    override fun stop() {
         synchronized(lock) {
             if (stopped) return
             stopped = true

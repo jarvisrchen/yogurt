@@ -140,4 +140,3 @@ Design: [.planning/granola-import-design.md](.planning/granola-import-design.md)
 
 Design: [.planning/mobile-recording-design.md](.planning/mobile-recording-design.md).
 
-- [ ] **MOB-4** Spike on-device transcription on the phone, such as Moonshine through Transformers.js, measured over an hour on a real Android phone ([design](.planning/mobile-recording-design.md#transcription))

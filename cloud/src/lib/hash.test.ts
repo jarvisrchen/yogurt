@@ -5,6 +5,7 @@ const cases: [string, Loc][] = [
   ["", HOME],
   ["#/settings", { ...HOME, view: "settings" }],
   ["#/settings/pin", { ...HOME, view: "change-pin" }],
+  ["#/settings/transcription", { ...HOME, view: "transcription" }],
   ["#/history", { ...HOME, view: "history" }],
   ["#/record", { ...HOME, view: "record" }],
   ["#/m/dev-1/01ABC", { ...HOME, meeting: "dev-1/01ABC" }],

@@ -9,6 +9,13 @@ export interface Bridge {
   status(): string;
   lines(meetingId: string, from: number): string;
   appVersion(): string;
+  /** `PhoneModel[]` as JSON. The download calls answer `{ok, error}` as `start` does. */
+  models(): string;
+  downloadModel(name: string): string;
+  cancelDownload(name: string): void;
+  deleteModel(name: string): string;
+  /** Answers with a `model-test` event, since loading a model takes seconds. */
+  testModel(name: string): void;
 }
 
 export interface Auth {
@@ -28,12 +35,15 @@ declare global {
  */
 // The app's stop waits up to 5 seconds for Deepgram's last lines. This bounds an app that never reports stopped.
 const STOP_WAIT_MS = 10_000;
+// A model on the phone finishes the speech it has heard first: up to 10 minutes of it, which a slow model takes longer than that to read.
+const LOCAL_STOP_WAIT_MS = 60 * 60_000;
 
 export class NativeRecorder extends Emitter implements Recorder {
   private seen = 0;
   private meetingId = "";
   private listening = false;
   private onStopped: (() => void) | null = null;
+  private stopWait = STOP_WAIT_MS;
 
   constructor(
     private readonly bridge: Bridge,
@@ -44,16 +54,17 @@ export class NativeRecorder extends Emitter implements Recorder {
     super();
   }
 
-  async start({ meetingId, startedAtMs, have }: StartOptions) {
+  async start({ meetingId, startedAtMs, have, model = null }: StartOptions) {
     this.meetingId = meetingId;
     this.seen = have;
+    this.stopWait = model ? LOCAL_STOP_WAIT_MS : STOP_WAIT_MS;
     const status = JSON.parse(this.bridge.status());
     if (status.recording && status.meetingId === meetingId) {
       // The state events went out before this page listened, and the app may hold a session older than this page's.
       this.emit({ type: "state", state: status.state });
       this.renewAuth();
     } else {
-      const r = JSON.parse(this.bridge.start(JSON.stringify({ meetingId, startedAtMs, have, tokenUrl: this.tokenUrl, auth: await this.auth() })));
+      const r = JSON.parse(this.bridge.start(JSON.stringify({ meetingId, startedAtMs, have, model, tokenUrl: this.tokenUrl, auth: await this.auth() })));
       if (!r.ok) throw new Error(r.error || "The recorder did not start.");
     }
     this.win.addEventListener("yogurt-native", this.onEvent);
@@ -68,7 +79,7 @@ export class NativeRecorder extends Emitter implements Recorder {
     let timer: ReturnType<typeof setTimeout> | undefined;
     await new Promise<void>((resolve) => {
       this.onStopped = resolve;
-      timer = setTimeout(resolve, STOP_WAIT_MS);
+      timer = setTimeout(resolve, this.stopWait);
       this.bridge.stop();
     });
     clearTimeout(timer);
