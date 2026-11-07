@@ -1,11 +1,11 @@
-//! Local agent-CLI adapter: runs `claude -p`, `cursor-agent -p` or `opencode run` as a one-shot completion backend.
+//! Local agent-CLI adapter: runs `claude -p`, `cursor-agent -p`, `opencode run` or `codex exec` as a one-shot completion backend.
 //!
 //! `yogurt-server` reaches this only when the active `providers` row is explicitly `adapter: "cli"`.
 //! There is deliberately no automatic fallback from an unreachable HTTP provider to this,
 //! because silently rerouting a meeting's content to a different backend is a change the user must opt into.
 //!
 //! `claude` and `cursor-agent` print one JSON object with `result` and `is_error`.
-//! `opencode run --format json` prints JSON lines instead, so [`interpret_output`] dispatches on the program.
+//! `opencode run --format json` and `codex exec --json` print JSON lines instead, so [`interpret_output`] dispatches on the program.
 
 use crate::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, LlmClient};
 use anyhow::{anyhow, bail, Context, Result};
@@ -23,12 +23,39 @@ const CLI_TIMEOUT: Duration = crate::GENERATION_TIMEOUT;
 /// Hard ceiling on a [`list_models`] probe: one catalog fetch with a user watching the Refresh button.
 const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// `codex features list` names that give the model a tool. Each goes to `--disable`.
+const CODEX_DISABLED_FEATURES: &[&str] = &[
+    "code_mode_host",
+    "shell_tool",
+    "unified_exec",
+    "unified_exec_tty",
+    "multi_agent",
+    "apps",
+    "plugins",
+    "remote_plugin",
+    "browser_use",
+    "browser_use_external",
+    "browser_use_full_cdp_access",
+    "in_app_browser",
+    "computer_use",
+    "image_generation",
+    "view_image",
+    "hooks",
+    "skill_search",
+    "skill_mcp_dependency_install",
+    "tool_call_mcp_elicitation",
+    "tool_suggest",
+    "goals",
+    "sleep_tool",
+];
+
 /// Which agent CLI backs a [`CliClient`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CliProgram {
     Claude,
     CursorAgent,
     OpenCode,
+    Codex,
 }
 
 impl CliProgram {
@@ -37,6 +64,7 @@ impl CliProgram {
         CliProgram::Claude,
         CliProgram::CursorAgent,
         CliProgram::OpenCode,
+        CliProgram::Codex,
     ];
 
     pub fn binary_name(self) -> &'static str {
@@ -44,6 +72,7 @@ impl CliProgram {
             CliProgram::Claude => "claude",
             CliProgram::CursorAgent => "cursor-agent",
             CliProgram::OpenCode => "opencode",
+            CliProgram::Codex => "codex",
         }
     }
 
@@ -55,15 +84,18 @@ impl CliProgram {
             .find(|p| p.binary_name() == id)
     }
 
-    /// The argument that makes this CLI print its `--model` catalog and exit, or `None` if it has no such mode.
+    /// The arguments that make this CLI print its `--model` catalog and exit, or `None` if it has no such mode.
     ///
     /// `claude` has none: its four aliases ship as static preset suggestions.
-    /// The other two have hundreds of ids that vary by account and plan.
-    pub fn list_models_arg(self) -> Option<&'static str> {
+    /// The others have ids that vary by account and plan.
+    /// `codex debug models` is a debug command, so a Codex release may change or drop it.
+    pub fn list_models_args(self) -> Option<&'static [&'static str]> {
         match self {
             CliProgram::Claude => None,
-            CliProgram::CursorAgent => Some("--list-models"),
-            CliProgram::OpenCode => Some("models"),
+            CliProgram::CursorAgent => Some(&["--list-models"]),
+            CliProgram::OpenCode => Some(&["models"]),
+            // `exec` ignores the user's config, so the catalog is pinned to the same default provider it uses.
+            CliProgram::Codex => Some(&["debug", "models", "-c", r#"model_provider="openai""#]),
         }
     }
 }
@@ -75,15 +107,16 @@ impl CliProgram {
 /// `opencode models` lists models of providers with no credit left.
 /// `test_provider`'s real completion is the only entitlement signal.
 pub async fn list_models(program: CliProgram) -> Result<Vec<String>> {
-    let flag = program
-        .list_models_arg()
+    let args = program
+        .list_models_args()
         .ok_or_else(|| anyhow!("{} has no model-list command", program.binary_name()))?;
+    let flag = args.join(" ");
     let binary = find_on_path(program.binary_name())
         .ok_or_else(|| anyhow!("{} not found on $PATH", program.binary_name()))?;
 
     let mut cmd = tokio::process::Command::new(&binary);
     cmd.kill_on_drop(true)
-        .arg(flag)
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -114,14 +147,18 @@ pub async fn list_models(program: CliProgram) -> Result<Vec<String>> {
         );
     }
 
-    let models = parse_model_list(&String::from_utf8_lossy(&output.stdout));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let models = match program {
+        CliProgram::Codex => parse_codex_catalog(&stdout)?,
+        _ => parse_model_list(&stdout),
+    };
     if models.is_empty() {
         bail!("{} {flag} returned no models", program.binary_name());
     }
     Ok(models)
 }
 
-/// Pull model ids out of a catalog listing's stdout. Neither CLI offers JSON for it, and they print different lines:
+/// Pull model ids out of a plain-text catalog listing's stdout. Neither CLI offers JSON for it, and they print different lines:
 ///
 /// - `cursor-agent --list-models`: an `Available models` header, a blank line, then `<id> - <human label>` per line.
 /// - `opencode models`: a bare `<provider>/<model>` per line.
@@ -138,6 +175,31 @@ fn parse_model_list(stdout: &str) -> Vec<String> {
         .filter(|id| !id.is_empty() && !id.contains(char::is_whitespace))
         .map(str::to_string)
         .collect()
+}
+
+#[derive(Deserialize)]
+struct CodexCatalog {
+    models: Vec<CodexModel>,
+}
+
+#[derive(Deserialize)]
+struct CodexModel {
+    slug: String,
+    #[serde(default)]
+    visibility: String,
+}
+
+/// `codex debug models` prints `{"models":[{"slug":..,"visibility":"list"|"hide",..}]}`.
+/// Only `list` models appear in Codex's own picker; `hide` ones are internal (`codex-auto-review`) or unreleased.
+fn parse_codex_catalog(stdout: &str) -> Result<Vec<String>> {
+    let catalog: CodexCatalog = serde_json::from_str(stdout.trim())
+        .context("codex debug models printed unexpected JSON")?;
+    Ok(catalog
+        .models
+        .into_iter()
+        .filter(|m| m.visibility == "list")
+        .map(|m| m.slug)
+        .collect())
 }
 
 /// Constructed only via [`CliClient::locate`], which resolves the binary once so a request never has to tell "not installed" from "installed but erroring".
@@ -169,7 +231,7 @@ impl CliClient {
 
     /// Build the argv (excluding the binary) for one completion call, split out so the containment flags are unit-testable.
     ///
-    /// Fully per-program because the three CLIs share no argv shape.
+    /// Fully per-program because the CLIs share no argv shape.
     fn build_args(&self, prompt: &str) -> Vec<String> {
         let mut args: Vec<String> = match self.program {
             CliProgram::Claude => vec![
@@ -213,14 +275,49 @@ impl CliClient {
                 // Never `--auto` (opencode's `--dangerously-skip-permissions`): the input is untrusted.
                 "--pure".to_string(),
             ],
+            // The user's `config.toml` can set `danger-full-access` and load MCP servers (Gmail, Granola), so it is ignored outright.
+            // Disabling `code_mode_host` makes the exec tool fail closed: asked to read a file outside the scratch cwd, the model answers it cannot.
+            // The other features are account-level tools (ChatGPT apps, browser, computer use) that `--ignore-user-config` does not drop.
+            // `~/.codex/AGENTS.md` still loads and no flag skips it. A scratch `CODEX_HOME` would, but a token refresh there rotates the user's real refresh token.
+            // Never `--dangerously-bypass-approvals-and-sandbox` or `--approve-for-me`: the input is untrusted.
+            CliProgram::Codex => {
+                let mut args: Vec<String> = [
+                    "exec",
+                    "--json",
+                    "--ephemeral",
+                    "--skip-git-repo-check",
+                    "--ignore-user-config",
+                    "--ignore-rules",
+                    "--sandbox",
+                    "read-only",
+                    "-c",
+                    "include_apply_patch_tool=false",
+                    "-c",
+                    r#"web_search="disabled""#,
+                    "-c",
+                    "skills.include_instructions=false",
+                    "-c",
+                    "tools.experimental_request_user_input.enabled=false",
+                    // Same reason as claude's `--effort low`: these are extraction calls.
+                    "-c",
+                    r#"model_reasoning_effort="low""#,
+                ]
+                .map(str::to_string)
+                .into();
+                for feature in CODEX_DISABLED_FEATURES {
+                    args.push("--disable".to_string());
+                    args.push(feature.to_string());
+                }
+                args
+            }
         };
         if let Some(model) = &self.model {
             args.push("--model".to_string());
             args.push(model.clone());
         }
-        // opencode takes the prompt as a trailing positional, after every flag.
+        // opencode and codex take the prompt as a trailing positional, after every flag.
         // It cannot look like a flag because `flatten` always prefixes a `[role]` line.
-        if self.program == CliProgram::OpenCode {
+        if matches!(self.program, CliProgram::OpenCode | CliProgram::Codex) {
             args.push(prompt.to_string());
         }
         args
@@ -238,7 +335,7 @@ impl CliClient {
     fn env(&self) -> &'static [(&'static str, &'static str)] {
         match self.program {
             CliProgram::OpenCode => &[("OPENCODE_PERMISSION", r#"{"*":"deny"}"#)],
-            CliProgram::Claude | CliProgram::CursorAgent => &[],
+            CliProgram::Claude | CliProgram::CursorAgent | CliProgram::Codex => &[],
         }
     }
 
@@ -368,6 +465,7 @@ fn interpret_output(
 ) -> Result<String> {
     match program {
         CliProgram::OpenCode => interpret_jsonl(stdout, stderr, status),
+        CliProgram::Codex => interpret_codex_jsonl(stdout, stderr, status),
         CliProgram::Claude | CliProgram::CursorAgent => {
             interpret_single_json(program.binary_name(), stdout, stderr, status)
         }
@@ -464,6 +562,88 @@ fn interpret_jsonl(
     Ok(text)
 }
 
+/// One line of `codex exec --json` output.
+/// A top-level `error` line is not fatal on its own because Codex prints one per retry, so it only explains a turn that never completes.
+#[derive(Deserialize)]
+struct CodexEvent {
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    item: Option<CodexItem>,
+    #[serde(default)]
+    error: Option<CodexError>,
+    /// Set on a top-level `error` line.
+    #[serde(default)]
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CodexItem {
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct CodexError {
+    #[serde(default)]
+    message: String,
+}
+
+/// `codex exec --json`: JSON lines, with the same stdout-before-exit-status rule as [`interpret_single_json`].
+///
+/// The model may send a progress note before its answer, so the last `agent_message` is the reply, the same one `--output-last-message` writes.
+/// It counts only once `turn.completed` arrives: a process that dies mid-turn must not hand back that progress note as the answer.
+/// An error message is often the API's own JSON error body, so its inner `error.message` is unwrapped when present.
+fn interpret_codex_jsonl(
+    stdout: &[u8],
+    stderr: &[u8],
+    status: std::process::ExitStatus,
+) -> Result<String> {
+    let stdout = String::from_utf8_lossy(stdout);
+    let mut last_message: Option<String> = None;
+    let mut last_error: Option<String> = None;
+
+    for line in stdout.lines() {
+        let Ok(event) = serde_json::from_str::<CodexEvent>(line.trim()) else {
+            continue;
+        };
+        match event.r#type.as_str() {
+            "turn.failed" => {
+                let raw = event.error.map(|e| e.message).unwrap_or_default();
+                bail!("codex CLI reported an error: {}", codex_error_detail(&raw));
+            }
+            "error" => last_error = event.message,
+            "item.completed" => {
+                if let Some(item) = event.item.filter(|i| i.r#type == "agent_message") {
+                    last_message = Some(item.text);
+                }
+            }
+            "turn.completed" => {
+                return match last_message {
+                    Some(text) if !text.trim().is_empty() => Ok(text),
+                    _ => bail!("codex CLI returned no text output"),
+                };
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(raw) = last_error {
+        bail!("codex CLI reported an error: {}", codex_error_detail(&raw));
+    }
+    let stderr = String::from_utf8_lossy(stderr);
+    bail!("codex CLI exited with {status}: {}", stderr.trim());
+}
+
+fn codex_error_detail(raw: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
+        .unwrap_or_else(|| raw.trim().to_string())
+}
+
 /// Flatten a chat history into the single prompt argument. Each call is a fresh process, so the full history is sent every time.
 fn flatten(messages: &[ChatMessage]) -> String {
     messages
@@ -522,13 +702,162 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_lacks_a_model_list_arg() {
-        assert_eq!(CliProgram::Claude.list_models_arg(), None);
+    fn only_claude_lacks_a_model_list_command() {
+        assert_eq!(CliProgram::Claude.list_models_args(), None);
         assert_eq!(
-            CliProgram::CursorAgent.list_models_arg(),
-            Some("--list-models")
+            CliProgram::CursorAgent.list_models_args(),
+            Some(&["--list-models"][..])
         );
-        assert_eq!(CliProgram::OpenCode.list_models_arg(), Some("models"));
+        assert_eq!(
+            CliProgram::OpenCode.list_models_args(),
+            Some(&["models"][..])
+        );
+        assert_eq!(
+            CliProgram::Codex.list_models_args(),
+            Some(&["debug", "models", "-c", r#"model_provider="openai""#][..])
+        );
+    }
+
+    /// Trimmed from a live `codex debug models` run on codex-cli 0.155.1.
+    #[test]
+    fn parse_codex_catalog_keeps_listed_models_only() {
+        let stdout = r#"{"models":[
+            {"slug":"gpt-6-astra","display_name":"GPT-6 Astra","visibility":"list","priority":1},
+            {"slug":"gpt-reserve","visibility":"hide"},
+            {"slug":"gpt-5.6-luna","visibility":"list"},
+            {"slug":"codex-auto-review","visibility":"hide"}
+        ]}"#;
+        assert_eq!(
+            parse_codex_catalog(stdout).unwrap(),
+            vec!["gpt-6-astra", "gpt-5.6-luna"]
+        );
+        assert!(parse_codex_catalog("not json").is_err());
+    }
+
+    /// Every flag that hands the model a tool or the user's permissive config must stay off, and no bypass flag may appear.
+    #[test]
+    fn build_args_locks_codex_down() {
+        let codex = CliClient {
+            binary: PathBuf::from("codex"),
+            program: CliProgram::Codex,
+            model: Some("gpt-5.6-luna".to_string()),
+        };
+        let args = codex.build_args("[user]\nhi");
+        assert_eq!(args[0], "exec");
+        for flag in [
+            "--json",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
+        ] {
+            assert!(args.contains(&flag.to_string()), "missing {flag}");
+        }
+        let sandbox = args.iter().position(|a| a == "--sandbox").unwrap();
+        assert_eq!(args[sandbox + 1], "read-only");
+        for feature in [
+            "code_mode_host",
+            "shell_tool",
+            "apps",
+            "plugins",
+            "computer_use",
+        ] {
+            assert!(
+                args.windows(2)
+                    .any(|w| w[0] == "--disable" && w[1] == feature),
+                "{feature} not disabled"
+            );
+        }
+        assert!(!args
+            .iter()
+            .any(|a| a.contains("dangerously") || a == "--approve-for-me"));
+        let model = args.iter().position(|a| a == "--model").unwrap();
+        assert_eq!(args[model + 1], "gpt-5.6-luna");
+        assert_eq!(args.last().unwrap(), "[user]\nhi");
+    }
+
+    /// Verbatim shape of a live run whose model sent a progress note before answering.
+    #[test]
+    fn interpret_codex_jsonl_returns_the_last_agent_message() {
+        let stdout = concat!(
+            r#"{"type":"thread.started","thread_id":"01a1"}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Code Mode is unavailable because code-mode host is disabled."}}"#,
+            "\n",
+            r#"{"type":"turn.started"}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Checking the transcript."}}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"391"}}"#,
+            "\n",
+            r#"{"type":"turn.completed","usage":{"input_tokens":22947,"output_tokens":104}}"#,
+            "\n",
+        );
+        let got =
+            interpret_output(CliProgram::Codex, stdout.as_bytes(), b"", exit_status(0)).unwrap();
+        assert_eq!(got, "391");
+    }
+
+    /// Verbatim from a live run with an unknown `--model`: exit 1, the reason only inside `turn.failed`.
+    #[test]
+    fn interpret_codex_jsonl_unwraps_a_failed_turn() {
+        let stdout = concat!(
+            r#"{"type":"turn.started"}"#,
+            "\n",
+            r#"{"type":"error","message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'not-a-model' model is not supported when using Codex with a ChatGPT account.\",\"code\":\"model_not_found\"}}"}"#,
+            "\n",
+            r#"{"type":"turn.failed","error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'not-a-model' model is not supported when using Codex with a ChatGPT account.\",\"code\":\"model_not_found\"}}"}}"#,
+            "\n",
+        );
+        let err = interpret_output(CliProgram::Codex, stdout.as_bytes(), b"", exit_status(1))
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "codex CLI reported an error: The 'not-a-model' model is not supported when using Codex with a ChatGPT account."
+        );
+    }
+
+    /// A process that dies after a progress note, with no `turn.completed`, must not return that note as the answer.
+    #[test]
+    fn interpret_codex_jsonl_rejects_a_turn_that_never_completed() {
+        let stdout = concat!(
+            r#"{"type":"turn.started"}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Checking the transcript."}}"#,
+            "\n",
+            r#"{"type":"error","message":"stream disconnected before completion"}"#,
+            "\n",
+        );
+        let err = interpret_output(CliProgram::Codex, stdout.as_bytes(), b"", exit_status(1))
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "codex CLI reported an error: stream disconnected before completion"
+        );
+
+        let no_error_line = r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Checking."}}"#;
+        let err = interpret_output(
+            CliProgram::Codex,
+            no_error_line.as_bytes(),
+            b"killed",
+            exit_status(1),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("killed"), "{err}");
+    }
+
+    #[test]
+    fn interpret_codex_jsonl_falls_back_to_stderr_without_events() {
+        let err = interpret_output(
+            CliProgram::Codex,
+            b"",
+            b"Error finding codex home",
+            exit_status(1),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("Error finding codex home"),
+            "{err}"
+        );
     }
 
     #[tokio::test]
@@ -639,8 +968,12 @@ mod tests {
         };
         assert_eq!(oc.env(), &[("OPENCODE_PERMISSION", r#"{"*":"deny"}"#)]);
 
-        // The other two carry their containment in argv.
-        for program in [CliProgram::Claude, CliProgram::CursorAgent] {
+        // The others carry their containment in argv.
+        for program in [
+            CliProgram::Claude,
+            CliProgram::CursorAgent,
+            CliProgram::Codex,
+        ] {
             let c = CliClient {
                 binary: PathBuf::from(program.binary_name()),
                 program,

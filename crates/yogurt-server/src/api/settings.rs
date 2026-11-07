@@ -665,7 +665,7 @@ async fn list_provider_models(
     let draft = body.and_then(|b| b.api_key.clone());
 
     // A `cli` provider has no `/v1/models` and no key, so the catalog comes from the binary
-    // itself (`cursor-agent --list-models`, `opencode models`).
+    // itself (`cursor-agent --list-models`, `opencode models`, `codex debug models`).
     let provider = find_provider(&s, &id)?;
     if provider.adapter == providers::adapter::CLI {
         let program = yogurt_llm::CliProgram::parse(&provider.model).ok_or_else(|| {
@@ -673,7 +673,7 @@ async fn list_provider_models(
         })?;
         // No catalog (`claude`) is a 422 so the UI keeps the preset's static aliases.
         // Only a spawn, auth, or parse failure is a 502.
-        if program.list_models_arg().is_none() {
+        if program.list_models_args().is_none() {
             return Err(Error::Unprocessable(format!(
                 "{} has no model catalog to refresh",
                 provider.model

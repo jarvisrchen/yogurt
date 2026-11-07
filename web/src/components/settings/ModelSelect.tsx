@@ -23,6 +23,8 @@ interface Props {
   disabled?: boolean;
   // `cli` rows say "CLI default": blank means whatever a bare `claude -p` picks.
   placeholder?: string;
+  // False for `claude`, which has no catalog command: its preset aliases are the whole list.
+  refreshable?: boolean;
 }
 
 export function ModelSelect({
@@ -35,6 +37,7 @@ export function ModelSelect({
   apiKeyDraft = "",
   disabled,
   placeholder = "e.g. gpt-4o-mini",
+  refreshable = true,
 }: Props) {
   const [refreshedModels, setRefreshedModels] = useState<string[] | null>(
     null,
@@ -71,16 +74,18 @@ export function ModelSelect({
           triggerLabel={`Show model list for ${providerName}`}
           disabled={disabled}
         />
-        <Button
-          variant="secondary"
-          onClick={() => refresh.mutate()}
-          disabled={disabled || refresh.isPending}
-          aria-label={`Refresh model list for ${providerName}`}
-          title="Fetch the latest model list from the provider"
-          className="px-3 py-1.5 text-[13px] shrink-0"
-        >
-          {refresh.isPending ? "Refreshing…" : "Refresh"}
-        </Button>
+        {refreshable && (
+          <Button
+            variant="secondary"
+            onClick={() => refresh.mutate()}
+            disabled={disabled || refresh.isPending}
+            aria-label={`Refresh model list for ${providerName}`}
+            title="Fetch the latest model list from the provider"
+            className="px-3 py-1.5 text-[13px] shrink-0"
+          >
+            {refresh.isPending ? "Refreshing…" : "Refresh"}
+          </Button>
+        )}
       </div>
       {refresh.isError && (
         <p role="status" className="text-[12.5px] text-straw">

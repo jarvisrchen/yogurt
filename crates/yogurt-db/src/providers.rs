@@ -39,7 +39,7 @@ pub mod adapter {
 /// Built-in presets, in UI chip order: cloud majors, local runtimes, the aggregator, then local agent CLIs.
 ///
 /// Every `adapter: "http"` entry must speak the OpenAI `/chat/completions` shape, since `OpenAiCompatClient` is the only HTTP client `yogurt-llm` ships.
-/// For an `adapter: "cli"` entry `base_url` is empty and `default_model` holds the CLI program id `yogurt_llm::CliProgram::parse` expects ("claude" | "cursor-agent" | "opencode").
+/// For an `adapter: "cli"` entry `base_url` is empty and `default_model` holds the CLI program id `yogurt_llm::CliProgram::parse` expects ("claude" | "cursor-agent" | "opencode" | "codex").
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Minimax",
@@ -168,6 +168,22 @@ pub const PRESETS: &[Preset] = &[
         docs_url: "",
         adapter: adapter::CLI,
         default_cli_model: "minimax-coding-plan/MiniMax-M3",
+    },
+    Preset {
+        name: "Codex (local CLI)",
+        base_url: "",
+        default_model: "codex",
+        // The `list` models in both the bundled and the live catalog of codex-cli 0.155.1, cheapest first.
+        // The live catalog also offers account-dependent ids, which only Refresh shows, because the meeting pill offers these as one-click chips.
+        models: &[
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-5.6-sol",
+            "gpt-6-astra",
+        ],
+        docs_url: "",
+        adapter: adapter::CLI,
+        default_cli_model: "gpt-5.6-luna",
     },
 ];
 

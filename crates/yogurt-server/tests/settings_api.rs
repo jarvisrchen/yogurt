@@ -686,7 +686,7 @@ async fn cli_presets_are_advertised_with_their_adapter() {
             v.as_array().unwrap().clone()
         };
         let cli_presets: Vec<&Value> = presets.iter().filter(|p| p["adapter"] == "cli").collect();
-        assert_eq!(cli_presets.len(), 3, "{path}: expected 3 cli presets");
+        assert_eq!(cli_presets.len(), 4, "{path}: expected 4 cli presets");
         for p in cli_presets {
             assert_eq!(p["base_url"], "");
         }

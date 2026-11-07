@@ -1803,3 +1803,8 @@ New closed items go at the bottom.
   The Mac no longer calls `yogurt_inbox` between pushes, so a timer wake that is not due makes no Cloud request.
   Phone meetings and webapp edits arrive on the next push, scheduled or from the Settings button, now labeled Sync now.
   The webapp stopped polling pending edits every 15 seconds and says a Mac takes a meeting on its next sync.
+
+- [x] **LLM-16** Add Codex as a local CLI provider and hide model Refresh for Claude Code, which has no catalog
+
+  Codex (local CLI) preset runs `codex exec` locked down (user config ignored, read-only sandbox, tool features off) and Refresh reads `codex debug models`.
+  The Claude Code row hides Refresh.

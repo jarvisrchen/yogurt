@@ -135,6 +135,26 @@ describe("ProviderCard - cli adapter", () => {
     expect(screen.queryByText(/click test below/i)).not.toBeInTheDocument();
   });
 
+  it("hides Refresh for claude, which has no catalog, and keeps it for codex", () => {
+    renderCard({ ...freshCliProvider, cli_model: "sonnet" });
+    expect(
+      screen.queryByRole("button", { name: /refresh model list/i }),
+    ).not.toBeInTheDocument();
+
+    renderCard({
+      ...freshCliProvider,
+      id: "01CODEX",
+      name: "Codex (local CLI)",
+      model: "codex",
+      cli_model: "gpt-5.6-luna",
+    });
+    expect(
+      screen.getByRole("button", {
+        name: "Refresh model list for Codex (local CLI)",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("commits a typed --model override via PATCH, leaving name/base_url/model untouched", async () => {
     const verified: ProviderView = { ...freshCliProvider, cli_model: "sonnet" };
     settingsApiMock.updateProvider.mockResolvedValue({
