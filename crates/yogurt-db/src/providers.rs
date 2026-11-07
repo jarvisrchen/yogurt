@@ -39,7 +39,7 @@ pub mod adapter {
 /// Built-in presets, in UI chip order: cloud majors, local runtimes, the aggregator, then local agent CLIs.
 ///
 /// Every `adapter: "http"` entry must speak the OpenAI `/chat/completions` shape, since `OpenAiCompatClient` is the only HTTP client `yogurt-llm` ships.
-/// For an `adapter: "cli"` entry `base_url` is empty and `default_model` holds the CLI program id `yogurt_llm::CliProgram::parse` expects ("claude" | "cursor-agent" | "opencode" | "codex").
+/// For an `adapter: "cli"` entry `base_url` is empty and `default_model` holds the CLI program id `yogurt_llm::CliProgram::parse` expects ("claude" | "cursor-agent" | "opencode" | "codex" | "copilot").
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Minimax",
@@ -184,6 +184,16 @@ pub const PRESETS: &[Preset] = &[
         docs_url: "",
         adapter: adapter::CLI,
         default_cli_model: "gpt-5.6-luna",
+    },
+    Preset {
+        name: "GitHub Copilot (local CLI)",
+        base_url: "",
+        default_model: "copilot",
+        // `auto` is the only id every plan accepts: copilot 1.0.107 on a Free plan rejects every named `--model`, even the one auto mode picks.
+        models: &["auto"],
+        docs_url: "",
+        adapter: adapter::CLI,
+        default_cli_model: "auto",
     },
 ];
 

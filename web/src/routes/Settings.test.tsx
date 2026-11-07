@@ -34,6 +34,7 @@ const { baseFixture } = vi.hoisted(() => {
         api_key_masked: "••••WXYZ",
         adapter: "http",
         cli_model: "",
+        has_model_catalog: true,
       },
       {
         id: "01HYYYYYYYYYYYYYYYYYYYYYYY",
@@ -45,6 +46,7 @@ const { baseFixture } = vi.hoisted(() => {
         api_key_masked: null,
         adapter: "http",
         cli_model: "",
+        has_model_catalog: true,
       },
     ],
     presets: [
@@ -312,6 +314,7 @@ describe("preset cloning auto-opens the key input", () => {
       api_key_masked: null,
       adapter: "http" as const,
       cli_model: "",
+      has_model_catalog: true,
     };
 
     // The factory's `get` returns a static fixture, so the cloned row would never appear after

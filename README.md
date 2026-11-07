@@ -43,7 +43,7 @@ Building from source still works and is documented below.
 
 **Your data**
 
-- Bring your own OpenAI-compatible LLM, or a local CLI agent: Claude Code, Cursor Agent, OpenCode, or Codex.
+- Bring your own OpenAI-compatible LLM, or a local CLI agent: Claude Code, Cursor Agent, OpenCode, Codex, or GitHub Copilot.
 - Import your Granola notes, with their summaries, transcripts, and folders as labels.
 - [Read every Mac's meetings on your phone](#read-on-your-phone) from Yogurt Cloud, a webapp on your own Vercel and Supabase accounts.
 

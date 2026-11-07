@@ -686,10 +686,40 @@ async fn cli_presets_are_advertised_with_their_adapter() {
             v.as_array().unwrap().clone()
         };
         let cli_presets: Vec<&Value> = presets.iter().filter(|p| p["adapter"] == "cli").collect();
-        assert_eq!(cli_presets.len(), 4, "{path}: expected 4 cli presets");
+        assert_eq!(cli_presets.len(), 5, "{path}: expected 5 cli presets");
         for p in cli_presets {
             assert_eq!(p["base_url"], "");
         }
+    }
+}
+
+/// The UI hides Refresh off this flag, so it must follow the Rust `CliProgram`, not a frontend list.
+#[tokio::test]
+async fn provider_view_says_which_providers_have_a_model_catalog() {
+    let (_state, token, base) = boot().await;
+    let client = reqwest::Client::new();
+    for (model, adapter, base_url, expected) in [
+        ("claude", "cli", "", false),
+        ("copilot", "cli", "", false),
+        ("codex", "cli", "", true),
+        ("gpt-5-mini", "http", "https://api.openai.com/v1", true),
+    ] {
+        let view: Value = client
+            .post(format!("{base}/api/settings/providers"))
+            .bearer_auth(&token)
+            .json(&json!({
+                "name": model,
+                "base_url": base_url,
+                "model": model,
+                "adapter": adapter
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(view["has_model_catalog"], expected, "{model}");
     }
 }
 

@@ -1,11 +1,11 @@
-//! Local agent-CLI adapter: runs `claude -p`, `cursor-agent -p`, `opencode run` or `codex exec` as a one-shot completion backend.
+//! Local agent-CLI adapter: runs `claude -p`, `cursor-agent -p`, `opencode run`, `codex exec` or `copilot -p` as a one-shot completion backend.
 //!
 //! `yogurt-server` reaches this only when the active `providers` row is explicitly `adapter: "cli"`.
 //! There is deliberately no automatic fallback from an unreachable HTTP provider to this,
 //! because silently rerouting a meeting's content to a different backend is a change the user must opt into.
 //!
 //! `claude` and `cursor-agent` print one JSON object with `result` and `is_error`.
-//! `opencode run --format json` and `codex exec --json` print JSON lines instead, so [`interpret_output`] dispatches on the program.
+//! `opencode run --format json`, `codex exec --json` and `copilot --output-format json` print JSON lines instead, so [`interpret_output`] dispatches on the program.
 
 use crate::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, LlmClient};
 use anyhow::{anyhow, bail, Context, Result};
@@ -49,6 +49,10 @@ const CODEX_DISABLED_FEATURES: &[&str] = &[
     "sleep_tool",
 ];
 
+/// `COPILOT_ALLOW_ALL` auto-approves every tool and trusts the cwd's hooks and MCP servers.
+/// `COPILOT_PROVIDER_BASE_URL` sends the prompt to a BYOK endpoint instead of the GitHub Copilot the user picked in Settings.
+const COPILOT_STRIPPED_ENV: &[&str] = &["COPILOT_ALLOW_ALL", "COPILOT_PROVIDER_BASE_URL"];
+
 /// Which agent CLI backs a [`CliClient`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CliProgram {
@@ -56,6 +60,7 @@ pub enum CliProgram {
     CursorAgent,
     OpenCode,
     Codex,
+    Copilot,
 }
 
 impl CliProgram {
@@ -65,6 +70,7 @@ impl CliProgram {
         CliProgram::CursorAgent,
         CliProgram::OpenCode,
         CliProgram::Codex,
+        CliProgram::Copilot,
     ];
 
     pub fn binary_name(self) -> &'static str {
@@ -73,6 +79,7 @@ impl CliProgram {
             CliProgram::CursorAgent => "cursor-agent",
             CliProgram::OpenCode => "opencode",
             CliProgram::Codex => "codex",
+            CliProgram::Copilot => "copilot",
         }
     }
 
@@ -87,11 +94,12 @@ impl CliProgram {
     /// The arguments that make this CLI print its `--model` catalog and exit, or `None` if it has no such mode.
     ///
     /// `claude` has none: its four aliases ship as static preset suggestions.
+    /// `copilot` has none either: its catalog only appears in a debug log, and its ACP `session/new` returns no model list.
     /// The others have ids that vary by account and plan.
     /// `codex debug models` is a debug command, so a Codex release may change or drop it.
     pub fn list_models_args(self) -> Option<&'static [&'static str]> {
         match self {
-            CliProgram::Claude => None,
+            CliProgram::Claude | CliProgram::Copilot => None,
             CliProgram::CursorAgent => Some(&["--list-models"]),
             CliProgram::OpenCode => Some(&["models"]),
             // `exec` ignores the user's config, so the catalog is pinned to the same default provider it uses.
@@ -310,6 +318,32 @@ impl CliClient {
                 }
                 args
             }
+            // `--available-tools` is an allowlist and no tool is named `none`, so the model sees no tools at all, its built-in GitHub MCP tools included.
+            // The `--deny-tool` kinds deny every permission request even if a later release turns that filter open.
+            // `--disable-builtin-mcps` keeps the GitHub MCP server, which holds the user's GitHub credential, from even connecting.
+            // `--no-auto-update` runs the installed version, since each call's scratch `COPILOT_HOME` would otherwise download a fresh update.
+            // No `--reasoning-effort`: copilot rejects it outright for `auto` and for models without effort levels.
+            // Never `--allow-all`, `--yolo`, `--allow-all-tools` or `--trust-folder`: the input is untrusted.
+            CliProgram::Copilot => [
+                "-p",
+                prompt,
+                "--output-format",
+                "json",
+                "--available-tools=none",
+                "--deny-tool=shell",
+                "--deny-tool=write",
+                "--deny-tool=read",
+                "--deny-tool=url",
+                "--deny-tool=memory",
+                "--disable-builtin-mcps",
+                "--no-custom-instructions",
+                "--no-ask-user",
+                "--sync-session=off",
+                "--no-auto-update",
+                "--disable-client-telemetry",
+            ]
+            .map(str::to_string)
+            .into(),
         };
         if let Some(model) = &self.model {
             args.push("--model".to_string());
@@ -335,7 +369,10 @@ impl CliClient {
     fn env(&self) -> &'static [(&'static str, &'static str)] {
         match self.program {
             CliProgram::OpenCode => &[("OPENCODE_PERMISSION", r#"{"*":"deny"}"#)],
-            CliProgram::Claude | CliProgram::CursorAgent | CliProgram::Codex => &[],
+            CliProgram::Claude
+            | CliProgram::CursorAgent
+            | CliProgram::Codex
+            | CliProgram::Copilot => &[],
         }
     }
 
@@ -355,6 +392,19 @@ impl CliClient {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        if self.program == CliProgram::Copilot {
+            let home = match isolated_copilot_home(&scratch, user_copilot_home()) {
+                Ok(home) => home,
+                Err(e) => {
+                    let _ = std::fs::remove_dir_all(&scratch);
+                    return Err(e);
+                }
+            };
+            cmd.env("COPILOT_HOME", home);
+            for var in COPILOT_STRIPPED_ENV {
+                cmd.env_remove(var);
+            }
+        }
 
         let result = tokio::time::timeout(CLI_TIMEOUT, cmd.output()).await;
         let _ = std::fs::remove_dir_all(&scratch);
@@ -466,6 +516,7 @@ fn interpret_output(
     match program {
         CliProgram::OpenCode => interpret_jsonl(stdout, stderr, status),
         CliProgram::Codex => interpret_codex_jsonl(stdout, stderr, status),
+        CliProgram::Copilot => interpret_copilot_jsonl(stdout, stderr, status),
         CliProgram::Claude | CliProgram::CursorAgent => {
             interpret_single_json(program.binary_name(), stdout, stderr, status)
         }
@@ -637,11 +688,102 @@ fn interpret_codex_jsonl(
     bail!("codex CLI exited with {status}: {}", stderr.trim());
 }
 
+/// One line of `copilot --output-format json` output.
+/// Only `assistant.message` and the closing `result` matter. The rest are session bookkeeping.
+#[derive(Deserialize)]
+struct CopilotEvent {
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    data: Option<CopilotMessage>,
+    /// Set on the closing `result` line.
+    #[serde(rename = "exitCode")]
+    exit_code: Option<i32>,
+}
+
+#[derive(Deserialize)]
+struct CopilotMessage {
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    phase: String,
+}
+
+/// `copilot --output-format json`: JSON lines, ending in a `result` line with the exit code.
+///
+/// A message in the `commentary` phase is a progress note, so the reply is the last other `assistant.message`.
+/// It counts only once a `result` line with exit code 0 arrives.
+/// A failure (bad model, not logged in) prints no `result` line, exits 1, and explains itself on stderr as `Error: ...`.
+/// A `result` line with a nonzero exit code falls through to that same stderr.
+fn interpret_copilot_jsonl(
+    stdout: &[u8],
+    stderr: &[u8],
+    status: std::process::ExitStatus,
+) -> Result<String> {
+    let stdout = String::from_utf8_lossy(stdout);
+    let mut last_message: Option<String> = None;
+
+    for line in stdout.lines() {
+        let Ok(event) = serde_json::from_str::<CopilotEvent>(line.trim()) else {
+            continue;
+        };
+        match event.r#type.as_str() {
+            "assistant.message" => {
+                if let Some(msg) = event.data.filter(|m| m.phase != "commentary") {
+                    last_message = Some(msg.content);
+                }
+            }
+            "result" if event.exit_code == Some(0) => {
+                return match last_message {
+                    Some(text) if !text.trim().is_empty() => Ok(text),
+                    _ => bail!("copilot CLI returned no text output"),
+                };
+            }
+            _ => {}
+        }
+    }
+
+    let stderr = String::from_utf8_lossy(stderr);
+    let detail = stderr.trim();
+    if let Some(message) = detail.strip_prefix("Error: ") {
+        bail!("copilot CLI reported an error: {message}");
+    }
+    if detail.is_empty() {
+        bail!("copilot CLI exited with {status} and printed no error");
+    }
+    bail!("copilot CLI exited with {status}: {detail}")
+}
+
 fn codex_error_detail(raw: &str) -> String {
     serde_json::from_str::<serde_json::Value>(raw)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
         .unwrap_or_else(|| raw.trim().to_string())
+}
+
+/// The user's copilot state dir: `$COPILOT_HOME`, else `~/.copilot`.
+fn user_copilot_home() -> Option<PathBuf> {
+    std::env::var_os("COPILOT_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".copilot")))
+}
+
+/// A fresh `COPILOT_HOME` under `scratch` holding only a copy of the user's `config.json`, which records their login.
+///
+/// The user's own home would hand the call their MCP servers (`mcp-config.json`), saved tool approvals, skills and plugins,
+/// and copilot would keep the prompt in its session history there for good.
+/// The scratch copy goes when `scratch` does.
+fn isolated_copilot_home(scratch: &std::path::Path, user_home: Option<PathBuf>) -> Result<PathBuf> {
+    let home = scratch.join(".copilot-home");
+    std::fs::create_dir(&home).with_context(|| format!("failed to create {}", home.display()))?;
+    if let Some(config) = user_home
+        .map(|h| h.join("config.json"))
+        .filter(|p| p.is_file())
+    {
+        std::fs::copy(&config, home.join("config.json"))
+            .with_context(|| format!("failed to copy {}", config.display()))?;
+    }
+    Ok(home)
 }
 
 /// Flatten a chat history into the single prompt argument. Each call is a fresh process, so the full history is sent every time.
@@ -702,8 +844,9 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_lacks_a_model_list_command() {
+    fn claude_and_copilot_lack_a_model_list_command() {
         assert_eq!(CliProgram::Claude.list_models_args(), None);
+        assert_eq!(CliProgram::Copilot.list_models_args(), None);
         assert_eq!(
             CliProgram::CursorAgent.list_models_args(),
             Some(&["--list-models"][..])
@@ -860,6 +1003,139 @@ mod tests {
         );
     }
 
+    #[test]
+    fn build_args_locks_copilot_down() {
+        let copilot = CliClient {
+            binary: PathBuf::from("copilot"),
+            program: CliProgram::Copilot,
+            model: Some("auto".to_string()),
+        };
+        let args = copilot.build_args("[user]\nhi");
+        assert_eq!(args[..2], ["-p", "[user]\nhi"]);
+        for flag in [
+            "--available-tools=none",
+            "--deny-tool=shell",
+            "--deny-tool=write",
+            "--deny-tool=read",
+            "--deny-tool=url",
+            "--deny-tool=memory",
+            "--disable-builtin-mcps",
+            "--no-custom-instructions",
+            "--no-ask-user",
+            "--sync-session=off",
+            "--no-auto-update",
+            "--disable-client-telemetry",
+        ] {
+            assert!(args.contains(&flag.to_string()), "missing {flag}");
+        }
+        assert!(!args.iter().any(|a| a.starts_with("--allow")
+            || a == "--yolo"
+            || a == "--trust-folder"
+            || a.starts_with("--reasoning-effort")));
+        let model = args.iter().position(|a| a == "--model").unwrap();
+        assert_eq!(args[model + 1], "auto");
+    }
+
+    /// Trimmed from a live copilot 1.0.107 run: a progress note, then the answer, then `result`.
+    #[test]
+    fn interpret_copilot_jsonl_skips_the_progress_note() {
+        let stdout = r###"{"type":"session.mcp_server_status_changed","data":{"serverName":"github-mcp-server","status":"disabled"},"ephemeral":true}
+{"type":"assistant.turn_start","data":{"turnId":"0"}}
+{"type":"assistant.message","data":{"content":"I'll read the notes first.","phase":"commentary","toolRequests":[]}}
+{"type":"assistant.message","data":{"content":"## Decisions\n- Ship it","phase":"final_answer","toolRequests":[]}}
+{"type":"assistant.turn_end","data":{"turnId":"0"}}
+{"type":"result","sessionId":"72f3","exitCode":0}
+"###;
+        let text =
+            interpret_output(CliProgram::Copilot, stdout.as_bytes(), b"", exit_status(0)).unwrap();
+        assert_eq!(
+            text,
+            "## Decisions
+- Ship it"
+        );
+    }
+
+    /// Seen live: the turn ends on a progress note, so there is no answer to return.
+    #[test]
+    fn interpret_copilot_jsonl_rejects_a_turn_with_only_a_progress_note() {
+        let stdout = r#"{"type":"assistant.message","data":{"content":"I'll check the directory.","phase":"commentary"}}
+{"type":"result","exitCode":0}
+"#;
+        let err = interpret_output(CliProgram::Copilot, stdout.as_bytes(), b"", exit_status(0))
+            .unwrap_err();
+        assert_eq!(err.to_string(), "copilot CLI returned no text output");
+    }
+
+    /// A process that dies mid-turn prints no `result` line, so its message is not an answer.
+    #[test]
+    fn interpret_copilot_jsonl_rejects_a_run_without_a_result() {
+        let stdout =
+            r#"{"type":"assistant.message","data":{"content":"partial","phase":"final_answer"}}"#;
+        let err = interpret_output(CliProgram::Copilot, stdout.as_bytes(), b"", exit_status(9))
+            .unwrap_err();
+        assert!(
+            err.to_string().starts_with("copilot CLI exited with"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn interpret_copilot_jsonl_names_a_silent_failure() {
+        let stdout = r#"{"type":"result","exitCode":1}"#;
+        let err = interpret_output(
+            CliProgram::Copilot,
+            stdout.as_bytes(),
+            b"",
+            exit_status(256),
+        )
+        .unwrap_err();
+        assert!(err.to_string().ends_with("and printed no error"), "{err}");
+    }
+
+    #[test]
+    fn isolated_copilot_home_carries_only_the_login_config() {
+        let root = std::env::temp_dir().join(format!("yogurt-copilot-home-test-{}", uuid_v4_ish()));
+        let user = root.join("user");
+        let scratch = root.join("scratch");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::create_dir_all(&scratch).unwrap();
+        std::fs::write(user.join("config.json"), "{\"login\":1}").unwrap();
+        std::fs::write(user.join("mcp-config.json"), "{}").unwrap();
+
+        let home = isolated_copilot_home(&scratch, Some(user.clone())).unwrap();
+        assert!(home.starts_with(&scratch));
+        let mut files: Vec<_> = std::fs::read_dir(&home)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        files.sort();
+        assert_eq!(files, ["config.json"]);
+
+        // A user who has never run copilot has no config to carry.
+        let bare = root.join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let home = isolated_copilot_home(&bare, Some(root.join("missing"))).unwrap();
+        assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Verbatim stderr of a live run with an unavailable `--model`.
+    #[test]
+    fn interpret_copilot_jsonl_surfaces_the_stderr_error() {
+        let err = interpret_output(
+            CliProgram::Copilot,
+            b"",
+            b"Error: Model \"gpt-6-luna\" from --model flag is not available.\n",
+            exit_status(1),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            r#"copilot CLI reported an error: Model "gpt-6-luna" from --model flag is not available."#
+        );
+    }
+
     #[tokio::test]
     async fn list_models_rejects_a_program_without_the_arg() {
         let err = list_models(CliProgram::Claude).await.unwrap_err();
@@ -973,6 +1249,7 @@ mod tests {
             CliProgram::Claude,
             CliProgram::CursorAgent,
             CliProgram::Codex,
+            CliProgram::Copilot,
         ] {
             let c = CliClient {
                 binary: PathBuf::from(program.binary_name()),

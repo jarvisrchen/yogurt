@@ -1808,3 +1808,8 @@ New closed items go at the bottom.
 
   Codex (local CLI) preset runs `codex exec` locked down (user config ignored, read-only sandbox, tool features off) and Refresh reads `codex debug models`.
   The Claude Code row hides Refresh.
+
+- [x] **LLM-17** Add GitHub Copilot as a local CLI provider, with Refresh hidden since copilot has no catalog
+
+  GitHub Copilot (local CLI) preset runs `copilot -p` with no tools (`--available-tools=none` plus `--deny-tool` for the built-in kinds), the GitHub MCP server off, and a scratch `COPILOT_HOME` so no transcript lands in Copilot's session history.
+  Refresh is hidden for it, and providers now report `has_model_catalog` so the UI no longer hardcodes which CLIs have a catalog.

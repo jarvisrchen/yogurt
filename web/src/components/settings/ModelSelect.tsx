@@ -23,7 +23,7 @@ interface Props {
   disabled?: boolean;
   // `cli` rows say "CLI default": blank means whatever a bare `claude -p` picks.
   placeholder?: string;
-  // False for `claude`, which has no catalog command: its preset aliases are the whole list.
+  // False for a CLI with no catalog command (`claude`, `copilot`): its preset ids are the whole list.
   refreshable?: boolean;
 }
 

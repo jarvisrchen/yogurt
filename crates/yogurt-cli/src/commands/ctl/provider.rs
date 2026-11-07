@@ -1,4 +1,4 @@
-//! Never prints a key value, only `key: set` / `key: missing`.
+//! Never prints a key value, only `key: set` / `key: missing`, or `key: n/a` for a `cli` provider, which takes none.
 //! There is no `ctl provider key set` on purpose: keys would land in shell history and transcripts.
 
 use clap::Subcommand;
@@ -39,7 +39,9 @@ struct ProviderRow {
 }
 
 fn key_state(row: &ProviderRow) -> &'static str {
-    if row.api_key_masked.is_some() {
+    if row.adapter == "cli" {
+        "n/a"
+    } else if row.api_key_masked.is_some() {
         "set"
     } else {
         "missing"
@@ -65,10 +67,16 @@ async fn list(port: Option<u16>, json_out: bool) -> Result<(), CtlError> {
         println!("{}", json!({ "providers": providers }));
     } else {
         println!("{} provider(s)", rows.len());
+        let name_width = rows
+            .iter()
+            .map(|r| r.name.chars().count())
+            .max()
+            .unwrap_or(0)
+            .max(20);
         for r in &rows {
             let active = if r.is_active { "active" } else { "-" };
             println!(
-                "{active:<6} {:<20} {:<8} {:<20} key: {}",
+                "{active:<6} {:<name_width$} {:<8} {:<20} key: {}",
                 r.name,
                 r.adapter,
                 r.model,
@@ -150,4 +158,27 @@ async fn test(port: Option<u16>, json_out: bool, name: Option<String>) -> Result
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(adapter: &str, masked: Option<&str>) -> ProviderRow {
+        ProviderRow {
+            id: "p".into(),
+            name: "P".into(),
+            model: "m".into(),
+            is_active: false,
+            api_key_masked: masked.map(str::to_string),
+            adapter: adapter.into(),
+        }
+    }
+
+    #[test]
+    fn a_cli_provider_needs_no_key() {
+        assert_eq!(key_state(&row("cli", None)), "n/a");
+        assert_eq!(key_state(&row("http", None)), "missing");
+        assert_eq!(key_state(&row("http", Some("••••abcd"))), "set");
+    }
 }
