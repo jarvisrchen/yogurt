@@ -72,6 +72,7 @@ fn it_exposes_presets_as_a_const_slice() {
     assert!(names.contains(&"Claude Code (local CLI)"));
     assert!(names.contains(&"Cursor Agent (local CLI)"));
     assert!(names.contains(&"OpenCode (local CLI)"));
+    assert!(names.contains(&"Codex (local CLI)"));
 }
 
 /// Every `adapter: "http"` preset must be a usable base URL for `OpenAiCompatClient`, which builds its endpoint as `{base_url}/chat/completions`. `cli` presets are exempt.
@@ -139,7 +140,7 @@ fn preset_default_model_appears_in_its_models_list() {
 /// A literal list because `yogurt-db` sits below the LLM-client layer and should not depend on `yogurt_llm`; keep it in sync with `CliProgram::parse` by hand.
 #[test]
 fn cli_preset_default_models_parse_as_a_known_cli_program() {
-    const KNOWN_CLI_PROGRAM_IDS: &[&str] = &["claude", "cursor-agent", "opencode"];
+    const KNOWN_CLI_PROGRAM_IDS: &[&str] = &["claude", "cursor-agent", "opencode", "codex"];
     for p in providers::PRESETS {
         if p.adapter != providers::adapter::CLI {
             continue;

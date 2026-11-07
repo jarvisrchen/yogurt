@@ -46,7 +46,7 @@ export interface General {
 
 /**
  * `"cli"` is a local agent CLI (`yogurt_llm::CliClient`) with no base URL or key. `model` then holds
- * the CLI program id ("claude" | "cursor-agent" | "opencode").
+ * the CLI program id ("claude" | "cursor-agent" | "opencode" | "codex").
  */
 export type RecapPlacement = "dock" | "main";
 
