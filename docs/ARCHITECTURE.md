@@ -959,9 +959,10 @@ sequenceDiagram
   The meeting being recorded is skipped.
 - **Phone meetings.**
   Before it plans, a pass lists the latest version of each ended, live meeting on a `kind = 'phone'` device for this Mac (`yogurt_phone_meetings_for(device_id)`).
-  A meeting is for this Mac when its `for_device` is null, names this Mac, or names a Mac not seen in 7 days, and `yogurt_inbox` asks the same.
+  A meeting is for this Mac when its `for_device` is null, names this Mac, or names a Mac not seen in 7 days.
   One whose `for_device` names a phone is for no Mac, even through the zero-argument call a Mac from before the choice makes.
-  Both calls stamp the Mac's `yogurt_devices.seen_at`, at most every 10 minutes, and the inbox does so for a Mac from before the choice too, since a device row outlives a disconnect.
+  Both calls stamp the Mac's `yogurt_devices.seen_at`, at most every 10 minutes, so a Mac is seen only when it runs a pass.
+  `yogurt_inbox` stamps it too, and stays in the schema for Macs that still call it.
   The zero-argument `yogurt_phone_meetings` stays for Macs from before the choice and lists every one, and a pass falls back to it on a Cloud without the new function.
   It inserts each one into SQLite with its chat, under a new UUID because the meeting routes take one, with `source = 'phone'`, the phone's ULID as `source_id`, and the phone's name, then calls `yogurt_adopt(device_id, meeting_id, push_id)`.
   The unique `(source, source_id)` index makes the insert a no-op when the meeting is already here.
@@ -989,7 +990,7 @@ sequenceDiagram
   Every path that needs a session goes through `link()`, which takes the lock guard as a parameter, refreshes, and writes the new refresh token to `keys.json` before the session is used.
   A pass also renews the access token when it is within 5 minutes of expiring, and saves the rotated refresh token each time.
   A pass holds the lock to the end, so a manual push and a later timer push never overlap.
-  `AppState::cloud_push` (`cloud_push.rs`) allows one background push at a time, and the Push button and the timer both start it through `start_push`.
+  `AppState::cloud_push` (`cloud_push.rs`) allows one background push at a time, and the Sync now button and the timer both start it through `start_push`.
   The pass builds bundles per batch, so memory holds one batch.
   Batches are 25 meetings or 256 KiB with a 1 second pause, and a request that fails with a 429, a 5xx, a `57014`, or a network error is retried after 5, 15, 45, then 120 seconds (or `Retry-After`, if longer).
   A retry that finds its rows already committed (`23505`) counts as sent.
@@ -1014,7 +1015,7 @@ For a phone's own ended meeting the webapp pushes a new version, or a null one t
 A push refused with `PT409` means a Mac adopted it first, and the page says so.
 For a Mac's meeting the webapp calls `yogurt_request_edit`, which needs the browser token, so a laptop's session alone cannot make another Mac change anything.
 A row in `yogurt_edits` holds the device, the meeting, the op, the new title or the stamped note, and for a rename the title the page showed.
-The webapp lists `yogurt_pending_edits`, shows each over the meeting it changes with an Undo (`yogurt_cancel_edit`), and polls every 15 seconds while any wait.
+The webapp lists `yogurt_pending_edits`, shows each over the meeting it changes with an Undo (`yogurt_cancel_edit`), and refreshes them only when the page loads, since a Mac makes them on its next pass, which can be a day away.
 
 - **The pass.**
   After adopting, a pass lists `yogurt_device_edits` and makes each in order through `PassHooks::edit`, skipping the meeting being recorded.
@@ -1023,11 +1024,11 @@ The webapp lists `yogurt_pending_edits`, shows each over the meeting it changes 
   A delete also removes the exported markdown file, as the library's Delete does by default.
   The pass then pushes as usual and only after that calls `yogurt_finish_edit`, so the webapp never sees an edit done before its result is in the Cloud.
   A crash before the finish makes the edits again on the next pass, which leaves them as they are: the title already matches, the note is already there, the meeting is already gone.
-- **The inbox check.**
-  A due timer wake runs a pass as before.
-  Between due wakes, each 60 second wake that is not paused by an error only the user can fix, and has no recording running, calls `yogurt_inbox(device_id)` on the kept session.
-  It answers whether an edit for this Mac or an ended phone meeting is waiting, and a yes starts a pass with the `phone` trigger.
-  A failed check counts as no, and the next due push reports the problem.
+- **No polling.**
+  A Mac picks up edits and phone meetings only in a pass: a due timer wake, or Sync now in Settings > Cloud sync (`yogurt ctl cloud push`).
+  A disconnect's last push skips both steps.
+  A timer wake that is not due makes no Cloud request, so an idle Mac on the daily setting calls the Cloud once a day.
+  The `phone` trigger in the push history is left from Macs that once checked `yogurt_inbox` every minute.
 
 ### Recording on a phone
 

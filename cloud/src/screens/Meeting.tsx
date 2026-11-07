@@ -252,7 +252,7 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
           {mode === "move" && (
             <div className="flex flex-col gap-[8px]" onKeyDown={(e) => e.key === "Escape" && setMode(null)}>
               <Pills label="Move to" options={macs.map((m) => ({ value: m.id, label: m.name }))} value={text} onChange={setText} />
-              <p className="text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]">The Mac takes it, with its labels, within a minute while yogurt runs there.</p>
+              <p className="text-[15px] min-[721px]:text-[12.5px] text-mut m-[0px]">The Mac takes it, with its labels, on its next sync.</p>
             </div>
           )}
           {mode === "delete" && (
@@ -277,7 +277,7 @@ function EditBar({ editing, title }: { editing: Editing; title: string }) {
       )}
       {movingTo && !mode && (
         <div role="status" className={NOTE}>
-          <span className="min-w-0 break-words">Moving to {movingTo.name}. It takes this meeting within a minute while yogurt runs there.</span>
+          <span className="min-w-0 break-words">Moving to {movingTo.name}. It takes this meeting on its next sync.</span>
         </div>
       )}
       {editing.mac &&

@@ -1797,3 +1797,9 @@ New closed items go at the bottom.
   On the arm64 emulator, `parakeet-v3` kept up with speech in real time and `tiny.en` loaded and ran in about 1 second.
   Speed, battery and heat over an hour on a real Pixel are still unmeasured.
   The APK grows by the 24 MB arm64 native library.
+
+- [x] **SYNC-33** Stop the Mac polling `yogurt_inbox` every minute: phone meetings and webapp edits arrive on the next push, scheduled or Sync now
+
+  The Mac no longer calls `yogurt_inbox` between pushes, so a timer wake that is not due makes no Cloud request.
+  Phone meetings and webapp edits arrive on the next push, scheduled or from the Settings button, now labeled Sync now.
+  The webapp stopped polling pending edits every 15 seconds and says a Mac takes a meeting on its next sync.

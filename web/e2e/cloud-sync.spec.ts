@@ -244,14 +244,14 @@ for (const theme of ["light", "dark"] as const) {
     await shot("B-autopush");
 
     // Push, then the stats and the last push result update.
-    await page.getByRole("button", { name: "Push meetings" }).click();
+    await page.getByRole("button", { name: "Sync now" }).click();
     await expect(page.getByText("Last push 10/23/26 2:59 PM · 3 uploaded")).toBeVisible();
 
     // A revoked session shows the inline sign-in and pushing waits for it.
     state.pushError = { status: 401, code: "session_expired", error: "Your Cloud session expired. Sign in again." };
-    await page.getByRole("button", { name: "Push meetings" }).click();
+    await page.getByRole("button", { name: "Sync now" }).click();
     await expect(page.getByRole("alert").first()).toContainText("Sign in again");
-    await expect(page.getByRole("button", { name: "Push meetings" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Sync now" })).toBeDisabled();
     await shot("B-signin");
     // A wrong password keeps the prompt up with the server's message.
     await page.getByLabel("Cloud login password").fill("nope");
@@ -261,7 +261,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByLabel("Cloud login password").fill("hunter2hunter2");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByLabel("Cloud login password")).toBeHidden();
-    await expect(page.getByRole("button", { name: "Push meetings" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Sync now" })).toBeEnabled();
 
     // Disconnect with the one-last-push option.
     await page.getByRole("button", { name: "Disconnect…" }).click();
@@ -348,7 +348,7 @@ test("a failing status keeps the cached section and offers Retry, and an unreada
 
   // A failed refetch keeps the last good data on screen.
   state.statusFailure = { status: 502, code: "network", error: "cloud unreachable" };
-  await page.getByRole("button", { name: "Push meetings" }).click();
+  await page.getByRole("button", { name: "Sync now" }).click();
   await expect(page.getByRole("alert")).toContainText("cloud unreachable");
   await expect(page.getByText("Laptop 1")).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();

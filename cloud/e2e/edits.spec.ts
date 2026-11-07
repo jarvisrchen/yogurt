@@ -83,8 +83,13 @@ test("a Mac's meeting is renamed, noted, and deleted through that Mac", async ({
   await expect(page.getByText("Bring the kombucha")).toHaveCount(0);
   expect((await edits()).map((e) => e.status)).toEqual(["pending", "cancelled"]);
 
-  // The Mac makes the rename and pushes it, and the page catches up.
+  // The Mac makes the rename on a push while the page still shows it waiting, so a late Undo says it is too late.
   await macRenames(rename.id, "m-standup", "Standup with Edis");
+  await page.getByRole("status").filter({ hasText: "rename this to" }).getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByText("Laptop 1 already made this change, so it can no longer be undone.")).toBeVisible();
+  await expect(page.getByText(/^Waiting for/)).toHaveCount(0);
+  await expect(heading(page, "Standup with Edis")).toBeVisible();
+  expect((await edits())[0].status).not.toBe("pending");
   await page.reload();
   await expect(heading(page, "Standup with Edis")).toBeVisible();
   await expect(page.getByText(/^Waiting for/)).toHaveCount(0);

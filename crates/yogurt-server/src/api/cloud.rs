@@ -911,7 +911,7 @@ fn step_error(step: &str, e: CloudApiError) -> CloudApiError {
     CloudApiError::new(e.code, format!("{step} {}", e.message))
 }
 
-/// The pass behind the Push button and the timer. `now` stamps the success or failure record.
+/// The pass behind the Sync now button and the timer. `now` stamps the success or failure record.
 /// A timer's pass that adopted nothing, found no edit, and has nothing local to send stops after those two checks, so an idle Mac makes two listing calls.
 /// That idle check failing on the network is no failure of the Mac's, which is up to date, so it records the wake as up to date.
 /// A failed adoption still lets the pass push this Mac's meetings, and is recorded after it.
@@ -1139,52 +1139,28 @@ impl TimerInputs {
 
 /// One wake of the timer. It takes both locks first and decides under them, so a push that just finished counts.
 /// A due wake always starts a pass, since a phone meeting to adopt or an edit to make is known only to the Cloud, and on an idle Mac that pass ends after the `yogurt_phone_meetings_for` and `yogurt_device_edits` calls.
+/// A wake that is not due makes no Cloud request, so a phone meeting or an edit waits for the next due or manual pass.
 async fn auto_tick(state: &AppState, now: i64) {
     if push_interval(state) == "off" || state.cloud_push.is_running() {
         return;
     }
     let state = state.clone();
     let result = detached(async move {
-        let held = acquire(&state).await?;
+        let _held = acquire(&state).await?;
         if load(&state)?.is_none() {
             return Ok(());
         }
         let Some(timer) = TimerInputs::read(&state) else {
             return Ok(());
         };
-        if let Some(trigger) = timer.due(now) {
-            return start_push(&state, trigger, now);
-        }
-        // Between pushes, an edit or a phone recording waiting in the Cloud starts one, so the phone sees it within a minute.
-        // A failure waits out the same gap a due push does, so an edit that keeps failing is not retried every minute.
-        let backing_off = timer
-            .error()
-            .is_some_and(|(at, _)| now < at + RETRY_AFTER_FAILURE_MS);
-        if timer.next_push().is_some()
-            && !backing_off
-            && recording_id(&state).await.is_none()
-            && inbox(&state, &held).await
-        {
-            return start_push(&state, "phone", now);
-        }
-        Ok(())
+        timer
+            .due(now)
+            .map_or(Ok(()), |trigger| start_push(&state, trigger, now))
     })
     .await;
     if let Err(e) = result {
         tracing::warn!(code = e.code, "auto-push failed");
     }
-}
-
-/// Whether the Cloud holds an edit for this Mac or a phone meeting to adopt. A failure counts as no, and the next due push reports it.
-async fn inbox(state: &AppState, held: &Held<'_>) -> bool {
-    let Ok(link) = link(state, held, true).await else {
-        return false;
-    };
-    let args = json!({ "device_id": link.conn.device_id });
-    link.project
-        .rpc(&link.session, "yogurt_inbox", &args)
-        .await
-        .is_ok_and(|v| v == Value::Bool(true))
 }
 
 /// `clock` returns wall-clock milliseconds, and only tests substitute it.
@@ -1731,7 +1707,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn between_pushes_a_waiting_edit_is_made_and_pushed() {
+    async fn a_waiting_edit_is_made_on_the_next_due_push_and_not_before() {
         use wiremock::matchers::{method, path, query_param};
         use wiremock::{Mock, ResponseTemplate};
         let (state, _tmp) = with_meetings(1);
@@ -1744,9 +1720,6 @@ mod tests {
                 .respond_with(ResponseTemplate::new(200).set_body_json(body))
                 .with_priority(1)
         };
-        ok("/rest/v1/rpc/yogurt_inbox", json!(true))
-            .mount(&cloud)
-            .await;
         Mock::given(method("POST"))
             .and(path("/rest/v1/rpc/yogurt_device_edits"))
             .and(query_param("offset", "0"))
@@ -1760,9 +1733,17 @@ mod tests {
         ok("/rest/v1/rpc/yogurt_finish_edit", json!(true))
             .mount(&cloud)
             .await;
-        set_interval(&state, "1d");
+        set_interval(&state, "15m");
 
         auto_tick(&state, T0 + 10 * MIN).await;
+        settle(&state).await;
+        assert_eq!(
+            cloud.received_requests().await.unwrap().len(),
+            0,
+            "a wake between pushes asks the Cloud nothing"
+        );
+
+        auto_tick(&state, T0 + 15 * MIN).await;
         settle(&state).await;
 
         assert_eq!(
@@ -1771,7 +1752,7 @@ mod tests {
         );
         assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_finish_edit").await, 1);
         assert_eq!(pushed_ids(&cloud).await, [id]);
-        assert_eq!(history(&state)[0]["trigger"], "phone");
+        assert_eq!(history(&state)[0]["trigger"], "auto");
         let order: Vec<String> = cloud
             .received_requests()
             .await
@@ -1791,17 +1772,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_idle_mac_reports_a_superseded_edit_and_a_failure_waits_its_gap() {
+    async fn an_idle_mac_reports_a_superseded_edit() {
         use wiremock::matchers::{method, path, query_param};
         use wiremock::{Mock, ResponseTemplate};
         let (state, _tmp) = idle_state();
         let cloud = bare_cloud(&state).await;
-        Mock::given(method("POST"))
-            .and(path("/rest/v1/rpc/yogurt_inbox"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!(true)))
-            .with_priority(1)
-            .mount(&cloud)
-            .await;
         Mock::given(method("POST"))
             .and(path("/rest/v1/rpc/yogurt_device_edits"))
             .and(query_param("offset", "0"))
@@ -1817,9 +1792,9 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(json!(true)))
             .mount(&cloud)
             .await;
-        set_interval(&state, "1d");
+        set_interval(&state, "15m");
 
-        auto_tick(&state, T0 + 10 * MIN).await;
+        auto_tick(&state, T0 + 15 * MIN).await;
         settle(&state).await;
         let finished: Vec<Value> = cloud
             .received_requests()
@@ -1834,23 +1809,6 @@ mod tests {
             [json!({ "device_id": "d", "edit_id": 5, "applied": false })]
         );
         assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_start_push").await, 0);
-
-        record(
-            &state,
-            LAST_ERROR_KEY,
-            &json!({ "at": T0 + 20 * MIN, "code": "network", "error": "x" }),
-        );
-        let asked = hits(&cloud, "/rest/v1/rpc/yogurt_inbox").await;
-        auto_tick(&state, T0 + 22 * MIN).await;
-        settle(&state).await;
-        assert_eq!(
-            hits(&cloud, "/rest/v1/rpc/yogurt_inbox").await,
-            asked,
-            "still in the gap"
-        );
-        auto_tick(&state, T0 + 25 * MIN).await;
-        settle(&state).await;
-        assert_eq!(hits(&cloud, "/rest/v1/rpc/yogurt_inbox").await, asked + 1);
     }
 
     /// A mock Supabase with everything a push needs except the insert and the search catch-up, which each test mounts, and `state` connected to it.
@@ -1886,9 +1844,6 @@ mod tests {
             .mount(&cloud)
             .await;
         answer("/rest/v1/rpc/yogurt_device_edits", json!([]))
-            .mount(&cloud)
-            .await;
-        answer("/rest/v1/rpc/yogurt_inbox", json!(false))
             .mount(&cloud)
             .await;
         let mut conn = load(state).unwrap().unwrap();
