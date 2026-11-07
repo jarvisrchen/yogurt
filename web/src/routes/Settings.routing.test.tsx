@@ -35,6 +35,7 @@ vi.mock("../lib/api/settings", () => {
         api_key_masked: "••••WXYZ",
         adapter: "http",
         cli_model: "",
+        has_model_catalog: true,
       },
     ],
     presets: [],

@@ -24,6 +24,7 @@ const freshCliProvider: ProviderView = {
   api_key_masked: null,
   adapter: "cli",
   cli_model: "",
+  has_model_catalog: false,
 };
 
 function renderCard(
@@ -135,7 +136,7 @@ describe("ProviderCard - cli adapter", () => {
     expect(screen.queryByText(/click test below/i)).not.toBeInTheDocument();
   });
 
-  it("hides Refresh for claude, which has no catalog, and keeps it for codex", () => {
+  it("shows Refresh only when the server reports a model catalog", () => {
     renderCard({ ...freshCliProvider, cli_model: "sonnet" });
     expect(
       screen.queryByRole("button", { name: /refresh model list/i }),
@@ -147,6 +148,7 @@ describe("ProviderCard - cli adapter", () => {
       name: "Codex (local CLI)",
       model: "codex",
       cli_model: "gpt-5.6-luna",
+      has_model_catalog: true,
     });
     expect(
       screen.getByRole("button", {

@@ -27,6 +27,7 @@ const SETTINGS = {
       api_key_masked: "••••abcd",
       adapter: "http",
       cli_model: "",
+      has_model_catalog: true,
     },
   ],
   presets: [],

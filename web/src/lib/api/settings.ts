@@ -44,12 +44,12 @@ export interface General {
   audio_echo_buffer: number;
 }
 
-/**
- * `"cli"` is a local agent CLI (`yogurt_llm::CliClient`) with no base URL or key. `model` then holds
- * the CLI program id ("claude" | "cursor-agent" | "opencode" | "codex").
- */
 export type RecapPlacement = "dock" | "main";
 
+/**
+ * `"cli"` is a local agent CLI (`yogurt_llm::CliClient`) with no base URL or key. `model` then holds
+ * the CLI program id ("claude" | "cursor-agent" | "opencode" | "codex" | "copilot").
+ */
 export type ProviderAdapter = "http" | "cli";
 
 export interface ProviderView {
@@ -65,6 +65,8 @@ export interface ProviderView {
   /** `cli`-adapter only: the `--model` value passed to the CLI. Empty
    *  means "use the CLI's own default". Meaningless for `http`. */
   cli_model: string;
+  /** Whether Refresh can fetch a live model catalog. False for the `claude` and `copilot` CLIs. */
+  has_model_catalog: boolean;
 }
 
 export interface Preset {

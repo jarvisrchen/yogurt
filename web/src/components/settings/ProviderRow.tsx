@@ -121,7 +121,7 @@ export function ProviderRow({
                 }}
                 presetModels={presetModels}
                 placeholder="CLI default"
-                refreshable={provider.model !== "claude"}
+                refreshable={provider.has_model_catalog}
               />
               {updateCliModel.isError && (
                 <p role="status" className="text-[12.5px] text-straw">

@@ -25,6 +25,7 @@ const provider: ProviderView = {
   api_key_masked: null,
   adapter: "http",
   cli_model: "",
+  has_model_catalog: true,
 };
 
 function renderRow(opts: { onKeyClosed?: () => void } = {}) {

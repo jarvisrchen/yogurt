@@ -56,9 +56,15 @@ struct ProviderView {
     adapter: String,
     /// `cli` adapter only: the `--model` value passed to the CLI. Empty means the CLI's default.
     cli_model: String,
+    /// Whether [`list_provider_models`] can fetch a live catalog, so the UI shows Refresh.
+    has_model_catalog: bool,
 }
 
 fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
+    let has_model_catalog = p.adapter != providers::adapter::CLI
+        || yogurt_llm::CliProgram::parse(&p.model)
+            .and_then(yogurt_llm::CliProgram::list_models_args)
+            .is_some();
     ProviderView {
         id: p.id,
         name: p.name,
@@ -69,6 +75,7 @@ fn to_view(p: providers::Provider, masked: Option<String>) -> ProviderView {
         api_key_masked: masked,
         adapter: p.adapter,
         cli_model: p.cli_model,
+        has_model_catalog,
     }
 }
 
@@ -671,7 +678,7 @@ async fn list_provider_models(
         let program = yogurt_llm::CliProgram::parse(&provider.model).ok_or_else(|| {
             Error::Unprocessable(format!("unrecognized CLI program '{}'", provider.model))
         })?;
-        // No catalog (`claude`) is a 422 so the UI keeps the preset's static aliases.
+        // No catalog (`claude`, `copilot`) is a 422 so the UI keeps the preset's static aliases.
         // Only a spawn, auth, or parse failure is a 502.
         if program.list_models_args().is_none() {
             return Err(Error::Unprocessable(format!(
