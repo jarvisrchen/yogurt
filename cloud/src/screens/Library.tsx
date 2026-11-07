@@ -61,9 +61,6 @@ export const GearIcon = () => (
 
 type Row = Entry & { snippet: string | null };
 
-// How often the page asks whether a Mac has made the edits still waiting.
-const EDIT_POLL_MS = 15_000;
-
 // Labels belong to one Mac, so they and the Archive are offered only once a Mac is picked.
 type Pill = "all" | "starred" | "archive";
 const FILTERS: { value: Pill; label: string }[] = [{ value: "all", label: "All" }, { value: "starred", label: "Starred" }];
@@ -170,6 +167,12 @@ export function Library({
   const editLoad = useCloudLoad(async () => (pushId ? [] : api.pendingEdits(token)), onRejected, [api, token, pushId]);
   const pending = useMemo(() => editLoad.data ?? editLoad.previous ?? [], [editLoad.data, editLoad.previous]);
   const over = useMemo(() => overlays(pending), [pending]);
+  // A Mac makes an edit only on its next push, so the page rechecks what still waits each time it comes back into view.
+  useEffect(() => {
+    const recheck = () => document.visibilityState === "visible" && editLoad.retry();
+    document.addEventListener("visibilitychange", recheck);
+    return () => document.removeEventListener("visibilitychange", recheck);
+  }, [editLoad.retry]);
 
   const field = useRef<HTMLInputElement>(null);
   // The as-of view has no search, so the hook gets an empty query there.
@@ -205,13 +208,6 @@ export function Library({
   const openOver = open ? over.get(open) : undefined;
   const entry = loaded && openOver ? { ...loaded, title: openOver.title ?? loaded.title, notes: openOver.notes.reduce(appendNote, loaded.notes) } : loaded;
 
-  const waiting = pending.length;
-  useEffect(() => {
-    if (!waiting) return;
-    const t = setInterval(editLoad.retry, EDIT_POLL_MS);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting]);
   // An edit left the list, made by its Mac or undone, so the pushed meeting replaces the overlay.
   const lastPending = useRef(pending);
   useEffect(() => {
@@ -359,11 +355,17 @@ export function Library({
             }
           },
           cancel: async (id: number) => {
+            let undone: boolean;
             try {
-              await api.cancelEdit(token, id);
+              undone = await api.cancelEdit(token, id);
               editLoad.retry();
             } catch (e) {
               throw writeFailed(e);
+            }
+            if (!undone) {
+              pageLoad.retry();
+              bodyLoad.retry();
+              throw new Error(`${nameOf(openDevice)} already made this change, so it can no longer be undone.`);
             }
           },
         }

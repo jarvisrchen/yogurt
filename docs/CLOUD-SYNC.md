@@ -2,7 +2,7 @@
 
 Yogurt Cloud lets you read your meetings on your phone.
 It is a webapp on your own Vercel account, backed by your own Supabase project.
-Yogurt hosts nothing, and no meeting leaves your Mac until you press Push meetings in Settings or turn on Auto-push.
+Yogurt hosts nothing, and no meeting leaves your Mac until you press Sync now in Settings or turn on Auto-push.
 You need a Vercel account and a Supabase account, both free.
 The design is in [docs/.planning/sync-cloud-mirror-design.md](.planning/sync-cloud-mirror-design.md).
 
@@ -56,7 +56,7 @@ flowchart LR
 
 ### How data moves
 
-When you press Push meetings, your laptop signs in to your Supabase project with the Cloud login and sends meetings to its REST API.
+When you press Sync now, your laptop signs in to your Supabase project with the Cloud login and sends meetings to its REST API.
 Each pushed meeting is one JSON document with its title, times, labels, notes, enhanced notes, transcript, and chat messages.
 An archived meeting's document also carries `archived_at`, so archiving or unarchiving a meeting sends a new version of it.
 Every push is insert only.
@@ -260,9 +260,9 @@ The enhance function may run for 300 seconds, the most Vercel's Hobby plan allow
 The webapp's Record button records a meeting on a phone, or in any browser, and transcribes it live with Deepgram.
 The phone streams its audio to Deepgram directly, and the audio is never stored.
 Saves to, under the title, picks where the meeting is kept once it ends, and the phone remembers it for the next recording.
-It lists the phone first, then the Macs that checked your Cloud in the last 7 days, which a Mac does every minute while Yogurt runs there with Auto-push on.
+It lists the phone first, then the Macs that synced with your Cloud in the last 7 days, by Auto-push or Sync now.
 A meeting saved to the phone stays in your Cloud under the phone, and no Mac takes it.
-A meeting saved to a Mac goes only to that Mac, unless the Mac goes 7 days without checking, and then any Mac takes it.
+A meeting saved to a Mac goes only to that Mac, unless the Mac goes 7 days without syncing, and then any Mac takes it.
 A Mac running Yogurt 2.4.0 or earlier takes any meeting not saved to the phone, so update every Mac to keep the choice.
 Label, under it, gives the meeting labels before or while you record.
 It lists the labels that the phone or Mac uses on meetings you have not archived, and typing a name it does not list offers to create it.
@@ -359,7 +359,7 @@ The first push after it sends every meeting again, and the old device's meetings
 
 ### Push your meetings
 
-Select Push meetings on the Cloud sync page.
+Select Sync now on the Cloud sync page.
 The push runs in the background and the button returns at once.
 It sends meetings in small batches with a short pause between them, so a library of over a thousand meetings uploads in several minutes without overloading a free Supabase project.
 A request that fails because the cloud is busy or unreachable is retried after 5, 15, 45, and 120 seconds, and the push stops only when those are used up.
@@ -403,9 +403,9 @@ If an automatic push fails, the page shows the error under the last push, like a
 Yogurt tries again after 5 minutes.
 If the error is one only you can fix, such as "Your Cloud session expired" or "This machine was removed from the Yogurt Cloud", Yogurt stops trying.
 It resumes after you sign in again, connect again, or push by hand successfully.
-Between pushes, each check also asks your Cloud whether a phone recording or an edit from the webapp is waiting, and pushes early when one is.
-That is one small request a minute, and Off stops it too.
-The meeting you are recording is never changed under you: its edits wait until it ends, and no early push runs while you record.
+Each push, automatic or Sync now, first brings in phone recordings and webapp edits waiting for this Mac, and between pushes Yogurt asks your Cloud nothing.
+On Daily, a phone recording or an edit can wait up to a day, so press Sync now when you want it sooner.
+The meeting you are recording is never changed under you: its edits wait until it ends.
 `yogurt ctl cloud status` prints the interval and the time until the next push on its `auto-push:` line.
 
 ## 6. Read on your phone
@@ -459,11 +459,11 @@ The footer says which machine pushed the meeting and when.
 Rename, Add note, and Delete sit under the meeting's title, with Move to a Mac between them on a meeting recorded on your phone.
 Rename changes the title, and Add note adds your text to the end of the meeting's notes under a line such as "Added in Yogurt Cloud, Nov 4, 10:42 AM".
 Delete asks first, and the meeting's earlier versions stay in History.
-A meeting a Mac pushed changes on that Mac, which picks the edit up within a minute while Yogurt is running there with Auto-push on.
+A meeting a Mac pushed changes on that Mac, which picks the edit up on its next push, automatic or Sync now.
 Until then the page shows the change with a line such as "Waiting for MacBook Pro to rename this to …" and an Undo, and the library already lists the new title or leaves the deleted meeting out.
 If the title changed on the Mac before it picked up your rename, the Mac keeps its own title.
 A meeting recorded on your phone and not yet taken by a Mac changes at once.
-Move to a Mac picks one of the Macs Saves to offers, and that Mac takes the meeting with its labels within a minute while Yogurt runs there, until which the page says "Moving to MacBook Pro".
+Move to a Mac picks one of the Macs Saves to offers, and that Mac takes the meeting with its labels on its next push, until which the page says "Moving to MacBook Pro".
 A meeting shown from History, or one a phone is still recording, has no edit buttons.
 
 Ask this meeting, at the bottom of a meeting, opens a chat about it.

@@ -66,7 +66,7 @@ function NotSetUp() {
     <section>
       <Header
         suffix="optional · your own Vercel and Supabase"
-        intro="Push your meetings to a Yogurt Cloud you deployed, then read them on your phone. This laptop only pushes and never reads them back. Nothing leaves this Mac until you push."
+        intro="Push your meetings to a Yogurt Cloud you deployed, then read them on your phone. Each push also brings in phone recordings and Cloud edits waiting for this Mac. Nothing leaves this Mac until you push."
       />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
         <Choice
@@ -300,11 +300,13 @@ const INTERVAL_OPTIONS: { value: PushInterval; label: string }[] = [
 
 const SPAN: Record<string, string> = { "15m": "15 minutes", "1h": "an hour", "1d": "24 hours" };
 
+const PULLS = "Each push also brings in phone recordings and Cloud edits waiting for this Mac.";
+
 function describeInterval(value: PushInterval): string {
-  if (value === "off") return "Push changed meetings in the background while yogurt is running. Off by default.";
+  if (value === "off") return `Push changed meetings in the background while yogurt is running. Off by default. ${PULLS}`;
   if (value === "meeting")
-    return "Push a minute after each meeting ends or its notes finish, and 24 hours after the last push for later edits, while yogurt is running.";
-  return `Push changed meetings ${SPAN[value]} after the last push, manual or automatic, while yogurt is running.`;
+    return `Push a minute after each meeting ends or its notes finish, and 24 hours after the last push for later edits, while yogurt is running. ${PULLS}`;
+  return `Push changed meetings ${SPAN[value]} after the last push, manual or automatic, while yogurt is running. ${PULLS}`;
 }
 
 /** The timer wakes once a minute, so a time is only ever "around". */
@@ -498,7 +500,7 @@ function Connected({ status }: { status: CloudConnected }) {
             onExpired={() => setNeedsSignIn(true)}
           />
           <Button size="sm" disabled={push.isPending || running || needsSignIn} onClick={() => push.mutate(undefined)}>
-            {push.isPending || running ? "Pushing…" : "Push meetings"}
+            {push.isPending || running ? "Syncing…" : "Sync now"}
           </Button>
         </div>
         <div className="mb-3.5 mt-2.5 flex flex-wrap gap-6">

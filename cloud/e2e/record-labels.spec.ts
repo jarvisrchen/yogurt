@@ -27,7 +27,7 @@ async function seedMacs() {
   const sb = createClient(API, KEY);
   expect((await sb.auth.signInWithPassword({ email: OWNER, password: PASSWORD })).error).toBeNull();
   expect((await sb.from("yogurt_devices").insert([{ id: MBP, name: "MacBook Pro" }, { id: MINI, name: "Mac mini" }, { id: OLD, name: "Old laptop" }])).error).toBeNull();
-  // As their inbox checks would. The old laptop has not checked in for a week.
+  // As their syncs would. The old laptop has not synced for a week.
   await query("update yogurt_devices set seen_at = now() - (case id when $1::uuid then interval '0' when $2::uuid then interval '1 hour' else interval '8 days' end)", [MBP, MINI]);
   const push = async (device: string, labels: object[], extra: object = {}) => {
     const { data: pushId } = await sb.rpc("yogurt_start_push", { device_id: device });
